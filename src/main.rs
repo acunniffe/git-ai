@@ -9,6 +9,21 @@ use git::find_repository;
 use std::env;
 use std::process::Command;
 
+/// Print debug messages with yellow [git-ai] prefix when in development mode
+fn eprint_debug(msg: &str) {
+    // Check if we're in development mode (cargo run) or production
+    let is_dev = env::var("CARGO_RUNNING").is_ok()
+        || env::var("RUST_BACKTRACE").is_ok()
+        || cfg!(debug_assertions);
+
+    if is_dev {
+        // ANSI escape codes for yellow text
+        let yellow = "\x1b[33m";
+        let reset = "\x1b[0m";
+        eprintln!("{}{}[git-ai]{} {}", yellow, yellow, reset, msg);
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "git-ai")]
 #[command(about = "track AI authorship and prompts in git", long_about = None)]
@@ -158,24 +173,17 @@ fn handle_git_commit(args: &[String]) {
     let default_user_name = match repo.config() {
         Ok(config) => match config.get_string("user.name") {
             Ok(name) => name,
-            Err(_) => {
-                eprintln!("Warning: git user.name not configured. Using 'unknown' as author.");
-                "unknown".to_string()
-            }
+            Err(_) => "unknown".to_string(),
         },
-        Err(_) => {
-            eprintln!("Warning: Failed to get git config. Using 'unknown' as author.");
-            "unknown".to_string()
-        }
+        Err(_) => "unknown".to_string(),
     };
 
-    println!("default_user_name: {}", default_user_name);
     // Run pre-commit hook
     if let Err(e) = commands::pre_commit(&repo, default_user_name.clone()) {
         eprintln!("Pre-commit hook failed: {}", e);
         std::process::exit(1);
     }
-    println!("running pre-commit hook");
+    eprint_debug("ran pre-commit hook");
 
     // Build git commit command
     let mut git_cmd = Command::new("git");
@@ -186,7 +194,7 @@ fn handle_git_commit(args: &[String]) {
     let status = match git_cmd.status() {
         Ok(status) => status,
         Err(e) => {
-            eprintln!("Failed to execute git commit: {}", e);
+            eprint_debug(&format!("Failed to execute git commit: {}", e));
             std::process::exit(1);
         }
     };
@@ -201,6 +209,8 @@ fn handle_git_commit(args: &[String]) {
         eprintln!("Post-commit hook failed: {}", e);
         // Don't exit here as the commit was successful
     }
+
+    eprint_debug("ran post-commit hook");
 }
 
 fn proxy_to_git(command: &str, args: &[String]) {
