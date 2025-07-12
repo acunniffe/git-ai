@@ -1,6 +1,7 @@
 use crate::error::GitAiError;
 use crate::git::refs::{get_reference, put_reference};
 use crate::log_fmt::working_log::{AgentMetadata, Checkpoint, Line, WorkingLogEntry};
+use crate::utils::debug_log;
 use git2::{Repository, StatusOptions};
 use sha2::{Digest, Sha256};
 use similar::{ChangeTag, TextDiff};
@@ -44,32 +45,28 @@ pub fn run(
 
     if show_working_log {
         if working_log.is_empty() {
-            if !quiet {
-                println!("No working log entries found.");
-            }
+            debug_log("No working log entries found.");
         } else {
-            if !quiet {
-                println!("Working Log Entries:");
-                println!("{}", "=".repeat(80));
-                for (i, checkpoint) in working_log.iter().enumerate() {
-                    println!("Checkpoint {}: {}", i + 1, checkpoint.snapshot);
-                    println!("  Diff: {}", checkpoint.diff);
-                    println!("  Author: {}", checkpoint.author);
-                    if let Some(metadata) = &checkpoint.agent_metadata {
-                        println!("  Agent Metadata:");
-                        println!("    Model: {}", metadata.model);
-                        if let Some(human_author) = &metadata.human_author {
-                            println!("    Human Author: {}", human_author);
-                        }
+            debug_log("Working Log Entries:");
+            debug_log(&format!("{}", "=".repeat(80)));
+            for (i, checkpoint) in working_log.iter().enumerate() {
+                debug_log(&format!("Checkpoint {}: {}", i + 1, checkpoint.snapshot));
+                debug_log(&format!("  Diff: {}", checkpoint.diff));
+                debug_log(&format!("  Author: {}", checkpoint.author));
+                if let Some(metadata) = &checkpoint.agent_metadata {
+                    debug_log("  Agent Metadata:");
+                    debug_log(&format!("    Model: {}", metadata.model));
+                    if let Some(human_author) = &metadata.human_author {
+                        debug_log(&format!("    Human Author: {}", human_author));
                     }
-                    println!("  Entries:");
-                    for entry in &checkpoint.entries {
-                        println!("    File: {}", entry.file);
-                        println!("    Added lines: {:?}", entry.added_lines);
-                        println!("    Deleted lines: {:?}", entry.deleted_lines);
-                    }
-                    println!();
                 }
+                debug_log("  Entries:");
+                for entry in &checkpoint.entries {
+                    debug_log(&format!("    File: {}", entry.file));
+                    debug_log(&format!("    Added lines: {:?}", entry.added_lines));
+                    debug_log(&format!("    Deleted lines: {:?}", entry.deleted_lines));
+                }
+                debug_log("");
             }
         }
         return Ok((0, files.len(), working_log.len()));
@@ -157,20 +154,18 @@ pub fn run(
     save_current_file_states(repo, &base_commit, &files)?;
 
     // Print summary with new format
-    if !quiet {
-        if reset {
-            println!("Working log reset. Starting fresh checkpoint.");
-        }
+    if reset {
+        debug_log("Working log reset. Starting fresh checkpoint.");
     }
 
-    if !quiet {
-        let label = if entries.len() > 1 {
-            "checkpoint"
-        } else {
-            "commit"
-        };
+    let label = if entries.len() > 1 {
+        "checkpoint"
+    } else {
+        "commit"
+    };
 
-        println!(
+    if !quiet {
+        eprintln!(
             "{} changed {} of the {} file(s) that have changed since the last {}",
             author,
             entries.len(),

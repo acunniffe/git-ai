@@ -1,0 +1,10 @@
+---
+source: tests/blame_flags.rs
+expression: comparison
+---
+{
+    "multiple_flags_git_ai_normalized": "105c16f8 (<AUTHOR_INFO>) Line 2\n105c16f8 (<AUTHOR_INFO>) Line 3\n105c16f8 (<AUTHOR_INFO>) Line 4",
+    "multiple_flags_git_ai_raw": "105c16f8 (Test User 2023-01-01 12:00:00 +0000    2) Line 2\n105c16f8 (Test User 2023-01-01 12:00:00 +0000    3) Line 3\n105c16f8 (Test User 2023-01-01 12:00:00 +0000    4) Line 4\n",
+    "multiple_flags_git_normalized": "105c16f 2 (<AUTHOR_INFO>) Line 2\n105c16f 3 (<AUTHOR_INFO>) Line 3\n105c16f 4 (<AUTHOR_INFO>) Line 4",
+    "multiple_flags_git_raw": "^105c16f 2 (<test@example.com> 2023-01-01 12:00:00 +0000 2) Line 2\n^105c16f 3 (<test@example.com> 2023-01-01 12:00:00 +0000 3) Line 3\n^105c16f 4 (<test@example.com> 2023-01-01 12:00:00 +0000 4) Line 4\n",
+}

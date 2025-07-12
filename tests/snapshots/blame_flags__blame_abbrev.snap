@@ -1,0 +1,10 @@
+---
+source: tests/blame_flags.rs
+expression: comparison
+---
+{
+    "abbrev_git_ai_normalized": "564e (<AUTHOR_INFO>) Line 1\n564e (<AUTHOR_INFO>) Line 2",
+    "abbrev_git_ai_raw": "564e (Test User 2023-01-01 12:00:00 +0000    1) Line 1\n564e (Test User 2023-01-01 12:00:00 +0000    2) Line 2\n",
+    "abbrev_git_normalized": "",
+    "abbrev_git_raw": "",
+}

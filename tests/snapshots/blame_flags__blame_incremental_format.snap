@@ -1,0 +1,10 @@
+---
+source: tests/blame_flags.rs
+expression: comparison
+---
+{
+    "incremental_format_git_ai_normalized": "00000000 1 1 1\nauthor test_user\nauthor-m <test_user@example.com>\nauthor-t 0\nauthor-t +0000\ncommitte test_user\ncommitte <test_user@example.com>\ncommitte 0\ncommitte +0000\nsummary placeholder\nfilename test.txt\n00000000 2 2 1\nauthor Claude\nauthor-m <Claude@example.com>\nauthor-t 0\nauthor-t +0000\ncommitte Claude\ncommitte <Claude@example.com>\ncommitte 0\ncommitte +0000\nsummary placeholder\nfilename test.txt",
+    "incremental_format_git_ai_raw": "0000000000000000000000000000000000000000 1 1 1\nauthor test_user\nauthor-mail <test_user@example.com>\nauthor-time 0\nauthor-tz +0000\ncommitter test_user\ncommitter-mail <test_user@example.com>\ncommitter-time 0\ncommitter-tz +0000\nsummary placeholder\nfilename test.txt\n0000000000000000000000000000000000000000 2 2 1\nauthor Claude\nauthor-mail <Claude@example.com>\nauthor-time 0\nauthor-tz +0000\ncommitter Claude\ncommitter-mail <Claude@example.com>\ncommitter-time 0\ncommitter-tz +0000\nsummary placeholder\nfilename test.txt\n",
+    "incremental_format_git_normalized": "564e1b8e 1 1 2\nauthor Test User\nauthor-m <test@example.com>\nauthor-t 1672574400\nauthor-t +0000\ncommitte Test User\ncommitte <test@example.com>\ncommitte 1672574400\ncommitte +0000\nsummary Initial commit\nboundary\nfilename test.txt",
+    "incremental_format_git_raw": "564e1b8e327009f68d8673bd0b32ea92583224c4 1 1 2\nauthor Test User\nauthor-mail <test@example.com>\nauthor-time 1672574400\nauthor-tz +0000\ncommitter Test User\ncommitter-mail <test@example.com>\ncommitter-time 1672574400\ncommitter-tz +0000\nsummary Initial commit\nboundary\nfilename test.txt\n",
+}

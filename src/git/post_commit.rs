@@ -2,12 +2,11 @@ use crate::error::GitAiError;
 use crate::git::refs::put_reference;
 use crate::log_fmt::authorship_log::AuthorshipLog;
 use crate::log_fmt::working_log::Checkpoint;
+use crate::utils::debug_log;
 use git2::Repository;
 use serde_json;
 
-pub fn run(repo: &Repository, force: bool) -> Result<(String, AuthorshipLog), GitAiError> {
-    let quiet = cfg!(debug_assertions);
-
+pub fn post_commit(repo: &Repository, force: bool) -> Result<(String, AuthorshipLog), GitAiError> {
     // Get the current commit SHA (the commit that was just made)
     let head = repo.head()?;
     let commit_sha = match head.target() {
@@ -50,9 +49,10 @@ pub fn run(repo: &Repository, force: bool) -> Result<(String, AuthorshipLog), Gi
     // Filter out untracked files from the working log
     let filtered_working_log = filter_untracked_files(repo, &parent_working_log)?;
 
-    if !quiet {
-        println!("Working log entries: {}", filtered_working_log.len());
-    }
+    debug_log(&format!(
+        "Working log entries: {}",
+        filtered_working_log.len()
+    ));
 
     // --- NEW: Serialize authorship log and store it in refs/ai/authorship/{commit_sha} ---
     let authorship_log = AuthorshipLog::from_working_log(&filtered_working_log);
@@ -72,12 +72,10 @@ pub fn run(repo: &Repository, force: bool) -> Result<(String, AuthorshipLog), Gi
         &format!("AI authorship attestation for commit {}", commit_sha),
     )?;
 
-    if !quiet {
-        println!(
-            "Authorship log written to refs/ai/authorship/{}",
-            commit_sha
-        );
-    }
+    debug_log(&format!(
+        "Authorship log written to refs/ai/authorship/{}",
+        commit_sha
+    ));
 
     Ok((ref_name, authorship_log))
 }

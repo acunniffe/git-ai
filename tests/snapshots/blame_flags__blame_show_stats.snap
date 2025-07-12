@@ -1,0 +1,10 @@
+---
+source: tests/blame_flags.rs
+expression: comparison
+---
+{
+    "show_stats_git_ai_normalized": "================================================================================\ntest_use 1 50.0%\nClaude 1 50.0%\n564e1b8e (<AUTHOR_INFO>) Line 1\n564e1b8e (<AUTHOR_INFO>) Line 2",
+    "show_stats_git_ai_raw": "================================================================================\ntest_user     1     50.0%\n   Claude     1     50.0%\n564e1b8e (Test User 2023-01-01 12:00:00 +0000    1) Line 1\n564e1b8e (Test User 2023-01-01 12:00:00 +0000    2) Line 2\n",
+    "show_stats_git_normalized": "564e1b8 (<AUTHOR_INFO>) Line 1\n564e1b8 (<AUTHOR_INFO>) Line 2\nnum read blob: 1\nnum get patch: 0\nnum commits: 0",
+    "show_stats_git_raw": "^564e1b8 (Test User 2023-01-01 12:00:00 +0000 1) Line 1\n^564e1b8 (Test User 2023-01-01 12:00:00 +0000 2) Line 2\nnum read blob: 1\nnum get patch: 0\nnum commits: 0\n",
+}

@@ -1,0 +1,10 @@
+---
+source: tests/blame_flags.rs
+expression: comparison
+---
+{
+    "basic_format_git_ai_normalized": "91ca6f59 (<AUTHOR_INFO>) Line 1\n91ca6f59 (<AUTHOR_INFO>) Line 2\n91ca6f59 (<AUTHOR_INFO>) Line 3\n91ca6f59 (<AUTHOR_INFO>) Line 4",
+    "basic_format_git_ai_raw": "91ca6f59 (Test User 2023-01-01 12:00:00 +0000    1) Line 1\n91ca6f59 (Test User 2023-01-01 12:00:00 +0000    2) Line 2\n91ca6f59 (Test User 2023-01-01 12:00:00 +0000    3) Line 3\n91ca6f59 (Test User 2023-01-01 12:00:00 +0000    4) Line 4\n",
+    "basic_format_git_normalized": "91ca6f5 (<AUTHOR_INFO>) Line 1\n91ca6f5 (<AUTHOR_INFO>) Line 2\n91ca6f5 (<AUTHOR_INFO>) Line 3\n91ca6f5 (<AUTHOR_INFO>) Line 4",
+    "basic_format_git_raw": "^91ca6f5 (Test User 2023-01-01 12:00:00 +0000 1) Line 1\n^91ca6f5 (Test User 2023-01-01 12:00:00 +0000 2) Line 2\n^91ca6f5 (Test User 2023-01-01 12:00:00 +0000 3) Line 3\n^91ca6f5 (Test User 2023-01-01 12:00:00 +0000 4) Line 4\n",
+}

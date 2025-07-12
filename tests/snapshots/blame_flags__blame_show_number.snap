@@ -1,0 +1,10 @@
+---
+source: tests/blame_flags.rs
+expression: comparison
+---
+{
+    "show_number_git_ai_normalized": "564e1b8e (<AUTHOR_INFO>) Line 1\n564e1b8e (<AUTHOR_INFO>) Line 2",
+    "show_number_git_ai_raw": "564e1b8e (Test User 2023-01-01 12:00:00 +0000    1) Line 1\n564e1b8e (Test User 2023-01-01 12:00:00 +0000    2) Line 2\n",
+    "show_number_git_normalized": "564e1b8 1 (<AUTHOR_INFO>) Line 1\n564e1b8 2 (<AUTHOR_INFO>) Line 2",
+    "show_number_git_raw": "^564e1b8 1 (Test User 2023-01-01 12:00:00 +0000 1) Line 1\n^564e1b8 2 (Test User 2023-01-01 12:00:00 +0000 2) Line 2\n",
+}
