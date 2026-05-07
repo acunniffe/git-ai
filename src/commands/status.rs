@@ -12,6 +12,7 @@ use crate::git::status::MAX_PATHSPEC_ARGS;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Serialize)]
 struct CheckpointInfo {
@@ -269,6 +270,20 @@ fn get_working_dir_diff_stats(
     let output = exec_git_with_profile(&args, InternalGitProfile::NumstatParse)?;
     let stdout = String::from_utf8(output.stdout)?;
 
+    Ok(parse_working_dir_numstat_stats(
+        &stdout,
+        pathspecs,
+        needs_post_filter,
+        ignore_matcher,
+    ))
+}
+
+fn parse_working_dir_numstat_stats(
+    stdout: &str,
+    pathspecs: Option<&HashSet<String>>,
+    needs_post_filter: bool,
+    ignore_matcher: &IgnoreMatcher,
+) -> (u32, u32) {
     let mut added_lines = 0u32;
     let mut deleted_lines = 0u32;
 
@@ -281,16 +296,17 @@ fn get_working_dir_diff_stats(
         // Parse numstat format: "added\tdeleted\tfilename"
         let parts: Vec<&str> = line.split('\t').collect();
         if parts.len() >= 3 {
+            let file_path: String = crate::utils::unescape_git_path(parts[2]).nfc().collect();
+
             // Post-filter by pathspec when we couldn't pass them as CLI args
             if needs_post_filter
                 && let Some(paths) = pathspecs
-                && !paths.contains(parts[2])
+                && !paths.contains(file_path.as_str())
             {
                 continue;
             }
 
-            let file_path = parts[2];
-            if should_ignore_file_with_matcher(file_path, ignore_matcher) {
+            if should_ignore_file_with_matcher(&file_path, ignore_matcher) {
                 continue;
             }
 
@@ -308,7 +324,7 @@ fn get_working_dir_diff_stats(
         }
     }
 
-    Ok((added_lines, deleted_lines))
+    (added_lines, deleted_lines)
 }
 
 /// Count AI-attributed lines from InitialAttributions (uncommitted changes)
@@ -342,4 +358,55 @@ fn count_ai_lines_from_initial(
     }
 
     ai_lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numstat_post_filter_matches_c_quoted_non_ascii_paths() {
+        let mut pathspecs = HashSet::new();
+        pathspecs.insert("caf\u{e9}.txt".to_string());
+        let ignore_matcher = build_ignore_matcher(&[]);
+
+        let (added, deleted) = parse_working_dir_numstat_stats(
+            "3\t1\t\"caf\\303\\251.txt\"\n2\t0\tother.txt\n",
+            Some(&pathspecs),
+            true,
+            &ignore_matcher,
+        );
+
+        assert_eq!((added, deleted), (3, 1));
+    }
+
+    #[test]
+    fn numstat_ignore_matcher_matches_c_quoted_non_ascii_paths() {
+        let ignore_matcher = build_ignore_matcher(&["caf\u{e9}.txt".to_string()]);
+
+        let (added, deleted) = parse_working_dir_numstat_stats(
+            "3\t1\t\"caf\\303\\251.txt\"\n2\t0\tother.txt\n",
+            None,
+            false,
+            &ignore_matcher,
+        );
+
+        assert_eq!((added, deleted), (2, 0));
+    }
+
+    #[test]
+    fn numstat_normalizes_decomposed_non_ascii_paths() {
+        let mut pathspecs = HashSet::new();
+        pathspecs.insert("café.txt".to_string());
+        let ignore_matcher = build_ignore_matcher(&[]);
+
+        let stats = parse_working_dir_numstat_stats(
+            "3\t1\t\"cafe\\314\\201.txt\"\n2\t0\tother.txt\n",
+            Some(&pathspecs),
+            true,
+            &ignore_matcher,
+        );
+
+        assert_eq!(stats, (3, 1));
+    }
 }
