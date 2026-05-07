@@ -1,0 +1,14 @@
+src/git/repository.rs
+  h_edab809c32d497 2623,2635-2638,2682,3008-3020
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "55e6ff63ce8e4fc53cd7abd5e1cdebc296209dc9",
+  "prompts": {},
+  "humans": {
+    "h_edab809c32d497": {
+      "author": "Marek Białowąs <marek.bialowas@phoenix-rtos.com>"
+    }
+  }
+}
