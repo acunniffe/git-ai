@@ -1,0 +1,20 @@
+src/daemon/telemetry_worker.rs
+  s_faab1448a5ea0f::t_85ad0258e46006 6
+  s_faab1448a5ea0f::t_adb4492e0cad6b 309-311,313-316,318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "1f9cd066b95fd6ddf5bba181faca65a15ef11ea4",
+  "prompts": {},
+  "sessions": {
+    "s_faab1448a5ea0f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21bca833-5f57-4e8d-a442-cd6c57a61a00",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

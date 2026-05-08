@@ -1,0 +1,19 @@
+src/commands/install_hooks.rs
+  s_348b83c1f266d4::t_24064a47b0f1e3 612-621
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.4",
+  "base_commit_sha": "4f0560ffbe226d966490a086a557ef2ed5469669",
+  "prompts": {},
+  "sessions": {
+    "s_348b83c1f266d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "027ac297-308d-4607-8cde-6649c70993fc",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

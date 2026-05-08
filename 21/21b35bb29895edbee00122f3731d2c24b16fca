@@ -1,0 +1,23 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/TelemetryService.kt
+  s_c39593940d102b::t_cc89368f404b0b 52-63,67-76,182-186,205-214,216,218-223,225-227,235-249,256-270,277-283,290-292,294,302-303,341-342,349-350
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/startup/DocumentTrackerStartupActivity.kt
+  s_c39593940d102b::t_cc89368f404b0b 19-20
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/GitAiService.kt
+  s_c39593940d102b::t_cc89368f404b0b 196,232,252,265,318,335,346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "2121b35bb29895edbee00122f3731d2c24b16fca",
+  "prompts": {},
+  "sessions": {
+    "s_c39593940d102b": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "DEVIN_SESSION1778184650",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
