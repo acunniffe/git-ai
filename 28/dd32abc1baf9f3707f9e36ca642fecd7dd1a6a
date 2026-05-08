@@ -1,0 +1,39 @@
+src/authorship/range_authorship.rs
+  h_edab809c32d497 9,362-367,381-382,484-498
+src/git/repository.rs
+  h_edab809c32d497 2623,2635-2638,2682,3008-3020
+src/commands/checkpoint_agent/orchestrator.rs
+  h_edab809c32d497 75
+src/authorship/rebase_authorship.rs
+  h_edab809c32d497 2725,2729,2732,2757
+tests/integration/rebase.rs
+  h_edab809c32d497 2682-2701,2703-2715,2717
+  ai_agent 2702,2716
+src/commands/status.rs
+  h_edab809c32d497 262-275,288-289,293,298,351-384
+  ae3bf5ffd2cd6f36 316,385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "28dd32abc1baf9f3707f9e36ca642fecd7dd1a6a",
+  "prompts": {
+    "ae3bf5ffd2cd6f36": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "01f58a9e-b284-42be-a146-eacacc90c84e",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "total_additions": 176,
+      "total_deletions": 13,
+      "accepted_lines": 61,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_edab809c32d497": {
+      "author": "Marek Białowąs <marek.bialowas@phoenix-rtos.com>"
+    }
+  }
+}
