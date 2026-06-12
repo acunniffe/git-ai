@@ -284,6 +284,8 @@ fn fully_populated_file_config() -> FileConfig {
         disable_version_checks: Some(true),
         disable_auto_updates: Some(true),
         update_channel: Some("latest".to_string()),
+        upgrade_jitter_seconds: Some(345_600),
+        minimum_package_upgrade_age_seconds: Some(86_400),
         feature_flags: Some(serde_json::json!({"transcript_sweep": true})),
         api_base_url: Some("https://usegitai.com".to_string()),
         prompt_storage: Some("default".to_string()),

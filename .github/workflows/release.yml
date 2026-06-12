@@ -803,6 +803,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve release creation time
+        id: release-created
+        run: |
+          CREATED_AT=$(gh release view "${{ steps.release-meta.outputs.tag_name }}" --json createdAt --jq '.createdAt')
+          echo "created_at=$CREATED_AT" >> "$GITHUB_OUTPUT"
+          echo "Release created_at: $CREATED_AT"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Generate release bot token
         if: inputs.release_production == true
         id: release-bot-token
@@ -873,7 +882,8 @@ jobs:
               "ref": "dev",
               "inputs": {
                 "channel": "${{ steps.release-meta.outputs.channel_label }}",
-                "tag": "${{ steps.release-meta.outputs.tag_name }}"
+                "tag": "${{ steps.release-meta.outputs.tag_name }}",
+                "created_at": "${{ steps.release-created.outputs.created_at }}"
               }
             }'
 

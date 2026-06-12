@@ -49,6 +49,7 @@ unsafe extern "system" {
 }
 
 const UPDATE_CHECK_INTERVAL_HOURS: u64 = 24;
+const UPDATE_CHECK_INTERVAL_SECS: u64 = UPDATE_CHECK_INTERVAL_HOURS * 3600;
 const GIT_AI_RELEASE_ENV: &str = "GIT_AI_RELEASE_TAG";
 #[cfg(windows)]
 const GIT_AI_RESTART_DAEMON_AFTER_INSTALL_ENV: &str = "GIT_AI_RESTART_DAEMON_AFTER_INSTALL";
@@ -64,6 +65,7 @@ enum UpgradeAction {
     UpgradeAvailable,
     AlreadyLatest,
     RunningNewerVersion,
+    ReleaseTooNew,
     ForceReinstall,
 }
 
@@ -73,6 +75,7 @@ impl UpgradeAction {
             UpgradeAction::UpgradeAvailable => "upgrade_available",
             UpgradeAction::AlreadyLatest => "already_latest",
             UpgradeAction::RunningNewerVersion => "running_newer_version",
+            UpgradeAction::ReleaseTooNew => "release_too_new",
             UpgradeAction::ForceReinstall => "force_reinstall",
         }
     }
@@ -83,11 +86,18 @@ struct ChannelRelease {
     tag: String,
     semver: String,
     checksum: String,
+    created_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct UpdateCache {
     last_checked_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    next_check_after: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    upgrade_jitter_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    minimum_package_upgrade_age_seconds: Option<u64>,
     available_tag: Option<String>,
     available_semver: Option<String>,
     channel: String,
@@ -97,6 +107,9 @@ impl UpdateCache {
     fn new(channel: UpdateChannel) -> Self {
         Self {
             last_checked_at: 0,
+            next_check_after: None,
+            upgrade_jitter_seconds: None,
+            minimum_package_upgrade_age_seconds: None,
             available_tag: None,
             available_semver: None,
             channel: channel.as_str().to_string(),
@@ -116,6 +129,7 @@ impl UpdateCache {
 struct ChannelInfo {
     version: String,
     checksum: String,
+    created_at: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -156,6 +170,61 @@ fn current_timestamp() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_else(|_| Duration::from_secs(0))
         .as_secs()
+}
+
+fn deterministic_upgrade_jitter_seconds(
+    distinct_id: &str,
+    channel: UpdateChannel,
+    max_jitter_seconds: u64,
+) -> u64 {
+    if max_jitter_seconds == 0 {
+        return 0;
+    }
+
+    let mut hasher = Sha256::new();
+    hasher.update(distinct_id.as_bytes());
+    hasher.update(channel.as_str().as_bytes());
+    let digest = hasher.finalize();
+    let mut bytes = [0u8; 8];
+    bytes.copy_from_slice(&digest[..8]);
+    u64::from_le_bytes(bytes) % (max_jitter_seconds + 1)
+}
+
+fn upgrade_jitter_distinct_id() -> String {
+    #[cfg(test)]
+    if let Ok(distinct_id) = std::env::var("GIT_AI_TEST_DISTINCT_ID") {
+        return distinct_id;
+    }
+
+    config::get_or_create_distinct_id()
+}
+
+fn regular_next_check_after_for_distinct_id(
+    last_checked_at: u64,
+    channel: UpdateChannel,
+    upgrade_jitter_seconds: u64,
+    distinct_id: &str,
+) -> u64 {
+    last_checked_at
+        .saturating_add(UPDATE_CHECK_INTERVAL_SECS)
+        .saturating_add(deterministic_upgrade_jitter_seconds(
+            distinct_id,
+            channel,
+            upgrade_jitter_seconds,
+        ))
+}
+
+fn regular_next_check_after(
+    last_checked_at: u64,
+    channel: UpdateChannel,
+    upgrade_jitter_seconds: u64,
+) -> u64 {
+    regular_next_check_after_for_distinct_id(
+        last_checked_at,
+        channel,
+        upgrade_jitter_seconds,
+        &upgrade_jitter_distinct_id(),
+    )
 }
 
 #[cfg(windows)]
@@ -267,7 +336,12 @@ fn windows_process_entry_template() -> ProcessEntry32W {
     }
 }
 
-fn should_check_for_updates(channel: UpdateChannel, cache: Option<&UpdateCache>) -> bool {
+fn should_check_for_updates(
+    channel: UpdateChannel,
+    cache: Option<&UpdateCache>,
+    upgrade_jitter_seconds: u64,
+    minimum_package_upgrade_age_seconds: u64,
+) -> bool {
     let now = current_timestamp();
     match cache {
         Some(cache) if cache.last_checked_at > 0 => {
@@ -275,8 +349,19 @@ fn should_check_for_updates(channel: UpdateChannel, cache: Option<&UpdateCache>)
             if !cache.matches_channel(channel) {
                 return true;
             }
-            let elapsed = now.saturating_sub(cache.last_checked_at);
-            elapsed > UPDATE_CHECK_INTERVAL_HOURS * 3600
+
+            let next_check_after = cache
+                .next_check_after
+                .filter(|_| {
+                    cache.upgrade_jitter_seconds == Some(upgrade_jitter_seconds)
+                        && cache.minimum_package_upgrade_age_seconds
+                            == Some(minimum_package_upgrade_age_seconds)
+                })
+                .unwrap_or_else(|| {
+                    regular_next_check_after(cache.last_checked_at, channel, upgrade_jitter_seconds)
+                });
+
+            now >= next_check_after
         }
         _ => true,
     }
@@ -290,7 +375,40 @@ fn semver_from_tag(tag: &str) -> String {
     trimmed.split(['-', '+']).next().unwrap_or("").to_string()
 }
 
-fn determine_action(force: bool, release: &ChannelRelease, current_version: &str) -> UpgradeAction {
+fn release_meets_minimum_age(
+    release: &ChannelRelease,
+    minimum_package_upgrade_age_seconds: u64,
+    now: u64,
+) -> bool {
+    if minimum_package_upgrade_age_seconds == 0 {
+        return true;
+    }
+
+    release.created_at.is_some_and(|created_at| {
+        now.saturating_sub(created_at) >= minimum_package_upgrade_age_seconds
+    })
+}
+
+fn release_age_eligible_at(
+    release: &ChannelRelease,
+    minimum_package_upgrade_age_seconds: u64,
+) -> Option<u64> {
+    if minimum_package_upgrade_age_seconds == 0 {
+        None
+    } else {
+        release
+            .created_at
+            .map(|created_at| created_at.saturating_add(minimum_package_upgrade_age_seconds))
+    }
+}
+
+fn determine_action_at(
+    force: bool,
+    release: &ChannelRelease,
+    current_version: &str,
+    minimum_package_upgrade_age_seconds: u64,
+    now: u64,
+) -> UpgradeAction {
     if force {
         return UpgradeAction::ForceReinstall;
     }
@@ -298,15 +416,60 @@ fn determine_action(force: bool, release: &ChannelRelease, current_version: &str
     if release.semver == current_version {
         UpgradeAction::AlreadyLatest
     } else if is_newer_version(&release.semver, current_version) {
-        UpgradeAction::UpgradeAvailable
+        if release_meets_minimum_age(release, minimum_package_upgrade_age_seconds, now) {
+            UpgradeAction::UpgradeAvailable
+        } else {
+            UpgradeAction::ReleaseTooNew
+        }
     } else {
         UpgradeAction::RunningNewerVersion
     }
 }
 
-fn persist_update_state(channel: UpdateChannel, release: Option<&ChannelRelease>) {
+fn determine_action(
+    force: bool,
+    release: &ChannelRelease,
+    current_version: &str,
+    minimum_package_upgrade_age_seconds: u64,
+) -> UpgradeAction {
+    determine_action_at(
+        force,
+        release,
+        current_version,
+        minimum_package_upgrade_age_seconds,
+        current_timestamp(),
+    )
+}
+
+fn persist_update_state(
+    channel: UpdateChannel,
+    release: Option<&ChannelRelease>,
+    upgrade_jitter_seconds: u64,
+    minimum_package_upgrade_age_seconds: u64,
+) {
+    persist_update_state_with_next_check(
+        channel,
+        release,
+        upgrade_jitter_seconds,
+        minimum_package_upgrade_age_seconds,
+        None,
+    );
+}
+
+fn persist_update_state_with_next_check(
+    channel: UpdateChannel,
+    release: Option<&ChannelRelease>,
+    upgrade_jitter_seconds: u64,
+    minimum_package_upgrade_age_seconds: u64,
+    next_check_after: Option<u64>,
+) {
     let mut cache = UpdateCache::new(channel);
     cache.last_checked_at = current_timestamp();
+    cache.next_check_after = Some(next_check_after.unwrap_or_else(|| {
+        regular_next_check_after(cache.last_checked_at, channel, upgrade_jitter_seconds)
+    }));
+    cache.upgrade_jitter_seconds = Some(upgrade_jitter_seconds);
+    cache.minimum_package_upgrade_age_seconds = Some(minimum_package_upgrade_age_seconds);
     if let Some(release) = release {
         cache.available_tag = Some(release.tag.clone());
         cache.available_semver = Some(release.semver.clone());
@@ -315,8 +478,14 @@ fn persist_update_state(channel: UpdateChannel, release: Option<&ChannelRelease>
 }
 
 pub(crate) fn clear_cached_update_state() {
-    let channel = config::Config::fresh().update_channel();
-    persist_update_state(channel, None);
+    let config = config::Config::fresh();
+    let channel = config.update_channel();
+    persist_update_state(
+        channel,
+        None,
+        config.upgrade_jitter_seconds(),
+        config.minimum_package_upgrade_age_seconds(),
+    );
 }
 
 fn releases_endpoint() -> &'static str {
@@ -479,11 +648,36 @@ fn release_from_response(
         return Err("Checksum not found in response".to_string());
     }
 
+    let created_at = channel_info
+        .created_at
+        .as_deref()
+        .map(parse_release_created_at)
+        .transpose()?;
+
     Ok(ChannelRelease {
         tag,
         semver,
         checksum,
+        created_at,
     })
+}
+
+fn parse_release_created_at(value: &str) -> Result<u64, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err("Release created_at is empty".to_string());
+    }
+
+    if let Ok(seconds) = trimmed.parse::<u64>() {
+        return Ok(seconds);
+    }
+
+    let timestamp = chrono::DateTime::parse_from_rfc3339(trimmed)
+        .map_err(|e| format!("Invalid release created_at '{}': {}", value, e))?
+        .timestamp();
+
+    u64::try_from(timestamp)
+        .map_err(|_| format!("Release created_at '{}' is before Unix epoch", value))
 }
 
 #[cfg(test)]
@@ -679,7 +873,14 @@ fn run_impl(force: bool, background: bool) {
     let config = config::Config::fresh();
     let channel = config.update_channel();
     let skip_install = background && config.auto_updates_disabled();
-    let _ = run_impl_with_url(force, config.api_base_url(), channel, skip_install);
+    let _ = run_impl_with_url(
+        force,
+        config.api_base_url(),
+        channel,
+        skip_install,
+        config.minimum_package_upgrade_age_seconds(),
+        config.upgrade_jitter_seconds(),
+    );
 }
 
 fn run_impl_with_url(
@@ -687,6 +888,8 @@ fn run_impl_with_url(
     api_base_url: &str,
     channel: UpdateChannel,
     skip_install: bool,
+    minimum_package_upgrade_age_seconds: u64,
+    upgrade_jitter_seconds: u64,
 ) -> UpgradeAction {
     let current_version = env!("CARGO_PKG_VERSION");
 
@@ -709,9 +912,25 @@ fn run_impl_with_url(
     );
     println!();
 
-    let action = determine_action(force, &release, current_version);
+    let action = determine_action(
+        force,
+        &release,
+        current_version,
+        minimum_package_upgrade_age_seconds,
+    );
     let cache_release = matches!(action, UpgradeAction::UpgradeAvailable);
-    persist_update_state(channel, cache_release.then_some(&release));
+    let next_check_after = if matches!(action, UpgradeAction::ReleaseTooNew) {
+        release_age_eligible_at(&release, minimum_package_upgrade_age_seconds)
+    } else {
+        None
+    };
+    persist_update_state_with_next_check(
+        channel,
+        cache_release.then_some(&release),
+        upgrade_jitter_seconds,
+        minimum_package_upgrade_age_seconds,
+        next_check_after,
+    );
 
     log_message(
         "checked_for_update",
@@ -737,6 +956,22 @@ fn run_impl_with_url(
             println!("(This usually means you're running a development build)");
             println!();
             println!("To reinstall the selected release anyway, run:");
+            println!("  \x1b[1;36mgit-ai upgrade --force\x1b[0m");
+            return action;
+        }
+        UpgradeAction::ReleaseTooNew => {
+            println!("The selected release is newer than your minimum package upgrade age.");
+            println!(
+                "Configured minimum age: {} seconds",
+                minimum_package_upgrade_age_seconds
+            );
+            if let Some(created_at) = release.created_at {
+                println!("Release created_at: {}", created_at);
+            } else {
+                println!("Release created_at is missing from the releases API response.");
+            }
+            println!();
+            println!("To install it anyway, run:");
             println!("  \x1b[1;36mgit-ai upgrade --force\x1b[0m");
             return action;
         }
@@ -857,6 +1092,8 @@ pub fn maybe_schedule_background_update_check() {
     }
 
     let channel = config.update_channel();
+    let upgrade_jitter_seconds = config.upgrade_jitter_seconds();
+    let minimum_package_upgrade_age_seconds = config.minimum_package_upgrade_age_seconds();
     let cache = read_update_cache();
 
     if config.auto_updates_disabled()
@@ -867,7 +1104,12 @@ pub fn maybe_schedule_background_update_check() {
         print_cached_notice(cache);
     }
 
-    if !should_check_for_updates(channel, cache.as_ref()) {
+    if !should_check_for_updates(
+        channel,
+        cache.as_ref(),
+        upgrade_jitter_seconds,
+        minimum_package_upgrade_age_seconds,
+    ) {
         return;
     }
 
@@ -918,6 +1160,8 @@ pub fn check_and_install_update_if_available() -> Result<DaemonUpdateCheckResult
 
     let channel = config.update_channel();
     let api_base_url = config.api_base_url();
+    let minimum_package_upgrade_age_seconds = config.minimum_package_upgrade_age_seconds();
+    let upgrade_jitter_seconds = config.upgrade_jitter_seconds();
 
     // Read the cache that check_for_update_available() populated earlier.
     // We intentionally skip should_check_for_updates() here because the
@@ -936,11 +1180,27 @@ pub fn check_and_install_update_if_available() -> Result<DaemonUpdateCheckResult
     // Re-fetch the release to get the tag needed for the installer.
     let release = fetch_release_for_channel(api_base_url, channel)?;
     let current_version = env!("CARGO_PKG_VERSION");
-    let action = determine_action(false, &release, current_version);
+    let action = determine_action(
+        false,
+        &release,
+        current_version,
+        minimum_package_upgrade_age_seconds,
+    );
 
     if action != UpgradeAction::UpgradeAvailable {
         // Cache was stale or version changed between check and install.
-        persist_update_state(channel, None);
+        let next_check_after = if matches!(action, UpgradeAction::ReleaseTooNew) {
+            release_age_eligible_at(&release, minimum_package_upgrade_age_seconds)
+        } else {
+            None
+        };
+        persist_update_state_with_next_check(
+            channel,
+            None,
+            upgrade_jitter_seconds,
+            minimum_package_upgrade_age_seconds,
+            next_check_after,
+        );
         return Ok(DaemonUpdateCheckResult::NoUpdate);
     }
 
@@ -962,7 +1222,12 @@ pub fn check_and_install_update_if_available() -> Result<DaemonUpdateCheckResult
     run_install_script(&script_content, &release.tag, true)?;
 
     // Clear the cached update now that we've installed it.
-    persist_update_state(channel, None);
+    persist_update_state(
+        channel,
+        None,
+        upgrade_jitter_seconds,
+        minimum_package_upgrade_age_seconds,
+    );
 
     log_message(
         "daemon_upgraded",
@@ -991,9 +1256,16 @@ pub fn check_for_update_available() -> Result<DaemonUpdateCheckResult, String> {
 
     let channel = config.update_channel();
     let api_base_url = config.api_base_url();
+    let minimum_package_upgrade_age_seconds = config.minimum_package_upgrade_age_seconds();
+    let upgrade_jitter_seconds = config.upgrade_jitter_seconds();
     let cache = read_update_cache();
 
-    if !should_check_for_updates(channel, cache.as_ref()) {
+    if !should_check_for_updates(
+        channel,
+        cache.as_ref(),
+        upgrade_jitter_seconds,
+        minimum_package_upgrade_age_seconds,
+    ) {
         // Even if it's not time to re-check, an earlier check may have found an update.
         if let Some(ref c) = cache
             && c.matches_channel(channel)
@@ -1007,9 +1279,25 @@ pub fn check_for_update_available() -> Result<DaemonUpdateCheckResult, String> {
 
     let release = fetch_release_for_channel(api_base_url, channel)?;
     let current_version = env!("CARGO_PKG_VERSION");
-    let action = determine_action(false, &release, current_version);
+    let action = determine_action(
+        false,
+        &release,
+        current_version,
+        minimum_package_upgrade_age_seconds,
+    );
     let cache_release = matches!(action, UpgradeAction::UpgradeAvailable);
-    persist_update_state(channel, cache_release.then_some(&release));
+    let next_check_after = if matches!(action, UpgradeAction::ReleaseTooNew) {
+        release_age_eligible_at(&release, minimum_package_upgrade_age_seconds)
+    } else {
+        None
+    };
+    persist_update_state_with_next_check(
+        channel,
+        cache_release.then_some(&release),
+        upgrade_jitter_seconds,
+        minimum_package_upgrade_age_seconds,
+        next_check_after,
+    );
 
     log_message(
         "checked_for_update",
@@ -1146,6 +1434,8 @@ mod tests {
             )),
             UpdateChannel::Latest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::UpgradeAvailable);
 
@@ -1159,6 +1449,8 @@ mod tests {
             &mock_url(&same_version_payload),
             UpdateChannel::Latest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::AlreadyLatest);
 
@@ -1168,6 +1460,8 @@ mod tests {
             &mock_url(&same_version_payload),
             UpdateChannel::Latest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::ForceReinstall);
 
@@ -1180,6 +1474,8 @@ mod tests {
             )),
             UpdateChannel::Latest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::RunningNewerVersion);
 
@@ -1192,8 +1488,41 @@ mod tests {
             )),
             UpdateChannel::Latest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::ForceReinstall);
+
+        clear_test_cache_dir();
+    }
+
+    #[test]
+    #[serial]
+    fn test_run_impl_with_url_release_too_new_sets_next_check_after() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        set_test_cache_dir(&temp_dir);
+
+        let test_checksum = "a".repeat(64);
+        let created_at = current_timestamp().saturating_sub(60);
+        let minimum_age = 3600;
+        let payload = format!(
+            r#"{{"channels":{{"latest":{{"version":"v999.0.0","checksum":"{}","created_at":"{}"}}}}}}"#,
+            test_checksum, created_at
+        );
+
+        let action = run_impl_with_url(
+            false,
+            &format!("mock://{}", payload),
+            UpdateChannel::Latest,
+            true,
+            minimum_age,
+            0,
+        );
+
+        assert_eq!(action, UpgradeAction::ReleaseTooNew);
+        let cache = read_update_cache().unwrap();
+        assert!(!cache.update_available());
+        assert_eq!(cache.next_check_after, Some(created_at + minimum_age));
 
         clear_test_cache_dir();
     }
@@ -1217,6 +1546,8 @@ mod tests {
             )),
             UpdateChannel::EnterpriseLatest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::UpgradeAvailable);
 
@@ -1230,6 +1561,8 @@ mod tests {
             &mock_url(&same_version_payload),
             UpdateChannel::EnterpriseLatest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::AlreadyLatest);
 
@@ -1239,6 +1572,8 @@ mod tests {
             &mock_url(&same_version_payload),
             UpdateChannel::EnterpriseLatest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::ForceReinstall);
 
@@ -1251,6 +1586,8 @@ mod tests {
             )),
             UpdateChannel::EnterpriseLatest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::RunningNewerVersion);
 
@@ -1263,6 +1600,8 @@ mod tests {
             )),
             UpdateChannel::EnterpriseLatest,
             true,
+            0,
+            0,
         );
         assert_eq!(action, UpgradeAction::ForceReinstall);
 
@@ -1276,17 +1615,21 @@ mod tests {
         cache.last_checked_at = now;
         assert!(!should_check_for_updates(
             UpdateChannel::Latest,
-            Some(&cache)
+            Some(&cache),
+            0,
+            0
         ));
 
         let stale_offset = (UPDATE_CHECK_INTERVAL_HOURS * 3600) + 10;
         cache.last_checked_at = now.saturating_sub(stale_offset);
         assert!(should_check_for_updates(
             UpdateChannel::Latest,
-            Some(&cache)
+            Some(&cache),
+            0,
+            0
         ));
 
-        assert!(should_check_for_updates(UpdateChannel::Latest, None));
+        assert!(should_check_for_updates(UpdateChannel::Latest, None, 0, 0));
     }
 
     #[test]
@@ -1298,11 +1641,110 @@ mod tests {
         // Cache matches channel - should respect interval
         assert!(!should_check_for_updates(
             UpdateChannel::Latest,
-            Some(&cache)
+            Some(&cache),
+            0,
+            0
         ));
 
         // Cache doesn't match channel - should check for updates
-        assert!(should_check_for_updates(UpdateChannel::Next, Some(&cache)));
+        assert!(should_check_for_updates(
+            UpdateChannel::Next,
+            Some(&cache),
+            0,
+            0
+        ));
+    }
+
+    #[test]
+    fn test_should_check_for_updates_respects_next_check_after() {
+        let now = current_timestamp();
+        let mut cache = UpdateCache::new(UpdateChannel::Latest);
+        cache.last_checked_at = now.saturating_sub(UPDATE_CHECK_INTERVAL_SECS + 3600 + 10);
+        cache.next_check_after = Some(now + 60);
+        cache.upgrade_jitter_seconds = Some(3600);
+        cache.minimum_package_upgrade_age_seconds = Some(0);
+
+        assert!(!should_check_for_updates(
+            UpdateChannel::Latest,
+            Some(&cache),
+            3600,
+            0
+        ));
+
+        cache.next_check_after = Some(now.saturating_sub(1));
+        assert!(should_check_for_updates(
+            UpdateChannel::Latest,
+            Some(&cache),
+            3600,
+            0
+        ));
+    }
+
+    #[test]
+    fn test_regular_next_check_after_uses_distinct_id_and_last_checked_at() {
+        let distinct_id = "stable-client-id";
+        let last_checked_at = 1_000_000;
+        let max_jitter = 3600;
+        let jitter =
+            deterministic_upgrade_jitter_seconds(distinct_id, UpdateChannel::Latest, max_jitter);
+
+        assert_eq!(
+            regular_next_check_after_for_distinct_id(
+                last_checked_at,
+                UpdateChannel::Latest,
+                max_jitter,
+                distinct_id,
+            ),
+            last_checked_at + UPDATE_CHECK_INTERVAL_SECS + jitter
+        );
+        assert_eq!(
+            deterministic_upgrade_jitter_seconds(distinct_id, UpdateChannel::Latest, max_jitter),
+            deterministic_upgrade_jitter_seconds(distinct_id, UpdateChannel::Latest, max_jitter)
+        );
+        assert!(jitter <= max_jitter);
+        assert_eq!(
+            regular_next_check_after_for_distinct_id(
+                last_checked_at + 123,
+                UpdateChannel::Latest,
+                max_jitter,
+                distinct_id,
+            ),
+            last_checked_at + 123 + UPDATE_CHECK_INTERVAL_SECS + jitter
+        );
+    }
+
+    #[test]
+    fn test_should_check_for_updates_ignores_next_check_after_when_jitter_changes() {
+        let now = current_timestamp();
+        let mut cache = UpdateCache::new(UpdateChannel::Latest);
+        cache.last_checked_at = now.saturating_sub(UPDATE_CHECK_INTERVAL_SECS + 10);
+        cache.next_check_after = Some(now + 60 * 60);
+        cache.upgrade_jitter_seconds = Some(3600);
+        cache.minimum_package_upgrade_age_seconds = Some(0);
+
+        assert!(should_check_for_updates(
+            UpdateChannel::Latest,
+            Some(&cache),
+            0,
+            0
+        ));
+    }
+
+    #[test]
+    fn test_should_check_for_updates_ignores_next_check_after_when_minimum_age_changes() {
+        let now = current_timestamp();
+        let mut cache = UpdateCache::new(UpdateChannel::Latest);
+        cache.last_checked_at = now.saturating_sub(UPDATE_CHECK_INTERVAL_SECS + 3600 + 10);
+        cache.next_check_after = Some(now + 60 * 60);
+        cache.upgrade_jitter_seconds = Some(3600);
+        cache.minimum_package_upgrade_age_seconds = Some(86_400);
+
+        assert!(should_check_for_updates(
+            UpdateChannel::Latest,
+            Some(&cache),
+            3600,
+            0
+        ));
     }
 
     #[test]
@@ -1401,6 +1843,8 @@ mod tests {
     fn test_update_cache_new() {
         let cache = UpdateCache::new(UpdateChannel::Latest);
         assert_eq!(cache.last_checked_at, 0);
+        assert_eq!(cache.next_check_after, None);
+        assert_eq!(cache.upgrade_jitter_seconds, None);
         assert!(cache.available_tag.is_none());
         assert!(cache.available_semver.is_none());
         assert_eq!(cache.channel, "latest");
@@ -1430,8 +1874,9 @@ mod tests {
             tag: "v1.0.0".to_string(),
             semver: "1.0.0".to_string(),
             checksum: "abc".to_string(),
+            created_at: None,
         };
-        let action = determine_action(true, &release, "1.0.0");
+        let action = determine_action(true, &release, "1.0.0", 0);
         assert_eq!(action, UpgradeAction::ForceReinstall);
     }
 
@@ -1441,8 +1886,9 @@ mod tests {
             tag: "v1.0.0".to_string(),
             semver: "1.0.0".to_string(),
             checksum: "abc".to_string(),
+            created_at: None,
         };
-        let action = determine_action(false, &release, "1.0.0");
+        let action = determine_action(false, &release, "1.0.0", 0);
         assert_eq!(action, UpgradeAction::AlreadyLatest);
     }
 
@@ -1452,9 +1898,60 @@ mod tests {
             tag: "v2.0.0".to_string(),
             semver: "2.0.0".to_string(),
             checksum: "abc".to_string(),
+            created_at: None,
         };
-        let action = determine_action(false, &release, "1.0.0");
+        let action = determine_action(false, &release, "1.0.0", 0);
         assert_eq!(action, UpgradeAction::UpgradeAvailable);
+    }
+
+    #[test]
+    fn test_determine_action_release_too_new() {
+        let now = 2_000_000;
+        let release = ChannelRelease {
+            tag: "v2.0.0".to_string(),
+            semver: "2.0.0".to_string(),
+            checksum: "abc".to_string(),
+            created_at: Some(now - 60),
+        };
+        let action = determine_action_at(false, &release, "1.0.0", 120, now);
+        assert_eq!(action, UpgradeAction::ReleaseTooNew);
+    }
+
+    #[test]
+    fn test_determine_action_release_old_enough() {
+        let now = 2_000_000;
+        let release = ChannelRelease {
+            tag: "v2.0.0".to_string(),
+            semver: "2.0.0".to_string(),
+            checksum: "abc".to_string(),
+            created_at: Some(now - 121),
+        };
+        let action = determine_action_at(false, &release, "1.0.0", 120, now);
+        assert_eq!(action, UpgradeAction::UpgradeAvailable);
+    }
+
+    #[test]
+    fn test_determine_action_release_missing_created_at_blocks_minimum_age() {
+        let release = ChannelRelease {
+            tag: "v2.0.0".to_string(),
+            semver: "2.0.0".to_string(),
+            checksum: "abc".to_string(),
+            created_at: None,
+        };
+        let action = determine_action_at(false, &release, "1.0.0", 120, 2_000_000);
+        assert_eq!(action, UpgradeAction::ReleaseTooNew);
+    }
+
+    #[test]
+    fn test_determine_action_force_bypasses_minimum_age() {
+        let release = ChannelRelease {
+            tag: "v2.0.0".to_string(),
+            semver: "2.0.0".to_string(),
+            checksum: "abc".to_string(),
+            created_at: Some(2_000_000),
+        };
+        let action = determine_action_at(true, &release, "1.0.0", 120, 2_000_000);
+        assert_eq!(action, UpgradeAction::ForceReinstall);
     }
 
     #[test]
@@ -1463,8 +1960,9 @@ mod tests {
             tag: "v1.0.0".to_string(),
             semver: "1.0.0".to_string(),
             checksum: "abc".to_string(),
+            created_at: None,
         };
-        let action = determine_action(false, &release, "2.0.0");
+        let action = determine_action(false, &release, "2.0.0", 0);
         assert_eq!(action, UpgradeAction::RunningNewerVersion);
     }
 
@@ -1479,6 +1977,7 @@ mod tests {
             UpgradeAction::RunningNewerVersion.to_string(),
             "running_newer_version"
         );
+        assert_eq!(UpgradeAction::ReleaseTooNew.to_string(), "release_too_new");
         assert_eq!(UpgradeAction::ForceReinstall.to_string(), "force_reinstall");
     }
 
@@ -1571,6 +2070,7 @@ mod tests {
             ChannelInfo {
                 version: "".to_string(),
                 checksum: "abc123".to_string(),
+                created_at: None,
             },
         );
         let releases = ReleasesResponse { channels };
@@ -1587,6 +2087,7 @@ mod tests {
             ChannelInfo {
                 version: "v1.0.0".to_string(),
                 checksum: "".to_string(),
+                created_at: None,
             },
         );
         let releases = ReleasesResponse { channels };
@@ -1603,6 +2104,7 @@ mod tests {
             ChannelInfo {
                 version: "v-invalid-version".to_string(),
                 checksum: "abc123".to_string(),
+                created_at: None,
             },
         );
         let releases = ReleasesResponse { channels };
@@ -1619,6 +2121,7 @@ mod tests {
             ChannelInfo {
                 version: "v1.2.3".to_string(),
                 checksum: "abc123def456".to_string(),
+                created_at: Some("2026-06-05T23:09:48.000Z".to_string()),
             },
         );
         let releases = ReleasesResponse { channels };
@@ -1628,24 +2131,62 @@ mod tests {
         assert_eq!(release.tag, "v1.2.3");
         assert_eq!(release.semver, "1.2.3");
         assert_eq!(release.checksum, "abc123def456");
+        assert_eq!(release.created_at, Some(1780700988));
+    }
+
+    #[test]
+    fn test_release_from_response_created_at_unix_seconds() {
+        let mut channels = HashMap::new();
+        channels.insert(
+            "latest".to_string(),
+            ChannelInfo {
+                version: "v1.2.3".to_string(),
+                checksum: "abc123def456".to_string(),
+                created_at: Some("1780700988".to_string()),
+            },
+        );
+        let release =
+            release_from_response(ReleasesResponse { channels }, UpdateChannel::Latest).unwrap();
+        assert_eq!(release.created_at, Some(1780700988));
+    }
+
+    #[test]
+    fn test_release_from_response_invalid_created_at() {
+        let mut channels = HashMap::new();
+        channels.insert(
+            "latest".to_string(),
+            ChannelInfo {
+                version: "v1.2.3".to_string(),
+                checksum: "abc123def456".to_string(),
+                created_at: Some("not-a-date".to_string()),
+            },
+        );
+        let result = release_from_response(ReleasesResponse { channels }, UpdateChannel::Latest);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid release created_at"));
     }
 
     #[test]
     fn test_should_check_for_updates_no_cache() {
-        assert!(should_check_for_updates(UpdateChannel::Latest, None));
+        assert!(should_check_for_updates(UpdateChannel::Latest, None, 0, 0));
     }
 
     #[test]
     fn test_should_check_for_updates_zero_last_checked() {
         let cache = UpdateCache {
             last_checked_at: 0,
+            next_check_after: None,
+            upgrade_jitter_seconds: None,
+            minimum_package_upgrade_age_seconds: None,
             available_tag: None,
             available_semver: None,
             channel: "latest".to_string(),
         };
         assert!(should_check_for_updates(
             UpdateChannel::Latest,
-            Some(&cache)
+            Some(&cache),
+            0,
+            0
         ));
     }
 
@@ -1654,11 +2195,19 @@ mod tests {
         let now = current_timestamp();
         let cache = UpdateCache {
             last_checked_at: now,
+            next_check_after: None,
+            upgrade_jitter_seconds: None,
+            minimum_package_upgrade_age_seconds: None,
             available_tag: None,
             available_semver: None,
             channel: "latest".to_string(),
         };
-        assert!(should_check_for_updates(UpdateChannel::Next, Some(&cache)));
+        assert!(should_check_for_updates(
+            UpdateChannel::Next,
+            Some(&cache),
+            0,
+            0
+        ));
     }
 
     #[test]
@@ -1666,6 +2215,9 @@ mod tests {
         // Test serialization/deserialization without file I/O
         let mut cache = UpdateCache::new(UpdateChannel::Latest);
         cache.last_checked_at = 1234567890;
+        cache.next_check_after = Some(1234567890 + UPDATE_CHECK_INTERVAL_SECS);
+        cache.upgrade_jitter_seconds = Some(3600);
+        cache.minimum_package_upgrade_age_seconds = Some(86_400);
         cache.available_tag = Some("v1.0.0".to_string());
         cache.available_semver = Some("1.0.0".to_string());
 
@@ -1673,6 +2225,15 @@ mod tests {
         let deserialized: UpdateCache = serde_json::from_slice(&json).unwrap();
 
         assert_eq!(deserialized.last_checked_at, 1234567890);
+        assert_eq!(
+            deserialized.next_check_after,
+            Some(1234567890 + UPDATE_CHECK_INTERVAL_SECS)
+        );
+        assert_eq!(deserialized.upgrade_jitter_seconds, Some(3600));
+        assert_eq!(
+            deserialized.minimum_package_upgrade_age_seconds,
+            Some(86_400)
+        );
         assert_eq!(deserialized.available_tag, Some("v1.0.0".to_string()));
         assert_eq!(deserialized.available_semver, Some("1.0.0".to_string()));
         assert_eq!(deserialized.channel, "latest");
@@ -1686,6 +2247,7 @@ mod tests {
             tag: "v1.5.0".to_string(),
             semver: "1.5.0".to_string(),
             checksum: "test".to_string(),
+            created_at: None,
         };
 
         // Manually construct what persist_update_state would create
@@ -1751,11 +2313,11 @@ mod tests {
         let release =
             fetch_release_for_channel(&format!("mock://{}", mock_payload), UpdateChannel::Latest)
                 .unwrap();
-        let action = determine_action(false, &release, env!("CARGO_PKG_VERSION"));
+        let action = determine_action(false, &release, env!("CARGO_PKG_VERSION"), 0);
         assert_eq!(action, UpgradeAction::UpgradeAvailable);
 
         // Persist and verify the cache reflects the available update.
-        persist_update_state(UpdateChannel::Latest, Some(&release));
+        persist_update_state(UpdateChannel::Latest, Some(&release), 0, 0);
         let cache = read_update_cache().unwrap();
         assert!(cache.update_available());
         assert_eq!(cache.available_semver.as_deref(), Some("999.0.0"));
@@ -1774,7 +2336,7 @@ mod tests {
         let release =
             fetch_release_for_channel(&format!("mock://{}", mock_payload), UpdateChannel::Latest)
                 .unwrap();
-        let action = determine_action(false, &release, current);
+        let action = determine_action(false, &release, current, 0);
         assert_eq!(action, UpgradeAction::AlreadyLatest);
 
         // When the action is AlreadyLatest, persist_update_state is called with None.
@@ -1792,7 +2354,9 @@ mod tests {
         cache.last_checked_at = current_timestamp();
         assert!(!should_check_for_updates(
             UpdateChannel::Latest,
-            Some(&cache)
+            Some(&cache),
+            0,
+            0
         ));
     }
 
