@@ -2,9 +2,7 @@ use dirs;
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::config::{
-    AuthorConfig, CodexHooksFormat, MAX_UPGRADE_JITTER_SECONDS, NotesBackendKind,
-};
+use crate::config::{AuthorConfig, CodexHooksFormat, MAX_UPGRADE_JITTER_SECONDS, NotesBackendKind};
 use crate::git::repository::find_repository_in_path;
 
 /// Determines the type of pattern value provided
@@ -113,7 +111,7 @@ fn print_config_help() {
         MAX_UPGRADE_JITTER_SECONDS
     );
     println!(
-        "  minimum_package_upgrade_age_seconds  Minimum release age before upgrading (seconds)"
+        "  minimum_package_upgrade_age_seconds  Minimum release age before upgrading (seconds; requires release created_at metadata)"
     );
     println!("  feature_flags                Feature flags (object)");
     println!("  api_base_url                 API base URL (default: https://usegitai.com)");

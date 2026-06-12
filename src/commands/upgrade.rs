@@ -648,11 +648,8 @@ fn release_from_response(
         return Err("Checksum not found in response".to_string());
     }
 
-    let created_at = channel_info
-        .created_at
-        .as_deref()
-        .map(parse_release_created_at)
-        .transpose()?;
+    let created_at =
+        parse_optional_release_created_at(channel_info.created_at.as_deref(), channel, &tag);
 
     Ok(ChannelRelease {
         tag,
@@ -678,6 +675,60 @@ fn parse_release_created_at(value: &str) -> Result<u64, String> {
 
     u64::try_from(timestamp)
         .map_err(|_| format!("Release created_at '{}' is before Unix epoch", value))
+}
+
+fn parse_optional_release_created_at(
+    value: Option<&str>,
+    channel: UpdateChannel,
+    tag: &str,
+) -> Option<u64> {
+    let value = value?;
+    match parse_release_created_at(value) {
+        Ok(created_at) => Some(created_at),
+        Err(err) => {
+            eprintln!("Warning: {}", err);
+            log_message(
+                "invalid_release_created_at",
+                "warning",
+                Some(serde_json::json!({
+                    "channel": channel.as_str(),
+                    "release_tag": tag,
+                    "created_at": value,
+                    "error": err,
+                })),
+            );
+            None
+        }
+    }
+}
+
+fn log_release_age_gate_block(
+    release: &ChannelRelease,
+    current_version: &str,
+    api_base_url: &str,
+    channel: UpdateChannel,
+    minimum_package_upgrade_age_seconds: u64,
+) {
+    let missing_created_at = release.created_at.is_none();
+    log_message(
+        "upgrade_blocked_by_minimum_package_age",
+        if missing_created_at {
+            "warning"
+        } else {
+            "info"
+        },
+        Some(serde_json::json!({
+            "current_version": current_version,
+            "api_base_url": api_base_url,
+            "channel": channel.as_str(),
+            "release_tag": release.tag,
+            "release_semver": release.semver,
+            "release_created_at": release.created_at,
+            "minimum_package_upgrade_age_seconds": minimum_package_upgrade_age_seconds,
+            "missing_release_created_at": missing_created_at,
+            "reason": if missing_created_at { "missing_release_created_at" } else { "release_too_young" },
+        })),
+    );
 }
 
 #[cfg(test)]
@@ -942,6 +993,15 @@ fn run_impl_with_url(
             "result": action.to_string()
         })),
     );
+    if matches!(action, UpgradeAction::ReleaseTooNew) {
+        log_release_age_gate_block(
+            &release,
+            current_version,
+            api_base_url,
+            channel,
+            minimum_package_upgrade_age_seconds,
+        );
+    }
 
     match action {
         UpgradeAction::AlreadyLatest => {
@@ -1194,6 +1254,15 @@ pub fn check_and_install_update_if_available() -> Result<DaemonUpdateCheckResult
         } else {
             None
         };
+        if matches!(action, UpgradeAction::ReleaseTooNew) {
+            log_release_age_gate_block(
+                &release,
+                current_version,
+                api_base_url,
+                channel,
+                minimum_package_upgrade_age_seconds,
+            );
+        }
         persist_update_state_with_next_check(
             channel,
             None,
@@ -1309,6 +1378,15 @@ pub fn check_for_update_available() -> Result<DaemonUpdateCheckResult, String> {
             "result": action.to_string()
         })),
     );
+    if matches!(action, UpgradeAction::ReleaseTooNew) {
+        log_release_age_gate_block(
+            &release,
+            current_version,
+            api_base_url,
+            channel,
+            minimum_package_upgrade_age_seconds,
+        );
+    }
 
     if action == UpgradeAction::UpgradeAvailable && !config.auto_updates_disabled() {
         Ok(DaemonUpdateCheckResult::UpdateReady)
@@ -2151,7 +2229,7 @@ mod tests {
     }
 
     #[test]
-    fn test_release_from_response_invalid_created_at() {
+    fn test_release_from_response_invalid_created_at_is_ignored() {
         let mut channels = HashMap::new();
         channels.insert(
             "latest".to_string(),
@@ -2161,9 +2239,9 @@ mod tests {
                 created_at: Some("not-a-date".to_string()),
             },
         );
-        let result = release_from_response(ReleasesResponse { channels }, UpdateChannel::Latest);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid release created_at"));
+        let release =
+            release_from_response(ReleasesResponse { channels }, UpdateChannel::Latest).unwrap();
+        assert_eq!(release.created_at, None);
     }
 
     #[test]
