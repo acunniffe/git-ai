@@ -1,0 +1,20 @@
+src/utils.rs
+  s_046096bb59cc90::t_70e1dcdb8a81fc 1249-1295
+  s_046096bb59cc90::t_bcc8b23a1cf590 111-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.4",
+  "base_commit_sha": "d1b15e3d21b14a16da9709d132711f762879cc3e",
+  "prompts": {},
+  "sessions": {
+    "s_046096bb59cc90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6255a9f0-7ab6-4221-8bc2-09fedd102e17",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}
