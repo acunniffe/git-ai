@@ -1,0 +1,21 @@
+tests/integration/config_cli_coverage.rs
+  s_b9c74d90e0aacc::t_7aa25d2636cbf5 179-184
+src/commands/config.rs
+  s_b9c74d90e0aacc::t_7aa25d2636cbf5 606,609
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "78ade1230b655aee2cdc5eaf7cef861429fae57f",
+  "prompts": {},
+  "sessions": {
+    "s_b9c74d90e0aacc": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-88a9bdf107f3460a84a94a562c43798b",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

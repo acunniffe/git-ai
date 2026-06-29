@@ -1,0 +1,30 @@
+src/daemon.rs
+  s_4d604bdd40c765::t_c3d1a5a338120d 1838-1839,1858,4772,4777,5387-5388,5553
+  s_4d604bdd40c765::t_f174e04c535209 4763-4769,5022-5025,5628-5633,5649,5651-5655
+  s_4d604bdd40c765::t_ff9e0a9ad76e26 5389-5395
+src/commands/checkpoint_agent/bash_tool.rs
+  s_4d604bdd40c765::t_e54732a2332445 723-724,727,732-736,1271-1279
+tests/commit_tree_update_ref.rs
+  s_4d604bdd40c765::t_53e8f516dcf2a4 1599-1602,1656,1662
+src/authorship/rewrite_revert.rs
+  s_4d604bdd40c765::t_06ee7641675289 27-31
+src/authorship/rewrite.rs
+  s_4d604bdd40c765::t_97d832d4e0a70f 106
+  s_4d604bdd40c765::t_ac977ff2e3d330 144-148,162-168,192,200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "100ac1654d7e461aafd9587d58c5fd56d448ba20",
+  "prompts": {},
+  "sessions": {
+    "s_4d604bdd40c765": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee61a-3160-7480-af4b-dd94e5be48f4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

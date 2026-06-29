@@ -1,0 +1,28 @@
+src/daemon/telemetry_worker.rs
+  s_dbb553167a7332::t_aee502fb851b7d 529-531
+  s_dbb553167a7332::t_02d4d81e5cb45f 487,491
+  s_dbb553167a7332::t_ebc37e0208da87 837,860-861,872,889-890
+  s_dbb553167a7332::t_7b26cbc3ad2a4c 1960,1969
+  s_dbb553167a7332::t_0a172c0a3a7ed2 478
+  s_dbb553167a7332::t_c7e3ee3da64807 1945
+  s_dbb553167a7332::t_6faa90127512c6 1941,1948-1950
+  s_dbb553167a7332::t_81a15a18437223 473
+docs/superpowers/specs/2026-06-29-daemon-log-upload-client.md
+  s_dbb553167a7332::t_d07861f010f53f 16-17,19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "f4255b6b12d5bf03c765a7289c5332b1a963bc33",
+  "prompts": {},
+  "sessions": {
+    "s_dbb553167a7332": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1378-6188-7562-b85f-cd20f8c541a8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
