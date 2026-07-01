@@ -10,7 +10,7 @@ use crate::commands::checkpoint_agent::bash_tool::{self, Agent, ToolClass};
 use crate::error::GitAiError;
 use crate::mdm::utils::codex_home_dir;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub struct CodexPreset;
 
@@ -115,8 +115,19 @@ impl AgentPreset for CodexPreset {
         }
 
         let model = parse::optional_str(&data, "model")
-            .unwrap_or("unknown")
-            .to_string();
+            .map(str::to_string)
+            .or_else(|| {
+                transcript_path.as_ref().and_then(|tp| {
+                    crate::streams::model_extraction::extract_model(
+                        Path::new(tp),
+                        crate::streams::sweep::StreamFormat::CodexJsonl,
+                        None,
+                    )
+                    .ok()
+                    .flatten()
+                })
+            })
+            .unwrap_or_else(|| "unknown".to_string());
 
         let context = PresetContext {
             agent_id: AgentId {
@@ -262,6 +273,37 @@ mod tests {
                     })
                 ));
                 assert_eq!(e.command.as_deref(), Some("echo hello"));
+            }
+            _ => panic!("Expected PostBashCall"),
+        }
+    }
+
+    #[test]
+    fn test_codex_uses_transcript_model_when_hook_model_missing() {
+        use std::io::Write;
+
+        let mut transcript = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        transcript
+            .write_all(br#"{"type":"session_meta","payload":{"model":"gpt-5.3-codex"}}"#)
+            .unwrap();
+        transcript.flush().unwrap();
+
+        let transcript_path = transcript.path().to_string_lossy().to_string();
+
+        let input = json!({
+            "cwd": "/home/user/project",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Bash",
+            "session_id": "codex-sess-1",
+            "tool_use_id": "tu-1",
+            "transcript_path": transcript_path
+        })
+        .to_string();
+
+        let events = CodexPreset.parse(&input, "t_test123456789a").unwrap();
+        match &events[0] {
+            ParsedHookEvent::PostBashCall(e) => {
+                assert_eq!(e.context.agent_id.model, "gpt-5.3-codex");
             }
             _ => panic!("Expected PostBashCall"),
         }

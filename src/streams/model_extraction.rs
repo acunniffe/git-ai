@@ -13,6 +13,7 @@ pub fn extract_model(
         StreamFormat::ClaudeJsonl
         | StreamFormat::CopilotEventStreamJsonl
         | StreamFormat::GeminiJsonl => extract_model_from_jsonl_tail(path),
+        StreamFormat::CodexJsonl => extract_model_from_codex_jsonl(path),
         StreamFormat::CopilotSessionJson => extract_model_from_copilot_session_json(path),
         StreamFormat::AmpThreadJson => extract_model_from_amp_thread_json(path),
         StreamFormat::OpenCodeSqlite => extract_model_from_opencode_sqlite(path, session_id),
@@ -84,6 +85,64 @@ fn extract_model_from_jsonl_tail(path: &Path) -> Result<Option<String>, StreamEr
     Ok(None)
 }
 
+fn extract_model_from_codex_jsonl(path: &Path) -> Result<Option<String>, StreamError> {
+    if let Some(model) = extract_model_from_jsonl_tail(path)? {
+        return Ok(Some(model));
+    }
+
+    if let Some(model) = extract_model_from_codex_session_meta(path) {
+        return Ok(Some(model));
+    }
+
+    Ok(extract_model_from_codex_config(path))
+}
+
+fn extract_model_from_codex_session_meta(path: &Path) -> Option<String> {
+    let file = File::open(path).ok()?;
+    let reader = BufReader::new(file);
+
+    for line in reader.lines().map_while(Result::ok).take(20) {
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(line.trim()) else {
+            continue;
+        };
+
+        if json.get("type").and_then(|v| v.as_str()) != Some("session_meta") {
+            continue;
+        }
+
+        let Some(payload) = json.get("payload") else {
+            continue;
+        };
+        if let Some(model) = string_candidate(payload.get("model"))
+            .or_else(|| string_candidate(payload.get("model_id")))
+            .or_else(|| string_candidate(payload.get("modelId")))
+        {
+            return Some(model);
+        }
+    }
+
+    None
+}
+
+fn extract_model_from_codex_config(path: &Path) -> Option<String> {
+    let codex_home = codex_home_from_transcript_path(path)?;
+    let config_path = codex_home.join("config.toml");
+    let content = std::fs::read_to_string(config_path).ok()?;
+    let config: toml::Value = toml::from_str(&content).ok()?;
+
+    toml_string_candidate(config.get("model"))
+}
+
+fn codex_home_from_transcript_path(path: &Path) -> Option<PathBuf> {
+    for ancestor in path.ancestors() {
+        if ancestor.file_name().and_then(|name| name.to_str()) == Some(".codex") {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+
+    None
+}
+
 fn extract_model_from_jsonl_line(line: &str) -> Option<String> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
@@ -106,13 +165,23 @@ fn extract_model_from_jsonl_line(line: &str) -> Option<String> {
         .and_then(|v| v.as_str())
         .or_else(|| json.get("model").and_then(|v| v.as_str()));
 
-    if let Some(model) = candidate
-        && model != "<synthetic>"
-    {
-        return Some(model.to_string());
-    }
+    candidate.and_then(normalize_model)
+}
 
-    None
+fn string_candidate(value: Option<&serde_json::Value>) -> Option<String> {
+    normalize_model(value?.as_str()?)
+}
+
+fn toml_string_candidate(value: Option<&toml::Value>) -> Option<String> {
+    normalize_model(value?.as_str()?)
+}
+
+fn normalize_model(model: &str) -> Option<String> {
+    let model = model.trim();
+    if model.is_empty() || model == "<synthetic>" {
+        return None;
+    }
+    Some(model.to_string())
 }
 
 fn extract_model_from_jsonl_head(path: &Path) -> Option<String> {
@@ -489,6 +558,94 @@ mod tests {
         let path = fixture_path("gemini-session-simple.jsonl");
         let result = extract_model(&path, StreamFormat::GeminiJsonl, None).unwrap();
         assert_eq!(result, Some("gemini-2.5-flash".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_session_meta_model() {
+        use std::io::Write;
+
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"session_meta","payload":{{"model":"gpt-5.3-codex","model_provider":"openai_https"}}}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(file.path(), StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("gpt-5.3-codex".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_skips_session_meta_without_payload() {
+        use std::io::Write;
+
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        writeln!(file, r#"{{"type":"session_meta"}}"#).unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"session_meta","payload":{{"model":"gpt-5.3-codex"}}}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(file.path(), StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("gpt-5.3-codex".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_config_fallback_when_session_model_missing() {
+        use std::io::Write;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let codex_home = dir.path().join(".codex");
+        let session_dir = codex_home.join("sessions/2026/06/30");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(
+            codex_home.join("config.toml"),
+            r#"model = "gpt-5.5"
+model_provider = "openai_https"
+
+[profiles.default]
+model = "wrong-profile-model"
+"#,
+        )
+        .unwrap();
+
+        let transcript = session_dir.join("rollout-test.jsonl");
+        let mut file = File::create(&transcript).unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"session_meta","payload":{{"session_id":"sess-1","model":null,"model_provider":"openai_https"}}}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("gpt-5.5".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_prefers_transcript_model_over_config() {
+        use std::io::Write;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let codex_home = dir.path().join(".codex");
+        let session_dir = codex_home.join("sessions/2026/06/30");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(codex_home.join("config.toml"), r#"model = "config-model""#).unwrap();
+
+        let transcript = session_dir.join("rollout-test.jsonl");
+        let mut file = File::create(&transcript).unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"session_meta","payload":{{"model":"transcript-model"}}}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("transcript-model".to_string()));
     }
 
     #[test]
