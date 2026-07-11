@@ -1,6 +1,7 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use crate::test_utils::fixture_path;
+use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::commands::checkpoint_agent::presets::{ParsedHookEvent, resolve_preset};
 use git_ai::streams::agent::Agent;
 use git_ai::streams::agents::ContinueAgent;
@@ -10,6 +11,22 @@ use std::fs;
 
 fn parse_continue(hook_input: &str) -> Result<Vec<ParsedHookEvent>, git_ai::error::GitAiError> {
     resolve_preset("continue-cli")?.parse(hook_input, "t_test")
+}
+
+fn assert_no_ai_attestations(log: &AuthorshipLog) {
+    assert!(
+        log.attestations
+            .iter()
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash == "human" || entry.hash.starts_with("h_")),
+        "Human checkpoint should not create AI attestations: {:?}",
+        log.attestations
+    );
+    assert!(
+        log.metadata.prompts.is_empty() && log.metadata.sessions.is_empty(),
+        "Human checkpoint should not create AI metadata: {:?}",
+        log.metadata
+    );
 }
 
 #[test]
@@ -386,11 +403,7 @@ fn test_continue_cli_e2e_human_checkpoint() {
         "console.log('human edit');".human(),
     ]);
 
-    assert_eq!(
-        commit.authorship_log.attestations.len(),
-        0,
-        "Human checkpoint should not create AI attestations"
-    );
+    assert_no_ai_attestations(&commit.authorship_log);
 }
 
 #[test]

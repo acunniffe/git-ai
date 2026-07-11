@@ -12,7 +12,10 @@ use crate::metrics::types::{MetricEvent, MetricEventId};
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde_json::{Map, Value};
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{
+    Mutex, OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
 
 /// Current schema version (must match MIGRATIONS.len())
 const SCHEMA_VERSION: usize = 5;
@@ -93,6 +96,7 @@ const MIGRATIONS: &[&str] = &[
 
 /// Global database singleton
 static METRICS_DB: OnceLock<Mutex<MetricsDatabase>> = OnceLock::new();
+static METRICS_RECOVERY_SIGNALS_AVAILABLE: AtomicBool = AtomicBool::new(true);
 
 /// Record returned from database queries
 #[derive(Debug, Clone)]
@@ -177,6 +181,7 @@ impl MetricsDatabase {
         let db_mutex = METRICS_DB.get_or_init(|| match Self::new() {
             Ok(db) => Mutex::new(db),
             Err(e) => {
+                METRICS_RECOVERY_SIGNALS_AVAILABLE.store(false, Ordering::Relaxed);
                 eprintln!("[Error] Failed to initialize metrics database: {}", e);
                 Mutex::new(
                     Self::new_fallback().expect("Failed to create fallback metrics database"),
@@ -185,6 +190,10 @@ impl MetricsDatabase {
         });
 
         Ok(db_mutex)
+    }
+
+    pub(crate) fn recovery_signals_available() -> bool {
+        METRICS_RECOVERY_SIGNALS_AVAILABLE.load(Ordering::Relaxed)
     }
 
     /// Create a new database connection

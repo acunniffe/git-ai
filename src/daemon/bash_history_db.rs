@@ -3,7 +3,10 @@ use crate::error::GitAiError;
 use rusqlite::{Connection, OptionalExtension, params};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{
+    Mutex, OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
 
 const SCHEMA_VERSION: usize = 2;
 const RETENTION_SECS: u64 = 30 * 24 * 3600;
@@ -90,6 +93,7 @@ const MIGRATIONS: &[&str] = &[
 ];
 
 static BASH_HISTORY_DB: OnceLock<Result<Mutex<BashHistoryDatabase>, String>> = OnceLock::new();
+static BASH_RECOVERY_SIGNALS_AVAILABLE: AtomicBool = AtomicBool::new(true);
 
 #[derive(Debug, Clone)]
 pub struct BashCallStart {
@@ -149,6 +153,7 @@ impl BashHistoryDatabase {
         let db_result = BASH_HISTORY_DB.get_or_init(|| match Self::new() {
             Ok(db) => Ok(Mutex::new(db)),
             Err(e) => {
+                BASH_RECOVERY_SIGNALS_AVAILABLE.store(false, Ordering::Relaxed);
                 eprintln!("[Error] Failed to initialize bash history database: {}", e);
                 match Self::fallback_database() {
                     Ok(db) => Ok(Mutex::new(db)),
@@ -167,6 +172,10 @@ impl BashHistoryDatabase {
             Ok(db_mutex) => Ok(db_mutex),
             Err(error_msg) => Err(GitAiError::Generic(error_msg.clone())),
         }
+    }
+
+    pub(crate) fn recovery_signals_available() -> bool {
+        BASH_RECOVERY_SIGNALS_AVAILABLE.load(Ordering::Relaxed)
     }
 
     #[cfg(any(test, feature = "test-support"))]

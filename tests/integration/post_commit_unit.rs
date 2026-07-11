@@ -1,6 +1,22 @@
 use crate::repos::test_repo::TestRepo;
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 
+fn assert_no_ai_attestations(log: &AuthorshipLog) {
+    assert!(
+        log.attestations
+            .iter()
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash == "human" || entry.hash.starts_with("h_")),
+        "Expected no AI attestations: {:?}",
+        log.attestations
+    );
+    assert!(
+        log.metadata.prompts.is_empty() && log.metadata.sessions.is_empty(),
+        "Expected no AI metadata: {:?}",
+        log.metadata
+    );
+}
+
 #[test]
 fn test_post_commit_empty_repo_with_checkpoint() {
     // Create an empty repo (no commits yet)
@@ -60,12 +76,9 @@ fn test_post_commit_empty_repo_no_checkpoint() {
     let note = repo.read_authorship_note(&head_sha);
     assert!(note.is_some(), "Should have authorship note");
 
-    // No checkpoints = no AI attribution, so note should have empty attestations
+    // No checkpoints = no AI attribution. Pure human recovery may add h_ attestations.
     let log = AuthorshipLog::deserialize_from_string(&note.unwrap()).unwrap();
-    assert!(
-        log.attestations.is_empty(),
-        "Should have empty attestations when no checkpoints exist"
-    );
+    assert_no_ai_attestations(&log);
 }
 
 #[test]

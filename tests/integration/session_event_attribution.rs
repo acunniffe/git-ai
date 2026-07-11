@@ -139,6 +139,32 @@ fn assert_session_attests_lines(
     );
 }
 
+fn human_attested_lines(authorship_log: &AuthorshipLog, file_path: &str) -> Vec<u32> {
+    let mut lines = authorship_log
+        .attestations
+        .iter()
+        .filter(|attestation| attestation.file_path == file_path)
+        .flat_map(|attestation| &attestation.entries)
+        .filter(|entry| entry.hash.starts_with("h_"))
+        .flat_map(|entry| entry.line_ranges.iter().flat_map(LineRange::expand))
+        .collect::<Vec<_>>();
+    lines.sort_unstable();
+    lines.dedup();
+    lines
+}
+
+fn assert_human_attests_lines(
+    authorship_log: &AuthorshipLog,
+    file_path: &str,
+    expected_lines: &[u32],
+) {
+    assert_eq!(
+        human_attested_lines(authorship_log, file_path),
+        expected_lines,
+        "expected known-human attestation for {file_path} lines {expected_lines:?}"
+    );
+}
+
 fn session_ids_for_tool(authorship_log: &AuthorshipLog, tool: &str) -> Vec<String> {
     let mut session_ids = authorship_log
         .metadata
@@ -389,6 +415,299 @@ fn test_session_event_recovery_does_not_override_known_human_checkpoint() {
             .contains_key(&recovered_session_id),
         "nearby session event must not be used when explicit human attribution exists"
     );
+}
+
+#[test]
+fn test_pure_human_recovery_marks_uncheckpointed_no_ai_commit_known_human() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ];
+    let repo = TestRepo::new_with_daemon_env(&env);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    let file_path = repo.path().join("manual.txt");
+    fs::write(&file_path, "manual one\nmanual two\n").unwrap();
+
+    let commit = repo
+        .stage_all_and_commit("Manual no-AI edit")
+        .expect("commit should succeed");
+
+    let mut file = repo.filename("manual.txt");
+    file.assert_committed_lines(lines!["manual one".human(), "manual two".human()]);
+    assert_human_attests_lines(&commit.authorship_log, "manual.txt", &[1, 2]);
+}
+
+#[test]
+fn test_pure_human_recovery_marks_legacy_human_checkpoint_no_ai_commit_known_human() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ];
+    let repo = TestRepo::new_with_daemon_env(&env);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    let file_path = repo.path().join("legacy.txt");
+    fs::write(&file_path, "legacy one\nlegacy two\n").unwrap();
+    repo.git_ai(&["checkpoint", "human", "legacy.txt"])
+        .expect("legacy human checkpoint should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Legacy no-AI edit")
+        .expect("commit should succeed");
+
+    let mut file = repo.filename("legacy.txt");
+    file.assert_committed_lines(lines!["legacy one".human(), "legacy two".human()]);
+    assert_human_attests_lines(&commit.authorship_log, "legacy.txt", &[1, 2]);
+}
+
+#[test]
+fn test_known_human_recovery_does_not_extend_current_checkpoint_in_mixed_ai_commit() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ];
+    let repo = TestRepo::new_with_daemon_env(&env);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    let human_path = repo.path().join("human-side.txt");
+    fs::write(&human_path, "known human\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "human-side.txt"])
+        .expect("known-human checkpoint should succeed");
+
+    fs::write(&human_path, "known human\nlegacy untracked\n").unwrap();
+    repo.git_ai(&["checkpoint", "human", "human-side.txt"])
+        .expect("legacy human checkpoint should succeed");
+
+    fs::write(repo.path().join("ai-side.txt"), "ai line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "ai-side.txt"])
+        .expect("AI checkpoint should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Known human plus AI and legacy")
+        .expect("commit should succeed");
+
+    let mut human_file = repo.filename("human-side.txt");
+    human_file.assert_committed_lines(lines![
+        "known human".human(),
+        "legacy untracked".unattributed_human(),
+    ]);
+    let mut ai_file = repo.filename("ai-side.txt");
+    ai_file.assert_committed_lines(lines!["ai line".ai()]);
+    assert_human_attests_lines(&commit.authorship_log, "human-side.txt", &[1]);
+}
+
+#[test]
+fn test_known_human_recovery_does_not_extend_parent_identity_in_mixed_ai_commit() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ];
+    let repo = TestRepo::new_with_daemon_env(&env);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    let file_path = repo.path().join("same-file.txt");
+    fs::write(&file_path, "known human\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "same-file.txt"])
+        .expect("known-human checkpoint should succeed");
+    repo.stage_all_and_commit("Known human baseline")
+        .expect("baseline commit should succeed");
+
+    fs::write(&file_path, "known human\nlegacy untracked\n").unwrap();
+    repo.git_ai(&["checkpoint", "human", "same-file.txt"])
+        .expect("legacy human checkpoint should succeed");
+
+    fs::write(repo.path().join("ai-side.txt"), "ai line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "ai-side.txt"])
+        .expect("AI checkpoint should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Known human file with AI and legacy")
+        .expect("mixed commit should succeed");
+
+    let mut file = repo.filename("same-file.txt");
+    file.assert_committed_lines(lines![
+        "known human".human(),
+        "legacy untracked".unattributed_human(),
+    ]);
+    let mut ai_file = repo.filename("ai-side.txt");
+    ai_file.assert_committed_lines(lines!["ai line".ai()]);
+    assert_human_attests_lines(&commit.authorship_log, "same-file.txt", &[]);
+}
+
+#[test]
+fn test_known_human_recovery_does_not_extend_current_checkpoint_across_nearby_ai_signal() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ];
+    let repo = TestRepo::new_with_daemon_env(&env);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    let file_path = repo.path().join("inherited-human.txt");
+    fs::write(&file_path, "known human baseline\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "inherited-human.txt"])
+        .expect("known-human checkpoint should succeed");
+
+    fs::write(
+        &file_path,
+        "known human baseline\nuncheckpointed agent edit\n",
+    )
+    .unwrap();
+    insert_session_event(
+        &metrics_db_path,
+        file_mtime_secs(&file_path),
+        "missed-post-edit-session",
+        "missed-post-edit-tool-use",
+        None,
+    );
+
+    let commit = repo
+        .stage_all_and_commit("Missed agent checkpoint")
+        .expect("mixed-signal commit should succeed");
+
+    let mut file = repo.filename("inherited-human.txt");
+    file.assert_committed_lines(lines![
+        "known human baseline".human(),
+        "uncheckpointed agent edit".unattributed_human(),
+    ]);
+    assert_human_attests_lines(&commit.authorship_log, "inherited-human.txt", &[1]);
+}
+
+#[test]
+fn test_known_human_recovery_does_not_inherit_another_contributors_identity() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ];
+    let repo = TestRepo::new_with_daemon_env(&env);
+    repo.git(&["config", "user.name", "Alice"]).unwrap();
+    repo.git(&["config", "user.email", "alice@example.com"])
+        .unwrap();
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    let file_path = repo.path().join("shared.txt");
+    fs::write(&file_path, "written by Alice\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "shared.txt"])
+        .expect("Alice's known-human checkpoint should succeed");
+    repo.stage_all_and_commit("Alice baseline")
+        .expect("Alice's commit should succeed");
+
+    repo.git(&["config", "user.name", "Bob"]).unwrap();
+    repo.git(&["config", "user.email", "bob@example.com"])
+        .unwrap();
+    fs::write(&file_path, "written by Alice\nuncheckpointed by Bob\n").unwrap();
+    repo.git_ai(&["checkpoint", "human", "shared.txt"])
+        .expect("Bob's untracked checkpoint should succeed");
+    fs::write(repo.path().join("ai-side.txt"), "AI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "ai-side.txt"])
+        .expect("AI checkpoint should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Bob and AI")
+        .expect("Bob's commit should succeed");
+
+    let mut shared = repo.filename("shared.txt");
+    shared.assert_committed_lines(lines![
+        "written by Alice".human(),
+        "uncheckpointed by Bob".unattributed_human(),
+    ]);
+    let mut ai = repo.filename("ai-side.txt");
+    ai.assert_committed_lines(lines!["AI line".ai()]);
+    assert_human_attests_lines(&commit.authorship_log, "shared.txt", &[]);
+}
+
+#[test]
+fn test_known_human_recovery_does_not_cover_untracked_unrelated_files() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ];
+    let repo = TestRepo::new_with_daemon_env(&env);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    let human_path = repo.path().join("human-side.txt");
+    fs::write(&human_path, "known human\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "human-side.txt"])
+        .expect("known-human checkpoint should succeed");
+
+    fs::write(&human_path, "known human\nlegacy untracked\n").unwrap();
+    repo.git_ai(&["checkpoint", "human", "human-side.txt"])
+        .expect("legacy human checkpoint should succeed");
+
+    fs::write(
+        repo.path().join("unrelated.txt"),
+        "uncheckpointed elsewhere\n",
+    )
+    .unwrap();
+    fs::write(repo.path().join("ai-side.txt"), "ai line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "ai-side.txt"])
+        .expect("AI checkpoint should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Known human plus unrelated untracked")
+        .expect("commit should succeed");
+
+    let mut human_file = repo.filename("human-side.txt");
+    human_file.assert_committed_lines(lines![
+        "known human".human(),
+        "legacy untracked".unattributed_human(),
+    ]);
+    let mut unrelated_file = repo.filename("unrelated.txt");
+    unrelated_file.assert_committed_lines(lines!["uncheckpointed elsewhere".unattributed_human()]);
+    let mut ai_file = repo.filename("ai-side.txt");
+    ai_file.assert_committed_lines(lines!["ai line".ai()]);
+    assert_human_attests_lines(&commit.authorship_log, "human-side.txt", &[1]);
+    assert_human_attests_lines(&commit.authorship_log, "unrelated.txt", &[]);
+}
+
+#[test]
+fn test_pure_human_recovery_skips_unknown_lines_when_commit_contains_ai() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ];
+    let repo = TestRepo::new_with_daemon_env(&env);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    fs::write(repo.path().join("manual.txt"), "manual line\n").unwrap();
+    fs::write(repo.path().join("ai.txt"), "ai line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "ai.txt"])
+        .expect("AI checkpoint should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Manual plus AI")
+        .expect("commit should succeed");
+
+    let mut manual = repo.filename("manual.txt");
+    manual.assert_committed_lines(lines!["manual line".unattributed_human()]);
+    let mut ai = repo.filename("ai.txt");
+    ai.assert_committed_lines(lines!["ai line".ai()]);
+    assert_human_attests_lines(&commit.authorship_log, "manual.txt", &[]);
 }
 
 #[test]

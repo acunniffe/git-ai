@@ -185,6 +185,8 @@ pub fn commit(
 
     op_log.push(format!("commit(\"{}\")", msg));
     model.apply_edge_recovery_for_added_lines(registry, &added_lines);
+    model.apply_known_human_recovery_for_added_lines(registry, &added_lines);
+    model.apply_pure_human_recovery_for_added_lines(registry, &added_lines);
     model.reconcile(repo);
     model.assert_blame(repo, op_log, seed);
     model.clear_pending_attestations();
@@ -210,6 +212,8 @@ pub fn amend(
     op_log.push("amend".to_string());
     model.sync_from_disk(repo, registry);
     model.apply_edge_recovery_for_added_lines(registry, &added_lines);
+    model.apply_known_human_recovery_for_added_lines(registry, &added_lines);
+    model.apply_pure_human_recovery_for_added_lines(registry, &added_lines);
     model.reconcile(repo);
     model.assert_blame(repo, op_log, seed);
     model.clear_pending_attestations();
@@ -255,6 +259,8 @@ pub fn rebase(
     let side_added_lines = staged_added_lines(repo, &model.filename, Some("HEAD"));
     repo.git(&["commit", "-m", "rebase: side commit"]).unwrap();
     model.apply_edge_recovery_for_added_lines(registry, &side_added_lines);
+    model.apply_known_human_recovery_for_added_lines(registry, &side_added_lines);
+    model.apply_pure_human_recovery_for_added_lines(registry, &side_added_lines);
     model.clear_pending_attestations();
     op_log.push("commit(\"rebase: side commit\")".to_string());
 
@@ -309,6 +315,8 @@ pub fn cherry_pick(
     repo.git(&["commit", "-m", "cherry-pick: side commit"])
         .unwrap();
     model.apply_edge_recovery_for_added_lines(registry, &side_added_lines);
+    model.apply_known_human_recovery_for_added_lines(registry, &side_added_lines);
+    model.apply_pure_human_recovery_for_added_lines(registry, &side_added_lines);
     model.clear_pending_attestations();
     let side_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 

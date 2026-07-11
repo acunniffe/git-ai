@@ -1,12 +1,23 @@
-use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
+use git_ai::authorship::authorship_log::LineRange;
+use git_ai::authorship::authorship_log_serialization::{
+    AttestationEntry, AuthorshipLog, generate_human_short_hash,
+};
 use git_ai::authorship::working_log::AgentId;
 use git_ai::daemon::bash_history_db::{BashCallEnd, BashCallStart, BashHistoryDatabase};
+use git_ai::git::notes_api::write_note;
+use git_ai::git::repository::find_repository_in_path;
 
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::{DaemonTestScope, TestRepo};
 use serde_json::json;
 use std::collections::{BTreeSet, HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+fn isolated_metrics_db_path() -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().expect("failed to create isolated metrics db dir");
+    let path = dir.path().join("metrics.db");
+    (dir, path.to_string_lossy().to_string())
+}
 
 /// Helper struct that provides a local repo with an upstream containing seeded commits.
 /// The local repo is initially behind the upstream (no divergence — fast-forward possible).
@@ -495,6 +506,140 @@ fn test_fast_forward_update_ref_bounds_recovery_to_new_tip_parent() {
     assert!(
         !attested_files.contains("pulled_early_2.txt"),
         "recovery must not attribute earlier pulled commits to the local session"
+    );
+}
+
+#[test]
+fn test_fast_forward_update_ref_uses_finalized_commit_author_for_human_recovery() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let local = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ]);
+    let upstream_dir = tempfile::tempdir().expect("upstream temp dir");
+    let upstream_path = upstream_dir.path().join("upstream.git");
+    let upstream = upstream_path.to_string_lossy().to_string();
+
+    local.git_og(&["init", "--bare", &upstream]).unwrap();
+    local.git(&["remote", "add", "origin", &upstream]).unwrap();
+    std::fs::write(local.path().join("base.txt"), "base\n").unwrap();
+    let old_tip = local.stage_all_and_commit("old tip").unwrap().commit_sha;
+    let branch = local.current_branch();
+    local.git(&["push", "-u", "origin", "HEAD"]).unwrap();
+    local
+        .git_og(&[
+            "--git-dir",
+            &upstream,
+            "symbolic-ref",
+            "HEAD",
+            &format!("refs/heads/{branch}"),
+        ])
+        .unwrap();
+
+    // A working log makes the daemon finalize the fast-forward update-ref. Use
+    // an untracked checkpoint so this identity test has no nearby AI signal.
+    std::fs::write(local.path().join("local-only.txt"), "Local only\n").unwrap();
+    local
+        .git_ai(&["checkpoint", "human", "local-only.txt"])
+        .unwrap();
+
+    let contributor_dir = tempfile::tempdir().expect("contributor temp dir");
+    let contributor_path = contributor_dir.path().join("contributor");
+    local
+        .git_og(&["clone", &upstream, contributor_path.to_str().unwrap()])
+        .unwrap();
+    let contributor =
+        TestRepo::new_at_path_with_daemon_scope(&contributor_path, DaemonTestScope::NoDaemon);
+    contributor
+        .git_og(&["config", "user.name", "Remote Contributor"])
+        .unwrap();
+    contributor
+        .git_og(&["config", "user.email", "remote@example.com"])
+        .unwrap();
+    std::fs::write(
+        contributor.path().join("remote.txt"),
+        "remote contribution\n",
+    )
+    .unwrap();
+    contributor.git_og(&["add", "-A"]).unwrap();
+    contributor
+        .git_og(&["commit", "-m", "remote baseline"])
+        .unwrap();
+    let immediate_parent = contributor.git_og(&["rev-parse", "HEAD"]).unwrap();
+    let immediate_parent = immediate_parent.trim().to_string();
+    std::fs::write(
+        contributor.path().join("remote.txt"),
+        "remote contribution\nremote follow-up\n",
+    )
+    .unwrap();
+    contributor.git_og(&["add", "-A"]).unwrap();
+    contributor
+        .git_og(&["commit", "-m", "remote final"])
+        .unwrap();
+    contributor
+        .git_og(&["push", "origin", &format!("HEAD:{branch}")])
+        .unwrap();
+
+    local.git(&["fetch", "origin", &branch]).unwrap();
+    let new_tip = local.git(&["rev-parse", "FETCH_HEAD"]).unwrap();
+    let new_tip = new_tip.trim().to_string();
+    let remote_identity = "Remote Contributor <remote@example.com>";
+    let remote_id = generate_human_short_hash(remote_identity);
+    let mut parent_log = AuthorshipLog::new();
+    parent_log.metadata.base_commit_sha = immediate_parent.clone();
+    parent_log
+        .get_or_create_file("remote.txt")
+        .add_entry(AttestationEntry::new(
+            remote_id.clone(),
+            vec![LineRange::Single(1)],
+        ));
+    let git_ai_repo = find_repository_in_path(local.path().to_str().unwrap()).unwrap();
+    write_note(
+        &git_ai_repo,
+        &immediate_parent,
+        &parent_log.serialize_to_string().unwrap(),
+    )
+    .unwrap();
+
+    std::fs::write(
+        local.path().join("remote.txt"),
+        "remote contribution\nremote follow-up\n",
+    )
+    .unwrap();
+    local
+        .git(&[
+            "update-ref",
+            &format!("refs/heads/{branch}"),
+            &new_tip,
+            &old_tip,
+        ])
+        .unwrap();
+
+    let note = local
+        .read_authorship_note(&new_tip)
+        .expect("fast-forward finalization should write an authorship note");
+    let log = AuthorshipLog::deserialize_from_string(&note).unwrap();
+    let remote_lines = log
+        .attestations
+        .iter()
+        .filter(|attestation| attestation.file_path == "remote.txt")
+        .flat_map(|attestation| &attestation.entries)
+        .filter(|entry| entry.hash == remote_id)
+        .flat_map(|entry| entry.line_ranges.iter().flat_map(|range| range.expand()))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        remote_lines,
+        vec![2],
+        "recovery must extend the finalized commit's immediate-parent human, not the old ref tip"
+    );
+    assert_eq!(
+        log.metadata
+            .humans
+            .get(&remote_id)
+            .map(|record| &record.author),
+        Some(&remote_identity.to_string())
     );
 }
 

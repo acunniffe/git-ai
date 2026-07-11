@@ -1,10 +1,25 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::authorship::attribution_tracker::Attribution;
+use git_ai::authorship::authorship_log::LineRange;
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::authorship::working_log::{CheckpointKind, WorkingLogEntry};
 use git_ai::config::AuthorConfig;
 use std::fs;
+
+fn human_attested_lines(authorship_log: &AuthorshipLog, file_path: &str) -> Vec<u32> {
+    let mut lines = authorship_log
+        .attestations
+        .iter()
+        .filter(|attestation| attestation.file_path == file_path)
+        .flat_map(|attestation| &attestation.entries)
+        .filter(|entry| entry.hash.starts_with("h_"))
+        .flat_map(|entry| entry.line_ranges.iter().flat_map(LineRange::expand))
+        .collect::<Vec<_>>();
+    lines.sort_unstable();
+    lines.dedup();
+    lines
+}
 
 fn configure_diff_settings(repo: &TestRepo, settings: &[(&str, &str)]) {
     for (key, value) in settings {
@@ -227,8 +242,11 @@ fn test_simple_ai_then_human_deletion() {
 
     let commit = repo.stage_all_and_commit("Human deletes AI line").unwrap();
 
-    // The authorship log should have no attestations since we only deleted lines
-    assert_eq!(commit.authorship_log.attestations.len(), 0);
+    assert_eq!(
+        human_attested_lines(&commit.authorship_log, "test.txt"),
+        vec![5],
+        "known-human deletion checkpoint should preserve the surviving adjacent human line"
+    );
 
     file.assert_lines_and_blame(crate::lines![
         "Line 1".human(),
@@ -993,9 +1011,9 @@ diff --git a/aidanwashere.md b/aidanwashere.md
 
     let first_commit = repo.commit("Commit human top section").unwrap();
     assert_eq!(
-        first_commit.authorship_log.attestations.len(),
-        0,
-        "first commit should only contain human top insertion"
+        human_attested_lines(&first_commit.authorship_log, "aidanwashere.md"),
+        vec![1, 2, 3],
+        "first commit should recover the pure-human top insertion"
     );
 
     repo.git(&["add", "."]).unwrap();

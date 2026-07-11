@@ -266,6 +266,71 @@ impl FileModel {
         }
     }
 
+    pub fn apply_known_human_recovery_for_added_lines(
+        &mut self,
+        registry: &mut AttrRegistry,
+        added_lines: &[u32],
+    ) {
+        let mut added_indices = added_lines
+            .iter()
+            .filter_map(|line| line.checked_sub(1).map(|idx| idx as usize))
+            .filter(|&idx| idx < self.resolved_attrs.len())
+            .collect::<Vec<_>>();
+        added_indices.sort_unstable();
+        added_indices.dedup();
+
+        if !added_indices
+            .iter()
+            .any(|&idx| self.resolved_attrs[idx] == LineAttribution::KnownHuman)
+        {
+            return;
+        }
+
+        for idx in added_indices {
+            if self.resolved_attrs[idx] == LineAttribution::Untracked {
+                self.resolved_attrs[idx] = LineAttribution::KnownHuman;
+                self.resolved_ai_sessions[idx] = None;
+                registry.register_record(
+                    self.lines[idx],
+                    AttrRecord::new(LineAttribution::KnownHuman),
+                );
+            }
+        }
+    }
+
+    pub fn apply_pure_human_recovery_for_added_lines(
+        &mut self,
+        registry: &mut AttrRegistry,
+        added_lines: &[u32],
+    ) {
+        let mut added_indices = added_lines
+            .iter()
+            .filter_map(|line| line.checked_sub(1).map(|idx| idx as usize))
+            .filter(|&idx| idx < self.resolved_attrs.len())
+            .collect::<Vec<_>>();
+        added_indices.sort_unstable();
+        added_indices.dedup();
+
+        if added_indices.is_empty()
+            || added_indices
+                .iter()
+                .any(|&idx| self.resolved_attrs[idx] == LineAttribution::Ai)
+        {
+            return;
+        }
+
+        for idx in added_indices {
+            if self.resolved_attrs[idx] == LineAttribution::Untracked {
+                self.resolved_attrs[idx] = LineAttribution::KnownHuman;
+                self.resolved_ai_sessions[idx] = None;
+                registry.register_record(
+                    self.lines[idx],
+                    AttrRecord::new(LineAttribution::KnownHuman),
+                );
+            }
+        }
+    }
+
     fn pending_record_at_index(&self, idx: usize) -> Option<AttrRecord> {
         self.lines
             .get(idx)
