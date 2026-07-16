@@ -1102,7 +1102,12 @@ impl StreamWorker {
                 break;
             }
 
-            let batch = agent.read_incremental(&path, current_watermark, &stream.session_id)?;
+            let source_session_id = if stream.external_session_id.is_empty() {
+                stream.session_id.as_str()
+            } else {
+                stream.external_session_id.as_str()
+            };
+            let batch = agent.read_incremental(&path, current_watermark, source_session_id)?;
 
             if batch.events.is_empty() {
                 db.update_watermark(
