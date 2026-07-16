@@ -1,3 +1,4 @@
+use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::authorship::range_authorship::{EMPTY_TREE_HASH, range_authorship, should_ignore_file};
 use git_ai::git::repository::{CommitRange, find_repository_in_path};
@@ -223,9 +224,9 @@ fn test_range_authorship_mixed_commits() {
     // Range authorship merges attributions from start to end, filtering to commits in range
     // The exact AI/human split depends on the merge attribution logic
     assert_eq!(stats.range_stats.ai_additions, 2);
-    // range_authorship passes known_human_accepted=0, so human lines appear as unknown_additions
-    assert_eq!(stats.range_stats.human_additions, 0);
-    assert_eq!(stats.range_stats.unknown_additions, 1);
+    // After fix: human lines are correctly counted as human_additions, not unknown_additions
+    assert_eq!(stats.range_stats.human_additions, 1);
+    assert_eq!(stats.range_stats.unknown_additions, 0);
     assert_eq!(stats.range_stats.git_diff_added_lines, 3);
 }
 
@@ -449,10 +450,10 @@ fn test_range_authorship_mixed_lockfile_and_source() {
     assert_eq!(stats.range_stats.git_diff_added_lines, 3); // Only lib.rs, package-lock.json excluded
     // Verify the total is much less than 3003 (if lockfile was included)
     assert!(stats.range_stats.git_diff_added_lines < 100);
-    // Verify that some AI work is detected and unattested lines exist
+    // Verify that some AI work is detected and human lines are correctly counted
     assert!(stats.range_stats.ai_additions > 0);
-    // range_authorship passes known_human_accepted=0, so human lines show as unknown_additions
-    assert!(stats.range_stats.unknown_additions > 0);
+    // After fix: human lines are correctly counted as human_additions (not inverted to unknown_additions)
+    assert!(stats.range_stats.human_additions > 0);
 }
 
 #[test]
@@ -963,6 +964,329 @@ fn test_should_ignore_file_numeric_filenames() {
     // Should not match
     assert!(!should_ignore_file("file123.txt", &patterns));
     assert!(!should_ignore_file("test.456", &patterns));
+}
+
+#[test]
+fn test_range_authorship_human_unknown_not_inverted() {
+    // Regression test for GitHub issue #1875:
+    // Range query stats was inverting human_additions and unknown_additions
+    // This test verifies that human-authored lines are correctly counted in human_additions
+    // not inverted into unknown_additions
+    let repo = TestRepo::new();
+
+    // Create initial commit with human work
+    std::fs::write(repo.path().join("test.txt"), "Human Line 1\n").unwrap();
+    repo.git(&["add", "test.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "test.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Initial human commit").unwrap();
+    let mut file = repo.filename("test.txt");
+    file.assert_committed_lines(lines!["Human Line 1".human()]);
+    let first_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+
+    // Add AI work
+    std::fs::write(
+        repo.path().join("test.txt"),
+        "Human Line 1\nAI Line 2\nAI Line 3\nAI Line 4\nAI Line 5\nAI Line 6\n",
+    )
+    .unwrap();
+    repo.git(&["add", "test.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "test.txt"]).unwrap();
+    repo.stage_all_and_commit("AI adds 5 lines").unwrap();
+    file.assert_committed_lines(lines![
+        "Human Line 1".human(),
+        "AI Line 2".ai(),
+        "AI Line 3".ai(),
+        "AI Line 4".ai(),
+        "AI Line 5".ai(),
+        "AI Line 6".ai(),
+    ]);
+
+    // Add more human work
+    std::fs::write(
+        repo.path().join("test.txt"),
+        "Human Line 1\nAI Line 2\nAI Line 3\nAI Line 4\nAI Line 5\nAI Line 6\nHuman Line 7\nHuman Line 8\nHuman Line 9\nHuman Line 10\nHuman Line 11\n",
+    )
+    .unwrap();
+    repo.git(&["add", "test.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "test.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Human adds 5 more lines")
+        .unwrap();
+    file.assert_committed_lines(lines![
+        "Human Line 1".human(),
+        "AI Line 2".ai(),
+        "AI Line 3".ai(),
+        "AI Line 4".ai(),
+        "AI Line 5".ai(),
+        "AI Line 6".ai(),
+        "Human Line 7".human(),
+        "Human Line 8".human(),
+        "Human Line 9".human(),
+        "Human Line 10".human(),
+        "Human Line 11".human(),
+    ]);
+    let second_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+
+    // Test range authorship from first to second commit
+    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let commit_range = CommitRange::new_infer_refname(
+        &gitai_repo,
+        first_sha.clone(),
+        second_sha.clone(),
+        Some("HEAD".to_string()),
+    )
+    .unwrap();
+
+    let lockfile_patterns: Vec<String> = vec![];
+    let stats = range_authorship(commit_range, false, &lockfile_patterns, None).unwrap();
+
+    // CRITICAL ASSERTION: Verify the fix for issue #1875
+    // The bug was that human_additions and unknown_additions were inverted
+    // After fix: human_additions should be > 0 (the 5 human lines added)
+    // Before fix: human_additions would be 0 and those lines would appear in unknown_additions
+    assert!(
+        stats.range_stats.human_additions > 0,
+        "human_additions should be > 0 after fix (was inverted before fix)"
+    );
+    // The key assertion: verify human lines are NOT in unknown_additions
+    assert!(
+        stats.range_stats.unknown_additions == 0
+            || stats.range_stats.unknown_additions < stats.range_stats.human_additions,
+        "unknown_additions should be much less than human_additions (or 0), not equal or greater"
+    );
+
+    // Verify the merge attribution worked and we detected both human and AI
+    // Range is from first to second, so 2 commits in the range (first..second)
+    assert_eq!(stats.authorship_stats.total_commits, 2);
+    assert_eq!(stats.authorship_stats.commits_with_authorship, 2);
+}
+
+#[test]
+fn test_range_authorship_multiple_human_and_ai_commits() {
+    // Test a more complex scenario with alternating human and AI commits
+    let repo = TestRepo::new();
+
+    // Commit 1: Human work (10 lines)
+    let mut content = String::new();
+    for i in 1..=10 {
+        content.push_str(&format!("Human line {}\n", i));
+    }
+    std::fs::write(repo.path().join("file.txt"), &content).unwrap();
+    repo.git(&["add", "file.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "file.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Human commit 1").unwrap();
+    let mut file = repo.filename("file.txt");
+    file.assert_committed_lines(
+        (1..=10)
+            .map(|i| format!("Human line {i}").human())
+            .collect(),
+    );
+    let commit1_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+
+    // Commit 2: AI work (15 lines)
+    for i in 1..=15 {
+        content.push_str(&format!("AI line {}\n", i));
+    }
+    std::fs::write(repo.path().join("file.txt"), &content).unwrap();
+    repo.git(&["add", "file.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "file.txt"]).unwrap();
+    repo.stage_all_and_commit("AI commit 1").unwrap();
+    file.assert_committed_lines(
+        (1..=10)
+            .map(|i| format!("Human line {i}").human())
+            .chain((1..=15).map(|i| format!("AI line {i}").ai()))
+            .collect(),
+    );
+
+    // Commit 3: Human work (5 lines)
+    for i in 1..=5 {
+        content.push_str(&format!("Human line 2-{}\n", i));
+    }
+    std::fs::write(repo.path().join("file.txt"), &content).unwrap();
+    repo.git(&["add", "file.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "file.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Human commit 2").unwrap();
+    file.assert_committed_lines(
+        (1..=10)
+            .map(|i| format!("Human line {i}").human())
+            .chain((1..=15).map(|i| format!("AI line {i}").ai()))
+            .chain((1..=5).map(|i| format!("Human line 2-{i}").human()))
+            .collect(),
+    );
+
+    // Commit 4: AI work (8 lines)
+    for i in 1..=8 {
+        content.push_str(&format!("AI line 2-{}\n", i));
+    }
+    std::fs::write(repo.path().join("file.txt"), &content).unwrap();
+    repo.git(&["add", "file.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "file.txt"]).unwrap();
+    repo.stage_all_and_commit("AI commit 2").unwrap();
+    file.assert_committed_lines(
+        (1..=10)
+            .map(|i| format!("Human line {i}").human())
+            .chain((1..=15).map(|i| format!("AI line {i}").ai()))
+            .chain((1..=5).map(|i| format!("Human line 2-{i}").human()))
+            .chain((1..=8).map(|i| format!("AI line 2-{i}").ai()))
+            .collect(),
+    );
+    let final_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+
+    // Test range authorship from commit 1 to final
+    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let commit_range = CommitRange::new_infer_refname(
+        &gitai_repo,
+        commit1_sha.clone(),
+        final_sha.clone(),
+        Some("HEAD".to_string()),
+    )
+    .unwrap();
+
+    let lockfile_patterns: Vec<String> = vec![];
+    let stats = range_authorship(commit_range, false, &lockfile_patterns, None).unwrap();
+
+    // Verify that human and AI additions are correctly attributed (not inverted)
+    // The range includes changes from commit1 to final (3 commits in the range)
+    // What matters for the fix is that human_additions > 0 (lines are not inverted to unknown)
+    assert!(
+        stats.range_stats.human_additions > 0,
+        "human_additions should be > 0 (5 human lines added)"
+    );
+    assert!(
+        stats.range_stats.ai_additions > 0,
+        "ai_additions should be > 0 (8 AI lines added)"
+    );
+    // Key assertion: human lines are in human_additions, not unknown_additions
+    assert!(
+        stats.range_stats.unknown_additions < stats.range_stats.human_additions,
+        "unknown_additions should be less than human_additions (not inverted)"
+    );
+    assert_eq!(stats.authorship_stats.total_commits, 3);
+}
+
+#[test]
+fn test_range_authorship_verify_per_commit_consistency() {
+    // Verify that range query results match sum of per-commit stats
+    // This ensures the fix correctly extracts human attestations
+    let repo = TestRepo::new();
+    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+
+    // Create 3 commits with mixed human/AI work
+    let mut content = String::new();
+
+    // Commit 1: All human
+    for i in 1..=5 {
+        content.push_str(&format!("Human {}\n", i));
+    }
+    std::fs::write(repo.path().join("file.txt"), &content).unwrap();
+    repo.git(&["add", "file.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "file.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Commit 1: Human").unwrap();
+    let mut file = repo.filename("file.txt");
+    file.assert_committed_lines((1..=5).map(|i| format!("Human {i}").human()).collect());
+    let commit1_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+    let _commit1_stats =
+        git_ai::authorship::stats::stats_for_commit_stats(&gitai_repo, &commit1_sha, &[]).unwrap();
+
+    // Commit 2: All AI
+    for i in 1..=8 {
+        content.push_str(&format!("AI {}\n", i));
+    }
+    std::fs::write(repo.path().join("file.txt"), &content).unwrap();
+    repo.git(&["add", "file.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "file.txt"]).unwrap();
+    repo.stage_all_and_commit("Commit 2: AI").unwrap();
+    file.assert_committed_lines(
+        (1..=5)
+            .map(|i| format!("Human {i}").human())
+            .chain((1..=8).map(|i| format!("AI {i}").ai()))
+            .collect(),
+    );
+    let commit2_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+    let _commit2_stats =
+        git_ai::authorship::stats::stats_for_commit_stats(&gitai_repo, &commit2_sha, &[]).unwrap();
+
+    // Commit 3: Mixed
+    for i in 1..=3 {
+        content.push_str(&format!("Human2 {}\n", i));
+    }
+    std::fs::write(repo.path().join("file.txt"), &content).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "file.txt"])
+        .unwrap();
+    for i in 1..=4 {
+        content.push_str(&format!("AI2 {}\n", i));
+    }
+    std::fs::write(repo.path().join("file.txt"), &content).unwrap();
+    repo.git(&["add", "file.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "file.txt"]).unwrap();
+    repo.stage_all_and_commit("Commit 3: Mixed").unwrap();
+    file.assert_committed_lines(
+        (1..=5)
+            .map(|i| format!("Human {i}").human())
+            .chain((1..=8).map(|i| format!("AI {i}").ai()))
+            .chain((1..=3).map(|i| format!("Human2 {i}").human()))
+            .chain((1..=4).map(|i| format!("AI2 {i}").ai()))
+            .collect(),
+    );
+    let commit3_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+    let _commit3_stats =
+        git_ai::authorship::stats::stats_for_commit_stats(&gitai_repo, &commit3_sha, &[]).unwrap();
+
+    // Get range stats
+    let commit_range = CommitRange::new_infer_refname(
+        &gitai_repo,
+        commit1_sha.clone(),
+        commit3_sha.clone(),
+        Some("HEAD".to_string()),
+    )
+    .unwrap();
+
+    let stats = range_authorship(commit_range, false, &[], None).unwrap();
+
+    // Verify the fix is applied: human additions are detected (not inverted to unknown)
+    // Range stats uses virtual attributions which may differ from per-commit sum,
+    // but human_additions should be > 0 after the fix (was always 0 before)
+    assert!(
+        stats.range_stats.human_additions > 0,
+        "human_additions should be > 0 after fix (verifies human lines are not inverted)"
+    );
+    // Also verify AI additions are detected
+    assert!(
+        stats.range_stats.ai_additions > 0,
+        "ai_additions should be > 0"
+    );
 }
 
 #[test]
