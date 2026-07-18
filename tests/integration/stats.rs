@@ -905,6 +905,93 @@ fn test_stats_ignores_renamed_files() {
     assert_eq!(stats.human_additions, 0);
 }
 
+/// Regression test for https://github.com/git-ai-project/git-ai/issues/910.
+///
+/// Both branches add an AI-authored line at the same location. An AI agent then
+/// resolves the conflict by keeping both lines. The merge introduces exactly
+/// one AI-authored line relative to its first parent, so commit stats must not
+/// classify it as human or suppress the merge stats entirely.
+#[test]
+fn test_stats_ai_resolved_merge_conflict() {
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("conflict.txt");
+    let mut file = repo.filename("conflict.txt");
+
+    fs::write(&file_path, "header\nfooter\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "conflict.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    file.assert_committed_lines(crate::lines!["header".human(), "footer".human()]);
+
+    let default_branch = repo.current_branch();
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    repo.git_ai(&["checkpoint", "human", "conflict.txt"])
+        .unwrap();
+    fs::write(&file_path, "header\nfeature line\nfooter\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "conflict.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Add feature line").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "header".human(),
+        "feature line".ai(),
+        "footer".human(),
+    ]);
+
+    repo.git(&["checkout", &default_branch]).unwrap();
+    repo.git_ai(&["checkpoint", "human", "conflict.txt"])
+        .unwrap();
+    fs::write(&file_path, "header\nmain line\nfooter\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "conflict.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Add main line").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "header".human(),
+        "main line".ai(),
+        "footer".human(),
+    ]);
+
+    let merge_result = repo.git(&["merge", "feature"]);
+    assert!(
+        merge_result.is_err(),
+        "merge should require conflict resolution"
+    );
+
+    // Match an agent's real pre/post edit flow: first snapshot the conflicted
+    // file, then attribute the resolved contents to the AI checkpoint.
+    repo.git_ai(&["checkpoint", "human", "conflict.txt"])
+        .unwrap();
+    fs::write(&file_path, "header\nmain line\nfeature line\nfooter\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "conflict.txt"])
+        .unwrap();
+    repo.git(&["add", "conflict.txt"]).unwrap();
+    repo.commit("Resolve merge conflict with AI").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "header".human(),
+        "main line".ai(),
+        "feature line".ai(),
+        "footer".human(),
+    ]);
+
+    // The blame-backed diff path already attributes the first-parent addition
+    // correctly. Commit stats should agree with it.
+    let diff_json: serde_json::Value = serde_json::from_str(
+        repo.git_ai(&["diff", "HEAD", "--json", "--include-stats"])
+            .unwrap()
+            .trim(),
+    )
+    .unwrap();
+    assert_eq!(diff_json["commit_stats"]["git_lines_added"], 1);
+    assert_eq!(diff_json["commit_stats"]["ai_lines_added"], 1);
+
+    let stats = stats_from_args(&repo, &["stats", "HEAD", "--json"]);
+    assert_eq!(stats.git_diff_added_lines, 1);
+    assert_eq!(stats.git_diff_deleted_lines, 0);
+    assert_eq!(stats.ai_additions, 1);
+    assert_eq!(stats.ai_accepted, 1);
+    assert_eq!(stats.human_additions, 0);
+    assert_eq!(stats.unknown_additions, 0);
+}
+
 crate::reuse_tests_in_worktree!(
     test_authorship_log_stats,
     test_stats_cli_range,
@@ -925,4 +1012,5 @@ crate::reuse_tests_in_worktree!(
     test_stats_range_uses_default_ignores,
     test_post_commit_large_ignored_files_do_not_trigger_skip_warning,
     test_stats_ignores_renamed_files,
+    test_stats_ai_resolved_merge_conflict,
 );

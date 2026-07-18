@@ -1,12 +1,14 @@
 use crate::authorship::authorship_log::LineRange;
+use crate::authorship::authorship_log_serialization::AuthorshipLog;
+use crate::authorship::hunk_shift::apply_hunk_shifts_to_file_attestation;
 use crate::authorship::ignore::{build_ignore_matcher, should_ignore_file_with_matcher};
 use crate::error::GitAiError;
 use crate::git::notes_api::read_authorship;
-use crate::git::repository::{Repository, exec_git};
+use crate::git::repository::{Repository, batch_read_paths_at_treeishes, exec_git};
 use crate::mdm::spinner::Spinner;
 use crate::utils::is_interactive_terminal;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const RECENT_COMMIT_WINDOW: Duration = Duration::from_secs(60);
@@ -477,14 +479,18 @@ pub fn stats_for_commit_stats_with_authorship(
     let commit_obj = repo.revparse_single(commit_sha)?.peel_to_commit()?;
     let parent_count = commit_obj.parent_count()?;
 
-    if parent_count > 1 {
-        return stats_for_commit_stats_from_hunks(
+    if parent_count == 2 {
+        return stats_for_two_parent_merge_commit(
             repo,
             commit_sha,
+            &commit_obj.parent(0)?.id(),
+            &commit_obj.parent(1)?.id(),
             ignore_patterns,
-            &[],
-            authorship_log,
         );
+    }
+
+    if parent_count > 2 {
+        return Ok(CommitStats::default());
     }
 
     let parent_sha = if parent_count == 0 {
@@ -500,6 +506,101 @@ pub fn stats_for_commit_stats_with_authorship(
         ignore_patterns,
         authorship_log,
     )
+}
+
+/// Calculate on-demand stats for a two-parent merge without counting every
+/// change brought in by the merged branch.
+///
+/// Git's combined diff identifies files that differ from both parents. Within
+/// that bounded file set, stats use the normal first-parent diff and project
+/// the second parent's attestations onto the merge result. Content reads are
+/// batched so the number of Git subprocesses does not grow with the file count.
+fn stats_for_two_parent_merge_commit(
+    repo: &Repository,
+    commit_sha: &str,
+    first_parent: &str,
+    second_parent: &str,
+    ignore_patterns: &[String],
+) -> Result<CommitStats, GitAiError> {
+    use crate::commands::diff::get_diff_with_line_numbers;
+
+    let combined_files = repo.list_combined_diff_files(commit_sha)?;
+    if combined_files.is_empty() {
+        return Ok(CommitStats::default());
+    }
+
+    let mut hunks = get_diff_with_line_numbers(repo, first_parent, commit_sha)?;
+    hunks.retain(|hunk| combined_files.contains(&hunk.file_path));
+    if hunks.is_empty() {
+        return Ok(CommitStats::default());
+    }
+
+    let projected_authorship =
+        project_parent_authorship_to_merge(repo, second_parent, commit_sha, &combined_files)?;
+
+    Ok(stats_for_commit_stats_from_hunks_with_merge_flag(
+        ignore_patterns,
+        &hunks,
+        projected_authorship.as_ref(),
+        false,
+    ))
+}
+
+fn project_parent_authorship_to_merge(
+    repo: &Repository,
+    parent_sha: &str,
+    merge_sha: &str,
+    combined_files: &HashSet<String>,
+) -> Result<Option<AuthorshipLog>, GitAiError> {
+    let Some(parent_log) = read_authorship(repo, parent_sha) else {
+        return Ok(None);
+    };
+
+    let parent_attestations = parent_log
+        .attestations
+        .iter()
+        .filter(|attestation| combined_files.contains(&attestation.file_path))
+        .collect::<Vec<_>>();
+    if parent_attestations.is_empty() {
+        return Ok(None);
+    }
+
+    let requests = parent_attestations
+        .iter()
+        .flat_map(|attestation| {
+            [
+                (parent_sha.to_string(), attestation.file_path.clone()),
+                (merge_sha.to_string(), attestation.file_path.clone()),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let contents = batch_read_paths_at_treeishes(repo, &requests)?;
+
+    let mut projected = AuthorshipLog::new();
+    projected.metadata = parent_log.metadata.clone();
+    projected.metadata.base_commit_sha = merge_sha.to_string();
+
+    for parent_attestation in parent_attestations {
+        let parent_key = (parent_sha.to_string(), parent_attestation.file_path.clone());
+        let merge_key = (merge_sha.to_string(), parent_attestation.file_path.clone());
+        let (Some(parent_content), Some(merge_content)) =
+            (contents.get(&parent_key), contents.get(&merge_key))
+        else {
+            continue;
+        };
+
+        let shifts = crate::authorship::virtual_attribution::diff_hunks_between_contents(
+            parent_content,
+            merge_content,
+        );
+        if let Some(attestation) =
+            apply_hunk_shifts_to_file_attestation(parent_attestation, &shifts)
+        {
+            projected.attestations.push(attestation);
+        }
+    }
+
+    Ok(Some(projected))
 }
 
 pub fn stats_for_commit_stats_with_parent_and_authorship(

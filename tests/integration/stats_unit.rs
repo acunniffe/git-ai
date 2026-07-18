@@ -589,8 +589,12 @@ fn test_stats_for_merge_commit_skips_ai_acceptance() {
     let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let stats = stats_for_commit_stats(&gitai_repo, &merge_sha, &[]).unwrap();
 
+    assert_eq!(stats.git_diff_added_lines, 0);
+    assert_eq!(stats.git_diff_deleted_lines, 0);
     assert_eq!(stats.ai_accepted, 0);
     assert_eq!(stats.ai_additions, 0);
+    assert_eq!(stats.human_additions, 0);
+    assert_eq!(stats.unknown_additions, 0);
 }
 
 #[test]

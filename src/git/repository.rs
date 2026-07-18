@@ -1763,6 +1763,36 @@ impl Repository {
         Ok(files)
     }
 
+    /// List files present in a merge commit's combined diff.
+    ///
+    /// Unlike a first-parent diff, this excludes changes that were merely
+    /// brought in by the merged branch. The single `diff-tree` invocation keeps
+    /// the Git process count constant regardless of how many files were merged.
+    pub fn list_combined_diff_files(
+        &self,
+        commit_sha: &str,
+    ) -> Result<HashSet<String>, GitAiError> {
+        let mut args = self.global_args_for_exec();
+        args.extend([
+            "diff-tree".to_string(),
+            "--cc".to_string(),
+            "--no-commit-id".to_string(),
+            "--name-only".to_string(),
+            "-r".to_string(),
+            "-z".to_string(),
+            commit_sha.to_string(),
+        ]);
+
+        let output = exec_git_with_profile(&args, InternalGitProfile::RawDiffParse)?;
+        Ok(output
+            .stdout
+            .split(|byte| *byte == 0)
+            .filter(|path| !path.is_empty())
+            .filter_map(|path| String::from_utf8(path.to_vec()).ok())
+            .map(|path| path.nfc().collect())
+            .collect())
+    }
+
     /// Get added line ranges from git diff between two commits
     /// Returns a HashMap of file paths to vectors of added line numbers
     ///
