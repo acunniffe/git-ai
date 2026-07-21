@@ -414,7 +414,11 @@ pub fn run_attribution_self_check(target: &GitDiagnosticTarget) -> DiagnosticChe
         .trim()
         .to_string();
 
-        let mut details = poll_self_check_attribution(&repo_path, &commit_sha, deadline)?;
+        // Attribution is produced asynchronously after the commit. Give that
+        // phase its own bounded budget instead of sharing the setup deadline.
+        let attribution_deadline = Instant::now() + DEBUG_CHECK_TIMEOUT;
+        let mut details =
+            poll_self_check_attribution(&repo_path, &commit_sha, attribution_deadline)?;
         details.insert(0, format!("repo: {}", repo_path.display()));
         details.insert(1, format!("commit: {}", commit_sha));
         details.insert(

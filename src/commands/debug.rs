@@ -551,33 +551,18 @@ fn collect_git_diagnostics(
             })
             .collect()
     };
-    let attribution_handles: Vec<_> = targets
-        .clone()
-        .into_iter()
+    let attributions: Vec<_> = targets
+        .iter()
         .map(|target| {
             let label = target.label.clone();
             debug_progress(format!("starting attribution self-check for {}", label));
-            std::thread::spawn(move || {
-                let result = crate::diagnostics::run_attribution_self_check(&target);
-                debug_progress(format!(
-                    "attribution self-check for {} {}",
-                    label,
-                    result.status.as_str()
-                ));
-                result
-            })
-        })
-        .collect();
-    let attributions: Vec<_> = attribution_handles
-        .into_iter()
-        .map(|handle| {
-            handle.join().unwrap_or_else(|_| {
-                DiagnosticCheckResult::failed(
-                    "attribution self-check failed",
-                    vec!["attribution self-check worker panicked".to_string()],
-                    Vec::new(),
-                )
-            })
+            let result = crate::diagnostics::run_attribution_self_check(target);
+            debug_progress(format!(
+                "attribution self-check for {} {}",
+                label,
+                result.status.as_str()
+            ));
+            result
         })
         .collect();
     // Trace2 file checks temporarily rewrite global git config, so they must remain serialized.
