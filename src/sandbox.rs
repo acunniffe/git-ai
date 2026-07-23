@@ -17,12 +17,18 @@ pub(crate) fn sandbox_restriction() -> Option<SandboxRestriction> {
 }
 
 pub(crate) fn ensure_daemon_start_allowed() -> Result<(), String> {
-    let Some(restriction) = sandbox_restriction() else {
-        return Ok(());
-    };
+    if let Some(restriction) = sandbox_restriction() {
+        return Err(format!(
+            "cannot start the daemon inside the {} sandbox ({} is set)",
+            restriction.name, restriction.env_var
+        ));
+    }
 
-    Err(format!(
-        "cannot start the daemon inside the {} sandbox ({} is set)",
-        restriction.name, restriction.env_var
-    ))
+    crate::git::repository::exec_git(&[
+        "config".to_string(),
+        "--global".to_string(),
+        "--list".to_string(),
+    ])
+    .map(|_| ())
+    .map_err(|error| format!("cannot read global Git config: {error}"))
 }

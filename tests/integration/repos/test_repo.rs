@@ -187,6 +187,7 @@ impl DaemonProcess {
         test_db_path: &Path,
         extra_env: &[(&str, &str)],
     ) -> Self {
+        ensure_test_global_git_config(test_home);
         let control_socket_path = Self::control_socket_path_for_home(test_home);
         let trace_socket_path = Self::trace_socket_path_for_home(test_home);
         let stderr_log_path = test_home
@@ -547,6 +548,15 @@ fn configure_test_home_env(command: &mut Command, test_home: &Path) {
         command.env("USERPROFILE", test_home);
         command.env("APPDATA", test_home.join("AppData").join("Roaming"));
         command.env("LOCALAPPDATA", test_home.join("AppData").join("Local"));
+    }
+}
+
+fn ensure_test_global_git_config(test_home: &Path) {
+    fs::create_dir_all(test_home).expect("failed to create test HOME");
+    let global_git_config_path = test_home.join(".gitconfig");
+    if !global_git_config_path.exists() {
+        fs::write(&global_git_config_path, "")
+            .expect("failed to write empty test global Git config");
     }
 }
 
@@ -1267,6 +1277,7 @@ impl TestRepo {
             );
         }
 
+        ensure_test_global_git_config(home);
         let config_dir = home.join(".git-ai");
         fs::create_dir_all(&config_dir).expect("failed to create test HOME config directory");
         let config_path = config_dir.join("config.json");

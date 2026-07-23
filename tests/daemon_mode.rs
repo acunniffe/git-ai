@@ -978,6 +978,94 @@ fn daemon_refuses_to_start_in_sandbox() {
 }
 
 #[test]
+#[serial]
+fn daemon_refuses_to_start_without_git_config_access() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let git_config_path = repo.test_home_path().join(".gitconfig");
+    fs::remove_file(&git_config_path).expect("failed to remove readable test Git config");
+    fs::create_dir(&git_config_path).expect("failed to make test git config unreadable");
+
+    for subcommand in ["start", "run"] {
+        let output = bg_command(&repo, subcommand, &[]);
+        if output.status.success() {
+            let _ = send_control_request(
+                &daemon_control_socket_path(&repo),
+                &ControlRequest::Shutdown,
+            );
+        }
+
+        assert!(
+            !output.status.success(),
+            "daemon {subcommand} should fail without git config access"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("cannot read global Git config"),
+            "daemon {subcommand} should explain the Git config failure: {stderr}"
+        );
+    }
+
+    assert!(
+        send_control_request_with_timeout(
+            &daemon_control_socket_path(&repo),
+            &ControlRequest::Ping,
+            DAEMON_TEST_PROBE_TIMEOUT,
+        )
+        .is_err(),
+        "daemon control socket should not be available"
+    );
+    assert!(
+        local_socket_connects_with_timeout(
+            &daemon_trace_socket_path(&repo),
+            DAEMON_TEST_PROBE_TIMEOUT,
+        )
+        .is_err(),
+        "daemon trace socket should not be available"
+    );
+}
+
+#[test]
+#[serial]
+fn daemon_refuses_to_start_without_a_global_git_config() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    fs::remove_file(repo.test_home_path().join(".gitconfig"))
+        .expect("failed to remove test global Git config");
+
+    let output = bg_command(&repo, "start", &[]);
+    assert!(
+        !output.status.success(),
+        "daemon start should require a global Git config"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("cannot read global Git config"),
+        "daemon start should explain the Git config failure: {stderr}"
+    );
+}
+
+#[test]
+#[serial]
+fn daemon_start_only_requires_global_git_config_access() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let local_config_path = repo.path().join(".git").join("config");
+    fs::remove_file(&local_config_path).expect("failed to remove local Git config");
+    fs::create_dir(&local_config_path).expect("failed to make local Git config unreadable");
+
+    let output = bg_command(&repo, "start", &[]);
+    assert!(
+        output.status.success(),
+        "daemon start should ignore an unreadable local Git config: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    send_control_request(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::Shutdown,
+    )
+    .expect("daemon should be available for shutdown");
+}
+
+#[test]
 #[should_panic(expected = "pending daemon sync work")]
 fn dedicated_daemon_restart_rejects_pending_traced_command_for_test() {
     let mut repo = TestRepo::new_dedicated_daemon();

@@ -201,9 +201,12 @@ def setup_variant_runtime(
     if variant.mode == "wrapper":
         create_link_or_copy(variant.binary, wrapper_git)
 
+    global_git_config = home_dir / ".gitconfig"
+    global_git_config.touch()
+
     env = dict(os.environ)
     env["HOME"] = str(home_dir)
-    env["GIT_CONFIG_GLOBAL"] = str(home_dir / ".gitconfig")
+    env["GIT_CONFIG_GLOBAL"] = str(global_git_config)
     env["GIT_TERMINAL_PROMPT"] = "0"
     env["GIT_AI_DEBUG"] = "0"
     env["GIT_AI_DEBUG_PERFORMANCE"] = "0"
