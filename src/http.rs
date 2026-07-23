@@ -1,22 +1,31 @@
-use std::io::Read;
-use std::sync::Arc;
 use std::time::Duration;
+use ureq::config::Config;
+use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
+use ureq::typestate::{WithBody, WithoutBody};
 
-/// Build a ureq Agent that uses the platform's native TLS library.
+/// Build a ureq Agent that uses standard proxy environment variables and the
+/// platform's native TLS library.
 ///
 /// Uses OpenSSL on Linux, Secure Transport on macOS, and SChannel on
 /// Windows — the same TLS implementations that curl uses. This ensures
 /// certificates trusted by the OS (including custom CA certs added to
 /// the system trust store) are handled identically to curl and browsers.
+///
+/// Proxy configuration is read from `ALL_PROXY`, `HTTPS_PROXY`, `HTTP_PROXY`,
+/// and their lowercase variants. `NO_PROXY`/`no_proxy` bypasses matching hosts.
 pub fn build_agent(timeout_secs: Option<u64>) -> ureq::Agent {
-    let tls = native_tls::TlsConnector::new().expect("failed to create TLS connector");
-    let mut builder = ureq::AgentBuilder::new().tls_connector(Arc::new(tls));
+    let mut builder = Config::builder().http_status_as_error(false).tls_config(
+        TlsConfig::builder()
+            .provider(TlsProvider::NativeTls)
+            .root_certs(RootCerts::PlatformVerifier)
+            .build(),
+    );
 
     if let Some(secs) = timeout_secs {
-        builder = builder.timeout(Duration::from_secs(secs));
+        builder = builder.timeout_global(Some(Duration::from_secs(secs)));
     }
 
-    builder.build()
+    builder.build().new_agent()
 }
 
 /// HTTP response wrapper that normalizes ureq's error handling.
@@ -41,31 +50,32 @@ impl Response {
     }
 }
 
-fn read_ureq_response(response: ureq::Response) -> Result<Response, String> {
-    let status_code = response.status();
-    let mut body = Vec::new();
-    response
-        .into_reader()
-        .read_to_end(&mut body)
+fn read_ureq_response(mut response: ureq::http::Response<ureq::Body>) -> Result<Response, String> {
+    let status_code = response.status().as_u16();
+    let body = response
+        .body_mut()
+        .with_config()
+        .read_to_vec()
         .map_err(|e| format!("Failed to read response body: {}", e))?;
     Ok(Response { status_code, body })
 }
 
 /// Execute a ureq request, normalizing errors so that HTTP error status codes
 /// are returned as Ok(Response) rather than Err.
-pub fn send(request: ureq::Request) -> Result<Response, String> {
-    match request.call() {
-        Ok(response) => read_ureq_response(response),
-        Err(ureq::Error::Status(_code, response)) => read_ureq_response(response),
-        Err(ureq::Error::Transport(err)) => Err(err.to_string()),
-    }
+pub fn send(request: ureq::RequestBuilder<WithoutBody>) -> Result<Response, String> {
+    request
+        .call()
+        .map_err(|err| err.to_string())
+        .and_then(read_ureq_response)
 }
 
 /// Execute a ureq request with a string body.
-pub fn send_with_body(request: ureq::Request, body: &str) -> Result<Response, String> {
-    match request.send_string(body) {
-        Ok(response) => read_ureq_response(response),
-        Err(ureq::Error::Status(_code, response)) => read_ureq_response(response),
-        Err(ureq::Error::Transport(err)) => Err(err.to_string()),
-    }
+pub fn send_with_body(
+    request: ureq::RequestBuilder<WithBody>,
+    body: &str,
+) -> Result<Response, String> {
+    request
+        .send(body)
+        .map_err(|err| err.to_string())
+        .and_then(read_ureq_response)
 }

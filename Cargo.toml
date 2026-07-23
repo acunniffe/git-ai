@@ -22,8 +22,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 libc = "0.2"
 jsonc-parser = { version = "0.32", features = ["cst"] }
 dirs = "5.0"
-ureq = { version = "2.12", default-features = false, features = ["native-tls"] }
-native-tls = "0.2"
+ureq = { version = "3.3", default-features = false, features = ["native-tls"] }
 url = "2.5"
 glob = "0.3"
 ignore = "0.4"
