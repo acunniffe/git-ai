@@ -11,6 +11,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+mod shell_env;
+
 const TRACE2_EVENT_TARGET_KEY: &str = "trace2.eventTarget";
 const TRACE2_EVENT_NESTING_KEY: &str = "trace2.eventNesting";
 const TRACE2_EVENT_NESTING_VALUE: &str = "0";
@@ -343,8 +345,13 @@ pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
     persist_install_config_with_values(&binary_path, options.dry_run, &install_config)?;
     let params = HookInstallerParams { binary_path };
 
-    // Run async operations and convert result.
-    let statuses = crate::tokio_runtime::block_on(async_run_install(&params, &options))?;
+    // Keep shell setup independent from hook installation while preserving the
+    // hook result. Shell profile failures are best-effort and remain non-fatal.
+    let install_result = crate::tokio_runtime::block_on(async_run_install(&params, &options));
+    if let Err(error) = shell_env::configure(&params.binary_path, options.dry_run) {
+        eprintln!("Warning: Failed to configure shell environment: {error}");
+    }
+    let statuses = install_result?;
 
     // Clean up legacy envelope logs directory and related artifacts.
     // These are no longer used — all telemetry now routes through the daemon.

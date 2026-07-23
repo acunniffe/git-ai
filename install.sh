@@ -6,21 +6,22 @@ IFS=$'\n\t'
 # ============================================================
 # Ensure HOME is set when running via MDMs (e.g. JAMF) or other environments where HOME may be unbound.
 # ============================================================
-INSTALL_USER=""
+HOME_RESOLVED_FOR_USER=false
 
 if [ -z "${HOME:-}" ]; then
     if command -v scutil >/dev/null 2>&1; then
         CURRENT_USER=$( /usr/sbin/scutil <<< "show State:/Users/ConsoleUser" | awk '/Name :/ { print $3 }' || true )
         if [ -n "${CURRENT_USER:-}" ] && [ "$CURRENT_USER" != "loginwindow" ] && [ "$CURRENT_USER" != "_mbsetupuser" ]; then
             export HOME=$( /usr/bin/dscl . -read "/Users/$CURRENT_USER" NFSHomeDirectory | awk '{print $2}' )
-            INSTALL_USER="$CURRENT_USER"
+            HOME_RESOLVED_FOR_USER=true
         else
             echo "Error: No console user logged in. Deferring installation." >&2
             exit 1
         fi
     elif id -un >/dev/null 2>&1; then
-        INSTALL_USER="$(id -un)"
-        export HOME=$(getent passwd "$INSTALL_USER" | cut -d: -f6)
+        CURRENT_USER="$(id -un)"
+        export HOME=$(getent passwd "$CURRENT_USER" | cut -d: -f6)
+        HOME_RESOLVED_FOR_USER=true
         if [ -z "$HOME" ]; then
             export HOME="/root"
         fi
@@ -124,51 +125,6 @@ verify_checksum() {
     success "Checksum verified for $binary_name"
 }
 
-# Function to detect all shells with existing config files
-# Returns shell configurations in format: "shell_name|config_file" (one per line)
-detect_all_shells() {
-    local shells=""
-    
-    # Check for bash configs (prefer .bashrc over .bash_profile)
-    if [ -f "$HOME/.bashrc" ]; then
-        shells="${shells}bash|$HOME/.bashrc\n"
-    elif [ -f "$HOME/.bash_profile" ]; then
-        shells="${shells}bash|$HOME/.bash_profile\n"
-    fi
-    
-    # Check for zsh config
-    if [ -f "$HOME/.zshrc" ]; then
-        shells="${shells}zsh|$HOME/.zshrc\n"
-    fi
-    
-    # Check for fish config
-    if [ -f "$HOME/.config/fish/config.fish" ]; then
-        shells="${shells}fish|$HOME/.config/fish/config.fish\n"
-    fi
-    
-    # If no configs found, fall back to $SHELL detection and create config for that shell only
-    if [ -z "$shells" ]; then
-        local login_shell=""
-        if [ -n "${SHELL:-}" ]; then
-            login_shell=$(basename "$SHELL")
-        fi
-        case "$login_shell" in
-            fish)
-                shells="fish|$HOME/.config/fish/config.fish"
-                ;;
-            zsh)
-                shells="zsh|$HOME/.zshrc"
-                ;;
-            bash|*)
-                shells="bash|$HOME/.bashrc"
-                ;;
-        esac
-    fi
-    
-    # Remove trailing newline and output
-    printf '%b' "$shells" | sed '/^$/d'
-}
-
 # ============================================================
 # Warn when installing as root/sudo (not recommended).
 # Running as root creates files that normal-user processes
@@ -181,7 +137,7 @@ if [ "$(id -u)" = "0" ] && [ "${GIT_AI_ALLOW_SUPERUSER:-}" != "1" ]; then
     if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${GITLAB_CI:-}" ] \
         || [ -n "${JENKINS_URL:-}" ] || [ -n "${BUILDKITE:-}" ] || [ -n "${CIRCLECI:-}" ] \
         || [ -n "${CODEBUILD_BUILD_ID:-}" ] || [ -n "${AGENT_OS:-}" ] \
-        || [ -n "${KUBERNETES_SERVICE_HOST:-}" ] || [ -n "${INSTALL_USER:-}" ] \
+        || [ -n "${KUBERNETES_SERVICE_HOST:-}" ] || [ "$HOME_RESOLVED_FOR_USER" = "true" ] \
         || [ -n "${GIT_AI_DAEMON_UPGRADE:-}" ] \
         || [ -n "${container:-}" ] || [ -f "/.dockerenv" ]; then
         IS_CI_OR_MDM=true
@@ -322,100 +278,11 @@ if [ -n "${INSTALL_NONCE:-}" ] && [ -n "${API_BASE:-}" ]; then
 fi
 
 echo "Setting up IDE/agent hooks..."
-if ! ${INSTALL_DIR}/git-ai install-hooks; then
+if ! "${INSTALL_DIR}/git-ai" install-hooks; then
     warn "Warning: Failed to set up IDE/agent hooks. Please try running 'git-ai install-hooks' manually."
 else
     success "Successfully set up IDE/agent hooks"
 fi
-
-# Add to PATH in all detected shell configurations
-SHELLS_CONFIGURED=""
-SHELLS_ALREADY_CONFIGURED=""
-CREATED_SHELL_PATHS=""
-
-while IFS='|' read -r shell_name config_file; do
-    [ -z "$shell_name" ] && continue
-    
-    # Generate shell-appropriate PATH command
-    if [ "$shell_name" = "fish" ]; then
-        path_cmd="fish_add_path -g \"$INSTALL_DIR\""
-        # Create fish config directory if it doesn't exist (for fallback case)
-        config_dir="$(dirname "$config_file")"
-        if [ ! -d "$config_dir" ]; then
-            mkdir -p "$config_dir"
-            CREATED_SHELL_PATHS="${CREATED_SHELL_PATHS}${config_dir}\n"
-        fi
-    else
-        path_cmd="export PATH=\"$INSTALL_DIR:\$PATH\""
-    fi
-    
-    # Create config file if it doesn't exist (for fallback case when no configs found)
-    if [ ! -f "$config_file" ]; then
-        CREATED_SHELL_PATHS="${CREATED_SHELL_PATHS}${config_file}\n"
-    fi
-    touch "$config_file"
-    
-    # Append if not already present
-    if ! grep -qsF "$INSTALL_DIR" "$config_file"; then
-        echo "" >> "$config_file"
-        echo "# Added by git-ai installer on $(date)" >> "$config_file"
-        echo "$path_cmd" >> "$config_file"
-        SHELLS_CONFIGURED="${SHELLS_CONFIGURED}${shell_name}|${config_file}\n"
-    else
-        SHELLS_ALREADY_CONFIGURED="${SHELLS_ALREADY_CONFIGURED}${shell_name}|${config_file}\n"
-    fi
-done <<< "$(detect_all_shells)"
-
-# Display results to user
-if [ -n "$SHELLS_CONFIGURED" ]; then
-    echo ""
-    echo "Updated shell configurations:"
-    printf '%b' "$SHELLS_CONFIGURED" | while IFS='|' read -r shell_name config_file; do
-        [ -z "$shell_name" ] && continue
-        success "  ✓ $config_file"
-    done
-    
-    echo ""
-    echo "To apply changes immediately:"
-    printf '%b' "$SHELLS_CONFIGURED" | while IFS='|' read -r shell_name config_file; do
-        [ -z "$shell_name" ] && continue
-        if [ "$shell_name" = "fish" ]; then
-            echo "  - For fish: source $config_file"
-        else
-            echo "  - For $shell_name: source $config_file"
-        fi
-    done
-fi
-
-if [ -n "$SHELLS_ALREADY_CONFIGURED" ]; then
-    echo ""
-    echo "Already configured (no changes needed):"
-    printf '%b' "$SHELLS_ALREADY_CONFIGURED" | while IFS='|' read -r shell_name config_file; do
-        [ -z "$shell_name" ] && continue
-        echo "  ✓ $config_file"
-    done
-fi
-
-if [ -z "$SHELLS_CONFIGURED" ] && [ -z "$SHELLS_ALREADY_CONFIGURED" ]; then
-    echo ""
-    echo "Could not detect any shell config files."
-    echo "Please add the following line to your shell config and restart:"
-    echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
-fi
-
-# Fix file ownership when running as root for a different user (MDM deployments)
-if [ "$(id -u)" = "0" ] && [ -n "$INSTALL_USER" ]; then
-    chown -R "$INSTALL_USER" "$HOME/.git-ai" 2>/dev/null || true
-    if [ -n "$CREATED_SHELL_PATHS" ]; then
-        printf '%b' "$CREATED_SHELL_PATHS" | while IFS= read -r created_path; do
-            [ -z "$created_path" ] && continue
-            chown "$INSTALL_USER" "$created_path" 2>/dev/null || true
-        done
-    fi
-fi
-
-echo ""
-echo -e "${YELLOW}Close and reopen your terminal and IDE sessions to use git-ai.${NC}"
 
 # If nonce exchange failed, run interactive login
 if [ "$NEED_LOGIN" = true ]; then

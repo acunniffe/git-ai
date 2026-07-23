@@ -9,11 +9,72 @@ use git_ai::commands::install_hooks::{
 };
 use std::collections::HashMap;
 use std::fs;
-use std::process::Command;
+use std::path::Path;
+use std::process::{Command, Output};
+use std::thread;
+use std::time::Duration;
 
 // ==============================================================================
 // InstallStatus Tests
 // ==============================================================================
+
+fn copied_install_hooks_command(
+    repo: &TestRepo,
+    invoking_home: &Path,
+    installed_home: &Path,
+) -> (std::path::PathBuf, Command) {
+    let installed_bin_dir = installed_home.join(".git-ai").join("bin");
+    fs::create_dir_all(&installed_bin_dir).unwrap();
+
+    #[cfg(windows)]
+    let installed_binary = installed_bin_dir.join("git-ai.exe");
+    #[cfg(not(windows))]
+    let installed_binary = installed_bin_dir.join("git-ai");
+    fs::copy(get_binary_path(), &installed_binary).unwrap();
+    let canonical_installed_binary = fs::canonicalize(&installed_binary).unwrap();
+
+    let test_db = repo.path().join("install-hooks.db");
+    let mut command = Command::new(&installed_binary);
+    command
+        .arg("install-hooks")
+        .current_dir(repo.path())
+        .env("HOME", invoking_home)
+        .env("GIT_AI_TEST_DB_PATH", &test_db)
+        .env("GITAI_TEST_DB_PATH", &test_db)
+        .env("GIT_CONFIG_GLOBAL", invoking_home.join(".gitconfig"))
+        .env("GIT_AI_ALLOW_SUPERUSER", "1")
+        .env("GIT_AI_DEBUG", "0");
+    #[cfg(windows)]
+    command
+        .env("USERPROFILE", invoking_home)
+        .env("APPDATA", invoking_home.join("AppData").join("Roaming"))
+        .env("LOCALAPPDATA", invoking_home.join("AppData").join("Local"))
+        .env("GIT_AI_SKIP_PATH_UPDATE", "1");
+
+    (canonical_installed_binary, command)
+}
+
+fn run_isolated_install_hooks(args: &[&str]) -> Output {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let invoking_home = repo.test_home_path();
+    let installed_home = repo.path().join("installed-user");
+    let (_, mut command) = copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    command.args(args).env("SHELL", "/bin/bash");
+    copied_binary_output(&mut command)
+}
+
+fn copied_binary_output(command: &mut Command) -> Output {
+    for attempt in 0..5 {
+        match command.output() {
+            Ok(output) => return output,
+            Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 4 => {
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => panic!("run copied git-ai binary: {error}"),
+        }
+    }
+    unreachable!("the copied binary execution loop always returns or panics")
+}
 
 #[test]
 fn test_install_status_as_str() {
@@ -226,34 +287,10 @@ fn plain_install_hooks_preserves_the_invoking_user_home() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
     let invoking_home = repo.test_home_path();
     let installed_home = repo.path().join("installed-user");
-    let installed_bin_dir = installed_home.join(".git-ai").join("bin");
-    fs::create_dir_all(&installed_bin_dir).unwrap();
+    let (_, mut command) = copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    command.env("API_KEY", "package-test-key");
 
-    #[cfg(windows)]
-    let installed_binary = installed_bin_dir.join("git-ai.exe");
-    #[cfg(not(windows))]
-    let installed_binary = installed_bin_dir.join("git-ai");
-    fs::copy(get_binary_path(), &installed_binary).unwrap();
-
-    let test_db = repo.path().join("install-hooks.db");
-    let mut command = Command::new(&installed_binary);
-    command
-        .arg("install-hooks")
-        .current_dir(repo.path())
-        .env("HOME", invoking_home)
-        .env("API_KEY", "package-test-key")
-        .env("GIT_AI_TEST_DB_PATH", &test_db)
-        .env("GITAI_TEST_DB_PATH", &test_db)
-        .env("GIT_CONFIG_GLOBAL", invoking_home.join(".gitconfig"))
-        .env("GIT_AI_ALLOW_SUPERUSER", "1")
-        .env("GIT_AI_DEBUG", "0");
-    #[cfg(windows)]
-    command
-        .env("USERPROFILE", invoking_home)
-        .env("APPDATA", invoking_home.join("AppData").join("Roaming"))
-        .env("LOCALAPPDATA", invoking_home.join("AppData").join("Local"));
-
-    let output = command.output().expect("run copied git-ai binary");
+    let output = copied_binary_output(&mut command);
     assert!(
         output.status.success(),
         "plain install-hooks failed: {}",
@@ -270,6 +307,235 @@ fn plain_install_hooks_preserves_the_invoking_user_home() {
     assert!(
         !installed_home.join(".git-ai/config.json").exists(),
         "plain install-hooks must not retarget config to the binary owner's home"
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn install_hooks_configures_all_existing_unix_shell_profiles_idempotently() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let invoking_home = repo.test_home_path();
+    let installed_home = repo.path().join("installed-user");
+
+    let bashrc = invoking_home.join(".bashrc");
+    let bash_profile = invoking_home.join(".bash_profile");
+    let zshrc = invoking_home.join(".zshrc");
+    let fish_config = invoking_home.join(".config/fish/config.fish");
+    fs::create_dir_all(fish_config.parent().unwrap()).unwrap();
+    fs::write(&bashrc, "# bashrc\n").unwrap();
+    fs::write(&bash_profile, "# bash profile\n").unwrap();
+    fs::write(&zshrc, "# zshrc\n").unwrap();
+    fs::write(&fish_config, "# fish\n").unwrap();
+
+    let (installed_binary, mut command) =
+        copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    command.env("SHELL", "/bin/bash");
+    let first = copied_binary_output(&mut command);
+    assert!(
+        first.status.success(),
+        "install-hooks failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let install_dir = installed_binary.parent().unwrap().to_string_lossy();
+    let expected_posix = format!("export PATH=\"{install_dir}:$PATH\"");
+    let expected_fish = format!("fish_add_path -g \"{install_dir}\"");
+    for profile in [&bashrc, &zshrc] {
+        let contents = fs::read_to_string(profile).unwrap();
+        assert!(contents.contains("# Added by git-ai installer on "));
+        assert!(contents.ends_with(&format!("{expected_posix}\n")));
+    }
+    let fish_contents = fs::read_to_string(&fish_config).unwrap();
+    assert!(fish_contents.contains("# Added by git-ai installer on "));
+    assert!(fish_contents.ends_with(&format!("{expected_fish}\n")));
+    assert_eq!(
+        fs::read_to_string(&bash_profile).unwrap(),
+        "# bash profile\n",
+        ".bashrc must be preferred over .bash_profile"
+    );
+
+    let (_, mut second_command) =
+        copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    second_command.env("SHELL", "/bin/bash");
+    let second = copied_binary_output(&mut second_command);
+    assert!(
+        second.status.success(),
+        "second install-hooks failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    for profile in [&bashrc, &zshrc, &fish_config] {
+        let contents = fs::read_to_string(profile).unwrap();
+        assert_eq!(
+            contents.matches(install_dir.as_ref()).count(),
+            1,
+            "{} should contain one install directory entry",
+            profile.display()
+        );
+    }
+}
+
+#[cfg(not(windows))]
+#[test]
+fn install_hooks_falls_back_to_the_login_shell_and_dry_run_does_not_mutate() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let invoking_home = repo.test_home_path();
+    let installed_home = repo.path().join("installed-user");
+    let fish_config = invoking_home.join(".config/fish/config.fish");
+
+    let (_, mut dry_run) = copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    dry_run.arg("--dry-run").env("SHELL", "/usr/local/bin/fish");
+    let output = copied_binary_output(&mut dry_run);
+    assert!(output.status.success());
+    assert!(
+        !fish_config.exists(),
+        "dry-run must not create the fallback shell profile"
+    );
+
+    let (installed_binary, mut install) =
+        copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    install.env("SHELL", "/usr/local/bin/fish");
+    let output = copied_binary_output(&mut install);
+    assert!(
+        output.status.success(),
+        "install-hooks failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let install_dir = installed_binary.parent().unwrap().to_string_lossy();
+    let fish_contents = fs::read_to_string(&fish_config).unwrap();
+    let fish_lines: Vec<&str> = fish_contents.lines().collect();
+    assert_eq!(fish_lines.len(), 3);
+    assert_eq!(fish_lines[0], "");
+    assert!(fish_lines[1].starts_with("# Added by git-ai installer on "));
+    assert_eq!(fish_lines[2], format!("fish_add_path -g \"{install_dir}\""));
+    assert!(!invoking_home.join(".bashrc").exists());
+    assert!(!invoking_home.join(".zshrc").exists());
+}
+
+#[cfg(not(windows))]
+#[test]
+fn install_hooks_warns_but_succeeds_when_the_shell_profile_cannot_be_written() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let invoking_home = repo.test_home_path();
+    let installed_home = repo.path().join("installed-user");
+    fs::create_dir(invoking_home.join(".bashrc")).unwrap();
+
+    let (_, mut command) = copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    command.env("SHELL", "/bin/bash");
+    let output = copied_binary_output(&mut command);
+
+    assert!(
+        output.status.success(),
+        "shell profile failures must not fail hook installation: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("Warning: Failed to configure shell environment:"),
+        "shell profile failures should remain visible: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn installer_scripts_delegate_shell_environment_configuration_to_install_hooks() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let install_sh = fs::read_to_string(manifest_dir.join("install.sh")).unwrap();
+    let install_ps1 = fs::read_to_string(manifest_dir.join("install.ps1")).unwrap();
+
+    for removed_shell_logic in [
+        "detect_legacy_shells",
+        "configure_legacy_shell_environment",
+        "fish_add_path -g",
+        "Added by git-ai installer on",
+        "INSTALL_USER",
+        "GIT_AI_INSTALL_USER",
+        "chown -R",
+        "install-shell-env",
+        "git-ai-shell-env-v1",
+        "GIT_AI_INSTALLER_HANDLES_SHELL_ENV",
+    ] {
+        assert!(
+            !install_sh.contains(removed_shell_logic),
+            "install.sh should not contain {removed_shell_logic}"
+        );
+    }
+    for removed_powershell_logic in [
+        "Set-PathEnsureContains",
+        "Set-LegacyShellEnvironment",
+        "GetEnvironmentVariable('Path', 'User')",
+        "$gitBashConfigured",
+        "Git\\bin\\bash.exe",
+        "Added by git-ai installer on",
+        "$env:PATH =",
+        "install-shell-env",
+        "git-ai-shell-env-v1",
+        "GIT_AI_INSTALLER_HANDLES_SHELL_ENV",
+    ] {
+        assert!(
+            !install_ps1.contains(removed_powershell_logic),
+            "install.ps1 should not contain {removed_powershell_logic}"
+        );
+    }
+
+    assert!(install_sh.contains(r#""${INSTALL_DIR}/git-ai" install-hooks"#));
+    assert!(install_ps1.contains("& $finalExe install-hooks"));
+}
+
+#[cfg(windows)]
+#[test]
+fn install_hooks_configures_git_bash_when_user_path_updates_are_skipped() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let invoking_home = repo.test_home_path();
+    let installed_home = repo.path().join("installed-user");
+    let program_files = repo.path().join("Program Files");
+    let git_bash = program_files.join("Git").join("bin").join("bash.exe");
+    fs::create_dir_all(git_bash.parent().unwrap()).unwrap();
+    fs::write(&git_bash, "").unwrap();
+
+    let bashrc = invoking_home.join(".bashrc");
+    let bash_profile = invoking_home.join(".bash_profile");
+    fs::write(&bash_profile, "# existing profile\r\n").unwrap();
+
+    let (_, mut command) = copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    command
+        .env("ProgramFiles", &program_files)
+        .env_remove("ProgramFiles(x86)");
+    let first = copied_binary_output(&mut command);
+    assert!(
+        first.status.success(),
+        "install-hooks failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    assert!(
+        !bashrc.exists(),
+        ".bash_profile must be preferred when .bashrc is absent"
+    );
+    let contents = fs::read(&bash_profile).unwrap();
+    assert!(!contents.starts_with(&[0xef, 0xbb, 0xbf]));
+    let contents = String::from_utf8(contents).unwrap();
+    assert!(contents.contains("# Added by git-ai installer on "));
+    assert!(contents.ends_with("export PATH=\"$HOME/.git-ai/bin:$PATH\"\n"));
+
+    let (_, mut second_command) =
+        copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    second_command
+        .env("ProgramFiles", &program_files)
+        .env_remove("ProgramFiles(x86)");
+    let second = copied_binary_output(&mut second_command);
+    assert!(
+        second.status.success(),
+        "second install-hooks failed: {}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert_eq!(
+        fs::read_to_string(&bash_profile)
+            .unwrap()
+            .matches(".git-ai/bin")
+            .count(),
+        1
     );
 }
 
@@ -318,24 +584,12 @@ fn install_hooks_detects_cline_from_vscode_server_extension_manifest() {
 
 #[test]
 fn test_run_install_hooks_no_args() {
-    // This will try to run against the actual system, but should not crash
-    // It may fail if binary path cannot be determined, which is acceptable
-    let result = run(&[]);
-
-    // We just ensure it returns a result (success or error)
-    // The actual behavior depends on the system state
-    match result {
-        Ok(_statuses) => {
-            // Should return a HashMap, possibly empty
-            // Success is valid
-        }
-        Err(e) => {
-            // May fail if binary path is not available or other system issues
-            let err_msg = e.to_string();
-            // Just ensure we get a meaningful error
-            assert!(!err_msg.is_empty());
-        }
-    }
+    let output = run_isolated_install_hooks(&[]);
+    assert!(
+        output.status.success(),
+        "install-hooks failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -372,32 +626,22 @@ fn test_run_install_hooks_with_dry_run_true() {
 
 #[test]
 fn test_run_install_hooks_with_verbose_flag() {
-    let args = vec!["--verbose".to_string()];
-    let result = run(&args);
-
-    match result {
-        Ok(_statuses) => {
-            // Success is valid
-        }
-        Err(_e) => {
-            // May fail on CI or systems without binary path
-        }
-    }
+    let output = run_isolated_install_hooks(&["--verbose"]);
+    assert!(
+        output.status.success(),
+        "install-hooks --verbose failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
 fn test_run_install_hooks_with_verbose_short_flag() {
-    let args = vec!["-v".to_string()];
-    let result = run(&args);
-
-    match result {
-        Ok(_statuses) => {
-            // Success is valid
-        }
-        Err(_e) => {
-            // May fail on CI or systems without binary path
-        }
-    }
+    let output = run_isolated_install_hooks(&["-v"]);
+    assert!(
+        output.status.success(),
+        "install-hooks -v failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
@@ -417,19 +661,12 @@ fn test_run_install_hooks_with_multiple_flags() {
 
 #[test]
 fn test_run_install_hooks_with_dry_run_false() {
-    // Note: This could actually install hooks on the system
-    // In a real test environment, this should be run in isolation
-    let args = vec!["--dry-run=false".to_string()];
-    let result = run(&args);
-
-    match result {
-        Ok(_statuses) => {
-            // Success is valid
-        }
-        Err(_e) => {
-            // May fail on CI or systems without binary path
-        }
-    }
+    let output = run_isolated_install_hooks(&["--dry-run=false"]);
+    assert!(
+        output.status.success(),
+        "install-hooks --dry-run=false failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

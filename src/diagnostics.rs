@@ -25,7 +25,9 @@ const SELF_CHECK_TRACE_ENV_REMOVE: &[&str] = &[
     "GIT_AI_WRAPPER_INVOCATION_ID",
     "GIT_TRACE2_ENV_VARS",
 ];
-const DEBUG_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
+// Windows debug builds can spend more than three seconds setting up the
+// synthetic repository and processing its three checkpoints under CI load.
+const DEBUG_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 const DAEMON_CONTROL_TIMEOUT: Duration = Duration::from_millis(500);
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
 

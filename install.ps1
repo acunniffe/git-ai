@@ -256,60 +256,6 @@ function Get-Architecture {
     }
 }
 
-# Ensure $PathToAdd is on the User PATH (appended if absent). No Machine PATH,
-# no admin required, no positioning logic.
-function Set-PathEnsureContains {
-    param(
-        [Parameter(Mandatory = $true)][string]$PathToAdd
-    )
-
-    $sep = ';'
-
-    function NormalizePath([string]$p) {
-        try { return ([IO.Path]::GetFullPath($p.Trim())).TrimEnd('\\').ToLowerInvariant() }
-        catch { return ($p.Trim()).TrimEnd('\\').ToLowerInvariant() }
-    }
-
-    $normalizedAdd = NormalizePath $PathToAdd
-
-    try {
-        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-        $entries = @()
-        if ($userPath) { $entries = ($userPath -split $sep) | Where-Object { $_ -and $_.Trim() -ne '' } }
-        $alreadyPresent = $false
-        foreach ($e in $entries) {
-            if ((NormalizePath $e) -eq $normalizedAdd) { $alreadyPresent = $true; break }
-        }
-        if ($alreadyPresent) {
-            $userStatus = 'AlreadyPresent'
-        } else {
-            $newUserPath = if ($userPath) { "$userPath$sep$PathToAdd" } else { $PathToAdd }
-            [Environment]::SetEnvironmentVariable('Path', $newUserPath, 'User')
-            $userStatus = 'Updated'
-        }
-    } catch {
-        $userStatus = 'Error'
-    }
-
-    # Update current process PATH immediately for this session
-    try {
-        $procPath = $env:PATH
-        $procEntries = @()
-        if ($procPath) { $procEntries = ($procPath -split $sep) | Where-Object { $_ -and $_.Trim() -ne '' } }
-        $procHas = $false
-        foreach ($e in $procEntries) {
-            if ((NormalizePath $e) -eq $normalizedAdd) { $procHas = $true; break }
-        }
-        if (-not $procHas) {
-            $env:PATH = if ($procPath) { "$procPath$sep$PathToAdd" } else { $PathToAdd }
-        }
-    } catch { }
-
-    return [PSCustomObject]@{
-        UserStatus = $userStatus
-    }
-}
-
 # Detect architecture and OS
 $arch = Get-Architecture
 if (-not $arch) { Write-ErrorAndExit "Unsupported architecture: $([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)" }
@@ -511,93 +457,8 @@ try {
 # Best-effort restart only for daemon-initiated self-updates.
 Start-DaemonIfRequested
 
-$skipPathUpdate = $env:GIT_AI_SKIP_PATH_UPDATE -eq '1'
-if ($skipPathUpdate) {
-    Write-Warning 'Skipping PATH updates because GIT_AI_SKIP_PATH_UPDATE=1'
-    $pathUpdate = [PSCustomObject]@{
-        UserStatus = 'Skipped'
-    }
-} else {
-    $pathUpdate = Set-PathEnsureContains -PathToAdd $installDir
-}
-if ($pathUpdate.UserStatus -eq 'Updated') {
-    Write-Success 'Successfully added git-ai to the user PATH.'
-} elseif ($pathUpdate.UserStatus -eq 'AlreadyPresent') {
-    Write-Success 'git-ai already present in the user PATH.'
-} elseif ($pathUpdate.UserStatus -eq 'Error') {
-    Write-Host 'Failed to update the user PATH.' -ForegroundColor Red
-}
-
 Write-Success "Successfully installed git-ai into $installDir"
 Write-Success "You can now run 'git-ai' from your terminal"
-
-# Configure Git Bash shell profiles so git-ai takes precedence over /mingw64/bin/git
-# Git Bash (MSYS2/MinGW) prepends its own directories to PATH, which shadows
-# the Windows PATH entry we set above. Writing to ~/.bashrc ensures git-ai's
-# bin directory is prepended after Git Bash's own PATH setup.
-$gitBashConfigured = $false
-$gitBashAlreadyConfigured = $false
-try {
-    $bashrcPath = Join-Path $HOME '.bashrc'
-    $bashProfilePath = Join-Path $HOME '.bash_profile'
-    $pathCmd = 'export PATH="$HOME/.git-ai/bin:$PATH"'
-    $markerString = '.git-ai/bin'
-
-    # Detect if Git Bash is installed
-    $gitBashInstalled = $false
-    $gitForWindowsPaths = @()
-    if ($env:ProgramFiles) { $gitForWindowsPaths += Join-Path $env:ProgramFiles 'Git\bin\bash.exe' }
-    if (${env:ProgramFiles(x86)}) { $gitForWindowsPaths += Join-Path ${env:ProgramFiles(x86)} 'Git\bin\bash.exe' }
-    if ($env:LOCALAPPDATA) { $gitForWindowsPaths += Join-Path $env:LOCALAPPDATA 'Programs\Git\bin\bash.exe' }
-    foreach ($p in $gitForWindowsPaths) {
-        if ($p -and (Test-Path -LiteralPath $p)) {
-            $gitBashInstalled = $true
-            break
-        }
-    }
-
-    if ($gitBashInstalled) {
-        # Determine which config file to update (prefer .bashrc, fall back to .bash_profile)
-        $targetBashConfig = $null
-        if (Test-Path -LiteralPath $bashrcPath) {
-            $targetBashConfig = $bashrcPath
-        } elseif (Test-Path -LiteralPath $bashProfilePath) {
-            $targetBashConfig = $bashProfilePath
-        } else {
-            # No existing config; create .bashrc
-            $targetBashConfig = $bashrcPath
-        }
-
-        # Check if already configured
-        $alreadyPresent = $false
-        if (Test-Path -LiteralPath $targetBashConfig) {
-            $content = Get-Content -LiteralPath $targetBashConfig -Raw -ErrorAction SilentlyContinue
-            if ($content -and $content.Contains($markerString)) {
-                $alreadyPresent = $true
-            }
-        }
-
-        if ($alreadyPresent) {
-            $gitBashAlreadyConfigured = $true
-        } else {
-            $timestamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
-            $appendContent = "`n# Added by git-ai installer on $timestamp`n$pathCmd`n"
-            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-            [System.IO.File]::AppendAllText($targetBashConfig, $appendContent, $utf8NoBom)
-            $gitBashConfigured = $true
-        }
-    }
-} catch {
-    Write-Host "Warning: Failed to configure Git Bash: $($_.Exception.Message)" -ForegroundColor Yellow
-}
-
-if ($gitBashConfigured) {
-    Write-Success "Successfully configured Git Bash ($targetBashConfig)"
-} elseif ($gitBashAlreadyConfigured) {
-    Write-Success "Git Bash already configured ($targetBashConfig)"
-}
-
-Write-Host 'Close and reopen your terminal and IDE sessions to use git-ai.' -ForegroundColor Yellow
 
 # If nonce exchange failed, run interactive login
 if ($needLogin) {
