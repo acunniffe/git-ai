@@ -381,7 +381,6 @@ pub fn materialize_notes_for_display(repo: &Repository, limit: usize) -> Result<
 /// This function is a best-effort operation: errors are logged but not propagated
 /// (callers should treat failure as a cache miss, not a hard error).
 pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitAiError> {
-    use crate::api::client::{ApiClient, ApiContext};
     use crate::git::repository::exec_git;
 
     // 1. Walk recent history. Prefer the remote's default branch; fall back to HEAD.
@@ -431,27 +430,7 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
     }
 
     // 2. Filter out SHAs already in notes-db.
-    let already_cached: std::collections::HashSet<String> = {
-        match crate::notes::db::NotesDatabase::global() {
-            Ok(db) => match db.lock() {
-                Ok(lock) => {
-                    let refs: Vec<&str> = all_shas.iter().map(|s| s.as_str()).collect();
-                    lock.get_notes(&refs)
-                        .unwrap_or_default()
-                        .into_keys()
-                        .collect()
-                }
-                Err(e) => {
-                    tracing::warn!("warm_cache_for_remote: DB lock poisoned: {}", e);
-                    std::collections::HashSet::new()
-                }
-            },
-            Err(e) => {
-                tracing::warn!("warm_cache_for_remote: failed to open notes-db: {}", e);
-                std::collections::HashSet::new()
-            }
-        }
-    };
+    let already_cached = cached_note_shas(&all_shas);
 
     let uncached: Vec<String> = all_shas
         .into_iter()
@@ -474,15 +453,78 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
         uncached.len()
     );
 
-    // 3. Batch-fetch from the HTTP backend (chunks of 100).
+    // 3+4. Batch-fetch from the HTTP backend and cache as synced rows.
+    fetch_and_cache_notes(&uncached).map(|_| ())
+}
+
+/// Fetch authorship notes for the given commits from the HTTP notes backend
+/// into the local notes-db cache (as already-synced rows), skipping SHAs
+/// already cached. Returns the SHAs newly cached.
+///
+/// Used by rewrite/shift paths when source notes are missing locally: on the
+/// HTTP backend the server — not `refs/notes/ai` — is the source of truth,
+/// and the git refs fetch requires SSH auth that is not available in every
+/// daemon environment.
+///
+/// Best-effort like [`warm_cache_for_remote`]: backend-unconfigured and
+/// unauthenticated states return an empty set rather than an error.
+pub fn warm_cache_for_commits(commit_shas: &[String]) -> Result<Vec<String>, GitAiError> {
+    let already_cached = cached_note_shas(commit_shas);
+    let uncached: Vec<String> = commit_shas
+        .iter()
+        .filter(|sha| !already_cached.contains(sha.as_str()))
+        .cloned()
+        .collect();
+    if uncached.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    tracing::info!(
+        backend = %"http",
+        uncached_commits = uncached.len(),
+        "fetching authorship notes"
+    );
+
+    fetch_and_cache_notes(&uncached)
+}
+
+/// SHAs among `shas` that already have a note in the local notes-db cache.
+fn cached_note_shas(shas: &[String]) -> std::collections::HashSet<String> {
+    match crate::notes::db::NotesDatabase::global() {
+        Ok(db) => match db.lock() {
+            Ok(lock) => {
+                let refs: Vec<&str> = shas.iter().map(|s| s.as_str()).collect();
+                lock.get_notes(&refs)
+                    .unwrap_or_default()
+                    .into_keys()
+                    .collect()
+            }
+            Err(e) => {
+                tracing::warn!("notes cache lookup: DB lock poisoned: {}", e);
+                std::collections::HashSet::new()
+            }
+        },
+        Err(e) => {
+            tracing::warn!("notes cache lookup: failed to open notes-db: {}", e);
+            std::collections::HashSet::new()
+        }
+    }
+}
+
+/// Batch-fetch notes for `shas` from the HTTP backend (chunks of 100) and
+/// write them into notes-db as already-synced cache rows. Returns the SHAs
+/// cached. Read errors are logged and skipped (best-effort).
+fn fetch_and_cache_notes(shas: &[String]) -> Result<Vec<String>, GitAiError> {
+    use crate::api::client::{ApiClient, ApiContext};
+
     let cfg = crate::config::Config::fresh();
     let backend_url = match cfg.notes_backend_url() {
         Some(url) => url.to_string(),
         None => {
             tracing::debug!(
-                "warm_cache_for_remote: notes_backend.backend_url is not configured; skipping"
+                "notes backend fetch: notes_backend.backend_url is not configured; skipping"
             );
-            return Ok(());
+            return Ok(Vec::new());
         }
     };
     let ctx = ApiContext::new(Some(backend_url));
@@ -490,51 +532,52 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
 
     // Skip when not authenticated (matches daemon flush_notes pattern).
     if !client.is_logged_in() && !client.has_api_key() {
-        tracing::debug!("warm_cache_for_remote: not authenticated; skipping");
-        return Ok(());
+        tracing::debug!("notes backend fetch: not authenticated; skipping");
+        return Ok(Vec::new());
     }
 
-    for chunk in uncached.chunks(100) {
+    let mut cached = Vec::new();
+    for chunk in shas.chunks(100) {
         let sha_refs: Vec<&str> = chunk.iter().map(|s| s.as_str()).collect();
         match client.read_notes(&sha_refs) {
             Ok(response) => {
                 if response.notes.is_empty() {
                     continue;
                 }
-                // 4. Write returned entries as already-synced cache rows.
                 let entries: Vec<(String, String)> = response.notes.into_iter().collect();
                 match crate::notes::db::NotesDatabase::global() {
                     Ok(db) => match db.lock() {
                         Ok(mut lock) => {
                             if let Err(e) = lock.cache_synced_notes(&entries) {
                                 tracing::warn!(
-                                    "warm_cache_for_remote: cache_synced_notes error: {}",
+                                    "notes backend fetch: cache_synced_notes error: {}",
                                     e
                                 );
                             } else {
                                 tracing::debug!(
                                     count = entries.len(),
-                                    "warm_cache_for_remote: cached notes from remote"
+                                    "notes backend fetch: cached notes from backend"
                                 );
+                                cached.extend(entries.into_iter().map(|(sha, _)| sha));
                             }
                         }
                         Err(e) => {
-                            tracing::warn!("warm_cache_for_remote: DB lock poisoned: {}", e);
+                            tracing::warn!("notes backend fetch: DB lock poisoned: {}", e);
                         }
                     },
                     Err(e) => {
-                        tracing::warn!("warm_cache_for_remote: failed to open notes-db: {}", e);
+                        tracing::warn!("notes backend fetch: failed to open notes-db: {}", e);
                     }
                 }
             }
             Err(e) => {
                 // Best-effort: log and continue.
-                tracing::warn!("warm_cache_for_remote: read_notes error: {}", e);
+                tracing::warn!("notes backend fetch: read_notes error: {}", e);
             }
         }
     }
 
-    Ok(())
+    Ok(cached)
 }
 
 // --- HTTP backend helpers (private) ---
