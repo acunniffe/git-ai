@@ -231,6 +231,7 @@ jobs:
         env:
           CARGO_INCREMENTAL: 0
           GIT_AI_TEST_SHARED_DAEMON_POOL_SIZE: ${{ matrix.daemon_pool }}
+          GIT_AI_TEST_ARTIFACT_DIR: ${{ runner.temp }}/git-ai-test-artifacts
           RUSTFLAGS: ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
 
       - name: Run tests (Windows)
@@ -325,6 +326,16 @@ jobs:
         env:
           CARGO_INCREMENTAL: 0
           GIT_AI_TEST_SHARED_DAEMON_POOL_SIZE: ${{ matrix.daemon_pool }}
+          GIT_AI_TEST_ARTIFACT_DIR: ${{ runner.temp }}/git-ai-test-artifacts
+
+      - name: Upload daemon completion diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: daemon-completion-${{ matrix.os }}-${{ matrix.mode }}-${{ matrix.shard_index }}
+          path: ${{ runner.temp }}/git-ai-test-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
 
   ubuntu-test-complete:
     name: Test on ubuntu-latest

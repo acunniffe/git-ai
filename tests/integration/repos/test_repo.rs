@@ -993,9 +993,12 @@ pub(crate) struct DaemonTestCompletionLogEntry {
 /// own classification, when that entry is new-format (non-empty
 /// `semantic_events`) but reports no `CommitCreated`/`CommitAmended` SHA --
 /// no amount of retrying makes a note appear for a commit the analyzer never
-/// produced a HEAD-transition event for. Falls through to `Ok(())` (the
-/// generic fs-visibility retry in `commit_with_env`) when no matching entry
-/// is found, when it reports a SHA, or when it predates this diagnostic
+/// produced a HEAD-transition event for. A reported SHA only satisfies the
+/// diagnostic when it matches `head_commit`; a different SHA means the
+/// completion entry belongs to another command/commit and is equally unable
+/// to prove that this commit's note generation was attempted. Falls through
+/// to `Ok(())` (the generic fs-visibility retry in `commit_with_env`) when no
+/// matching entry is found or when it predates this diagnostic
 /// (`semantic_events` empty) and we therefore cannot tell.
 fn commit_completion_diagnostic(
     entries: &[DaemonTestCompletionLogEntry],
@@ -1007,22 +1010,27 @@ fn commit_completion_diagnostic(
     }) else {
         return Ok(());
     };
-    if entry.semantic_events.is_empty() || !entry.commit_shas.is_empty() {
+    if entry.semantic_events.is_empty() || entry.commit_shas.iter().any(|sha| sha == head_commit) {
         return Ok(());
     }
     let reason = entry
         .commit_skip_reason
         .as_deref()
-        .unwrap_or("no_commit_event");
+        .unwrap_or(if entry.commit_shas.is_empty() {
+            "no_commit_event"
+        } else {
+            "commit_sha_mismatch"
+        });
     Err(format!(
-        "daemon processed commit {head_commit} as {reason} (analyzer events: {:?}) -- \
+        "daemon processed commit {head_commit} as {reason} (analyzer events: {:?}, \
+         reported commit SHAs: {:?}, completion entry: {:?}) -- \
          no note was or will be generated for it. The usual cause is the reflog-cursor \
          race: RefCursor enrichment lost the race with git's own reflog append, so \
          HistoryAnalyzer saw no HEAD transition and emitted OpaqueCommand instead of \
          CommitCreated, and handle_commit_created never ran. This is NOT a filesystem-\
          visibility delay -- retrying will not help. See CLAUDE.md's daemon trace2 \
          ingestion notes and docs/architecture/daemon-trace2-ingestion-spec.md.",
-        entry.semantic_events
+        entry.semantic_events, entry.commit_shas, entry
     ))
 }
 
@@ -3348,6 +3356,30 @@ impl TestRepo {
         baseline: usize,
     ) -> Result<(), String> {
         commit_completion_diagnostic(&self.daemon_completion_entries(), head_commit, baseline)
+            .map_err(|error| {
+                format!(
+                    "{error} (worktree: {}, daemon family: {})",
+                    self.path.display(),
+                    self.daemon_family_key()
+                )
+            })
+    }
+
+    /// Preserve the daemon completion log when a commit has no authorship
+    /// note. CI can set `GIT_AI_TEST_ARTIFACT_DIR` to retain this evidence;
+    /// local runs remain unchanged when the variable is absent.
+    fn maybe_save_daemon_completion_artifact(&self, head_commit: &str) {
+        let Some(artifact_dir) = std::env::var_os("GIT_AI_TEST_ARTIFACT_DIR") else {
+            return;
+        };
+        let artifact_dir = PathBuf::from(artifact_dir);
+        if fs::create_dir_all(&artifact_dir).is_err() {
+            return;
+        }
+        let family_key = self.daemon_family_key();
+        let source = self.daemon_completion_log_path_for_family(&family_key);
+        let destination = artifact_dir.join(format!("daemon-completion-{head_commit}.jsonl"));
+        let _ = fs::copy(source, destination);
     }
 
     pub fn commit_with_env(
@@ -3375,7 +3407,12 @@ impl TestRepo {
                 self.sync_daemon_force();
 
                 if self.has_active_daemon() {
-                    self.fail_fast_on_opaque_commit_completion(&head_commit, completion_baseline)?;
+                    if let Err(error) = self
+                        .fail_fast_on_opaque_commit_completion(&head_commit, completion_baseline)
+                    {
+                        self.maybe_save_daemon_completion_artifact(&head_commit);
+                        return Err(error);
+                    }
                 }
 
                 // In daemon mode, the authorship note may not be immediately
@@ -3393,12 +3430,16 @@ impl TestRepo {
                         }
                     }
                 }
-                let content = content.ok_or_else(|| {
-                    format!(
-                        "No authorship log found for new commit {} after daemon sync",
-                        head_commit
-                    )
-                })?;
+                let content = match content {
+                    Some(content) => content,
+                    None => {
+                        self.maybe_save_daemon_completion_artifact(&head_commit);
+                        return Err(format!(
+                            "No authorship log found for new commit {} after daemon sync",
+                            head_commit
+                        ));
+                    }
+                };
                 let authorship_log = AuthorshipLog::deserialize_from_string(&content)
                     .map_err(|e| format!("Failed to parse authorship log: {}", e))?;
 
@@ -4039,6 +4080,27 @@ mod tests {
             Ok(()),
             "a matching commit_shas entry means note generation was attempted; \
              any remaining gap is a pure fs-visibility wait for the retry loop"
+        );
+    }
+
+    #[test]
+    fn commit_completion_diagnostic_fails_when_reported_sha_does_not_match_head() {
+        let entries = vec![completion_entry(
+            "commit",
+            vec!["CommitCreated"],
+            vec!["another-commit"],
+            None,
+        )];
+
+        let error = commit_completion_diagnostic(&entries, "deadbeef", 0)
+            .expect_err("a completion entry for another commit must not satisfy this commit");
+        assert!(
+            error.contains("deadbeef"),
+            "error should name the commit sha it was diagnosing: {error}"
+        );
+        assert!(
+            error.contains("another-commit"),
+            "error should include the daemon-reported commit shas: {error}"
         );
     }
 
