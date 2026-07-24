@@ -1,6 +1,7 @@
 use super::*;
 use crate::model::checkpoint_request::{CheckpointRequest, PreparedPathRole};
 use crate::model::working_log::CheckpointKind;
+use crate::operations::daemon::actor_coordinator_side_effects::commit_enrichment_unrecoverable_error;
 use crate::operations::daemon::cherry_pick_helpers::{
     cherry_pick_source_args_from_command_args, rebase_new_tip_from_command,
     revert_source_args_from_command_args,
@@ -435,4 +436,102 @@ fn compute_watermarks_uses_symlink_metadata_not_target_mtime() {
     // This assertion documents the intent: if symlink and target mtimes differ,
     // the watermark must track the symlink, not the target.
     let _ = target_mtime; // used only as documentation; may equal symlink_mtime on some FS
+}
+
+fn test_commit_command(
+    invoked_args: &[&str],
+    exit_code: i32,
+) -> crate::model::domain::NormalizedCommand {
+    let mut cmd = test_rebase_command(invoked_args, Vec::new());
+    cmd.raw_argv = std::iter::once("git".to_string())
+        .chain(std::iter::once("commit".to_string()))
+        .chain(invoked_args.iter().map(|arg| arg.to_string()))
+        .collect();
+    cmd.primary_command = Some("commit".to_string());
+    cmd.invoked_command = Some("commit".to_string());
+    cmd.exit_code = exit_code;
+    cmd
+}
+
+#[test]
+fn commit_enrichment_unrecoverable_error_fires_for_opaque_exit_zero_commit() {
+    let cmd = test_commit_command(&["-m", "msg"], 0);
+    let error = commit_enrichment_unrecoverable_error(
+        &cmd,
+        &[crate::model::domain::SemanticEvent::OpaqueCommand],
+    );
+    assert!(
+        error.is_some(),
+        "an exit-0 commit whose only event is OpaqueCommand must fail loud"
+    );
+}
+
+#[test]
+fn commit_enrichment_unrecoverable_error_is_none_for_dry_run() {
+    let cmd = test_commit_command(&["-m", "msg", "--dry-run"], 0);
+    assert!(
+        commit_enrichment_unrecoverable_error(
+            &cmd,
+            &[crate::model::domain::SemanticEvent::OpaqueCommand],
+        )
+        .is_none(),
+        "--dry-run never touches the reflog and must not be treated as a lost note"
+    );
+}
+
+#[test]
+fn commit_enrichment_unrecoverable_error_is_none_for_dry_run_synonyms() {
+    // Per git-commit(1), --short / --porcelain / --long each imply --dry-run
+    // and exit 0 with staged changes while moving no ref.
+    for flag in ["--short", "--porcelain", "--long"] {
+        let cmd = test_commit_command(&["-m", "msg", flag], 0);
+        assert!(
+            commit_enrichment_unrecoverable_error(
+                &cmd,
+                &[crate::model::domain::SemanticEvent::OpaqueCommand],
+            )
+            .is_none(),
+            "{flag} implies --dry-run for git commit and must not fire the gate"
+        );
+    }
+}
+
+#[test]
+fn commit_enrichment_unrecoverable_error_is_none_for_nonzero_exit() {
+    let cmd = test_commit_command(&["-m", "msg"], 1);
+    assert!(
+        commit_enrichment_unrecoverable_error(
+            &cmd,
+            &[crate::model::domain::SemanticEvent::OpaqueCommand],
+        )
+        .is_none(),
+        "a rejected/failed commit attempt routinely moves no ref and is not a bug"
+    );
+}
+
+#[test]
+fn commit_enrichment_unrecoverable_error_is_none_when_head_transition_found() {
+    let cmd = test_commit_command(&["-m", "msg"], 0);
+    let events = [crate::model::domain::SemanticEvent::CommitCreated {
+        base: None,
+        new_head: "head1".to_string(),
+    }];
+    assert!(
+        commit_enrichment_unrecoverable_error(&cmd, &events).is_none(),
+        "a commit that resolved a HEAD transition must never be flagged"
+    );
+}
+
+#[test]
+fn commit_enrichment_unrecoverable_error_is_none_for_non_commit_commands() {
+    let mut cmd = test_commit_command(&[], 0);
+    cmd.primary_command = Some("branch".to_string());
+    assert!(
+        commit_enrichment_unrecoverable_error(
+            &cmd,
+            &[crate::model::domain::SemanticEvent::OpaqueCommand],
+        )
+        .is_none(),
+        "an opaque outcome for a non-commit command (e.g. `git branch`) is routine"
+    );
 }

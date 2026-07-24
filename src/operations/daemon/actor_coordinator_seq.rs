@@ -466,7 +466,12 @@ fn commit_created_shas(events: &[crate::model::domain::SemanticEvent]) -> Vec<St
 /// command that actually completed (exit 0) this is the reflog-cursor race
 /// documented in the daemon-trace2-ingestion spec, not a note-write or
 /// filesystem-visibility problem.
-fn commit_skip_reason(
+///
+/// `pub(crate)`: also reused by `actor_coordinator_side_effects` as the
+/// fail-loud gate for exit-0 commits where enrichment still found no HEAD
+/// transition, so both sites recognize the exact same condition instead of
+/// drifting apart.
+pub(crate) fn commit_skip_reason(
     primary_command: Option<&str>,
     events: &[crate::model::domain::SemanticEvent],
 ) -> Option<String> {
