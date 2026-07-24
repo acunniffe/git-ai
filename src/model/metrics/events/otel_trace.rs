@@ -1,143 +1,19 @@
-use super::super::pos_encoded::PosEncoded;
-use super::super::types::{EventValues, MetricEventId, SparseArray};
+use super::raw_json_event::raw_json_event;
 
-/// Value positions for "otel_trace" event.
-pub mod otel_trace_pos {
-    pub const RAW_JSON: usize = 0;
-    pub const EXTERNAL_EVENT_ID: usize = 1;
-    pub const EXTERNAL_PARENT_EVENT_ID: usize = 2;
-    pub const EXTERNAL_TOOL_USE_ID: usize = 3;
-}
-
-/// Values for Event ID 6: otel_trace
-///
-/// Each event is an OTEL span from a Copilot traces SQLite DB, stored as JSON at position 0.
-/// Uses EventAttributes for session_id, trace_id, tool metadata.
-#[derive(Debug, Clone, Default)]
-pub struct OtelTraceValues {
-    pub raw_json: serde_json::Value,
-    pub external_event_id: Option<String>,
-    pub external_parent_event_id: Option<String>,
-    pub external_tool_use_id: Option<String>,
-}
-
-impl OtelTraceValues {
-    pub fn new(raw_json: serde_json::Value) -> Self {
-        Self {
-            raw_json,
-            external_event_id: None,
-            external_parent_event_id: None,
-            external_tool_use_id: None,
-        }
-    }
-
-    pub fn with_ids(
-        raw_json: serde_json::Value,
-        external_event_id: Option<String>,
-        external_parent_event_id: Option<String>,
-        external_tool_use_id: Option<String>,
-    ) -> Self {
-        Self {
-            raw_json,
-            external_event_id,
-            external_parent_event_id,
-            external_tool_use_id,
-        }
-    }
-}
-
-impl PosEncoded for OtelTraceValues {
-    fn to_sparse(&self) -> SparseArray {
-        let mut map = SparseArray::new();
-        map.insert(otel_trace_pos::RAW_JSON.to_string(), self.raw_json.clone());
-        if let Some(ref id) = self.external_event_id {
-            map.insert(
-                otel_trace_pos::EXTERNAL_EVENT_ID.to_string(),
-                serde_json::Value::String(id.clone()),
-            );
-        }
-        if let Some(ref id) = self.external_parent_event_id {
-            map.insert(
-                otel_trace_pos::EXTERNAL_PARENT_EVENT_ID.to_string(),
-                serde_json::Value::String(id.clone()),
-            );
-        }
-        if let Some(ref id) = self.external_tool_use_id {
-            map.insert(
-                otel_trace_pos::EXTERNAL_TOOL_USE_ID.to_string(),
-                serde_json::Value::String(id.clone()),
-            );
-        }
-        map
-    }
-
-    fn from_sparse(arr: &SparseArray) -> Self {
-        let raw_json = arr
-            .get(&otel_trace_pos::RAW_JSON.to_string())
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-        let external_event_id = arr
-            .get(&otel_trace_pos::EXTERNAL_EVENT_ID.to_string())
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        let external_parent_event_id = arr
-            .get(&otel_trace_pos::EXTERNAL_PARENT_EVENT_ID.to_string())
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        let external_tool_use_id = arr
-            .get(&otel_trace_pos::EXTERNAL_TOOL_USE_ID.to_string())
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        Self {
-            raw_json,
-            external_event_id,
-            external_parent_event_id,
-            external_tool_use_id,
-        }
-    }
-}
-
-impl EventValues for OtelTraceValues {
-    fn event_id() -> MetricEventId {
-        MetricEventId::OtelTrace
-    }
-
-    fn to_sparse(&self) -> SparseArray {
-        PosEncoded::to_sparse(self)
-    }
-
-    fn into_sparse(self) -> SparseArray {
-        let mut map = SparseArray::new();
-        map.insert(otel_trace_pos::RAW_JSON.to_string(), self.raw_json);
-        if let Some(id) = self.external_event_id {
-            map.insert(
-                otel_trace_pos::EXTERNAL_EVENT_ID.to_string(),
-                serde_json::Value::String(id),
-            );
-        }
-        if let Some(id) = self.external_parent_event_id {
-            map.insert(
-                otel_trace_pos::EXTERNAL_PARENT_EVENT_ID.to_string(),
-                serde_json::Value::String(id),
-            );
-        }
-        if let Some(id) = self.external_tool_use_id {
-            map.insert(
-                otel_trace_pos::EXTERNAL_TOOL_USE_ID.to_string(),
-                serde_json::Value::String(id),
-            );
-        }
-        map
-    }
-
-    fn from_sparse(arr: &SparseArray) -> Self {
-        PosEncoded::from_sparse(arr)
-    }
+raw_json_event! {
+    name: OtelTraceValues,
+    pos_mod: otel_trace_pos,
+    event_variant: OtelTrace,
+    event_num: 6,
+    event_name: "otel_trace",
+    description: "Each event is an OTEL span from a Copilot traces SQLite DB, stored as JSON at position 0.",
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::metrics::pos_encoded::PosEncoded;
+    use crate::model::metrics::types::{EventValues, MetricEventId};
 
     #[test]
     fn test_otel_trace_values_new() {
