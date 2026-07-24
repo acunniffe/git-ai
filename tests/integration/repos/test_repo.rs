@@ -963,6 +963,67 @@ pub(crate) struct DaemonTestCompletionLogEntry {
     pub(crate) test_sync_session: Option<String>,
     pub(crate) status: String,
     pub(crate) error: Option<String>,
+    /// Semantic event kinds the daemon's analyzer produced for this command
+    /// (e.g. `"CommitCreated"`, `"OpaqueCommand"`). Empty for entries from a
+    /// daemon binary predating this field -- `#[serde(default)]` so older
+    /// completion log lines still parse.
+    #[serde(default)]
+    pub(crate) semantic_events: Vec<String>,
+    /// `new_head` SHAs from `CommitCreated`/`CommitAmended` events seen for
+    /// this command. See `commit_skip_reason` for why this can be empty.
+    #[serde(default)]
+    pub(crate) commit_shas: Vec<String>,
+    /// `Some("opaque_command")` when the daemon's analyzer produced only an
+    /// `OpaqueCommand` event for this command -- see the doc comment on
+    /// `TestCompletionLogEntry` in `daemon_config.rs` for what that means.
+    #[serde(default)]
+    pub(crate) commit_skip_reason: Option<String>,
+}
+
+/// Diagnostic check run by `commit_with_env` after `sync_daemon_force()` has
+/// drained a commit's completion session (see `TestRepo::
+/// fail_fast_on_opaque_commit_completion`, its only caller). Pure over
+/// already-fetched `entries` so the classification logic is unit-testable
+/// without spinning up a daemon or reproducing the reflog-cursor race that
+/// motivated it.
+///
+/// Looks at the entries appended since `baseline` for the last one that
+/// classified this `git commit` invocation (`kind == "command"`,
+/// `primary_command == "commit"`). Fails immediately, carrying the daemon's
+/// own classification, when that entry is new-format (non-empty
+/// `semantic_events`) but reports no `CommitCreated`/`CommitAmended` SHA --
+/// no amount of retrying makes a note appear for a commit the analyzer never
+/// produced a HEAD-transition event for. Falls through to `Ok(())` (the
+/// generic fs-visibility retry in `commit_with_env`) when no matching entry
+/// is found, when it reports a SHA, or when it predates this diagnostic
+/// (`semantic_events` empty) and we therefore cannot tell.
+fn commit_completion_diagnostic(
+    entries: &[DaemonTestCompletionLogEntry],
+    head_commit: &str,
+    baseline: usize,
+) -> Result<(), String> {
+    let Some(entry) = entries.iter().skip(baseline).rev().find(|entry| {
+        entry.kind == "command" && entry.primary_command.as_deref() == Some("commit")
+    }) else {
+        return Ok(());
+    };
+    if entry.semantic_events.is_empty() || !entry.commit_shas.is_empty() {
+        return Ok(());
+    }
+    let reason = entry
+        .commit_skip_reason
+        .as_deref()
+        .unwrap_or("no_commit_event");
+    Err(format!(
+        "daemon processed commit {head_commit} as {reason} (analyzer events: {:?}) -- \
+         the reflog cursor race documented in the completion-log diagnostics closed this \
+         gap: RefCursor enrichment lost the race with git's own reflog append, so \
+         HistoryAnalyzer saw no HEAD transition and emitted OpaqueCommand instead of \
+         CommitCreated, and handle_commit_created never ran. This is NOT a filesystem-\
+         visibility delay -- retrying will not help. See CLAUDE.md's daemon trace2 \
+         ingestion notes and docs/architecture/daemon-trace2-ingestion-spec.md.",
+        entry.semantic_events
+    ))
 }
 
 fn daemon_sync_registry() -> &'static Mutex<DaemonSyncRegistry> {
@@ -3266,12 +3327,36 @@ impl TestRepo {
         self.commit_with_env(message, envs, None)
     }
 
+    /// After `sync_daemon_force()` has drained this commit's completion
+    /// session, inspect the completion log entries appended since `baseline`
+    /// for the one that classified this `git commit` invocation. If the
+    /// daemon's own analyzer recorded no HEAD-transition event for it (the
+    /// reflog-cursor race: `RefCursor` enrichment lost the race with git's
+    /// own reflog append, so `HistoryAnalyzer` saw empty ref changes and fell
+    /// back to `OpaqueCommand`), fail immediately with that classification
+    /// instead of falling through to the generic fs-visibility retry below --
+    /// no amount of retrying makes a note appear for a commit the daemon
+    /// never tried to process. `semantic_events` is only populated by daemon
+    /// binaries built after this diagnostic was added (see
+    /// `TestCompletionLogEntry` in `daemon_config.rs`); an empty
+    /// `semantic_events` on a matched entry means we can't tell either way,
+    /// so we conservatively fall through to the retry rather than risk a
+    /// false positive against an older daemon in the shared test pool.
+    fn fail_fast_on_opaque_commit_completion(
+        &self,
+        head_commit: &str,
+        baseline: usize,
+    ) -> Result<(), String> {
+        commit_completion_diagnostic(&self.daemon_completion_entries(), head_commit, baseline)
+    }
+
     pub fn commit_with_env(
         &self,
         message: &str,
         envs: &[(&str, &str)],
         working_dir: Option<&std::path::Path>,
     ) -> Result<NewCommit, String> {
+        let completion_baseline = self.daemon_completion_entries().len();
         let output = self.git_with_env(&["commit", "-m", message], envs, working_dir);
 
         // println!("commit output: {:?}", output);
@@ -3288,6 +3373,10 @@ impl TestRepo {
                     .map_err(|e| format!("Failed to get HEAD target: {}", e))?;
 
                 self.sync_daemon_force();
+
+                if self.has_active_daemon() {
+                    self.fail_fast_on_opaque_commit_completion(&head_commit, completion_baseline)?;
+                }
 
                 // In daemon mode, the authorship note may not be immediately
                 // visible after the session completes due to filesystem flush
@@ -3891,6 +3980,116 @@ mod tests {
             git_ai::config::internal_dir_path().expect("internal dir should resolve"),
             home.join(".git-ai").join("internal"),
             "in-process git-ai config lookup must use the isolated test home"
+        );
+    }
+
+    fn completion_entry(
+        primary_command: &str,
+        semantic_events: Vec<&str>,
+        commit_shas: Vec<&str>,
+        commit_skip_reason: Option<&str>,
+    ) -> DaemonTestCompletionLogEntry {
+        DaemonTestCompletionLogEntry {
+            seq: 1,
+            kind: "command".to_string(),
+            primary_command: Some(primary_command.to_string()),
+            exit_code: Some(0),
+            sync_tracked: true,
+            test_sync_session: None,
+            status: "ok".to_string(),
+            error: None,
+            semantic_events: semantic_events.into_iter().map(String::from).collect(),
+            commit_shas: commit_shas.into_iter().map(String::from).collect(),
+            commit_skip_reason: commit_skip_reason.map(String::from),
+        }
+    }
+
+    #[test]
+    fn commit_completion_diagnostic_fails_fast_on_opaque_commit_classification() {
+        let entries = vec![completion_entry(
+            "commit",
+            vec!["OpaqueCommand"],
+            vec![],
+            Some("opaque_command"),
+        )];
+
+        let error = commit_completion_diagnostic(&entries, "deadbeef", 0)
+            .expect_err("an opaque-command classification must fail fast, not retry");
+        assert!(
+            error.contains("opaque_command"),
+            "error should carry the daemon's own classification: {error}"
+        );
+        assert!(
+            error.contains("deadbeef"),
+            "error should name the commit sha it was diagnosing: {error}"
+        );
+    }
+
+    #[test]
+    fn commit_completion_diagnostic_passes_when_commit_sha_is_reported() {
+        let entries = vec![completion_entry(
+            "commit",
+            vec!["CommitCreated"],
+            vec!["deadbeef"],
+            None,
+        )];
+
+        assert_eq!(
+            commit_completion_diagnostic(&entries, "deadbeef", 0),
+            Ok(()),
+            "a matching commit_shas entry means note generation was attempted; \
+             any remaining gap is a pure fs-visibility wait for the retry loop"
+        );
+    }
+
+    #[test]
+    fn commit_completion_diagnostic_falls_through_for_pre_migration_entries() {
+        // An entry from a daemon binary predating this diagnostic has no
+        // semantic_events at all (serde defaults it to empty). We cannot
+        // distinguish "genuinely opaque" from "old format" here, so we must
+        // not fail fast -- that would be a false positive against an older
+        // daemon replaying from the shared test pool.
+        let entries = vec![completion_entry("commit", vec![], vec![], None)];
+
+        assert_eq!(
+            commit_completion_diagnostic(&entries, "deadbeef", 0),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn commit_completion_diagnostic_falls_through_when_no_matching_entry_exists() {
+        let entries = vec![completion_entry(
+            "branch",
+            vec!["BranchCreated"],
+            vec![],
+            None,
+        )];
+
+        assert_eq!(
+            commit_completion_diagnostic(&entries, "deadbeef", 0),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn commit_completion_diagnostic_only_inspects_entries_after_baseline() {
+        // An opaque commit entry that predates this specific commit attempt
+        // (e.g. left over from an earlier commit_with_env call the caller
+        // already resolved) must not leak into this diagnosis.
+        let entries = vec![
+            completion_entry(
+                "commit",
+                vec!["OpaqueCommand"],
+                vec![],
+                Some("opaque_command"),
+            ),
+            completion_entry("commit", vec!["CommitCreated"], vec!["deadbeef"], None),
+        ];
+
+        assert_eq!(
+            commit_completion_diagnostic(&entries, "deadbeef", 1),
+            Ok(())
         );
     }
 }

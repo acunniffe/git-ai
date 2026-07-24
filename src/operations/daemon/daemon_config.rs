@@ -249,6 +249,28 @@ pub struct TestCompletionLogEntry {
     pub(crate) sync_tracked: bool,
     pub(crate) status: String,
     pub(crate) error: Option<String>,
+    /// Machine-readable semantic event kinds the analyzer produced for this
+    /// command (e.g. `"CommitCreated"`, `"OpaqueCommand"`). Diagnostic only:
+    /// empty for checkpoint entries and for command entries logged by a
+    /// daemon binary predating this field (the shared test daemon pool can
+    /// replay entries across binary versions mid-migration, so this must
+    /// stay optional -- `#[serde(default)]` -- for backward compatibility).
+    #[serde(default)]
+    pub(crate) semantic_events: Vec<String>,
+    /// `new_head` SHAs pulled from `CommitCreated`/`CommitAmended` events
+    /// seen for this command, in event order. A `commit`-family command
+    /// whose entry has non-empty `semantic_events` but empty `commit_shas`
+    /// produced no HEAD-transition event at all -- see `commit_skip_reason`.
+    #[serde(default)]
+    pub(crate) commit_shas: Vec<String>,
+    /// Set when the analyzer's only event for this command was
+    /// `OpaqueCommand` (i.e. it fell back to the no-op-classification
+    /// default because ref-change enrichment produced no HEAD/branch
+    /// transition). Currently the only value is `"opaque_command"`; this is
+    /// the reflog-cursor race documented in the daemon-trace2-ingestion
+    /// spec, not a note-write or filesystem-visibility problem.
+    #[serde(default)]
+    pub(crate) commit_skip_reason: Option<String>,
 }
 
 pub struct DaemonLock {

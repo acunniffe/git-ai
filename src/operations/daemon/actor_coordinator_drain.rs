@@ -245,6 +245,9 @@ impl ActorDaemonCoordinator {
                                     sync_tracked: true,
                                     status: "suppressed".to_string(),
                                     error: None,
+                                    semantic_events: Vec::new(),
+                                    commit_shas: Vec::new(),
+                                    commit_skip_reason: None,
                                 };
                                 let _ = self.maybe_append_test_completion_log(family, &log_entry);
                                 if let Some(respond_to) = respond_to {
@@ -386,6 +389,9 @@ impl ActorDaemonCoordinator {
                                 "error".to_string()
                             },
                             error: result.as_ref().err().map(|error| error.to_string()),
+                            semantic_events: Vec::new(),
+                            commit_shas: Vec::new(),
+                            commit_skip_reason: None,
                         };
                         if let Err(error) =
                             self.maybe_append_test_completion_log(family, &log_entry)

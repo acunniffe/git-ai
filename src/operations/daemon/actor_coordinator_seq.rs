@@ -396,6 +396,7 @@ impl ActorDaemonCoordinator {
             crate::operations::daemon::test_sync::test_sync_session_from_invocation(
                 &parsed_invocation_for_normalized_command(&applied.command),
             );
+        let events = &applied.analysis.events;
         let log_entry = TestCompletionLogEntry {
             seq: applied.seq,
             family_key: family.to_string(),
@@ -410,11 +411,126 @@ impl ActorDaemonCoordinator {
                 "error".to_string()
             },
             error: result.as_ref().err().map(|error| error.to_string()),
+            semantic_events: events.iter().map(semantic_event_kind).collect(),
+            commit_shas: commit_created_shas(events),
+            commit_skip_reason: commit_skip_reason(events),
         };
         if let Err(error) = self.maybe_append_test_completion_log(family, &log_entry) {
             let _ = self.record_side_effect_error(family, error_order, &error);
             return Err(error);
         }
         Ok(())
+    }
+}
+
+/// Variant name of a `SemanticEvent`, e.g. `"CommitCreated"` or
+/// `"OpaqueCommand"`. Diagnostic-only (populates `TestCompletionLogEntry`):
+/// derived from `Debug` so newly added `SemanticEvent` variants are covered
+/// automatically instead of silently falling through a hand-maintained match.
+fn semantic_event_kind(event: &crate::model::domain::SemanticEvent) -> String {
+    let debug = format!("{event:?}");
+    debug
+        .split(['{', '('])
+        .next()
+        .unwrap_or(&debug)
+        .trim()
+        .to_string()
+}
+
+/// `new_head` SHAs from `CommitCreated`/`CommitAmended` events, in event
+/// order. Non-empty here means the analyzer resolved a HEAD transition for
+/// the command and post-commit note generation was attempted for that SHA
+/// (subject to repo allow-listing / rebase deferral inside
+/// `handle_commit_created`/`handle_commit_amended`).
+fn commit_created_shas(events: &[crate::model::domain::SemanticEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            crate::model::domain::SemanticEvent::CommitCreated { new_head, .. }
+            | crate::model::domain::SemanticEvent::CommitAmended { new_head, .. } => {
+                Some(new_head.clone())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// `Some("opaque_command")` when the analyzer's only event was
+/// `OpaqueCommand` -- i.e. it fell back to the no-op default because
+/// ref-change enrichment (`RefCursor::enrich_command`) produced no
+/// HEAD/branch transition for a command that HistoryAnalyzer expected one
+/// from (commit/reset/rebase/cherry-pick/merge/revert/update-ref). For a
+/// command that actually completed (exit 0) this is the reflog-cursor race
+/// documented in the daemon-trace2-ingestion spec, not a note-write or
+/// filesystem-visibility problem.
+fn commit_skip_reason(events: &[crate::model::domain::SemanticEvent]) -> Option<String> {
+    matches!(events, [crate::model::domain::SemanticEvent::OpaqueCommand])
+        .then(|| "opaque_command".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::domain::SemanticEvent;
+
+    #[test]
+    fn semantic_event_kind_names_struct_and_unit_variants() {
+        assert_eq!(
+            semantic_event_kind(&SemanticEvent::CommitCreated {
+                base: None,
+                new_head: "abc123".to_string(),
+            }),
+            "CommitCreated"
+        );
+        assert_eq!(
+            semantic_event_kind(&SemanticEvent::OpaqueCommand),
+            "OpaqueCommand"
+        );
+    }
+
+    #[test]
+    fn commit_created_shas_collects_new_head_from_commit_and_amend_events_only() {
+        let events = vec![
+            SemanticEvent::CommitCreated {
+                base: Some("base1".to_string()),
+                new_head: "head1".to_string(),
+            },
+            SemanticEvent::CommitAmended {
+                old_head: "old2".to_string(),
+                new_head: "head2".to_string(),
+            },
+        ];
+        assert_eq!(commit_created_shas(&events), vec!["head1", "head2"]);
+        assert!(commit_created_shas(&[SemanticEvent::OpaqueCommand]).is_empty());
+    }
+
+    #[test]
+    fn commit_skip_reason_flags_opaque_only_event_list() {
+        assert_eq!(
+            commit_skip_reason(&[SemanticEvent::OpaqueCommand]),
+            Some("opaque_command".to_string())
+        );
+    }
+
+    #[test]
+    fn commit_skip_reason_is_none_when_commit_created_present_or_events_absent() {
+        let commit_created = vec![SemanticEvent::CommitCreated {
+            base: None,
+            new_head: "head1".to_string(),
+        }];
+        assert_eq!(commit_skip_reason(&commit_created), None);
+        assert_eq!(commit_skip_reason(&[]), None);
+
+        // OpaqueCommand alongside another event should never happen in
+        // practice (HistoryAnalyzer only pushes it when `events` started
+        // empty), but the classification stays conservative if it ever did.
+        let mixed = vec![
+            SemanticEvent::OpaqueCommand,
+            SemanticEvent::CommitCreated {
+                base: None,
+                new_head: "head1".to_string(),
+            },
+        ];
+        assert_eq!(commit_skip_reason(&mixed), None);
     }
 }

@@ -5250,3 +5250,82 @@ fn await_rejects_zero_timeout() {
         "await should report an input validation error: {error}"
     );
 }
+
+// -----------------------------------------------------------------------
+// Completion log diagnostics: `semantic_events` / `commit_shas` /
+// `commit_skip_reason` on `TestCompletionLogEntry`.
+//
+// These close the diagnostic gap behind the recurring
+// "No authorship log found for new commit <sha> after daemon sync" flake:
+// a commit whose RefCursor reflog-cursor capture lost the race with git's
+// own reflog append gets no ref enrichment, so HistoryAnalyzer classifies
+// it as `OpaqueCommand` and `handle_commit_created` never runs -- yet the
+// completion entry still reports status "ok" (the command was processed
+// without error; it just produced no commit-shaping event). The fields
+// asserted here let `commit_with_env` (test_repo.rs) tell that apart from a
+// pure filesystem-visibility lag instead of retrying for 500ms and failing
+// with a generic message.
+// -----------------------------------------------------------------------
+
+#[test]
+fn commit_completion_entry_reports_commit_created_event_and_note_sha() {
+    let repo = TestRepo::new();
+    repo.filename("completion-log-normal.txt")
+        .set_contents(lines!["first line"]);
+
+    let new_commit = repo
+        .stage_all_and_commit("normal commit for completion log diagnostics")
+        .expect("commit should succeed and produce an authorship note");
+
+    let commit_entries = completion_entries_for_command(&repo, "commit");
+    let entry = commit_entries
+        .iter()
+        .find(|entry| entry.commit_shas.contains(&new_commit.commit_sha))
+        .unwrap_or_else(|| {
+            panic!(
+                "expected a commit completion entry reporting sha {} among {:?}",
+                new_commit.commit_sha, commit_entries
+            )
+        });
+    assert!(
+        entry.semantic_events.contains(&"CommitCreated".to_string()),
+        "expected CommitCreated in semantic_events, got {:?}",
+        entry.semantic_events
+    );
+    assert_eq!(
+        entry.commit_skip_reason, None,
+        "a successful commit that produced a note must not carry a skip reason: {:?}",
+        entry
+    );
+}
+
+#[test]
+fn branch_completion_entry_has_no_commit_shas_or_skip_reason() {
+    let repo = TestRepo::new();
+    repo.filename("completion-log-branch-seed.txt")
+        .set_contents(lines!["seed"]);
+    repo.stage_all_and_commit("seed commit for branch completion log test")
+        .expect("seed commit should succeed");
+
+    repo.git(&["branch", "completion-log-side-branch"])
+        .expect("git branch should succeed");
+    repo.sync_daemon();
+
+    let branch_entries = completion_entries_for_command(&repo, "branch");
+    assert!(
+        !branch_entries.is_empty(),
+        "expected at least one tracked completion entry for git branch"
+    );
+    for entry in &branch_entries {
+        assert!(
+            entry.commit_shas.is_empty(),
+            "a branch command must never report commit SHAs: {:?}",
+            entry
+        );
+        assert_eq!(
+            entry.commit_skip_reason, None,
+            "a branch command must never carry the commit-only skip reason: {:?}",
+            entry
+        );
+    }
+}
