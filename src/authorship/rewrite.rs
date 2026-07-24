@@ -411,7 +411,10 @@ pub(crate) fn handle_rewrite_event_with_metrics(
                 return Ok(RewriteOutcome::empty());
             }
             let source_shas: Vec<String> = mappings.iter().map(|(src, _)| src.clone()).collect();
-            crate::git::sync_authorship::fetch_missing_notes_for_commits(repo, &source_shas)?;
+            crate::git::sync_authorship::fetch_missing_notes_for_commits_best_effort(
+                repo,
+                &source_shas,
+            );
             let shifted_notes =
                 shift_authorship_notes_merging_existing_with_notes(repo, &mappings)?;
             if !rewrite_metrics_enabled() {
@@ -454,7 +457,7 @@ pub(crate) fn handle_non_fast_forward_rewrite_with_operation(
         return Ok(RewriteOutcome::empty());
     }
     let source_shas: Vec<String> = mappings.iter().map(|(src, _)| src.clone()).collect();
-    crate::git::sync_authorship::fetch_missing_notes_for_commits(repo, &source_shas)?;
+    crate::git::sync_authorship::fetch_missing_notes_for_commits_best_effort(repo, &source_shas);
     let shifted_notes = shift_authorship_notes_merging_existing_with_notes(repo, &mappings)?;
     if !rewrite_metrics_enabled() {
         return Ok(RewriteOutcome::empty());
@@ -487,7 +490,7 @@ fn handle_squash_merge(
         source_commits
     };
 
-    crate::git::sync_authorship::fetch_missing_notes_for_commits(repo, &sources)?;
+    crate::git::sync_authorship::fetch_missing_notes_for_commits_best_effort(repo, &sources);
 
     // Batch-read all source notes in O(1) git calls
     let source_notes_map = notes_api::read_notes_batch(repo, &sources)?;

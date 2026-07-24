@@ -174,6 +174,23 @@ pub fn fetch_missing_notes_for_commits(
     Ok(())
 }
 
+/// Best-effort variant of [`fetch_missing_notes_for_commits`] for rewrite
+/// attribution. A failed fetch must not abort the note shift: sources whose
+/// notes are available locally still deserve migration, and sources that stay
+/// missing end up without a note either way — aborting only widens the loss
+/// to every commit in the rewrite.
+pub fn fetch_missing_notes_for_commits_best_effort(
+    repository: &Repository,
+    source_commits: &[String],
+) {
+    if let Err(error) = fetch_missing_notes_for_commits(repository, source_commits) {
+        tracing::warn!(
+            %error,
+            "source-note fetch failed; shifting the notes that are available locally"
+        );
+    }
+}
+
 // for use with post-fetch and post-pull and post-clone hooks
 // Returns Ok(NotesExistence::Found) if notes were found and fetched,
 // Ok(NotesExistence::NotFound) if confirmed no notes exist on remote,
