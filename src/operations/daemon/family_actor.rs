@@ -13,6 +13,12 @@ use tokio::sync::{mpsc, oneshot};
 const COMMIT_REF_ENRICHMENT_RETRY_DELAYS: &[Duration] =
     &[Duration::from_millis(5), Duration::from_millis(20)];
 
+fn should_retry_commit_ref_enrichment(cmd: &NormalizedCommand) -> bool {
+    cmd.exit_code == 0
+        && cmd.primary_command.as_deref() == Some("commit")
+        && cmd.ref_changes.is_empty()
+}
+
 async fn enrich_command_with_commit_retries(
     ref_cursor: &mut RefCursor,
     cmd: &mut NormalizedCommand,
@@ -25,10 +31,7 @@ async fn enrich_command_with_commit_retries(
     // commit is exact to retry: the matcher still requires the command's own
     // reflog transition and commit message, and the family actor has not
     // reduced the command yet. Never broaden this into a live-HEAD guess.
-    if cmd.exit_code == 0
-        && cmd.primary_command.as_deref() == Some("commit")
-        && cmd.ref_changes.is_empty()
-    {
+    if should_retry_commit_ref_enrichment(cmd) {
         for delay in COMMIT_REF_ENRICHMENT_RETRY_DELAYS {
             tokio::time::sleep(*delay).await;
             command_start_refs = ref_cursor.enrich_command(cmd, state)?;
@@ -298,6 +301,65 @@ mod tests {
                 new: new.to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn commit_enrichment_retry_requires_successful_unenriched_commit() {
+        let mut cmd = sample_normalized_cmd("family-1", 1);
+        assert!(!should_retry_commit_ref_enrichment(&cmd));
+
+        cmd.primary_command = Some("commit".to_string());
+        assert!(should_retry_commit_ref_enrichment(&cmd));
+
+        cmd.exit_code = 1;
+        assert!(!should_retry_commit_ref_enrichment(&cmd));
+
+        cmd.exit_code = 0;
+        cmd.ref_changes.push(RefChange {
+            reference: "HEAD".to_string(),
+            old: "1111111111111111111111111111111111111111".to_string(),
+            new: "2222222222222222222222222222222222222222".to_string(),
+        });
+        assert!(!should_retry_commit_ref_enrichment(&cmd));
+    }
+
+    #[tokio::test]
+    async fn commit_enrichment_fails_closed_when_reflog_entry_stays_missing() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().to_path_buf();
+        let family = FamilyKey::new(worktree.to_string_lossy().to_string());
+        let state = FamilyState {
+            family_key: family.clone(),
+            refs: HashMap::new(),
+            worktrees: HashMap::new(),
+            last_error: None,
+            applied_seq: 0,
+            watermarks: WatermarkState::default(),
+        };
+        let mut cmd = sample_normalized_cmd(&family.to_string(), 1);
+        cmd.scope = CommandScope::Family(family.clone());
+        cmd.family_key = Some(family.clone());
+        cmd.worktree = Some(worktree);
+        cmd.primary_command = Some("commit".to_string());
+        cmd.invoked_command = Some("commit".to_string());
+        cmd.raw_argv = vec![
+            "git".to_string(),
+            "commit".to_string(),
+            "-m".to_string(),
+            "missing".to_string(),
+        ];
+        cmd.invoked_args = vec![
+            "commit".to_string(),
+            "-m".to_string(),
+            "missing".to_string(),
+        ];
+
+        let mut ref_cursor = RefCursor::new(family);
+        enrich_command_with_commit_retries(&mut ref_cursor, &mut cmd, &state)
+            .await
+            .unwrap();
+
+        assert!(cmd.ref_changes.is_empty());
     }
 
     #[tokio::test]
