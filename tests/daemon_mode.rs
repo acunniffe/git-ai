@@ -5324,7 +5324,7 @@ fn branch_completion_entry_has_no_commit_shas_or_skip_reason() {
         );
         assert_eq!(
             entry.commit_skip_reason, None,
-            "a branch command must never carry the commit-only skip reason: {:?}",
+            "non-commit commands never carry a skip reason (daemon gates it to commit-family): {:?}",
             entry
         );
     }

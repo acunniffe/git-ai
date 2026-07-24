@@ -1016,8 +1016,8 @@ fn commit_completion_diagnostic(
         .unwrap_or("no_commit_event");
     Err(format!(
         "daemon processed commit {head_commit} as {reason} (analyzer events: {:?}) -- \
-         the reflog cursor race documented in the completion-log diagnostics closed this \
-         gap: RefCursor enrichment lost the race with git's own reflog append, so \
+         no note was or will be generated for it. The usual cause is the reflog-cursor \
+         race: RefCursor enrichment lost the race with git's own reflog append, so \
          HistoryAnalyzer saw no HEAD transition and emitted OpaqueCommand instead of \
          CommitCreated, and handle_commit_created never ran. This is NOT a filesystem-\
          visibility delay -- retrying will not help. See CLAUDE.md's daemon trace2 \

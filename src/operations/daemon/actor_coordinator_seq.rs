@@ -413,7 +413,10 @@ impl ActorDaemonCoordinator {
             error: result.as_ref().err().map(|error| error.to_string()),
             semantic_events: events.iter().map(semantic_event_kind).collect(),
             commit_shas: commit_created_shas(events),
-            commit_skip_reason: commit_skip_reason(events),
+            commit_skip_reason: commit_skip_reason(
+                applied.command.primary_command.as_deref(),
+                events,
+            ),
         };
         if let Err(error) = self.maybe_append_test_completion_log(family, &log_entry) {
             let _ = self.record_side_effect_error(family, error_order, &error);
@@ -463,9 +466,17 @@ fn commit_created_shas(events: &[crate::model::domain::SemanticEvent]) -> Vec<St
 /// command that actually completed (exit 0) this is the reflog-cursor race
 /// documented in the daemon-trace2-ingestion spec, not a note-write or
 /// filesystem-visibility problem.
-fn commit_skip_reason(events: &[crate::model::domain::SemanticEvent]) -> Option<String> {
-    matches!(events, [crate::model::domain::SemanticEvent::OpaqueCommand])
-        .then(|| "opaque_command".to_string())
+fn commit_skip_reason(
+    primary_command: Option<&str>,
+    events: &[crate::model::domain::SemanticEvent],
+) -> Option<String> {
+    // Only commit-family commands can "skip" note generation; for anything else
+    // an OpaqueCommand outcome is routine (e.g. `git branch` with no enriched
+    // ref change) and stamping a reason here would let the diagnostics-focused
+    // tests flake on the very race this field exists to diagnose.
+    (primary_command == Some("commit")
+        && matches!(events, [crate::model::domain::SemanticEvent::OpaqueCommand]))
+    .then(|| "opaque_command".to_string())
 }
 
 #[cfg(test)]
@@ -507,7 +518,7 @@ mod tests {
     #[test]
     fn commit_skip_reason_flags_opaque_only_event_list() {
         assert_eq!(
-            commit_skip_reason(&[SemanticEvent::OpaqueCommand]),
+            commit_skip_reason(Some("commit"), &[SemanticEvent::OpaqueCommand]),
             Some("opaque_command".to_string())
         );
     }
@@ -518,8 +529,17 @@ mod tests {
             base: None,
             new_head: "head1".to_string(),
         }];
-        assert_eq!(commit_skip_reason(&commit_created), None);
-        assert_eq!(commit_skip_reason(&[]), None);
+        assert_eq!(commit_skip_reason(Some("commit"), &commit_created), None);
+        assert_eq!(commit_skip_reason(Some("commit"), &[]), None);
+        // Non-commit commands never carry a skip reason, even when opaque.
+        assert_eq!(
+            commit_skip_reason(Some("branch"), &[SemanticEvent::OpaqueCommand]),
+            None
+        );
+        assert_eq!(
+            commit_skip_reason(None, &[SemanticEvent::OpaqueCommand]),
+            None
+        );
 
         // OpaqueCommand alongside another event should never happen in
         // practice (HistoryAnalyzer only pushes it when `events` started
@@ -531,6 +551,6 @@ mod tests {
                 new_head: "head1".to_string(),
             },
         ];
-        assert_eq!(commit_skip_reason(&mixed), None);
+        assert_eq!(commit_skip_reason(Some("commit"), &mixed), None);
     }
 }
