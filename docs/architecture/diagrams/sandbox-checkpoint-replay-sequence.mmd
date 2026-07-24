@@ -1,0 +1,54 @@
+sequenceDiagram
+    autonumber
+    box rgb(241, 248, 255) Host and host-owned persistence
+    participant Outbox as Private shared outbox
+    participant Worker as Host outbox worker
+    participant HostPolicy as Fresh host policy
+    participant Family as Family sequencer
+    participant Log as Working log
+    participant Reconcile as Late checkpoint reconciler
+    participant Notes as Authorship notes
+    end
+
+    Note over Outbox,Worker: Later, after the host daemon owns its lock
+    Worker->>Outbox: Claim bounded oldest-ready batch
+    Worker->>Worker: Validate owner, mode, links, schema, instance, paths, size, and ordering
+
+    alt Record is malformed, hostile, expired, or namespace mismatched
+        Worker->>Outbox: Reject or quarantine for a bounded time
+        Worker->>Worker: Record redacted diagnostic
+    else Record is structurally valid
+        Worker->>Worker: Check completed delivery ID
+
+        alt Delivery ID was already applied
+            Worker->>Outbox: Mark complete and remove ready record
+        else Delivery is not completed
+            Worker->>HostPolicy: Re-resolve repository and apply current allowlist
+
+            alt Repository is now denied
+                HostPolicy-->>Worker: Denied
+                Worker->>Outbox: Delete payload and retain redacted status
+            else Repository remains allowed
+                HostPolicy-->>Worker: Allowed
+                Worker->>Worker: Classify causal state
+
+                alt Base is current or commit processing has not won the race
+                    Worker->>Family: ingest_checkpoint_delivery(envelope) with capture ordering
+                    Family->>Log: Idempotently apply checkpoint and delivery ID
+                    Log-->>Family: Durable success
+                    Family-->>Worker: Applied
+                    Worker->>Outbox: Mark complete and remove ready record
+                else One processed direct child is exactly provable
+                    Worker->>Reconcile: Base, child, blobs, and existing note
+                    Reconcile->>Notes: Update only unknown lines
+                    Note over Reconcile,Notes: Preserve known attribution and prompt/session metadata
+                    Notes-->>Reconcile: Durable success
+                    Reconcile-->>Worker: Applied
+                    Worker->>Outbox: Mark complete and remove ready record
+                else History, blobs, note, or ordering is ambiguous
+                    Worker->>Outbox: Mark needs_reconciliation
+                    Worker->>Worker: Record redacted diagnostic and do not guess
+                end
+            end
+        end
+    end

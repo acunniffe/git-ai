@@ -15,6 +15,7 @@
 //! - [`lock_file`] — cross-platform advisory file locking (daemon lock)
 
 pub mod bash_history_db;
+pub mod checkpoint_outbox;
 pub mod error;
 pub mod internal_db;
 pub mod lock_file;

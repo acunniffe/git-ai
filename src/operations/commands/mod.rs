@@ -5,6 +5,7 @@ pub mod checkpoint_agent;
 pub mod ci_handlers;
 pub mod config;
 pub mod daemon;
+pub mod daemon_start_policy;
 pub mod debug;
 pub mod diff;
 pub(crate) mod diff_args;

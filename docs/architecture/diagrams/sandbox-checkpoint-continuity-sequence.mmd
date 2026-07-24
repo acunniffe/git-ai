@@ -1,0 +1,58 @@
+sequenceDiagram
+    autonumber
+    box rgb(248, 245, 255) Sandbox
+    actor Hook as Agent or editor hook (sandbox)
+    participant CLI as git-ai checkpoint (sandbox)
+    participant Policy as Daemon start policy
+    end
+    box rgb(241, 248, 255) Host and host-owned persistence
+    participant Daemon as Host daemon sockets
+    participant Outbox as Private shared outbox
+    participant Log as Working log
+    end
+
+    Hook->>CLI: Hook input
+    CLI->>CLI: Parse preset and capture CheckpointRequest
+    CLI->>CLI: Apply all-or-nothing repository allowlist
+
+    alt Repository collection denied
+        CLI-->>Hook: Exit 0, no IPC and no persisted payload
+    else Repository collection allowed
+        CLI->>CLI: Assign delivery ID before any socket attempt
+        CLI->>Daemon: Probe control and trace sockets
+
+        alt Existing host daemon is reachable
+            CLI->>Daemon: checkpoint.deliver(envelope)
+        else Host daemon is unavailable
+            CLI->>Policy: May this process start a daemon?
+
+            alt Detached startup is safe
+                Policy->>Daemon: Start host daemon
+                CLI->>Daemon: Retry live delivery once
+            else Detached startup is disallowed
+                Note over CLI,Policy: Auto-start is disabled or a strong sandbox marker blocks detached startup
+            end
+        end
+
+        alt response.ok is true
+            Daemon->>Log: Validate, deduplicate, sequence, and durably apply
+            Log-->>Daemon: Durable success
+            Daemon-->>CLI: ok: true
+            CLI-->>Hook: Exit 0, no outbox record
+        else No ok: true acknowledgement
+            Note over CLI,Daemon: Includes no endpoint, timeout, disconnect, ok: false, current request, and remaining unsent requests
+            Note over CLI,Outbox: Outbox is a host-owned path explicitly mounted writable into the sandbox
+            Note over CLI,Daemon: The host may already have applied the delivery, so replay deduplicates by delivery ID
+            CLI->>Outbox: Write private CBOR temp record
+            CLI->>Outbox: fsync file, rename ready, fsync directory
+
+            alt Durable publication succeeds
+                Outbox-->>CLI: Ready record is durable
+                CLI-->>Hook: Exit 0, preserved for host replay
+            else Publication fails, is full, or is unsafe
+                Outbox-->>CLI: Error
+                CLI->>CLI: Record redacted loss sentinel and warning
+                CLI-->>Hook: Exit 0, attribution was not preserved
+            end
+        end
+    end

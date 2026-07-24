@@ -41,25 +41,8 @@ pub fn handle_git_ai(args: &[String]) {
     // Skip for commands that must work without a running background service
     // (help, version, config, d management, debug, upgrade) so users can
     // always diagnose and recover from a broken state.
-    let needs_daemon = !matches!(
-        args[0].as_str(),
-        "help"
-            | "--help"
-            | "-h"
-            | "version"
-            | "--version"
-            | "-v"
-            | "config"
-            | "bg"
-            | "d"
-            | "daemon"
-            | "debug"
-            | "upgrade"
-            | "install-hooks"
-            | "install"
-            | "uninstall-hooks"
-            | "usage"
-    );
+    let needs_daemon =
+        crate::cli::daemon_preconnect::command_requires_daemon_preconnect(args[0].as_str());
     if needs_daemon {
         use crate::operations::daemon::telemetry_handle::{
             DaemonTelemetryInitResult, init_daemon_telemetry_handle,

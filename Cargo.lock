@@ -1053,6 +1053,7 @@ name = "git-ai"
 version = "1.6.16"
 dependencies = [
  "chrono",
+ "ciborium",
  "clap",
  "criterion",
  "crossterm",

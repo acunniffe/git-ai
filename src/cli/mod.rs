@@ -1,5 +1,6 @@
 //! Binary dispatch — `argv[0]` decides git-proxy vs git-ai mode; this wiring is load-bearing.
 
+mod daemon_preconnect;
 pub mod environment;
 pub(crate) mod fail;
 pub(crate) mod git_ai_exe;
