@@ -141,7 +141,11 @@ so no cursor predates the first traced command.
 
 - The first traced command must process without crash, deadlock, or state
   poisoning.
-- If it lacks immutable argv OIDs and no cursor existed, it fails closed for
+- If it lacks immutable argv OIDs and no cursor existed, attribution may still
+  recover when the command's own operation-specific reflog transition becomes
+  visible during the bounded enrichment window. Matching remains exact: the
+  daemon must find the command's own transition and never guesses from the
+  live HEAD. If that exact transition remains unavailable, it fails closed for
   attribution and seeds the baseline.
 - Subsequent commands are exact.
 - Special case: first traced command whose argv contains sufficient immutable

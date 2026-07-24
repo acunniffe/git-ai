@@ -7,7 +7,39 @@ use crate::operations::daemon::analyzers::AnalyzerRegistry;
 use crate::operations::daemon::reducer;
 use crate::operations::daemon::ref_cursor::RefCursor;
 use std::collections::HashMap;
+use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
+
+const COMMIT_REF_ENRICHMENT_RETRY_DELAYS: &[Duration] =
+    &[Duration::from_millis(5), Duration::from_millis(20)];
+
+async fn enrich_command_with_commit_retries(
+    ref_cursor: &mut RefCursor,
+    cmd: &mut NormalizedCommand,
+    state: &FamilyState,
+) -> Result<HashMap<String, String>, GitAiError> {
+    let mut command_start_refs = ref_cursor.enrich_command(cmd, state)?;
+
+    // Git emits trace2 asynchronously, and the daemon can reach this actor
+    // before the commit's reflog append is visible to the reader. A successful
+    // commit is exact to retry: the matcher still requires the command's own
+    // reflog transition and commit message, and the family actor has not
+    // reduced the command yet. Never broaden this into a live-HEAD guess.
+    if cmd.exit_code == 0
+        && cmd.primary_command.as_deref() == Some("commit")
+        && cmd.ref_changes.is_empty()
+    {
+        for delay in COMMIT_REF_ENRICHMENT_RETRY_DELAYS {
+            tokio::time::sleep(*delay).await;
+            command_start_refs = ref_cursor.enrich_command(cmd, state)?;
+            if !cmd.ref_changes.is_empty() {
+                break;
+            }
+        }
+    }
+
+    Ok(command_start_refs)
+}
 
 pub enum FamilyMsg {
     Apply(
@@ -106,18 +138,19 @@ pub fn spawn_family_actor(family_key: FamilyKey) -> FamilyActorHandle {
                         .worktree
                         .as_deref()
                         .map(crate::operations::git::canonicalize::canonicalize_or_self);
-                    let result = ref_cursor.enrich_command(&mut cmd, &state).and_then(
-                        |command_start_refs| {
-                            reducer::reduce_family_command_with_ref_snapshot(
-                                &mut state,
-                                cmd,
-                                &analyzers,
-                                &command_start_refs,
-                                canonical_worktree,
-                            )
-                            .map(|(applied, _)| applied)
-                        },
-                    );
+                    let result =
+                        enrich_command_with_commit_retries(&mut ref_cursor, &mut cmd, &state)
+                            .await
+                            .and_then(|command_start_refs| {
+                                reducer::reduce_family_command_with_ref_snapshot(
+                                    &mut state,
+                                    cmd,
+                                    &analyzers,
+                                    &command_start_refs,
+                                    canonical_worktree,
+                                )
+                                .map(|(applied, _)| applied)
+                            });
                     let _ = respond_to.send(result);
                 }
                 FamilyMsg::ApplyCheckpoint(respond_to) => {
@@ -167,7 +200,8 @@ pub fn spawn_family_actor(family_key: FamilyKey) -> FamilyActorHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::domain::{CommandScope, Confidence, NormalizedCommand};
+    use crate::model::domain::{CommandScope, Confidence, NormalizedCommand, RefChange};
+    use std::fs;
     use std::path::PathBuf;
 
     fn sample_normalized_cmd(family_key: &str, seq: u128) -> NormalizedCommand {
@@ -191,6 +225,79 @@ mod tests {
             ref_changes: Vec::new(),
             confidence: Confidence::Low,
         }
+    }
+
+    #[tokio::test]
+    async fn commit_enrichment_retries_until_reflog_entry_is_visible() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().to_path_buf();
+        let head_log = worktree.join(".git/logs/HEAD");
+        fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+
+        let family = FamilyKey::new(worktree.to_string_lossy().to_string());
+        let state = FamilyState {
+            family_key: family.clone(),
+            refs: HashMap::new(),
+            worktrees: HashMap::new(),
+            last_error: None,
+            applied_seq: 0,
+            watermarks: WatermarkState::default(),
+        };
+        let mut cmd = NormalizedCommand {
+            scope: CommandScope::Family(family.clone()),
+            family_key: Some(family.clone()),
+            worktree: Some(worktree),
+            root_sid: "delayed-reflog".to_string(),
+            raw_argv: vec![
+                "git".to_string(),
+                "commit".to_string(),
+                "-m".to_string(),
+                "delayed".to_string(),
+            ],
+            primary_command: Some("commit".to_string()),
+            invoked_command: Some("commit".to_string()),
+            invoked_args: vec![
+                "commit".to_string(),
+                "-m".to_string(),
+                "delayed".to_string(),
+            ],
+            observed_child_commands: Vec::new(),
+            exit_code: 0,
+            started_at_ns: 1,
+            finished_at_ns: 2,
+            reflog_start_offsets: HashMap::new(),
+            stash_target_oid: None,
+            cherry_pick_source_oids: Vec::new(),
+            revert_source_oids: Vec::new(),
+            ref_changes: Vec::new(),
+            confidence: Confidence::Low,
+        };
+
+        let old = "1111111111111111111111111111111111111111";
+        let new = "2222222222222222222222222222222222222222";
+        let delayed_head_log = head_log.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            fs::write(
+                delayed_head_log,
+                format!("{old} {new} Test User <test@example.com> 0 +0000\tcommit: delayed\n"),
+            )
+            .unwrap();
+        });
+
+        let mut ref_cursor = RefCursor::new(family);
+        enrich_command_with_commit_retries(&mut ref_cursor, &mut cmd, &state)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            cmd.ref_changes,
+            vec![RefChange {
+                reference: "HEAD".to_string(),
+                old: old.to_string(),
+                new: new.to_string(),
+            }]
+        );
     }
 
     #[tokio::test]
