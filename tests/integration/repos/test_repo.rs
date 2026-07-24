@@ -3388,6 +3388,11 @@ impl TestRepo {
         envs: &[(&str, &str)],
         working_dir: Option<&std::path::Path>,
     ) -> Result<NewCommit, String> {
+        // A previous raw-git mutation (for example `git commit --amend`) may
+        // have already returned while its daemon side effects are still
+        // queued. Drain those effects before starting the next commit so its
+        // authorship note cannot race the previous note migration.
+        self.sync_daemon_force();
         let completion_baseline = self.daemon_completion_entries().len();
         let output = self.git_with_env(&["commit", "-m", message], envs, working_dir);
 
