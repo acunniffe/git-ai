@@ -3406,13 +3406,12 @@ impl TestRepo {
 
                 self.sync_daemon_force();
 
-                if self.has_active_daemon() {
-                    if let Err(error) = self
+                if self.has_active_daemon()
+                    && let Err(error) = self
                         .fail_fast_on_opaque_commit_completion(&head_commit, completion_baseline)
-                    {
-                        self.maybe_save_daemon_completion_artifact(&head_commit);
-                        return Err(error);
-                    }
+                {
+                    self.maybe_save_daemon_completion_artifact(&head_commit);
+                    return Err(error);
                 }
 
                 // In daemon mode, the authorship note may not be immediately
