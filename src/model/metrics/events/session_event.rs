@@ -1,146 +1,19 @@
-use super::super::pos_encoded::PosEncoded;
-use super::super::types::{EventValues, MetricEventId, SparseArray};
+use super::raw_json_event::raw_json_event;
 
-/// Value positions for "session_event" event.
-pub mod session_event_pos {
-    pub const RAW_JSON: usize = 0;
-    pub const EXTERNAL_EVENT_ID: usize = 1;
-    pub const EXTERNAL_PARENT_EVENT_ID: usize = 2;
-    pub const EXTERNAL_TOOL_USE_ID: usize = 3;
-}
-
-/// Values for Event ID 5: session_event
-///
-/// Each event is the raw JSON from the agent's transcript file, stored at position 0.
-/// Uses EventAttributes for session_id, trace_id, tool metadata.
-#[derive(Debug, Clone, Default)]
-pub struct SessionEventValues {
-    pub raw_json: serde_json::Value,
-    pub external_event_id: Option<String>,
-    pub external_parent_event_id: Option<String>,
-    pub external_tool_use_id: Option<String>,
-}
-
-impl SessionEventValues {
-    pub fn new(raw_json: serde_json::Value) -> Self {
-        Self {
-            raw_json,
-            external_event_id: None,
-            external_parent_event_id: None,
-            external_tool_use_id: None,
-        }
-    }
-
-    pub fn with_ids(
-        raw_json: serde_json::Value,
-        external_event_id: Option<String>,
-        external_parent_event_id: Option<String>,
-        external_tool_use_id: Option<String>,
-    ) -> Self {
-        Self {
-            raw_json,
-            external_event_id,
-            external_parent_event_id,
-            external_tool_use_id,
-        }
-    }
-}
-
-impl PosEncoded for SessionEventValues {
-    fn to_sparse(&self) -> SparseArray {
-        let mut map = SparseArray::new();
-        map.insert(
-            session_event_pos::RAW_JSON.to_string(),
-            self.raw_json.clone(),
-        );
-        if let Some(ref id) = self.external_event_id {
-            map.insert(
-                session_event_pos::EXTERNAL_EVENT_ID.to_string(),
-                serde_json::Value::String(id.clone()),
-            );
-        }
-        if let Some(ref id) = self.external_parent_event_id {
-            map.insert(
-                session_event_pos::EXTERNAL_PARENT_EVENT_ID.to_string(),
-                serde_json::Value::String(id.clone()),
-            );
-        }
-        if let Some(ref id) = self.external_tool_use_id {
-            map.insert(
-                session_event_pos::EXTERNAL_TOOL_USE_ID.to_string(),
-                serde_json::Value::String(id.clone()),
-            );
-        }
-        map
-    }
-
-    fn from_sparse(arr: &SparseArray) -> Self {
-        let raw_json = arr
-            .get(&session_event_pos::RAW_JSON.to_string())
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
-        let external_event_id = arr
-            .get(&session_event_pos::EXTERNAL_EVENT_ID.to_string())
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        let external_parent_event_id = arr
-            .get(&session_event_pos::EXTERNAL_PARENT_EVENT_ID.to_string())
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        let external_tool_use_id = arr
-            .get(&session_event_pos::EXTERNAL_TOOL_USE_ID.to_string())
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        Self {
-            raw_json,
-            external_event_id,
-            external_parent_event_id,
-            external_tool_use_id,
-        }
-    }
-}
-
-impl EventValues for SessionEventValues {
-    fn event_id() -> MetricEventId {
-        MetricEventId::SessionEvent
-    }
-
-    fn to_sparse(&self) -> SparseArray {
-        PosEncoded::to_sparse(self)
-    }
-
-    fn into_sparse(self) -> SparseArray {
-        let mut map = SparseArray::new();
-        map.insert(session_event_pos::RAW_JSON.to_string(), self.raw_json);
-        if let Some(id) = self.external_event_id {
-            map.insert(
-                session_event_pos::EXTERNAL_EVENT_ID.to_string(),
-                serde_json::Value::String(id),
-            );
-        }
-        if let Some(id) = self.external_parent_event_id {
-            map.insert(
-                session_event_pos::EXTERNAL_PARENT_EVENT_ID.to_string(),
-                serde_json::Value::String(id),
-            );
-        }
-        if let Some(id) = self.external_tool_use_id {
-            map.insert(
-                session_event_pos::EXTERNAL_TOOL_USE_ID.to_string(),
-                serde_json::Value::String(id),
-            );
-        }
-        map
-    }
-
-    fn from_sparse(arr: &SparseArray) -> Self {
-        PosEncoded::from_sparse(arr)
-    }
+raw_json_event! {
+    name: SessionEventValues,
+    pos_mod: session_event_pos,
+    event_variant: SessionEvent,
+    event_num: 5,
+    event_name: "session_event",
+    description: "Each event is the raw JSON from the agent's transcript file, stored at position 0.",
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::metrics::pos_encoded::PosEncoded;
+    use crate::model::metrics::types::{EventValues, MetricEventId};
 
     #[test]
     fn test_session_event_values_new() {
@@ -207,6 +80,12 @@ mod tests {
             restored.external_tool_use_id,
             Some("tool-use-id".to_string())
         );
+    }
+
+    #[test]
+    fn test_session_event_values_event_id() {
+        assert_eq!(SessionEventValues::event_id(), MetricEventId::SessionEvent);
+        assert_eq!(SessionEventValues::event_id() as u16, 5);
     }
 
     #[test]
