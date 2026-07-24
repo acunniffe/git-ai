@@ -1,9 +1,4 @@
-use super::super::pos_encoded::{
-    PosEncoded, PosField, sparse_get_string, sparse_get_u32, sparse_get_u64, sparse_get_vec_string,
-    sparse_get_vec_u32, sparse_set, string_to_json, u32_to_json, u64_to_json, vec_string_to_json,
-    vec_u32_to_json,
-};
-use super::super::types::{EventValues, MetricEventId, SparseArray};
+use super::pos_event::pos_event;
 
 /// Value positions for "committed" event.
 pub mod committed_pos {
@@ -32,338 +27,66 @@ pub mod committed_pos {
     pub const PATCH_ID: usize = 17; // String (git patch-id --stable)
 }
 
-/// Values for Event ID 1: committed
-///
-/// Recorded when AI-assisted code is committed.
-///
-/// **Scalar fields:**
-/// | Position | Name | Type |
-/// |----------|------|------|
-/// | 0 | human_additions | u32 |
-/// | 1 | git_diff_deleted_lines | u32 |
-/// | 2 | git_diff_added_lines | u32 |
-///
-/// **Array fields (parallel arrays, index 0 = "all" for aggregate, index 1+ = per tool/model):**
-/// | Position | Name | Type |
-/// |----------|------|------|
-/// | 3 | tool_model_pairs | `Vec<String>` |
-/// | 4 | (removed) | - |
-/// | 5 | ai_additions | `Vec<u32>` |
-/// | 6 | ai_accepted | `Vec<u32>` |
-/// | 7 | (removed) | - |
-/// | 8 | (removed) | - |
-/// | 9 | (removed) | - |
-/// | 10 | first_checkpoint_ts | u64 |
-/// | 11 | commit_subject | String |
-/// | 12 | commit_body | String |
-/// | 13 | authorship_note | String |
-/// | 14 | hunks | String |
-/// | 15 | author_ts | u64 |
-/// | 16 | commit_ts | u64 |
-/// | 17 | patch_id | String |
-#[derive(Debug, Clone, Default)]
-pub struct CommittedValues {
-    // Scalar fields
-    pub human_additions: PosField<u32>,
-    pub git_diff_deleted_lines: PosField<u32>,
-    pub git_diff_added_lines: PosField<u32>,
-
-    // Array fields (parallel arrays)
-    pub tool_model_pairs: PosField<Vec<String>>,
-    pub ai_additions: PosField<Vec<u32>>,
-    pub ai_accepted: PosField<Vec<u32>>,
-
-    // New scalar fields
-    pub first_checkpoint_ts: PosField<u64>,
-    pub commit_subject: PosField<String>,
-    pub commit_body: PosField<String>,
-    pub authorship_note: PosField<String>,
-    pub hunks: PosField<String>,
-    pub author_ts: PosField<u64>,
-    pub commit_ts: PosField<u64>,
-    pub patch_id: PosField<String>,
-}
-
-impl CommittedValues {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    // Builder methods for scalar fields
-
-    pub fn human_additions(mut self, value: u32) -> Self {
-        self.human_additions = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn human_additions_null(mut self) -> Self {
-        self.human_additions = Some(None);
-        self
-    }
-
-    pub fn git_diff_deleted_lines(mut self, value: u32) -> Self {
-        self.git_diff_deleted_lines = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn git_diff_deleted_lines_null(mut self) -> Self {
-        self.git_diff_deleted_lines = Some(None);
-        self
-    }
-
-    pub fn git_diff_added_lines(mut self, value: u32) -> Self {
-        self.git_diff_added_lines = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn git_diff_added_lines_null(mut self) -> Self {
-        self.git_diff_added_lines = Some(None);
-        self
-    }
-
-    // Builder methods for array fields
-
-    pub fn tool_model_pairs(mut self, value: Vec<String>) -> Self {
-        self.tool_model_pairs = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn tool_model_pairs_null(mut self) -> Self {
-        self.tool_model_pairs = Some(None);
-        self
-    }
-
-    pub fn ai_additions(mut self, value: Vec<u32>) -> Self {
-        self.ai_additions = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn ai_additions_null(mut self) -> Self {
-        self.ai_additions = Some(None);
-        self
-    }
-
-    pub fn ai_accepted(mut self, value: Vec<u32>) -> Self {
-        self.ai_accepted = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn ai_accepted_null(mut self) -> Self {
-        self.ai_accepted = Some(None);
-        self
-    }
-
-    // Builder methods for new scalar fields
-
-    pub fn first_checkpoint_ts(mut self, value: u64) -> Self {
-        self.first_checkpoint_ts = Some(Some(value));
-        self
-    }
-
-    pub fn first_checkpoint_ts_null(mut self) -> Self {
-        self.first_checkpoint_ts = Some(None);
-        self
-    }
-
-    pub fn commit_subject(mut self, value: impl Into<String>) -> Self {
-        self.commit_subject = Some(Some(value.into()));
-        self
-    }
-
-    pub fn commit_subject_null(mut self) -> Self {
-        self.commit_subject = Some(None);
-        self
-    }
-
-    pub fn commit_body(mut self, value: impl Into<String>) -> Self {
-        self.commit_body = Some(Some(value.into()));
-        self
-    }
-
-    pub fn commit_body_null(mut self) -> Self {
-        self.commit_body = Some(None);
-        self
-    }
-
-    pub fn authorship_note(mut self, value: impl Into<String>) -> Self {
-        self.authorship_note = Some(Some(value.into()));
-        self
-    }
-
-    pub fn authorship_note_null(mut self) -> Self {
-        self.authorship_note = Some(None);
-        self
-    }
-
-    pub fn hunks(mut self, value: impl Into<String>) -> Self {
-        self.hunks = Some(Some(value.into()));
-        self
-    }
-
-    pub fn hunks_null(mut self) -> Self {
-        self.hunks = Some(None);
-        self
-    }
-
-    pub fn author_ts(mut self, value: u64) -> Self {
-        self.author_ts = Some(Some(value));
-        self
-    }
-
-    pub fn author_ts_null(mut self) -> Self {
-        self.author_ts = Some(None);
-        self
-    }
-
-    pub fn commit_ts(mut self, value: u64) -> Self {
-        self.commit_ts = Some(Some(value));
-        self
-    }
-
-    pub fn commit_ts_null(mut self) -> Self {
-        self.commit_ts = Some(None);
-        self
-    }
-
-    pub fn patch_id(mut self, value: impl Into<String>) -> Self {
-        self.patch_id = Some(Some(value.into()));
-        self
-    }
-
-    pub fn patch_id_null(mut self) -> Self {
-        self.patch_id = Some(None);
-        self
-    }
-}
-
-impl PosEncoded for CommittedValues {
-    fn to_sparse(&self) -> SparseArray {
-        let mut map = SparseArray::new();
-
+pos_event! {
+    /// Values for Event ID 1: committed
+    ///
+    /// Recorded when AI-assisted code is committed.
+    ///
+    /// **Scalar fields:**
+    /// | Position | Name | Type |
+    /// |----------|------|------|
+    /// | 0 | human_additions | u32 |
+    /// | 1 | git_diff_deleted_lines | u32 |
+    /// | 2 | git_diff_added_lines | u32 |
+    ///
+    /// **Array fields (parallel arrays, index 0 = "all" for aggregate, index 1+ = per tool/model):**
+    /// | Position | Name | Type |
+    /// |----------|------|------|
+    /// | 3 | tool_model_pairs | `Vec<String>` |
+    /// | 4 | (removed) | - |
+    /// | 5 | ai_additions | `Vec<u32>` |
+    /// | 6 | ai_accepted | `Vec<u32>` |
+    /// | 7 | (removed) | - |
+    /// | 8 | (removed) | - |
+    /// | 9 | (removed) | - |
+    /// | 10 | first_checkpoint_ts | u64 |
+    /// | 11 | commit_subject | String |
+    /// | 12 | commit_body | String |
+    /// | 13 | authorship_note | String |
+    /// | 14 | hunks | String |
+    /// | 15 | author_ts | u64 |
+    /// | 16 | commit_ts | u64 |
+    /// | 17 | patch_id | String |
+    struct CommittedValues uses committed_pos for Committed {
         // Scalar fields
-        sparse_set(
-            &mut map,
-            committed_pos::HUMAN_ADDITIONS,
-            u32_to_json(&self.human_additions),
-        );
-        sparse_set(
-            &mut map,
-            committed_pos::GIT_DIFF_DELETED_LINES,
-            u32_to_json(&self.git_diff_deleted_lines),
-        );
-        sparse_set(
-            &mut map,
-            committed_pos::GIT_DIFF_ADDED_LINES,
-            u32_to_json(&self.git_diff_added_lines),
-        );
+        human_additions: u32 @ HUMAN_ADDITIONS,
+        git_diff_deleted_lines: u32 @ GIT_DIFF_DELETED_LINES,
+        git_diff_added_lines: u32 @ GIT_DIFF_ADDED_LINES,
 
-        // Array fields
-        sparse_set(
-            &mut map,
-            committed_pos::TOOL_MODEL_PAIRS,
-            vec_string_to_json(&self.tool_model_pairs),
-        );
-        sparse_set(
-            &mut map,
-            committed_pos::AI_ADDITIONS,
-            vec_u32_to_json(&self.ai_additions),
-        );
-        sparse_set(
-            &mut map,
-            committed_pos::AI_ACCEPTED,
-            vec_u32_to_json(&self.ai_accepted),
-        );
+        // Array fields (parallel arrays)
+        tool_model_pairs: [String] @ TOOL_MODEL_PAIRS,
+        ai_additions: [u32] @ AI_ADDITIONS,
+        ai_accepted: [u32] @ AI_ACCEPTED,
 
         // New scalar fields
-        sparse_set(
-            &mut map,
-            committed_pos::FIRST_CHECKPOINT_TS,
-            u64_to_json(&self.first_checkpoint_ts),
-        );
-        sparse_set(
-            &mut map,
-            committed_pos::COMMIT_SUBJECT,
-            string_to_json(&self.commit_subject),
-        );
-        sparse_set(
-            &mut map,
-            committed_pos::COMMIT_BODY,
-            string_to_json(&self.commit_body),
-        );
-        sparse_set(
-            &mut map,
-            committed_pos::AUTHORSHIP_NOTE,
-            string_to_json(&self.authorship_note),
-        );
-        sparse_set(&mut map, committed_pos::HUNKS, string_to_json(&self.hunks));
-        sparse_set(
-            &mut map,
-            committed_pos::AUTHOR_TS,
-            u64_to_json(&self.author_ts),
-        );
-        sparse_set(
-            &mut map,
-            committed_pos::COMMIT_TS,
-            u64_to_json(&self.commit_ts),
-        );
-        sparse_set(
-            &mut map,
-            committed_pos::PATCH_ID,
-            string_to_json(&self.patch_id),
-        );
-
-        map
-    }
-
-    fn from_sparse(arr: &SparseArray) -> Self {
-        Self {
-            // Scalar fields
-            human_additions: sparse_get_u32(arr, committed_pos::HUMAN_ADDITIONS),
-            git_diff_deleted_lines: sparse_get_u32(arr, committed_pos::GIT_DIFF_DELETED_LINES),
-            git_diff_added_lines: sparse_get_u32(arr, committed_pos::GIT_DIFF_ADDED_LINES),
-
-            // Array fields
-            tool_model_pairs: sparse_get_vec_string(arr, committed_pos::TOOL_MODEL_PAIRS),
-            ai_additions: sparse_get_vec_u32(arr, committed_pos::AI_ADDITIONS),
-            ai_accepted: sparse_get_vec_u32(arr, committed_pos::AI_ACCEPTED),
-
-            // New scalar fields
-            first_checkpoint_ts: sparse_get_u64(arr, committed_pos::FIRST_CHECKPOINT_TS),
-            commit_subject: sparse_get_string(arr, committed_pos::COMMIT_SUBJECT),
-            commit_body: sparse_get_string(arr, committed_pos::COMMIT_BODY),
-            authorship_note: sparse_get_string(arr, committed_pos::AUTHORSHIP_NOTE),
-            hunks: sparse_get_string(arr, committed_pos::HUNKS),
-            author_ts: sparse_get_u64(arr, committed_pos::AUTHOR_TS),
-            commit_ts: sparse_get_u64(arr, committed_pos::COMMIT_TS),
-            patch_id: sparse_get_string(arr, committed_pos::PATCH_ID),
-        }
-    }
-}
-
-impl EventValues for CommittedValues {
-    fn event_id() -> MetricEventId {
-        MetricEventId::Committed
-    }
-
-    fn to_sparse(&self) -> SparseArray {
-        PosEncoded::to_sparse(self)
-    }
-
-    fn from_sparse(arr: &SparseArray) -> Self {
-        PosEncoded::from_sparse(arr)
+        first_checkpoint_ts: u64 @ FIRST_CHECKPOINT_TS,
+        commit_subject: String @ COMMIT_SUBJECT,
+        commit_body: String @ COMMIT_BODY,
+        authorship_note: String @ AUTHORSHIP_NOTE,
+        hunks: String @ HUNKS,
+        author_ts: u64 @ AUTHOR_TS,
+        commit_ts: u64 @ COMMIT_TS,
+        patch_id: String @ PATCH_ID,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::metrics::pos_encoded::PosEncoded;
+    use crate::model::metrics::types::{EventValues, MetricEventId, SparseArray};
     use serde_json::Value;
+    use std::collections::BTreeMap;
 
     #[test]
     fn test_committed_values_builder() {
@@ -577,5 +300,153 @@ mod tests {
         let values = CommittedValues::new().ai_accepted_null();
 
         assert_eq!(values.ai_accepted, Some(None));
+    }
+
+    // --- Golden serialization tests -----------------------------------
+    //
+    // These pin the exact wire representation of `CommittedValues`. They
+    // are intentionally independent of how the struct/impls are built
+    // (hand-written vs. macro-generated): any future schema drift --
+    // renamed field, moved position, changed null/absent handling --
+    // shows up here as a loud, explicit diff.
+
+    /// Renders a `SparseArray` as a byte-exact JSON string with position
+    /// keys in numeric (not lexical) order, for byte-level pinning.
+    fn pinned_json(sparse: &SparseArray) -> String {
+        let ordered: BTreeMap<usize, Value> = sparse
+            .iter()
+            .map(|(k, v)| (k.parse::<usize>().unwrap(), v.clone()))
+            .collect();
+        serde_json::to_string(&ordered).unwrap()
+    }
+
+    #[test]
+    fn test_committed_values_golden_fully_populated() {
+        let values = CommittedValues::new()
+            .human_additions(11)
+            .git_diff_deleted_lines(22)
+            .git_diff_added_lines(33)
+            .tool_model_pairs(vec!["all".to_string(), "claude-code:opus".to_string()])
+            .ai_additions(vec![40, 41])
+            .ai_accepted(vec![42, 43])
+            .first_checkpoint_ts(1_700_000_000)
+            .commit_subject("Golden subject")
+            .commit_body("Golden body\nline2")
+            .authorship_note("note-blob")
+            .hunks(r#"[{"a":1}]"#)
+            .author_ts(1_700_000_100)
+            .commit_ts(1_700_000_200)
+            .patch_id("patch-abc");
+
+        let sparse = PosEncoded::to_sparse(&values);
+
+        let expected: SparseArray = serde_json::json!({
+            "0": 11,
+            "1": 22,
+            "2": 33,
+            "3": ["all", "claude-code:opus"],
+            "5": [40, 41],
+            "6": [42, 43],
+            "10": 1_700_000_000u64,
+            "11": "Golden subject",
+            "12": "Golden body\nline2",
+            "13": "note-blob",
+            "14": r#"[{"a":1}]"#,
+            "15": 1_700_000_100u64,
+            "16": 1_700_000_200u64,
+            "17": "patch-abc",
+        })
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+        assert_eq!(sparse, expected);
+        assert_eq!(sparse.len(), 14, "exactly the 14 live fields, no more");
+
+        assert_eq!(
+            pinned_json(&sparse),
+            r#"{"0":11,"1":22,"2":33,"3":["all","claude-code:opus"],"5":[40,41],"6":[42,43],"10":1700000000,"11":"Golden subject","12":"Golden body\nline2","13":"note-blob","14":"[{\"a\":1}]","15":1700000100,"16":1700000200,"17":"patch-abc"}"#
+        );
+
+        let restored = <CommittedValues as PosEncoded>::from_sparse(&sparse);
+        assert_eq!(PosEncoded::to_sparse(&restored), sparse);
+    }
+
+    #[test]
+    fn test_committed_values_golden_partially_populated() {
+        // Exercises all three `PosField` states (value / explicit null /
+        // absent) across every field type in the struct.
+        let values = CommittedValues::new()
+            .human_additions(5) // value (u32)
+            .git_diff_deleted_lines_null() // explicit null (u32)
+            // git_diff_added_lines: absent (u32)
+            .tool_model_pairs_null() // explicit null (Vec<String>)
+            .ai_additions(vec![7, 8]) // value (Vec<u32>)
+            // ai_accepted: absent (Vec<u32>)
+            .first_checkpoint_ts_null() // explicit null (u64)
+            .commit_subject("partial subject") // value (String)
+            .commit_body_null() // explicit null (String)
+            // authorship_note: absent (String)
+            .hunks("[]") // value (String)
+            // author_ts: absent (u64)
+            .commit_ts(1_650_000_000) // value (u64)
+            .patch_id_null(); // explicit null (String)
+
+        let sparse = PosEncoded::to_sparse(&values);
+
+        let expected: SparseArray = serde_json::json!({
+            "0": 5,
+            "1": null,
+            "3": null,
+            "5": [7, 8],
+            "10": null,
+            "11": "partial subject",
+            "12": null,
+            "14": "[]",
+            "16": 1_650_000_000u64,
+            "17": null,
+        })
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+        assert_eq!(sparse, expected);
+        assert_eq!(sparse.len(), 10);
+        for absent in ["2", "6", "13", "15"] {
+            assert!(
+                !sparse.contains_key(absent),
+                "position {absent} must be omitted, not null"
+            );
+        }
+
+        assert_eq!(
+            pinned_json(&sparse),
+            r#"{"0":5,"1":null,"3":null,"5":[7,8],"10":null,"11":"partial subject","12":null,"14":"[]","16":1650000000,"17":null}"#
+        );
+
+        let restored = <CommittedValues as PosEncoded>::from_sparse(&sparse);
+        assert_eq!(restored.human_additions, Some(Some(5)));
+        assert_eq!(restored.git_diff_deleted_lines, Some(None));
+        assert_eq!(restored.git_diff_added_lines, None);
+        assert_eq!(restored.tool_model_pairs, Some(None));
+        assert_eq!(restored.ai_additions, Some(Some(vec![7, 8])));
+        assert_eq!(restored.ai_accepted, None);
+        assert_eq!(restored.first_checkpoint_ts, Some(None));
+        assert_eq!(
+            restored.commit_subject,
+            Some(Some("partial subject".to_string()))
+        );
+        assert_eq!(restored.commit_body, Some(None));
+        assert_eq!(restored.authorship_note, None);
+        assert_eq!(restored.hunks, Some(Some("[]".to_string())));
+        assert_eq!(restored.author_ts, None);
+        assert_eq!(restored.commit_ts, Some(Some(1_650_000_000)));
+        assert_eq!(restored.patch_id, Some(None));
+
+        // Round-trip: re-serializing the restored value reproduces the
+        // exact same sparse map, including the omitted/absent positions.
+        assert_eq!(PosEncoded::to_sparse(&restored), sparse);
     }
 }

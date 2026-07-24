@@ -40,6 +40,7 @@ regex = "1.12"
 toml = "0.9"
 unicode-normalization = "0.1"
 tempfile = { version = "3.27", optional = true }
+paste = "1.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }
@@ -60,7 +61,6 @@ regex = "1.12"
 filetime = "0.2"
 serial_test = "3.4"
 rstest = "0.26"
-paste = "1.0"
 mockito = "1.6"
 criterion = { version = "0.5", features = ["html_reports"] }
 

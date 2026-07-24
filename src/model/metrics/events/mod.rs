@@ -5,6 +5,7 @@ mod checkpoint;
 mod committed;
 mod install_hooks;
 mod otel_trace;
+mod pos_event;
 mod raw_json_event;
 mod rewrite_committed;
 mod session_event;

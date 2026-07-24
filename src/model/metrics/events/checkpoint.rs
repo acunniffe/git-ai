@@ -1,8 +1,4 @@
-use super::super::pos_encoded::{
-    PosEncoded, PosField, sparse_get_string, sparse_get_u32, sparse_get_u64, sparse_set,
-    string_to_json, u32_to_json, u64_to_json,
-};
-use super::super::types::{EventValues, MetricEventId, SparseArray};
+use super::pos_event::pos_event;
 
 /// Value positions for "checkpoint" event.
 /// One event per file in the checkpoint.
@@ -20,264 +16,48 @@ pub mod checkpoint_pos {
     pub const ATTRIBUTION_RECOVERY_METADATA: usize = 10; // String - nullable JSON
 }
 
-/// Values for Event ID 4: checkpoint
-///
-/// Recorded for each file in a checkpoint.
-/// Uses EventAttributes for standard metadata (repo_url, author, tool, model, etc.)
-///
-/// **Fields:**
-/// | Position | Name | Type |
-/// |----------|------|------|
-/// | 0 | checkpoint_ts | u64 |
-/// | 1 | kind | String |
-/// | 2 | file_path | String |
-/// | 3 | lines_added | u32 |
-/// | 4 | lines_deleted | u32 |
-/// | 5 | lines_added_sloc | u32 |
-/// | 6 | lines_deleted_sloc | u32 |
-/// | 7 | external_tool_use_id | String (nullable) |
-/// | 8 | edit_kind | String (nullable) |
-/// | 9 | checkpoint_type | String (nullable) |
-/// | 10 | attribution_recovery_metadata | String (nullable JSON) |
-#[derive(Debug, Clone, Default)]
-pub struct CheckpointValues {
-    pub checkpoint_ts: PosField<u64>,
-    pub kind: PosField<String>,
-    pub file_path: PosField<String>,
-    pub lines_added: PosField<u32>,
-    pub lines_deleted: PosField<u32>,
-    pub lines_added_sloc: PosField<u32>,
-    pub lines_deleted_sloc: PosField<u32>,
-    pub external_tool_use_id: PosField<String>,
-    pub edit_kind: PosField<String>,
-    pub checkpoint_type: PosField<String>,
-    pub attribution_recovery_metadata: PosField<String>,
-}
-
-impl CheckpointValues {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn checkpoint_ts(mut self, value: u64) -> Self {
-        self.checkpoint_ts = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn checkpoint_ts_null(mut self) -> Self {
-        self.checkpoint_ts = Some(None);
-        self
-    }
-
-    pub fn kind(mut self, value: impl Into<String>) -> Self {
-        self.kind = Some(Some(value.into()));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn kind_null(mut self) -> Self {
-        self.kind = Some(None);
-        self
-    }
-
-    pub fn file_path(mut self, value: impl Into<String>) -> Self {
-        self.file_path = Some(Some(value.into()));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn file_path_null(mut self) -> Self {
-        self.file_path = Some(None);
-        self
-    }
-
-    pub fn lines_added(mut self, value: u32) -> Self {
-        self.lines_added = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn lines_added_null(mut self) -> Self {
-        self.lines_added = Some(None);
-        self
-    }
-
-    pub fn lines_deleted(mut self, value: u32) -> Self {
-        self.lines_deleted = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn lines_deleted_null(mut self) -> Self {
-        self.lines_deleted = Some(None);
-        self
-    }
-
-    pub fn lines_added_sloc(mut self, value: u32) -> Self {
-        self.lines_added_sloc = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn lines_added_sloc_null(mut self) -> Self {
-        self.lines_added_sloc = Some(None);
-        self
-    }
-
-    pub fn lines_deleted_sloc(mut self, value: u32) -> Self {
-        self.lines_deleted_sloc = Some(Some(value));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn lines_deleted_sloc_null(mut self) -> Self {
-        self.lines_deleted_sloc = Some(None);
-        self
-    }
-
-    pub fn external_tool_use_id(mut self, value: impl Into<String>) -> Self {
-        self.external_tool_use_id = Some(Some(value.into()));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn external_tool_use_id_null(mut self) -> Self {
-        self.external_tool_use_id = Some(None);
-        self
-    }
-
-    pub fn edit_kind(mut self, value: impl Into<String>) -> Self {
-        self.edit_kind = Some(Some(value.into()));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn edit_kind_null(mut self) -> Self {
-        self.edit_kind = Some(None);
-        self
-    }
-
-    pub fn checkpoint_type(mut self, value: impl Into<String>) -> Self {
-        self.checkpoint_type = Some(Some(value.into()));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn checkpoint_type_null(mut self) -> Self {
-        self.checkpoint_type = Some(None);
-        self
-    }
-
-    pub fn attribution_recovery_metadata(mut self, value: impl Into<String>) -> Self {
-        self.attribution_recovery_metadata = Some(Some(value.into()));
-        self
-    }
-
-    #[allow(dead_code)]
-    pub fn attribution_recovery_metadata_null(mut self) -> Self {
-        self.attribution_recovery_metadata = Some(None);
-        self
-    }
-}
-
-impl PosEncoded for CheckpointValues {
-    fn to_sparse(&self) -> SparseArray {
-        let mut map = SparseArray::new();
-
-        sparse_set(
-            &mut map,
-            checkpoint_pos::CHECKPOINT_TS,
-            u64_to_json(&self.checkpoint_ts),
-        );
-        sparse_set(&mut map, checkpoint_pos::KIND, string_to_json(&self.kind));
-        sparse_set(
-            &mut map,
-            checkpoint_pos::FILE_PATH,
-            string_to_json(&self.file_path),
-        );
-        sparse_set(
-            &mut map,
-            checkpoint_pos::LINES_ADDED,
-            u32_to_json(&self.lines_added),
-        );
-        sparse_set(
-            &mut map,
-            checkpoint_pos::LINES_DELETED,
-            u32_to_json(&self.lines_deleted),
-        );
-        sparse_set(
-            &mut map,
-            checkpoint_pos::LINES_ADDED_SLOC,
-            u32_to_json(&self.lines_added_sloc),
-        );
-        sparse_set(
-            &mut map,
-            checkpoint_pos::LINES_DELETED_SLOC,
-            u32_to_json(&self.lines_deleted_sloc),
-        );
-        sparse_set(
-            &mut map,
-            checkpoint_pos::TOOL_USE_ID,
-            string_to_json(&self.external_tool_use_id),
-        );
-        sparse_set(
-            &mut map,
-            checkpoint_pos::EDIT_KIND,
-            string_to_json(&self.edit_kind),
-        );
-        sparse_set(
-            &mut map,
-            checkpoint_pos::CHECKPOINT_TYPE,
-            string_to_json(&self.checkpoint_type),
-        );
-        sparse_set(
-            &mut map,
-            checkpoint_pos::ATTRIBUTION_RECOVERY_METADATA,
-            string_to_json(&self.attribution_recovery_metadata),
-        );
-
-        map
-    }
-
-    fn from_sparse(arr: &SparseArray) -> Self {
-        Self {
-            checkpoint_ts: sparse_get_u64(arr, checkpoint_pos::CHECKPOINT_TS),
-            kind: sparse_get_string(arr, checkpoint_pos::KIND),
-            file_path: sparse_get_string(arr, checkpoint_pos::FILE_PATH),
-            lines_added: sparse_get_u32(arr, checkpoint_pos::LINES_ADDED),
-            lines_deleted: sparse_get_u32(arr, checkpoint_pos::LINES_DELETED),
-            lines_added_sloc: sparse_get_u32(arr, checkpoint_pos::LINES_ADDED_SLOC),
-            lines_deleted_sloc: sparse_get_u32(arr, checkpoint_pos::LINES_DELETED_SLOC),
-            external_tool_use_id: sparse_get_string(arr, checkpoint_pos::TOOL_USE_ID),
-            edit_kind: sparse_get_string(arr, checkpoint_pos::EDIT_KIND),
-            checkpoint_type: sparse_get_string(arr, checkpoint_pos::CHECKPOINT_TYPE),
-            attribution_recovery_metadata: sparse_get_string(
-                arr,
-                checkpoint_pos::ATTRIBUTION_RECOVERY_METADATA,
-            ),
-        }
-    }
-}
-
-impl EventValues for CheckpointValues {
-    fn event_id() -> MetricEventId {
-        MetricEventId::Checkpoint
-    }
-
-    fn to_sparse(&self) -> SparseArray {
-        PosEncoded::to_sparse(self)
-    }
-
-    fn from_sparse(arr: &SparseArray) -> Self {
-        PosEncoded::from_sparse(arr)
+pos_event! {
+    /// Values for Event ID 4: checkpoint
+    ///
+    /// Recorded for each file in a checkpoint.
+    /// Uses EventAttributes for standard metadata (repo_url, author, tool, model, etc.)
+    ///
+    /// **Fields:**
+    /// | Position | Name | Type |
+    /// |----------|------|------|
+    /// | 0 | checkpoint_ts | u64 |
+    /// | 1 | kind | String |
+    /// | 2 | file_path | String |
+    /// | 3 | lines_added | u32 |
+    /// | 4 | lines_deleted | u32 |
+    /// | 5 | lines_added_sloc | u32 |
+    /// | 6 | lines_deleted_sloc | u32 |
+    /// | 7 | external_tool_use_id | String (nullable) |
+    /// | 8 | edit_kind | String (nullable) |
+    /// | 9 | checkpoint_type | String (nullable) |
+    /// | 10 | attribution_recovery_metadata | String (nullable JSON) |
+    struct CheckpointValues uses checkpoint_pos for Checkpoint {
+        checkpoint_ts: u64 @ CHECKPOINT_TS,
+        kind: String @ KIND,
+        file_path: String @ FILE_PATH,
+        lines_added: u32 @ LINES_ADDED,
+        lines_deleted: u32 @ LINES_DELETED,
+        lines_added_sloc: u32 @ LINES_ADDED_SLOC,
+        lines_deleted_sloc: u32 @ LINES_DELETED_SLOC,
+        external_tool_use_id: String @ TOOL_USE_ID,
+        edit_kind: String @ EDIT_KIND,
+        checkpoint_type: String @ CHECKPOINT_TYPE,
+        attribution_recovery_metadata: String @ ATTRIBUTION_RECOVERY_METADATA,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::metrics::pos_encoded::PosEncoded;
+    use crate::model::metrics::types::{EventValues, MetricEventId, SparseArray};
     use serde_json::Value;
+    use std::collections::BTreeMap;
 
     #[test]
     fn test_checkpoint_values_builder() {
@@ -575,5 +355,135 @@ mod tests {
         let values = <CheckpointValues as PosEncoded>::from_sparse(&sparse);
 
         assert_eq!(values.edit_kind, None);
+    }
+
+    // --- Golden serialization tests -----------------------------------
+    //
+    // These pin the exact wire representation of `CheckpointValues`. They
+    // are intentionally independent of how the struct/impls are built
+    // (hand-written vs. macro-generated): any future schema drift --
+    // renamed field, moved position, changed null/absent handling --
+    // shows up here as a loud, explicit diff.
+
+    /// Renders a `SparseArray` as a byte-exact JSON string with position
+    /// keys in numeric (not lexical) order, for byte-level pinning.
+    fn pinned_json(sparse: &SparseArray) -> String {
+        let ordered: BTreeMap<usize, Value> = sparse
+            .iter()
+            .map(|(k, v)| (k.parse::<usize>().unwrap(), v.clone()))
+            .collect();
+        serde_json::to_string(&ordered).unwrap()
+    }
+
+    #[test]
+    fn test_checkpoint_values_golden_fully_populated() {
+        let values = CheckpointValues::new()
+            .checkpoint_ts(1_700_000_000)
+            .kind("ai_agent")
+            .file_path("src/lib.rs")
+            .lines_added(10)
+            .lines_deleted(2)
+            .lines_added_sloc(8)
+            .lines_deleted_sloc(1)
+            .external_tool_use_id("tool-99")
+            .edit_kind("file_edit")
+            .checkpoint_type("recovered_bash")
+            .attribution_recovery_metadata(r#"{"solver":"x"}"#);
+
+        let sparse = PosEncoded::to_sparse(&values);
+
+        let expected: SparseArray = serde_json::json!({
+            "0": 1_700_000_000u64,
+            "1": "ai_agent",
+            "2": "src/lib.rs",
+            "3": 10,
+            "4": 2,
+            "5": 8,
+            "6": 1,
+            "7": "tool-99",
+            "8": "file_edit",
+            "9": "recovered_bash",
+            "10": r#"{"solver":"x"}"#,
+        })
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+        assert_eq!(sparse, expected);
+        assert_eq!(sparse.len(), 11, "exactly the 11 live fields, no more");
+
+        assert_eq!(
+            pinned_json(&sparse),
+            r#"{"0":1700000000,"1":"ai_agent","2":"src/lib.rs","3":10,"4":2,"5":8,"6":1,"7":"tool-99","8":"file_edit","9":"recovered_bash","10":"{\"solver\":\"x\"}"}"#
+        );
+
+        let restored = <CheckpointValues as PosEncoded>::from_sparse(&sparse);
+        assert_eq!(PosEncoded::to_sparse(&restored), sparse);
+    }
+
+    #[test]
+    fn test_checkpoint_values_golden_partially_populated() {
+        // Exercises all three `PosField` states (value / explicit null /
+        // absent) across every field type in the struct.
+        let values = CheckpointValues::new()
+            .checkpoint_ts_null() // explicit null (u64)
+            .kind("human") // value (String)
+            // file_path: absent (String)
+            .lines_added(3) // value (u32)
+            // lines_deleted: absent (u32)
+            .lines_added_sloc_null() // explicit null (u32)
+            // lines_deleted_sloc: absent (u32)
+            .external_tool_use_id_null() // explicit null (String)
+            .edit_kind("bash") // value (String)
+            // checkpoint_type: absent (String)
+            .attribution_recovery_metadata_null(); // explicit null (String)
+
+        let sparse = PosEncoded::to_sparse(&values);
+
+        let expected: SparseArray = serde_json::json!({
+            "0": null,
+            "1": "human",
+            "3": 3,
+            "5": null,
+            "7": null,
+            "8": "bash",
+            "10": null,
+        })
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+        assert_eq!(sparse, expected);
+        assert_eq!(sparse.len(), 7);
+        for absent in ["2", "4", "6", "9"] {
+            assert!(
+                !sparse.contains_key(absent),
+                "position {absent} must be omitted, not null"
+            );
+        }
+
+        assert_eq!(
+            pinned_json(&sparse),
+            r#"{"0":null,"1":"human","3":3,"5":null,"7":null,"8":"bash","10":null}"#
+        );
+
+        let restored = <CheckpointValues as PosEncoded>::from_sparse(&sparse);
+        assert_eq!(restored.checkpoint_ts, Some(None));
+        assert_eq!(restored.kind, Some(Some("human".to_string())));
+        assert_eq!(restored.file_path, None);
+        assert_eq!(restored.lines_added, Some(Some(3)));
+        assert_eq!(restored.lines_deleted, None);
+        assert_eq!(restored.lines_added_sloc, Some(None));
+        assert_eq!(restored.lines_deleted_sloc, None);
+        assert_eq!(restored.external_tool_use_id, Some(None));
+        assert_eq!(restored.edit_kind, Some(Some("bash".to_string())));
+        assert_eq!(restored.checkpoint_type, None);
+        assert_eq!(restored.attribution_recovery_metadata, Some(None));
+
+        // Round-trip: re-serializing the restored value reproduces the
+        // exact same sparse map, including the omitted/absent positions.
+        assert_eq!(PosEncoded::to_sparse(&restored), sparse);
     }
 }
