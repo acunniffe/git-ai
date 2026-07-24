@@ -5650,7 +5650,12 @@ impl ActorDaemonCoordinator {
                                     crate::authorship::rewrite_reset::reconstruct_working_log_after_backward_reset(
                                         &repo, old_head, new_head,
                                     )?;
-                                } else if !is_ancestor_commit(&repo, old_head, new_head) {
+                                } else if is_ancestor_commit(&repo, old_head, new_head) {
+                                    // Forward reset (e.g. syncing onto a newer upstream
+                                    // commit): carry the working log to the new base,
+                                    // matching the pull fast-forward side effect.
+                                    repo.storage.rename_working_log(old_head, new_head)?;
+                                } else {
                                     let outcome =
                                         crate::authorship::rewrite::handle_rewrite_event_with_metrics(
                                         &repo,

@@ -845,6 +845,148 @@ fn test_blame_identical_content_shift_attribution() {
     ]);
 }
 
+/// Repro for forward reset orphaning the working log
+/// (docs/forward-reset-orphans-working-log-2026-07-20.md): a non-hard reset
+/// that moves HEAD *forward* (old HEAD is an ancestor of the new HEAD, e.g.
+/// syncing the local branch onto a newer upstream commit) must carry
+/// uncommitted AI attribution over to the new base commit.
+#[test]
+fn test_forward_reset_mixed_preserves_uncommitted_ai_attribution() {
+    let repo = TestRepo::new();
+
+    let ai_path = repo.path().join("feature.txt");
+    let upstream_path = repo.path().join("upstream.txt");
+
+    fs::write(&ai_path, "human line\n").unwrap();
+    fs::write(&upstream_path, "upstream v1\n").unwrap();
+    repo.stage_all_and_commit("Base commit").unwrap();
+
+    // A newer "upstream" commit that is a descendant of the base commit.
+    fs::write(&upstream_path, "upstream v2\n").unwrap();
+    let upstream = repo.stage_all_and_commit("Upstream commit").unwrap();
+
+    // Move the local branch back to the base commit (nothing uncommitted yet).
+    repo.git(&["reset", "--hard", "HEAD~1"]).unwrap();
+
+    // Uncommitted AI edit while HEAD is on the old base.
+    fs::write(&ai_path, "human line\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+        .unwrap();
+
+    // Forward mixed reset onto the newer upstream commit.
+    repo.git(&["reset", "--mixed", &upstream.commit_sha])
+        .unwrap();
+
+    // Commit the AI edit on top of the new base.
+    repo.git(&["add", "feature.txt"]).unwrap();
+    let commit = repo.commit("Commit AI work after forward reset").unwrap();
+
+    assert!(
+        !commit.authorship_log.attestations.is_empty(),
+        "AI attribution should survive a forward mixed reset"
+    );
+    let mut file = repo.filename("feature.txt");
+    file.assert_committed_lines(crate::lines![
+        "human line".unattributed_human(),
+        "AI line".ai(),
+    ]);
+}
+
+/// Same bug via `git reset --keep`, the exact mechanism Graphite's restack
+/// uses to land a branch on a newer base commit (`git reset -q --keep
+/// <new-commit>`). Unlike `--mixed`, `--keep` refuses to move HEAD at all if
+/// the reset would clobber a conflicting uncommitted change, but it still
+/// must carry non-conflicting uncommitted AI attribution over to the new
+/// base -- exercised here as a forward reset with no stash involved.
+#[test]
+fn test_forward_reset_keep_preserves_uncommitted_ai_attribution() {
+    let repo = TestRepo::new();
+
+    let ai_path = repo.path().join("feature.txt");
+    let upstream_path = repo.path().join("upstream.txt");
+
+    fs::write(&ai_path, "human line\n").unwrap();
+    fs::write(&upstream_path, "upstream v1\n").unwrap();
+    repo.stage_all_and_commit("Base commit").unwrap();
+
+    // A newer "upstream" commit that is a descendant of the base commit.
+    fs::write(&upstream_path, "upstream v2\n").unwrap();
+    let upstream = repo.stage_all_and_commit("Upstream commit").unwrap();
+
+    // Move the local branch back to the base commit (nothing uncommitted yet).
+    repo.git(&["reset", "--hard", "HEAD~1"]).unwrap();
+
+    // Uncommitted AI edit while HEAD is on the old base. This edit doesn't
+    // touch upstream.txt, so `--keep` won't refuse the reset.
+    fs::write(&ai_path, "human line\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+        .unwrap();
+
+    // Forward `reset --keep` onto the newer upstream commit.
+    repo.git(&["reset", "--keep", &upstream.commit_sha])
+        .unwrap();
+
+    // Commit the AI edit on top of the new base.
+    repo.git(&["add", "feature.txt"]).unwrap();
+    let commit = repo
+        .commit("Commit AI work after forward reset --keep")
+        .unwrap();
+
+    assert!(
+        !commit.authorship_log.attestations.is_empty(),
+        "AI attribution should survive a forward `reset --keep`"
+    );
+    let mut file = repo.filename("feature.txt");
+    file.assert_committed_lines(crate::lines![
+        "human line".unattributed_human(),
+        "AI line".ai(),
+    ]);
+}
+
+/// Same bug via the real-world sequence that surfaced it (IDE "sync/update
+/// project": stash local changes -> forward reset onto newer upstream ->
+/// stash pop -> commit).
+#[test]
+fn test_forward_reset_stash_pop_preserves_ai_attribution() {
+    let repo = TestRepo::new();
+
+    let ai_path = repo.path().join("feature.txt");
+    let upstream_path = repo.path().join("upstream.txt");
+
+    fs::write(&ai_path, "human line\n").unwrap();
+    fs::write(&upstream_path, "upstream v1\n").unwrap();
+    repo.stage_all_and_commit("Base commit").unwrap();
+
+    fs::write(&upstream_path, "upstream v2\n").unwrap();
+    let upstream = repo.stage_all_and_commit("Upstream commit").unwrap();
+
+    repo.git(&["reset", "--hard", "HEAD~1"]).unwrap();
+
+    fs::write(&ai_path, "human line\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+        .unwrap();
+
+    repo.git(&["stash"]).unwrap();
+    repo.git(&["reset", "--mixed", &upstream.commit_sha])
+        .unwrap();
+    repo.git(&["stash", "pop"]).unwrap();
+
+    repo.git(&["add", "feature.txt"]).unwrap();
+    let commit = repo
+        .commit("Commit AI work after stashed forward reset")
+        .unwrap();
+
+    assert!(
+        !commit.authorship_log.attestations.is_empty(),
+        "AI attribution should survive stash -> forward reset -> stash pop"
+    );
+    let mut file = repo.filename("feature.txt");
+    file.assert_committed_lines(crate::lines![
+        "human line".unattributed_human(),
+        "AI line".ai(),
+    ]);
+}
+
 crate::reuse_tests_in_worktree!(
     test_reset_hard_deletes_working_log,
     test_reset_soft_reconstructs_working_log,
@@ -862,4 +1004,7 @@ crate::reuse_tests_in_worktree!(
     test_reset_mixed_pathspec_multiple_commits,
     test_reset_with_directory_pathspec,
     test_reset_large_commit_preserves_attribution,
+    test_forward_reset_mixed_preserves_uncommitted_ai_attribution,
+    test_forward_reset_keep_preserves_uncommitted_ai_attribution,
+    test_forward_reset_stash_pop_preserves_ai_attribution,
 );
