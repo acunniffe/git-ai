@@ -13,7 +13,7 @@ pub fn is_debug_self_check_remote_url(url: &str) -> bool {
 }
 
 pub fn debug_self_check_root() -> PathBuf {
-    crate::operations::mdm::utils::home_dir()
+    crate::operations::mdm::paths::home_dir()
         .join(".git-ai")
         .join("internal")
         .join(DEBUG_SELF_CHECK_DIR_NAME)

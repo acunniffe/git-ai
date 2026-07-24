@@ -1,12 +1,13 @@
 use crate::error::GitAiError;
+use crate::operations::mdm::editor_cli::binary_exists;
 use crate::operations::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
+#[cfg(test)]
+use crate::operations::mdm::hooks_merge::is_git_ai_checkpoint_command;
 use crate::operations::mdm::hooks_merge::{
     MissingBehavior, catch_all_hook_status, edit_settings_json, install_catch_all_hooks,
     uninstall_catch_all_hooks,
 };
-#[cfg(test)]
-use crate::operations::mdm::utils::is_git_ai_checkpoint_command;
-use crate::operations::mdm::utils::{binary_exists, home_dir};
+use crate::operations::mdm::paths::home_dir;
 use jsonc_parser::ParseOptions;
 use serde_json::{Value, json};
 use std::fs;

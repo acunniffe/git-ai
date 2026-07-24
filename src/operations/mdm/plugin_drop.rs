@@ -9,8 +9,9 @@
 //! `agents/opencode.rs` for the legacy-path migration it layers on top).
 
 use crate::error::GitAiError;
+use crate::operations::mdm::editor_cli::binary_exists;
+use crate::operations::mdm::file_ops::{generate_diff, write_atomic};
 use crate::operations::mdm::hook_installer::{HookCheckResult, HookInstallerParams};
-use crate::operations::mdm::utils::{binary_exists, generate_diff, write_atomic};
 use std::fs;
 use std::path::{Path, PathBuf};
 

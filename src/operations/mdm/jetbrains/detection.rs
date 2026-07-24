@@ -1,5 +1,5 @@
 use super::ide_types::{DetectedIde, JETBRAINS_IDES, JetBrainsIde};
-use crate::operations::mdm::utils::home_dir;
+use crate::operations::mdm::paths::home_dir;
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "macos")]
 use std::process::Command;

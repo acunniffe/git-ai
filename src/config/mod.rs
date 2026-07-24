@@ -10,7 +10,7 @@ use serde::Serialize;
 
 use crate::feature_flags::FeatureFlags;
 use crate::operations::git::repository::Repository;
-use crate::operations::mdm::utils::home_dir;
+use crate::operations::mdm::paths::home_dir;
 
 mod author;
 mod file;

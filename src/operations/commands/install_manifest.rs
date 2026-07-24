@@ -10,7 +10,7 @@
 //! - `git-ai install-hooks` (git config keys + agent hooks, merged on top)
 
 use crate::error::GitAiError;
-use crate::operations::mdm::utils::home_dir;
+use crate::operations::mdm::paths::home_dir;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 

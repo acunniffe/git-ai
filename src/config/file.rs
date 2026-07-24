@@ -8,7 +8,7 @@ use glob::Pattern;
 use serde::{Deserialize, Serialize};
 
 use crate::feature_flags::FeatureFlags;
-use crate::operations::mdm::utils::home_dir;
+use crate::operations::mdm::paths::home_dir;
 
 use super::author::AuthorConfig;
 use super::notes_backend::{NotesBackendConfig, NotesBackendKind};

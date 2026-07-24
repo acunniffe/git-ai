@@ -4,9 +4,9 @@ use crate::operations::commands::install_manifest::{InstallManifest, TRACE2_GIT_
 use crate::operations::daemon::DaemonConfig;
 use crate::operations::mdm::agents::get_all_installers;
 use crate::operations::mdm::hook_installer::HookInstallerParams;
+use crate::operations::mdm::paths::{get_current_binary_path, home_dir};
 use crate::operations::mdm::skills_installer;
 use crate::operations::mdm::spinner::{Spinner, print_diff};
-use crate::operations::mdm::utils::{get_current_binary_path, home_dir};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};

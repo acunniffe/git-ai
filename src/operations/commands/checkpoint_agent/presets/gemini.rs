@@ -5,7 +5,7 @@ use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::working_log::AgentId;
 use crate::operations::commands::checkpoint_agent::bash_tool::{self, Agent, ToolClass};
 use crate::operations::commands::checkpoint_agent::path_utils::normalize_for_comparison;
-use crate::operations::mdm::utils::gemini_config_dir;
+use crate::operations::mdm::paths::gemini_config_dir;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 

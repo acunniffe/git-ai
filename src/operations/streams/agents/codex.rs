@@ -3,7 +3,7 @@
 use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
-use crate::operations::mdm::utils::codex_home_dir;
+use crate::operations::mdm::paths::codex_home_dir;
 use crate::operations::streams::agent::{
     Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
 };

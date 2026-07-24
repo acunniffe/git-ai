@@ -1,8 +1,7 @@
 use crate::error::GitAiError;
+use crate::operations::mdm::file_ops::{generate_diff, write_atomic};
 use crate::operations::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
-use crate::operations::mdm::utils::{
-    generate_diff, home_dir, normalize_windows_path_for_shell, write_atomic,
-};
+use crate::operations::mdm::paths::{home_dir, normalize_windows_path_for_shell};
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};

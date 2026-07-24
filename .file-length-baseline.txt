@@ -45,12 +45,10 @@ src/operations/git/refs.rs	1060
 src/operations/git/repo_storage.rs	963
 src/operations/mdm/agents/claude_code.rs	1257
 src/operations/mdm/agents/cline.rs	648
-src/operations/mdm/agents/cursor.rs	664
 src/operations/mdm/agents/droid.rs	1241
 src/operations/mdm/agents/gemini.rs	1063
 src/operations/mdm/agents/github_copilot.rs	898
 src/operations/mdm/jetbrains/detection.rs	925
-src/operations/mdm/utils.rs	1514
 src/operations/streams/agents/copilot.rs	970
 src/operations/streams/agents/copilot_otel.rs	1019
 src/operations/streams/agents/opencode.rs	703

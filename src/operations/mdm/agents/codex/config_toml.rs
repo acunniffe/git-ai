@@ -1,5 +1,5 @@
 use crate::error::GitAiError;
-use crate::operations::mdm::utils::is_git_ai_checkpoint_command;
+use crate::operations::mdm::hooks_merge::is_git_ai_checkpoint_command;
 use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
 use std::path::Path;

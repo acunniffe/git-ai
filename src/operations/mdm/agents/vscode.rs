@@ -1,12 +1,15 @@
 use crate::error::GitAiError;
+use crate::operations::mdm::editor_cli::resolve_editor_cli;
 use crate::operations::mdm::hook_installer::{
     HookCheckResult, HookInstaller, HookInstallerParams, InstallResult, UninstallResult,
 };
-use crate::operations::mdm::utils::{
-    MIN_CODE_VERSION, get_editor_version, home_dir, install_vsc_editor_extension,
-    is_github_codespaces, is_vsc_editor_extension_installed, parse_version, resolve_editor_cli,
+use crate::operations::mdm::paths::home_dir;
+use crate::operations::mdm::version::{
+    MIN_CODE_VERSION, get_editor_version, parse_version, version_meets_requirement,
+};
+use crate::operations::mdm::vscode_settings::{
+    install_vsc_editor_extension, is_github_codespaces, is_vsc_editor_extension_installed,
     settings_paths_for_products, should_process_settings_target, update_vscode_chat_hook_settings,
-    version_meets_requirement,
 };
 use std::path::PathBuf;
 

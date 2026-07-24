@@ -24,7 +24,7 @@ use crate::operations::commands::install_hooks::{
 };
 use crate::operations::commands::install_manifest::{InstallManifest, remove_fence_block};
 use crate::operations::daemon::daemon_config::WINDOWS_PIPE_PREFIX;
-use crate::operations::mdm::utils::home_dir;
+use crate::operations::mdm::paths::home_dir;
 use std::io::IsTerminal;
 use std::path::Path;
 

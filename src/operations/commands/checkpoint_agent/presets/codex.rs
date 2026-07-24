@@ -8,7 +8,7 @@ use crate::error::GitAiError;
 use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::working_log::AgentId;
 use crate::operations::commands::checkpoint_agent::bash_tool::{self, Agent, ToolClass};
-use crate::operations::mdm::utils::codex_home_dir;
+use crate::operations::mdm::paths::codex_home_dir;
 use std::collections::HashMap;
 use std::path::PathBuf;
 

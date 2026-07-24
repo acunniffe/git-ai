@@ -1,6 +1,7 @@
 use crate::config::skills_dir_path;
 use crate::error::GitAiError;
-use crate::operations::mdm::utils::{claude_config_dir, write_atomic};
+use crate::operations::mdm::file_ops::write_atomic;
+use crate::operations::mdm::paths::claude_config_dir;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;

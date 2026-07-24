@@ -9,7 +9,7 @@ use tempfile::TempDir;
 
 /// RAII guard that redirects home-directory env vars to a temp path for the duration of a test,
 /// then restores them on drop.  Handles both Unix (`HOME`) and Windows (`USERPROFILE`,
-/// `HOMEDRIVE`, `HOMEPATH`) so that `home_dir()` in src/mdm/utils.rs resolves to the temp dir
+/// `HOMEDRIVE`, `HOMEPATH`) so that `home_dir()` in src/operations/mdm/paths.rs resolves to the temp dir
 /// on all platforms.
 struct HomeEnvGuard {
     original_home: Option<String>,

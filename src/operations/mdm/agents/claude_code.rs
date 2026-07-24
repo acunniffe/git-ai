@@ -1,14 +1,15 @@
 use crate::error::GitAiError;
+use crate::operations::mdm::editor_cli::binary_exists;
 use crate::operations::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
+#[cfg(test)]
+use crate::operations::mdm::hooks_merge::is_git_ai_checkpoint_command;
 use crate::operations::mdm::hooks_merge::{
     MissingBehavior, catch_all_hook_status, edit_settings_json, install_catch_all_hooks,
     uninstall_catch_all_hooks,
 };
-#[cfg(test)]
-use crate::operations::mdm::utils::is_git_ai_checkpoint_command;
-use crate::operations::mdm::utils::{
-    MIN_CLAUDE_VERSION, binary_exists, claude_config_dir, get_binary_version,
-    normalize_windows_path_for_shell, parse_version, version_meets_requirement,
+use crate::operations::mdm::paths::{claude_config_dir, normalize_windows_path_for_shell};
+use crate::operations::mdm::version::{
+    MIN_CLAUDE_VERSION, get_binary_version, parse_version, version_meets_requirement,
 };
 use serde_json::{Value, json};
 use std::fs;
@@ -163,7 +164,7 @@ impl HookInstaller for ClaudeCodeInstaller {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::operations::mdm::utils::{clean_path, normalize_windows_path_for_shell};
+    use crate::operations::mdm::paths::{clean_path, normalize_windows_path_for_shell};
     use std::fs;
     use tempfile::TempDir;
 

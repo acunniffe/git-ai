@@ -262,7 +262,7 @@ fn global_git_config_path() -> PathBuf {
     {
         return PathBuf::from(path);
     }
-    crate::operations::mdm::utils::home_dir().join(".gitconfig")
+    crate::operations::mdm::paths::home_dir().join(".gitconfig")
 }
 
 #[cfg(test)]

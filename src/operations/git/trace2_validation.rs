@@ -98,7 +98,7 @@ pub fn check_trace2_global_config(target: &GitDiagnosticTarget) -> DiagnosticChe
 pub fn run_trace2_file_self_check(target: &GitDiagnosticTarget) -> DiagnosticCheckResult {
     let mut commands = Vec::new();
     let deadline = Instant::now() + DEBUG_CHECK_TIMEOUT;
-    let trace_dir = crate::operations::mdm::utils::home_dir()
+    let trace_dir = crate::operations::mdm::paths::home_dir()
         .join(".git-ai")
         .join("internal")
         .join("daemon");

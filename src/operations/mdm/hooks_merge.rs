@@ -1,37 +1,39 @@
 //! Shared merge engines for MDM hook installers that read-modify-write a JSON
-//! (or JSONC) settings file to inject a git-ai checkpoint command.
-//!
-//! Two archetypes were duplicated across `mdm/agents/*.rs` before this module
+//! (or JSONC) settings file to inject a git-ai checkpoint command. Three
+//! archetypes were duplicated across `mdm/agents/*.rs` before this module
 //! existed:
 //!
-//! - The **settings-merge envelope** (`edit_settings_json`): read the file,
-//!   clone it, let a caller-supplied closure mutate the clone, detect "no
-//!   change" by comparing the mutated value against the original, then
-//!   pretty-print + diff + atomically write. Used by every agent whose state
-//!   lives in a single JSON file.
-//! - The **catch-all matcher** algorithm (`install_catch_all_hooks` /
+//! - **Settings-merge envelope** (`edit_settings_json`): read the file, clone
+//!   it, let a caller closure mutate the clone, detect "no change" via
+//!   equality, then pretty-print + diff + atomically write.
+//! - **Catch-all matcher** (`install_catch_all_hooks` /
 //!   `uninstall_catch_all_hooks` / `catch_all_hook_status`): settings that
 //!   group hook commands under named "matcher" blocks (Claude Code, Gemini,
-//!   Droid) migrate any git-ai command out of non-catch-all blocks into a
-//!   single `"*"` catch-all block, deduplicating as they go.
+//!   Droid) migrate git-ai commands into a single `"*"` block, deduplicating.
+//! - **Flat command-hooks** (Cursor, Firebender): see the sibling
+//!   `hooks_merge_flat` module.
 use crate::error::GitAiError;
-use crate::operations::mdm::utils::{generate_diff, is_git_ai_checkpoint_command, write_atomic};
+use crate::operations::mdm::file_ops::{generate_diff, write_atomic};
 use serde_json::{Value, json};
 use std::fs;
 use std::path::Path;
 
-/// The `"*"` catch-all matcher used by installers that group hook commands
-/// under named matcher blocks (Claude Code, Gemini, Droid).
+/// The `"*"` catch-all matcher for installers grouping hooks under matcher blocks.
 const CATCH_ALL_MATCHER: &str = "*";
+
+/// Check if a command is a git-ai checkpoint command
+pub fn is_git_ai_checkpoint_command(cmd: &str) -> bool {
+    // Must contain "git-ai" and "checkpoint"
+    cmd.contains("git-ai") && cmd.contains("checkpoint")
+}
 
 /// Controls how [`edit_settings_json`] treats a settings file that doesn't exist.
 pub enum MissingBehavior {
     /// Install-style: proceed as if the file contained `{}`, and ensure the
     /// parent directory exists so a write can land there.
     TreatAsEmpty,
-    /// Uninstall-style: there is nothing to remove from a file that doesn't
-    /// exist, so return `Ok(None)` immediately without touching the filesystem
-    /// (no directory creation, no read).
+    /// Uninstall-style: nothing to remove from a missing file, so return
+    /// `Ok(None)` immediately without touching the filesystem.
     NoOp,
 }
 
@@ -43,9 +45,8 @@ pub enum MissingBehavior {
 /// wrapped to return [`GitAiError`], or a JSONC-aware parser (see
 /// `agents/droid.rs`). `mutate` receives a clone of the parsed value and edits
 /// it in place. **`mutate` must leave its argument byte-for-byte unchanged
-/// when there is nothing to do** -- "changed" is detected purely by comparing
-/// the mutated value against the value read from disk, matching every
-/// pre-existing agent's `if existing == merged { return Ok(None); }` check.
+/// when there is nothing to do** -- "changed" is detected by comparing the
+/// mutated value against the value read from disk.
 pub fn edit_settings_json(
     settings_path: &Path,
     dry_run: bool,
@@ -91,16 +92,12 @@ pub fn edit_settings_json(
     Ok(Some(diff_output))
 }
 
-/// Ensure exactly one git-ai checkpoint command exists in `array`, where a
-/// command is identified via `is_git_ai_checkpoint_command` on each entry's
-/// `"command"` field:
-/// - if a match exists and its command differs from `desired_cmd`, replace
-///   that entry with `desired_hook`;
-/// - remove any further matches (dedup down to one);
-/// - if no match exists, append `desired_hook`.
-///
-/// Shared by the catch-all matcher installers' dedup step and by Windsurf's
-/// flat per-event hook arrays.
+/// Ensure exactly one git-ai checkpoint command (identified via
+/// `is_git_ai_checkpoint_command` on each entry's `"command"`) exists in
+/// `array`: replace a differing match with `desired_hook`, dedup any further
+/// matches down to one, or append `desired_hook` if none exist. Shared by the
+/// catch-all matcher installers' dedup step and by Windsurf's flat per-event
+/// hook arrays.
 pub fn upsert_singleton_command_hook(
     array: &mut Vec<Value>,
     desired_cmd: &str,
@@ -151,12 +148,9 @@ pub fn upsert_singleton_command_hook(
 /// Ensure exactly one git-ai checkpoint command lives in the `"*"` catch-all
 /// matcher block of `hooks_obj[hook_type]`, for each `(hook_type,
 /// desired_command)` pair in `desired`. Any git-ai command found in a
-/// non-catch-all matcher block is stripped first (migration); a block emptied
-/// entirely by that migration is dropped, but pre-existing empty blocks are
-/// left alone.
-///
-/// Shared by Claude Code, Gemini, and Droid, whose settings group hook
-/// commands under named matcher blocks.
+/// non-catch-all matcher block is stripped first (migration); a block
+/// emptied entirely by that migration is dropped, but pre-existing empty
+/// blocks are left alone. Shared by Claude Code, Gemini, and Droid.
 pub fn install_catch_all_hooks(hooks_obj: &mut Value, desired: &[(&str, &str)]) {
     for (hook_type, desired_cmd) in desired {
         let mut hook_type_array = hooks_obj
@@ -270,11 +264,10 @@ pub fn uninstall_catch_all_hooks(hooks_obj: &mut Value, hook_types: &[&str]) -> 
 }
 
 /// Returns `(hooks_installed, hooks_up_to_date)` for a catch-all-matcher-style
-/// settings value, inspecting only `pre_hook_type` (the representative "pre"
-/// hook key -- matches every pre-existing agent's `hook_status`, which never
-/// inspected the "post" key). `hooks_installed` = a git-ai checkpoint command
-/// exists in ANY matcher block. `hooks_up_to_date` = one exists specifically
-/// in the `"*"` catch-all block.
+/// settings value, inspecting only `pre_hook_type` (matches every pre-existing
+/// agent's `hook_status`, which never inspected the "post" key).
+/// `hooks_installed` = a git-ai command exists in ANY matcher block;
+/// `hooks_up_to_date` = one exists specifically in the `"*"` catch-all block.
 pub fn catch_all_hook_status(settings: &Value, pre_hook_type: &str) -> (bool, bool) {
     let Some(blocks) = settings
         .get("hooks")
@@ -325,6 +318,31 @@ mod tests {
 
     fn parse_json(content: &str) -> Result<Value, GitAiError> {
         Ok(serde_json::from_str(content)?)
+    }
+
+    #[test]
+    fn test_is_git_ai_checkpoint_command() {
+        assert!(is_git_ai_checkpoint_command("git-ai checkpoint"));
+        assert!(is_git_ai_checkpoint_command(
+            "git-ai checkpoint claude --hook-input stdin"
+        ));
+        assert!(is_git_ai_checkpoint_command("git-ai checkpoint claude"));
+        assert!(is_git_ai_checkpoint_command(
+            "git-ai checkpoint --hook-input"
+        ));
+        assert!(is_git_ai_checkpoint_command(
+            "git-ai checkpoint claude --hook-input \"$(cat)\""
+        ));
+        assert!(is_git_ai_checkpoint_command("git-ai checkpoint gemini"));
+        assert!(is_git_ai_checkpoint_command(
+            "git-ai checkpoint gemini --hook-input stdin"
+        ));
+
+        // Non-matching commands
+        assert!(!is_git_ai_checkpoint_command("echo hello"));
+        assert!(!is_git_ai_checkpoint_command("git status"));
+        assert!(!is_git_ai_checkpoint_command("checkpoint"));
+        assert!(!is_git_ai_checkpoint_command("git-ai"));
     }
 
     // ---- edit_settings_json envelope ----

@@ -1,7 +1,9 @@
 use crate::config::{CodexHooksFormat, Config};
 use crate::error::GitAiError;
+use crate::operations::mdm::editor_cli::binary_exists;
+use crate::operations::mdm::file_ops::{generate_diff, write_atomic};
 use crate::operations::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
-use crate::operations::mdm::utils::{binary_exists, codex_home_dir, generate_diff, write_atomic};
+use crate::operations::mdm::paths::codex_home_dir;
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};

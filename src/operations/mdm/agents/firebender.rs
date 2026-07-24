@@ -1,14 +1,16 @@
 use crate::error::GitAiError;
 use crate::operations::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
 use crate::operations::mdm::hooks_merge::{MissingBehavior, edit_settings_json};
-use crate::operations::mdm::utils::home_dir;
+use crate::operations::mdm::hooks_merge_flat::{
+    remove_command_hooks_flat, upsert_command_hooks_flat,
+};
+use crate::operations::mdm::paths::home_dir;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::PathBuf;
 
 const FIREBENDER_CHECKPOINT_CMD: &str = "checkpoint firebender --hook-input stdin";
-const FIREBENDER_PRE_TOOL_USE_CMD: &str = "checkpoint firebender --hook-input stdin";
-const FIREBENDER_POST_TOOL_USE_CMD: &str = "checkpoint firebender --hook-input stdin";
+const FIREBENDER_HOOK_NAMES: &[&str] = &["preToolUse", "postToolUse"];
 
 pub struct FirebenderInstaller;
 
@@ -20,6 +22,12 @@ impl FirebenderInstaller {
     fn is_firebender_checkpoint_command(cmd: &str) -> bool {
         cmd.contains("checkpoint firebender")
             && (cmd.contains("git-ai") || cmd.ends_with(FIREBENDER_CHECKPOINT_CMD))
+    }
+
+    /// Firebender's legacy hooks carried a `"matcher"` field that's no longer
+    /// used; its presence alone forces an update so it gets stripped.
+    fn needs_matcher_strip(existing_hook: &Value) -> bool {
+        existing_hook.get("matcher").is_some()
     }
 }
 
@@ -96,32 +104,11 @@ impl HookInstaller for FirebenderInstaller {
         params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        let pre_tool_use_cmd = format!(
+        let desired_cmd = format!(
             "{} {}",
             params.binary_path.display(),
-            FIREBENDER_PRE_TOOL_USE_CMD
+            FIREBENDER_CHECKPOINT_CMD
         );
-        let post_tool_use_cmd = format!(
-            "{} {}",
-            params.binary_path.display(),
-            FIREBENDER_POST_TOOL_USE_CMD
-        );
-
-        let desired: Value = json!({
-            "version": 1,
-            "hooks": {
-                "preToolUse": [
-                    {
-                        "command": pre_tool_use_cmd
-                    }
-                ],
-                "postToolUse": [
-                    {
-                        "command": post_tool_use_cmd
-                    }
-                ]
-            }
-        });
 
         edit_settings_json(
             &Self::hooks_path(),
@@ -129,68 +116,13 @@ impl HookInstaller for FirebenderInstaller {
             MissingBehavior::TreatAsEmpty,
             |content| Ok(serde_json::from_str(content)?),
             |merged| {
-                if merged.get("version").is_none()
-                    && let Some(obj) = merged.as_object_mut()
-                {
-                    obj.insert("version".to_string(), json!(1));
-                }
-
-                let mut hooks_obj = merged.get("hooks").cloned().unwrap_or_else(|| json!({}));
-
-                for hook_name in &["preToolUse", "postToolUse"] {
-                    let desired_hooks = desired
-                        .get("hooks")
-                        .and_then(|h| h.get(*hook_name))
-                        .and_then(|v| v.as_array())
-                        .cloned()
-                        .unwrap_or_default();
-
-                    let mut existing_hooks = hooks_obj
-                        .get(*hook_name)
-                        .and_then(|v| v.as_array())
-                        .cloned()
-                        .unwrap_or_default();
-
-                    for desired_hook in desired_hooks {
-                        let Some(desired_cmd) =
-                            desired_hook.get("command").and_then(|c| c.as_str())
-                        else {
-                            continue;
-                        };
-
-                        let mut found_idx = None;
-                        let mut needs_update = false;
-
-                        for (idx, existing_hook) in existing_hooks.iter().enumerate() {
-                            if let Some(existing_cmd) =
-                                existing_hook.get("command").and_then(|c| c.as_str())
-                                && Self::is_firebender_checkpoint_command(existing_cmd)
-                            {
-                                found_idx = Some(idx);
-                                if existing_cmd != desired_cmd
-                                    || existing_hook.get("matcher").is_some()
-                                {
-                                    needs_update = true;
-                                }
-                                break;
-                            }
-                        }
-
-                        match found_idx {
-                            Some(idx) if needs_update => existing_hooks[idx] = desired_hook.clone(),
-                            Some(_) => {}
-                            None => existing_hooks.push(desired_hook.clone()),
-                        }
-                    }
-
-                    if let Some(obj) = hooks_obj.as_object_mut() {
-                        obj.insert(hook_name.to_string(), Value::Array(existing_hooks));
-                    }
-                }
-
-                if let Some(root) = merged.as_object_mut() {
-                    root.insert("hooks".to_string(), hooks_obj);
-                }
+                upsert_command_hooks_flat(
+                    merged,
+                    &desired_cmd,
+                    FIREBENDER_HOOK_NAMES,
+                    Self::is_firebender_checkpoint_command,
+                    Self::needs_matcher_strip,
+                );
             },
         )
     }
@@ -206,31 +138,11 @@ impl HookInstaller for FirebenderInstaller {
             MissingBehavior::NoOp,
             |content| Ok(serde_json::from_str(content)?),
             |merged| {
-                let Some(mut hooks_obj) = merged.get("hooks").cloned() else {
-                    return;
-                };
-                let mut changed = false;
-
-                for hook_name in &["preToolUse", "postToolUse"] {
-                    if let Some(arr) = hooks_obj.get_mut(*hook_name).and_then(|v| v.as_array_mut())
-                    {
-                        let original_len = arr.len();
-                        arr.retain(|item| {
-                            if let Some(cmd) = item.get("command").and_then(|c| c.as_str()) {
-                                !Self::is_firebender_checkpoint_command(cmd)
-                            } else {
-                                true
-                            }
-                        });
-                        if arr.len() != original_len {
-                            changed = true;
-                        }
-                    }
-                }
-
-                if changed && let Some(root) = merged.as_object_mut() {
-                    root.insert("hooks".to_string(), hooks_obj);
-                }
+                remove_command_hooks_flat(
+                    merged,
+                    FIREBENDER_HOOK_NAMES,
+                    Self::is_firebender_checkpoint_command,
+                );
             },
         )
     }
@@ -287,6 +199,70 @@ mod tests {
             );
             assert!(
                 content["hooks"]["postToolUse"][0]["command"]
+                    .as_str()
+                    .unwrap()
+                    .contains("checkpoint firebender")
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_install_hooks_is_idempotent() {
+        with_temp_home(|_home| {
+            let installer = FirebenderInstaller;
+            let params = HookInstallerParams {
+                binary_path: create_test_binary_path(),
+            };
+            installer.install_hooks(&params, false).unwrap();
+            let second = installer.install_hooks(&params, false).unwrap();
+            assert!(second.is_none(), "reinstall should be a no-op");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_install_hooks_preserves_existing_foreign_hooks() {
+        with_temp_home(|home| {
+            let hooks_path = home.join(".firebender").join("hooks.json");
+            if let Some(parent) = hooks_path.parent() {
+                fs::create_dir_all(parent).unwrap();
+            }
+
+            let existing = json!({
+                "version": 1,
+                "hooks": {
+                    "preToolUse": [{ "command": "echo 'before'" }],
+                    "postToolUse": [{ "command": "echo 'after'" }]
+                }
+            });
+            fs::write(
+                &hooks_path,
+                serde_json::to_string_pretty(&existing).unwrap(),
+            )
+            .unwrap();
+
+            let installer = FirebenderInstaller;
+            let diff = installer
+                .install_hooks(
+                    &HookInstallerParams {
+                        binary_path: create_test_binary_path(),
+                    },
+                    false,
+                )
+                .unwrap();
+            assert!(diff.is_some());
+
+            let updated: Value =
+                serde_json::from_str(&fs::read_to_string(&hooks_path).unwrap()).unwrap();
+            let pre = updated["hooks"]["preToolUse"].as_array().unwrap();
+            let post = updated["hooks"]["postToolUse"].as_array().unwrap();
+            assert_eq!(pre.len(), 2);
+            assert_eq!(post.len(), 2);
+            assert_eq!(pre[0]["command"], "echo 'before'");
+            assert_eq!(post[0]["command"], "echo 'after'");
+            assert!(
+                pre[1]["command"]
                     .as_str()
                     .unwrap()
                     .contains("checkpoint firebender")

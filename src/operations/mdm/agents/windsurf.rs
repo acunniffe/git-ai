@@ -1,13 +1,15 @@
 use crate::error::GitAiError;
+use crate::operations::mdm::editor_cli::resolve_editor_cli;
 use crate::operations::mdm::hook_installer::{
     HookCheckResult, HookInstaller, HookInstallerParams, InstallResult, UninstallResult,
 };
 use crate::operations::mdm::hooks_merge::{
-    MissingBehavior, edit_settings_json, upsert_singleton_command_hook,
+    MissingBehavior, edit_settings_json, is_git_ai_checkpoint_command,
+    upsert_singleton_command_hook,
 };
-use crate::operations::mdm::utils::{
-    home_dir, install_vsc_editor_extension, is_git_ai_checkpoint_command, is_github_codespaces,
-    is_vsc_editor_extension_installed, resolve_editor_cli,
+use crate::operations::mdm::paths::home_dir;
+use crate::operations::mdm::vscode_settings::{
+    install_vsc_editor_extension, is_github_codespaces, is_vsc_editor_extension_installed,
 };
 
 use serde_json::{Value, json};

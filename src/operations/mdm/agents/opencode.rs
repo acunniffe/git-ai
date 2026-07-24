@@ -1,7 +1,7 @@
 use crate::error::GitAiError;
 use crate::operations::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
+use crate::operations::mdm::paths::home_dir;
 use crate::operations::mdm::plugin_drop::{self, FileDropSpec};
-use crate::operations::mdm::utils::home_dir;
 use std::fs;
 #[cfg(test)]
 use std::path::Path;
