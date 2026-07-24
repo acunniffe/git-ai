@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use glob::Pattern;
 use serde::{Deserialize, Serialize};
@@ -270,70 +271,30 @@ pub fn save_file_config(config: &FileConfig) -> Result<(), String> {
 
 pub(crate) fn build_config() -> Config {
     let file_cfg = load_file_config();
-    let exclude_prompts_in_repositories = file_cfg
-        .as_ref()
-        .and_then(|c| c.exclude_prompts_in_repositories.clone())
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|pattern_str| {
-            Pattern::new(&pattern_str)
-                .map_err(|e| {
-                    eprintln!(
-                        "Warning: Invalid glob pattern in exclude_prompts_in_repositories '{}': {}",
-                        pattern_str, e
-                    );
-                })
-                .ok()
-        })
-        .collect();
-    let include_prompts_in_repositories = file_cfg
-        .as_ref()
-        .and_then(|c| c.include_prompts_in_repositories.clone())
-        .unwrap_or(vec![])
-        .into_iter()
-        .filter_map(|pattern_str| {
-            Pattern::new(&pattern_str)
-                .map_err(|e| {
-                    eprintln!(
-                        "Warning: Invalid glob pattern in include_prompts_in_repositories '{}': {}",
-                        pattern_str, e
-                    );
-                })
-                .ok()
-        })
-        .collect();
-    let allowed_repositories = file_cfg
-        .as_ref()
-        .and_then(|c| c.allowed_repositories.clone())
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|pattern_str| {
-            Pattern::new(&pattern_str)
-                .map_err(|e| {
-                    eprintln!(
-                        "Warning: Invalid glob pattern in allowed_repositories '{}': {}",
-                        pattern_str, e
-                    );
-                })
-                .ok()
-        })
-        .collect();
-    let exclude_repositories = file_cfg
-        .as_ref()
-        .and_then(|c| c.exclude_repositories.clone())
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|pattern_str| {
-            Pattern::new(&pattern_str)
-                .map_err(|e| {
-                    eprintln!(
-                        "Warning: Invalid glob pattern in exclude_repositories '{}': {}",
-                        pattern_str, e
-                    );
-                })
-                .ok()
-        })
-        .collect();
+    let exclude_prompts_in_repositories = compile_glob_field(
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.exclude_prompts_in_repositories.clone()),
+        "exclude_prompts_in_repositories",
+    );
+    let include_prompts_in_repositories = compile_glob_field(
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.include_prompts_in_repositories.clone()),
+        "include_prompts_in_repositories",
+    );
+    let allowed_repositories = compile_glob_field(
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.allowed_repositories.clone()),
+        "allowed_repositories",
+    );
+    let exclude_repositories = compile_glob_field(
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.exclude_repositories.clone()),
+        "exclude_repositories",
+    );
     let telemetry_oss_disabled = file_cfg
         .as_ref()
         .and_then(|c| c.telemetry_oss.clone())
@@ -511,43 +472,37 @@ pub(crate) fn build_config() -> Config {
     };
 
     // Transcript streaming lookback: env > file > default (7 days). 0 means unlimited (None).
-    let transcript_streaming_lookback_days = env::var("GIT_AI_TRANSCRIPT_STREAMING_LOOKBACK_DAYS")
-        .ok()
-        .and_then(|v| v.parse::<u32>().ok())
-        .or_else(|| {
-            file_cfg
-                .as_ref()
-                .and_then(|c| c.transcript_streaming_lookback_days)
-        })
-        .or(Some(7))
-        .filter(|&v| v != 0);
+    let transcript_streaming_lookback_days = Some(env_or_file(
+        "GIT_AI_TRANSCRIPT_STREAMING_LOOKBACK_DAYS",
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.transcript_streaming_lookback_days),
+        7u32,
+    ))
+    .filter(|&v| v != 0);
 
     // Checkpoint content limits: env > file > defaults.
-    let max_checkpoint_file_size_bytes = env::var("GIT_AI_MAX_CHECKPOINT_FILE_SIZE_BYTES")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .or_else(|| {
-            file_cfg
-                .as_ref()
-                .and_then(|c| c.max_checkpoint_file_size_bytes)
-        })
-        .unwrap_or(DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES);
+    let max_checkpoint_file_size_bytes = env_or_file(
+        "GIT_AI_MAX_CHECKPOINT_FILE_SIZE_BYTES",
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.max_checkpoint_file_size_bytes),
+        DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
+    );
 
-    let max_checkpoint_total_size_bytes = env::var("GIT_AI_MAX_CHECKPOINT_TOTAL_SIZE_BYTES")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .or_else(|| {
-            file_cfg
-                .as_ref()
-                .and_then(|c| c.max_checkpoint_total_size_bytes)
-        })
-        .unwrap_or(DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES);
+    let max_checkpoint_total_size_bytes = env_or_file(
+        "GIT_AI_MAX_CHECKPOINT_TOTAL_SIZE_BYTES",
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.max_checkpoint_total_size_bytes),
+        DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
+    );
 
-    let max_checkpoint_total_lines = env::var("GIT_AI_MAX_CHECKPOINT_TOTAL_LINES")
-        .ok()
-        .and_then(|v| v.parse::<usize>().ok())
-        .or_else(|| file_cfg.as_ref().and_then(|c| c.max_checkpoint_total_lines))
-        .unwrap_or(DEFAULT_MAX_CHECKPOINT_TOTAL_LINES);
+    let max_checkpoint_total_lines = env_or_file(
+        "GIT_AI_MAX_CHECKPOINT_TOTAL_LINES",
+        file_cfg.as_ref().and_then(|c| c.max_checkpoint_total_lines),
+        DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+    );
 
     let config = Config {
         git_path,
@@ -587,6 +542,34 @@ pub(crate) fn build_config() -> Config {
     };
 
     config
+}
+
+/// Compile a `Vec<String>` glob-pattern config field into `Vec<Pattern>`,
+/// dropping (and warning about) any pattern that fails to compile.
+fn compile_glob_field(patterns_opt: Option<Vec<String>>, field_name: &str) -> Vec<Pattern> {
+    patterns_opt
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|pattern_str| {
+            Pattern::new(&pattern_str)
+                .map_err(|e| {
+                    eprintln!(
+                        "Warning: Invalid glob pattern in {} '{}': {}",
+                        field_name, pattern_str, e
+                    );
+                })
+                .ok()
+        })
+        .collect()
+}
+
+/// Resolve a numeric config value: env var > file config > default.
+fn env_or_file<T: FromStr>(env_key: &str, file_val: Option<T>, default: T) -> T {
+    env::var(env_key)
+        .ok()
+        .and_then(|v| v.parse::<T>().ok())
+        .or(file_val)
+        .unwrap_or(default)
 }
 
 /// Build custom attributes from file config and `GIT_AI_CUSTOM_ATTRIBUTES` env var.

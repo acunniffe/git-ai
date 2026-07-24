@@ -17,8 +17,6 @@ use std::os::windows::process::CommandExt;
 use std::time::Duration;
 
 #[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-#[cfg(windows)]
 type WindowsHandle = *mut std::ffi::c_void;
 #[cfg(windows)]
 const TH32CS_SNAPPROCESS: u32 = 0x00000002;
@@ -568,7 +566,7 @@ fn run_install_script(script_content: &str, tag: &str, silent: bool) -> Result<(
                 .env(GIT_AI_RELEASE_ENV, tag);
 
             // Hide the spawned console to prevent any host/UI bleed-through
-            cmd.creation_flags(CREATE_NO_WINDOW);
+            cmd.creation_flags(crate::process_spawn::CREATE_NO_WINDOW);
 
             if silent {
                 cmd.env(GIT_AI_RESTART_DAEMON_AFTER_INSTALL_ENV, "1");

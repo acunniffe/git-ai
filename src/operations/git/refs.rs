@@ -287,12 +287,22 @@ pub fn copy_missing_notes_for_commits_from_ref(
     Ok(copied)
 }
 
-pub(in crate::operations::git) fn notes_add_batch(
+/// Shared prologue for `notes_add_batch`/`notes_add_blob_batch`: resolve the
+/// current `refs/notes/ai` tip (if any), collapse `entries` to one
+/// `(commit_sha, value)` pair per commit (last write wins, original relative
+/// order preserved), and stamp the fast-import commit time.
+///
+/// Returns `None` when `entries` is empty — callers should return `Ok(())`.
+/// `(existing_notes_tip, deduped_entries, commit_timestamp)` from
+/// [`prepare_notes_batch_write`]; `None` when there is nothing to write.
+type PreparedNotesBatch = Option<(Option<String>, Vec<(String, String)>, u64)>;
+
+fn prepare_notes_batch_write(
     repo: &Repository,
     entries: &[(String, String)],
-) -> Result<(), GitAiError> {
+) -> Result<PreparedNotesBatch, GitAiError> {
     if entries.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
 
     let mut args = repo.global_args_for_exec();
@@ -310,9 +320,9 @@ pub(in crate::operations::git) fn notes_add_batch(
 
     let mut deduped_entries: Vec<(String, String)> = Vec::new();
     let mut seen = HashSet::new();
-    for (commit_sha, note_content) in entries.iter().rev() {
+    for (commit_sha, value) in entries.iter().rev() {
         if seen.insert(commit_sha.as_str()) {
-            deduped_entries.push((commit_sha.clone(), note_content.clone()));
+            deduped_entries.push((commit_sha.clone(), value.clone()));
         }
     }
     deduped_entries.reverse();
@@ -321,6 +331,19 @@ pub(in crate::operations::git) fn notes_add_batch(
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| GitAiError::Generic(format!("System clock before epoch: {}", e)))?
         .as_secs();
+
+    Ok(Some((existing_notes_tip, deduped_entries, now)))
+}
+
+pub(in crate::operations::git) fn notes_add_batch(
+    repo: &Repository,
+    entries: &[(String, String)],
+) -> Result<(), GitAiError> {
+    let Some((existing_notes_tip, deduped_entries, now)) =
+        prepare_notes_batch_write(repo, entries)?
+    else {
+        return Ok(());
+    };
 
     let mut script = Vec::<u8>::new();
 
@@ -362,41 +385,15 @@ pub(in crate::operations::git) fn notes_add_batch(
 /// Batch-attach existing note blobs to commits without rewriting blob contents.
 ///
 /// Each entry is (commit_sha, existing_note_blob_oid).
-#[allow(dead_code)]
 pub(in crate::operations::git) fn notes_add_blob_batch(
     repo: &Repository,
     entries: &[(String, String)],
 ) -> Result<(), GitAiError> {
-    if entries.is_empty() {
+    let Some((existing_notes_tip, deduped_entries, now)) =
+        prepare_notes_batch_write(repo, entries)?
+    else {
         return Ok(());
-    }
-
-    let mut args = repo.global_args_for_exec();
-    args.push("rev-parse".to_string());
-    args.push("--verify".to_string());
-    args.push("refs/notes/ai".to_string());
-    let existing_notes_tip = match exec_git(&args) {
-        Ok(output) => Some(String::from_utf8(output.stdout)?.trim().to_string()),
-        Err(GitAiError::GitCliError {
-            code: Some(128), ..
-        })
-        | Err(GitAiError::GitCliError { code: Some(1), .. }) => None,
-        Err(e) => return Err(e),
     };
-
-    let mut deduped_entries: Vec<(String, String)> = Vec::new();
-    let mut seen = HashSet::new();
-    for (commit_sha, blob_oid) in entries.iter().rev() {
-        if seen.insert(commit_sha.as_str()) {
-            deduped_entries.push((commit_sha.clone(), blob_oid.clone()));
-        }
-    }
-    deduped_entries.reverse();
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|e| GitAiError::Generic(format!("System clock before epoch: {}", e)))?
-        .as_secs();
 
     let mut script = Vec::<u8>::new();
     script.extend_from_slice(b"commit refs/notes/ai\n");

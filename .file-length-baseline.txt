@@ -2,8 +2,8 @@
 # recorded ceiling. The file_length_policy test fails when a listed file
 # grows past its ceiling, when a new src file exceeds 600 lines, or when a
 # listed file drops to the cap (remove its entry). Shrink me over time.
-src/cli/git_ai_handlers.rs	1155
-src/config/file.rs	970
+src/cli/git_ai_handlers.rs	1137
+src/config/file.rs	933
 src/config/mod.rs	638
 src/config/tests.rs	1119
 src/model/metrics/attrs.rs	741
@@ -12,7 +12,7 @@ src/model/api_types.rs	610
 src/model/authorship_log_serialization.rs	753
 src/model/repository/bash_history_db.rs	964
 src/model/repository/internal_db.rs	1060
-src/model/repository/notes_db.rs	1136
+src/model/repository/notes_db.rs	1030
 src/model/stream_watermark.rs	688
 src/model/imara_diff_utils.rs	647
 src/operations/authorship/post_commit.rs	1432
@@ -31,7 +31,7 @@ src/operations/commands/git_hook_handlers.rs	615
 src/operations/commands/install_hooks.rs	1280
 src/operations/commands/log.rs	1399
 src/operations/commands/notes_migrate.rs	850
-src/operations/commands/upgrade.rs	1863
+src/operations/commands/upgrade.rs	1859
 src/operations/daemon/analyzers/history.rs	924
 src/operations/daemon/checkpoint.rs	1123
 src/operations/daemon/git_backend.rs	813
@@ -41,7 +41,7 @@ src/operations/git/cli_parser.rs	1032
 src/operations/git/command_classification.rs	720
 src/operations/git/fast_reader.rs	634
 src/operations/git/notes_api.rs	1239
-src/operations/git/refs.rs	1064
+src/operations/git/refs.rs	1060
 src/operations/git/repo_storage.rs	963
 src/operations/mdm/agents/claude_code.rs	1257
 src/operations/mdm/agents/cline.rs	648

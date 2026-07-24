@@ -52,6 +52,21 @@ const MIGRATIONS: &[&str] = &[
     "#,
 ];
 
+/// Shared upsert SQL for the queue-backend note path (single writes and
+/// batches): preserves `synced`/`attempts`/`next_retry_at` when content is
+/// unchanged, otherwise resets them so the updated note is re-queued for
+/// upload.
+const UPSERT_NOTE_SQL: &str = r#"
+INSERT INTO notes (commit_sha, content, synced, created_at, updated_at, next_retry_at)
+VALUES (?1, ?2, 0, ?3, ?3, ?3)
+ON CONFLICT(commit_sha) DO UPDATE SET
+    content        = excluded.content,
+    synced         = CASE WHEN notes.content = excluded.content THEN notes.synced ELSE 0 END,
+    attempts       = CASE WHEN notes.content = excluded.content THEN notes.attempts ELSE 0 END,
+    next_retry_at  = CASE WHEN notes.content = excluded.content THEN notes.next_retry_at ELSE excluded.next_retry_at END,
+    updated_at     = excluded.updated_at
+"#;
+
 /// Global singleton for the notes database.
 static NOTES_DB: OnceLock<Mutex<NotesDatabase>> = OnceLock::new();
 
@@ -161,48 +176,14 @@ impl NotesDatabase {
     ///   updated note is queued for re-upload.
     pub fn upsert_note(&mut self, commit_sha: &str, content: &str) -> Result<(), GitAiError> {
         let now = unix_now();
-        self.conn.execute(
-            r#"
-            INSERT INTO notes (commit_sha, content, synced, created_at, updated_at, next_retry_at)
-            VALUES (?1, ?2, 0, ?3, ?3, ?3)
-            ON CONFLICT(commit_sha) DO UPDATE SET
-                content        = excluded.content,
-                synced         = CASE WHEN notes.content = excluded.content THEN notes.synced ELSE 0 END,
-                attempts       = CASE WHEN notes.content = excluded.content THEN notes.attempts ELSE 0 END,
-                next_retry_at  = CASE WHEN notes.content = excluded.content THEN notes.next_retry_at ELSE excluded.next_retry_at END,
-                updated_at     = excluded.updated_at
-            "#,
-            params![commit_sha, content, now],
-        )?;
+        self.conn
+            .execute(UPSERT_NOTE_SQL, params![commit_sha, content, now])?;
         Ok(())
     }
 
     /// Upsert a batch of notes inside a single transaction.
     pub fn upsert_notes_batch(&mut self, entries: &[(String, String)]) -> Result<(), GitAiError> {
-        if entries.is_empty() {
-            return Ok(());
-        }
-        let now = unix_now();
-        let tx = self.conn.transaction()?;
-        {
-            let mut stmt = tx.prepare_cached(
-                r#"
-                INSERT INTO notes (commit_sha, content, synced, created_at, updated_at, next_retry_at)
-                VALUES (?1, ?2, 0, ?3, ?3, ?3)
-                ON CONFLICT(commit_sha) DO UPDATE SET
-                    content        = excluded.content,
-                    synced         = CASE WHEN notes.content = excluded.content THEN notes.synced ELSE 0 END,
-                    attempts       = CASE WHEN notes.content = excluded.content THEN notes.attempts ELSE 0 END,
-                    next_retry_at  = CASE WHEN notes.content = excluded.content THEN notes.next_retry_at ELSE excluded.next_retry_at END,
-                    updated_at     = excluded.updated_at
-                "#,
-            )?;
-            for (sha, content) in entries {
-                stmt.execute(params![sha, content, now])?;
-            }
-        }
-        tx.commit()?;
-        Ok(())
+        self.batch_upsert(entries, UPSERT_NOTE_SQL)
     }
 
     /// Upsert a note as sqlite-backend primary storage (`origin = 'local'`).
@@ -218,29 +199,18 @@ impl NotesDatabase {
         &mut self,
         entries: &[(String, String)],
     ) -> Result<(), GitAiError> {
-        if entries.is_empty() {
-            return Ok(());
-        }
-        let now = unix_now();
-        let tx = self.conn.transaction()?;
-        {
-            let mut stmt = tx.prepare_cached(
-                r#"
-                INSERT INTO notes (commit_sha, content, synced, origin, created_at, updated_at, next_retry_at)
-                VALUES (?1, ?2, 1, 'local', ?3, ?3, 0)
-                ON CONFLICT(commit_sha) DO UPDATE SET
-                    content    = excluded.content,
-                    origin     = 'local',
-                    synced     = 1,
-                    updated_at = excluded.updated_at
-                "#,
-            )?;
-            for (sha, content) in entries {
-                stmt.execute(params![sha, content, now])?;
-            }
-        }
-        tx.commit()?;
-        Ok(())
+        self.batch_upsert(
+            entries,
+            r#"
+            INSERT INTO notes (commit_sha, content, synced, origin, created_at, updated_at, next_retry_at)
+            VALUES (?1, ?2, 1, 'local', ?3, ?3, 0)
+            ON CONFLICT(commit_sha) DO UPDATE SET
+                content    = excluded.content,
+                origin     = 'local',
+                synced     = 1,
+                updated_at = excluded.updated_at
+            "#,
+        )
     }
 
     /// Read all local-primary notes (used by `git-ai notes migrate --to git-notes`).
@@ -264,24 +234,34 @@ impl NotesDatabase {
     /// read cache but are not enqueued for upload. Local-primary rows are never
     /// overwritten by cache imports.
     pub fn cache_synced_notes(&mut self, entries: &[(String, String)]) -> Result<(), GitAiError> {
+        self.batch_upsert(
+            entries,
+            r#"
+            INSERT INTO notes (commit_sha, content, synced, origin, created_at, updated_at, last_sync_at, next_retry_at)
+            VALUES (?1, ?2, 1, 'cache', ?3, ?3, ?3, 0)
+            ON CONFLICT(commit_sha) DO UPDATE SET
+                content      = excluded.content,
+                synced       = 1,
+                last_sync_at = excluded.last_sync_at,
+                updated_at   = excluded.updated_at
+            WHERE notes.origin != 'local'
+            "#,
+        )
+    }
+
+    /// Run `sql` as an `INSERT ... ON CONFLICT` upsert for each `(commit_sha,
+    /// content)` entry inside a single transaction, binding `(sha, content,
+    /// now)` as `?1, ?2, ?3`. Shared skeleton for the three note-upsert-batch
+    /// variants above, which differ only in the SQL (and thus which columns/
+    /// origin get written).
+    fn batch_upsert(&mut self, entries: &[(String, String)], sql: &str) -> Result<(), GitAiError> {
         if entries.is_empty() {
             return Ok(());
         }
         let now = unix_now();
         let tx = self.conn.transaction()?;
         {
-            let mut stmt = tx.prepare_cached(
-                r#"
-                INSERT INTO notes (commit_sha, content, synced, origin, created_at, updated_at, last_sync_at, next_retry_at)
-                VALUES (?1, ?2, 1, 'cache', ?3, ?3, ?3, 0)
-                ON CONFLICT(commit_sha) DO UPDATE SET
-                    content      = excluded.content,
-                    synced       = 1,
-                    last_sync_at = excluded.last_sync_at,
-                    updated_at   = excluded.updated_at
-                WHERE notes.origin != 'local'
-                "#,
-            )?;
+            let mut stmt = tx.prepare_cached(sql)?;
             for (sha, content) in entries {
                 stmt.execute(params![sha, content, now])?;
             }

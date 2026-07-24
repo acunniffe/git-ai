@@ -1,5 +1,5 @@
+use crate::cli::fail::resolve_repo_or_fail;
 use crate::operations::authorship::prompt_utils::find_prompt;
-use crate::operations::git::find_repository;
 
 /// Handle the `show-prompt` command
 ///
@@ -16,13 +16,7 @@ pub fn handle_show_prompt(args: &[String]) {
         }
     };
 
-    let repo = match find_repository(&Vec::<String>::new()) {
-        Ok(repo) => repo,
-        Err(e) => {
-            eprintln!("Failed to find repository: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let repo = resolve_repo_or_fail();
 
     match find_prompt(
         &repo,

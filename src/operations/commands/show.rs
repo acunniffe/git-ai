@@ -1,5 +1,5 @@
+use crate::cli::fail::resolve_repo_or_fail;
 use crate::error::GitAiError;
-use crate::operations::git::find_repository;
 use crate::operations::git::notes_api::{CommitAuthorship, filter_commits_with_notes};
 use crate::operations::git::repository::{CommitRange, Repository};
 
@@ -16,13 +16,7 @@ pub fn handle_show(args: &[String]) {
         std::process::exit(1);
     }
 
-    let repo = match find_repository(&Vec::<String>::new()) {
-        Ok(repo) => repo,
-        Err(e) => {
-            eprintln!("Failed to find repository: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let repo = resolve_repo_or_fail();
 
     if let Err(e) = show_authorship(&repo, &args[0]) {
         eprintln!("Failed to show authorship: {}", e);

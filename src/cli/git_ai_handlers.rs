@@ -1,7 +1,8 @@
 use crate::cli::fail::{fail, resolve_repo_in_cwd_or_fail, resolve_repo_or_fail};
 use crate::cli::hook_input::{decode_hook_input_bytes, strip_utf8_bom};
 use crate::cli::machine_json::{
-    emit_machine_json_error, parse_machine_json_arg, print_machine_json,
+    emit_machine_json_error, parse_machine_json_arg, parse_machine_request,
+    print_machine_json_serializable, resolve_repo_or_machine_error,
 };
 use crate::config;
 use crate::model::daemon_control::ControlRequest;
@@ -11,7 +12,6 @@ use crate::operations::authorship::ignore::effective_ignore_patterns;
 use crate::operations::authorship::range_authorship;
 use crate::operations::authorship::stats::stats_command;
 use crate::operations::commands;
-use crate::operations::git::find_repository;
 use crate::operations::git::repository::{CommitRange, Repository};
 use crate::operations::git::sync_authorship::{
     NotesExistence, fetch_authorship_notes, push_authorship_notes,
@@ -654,15 +654,13 @@ fn parse_authorship_remote_request(
     let payload =
         parse_machine_json_arg(args, command).unwrap_or_else(|msg| emit_machine_json_error(msg));
 
-    let request: AuthorshipRemoteRequest = serde_json::from_str(&payload)
-        .unwrap_or_else(|e| emit_machine_json_error(format!("Invalid JSON payload: {}", e)));
+    let request: AuthorshipRemoteRequest = parse_machine_request(&payload);
 
     if request.remote_name.trim().is_empty() {
         emit_machine_json_error("remote_name cannot be empty");
     }
 
-    let repo = find_repository(&Vec::<String>::new())
-        .unwrap_or_else(|e| emit_machine_json_error(format!("Failed to find repository: {}", e)));
+    let repo = resolve_repo_or_machine_error();
 
     (repo, request)
 }
@@ -678,44 +676,34 @@ pub(crate) fn handle_effective_ignore_patterns_internal(args: &[String]) {
     let payload = parse_machine_json_arg(args, "effective-ignore-patterns")
         .unwrap_or_else(|msg| emit_machine_json_error(msg));
 
-    let request: EffectiveIgnorePatternsRequest = serde_json::from_str(&payload)
-        .unwrap_or_else(|e| emit_machine_json_error(format!("Invalid JSON payload: {}", e)));
+    let request: EffectiveIgnorePatternsRequest = parse_machine_request(&payload);
 
-    let repo = find_repository(&Vec::<String>::new())
-        .unwrap_or_else(|e| emit_machine_json_error(format!("Failed to find repository: {}", e)));
+    let repo = resolve_repo_or_machine_error();
 
     let response = EffectiveIgnorePatternsResponse {
         patterns: effective_ignore_patterns(&repo, &request.user_patterns, &request.extra_patterns),
     };
 
-    let response_value = serde_json::to_value(response).unwrap_or_else(|e| {
-        emit_machine_json_error(format!("Failed to serialize command response: {}", e))
-    });
-    print_machine_json(&response_value);
+    print_machine_json_serializable(&response);
 }
 
 pub(crate) fn handle_blame_analysis_internal(args: &[String]) {
     let payload = parse_machine_json_arg(args, "blame-analysis")
         .unwrap_or_else(|msg| emit_machine_json_error(msg));
 
-    let request: BlameAnalysisRequest = serde_json::from_str(&payload)
-        .unwrap_or_else(|e| emit_machine_json_error(format!("Invalid JSON payload: {}", e)));
+    let request: BlameAnalysisRequest = parse_machine_request(&payload);
 
     if request.file_path.trim().is_empty() {
         emit_machine_json_error("file_path cannot be empty");
     }
 
-    let repo = find_repository(&Vec::<String>::new())
-        .unwrap_or_else(|e| emit_machine_json_error(format!("Failed to find repository: {}", e)));
+    let repo = resolve_repo_or_machine_error();
 
     let analysis = repo
         .blame_analysis(&request.file_path, &request.options)
         .unwrap_or_else(|e| emit_machine_json_error(format!("blame_analysis failed: {}", e)));
 
-    let response_value = serde_json::to_value(analysis).unwrap_or_else(|e| {
-        emit_machine_json_error(format!("Failed to serialize command response: {}", e))
-    });
-    print_machine_json(&response_value);
+    print_machine_json_serializable(&analysis);
 }
 
 pub(crate) fn handle_fetch_authorship_notes_internal(args: &[String]) {
@@ -729,10 +717,7 @@ pub(crate) fn handle_fetch_authorship_notes_internal(args: &[String]) {
     let response = FetchAuthorshipNotesResponse {
         notes_existence: notes_existence_label(notes_existence).to_string(),
     };
-    let response_value = serde_json::to_value(response).unwrap_or_else(|e| {
-        emit_machine_json_error(format!("Failed to serialize command response: {}", e))
-    });
-    print_machine_json(&response_value);
+    print_machine_json_serializable(&response);
 }
 
 pub(crate) fn handle_push_authorship_notes_internal(args: &[String]) {
@@ -744,10 +729,7 @@ pub(crate) fn handle_push_authorship_notes_internal(args: &[String]) {
     });
 
     let response = PushAuthorshipNotesResponse { ok: true };
-    let response_value = serde_json::to_value(response).unwrap_or_else(|e| {
-        emit_machine_json_error(format!("Failed to serialize command response: {}", e))
-    });
-    print_machine_json(&response_value);
+    print_machine_json_serializable(&response);
 }
 
 fn handle_ai_blame(args: &[String]) {

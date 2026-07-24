@@ -241,22 +241,6 @@ pub(crate) fn handle_rewrite_event_with_metrics(
     }
 }
 
-pub fn handle_non_fast_forward_rewrite(
-    repo: &Repository,
-    old_tip: &str,
-    new_tip: &str,
-    onto: Option<&str>,
-) -> Result<(), GitAiError> {
-    handle_non_fast_forward_rewrite_with_operation(
-        repo,
-        old_tip,
-        new_tip,
-        onto,
-        RewriteMetricOperation::NonFastForward,
-    )
-    .map(|_| ())
-}
-
 pub(crate) fn handle_non_fast_forward_rewrite_with_operation(
     repo: &Repository,
     old_tip: &str,

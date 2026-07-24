@@ -1,11 +1,17 @@
 //! `git-ai usage` — local statistics from persisted metric events.
 
+use crate::cli::style::{BOLD, GRAY, RESET};
 use crate::metrics::local_stats::{
     BucketGranularity, LocalActivityStats, RepoActivitySummary, compute_all,
 };
 use chrono::{Datelike, Duration, NaiveDate};
 use serde::Serialize;
 use std::collections::HashMap;
+
+/// 256-color accent (SGR 38;5;208, orange) used throughout this command's
+/// terminal output. One-off to `usage`, so it stays local rather than in
+/// `cli::style`.
+const ORANGE: &str = "\x1b[38;5;208m";
 
 #[derive(Serialize)]
 struct UsageJsonOutput<'a> {
@@ -107,11 +113,6 @@ fn print_help() {
 }
 
 fn print_terminal(stats: &LocalActivityStats, repos: &[RepoActivitySummary]) {
-    const GRAY: &str = "\x1b[90m";
-    const BOLD: &str = "\x1b[1m";
-    const RESET: &str = "\x1b[0m";
-    const ORANGE: &str = "\x1b[38;5;208m";
-
     // Capitalize the first letter for the header (period_label is lower-case
     // elsewhere where it reads mid-sentence, e.g. "Activity — last 30 days").
     let header = {
@@ -253,10 +254,6 @@ fn print_terminal(stats: &LocalActivityStats, repos: &[RepoActivitySummary]) {
 /// For windows wider than the terminal, consecutive days are bucketed (max) into
 /// columns so the strip always fits and fills the width.
 fn print_calendar(stats: &LocalActivityStats) {
-    const GRAY: &str = "\x1b[90m";
-    const BOLD: &str = "\x1b[1m";
-    const RESET: &str = "\x1b[0m";
-    const ORANGE: &str = "\x1b[38;5;208m";
     // Distinct from orange so lines and spend don't blend together.
     const BLUE: &str = "\x1b[38;5;33m";
     // Quartile levels 1–4 (level 0 = empty `·`, rendered gray).
