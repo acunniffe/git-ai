@@ -1,0 +1,36 @@
+name: Setup performance benchmark toolchain
+description: Install the pinned Rust/Python toolchain and optionally restore Cargo caches.
+
+inputs:
+  cache-key:
+    description: Cache key for the Cargo registry, Git dependencies, and target directory.
+    required: false
+    default: ""
+  restore-keys:
+    description: Multiline fallback keys for the Cargo cache.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+      with:
+        toolchain: stable
+
+    - name: Setup Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+      with:
+        python-version: "3.11"
+
+    - name: Cache cargo
+      if: inputs.cache-key != ''
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ inputs.cache-key }}
+        restore-keys: ${{ inputs.restore-keys }}

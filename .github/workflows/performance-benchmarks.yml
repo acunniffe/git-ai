@@ -3,6 +3,15 @@ name: Performance Benchmarks
 permissions:
   contents: read
 
+env:
+  NIGHTLY_NASTY_FEATURE_COMMITS: "90"
+  NIGHTLY_NASTY_MAIN_COMMITS: "35"
+  NIGHTLY_NASTY_SIDE_COMMITS: "25"
+  NIGHTLY_NASTY_FILES: "6"
+  NIGHTLY_NASTY_LINES_PER_FILE: "1500"
+  NIGHTLY_NASTY_BURST_EVERY: "15"
+  NIGHTLY_NASTY_REPETITIONS: "10"
+
 on:
   pull_request:
     branches: [main]
@@ -15,6 +24,7 @@ on:
       - 'scripts/benchmarks/**'
       - 'flake.nix'
       - 'flake.lock'
+      - '.github/actions/**'
       - '.github/workflows/performance-benchmarks.yml'
   schedule:
     - cron: "0 7 * * *"
@@ -32,24 +42,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+      - name: Setup benchmark toolchain
+        uses: ./.github/actions/setup-performance-benchmarks
         with:
-          toolchain: stable
-
-      - name: Setup Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: "3.11"
-
-      - name: Cache cargo
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-perf-smoke-${{ hashFiles('Cargo.lock') }}
+          cache-key: ${{ runner.os }}-perf-smoke-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-perf-smoke-
             ${{ runner.os }}-perf-
@@ -88,24 +84,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+      - name: Setup benchmark toolchain
+        uses: ./.github/actions/setup-performance-benchmarks
         with:
-          toolchain: stable
-
-      - name: Setup Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: "3.11"
-
-      - name: Cache cargo
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-perf-nightly-${{ hashFiles('Cargo.lock') }}
+          cache-key: ${{ runner.os }}-perf-nightly-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-perf-nightly-
             ${{ runner.os }}-perf-
@@ -124,13 +106,13 @@ jobs:
         run: |
           python3 scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py \
             --work-root .benchmarks/nightly-nasty \
-            --feature-commits 90 \
-            --main-commits 35 \
-            --side-commits 25 \
-            --files 6 \
-            --lines-per-file 1500 \
-            --burst-every 15 \
-            --repetitions 10 \
+            --feature-commits "$NIGHTLY_NASTY_FEATURE_COMMITS" \
+            --main-commits "$NIGHTLY_NASTY_MAIN_COMMITS" \
+            --side-commits "$NIGHTLY_NASTY_SIDE_COMMITS" \
+            --files "$NIGHTLY_NASTY_FILES" \
+            --lines-per-file "$NIGHTLY_NASTY_LINES_PER_FILE" \
+            --burst-every "$NIGHTLY_NASTY_BURST_EVERY" \
+            --repetitions "$NIGHTLY_NASTY_REPETITIONS" \
             --margin-pct 25 \
             --margin-baseline main_daemon \
             --enforce-margin
@@ -156,15 +138,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+      - name: Setup benchmark toolchain
+        uses: ./.github/actions/setup-performance-benchmarks
         with:
-          toolchain: stable
-
-      - name: Setup Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
-        with:
-          python-version: "3.11"
+          cache-key: ${{ runner.os }}-perf-nightly-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-perf-nightly-
+            ${{ runner.os }}-perf-
 
       - name: Install profiling tools
         run: |
@@ -180,13 +160,13 @@ jobs:
         run: |
           python3 scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py \
             --work-root .benchmarks/nightly-flamegraphs \
-            --feature-commits 90 \
-            --main-commits 35 \
-            --side-commits 25 \
-            --files 6 \
-            --lines-per-file 1500 \
-            --burst-every 15 \
-            --repetitions 10 \
+            --feature-commits "$NIGHTLY_NASTY_FEATURE_COMMITS" \
+            --main-commits "$NIGHTLY_NASTY_MAIN_COMMITS" \
+            --side-commits "$NIGHTLY_NASTY_SIDE_COMMITS" \
+            --files "$NIGHTLY_NASTY_FILES" \
+            --lines-per-file "$NIGHTLY_NASTY_LINES_PER_FILE" \
+            --burst-every "$NIGHTLY_NASTY_BURST_EVERY" \
+            --repetitions "$NIGHTLY_NASTY_REPETITIONS" \
             --flamegraph-dir .benchmarks/nightly-flamegraphs/profiles \
             --margin-pct 25 \
             --margin-baseline main_daemon

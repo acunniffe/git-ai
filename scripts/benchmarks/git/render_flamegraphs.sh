@@ -19,16 +19,18 @@ fi
 
 mkdir -p "$OUTPUT_ROOT"
 
-for variant in main_daemon current_daemon; do
-  variant_root="$PROFILE_ROOT/$variant"
+render_variant() {
+  local variant="$1"
+  local variant_root="$PROFILE_ROOT/$variant"
+  local perf_script="$OUTPUT_ROOT/${variant}.perf"
+  local folded="$OUTPUT_ROOT/${variant}.folded"
+  local flamegraph="$OUTPUT_ROOT/${variant}.svg"
+  local data_file
   if [[ ! -d "$variant_root" ]]; then
     echo "warning: no profiles found for $variant" >&2
-    continue
+    return 0
   fi
 
-  perf_script="$OUTPUT_ROOT/${variant}.perf"
-  folded="$OUTPUT_ROOT/${variant}.folded"
-  flamegraph="$OUTPUT_ROOT/${variant}.svg"
   : > "$perf_script"
 
   while IFS= read -r -d '' data_file; do
@@ -37,10 +39,14 @@ for variant in main_daemon current_daemon; do
 
   if [[ ! -s "$perf_script" ]]; then
     echo "warning: no perf samples found for $variant" >&2
-    continue
+    return 0
   fi
 
   inferno-collapse-perf < "$perf_script" > "$folded"
   inferno-flamegraph --title "git-ai $variant nightly daemon profile" < "$folded" > "$flamegraph"
   echo "wrote $flamegraph"
+}
+
+for variant in main_daemon current_daemon; do
+  render_variant "$variant"
 done

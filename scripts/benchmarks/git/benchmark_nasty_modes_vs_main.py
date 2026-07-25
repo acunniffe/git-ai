@@ -17,11 +17,20 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
-
-class BenchmarkError(RuntimeError):
-    pass
+from benchmark_common import (
+    BenchmarkError,
+    LONG_COMMAND_TIMEOUT_S,
+    build_release_binary,
+    create_link_or_copy,
+    git_output,
+    now_iso_utc,
+    prepare_main_worktree,
+    remove_main_worktree,
+    resolve_real_git_binary,
+    run_cmd,
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -53,120 +62,6 @@ class MarginCheckResult:
     passed: bool
 
 
-def now_iso_utc() -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-
-
-def run_cmd(
-    cmd: list[str],
-    *,
-    cwd: Path,
-    env: dict[str, str],
-    timeout_s: int = 5400,
-) -> subprocess.CompletedProcess[str]:
-    proc = subprocess.run(
-        cmd,
-        cwd=str(cwd),
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-        timeout=timeout_s,
-    )
-    if proc.returncode != 0:
-        raise BenchmarkError(
-            "Command failed\n"
-            f"cmd: {' '.join(cmd)}\n"
-            f"cwd: {cwd}\n"
-            f"exit: {proc.returncode}\n"
-            f"stdout:\n{proc.stdout}\n"
-            f"stderr:\n{proc.stderr}\n"
-        )
-    return proc
-
-
-def build_release_binary(repo_dir: Path, target_dir: Path) -> Path:
-    env = dict(os.environ)
-    env["CARGO_TARGET_DIR"] = str(target_dir)
-    run_cmd(
-        ["cargo", "build", "--release", "--bin", "git-ai"],
-        cwd=repo_dir,
-        env=env,
-        timeout_s=3600,
-    )
-    if os.name == "nt":
-        binary = target_dir / "release" / "git-ai.exe"
-    else:
-        binary = target_dir / "release" / "git-ai"
-    if not binary.exists():
-        raise BenchmarkError(f"Expected binary not found: {binary}")
-    return binary
-
-
-def prepare_main_worktree(repo_root: Path, main_ref: str, worktree_dir: Path) -> None:
-    if worktree_dir.exists():
-        shutil.rmtree(worktree_dir)
-    run_cmd(["git", "fetch", "--quiet", "origin", "main"], cwd=repo_root, env=dict(os.environ))
-    run_cmd(
-        ["git", "worktree", "add", "--detach", str(worktree_dir), main_ref],
-        cwd=repo_root,
-        env=dict(os.environ),
-    )
-
-
-def remove_main_worktree(repo_root: Path, worktree_dir: Path) -> None:
-    run_cmd(
-        ["git", "worktree", "remove", "--force", str(worktree_dir)],
-        cwd=repo_root,
-        env=dict(os.environ),
-    )
-
-
-def create_link_or_copy(target: Path, link_path: Path) -> None:
-    if link_path.exists() or link_path.is_symlink():
-        if link_path.is_dir() and not link_path.is_symlink():
-            shutil.rmtree(link_path)
-        else:
-            link_path.unlink()
-    link_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        link_path.symlink_to(target)
-    except OSError:
-        shutil.copy2(target, link_path)
-
-
-def resolve_real_git_binary(repo_root: Path) -> Path:
-    preferred = [
-        Path("/usr/bin/git"),
-        Path("/opt/homebrew/bin/git"),
-        Path("/usr/local/bin/git"),
-        Path("/bin/git"),
-    ]
-    for candidate in preferred:
-        if candidate.exists() and os.access(candidate, os.X_OK):
-            return candidate.resolve()
-
-    fallback = shutil.which("git")
-    if not fallback:
-        raise BenchmarkError("Unable to resolve system git from PATH.")
-
-    fallback_path = Path(fallback).resolve()
-    if (
-        "git-ai" in fallback_path.name.lower()
-        or str(repo_root / "target") in str(fallback_path)
-    ):
-        raise BenchmarkError(
-            "Resolved `git` points to a git-ai wrapper, not the real git binary. "
-            "Install git or pass a clean PATH."
-        )
-    return fallback_path
-
-
-def git_output(repo_dir: Path, args: list[str]) -> str:
-    proc = run_cmd(["git", *args], cwd=repo_dir, env=dict(os.environ), timeout_s=120)
-    return (proc.stdout or "").strip()
-
-
 def clone_seed_repo(repo_url: str, seed_repo_dir: Path, real_git: Path) -> tuple[Path, str]:
     if seed_repo_dir.exists():
         shutil.rmtree(seed_repo_dir)
@@ -180,6 +75,7 @@ def clone_seed_repo(repo_url: str, seed_repo_dir: Path, real_git: Path) -> tuple
         [str(real_git), "rev-parse", "HEAD"],
         cwd=seed_repo_dir,
         env=dict(os.environ),
+        timeout_s=LONG_COMMAND_TIMEOUT_S,
     ).stdout.strip()
     return seed_repo_dir, seed_head
 
@@ -187,7 +83,7 @@ def clone_seed_repo(repo_url: str, seed_repo_dir: Path, real_git: Path) -> tuple
 def start_perf_profiler(
     daemon_proc: subprocess.Popen[str] | None,
     output_path: Path,
-) -> tuple[subprocess.Popen[bytes], Any]:
+) -> tuple[subprocess.Popen[bytes], TextIO]:
     if daemon_proc is None:
         raise BenchmarkError("Cannot profile a daemon that is not running")
     if os.name != "posix":
@@ -198,22 +94,26 @@ def start_perf_profiler(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     log_path = output_path.with_suffix(".log")
     log_file = log_path.open("w", encoding="utf-8")
-    profiler = subprocess.Popen(
-        [
-            "perf",
-            "record",
-            "-F",
-            "99",
-            "--call-graph",
-            "dwarf,4096",
-            "--output",
-            str(output_path),
-            "--pid",
-            str(daemon_proc.pid),
-        ],
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-    )
+    try:
+        profiler = subprocess.Popen(
+            [
+                "perf",
+                "record",
+                "-F",
+                "99",
+                "--call-graph",
+                "dwarf,4096",
+                "--output",
+                str(output_path),
+                "--pid",
+                str(daemon_proc.pid),
+            ],
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+    except BaseException:
+        log_file.close()
+        raise
     time.sleep(0.5)
     if profiler.poll() is not None:
         log_file.close()
@@ -225,7 +125,7 @@ def start_perf_profiler(
 
 
 def stop_perf_profiler(
-    profiler: tuple[subprocess.Popen[bytes], Any] | None,
+    profiler: tuple[subprocess.Popen[bytes], TextIO] | None,
     output_path: Path | None,
 ) -> None:
     if profiler is None:
@@ -267,7 +167,7 @@ def setup_variant_runtime(
     Path,
     subprocess.Popen[str] | None,
     Path,
-    tuple[subprocess.Popen[bytes], Any] | None,
+    tuple[subprocess.Popen[bytes], TextIO] | None,
 ]:
     tmp_root = Path("/tmp") if os.name != "nt" else Path(tempfile.gettempdir())
     home_dir = Path(
@@ -291,44 +191,56 @@ def setup_variant_runtime(
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
 
     daemon_proc: subprocess.Popen[str] | None = None
-    profiler: tuple[subprocess.Popen[bytes], Any] | None = None
-    if variant.mode == "daemon":
-        daemon_dir = home_dir / ".git-ai" / "internal" / "daemon"
-        control_socket = daemon_dir / "control.sock"
-        trace_socket = daemon_dir / "trace2.sock"
-        daemon_dir.mkdir(parents=True, exist_ok=True)
-        daemon_proc = subprocess.Popen(
-            [str(variant.binary), "daemon", "run"],
-            cwd=str(runtime_root),
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-        exit_code: int | None = None
-        for _ in range(300):
-            if control_socket.exists() and trace_socket.exists():
-                break
-            if exit_code is None:
-                exit_code = daemon_proc.poll()
-            time.sleep(0.01)
-        else:
-            raise BenchmarkError(
-                "timed out waiting for daemon sockets "
-                f"(control={control_socket}, trace={trace_socket})"
+    profiler: tuple[subprocess.Popen[bytes], TextIO] | None = None
+    try:
+        if variant.mode == "daemon":
+            daemon_dir = home_dir / ".git-ai" / "internal" / "daemon"
+            control_socket = daemon_dir / "control.sock"
+            trace_socket = daemon_dir / "trace2.sock"
+            daemon_dir.mkdir(parents=True, exist_ok=True)
+            daemon_proc = subprocess.Popen(
+                [str(variant.binary), "daemon", "run"],
+                cwd=str(runtime_root),
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
             )
-        if daemon_proc.poll() is not None:
-            daemon_proc = None
+            exit_code: int | None = None
+            for _ in range(300):
+                if control_socket.exists() and trace_socket.exists():
+                    break
+                if exit_code is None:
+                    exit_code = daemon_proc.poll()
+                time.sleep(0.01)
+            else:
+                raise BenchmarkError(
+                    "timed out waiting for daemon sockets "
+                    f"(control={control_socket}, trace={trace_socket})"
+                )
+            if daemon_proc.poll() is not None:
+                daemon_proc = None
 
-        env["GIT_TRACE2_EVENT"] = f"af_unix:stream:{trace_socket}"
-        env["GIT_TRACE2_EVENT_NESTING"] = os.environ.get(
-            "GIT_AI_TEST_TRACE2_NESTING",
-            "0",
-        )
-        env["GIT_AI_DAEMON_CHECKPOINT_DELEGATE"] = "true"
-        env["GIT_AI_DAEMON_CONTROL_SOCKET"] = str(control_socket)
-        if profile_output is not None:
-            profiler = start_perf_profiler(daemon_proc, profile_output)
+            env["GIT_TRACE2_EVENT"] = f"af_unix:stream:{trace_socket}"
+            env["GIT_TRACE2_EVENT_NESTING"] = os.environ.get(
+                "GIT_AI_TEST_TRACE2_NESTING",
+                "0",
+            )
+            env["GIT_AI_DAEMON_CHECKPOINT_DELEGATE"] = "true"
+            env["GIT_AI_DAEMON_CONTROL_SOCKET"] = str(control_socket)
+            if profile_output is not None:
+                profiler = start_perf_profiler(daemon_proc, profile_output)
+    except BaseException:
+        if profiler is not None:
+            try:
+                stop_perf_profiler(profiler, profile_output)
+            except BenchmarkError:
+                pass
+        if daemon_proc is not None and daemon_proc.poll() is None:
+            daemon_proc.kill()
+            daemon_proc.wait(timeout=5)
+        shutil.rmtree(home_dir, ignore_errors=True)
+        raise
 
     git_bin = wrapper_git if variant.mode == "wrapper" else real_git
     return env, git_bin, daemon_proc, home_dir, profiler
@@ -339,7 +251,7 @@ def shutdown_daemon(
     runtime_root: Path,
     env: dict[str, str],
     daemon_proc: subprocess.Popen[str] | None,
-    profiler: tuple[subprocess.Popen[bytes], Any] | None = None,
+    profiler: tuple[subprocess.Popen[bytes], TextIO] | None = None,
     profile_output: Path | None = None,
 ) -> None:
     if variant.mode != "daemon":
@@ -685,7 +597,12 @@ def main() -> int:
             main_sha = "unknown (external binary)"
         else:
             print(f"Preparing main worktree at {args.main_ref}...")
-            prepare_main_worktree(repo_root, args.main_ref, main_worktree)
+            prepare_main_worktree(
+                repo_root,
+                args.main_ref,
+                main_worktree,
+                timeout_s=LONG_COMMAND_TIMEOUT_S,
+            )
             created_main_worktree = True
             print("Building main branch binary...")
             try:
@@ -909,7 +826,11 @@ def main() -> int:
     finally:
         if created_main_worktree:
             try:
-                remove_main_worktree(repo_root, main_worktree)
+                remove_main_worktree(
+                    repo_root,
+                    main_worktree,
+                    timeout_s=LONG_COMMAND_TIMEOUT_S,
+                )
             except Exception as err:  # noqa: BLE001
                 print(f"warning: failed to remove main worktree: {err}", file=sys.stderr)
 
