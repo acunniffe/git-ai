@@ -1,6 +1,7 @@
 ---
 name: ask
 description: "Use this when exploring a specific code file, symbol, or selection and you want the original AI-authorship context behind how or why it was written."
+allowed-tools: ["Bash(git-ai:*)", "Read", "Glob", "Grep", "Task"]
 ---
 
 # Ask Skill

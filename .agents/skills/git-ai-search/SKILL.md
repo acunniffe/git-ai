@@ -1,6 +1,7 @@
 ---
 name: git-ai-search
 description: "Search git history for AI prompt context by commit, file, line, author, or topic, and restore a prior session when explicitly requested."
+allowed-tools: ["Bash(git-ai:*)", "Read", "Glob", "Grep"]
 ---
 
 # Git AI Search Skill

@@ -1,6 +1,7 @@
 ---
 name: prompt-analysis
 description: "Analyze prompt history, acceptance rates, and AI-assisted coding patterns in a repository when the user asks about prompting quality or outcomes."
+allowed-tools: ["Bash(git-ai:*)", "Read", "Glob", "Grep", "Task"]
 ---
 
 # Prompt Analysis Skill
