@@ -2,7 +2,7 @@ tests/integration/claude_code.rs
   s_751e09f5b8f66b::t_3141acac68a2bf 79,138,166
   s_751e09f5b8f66b::t_d633b7079c386f 379
 src/daemon/checkpoint.rs
-  s_751e09f5b8f66b::t_cea118a078d984 27-28,60,68
+  s_751e09f5b8f66b::t_cea118a078d984 27-28,27-29,60,68
   s_751e09f5b8f66b::t_e8a1ceeeae82ee 19-20
   s_751e09f5b8f66b::t_8734e5cf325045 55,61-66,69-127,129,146-151
   s_751e09f5b8f66b::t_c172a2e2a05fa8 128,143
