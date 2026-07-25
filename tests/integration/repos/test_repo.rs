@@ -3,6 +3,8 @@
 use git_ai::config::ConfigPatch;
 use git_ai::feature_flags::FeatureFlags;
 use git_ai::model::authorship_log_serialization::AuthorshipLog;
+#[cfg(windows)]
+use git_ai::model::repository::lock_file::LockFile;
 use git_ai::operations::authorship::stats::CommitStats;
 use git_ai::operations::daemon::{
     ControlRequest, DaemonConfig, local_socket_connects_with_timeout, send_control_request,
@@ -62,6 +64,8 @@ const DAEMON_TEST_SYNC_IDLE_TIMEOUT: Duration = Duration::from_secs(45);
 #[cfg(not(windows))]
 const DAEMON_TEST_SYNC_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 const DAEMON_TEST_TRACE_READY_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(windows)]
+const DAEMON_TEST_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 #[cfg(windows)]
 const TEST_SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(120);
 #[cfg(not(windows))]
@@ -487,6 +491,30 @@ impl DaemonProcess {
                 .stderr(Stdio::null())
                 .output();
         }
+    }
+
+    /// Windows process termination is synchronous, but the daemon's lock
+    /// handle can remain unavailable briefly while the process teardown is
+    /// finalized. Wait for the lock itself before restarting this daemon's
+    /// test home, otherwise the replacement can fail with "lock held".
+    #[cfg(windows)]
+    fn wait_until_stopped(&self) {
+        let lock_path = DaemonConfig::from_home(&self.daemon_home).lock_path;
+        let started = Instant::now();
+        while started.elapsed() < DAEMON_TEST_SHUTDOWN_TIMEOUT {
+            if let Some(lock) = LockFile::try_acquire(&lock_path) {
+                drop(lock);
+                return;
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+
+        panic!(
+            "daemon process {} did not release test lock within {:?}: {}",
+            self.pid,
+            DAEMON_TEST_SHUTDOWN_TIMEOUT,
+            lock_path.display()
+        );
     }
 }
 
@@ -1957,6 +1985,8 @@ impl TestRepo {
         );
         if let Some(daemon) = self.daemon_process.take() {
             daemon.shutdown();
+            #[cfg(windows)]
+            daemon.wait_until_stopped();
         }
         self.setup_daemon_mode();
     }
