@@ -8,6 +8,8 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::{DaemonTestScope, TestRepo};
 use git_ai::model::checkpoint_delivery::CHECKPOINT_DELIVERY_MAX_FILES;
 use std::fs;
+use std::io::Write;
+use std::process::Stdio;
 
 #[cfg(unix)]
 fn artifact_tree_contains_bytes(root: &std::path::Path, needle: &[u8]) -> bool {
@@ -207,10 +209,25 @@ fn test_checkpoint_above_file_limit_denies_whole_batch_before_authorization() {
     .to_string();
     let outbox = repo.test_home_path().join("bounded-checkpoint-outbox");
     let mut command = repo.git_ai_command_without_pre_sync_for_test(
-        &["checkpoint", "mock_ai", "--hook-input", &hook_input, "--"],
+        &["checkpoint", "mock_ai", "--hook-input", "stdin", "--"],
         &[("GIT_AI_CHECKPOINT_OUTBOX_DIR", outbox.to_str().unwrap())],
     );
-    let output = command.output().expect("bounded checkpoint should run");
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .expect("bounded checkpoint process should start");
+    child
+        .stdin
+        .take()
+        .expect("bounded checkpoint stdin should be piped")
+        .write_all(hook_input.as_bytes())
+        .expect("bounded checkpoint hook input should be written");
+    let output = child
+        .wait_with_output()
+        .expect("bounded checkpoint should run");
     let combined = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
