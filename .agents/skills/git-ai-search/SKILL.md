@@ -1,8 +1,6 @@
 ---
 name: git-ai-search
-description: "Search and restore AI conversation context from git history"
-argument-hint: "[search query or workflow]"
-allowed-tools: ["Bash(git-ai:*)", "Read", "Glob", "Grep"]
+description: "Search git history for AI prompt context by commit, file, line, author, or topic, and restore a prior session when explicitly requested."
 ---
 
 # Git AI Search Skill
@@ -387,3 +385,15 @@ if [ "$PROMPT_COUNT" -gt 0 ]; then
   git-ai search --commit $PR_HEAD
 fi
 ```
+
+## Validation
+
+Use `--count` or a human-readable result to confirm the search scope, and report
+clearly when no prompt context exists. Only continue a session after the user
+explicitly asks to restore or launch it.
+
+## Anti-Patterns
+
+- Do not search raw prompt databases or agent logs directly.
+- Do not claim a file was AI-written solely because `git-ai search` found no data.
+- Do not launch another agent or continue a session without an explicit request.

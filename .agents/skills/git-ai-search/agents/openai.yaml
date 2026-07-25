@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git AI Search"
+  short_description: "Search AI context in git history"
+  default_prompt: "Use $git-ai-search to find AI prompt context in this repository."

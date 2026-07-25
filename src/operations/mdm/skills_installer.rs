@@ -16,15 +16,15 @@ struct EmbeddedSkill {
 const EMBEDDED_SKILLS: &[EmbeddedSkill] = &[
     EmbeddedSkill {
         name: "prompt-analysis",
-        skill_md: include_str!("../../../skills/prompt-analysis/SKILL.md"),
+        skill_md: include_str!("../../../.agents/skills/prompt-analysis/SKILL.md"),
     },
     EmbeddedSkill {
         name: "git-ai-search",
-        skill_md: include_str!("../../../skills/git-ai-search/SKILL.md"),
+        skill_md: include_str!("../../../.agents/skills/git-ai-search/SKILL.md"),
     },
     EmbeddedSkill {
         name: "ask",
-        skill_md: include_str!("../../../skills/ask/SKILL.md"),
+        skill_md: include_str!("../../../.agents/skills/ask/SKILL.md"),
     },
 ];
 

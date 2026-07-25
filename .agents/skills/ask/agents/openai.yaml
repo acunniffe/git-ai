@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ask"
+  short_description: "Explain code using AI authorship context"
+  default_prompt: "Use $ask to explain the original AI context behind this code."

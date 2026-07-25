@@ -1,0 +1,4 @@
+interface:
+  display_name: "Prompt Analysis"
+  short_description: "Analyze prompt quality and acceptance"
+  default_prompt: "Use $prompt-analysis to analyze prompt history and acceptance patterns."

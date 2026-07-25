@@ -1,10 +1,9 @@
-# Repo-local agent skills
+# Git AI agent skills
 
-Repo-local skills for coding agents working on git-ai: one directory per
-skill containing a `SKILL.md` (frontmatter with `name` and `description`,
-then the instructions).
+The canonical source for git-ai's shipped skills is this directory. Each skill
+has a kebab-case directory containing a `SKILL.md`; optional `agents/`,
+`references/`, and `scripts/` resources live beside it.
 
-Note: the top-level `skills/` directory is **shipped product content**
-(skills git-ai installs for its users, e.g. `ask/`, `git-ai-search/`,
-`prompt-analysis/`) — it is not related to this directory. Skills here are
-for developing git-ai itself.
+The Rust installer embeds the `SKILL.md` files from here and publishes them to
+the user's agent-specific skill directories. Run the internal skill-review
+validator against this directory before changing or releasing a skill.

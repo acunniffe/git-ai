@@ -64,7 +64,7 @@ jobs:
             --files 4 \
             --lines-per-file 1000 \
             --burst-every 6 \
-            --repetitions 2 \
+            --repetitions 5 \
             --margin-pct 55 \
             --margin-baseline main_daemon \
             --enforce-margin
@@ -130,7 +130,7 @@ jobs:
             --files 6 \
             --lines-per-file 1500 \
             --burst-every 15 \
-            --repetitions 2 \
+            --repetitions 5 \
             --margin-pct 25 \
             --margin-baseline main_daemon \
             --enforce-margin

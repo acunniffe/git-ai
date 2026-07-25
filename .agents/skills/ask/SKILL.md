@@ -1,13 +1,19 @@
 ---
 name: ask
-description: "Use this when you are exploring the codebase. It lets you ask the AI who wrote code questions about how things work and why they chose to build things the way they did. Think of it as asking the engineer who wrote the code for help understanding it."
-argument-hint: "[a question to the AI who authored the code you're looking at]"
-allowed-tools: ["Bash(git-ai:*)", "Read", "Glob", "Grep", "Task"]
+description: "Use this when exploring a specific code file, symbol, or selection and you want the original AI-authorship context behind how or why it was written."
 ---
 
 # Ask Skill
 
 Answer questions about AI-written code by finding the original prompts and conversations that produced it, then **embodying the author agent's perspective** to answer.
+
+## Overview
+
+Use this skill to explain the AI-authorship context behind a specific file,
+symbol, line range, or editor selection. It requires a concrete code reference
+and must not guess a location when the user provides none.
+
+## Workflow
 
 ## Main Agent's Job (you)
 
@@ -138,3 +144,14 @@ File and lines explicit — spawn subagent directly.
 **`/ask why was this approach chosen over using a HashMap?`**
 Main agent identifies relevant code from context, spawns subagent.
 
+## Validation
+
+- Confirm the file or symbol and line range before searching.
+- Use no more than two `git-ai search` commands for one request.
+- If no transcript is found, say so and switch to objective code analysis.
+
+## Anti-Patterns
+
+- Do not guess a file or symbol when the request provides no code reference.
+- Do not read raw transcript databases or agent-log directories directly.
+- Do not present an inferred explanation as the original author's intent.

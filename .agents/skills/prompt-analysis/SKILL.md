@@ -1,15 +1,22 @@
 ---
 name: prompt-analysis
-description: "Analyze AI prompting patterns and acceptance rates"
-argument-hint: "[question about prompts]"
-allowed-tools: ["Bash(git-ai:*)", "Read", "Glob", "Grep", "Task"]
+description: "Analyze prompt history, acceptance rates, and AI-assisted coding patterns in a repository when the user asks about prompting quality or outcomes."
 ---
 
 # Prompt Analysis Skill
 
 Analyze AI prompting patterns using the local `prompts.db` SQLite database.
 
-## What is Git AI?
+## Overview
+
+Use this skill to inspect the local Git AI prompt database and answer questions
+about prompt quality, acceptance, authors, models, and coding patterns. Keep the
+default scope conservative: the current repository, current user, and recent
+prompts unless the user asks for a broader analysis.
+
+## Workflow
+
+### What is Git AI?
 
 Git AI is a tool that tracks AI-generated code and prompts in git. It stores:
 - Every AI conversation (prompts and responses)
@@ -585,3 +592,15 @@ To avoid being prompted for every `git-ai` command, add to project or user setti
 ```
 
 This is especially important for subagent iteration, as subagents don't inherit skill-level permissions.
+
+## Validation
+
+- Run `git-ai prompts` before querying so the local database reflects the current repository.
+- Check the query result count and nullability before drawing conclusions from acceptance rates.
+- Keep qualitative message analysis in subagents and use SQL for aggregate summaries.
+
+## Anti-Patterns
+
+- Do not treat missing prompt data as evidence that no AI assistance occurred.
+- Do not include uncommitted or null acceptance values in rate comparisons without saying so.
+- Do not expand from the current repository or user to team-wide data without an explicit request.
