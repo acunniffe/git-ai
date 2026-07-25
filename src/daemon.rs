@@ -47,8 +47,8 @@ use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::{Notify, mpsc, oneshot};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tokio::sync::{Notify, mpsc};
 use tokio::time::Duration;
 
 pub mod analyzers;
@@ -861,6 +861,31 @@ fn rfc3339_to_unix_nanos(value: &str) -> Option<u128> {
 }
 
 fn apply_checkpoint_side_effect(mut request: CheckpointRequest) -> Result<(), GitAiError> {
+    #[cfg(feature = "test-support")]
+    {
+        if let Ok(spec) = std::env::var("GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT") {
+            for entry in spec.split(',') {
+                let Some((trace_id, delay_ms)) = entry.split_once('=') else {
+                    continue;
+                };
+                if trace_id == request.trace_id
+                    && let Ok(delay_ms) = delay_ms.parse::<u64>()
+                    && delay_ms > 0
+                {
+                    std::thread::sleep(Duration::from_millis(delay_ms));
+                    break;
+                }
+            }
+        }
+        if std::env::var("GIT_AI_TEST_FAIL_CHECKPOINT_SIDE_EFFECT")
+            .is_ok_and(|trace_id| trace_id == request.trace_id)
+        {
+            return Err(GitAiError::Generic(
+                "synthetic checkpoint processing failure".to_string(),
+            ));
+        }
+    }
+
     if request.files.is_empty() {
         return Ok(());
     }
@@ -2422,10 +2447,7 @@ fn read_json_line<R: BufRead>(reader: &mut R) -> Result<Option<String>, GitAiErr
 enum FamilySequencerEntry {
     PendingRoot,
     ReadyCommand(Box<crate::daemon::domain::NormalizedCommand>),
-    Checkpoint {
-        request: Box<CheckpointRequest>,
-        respond_to: Option<oneshot::Sender<Result<u64, GitAiError>>>,
-    },
+    Checkpoint(Box<CheckpointRequest>),
     Canceled,
 }
 
@@ -2537,6 +2559,7 @@ pub struct ActorDaemonCoordinator {
         Mutex<HashMap<String, VecDeque<RecentReplayPrerequisite>>>,
     side_effect_errors_by_family: Mutex<HashMap<String, BTreeMap<u64, String>>>,
     family_drain_scheduler: crate::daemon::family_drain_scheduler::FamilyDrainScheduler,
+    admitted_checkpoints: AtomicUsize,
     bash_sessions: Mutex<crate::daemon::bash_sessions::BashSessionState>,
     test_completion_log_dir: Option<PathBuf>,
     test_completion_log_lock: Mutex<()>,
@@ -2623,6 +2646,7 @@ impl ActorDaemonCoordinator {
                 crate::daemon::family_drain_scheduler::FamilyDrainScheduler::new(
                     FAMILY_DRAIN_CONCURRENCY,
                 ),
+            admitted_checkpoints: AtomicUsize::new(0),
             bash_sessions: Mutex::new(crate::daemon::bash_sessions::BashSessionState::new()),
             test_completion_log_dir: std::env::var("GIT_AI_TEST_DB_PATH")
                 .ok()
@@ -2658,6 +2682,18 @@ impl ActorDaemonCoordinator {
         // Acquire pairs with the Release store in request_shutdown so all
         // writes made before shutdown is requested are visible to the caller.
         self.shutting_down.load(Ordering::Acquire)
+    }
+
+    fn has_admitted_checkpoints(&self) -> bool {
+        self.admitted_checkpoints.load(Ordering::Acquire) > 0
+    }
+
+    fn finish_admitted_checkpoint(&self) {
+        let _ =
+            self.admitted_checkpoints
+                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+                    Some(count.saturating_sub(1))
+                });
     }
 
     fn trigger_transcript_sweep(&self, trigger: crate::daemon::stream_worker::SweepTrigger) {
@@ -3855,6 +3891,25 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    /// Waits until the trace ingest worker has processed every frame that was
+    /// enqueued before this fence was established. Open trace roots are
+    /// represented independently in family sequencers and do not block this
+    /// admission-only fence.
+    async fn wait_for_trace_ingest_queue_processed_through(&self) {
+        let target = self.next_trace_ingest_seq.load(Ordering::Acquire) as u64;
+        loop {
+            let processed = self.processed_trace_ingest_seq.load(Ordering::Acquire) as u64;
+            if processed >= target {
+                return;
+            }
+            let progress = self.trace_ingest_progress_notify.notified();
+            tokio::select! {
+                _ = progress => {}
+                _ = self.wait_for_shutdown() => return,
+            }
+        }
+    }
+
     /// Waits until all trace payloads enqueued up to now have been processed
     /// by the ingest worker, and any identified trace root that may mutate refs
     /// has closed. This is a causal drain fence: it guarantees that trace2 data
@@ -4112,12 +4167,11 @@ impl ActorDaemonCoordinator {
         self: &Arc<Self>,
         family: &str,
         request: CheckpointRequest,
-        respond_to: Option<oneshot::Sender<Result<u64, GitAiError>>>,
     ) -> Result<(), GitAiError> {
-        // Causal drain fence: ensure already-visible trace2 work has reached
-        // the family sequencer before inserting this checkpoint.
-        self.wait_for_trace_ingest_processed_through_family(family)
-            .await;
+        // Causal admission fence: ensure already-enqueued trace2 frames have
+        // reached the family sequencer. An open root is already represented by
+        // a PendingRoot entry and therefore does not need to delay admission.
+        self.wait_for_trace_ingest_queue_processed_through().await;
 
         {
             let mut sequencers = self.family_sequencers_by_family.lock().map_err(|_| {
@@ -4135,13 +4189,10 @@ impl ActorDaemonCoordinator {
                 ordinal: state.next_ordinal,
             };
             state.next_ordinal = state.next_ordinal.saturating_add(1);
-            state.entries.insert(
-                order,
-                FamilySequencerEntry::Checkpoint {
-                    request: Box::new(request),
-                    respond_to,
-                },
-            );
+            state
+                .entries
+                .insert(order, FamilySequencerEntry::Checkpoint(Box::new(request)));
+            self.admitted_checkpoints.fetch_add(1, Ordering::Release);
         }
 
         self.schedule_family_sequencer_drain(family.to_string());
@@ -4152,7 +4203,7 @@ impl ActorDaemonCoordinator {
         self: &Arc<Self>,
         family: &str,
     ) -> Result<(), GitAiError> {
-        let mut ready: Vec<(u64, FamilySequencerEntry)> = Vec::new();
+        let mut ready: Vec<(FamilySequencerOrder, FamilySequencerEntry)> = Vec::new();
         let mut progressed = false;
         {
             let mut map = self.family_sequencers_by_family.lock().map_err(|_| {
@@ -4185,7 +4236,7 @@ impl ActorDaemonCoordinator {
                         unreachable!("pending root should not be removed from sequencer front");
                     }
                     other => {
-                        ready.push((order.ordinal, other));
+                        ready.push((order, other));
                         progressed = true;
                     }
                 }
@@ -4197,9 +4248,22 @@ impl ActorDaemonCoordinator {
         }
 
         let _ = self.begin_family_effect(family);
-        for (order, ready_entry) in ready {
+        for (sequence_order, ready_entry) in ready {
+            let order = sequence_order.ordinal;
             match ready_entry {
                 FamilySequencerEntry::ReadyCommand(command) => {
+                    let queue_duration_us = now_unix_nanos()
+                        .saturating_sub(command.finished_at_ns)
+                        .saturating_div(1_000) as u64;
+                    tracing::info!(
+                        metric = "family_queue_time",
+                        work_kind = "command",
+                        %family,
+                        order,
+                        duration_us = queue_duration_us,
+                        "family work dequeued"
+                    );
+                    let execution_started = Instant::now();
                     // Wrap the entire command + side-effect pipeline in catch_unwind
                     // so that a panic (e.g. from UTF-8 boundary issues in diff parsing)
                     // does not kill the daemon process.
@@ -4295,11 +4359,28 @@ impl ActorDaemonCoordinator {
                             );
                         }
                     }
+                    tracing::info!(
+                        metric = "family_execution_time",
+                        work_kind = "command",
+                        %family,
+                        order,
+                        duration_us = execution_started.elapsed().as_micros() as u64,
+                        "family work completed"
+                    );
                 }
-                FamilySequencerEntry::Checkpoint {
-                    mut request,
-                    respond_to,
-                } => {
+                FamilySequencerEntry::Checkpoint(mut request) => {
+                    let queue_duration_us = now_unix_nanos()
+                        .saturating_sub(sequence_order.started_at_ns)
+                        .saturating_div(1_000) as u64;
+                    tracing::info!(
+                        metric = "family_queue_time",
+                        work_kind = "checkpoint",
+                        %family,
+                        order,
+                        duration_us = queue_duration_us,
+                        "family work dequeued"
+                    );
+                    let execution_started = Instant::now();
                     let repo_wd = request
                         .files
                         .first()
@@ -4354,9 +4435,16 @@ impl ActorDaemonCoordinator {
                                     error: None,
                                 };
                                 let _ = self.maybe_append_test_completion_log(family, &log_entry);
-                                if let Some(respond_to) = respond_to {
-                                    let _ = respond_to.send(Ok(0));
-                                }
+                                tracing::info!(
+                                    metric = "family_execution_time",
+                                    work_kind = "checkpoint",
+                                    %family,
+                                    order,
+                                    duration_us = execution_started.elapsed().as_micros() as u64,
+                                    status = "suppressed",
+                                    "family work completed"
+                                );
+                                self.finish_admitted_checkpoint();
                                 continue;
                             }
                         }
@@ -4515,9 +4603,16 @@ impl ActorDaemonCoordinator {
                             );
                         }
                     }
-                    if let Some(respond_to) = respond_to {
-                        let _ = respond_to.send(result);
-                    }
+                    tracing::info!(
+                        metric = "family_execution_time",
+                        work_kind = "checkpoint",
+                        %family,
+                        order,
+                        duration_us = execution_started.elapsed().as_micros() as u64,
+                        status = if result.is_ok() { "ok" } else { "error" },
+                        "family work completed"
+                    );
+                    self.finish_admitted_checkpoint();
                 }
                 FamilySequencerEntry::Canceled => {}
                 FamilySequencerEntry::PendingRoot => {}
@@ -5992,6 +6087,7 @@ impl ActorDaemonCoordinator {
         self: &Arc<Self>,
         request: CheckpointRequest,
     ) -> Result<ControlResponse, GitAiError> {
+        let admission_started = Instant::now();
         if request.files.is_empty() {
             return Ok(ControlResponse::ok(None, None));
         }
@@ -5999,12 +6095,14 @@ impl ActorDaemonCoordinator {
         let repo_work_dir = request.files[0].repo_work_dir.clone();
         let family = self.backend.resolve_family(&repo_work_dir)?;
 
-        let (respond_to, response) = oneshot::channel();
-        self.append_checkpoint_to_family_sequencer(&family.0, request, Some(respond_to))
+        self.append_checkpoint_to_family_sequencer(&family.0, request)
             .await?;
-        response
-            .await
-            .map_err(|_| GitAiError::Generic("checkpoint response channel closed".to_string()))??;
+        tracing::info!(
+            metric = "checkpoint_admission_latency",
+            family = %family.0,
+            duration_us = admission_started.elapsed().as_micros() as u64,
+            "checkpoint admitted"
+        );
         Ok(ControlResponse::ok(None, None))
     }
 
@@ -6249,33 +6347,49 @@ impl ActorDaemonCoordinator {
         let result = match request {
             ControlRequest::Ping => Ok(ControlResponse::ok(None, None)),
             ControlRequest::CheckpointRun { request } => {
-                if let Some(worker) = &self.stream_worker
-                    && let Some(stream_source) = &request.stream_source
-                {
-                    let session_id = stream_source.session_id.clone();
+                let stream_notification = request.stream_source.as_ref().map(|stream_source| {
                     let tool = request
                         .agent_id
                         .as_ref()
                         .map(|aid| aid.tool.clone())
                         .unwrap_or_else(|| "unknown".to_string());
-                    let trace_id = request.trace_id.clone();
-                    let tool_use_id = request.metadata.get("tool_use_id").cloned();
-
-                    let repo_work_dir = request.files.first().map(|f| f.repo_work_dir.clone());
-
+                    (
+                        stream_source.session_id.clone(),
+                        tool,
+                        request.trace_id.clone(),
+                        request.metadata.get("tool_use_id").cloned(),
+                        stream_source.path.clone(),
+                        request.files.first().map(|f| f.repo_work_dir.clone()),
+                        stream_source.external_session_id.clone(),
+                        stream_source.external_parent_session_id.clone(),
+                    )
+                });
+                let admission = self.ingest_checkpoint_payload(*request).await;
+                if admission.is_ok()
+                    && let Some(worker) = &self.stream_worker
+                    && let Some((
+                        session_id,
+                        tool,
+                        trace_id,
+                        tool_use_id,
+                        stream_path,
+                        repo_work_dir,
+                        external_session_id,
+                        external_parent_session_id,
+                    )) = stream_notification
+                {
                     worker.notify_checkpoint(
                         session_id,
                         tool,
                         trace_id,
                         tool_use_id,
-                        stream_source.path.clone(),
+                        stream_path,
                         repo_work_dir,
-                        stream_source.external_session_id.clone(),
-                        stream_source.external_parent_session_id.clone(),
+                        external_session_id,
+                        external_parent_session_id,
                     );
                 }
-
-                self.ingest_checkpoint_payload(*request).await
+                admission
             }
             ControlRequest::SyncFamily { repo_working_dir } => {
                 self.sync_family(repo_working_dir).await.and_then(|status| {
@@ -7228,12 +7342,84 @@ fn daemon_max_uptime_ns() -> u128 {
 }
 
 const DAEMON_SOCKET_HEALTH_CHECK_SECS: u64 = 30;
+const TRACE_PROGRESS_WINDOW: Duration = Duration::from_secs(30);
 
 fn daemon_socket_health_check_interval() -> u64 {
     std::env::var("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(DAEMON_SOCKET_HEALTH_CHECK_SECS)
+}
+
+#[derive(Debug, Default)]
+struct TraceProgressWatchdog {
+    last_processed: usize,
+    stalled_windows: u8,
+}
+
+impl TraceProgressWatchdog {
+    fn observe(&mut self, queued: usize, processed: usize) -> bool {
+        if queued == 0 || processed != self.last_processed {
+            self.stalled_windows = 0;
+        } else {
+            self.stalled_windows = self.stalled_windows.saturating_add(1);
+        }
+        self.last_processed = processed;
+        self.stalled_windows >= 2
+    }
+}
+
+fn daemon_trace_progress_monitor_loop(coordinator: Arc<ActorDaemonCoordinator>) {
+    let mut watchdog = TraceProgressWatchdog {
+        last_processed: coordinator
+            .processed_trace_ingest_seq
+            .load(Ordering::Acquire),
+        stalled_windows: 0,
+    };
+
+    loop {
+        {
+            let guard = coordinator
+                .shutdown_condvar_mutex
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if coordinator.is_shutting_down() {
+                return;
+            }
+            let _ = coordinator
+                .shutdown_condvar
+                .wait_timeout(guard, TRACE_PROGRESS_WINDOW);
+        }
+        if coordinator.is_shutting_down() {
+            return;
+        }
+
+        let queue_depth = coordinator.queued_trace_payloads.load(Ordering::Acquire);
+        let next_watermark = coordinator.next_trace_ingest_seq.load(Ordering::Acquire);
+        let processed_watermark = coordinator
+            .processed_trace_ingest_seq
+            .load(Ordering::Acquire);
+        tracing::info!(
+            metric = "trace_ingest_progress",
+            queue_depth,
+            next_watermark,
+            processed_watermark,
+            "trace ingest progress"
+        );
+        if watchdog.observe(queue_depth, processed_watermark) {
+            tracing::warn!(
+                component = "daemon",
+                phase = "trace_ingest",
+                reason = "queued_trace_no_progress",
+                queue_depth,
+                next_watermark,
+                processed_watermark,
+                stalled_windows = watchdog.stalled_windows,
+                window_secs = TRACE_PROGRESS_WINDOW.as_secs(),
+                "queued trace work made no progress for consecutive windows"
+            );
+        }
+    }
 }
 
 /// Spawn a detached `git-ai bg restart --hard` process that will reap the
@@ -7278,12 +7464,10 @@ fn daemon_min_uptime_for_self_restart() -> u64 {
         .unwrap_or(DAEMON_MIN_UPTIME_FOR_SELF_RESTART_SECS)
 }
 
-/// Background loop that verifies the daemon's sockets are reachable by
-/// actually connecting to them.  A successful connect proves the socket file
-/// exists, points to this daemon's listener, and that the listener thread is
-/// alive and calling accept().  If either probe fails (deleted file, stale
-/// socket, hung listener), the daemon spawns a detached restart process and
-/// shuts down.
+/// Background loop that verifies the daemon's control path can answer Ping and
+/// that the trace listener accepts connections. If either probe fails (deleted
+/// file, stale socket, hung listener/runtime), the daemon spawns a detached
+/// restart process and shuts down.
 ///
 /// To prevent restart loops when the underlying issue is systemic (e.g.
 /// filesystem permissions, broken paths), the daemon only self-restarts if
@@ -7322,12 +7506,38 @@ fn daemon_socket_health_check_loop(
             return;
         }
 
-        let control_ok =
-            local_socket_connects_with_timeout(&control_socket_path, DAEMON_SOCKET_PROBE_TIMEOUT);
+        let control_ok = send_control_request_with_timeout(
+            &control_socket_path,
+            &ControlRequest::Ping,
+            DAEMON_SOCKET_PROBE_TIMEOUT,
+        )
+        .and_then(|response| {
+            if response.ok {
+                Ok(())
+            } else {
+                Err(GitAiError::Generic(response.error.unwrap_or_else(|| {
+                    "daemon Ping returned an error".to_string()
+                })))
+            }
+        });
         let trace_ok =
             local_socket_connects_with_timeout(&trace_socket_path, DAEMON_SOCKET_PROBE_TIMEOUT);
 
         if control_ok.is_err() || trace_ok.is_err() {
+            if coordinator.has_admitted_checkpoints() {
+                tracing::warn!(
+                    component = "daemon",
+                    phase = "socket_health",
+                    reason = "restart_deferred_for_admitted_checkpoint",
+                    admitted_checkpoints = coordinator
+                        .admitted_checkpoints
+                        .load(Ordering::Acquire),
+                    control = %control_ok.err().map(|e| e.to_string()).unwrap_or_else(|| "ok".into()),
+                    trace = %trace_ok.err().map(|e| e.to_string()).unwrap_or_else(|| "ok".into()),
+                    "socket health action deferred while admitted checkpoints are processing"
+                );
+                continue;
+            }
             let uptime = started.elapsed();
             let min_uptime = std::time::Duration::from_secs(daemon_min_uptime_for_self_restart());
 
@@ -7386,9 +7596,17 @@ fn daemon_update_check_loop(coordinator: Arc<ActorDaemonCoordinator>, started_at
 
         match check_for_update_available() {
             Ok(DaemonUpdateCheckResult::UpdateReady) => {
-                tracing::info!("update check: newer version available, requesting shutdown");
-                coordinator.request_restart_after_update();
-                return;
+                if coordinator.has_admitted_checkpoints() {
+                    tracing::info!(
+                        admitted_checkpoints =
+                            coordinator.admitted_checkpoints.load(Ordering::Acquire),
+                        "update restart deferred while admitted checkpoints are processing"
+                    );
+                } else {
+                    tracing::info!("update check: newer version available, requesting shutdown");
+                    coordinator.request_restart_after_update();
+                    return;
+                }
             }
             Ok(DaemonUpdateCheckResult::NoUpdate) => {
                 tracing::info!("update check: no update needed");
@@ -7400,9 +7618,16 @@ fn daemon_update_check_loop(coordinator: Arc<ActorDaemonCoordinator>, started_at
 
         let uptime_ns = now_unix_nanos().saturating_sub(started_at_ns);
         if uptime_ns >= daemon_max_uptime_ns() {
-            tracing::info!("uptime exceeded max, requesting restart");
-            coordinator.request_restart();
-            return;
+            if coordinator.has_admitted_checkpoints() {
+                tracing::info!(
+                    admitted_checkpoints = coordinator.admitted_checkpoints.load(Ordering::Acquire),
+                    "uptime restart deferred while admitted checkpoints are processing"
+                );
+            } else {
+                tracing::info!("uptime exceeded max, requesting restart");
+                coordinator.request_restart();
+                return;
+            }
         }
     }
 }
@@ -7576,6 +7801,11 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
         daemon_socket_health_check_loop(health_coord, health_control, health_trace);
     });
 
+    let progress_coord = coordinator.clone();
+    let progress_thread = std::thread::spawn(move || {
+        daemon_trace_progress_monitor_loop(progress_coord);
+    });
+
     coordinator.wait_for_shutdown().await;
 
     // Best-effort wake listeners to allow clean process exit.
@@ -7596,6 +7826,7 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
         ("trace", trace_thread),
         ("update", update_thread),
         ("health", health_thread),
+        ("trace-progress", progress_thread),
     ] {
         let remaining = join_deadline.saturating_duration_since(std::time::Instant::now());
         if remaining.is_zero() {
@@ -7641,11 +7872,10 @@ fn checkpoint_control_response_timeout(
     use_ci_or_test_budget: bool,
 ) -> Duration {
     match request {
-        // Queued checkpoint requests can block behind trace-ingest ordering. In
-        // CI/test we allow the longer budget so replay-heavy daemon tests don't
-        // tear down captured state mid-request. Product mode keeps the short
-        // control timeout so a wedged prior Git root fails the checkpoint rather
-        // than making the caller wait indefinitely.
+        // Checkpoint admission waits only for already-enqueued trace frames to
+        // reach the family sequencer. Keep the historical CI/test budget for
+        // heavily loaded test daemons; product mode retains the short control
+        // timeout and never waits for checkpoint side effects.
         ControlRequest::CheckpointRun { .. } if use_ci_or_test_budget => {
             DAEMON_CHECKPOINT_RESPONSE_TIMEOUT
         }
@@ -8888,7 +9118,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkpoint_control_request_waits_while_blocked_behind_pending_root() {
+    async fn checkpoint_admission_succeeds_while_sync_waits_for_pending_root() {
         use crate::commands::checkpoint_agent::orchestrator::{BaseCommit, CheckpointFile};
 
         let coord = Arc::new(ActorDaemonCoordinator::new());
@@ -8929,16 +9159,35 @@ mod tests {
             metadata: HashMap::new(),
         };
 
-        let mut checkpoint = {
+        let checkpoint = {
             let coord = coord.clone();
             tokio::spawn(async move { coord.ingest_checkpoint_payload(request).await })
         };
 
+        let response = tokio::time::timeout(Duration::from_millis(50), checkpoint)
+            .await
+            .expect("checkpoint admission must not wait for a prior open trace root")
+            .expect("checkpoint task should not panic")
+            .expect("checkpoint request should be admitted");
         assert!(
-            tokio::time::timeout(Duration::from_millis(50), &mut checkpoint)
+            response.ok,
+            "checkpoint admission should be ok: {response:?}"
+        );
+        assert!(
+            coord.has_admitted_checkpoints(),
+            "admitted checkpoint must remain protected while sequenced work is pending"
+        );
+
+        let mut sync = {
+            let coord = coord.clone();
+            let repo = repo.to_string_lossy().to_string();
+            tokio::spawn(async move { coord.sync_family(repo).await })
+        };
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut sync)
                 .await
                 .is_err(),
-            "checkpoint control request must not complete before its sequenced side effect runs"
+            "sync.family must wait for the sequenced checkpoint side effect"
         );
 
         coord
@@ -8946,15 +9195,28 @@ mod tests {
             .await
             .unwrap();
 
-        let response = tokio::time::timeout(Duration::from_secs(1), checkpoint)
+        let status = tokio::time::timeout(Duration::from_secs(1), sync)
             .await
-            .expect("checkpoint should finish once the prior root is released")
-            .expect("checkpoint task should not panic")
-            .expect("checkpoint request should succeed");
+            .expect("sync.family should finish once the prior root is released")
+            .expect("sync task should not panic")
+            .expect("sync.family should succeed");
+        assert!(status.last_error.is_none(), "unexpected error: {status:?}");
         assert!(
-            response.ok,
-            "checkpoint response should be ok: {response:?}"
+            !coord.has_admitted_checkpoints(),
+            "completed checkpoint must leave the admitted-work count"
         );
+    }
+
+    #[test]
+    fn trace_progress_watchdog_requires_two_stalled_windows() {
+        let mut watchdog = TraceProgressWatchdog::default();
+
+        assert!(!watchdog.observe(3, 10));
+        assert!(!watchdog.observe(3, 10));
+        assert!(watchdog.observe(3, 10));
+
+        assert!(!watchdog.observe(3, 11), "progress must reset the watchdog");
+        assert!(!watchdog.observe(0, 11), "an empty queue must stay reset");
     }
 
     #[tokio::test]

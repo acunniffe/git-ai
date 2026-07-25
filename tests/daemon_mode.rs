@@ -2,6 +2,8 @@
 #[path = "integration/repos/mod.rs"]
 mod repos;
 
+#[cfg(not(windows))]
+use git_ai::authorship::working_log::AgentId;
 use git_ai::authorship::working_log::CheckpointKind;
 #[cfg(not(windows))]
 use git_ai::commands::checkpoint_agent::orchestrator::{
@@ -582,6 +584,30 @@ fn git_trace_env(trace_socket_path: &Path) -> [(&'static str, String); 2] {
         ),
         ("GIT_TRACE2_EVENT_NESTING", "0".to_string()),
     ]
+}
+
+#[cfg(not(windows))]
+fn checkpoint_request(
+    repo: &TestRepo,
+    trace_id: &str,
+    file: &str,
+    content: &str,
+    checkpoint_kind: CheckpointKind,
+) -> CheckpointRequest {
+    CheckpointRequest {
+        trace_id: trace_id.to_string(),
+        checkpoint_kind,
+        agent_id: None,
+        files: vec![CheckpointFile {
+            path: PathBuf::from(file),
+            content: Some(content.to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    }
 }
 
 fn traced_git_with_env(
@@ -1674,6 +1700,257 @@ fn daemon_slow_unsequenced_side_effect_does_not_block_unrelated_trace_progress()
 
 #[test]
 #[cfg(not(windows))]
+fn daemon_checkpoint_run_acknowledges_admission_before_processing() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let _daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[(
+            "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+            "slow-checkpoint=2500",
+        )],
+    );
+    let control_socket = daemon_control_socket_path(&repo);
+    let file_path = repo.path().join("slow-checkpoint.txt");
+    fs::write(&file_path, "ai content\n").unwrap();
+
+    let mut request = checkpoint_request(
+        &repo,
+        "slow-checkpoint",
+        "slow-checkpoint.txt",
+        "ai content\n",
+        CheckpointKind::AiAgent,
+    );
+    request.agent_id = Some(AgentId {
+        tool: "mock_ai".to_string(),
+        id: "slow-checkpoint-session".to_string(),
+        model: "test".to_string(),
+    });
+
+    let admission_started = std::time::Instant::now();
+    let admission = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::CheckpointRun {
+            request: Box::new(request),
+        },
+        Duration::from_millis(250),
+    )
+    .expect("checkpoint admission should not wait for processing");
+    assert!(admission.ok, "checkpoint admission failed: {admission:?}");
+    assert!(
+        admission_started.elapsed() < Duration::from_millis(250),
+        "checkpoint admission took {:?}",
+        admission_started.elapsed()
+    );
+
+    let ping_started = std::time::Instant::now();
+    let ping = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::Ping,
+        Duration::from_millis(250),
+    )
+    .expect("Ping should remain responsive during checkpoint processing");
+    assert!(
+        ping.ok,
+        "Ping failed during checkpoint processing: {ping:?}"
+    );
+    assert!(
+        ping_started.elapsed() < Duration::from_millis(250),
+        "Ping took {:?}",
+        ping_started.elapsed()
+    );
+
+    let trace_env = git_trace_env(&daemon_trace_socket_path(&repo));
+    let trace_env_refs = [
+        (trace_env[0].0, trace_env[0].1.as_str()),
+        (trace_env[1].0, trace_env[1].1.as_str()),
+    ];
+    repo.git_og_with_env(&["add", "slow-checkpoint.txt"], &trace_env_refs)
+        .unwrap();
+    repo.git_og_with_env(&["commit", "-m", "checkpoint admission"], &trace_env_refs)
+        .unwrap();
+    let sync_started = std::time::Instant::now();
+    let sync = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(5),
+    )
+    .expect("sync.family should wait for admitted checkpoint and commit processing");
+    assert!(sync.ok, "sync.family failed: {sync:?}");
+    assert!(
+        sync_started.elapsed() >= Duration::from_secs(2),
+        "sync.family returned before delayed checkpoint processing completed: {:?}",
+        sync_started.elapsed()
+    );
+    repo.filename("slow-checkpoint.txt")
+        .assert_committed_lines(lines!["ai content".ai()]);
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_admission_and_processing_failures_use_distinct_interfaces() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let _daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[(
+            "GIT_AI_TEST_FAIL_CHECKPOINT_SIDE_EFFECT",
+            "processing-failure",
+        )],
+    );
+    let control_socket = daemon_control_socket_path(&repo);
+    fs::write(repo.path().join("processing-failure.txt"), "content\n").unwrap();
+
+    let processing_failure = checkpoint_request(
+        &repo,
+        "processing-failure",
+        "processing-failure.txt",
+        "content\n",
+        CheckpointKind::Human,
+    );
+    let admission = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::CheckpointRun {
+            request: Box::new(processing_failure),
+        },
+        Duration::from_millis(250),
+    )
+    .expect("processing failure must not fail admission");
+    assert!(admission.ok, "processing failure leaked into admission");
+
+    let sync = send_control_request(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+    )
+    .expect("sync.family request should complete");
+    assert!(sync.ok, "sync.family transport failed: {sync:?}");
+    let last_error = sync
+        .data
+        .as_ref()
+        .and_then(|data| data.get("last_error"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        last_error.contains("synthetic checkpoint processing failure"),
+        "sync.family did not surface processing failure: {sync:?}"
+    );
+
+    let outside_repo = tempfile::tempdir().unwrap();
+    let missing_repo = outside_repo.path().join("does-not-exist");
+    let mut admission_failure = checkpoint_request(
+        &repo,
+        "admission-failure",
+        "missing.txt",
+        "content\n",
+        CheckpointKind::Human,
+    );
+    admission_failure.files[0].repo_work_dir = missing_repo;
+    let response = send_control_request(
+        &control_socket,
+        &ControlRequest::CheckpointRun {
+            request: Box::new(admission_failure),
+        },
+    )
+    .expect("daemon should return a structured admission error");
+    assert!(
+        !response.ok,
+        "repository resolution failure should fail checkpoint admission"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_slow_checkpoint_family_does_not_delay_another_family() {
+    let slow_repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let _daemon = DaemonGuard::start_with_env(
+        &slow_repo,
+        &[(
+            "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+            "slow-family-checkpoint=2500",
+        )],
+    );
+    let control_socket = daemon_control_socket_path(&slow_repo);
+    fs::write(slow_repo.path().join("slow.txt"), "slow\n").unwrap();
+    let slow_request = checkpoint_request(
+        &slow_repo,
+        "slow-family-checkpoint",
+        "slow.txt",
+        "slow\n",
+        CheckpointKind::Human,
+    );
+    let slow_admission = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::CheckpointRun {
+            request: Box::new(slow_request),
+        },
+        Duration::from_millis(250),
+    )
+    .unwrap();
+    assert!(slow_admission.ok);
+
+    let fast_repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    fs::write(fast_repo.path().join("fast.txt"), "fast human\n").unwrap();
+    let fast_request = checkpoint_request(
+        &fast_repo,
+        "fast-family-checkpoint",
+        "fast.txt",
+        "fast human\n",
+        CheckpointKind::KnownHuman,
+    );
+    let fast_started = std::time::Instant::now();
+    let fast_admission = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::CheckpointRun {
+            request: Box::new(fast_request),
+        },
+        Duration::from_millis(250),
+    )
+    .expect("slow family blocked unrelated checkpoint admission");
+    assert!(fast_admission.ok);
+    assert!(fast_started.elapsed() < Duration::from_millis(250));
+
+    let fast_sync = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&fast_repo),
+        },
+        Duration::from_millis(750),
+    )
+    .expect("slow family blocked unrelated checkpoint processing");
+    assert!(fast_sync.ok, "unrelated family sync failed: {fast_sync:?}");
+
+    let trace_env = git_trace_env(&daemon_trace_socket_path(&slow_repo));
+    let trace_env_refs = [
+        (trace_env[0].0, trace_env[0].1.as_str()),
+        (trace_env[1].0, trace_env[1].1.as_str()),
+    ];
+    fast_repo
+        .git_og_with_env(&["add", "fast.txt"], &trace_env_refs)
+        .unwrap();
+    fast_repo
+        .git_og_with_env(&["commit", "-m", "fast family"], &trace_env_refs)
+        .unwrap();
+    let commit_sync = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&fast_repo),
+        },
+        Duration::from_millis(750),
+    )
+    .expect("slow family blocked unrelated trace progress");
+    assert!(
+        commit_sync.ok,
+        "unrelated commit sync failed: {commit_sync:?}"
+    );
+    fast_repo
+        .filename("fast.txt")
+        .assert_committed_lines(lines!["fast human".human()]);
+}
+
+#[test]
+#[cfg(not(windows))]
 fn daemon_stalled_unidentified_trace_connection_does_not_block_checkpoint_control_request() {
     let repo = TestRepo::new_dedicated_daemon();
     let trace_socket = daemon_trace_socket_path(&repo);
@@ -1769,6 +2046,14 @@ fn daemon_checkpoint_resolution_applies_total_content_budget() {
         "checkpoint control request should succeed: {:?}",
         response
     );
+    let sync = send_control_request(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+    )
+    .expect("sync.family should wait for checkpoint processing");
+    assert!(sync.ok, "checkpoint processing failed: {sync:?}");
 
     let checkpoints = repo
         .current_working_logs()

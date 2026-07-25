@@ -2186,11 +2186,18 @@ impl TestRepo {
     }
 
     fn record_pending_checkpoint_completions(&self, count: u64) {
-        let family_key = self.daemon_family_key();
-        let mut registry = daemon_sync_registry()
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        registry.raise_expected_checkpoint_count(&family_key, count);
+        {
+            let family_key = self.daemon_family_key();
+            let mut registry = daemon_sync_registry()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            registry.raise_expected_checkpoint_count(&family_key, count);
+        }
+        // TestRepo historically made a successful checkpoint command a
+        // processing-complete boundary. Keep that test-only contract so tests
+        // that inspect working-log files directly remain deterministic while
+        // the production control response acknowledges admission only.
+        self.sync_daemon_force();
     }
 
     pub(crate) fn append_daemon_test_sync_session_args(
