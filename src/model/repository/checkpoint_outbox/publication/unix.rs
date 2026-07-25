@@ -209,11 +209,11 @@ fn capacity_record_len(directory_fd: RawFd, name: &CStr) -> Result<u64, Checkpoi
         return Err(io_error("inspect ready record", io::Error::last_os_error()));
     }
     let metadata = unsafe { metadata.assume_init() };
-    let mode = u32::from(metadata.st_mode);
-    if mode & u32::from(libc::S_IFMT) != u32::from(libc::S_IFREG)
+    let mode = metadata.st_mode;
+    if mode & libc::S_IFMT != libc::S_IFREG
         || metadata.st_uid != unsafe { libc::geteuid() }
         || mode & 0o777 != RECORD_MODE
-        || metadata.st_nlink as u64 != 1
+        || metadata.st_nlink != 1
     {
         return Err(CheckpointOutboxError::UnsafeReadyRecord);
     }

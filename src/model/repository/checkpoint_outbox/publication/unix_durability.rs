@@ -148,7 +148,7 @@ fn classify_component_error(
     error: io::Error,
 ) -> CheckpointOutboxError {
     match component_file_type(parent.as_raw_fd(), name) {
-        Ok(file_type) if file_type == u32::from(libc::S_IFLNK) && is_final => {
+        Ok(file_type) if file_type == libc::S_IFLNK && is_final => {
             CheckpointOutboxError::RootIsSymlink
         }
         Ok(_) if is_final => CheckpointOutboxError::RootIsNotDirectory,
@@ -157,7 +157,7 @@ fn classify_component_error(
     }
 }
 
-fn component_file_type(parent_fd: RawFd, name: &std::ffi::CStr) -> Result<u32, io::Error> {
+fn component_file_type(parent_fd: RawFd, name: &std::ffi::CStr) -> Result<libc::mode_t, io::Error> {
     let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
     let result = unsafe {
         libc::fstatat(
@@ -170,8 +170,8 @@ fn component_file_type(parent_fd: RawFd, name: &std::ffi::CStr) -> Result<u32, i
     if result != 0 {
         return Err(io::Error::last_os_error());
     }
-    let mode = u32::from(unsafe { metadata.assume_init() }.st_mode);
-    Ok(mode & u32::from(libc::S_IFMT))
+    let mode = unsafe { metadata.assume_init() }.st_mode;
+    Ok(mode & libc::S_IFMT)
 }
 
 fn open_and_validate_existing_root(root: &Path) -> Result<File, CheckpointOutboxError> {

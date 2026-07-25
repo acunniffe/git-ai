@@ -122,7 +122,7 @@ fn validate_lexical_symlink_chain(
             Err(error) => return Err(path_io_error("inspect lexical root component", error)),
         };
 
-        if file_type == u32::from(libc::S_IFLNK) {
+        if file_type == libc::S_IFLNK {
             followed_symlinks = followed_symlinks.saturating_add(1);
             if followed_symlinks > MAX_SYMLINKS {
                 return Err(CheckpointOutboxError::UnsafeReadyRecord);
@@ -143,7 +143,7 @@ fn validate_lexical_symlink_chain(
             continue;
         }
 
-        if file_type != u32::from(libc::S_IFDIR) {
+        if file_type != libc::S_IFDIR {
             return Ok(());
         }
         let parent_metadata = directory
