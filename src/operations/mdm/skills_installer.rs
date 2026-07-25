@@ -6,25 +6,60 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
-/// Embedded skill - each skill has a name and its SKILL.md content
+/// One file bundled with an embedded skill.
+struct EmbeddedSkillFile {
+    relative_path: &'static str,
+    contents: &'static str,
+}
+
+/// Embedded skill bundle.
 struct EmbeddedSkill {
     name: &'static str,
-    skill_md: &'static str,
+    files: &'static [EmbeddedSkillFile],
 }
 
 /// All embedded skills - add new skills here
 const EMBEDDED_SKILLS: &[EmbeddedSkill] = &[
     EmbeddedSkill {
         name: "prompt-analysis",
-        skill_md: include_str!("../../../.agents/skills/prompt-analysis/SKILL.md"),
+        files: &[
+            EmbeddedSkillFile {
+                relative_path: "SKILL.md",
+                contents: include_str!("../../../.agents/skills/prompt-analysis/SKILL.md"),
+            },
+            EmbeddedSkillFile {
+                relative_path: "agents/openai.yaml",
+                contents: include_str!(
+                    "../../../.agents/skills/prompt-analysis/agents/openai.yaml"
+                ),
+            },
+        ],
     },
     EmbeddedSkill {
         name: "git-ai-search",
-        skill_md: include_str!("../../../.agents/skills/git-ai-search/SKILL.md"),
+        files: &[
+            EmbeddedSkillFile {
+                relative_path: "SKILL.md",
+                contents: include_str!("../../../.agents/skills/git-ai-search/SKILL.md"),
+            },
+            EmbeddedSkillFile {
+                relative_path: "agents/openai.yaml",
+                contents: include_str!("../../../.agents/skills/git-ai-search/agents/openai.yaml"),
+            },
+        ],
     },
     EmbeddedSkill {
         name: "ask",
-        skill_md: include_str!("../../../.agents/skills/ask/SKILL.md"),
+        files: &[
+            EmbeddedSkillFile {
+                relative_path: "SKILL.md",
+                contents: include_str!("../../../.agents/skills/ask/SKILL.md"),
+            },
+            EmbeddedSkillFile {
+                relative_path: "agents/openai.yaml",
+                contents: include_str!("../../../.agents/skills/ask/agents/openai.yaml"),
+            },
+        ],
     },
 ];
 
@@ -122,7 +157,8 @@ fn remove_skill_link(link_path: &PathBuf) -> Result<(), GitAiError> {
 /// Creates the standard skills structure:
 /// ~/.git-ai/skills/
 /// └── prompt-analysis/
-///     └── SKILL.md
+///     ├── SKILL.md
+///     └── agents/openai.yaml
 ///
 /// Then links each skill to:
 /// - ~/.agents/skills/{skill-name} (symlink on Unix, copy on Windows)
@@ -157,9 +193,11 @@ pub fn install_skills(
         let skill_dir = skills_base.join(skill.name);
         fs::create_dir_all(&skill_dir)?;
 
-        // Write SKILL.md
-        let skill_md_path = skill_dir.join("SKILL.md");
-        write_atomic(&skill_md_path, skill.skill_md.as_bytes())?;
+        // Write the complete skill bundle, including per-harness metadata.
+        for file in skill.files {
+            let file_path = skill_dir.join(file.relative_path);
+            write_atomic(&file_path, file.contents.as_bytes())?;
+        }
 
         // Link this skill to agent directories
         // ~/.agents/skills/{skill-name} -> ~/.git-ai/skills/{skill-name}
@@ -272,16 +310,33 @@ mod tests {
     fn test_embedded_skills_are_loaded() {
         for skill in EMBEDDED_SKILLS {
             assert!(!skill.name.is_empty(), "Skill name should not be empty");
-            assert!(
-                !skill.skill_md.is_empty(),
-                "Skill {} SKILL.md should not be empty",
-                skill.name
-            );
-            assert!(
-                skill.skill_md.contains("---"),
-                "Skill {} should have frontmatter",
-                skill.name
-            );
+            assert!(!skill.files.is_empty(), "Skill {} has no files", skill.name);
+            for file in skill.files {
+                assert!(
+                    !file.relative_path.is_empty(),
+                    "Skill {} has an unnamed file",
+                    skill.name
+                );
+                assert!(
+                    !file.relative_path.starts_with('/'),
+                    "Skill {} has an absolute file path: {}",
+                    skill.name,
+                    file.relative_path
+                );
+                assert!(
+                    !file.contents.is_empty(),
+                    "Skill file is empty: {}/{}",
+                    skill.name,
+                    file.relative_path
+                );
+                if file.relative_path == "SKILL.md" {
+                    assert!(
+                        file.contents.contains("---"),
+                        "Skill {} should have frontmatter",
+                        skill.name
+                    );
+                }
+            }
         }
     }
 
@@ -414,8 +469,9 @@ mod tests {
     fn test_install_and_uninstall_skills_lifecycle() {
         // Use an isolated temp HOME so we don't pollute the real home directory
         // and don't race with other tests that mutate HOME (e.g. codex tests).
-        with_temp_home(|_home| {
+        with_temp_home(|home| {
             let skills_base = skills_dir_path().unwrap();
+            let agents_skills_base = home.join(".agents").join("skills");
             let all_tools: HashSet<String> = ["claude-code", "cursor"]
                 .iter()
                 .map(|s| s.to_string())
@@ -432,22 +488,43 @@ mod tests {
             assert_eq!(result.installed_count, EMBEDDED_SKILLS.len());
             assert!(skills_base.exists());
             for skill in EMBEDDED_SKILLS {
-                let skill_md = skills_base.join(skill.name).join("SKILL.md");
-                assert!(skill_md.exists(), "SKILL.md missing for {}", skill.name);
-                let content = fs::read_to_string(&skill_md).unwrap();
-                assert_eq!(content, skill.skill_md);
+                for file in skill.files {
+                    let installed_file = skills_base.join(skill.name).join(file.relative_path);
+                    assert!(
+                        installed_file.exists(),
+                        "{} missing for {}",
+                        file.relative_path,
+                        skill.name
+                    );
+                    let content = fs::read_to_string(installed_file).unwrap();
+                    assert_eq!(content, file.contents);
+
+                    let linked_file = agents_skills_base.join(skill.name).join(file.relative_path);
+                    assert!(
+                        linked_file.exists(),
+                        "{} missing from the agent link for {}",
+                        file.relative_path,
+                        skill.name
+                    );
+                    assert_eq!(fs::read_to_string(linked_file).unwrap(), file.contents);
+                }
             }
 
             // Install again is idempotent
             let result2 = install_skills(false, false, &all_tools).unwrap();
             assert!(result2.changed);
             for skill in EMBEDDED_SKILLS {
-                let skill_md = skills_base.join(skill.name).join("SKILL.md");
-                assert!(
-                    skill_md.exists(),
-                    "SKILL.md missing after re-install for {}",
-                    skill.name
-                );
+                for file in skill.files {
+                    assert!(
+                        skills_base
+                            .join(skill.name)
+                            .join(file.relative_path)
+                            .exists(),
+                        "{} missing after re-install for {}",
+                        file.relative_path,
+                        skill.name
+                    );
+                }
             }
 
             // Uninstall removes skills directory
