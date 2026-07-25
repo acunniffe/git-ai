@@ -1,0 +1,64 @@
+src/metrics/local_stats.rs
+  s_8d2579124116c6::t_3b57a74c5ecd87 2-4,10-11,13-20,23-27,29-43,47,59-70,77-78,94,98,100-101,104-122,125-130,146-147,150-154,156,163-186,188-202,133-134
+  s_8d2579124116c6::t_9517938b1b6531 7-9,86,88-92
+  s_8d2579124116c6::t_48a4bb488e4366 12
+  s_1af7141303b2b0::t_7e07d46efad8dc 21-22,44-45,48-49,58,71,97,103,123-124,161-162
+  s_1a35d9c51a69d7::t_323500306478c5 50
+  s_1a35d9c51a69d7::t_9ee0e26e808449 95
+  s_1a35d9c51a69d7::t_9058c3536642da 96
+  s_8d2579124116c6::t_d4a33b78d031c7 99,102
+  s_8d2579124116c6::t_5b57ccb778ebe5 145
+  s_27ed236e4270d9::t_a3f17e1ff94c43 160
+  s_8d2579124116c6::t_efaa4612a76a08 203-206
+  s_c3aa905e9dfee2::t_5bbafa8543c8c7 207-208,136,140-141,159
+  s_8d2579124116c6::t_a1ccb812bb4693 132,135,138,143,157
+  s_8d2579124116c6::t_5d8ed8110b1938 139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "861bdaac9cb82f57e48aec64358b34f92c341ae3",
+  "prompts": {},
+  "sessions": {
+    "s_1a35d9c51a69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7df70395-9a7f-4c32-bf67-e29d2b57634a",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_1af7141303b2b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0947858f-daa2-4553-950d-7c6751535d5d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_c3aa905e9dfee2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e953b-a3d6-78c1-ab12-b3623076acea",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

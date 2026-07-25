@@ -1,0 +1,31 @@
+src/authorship/rewrite_stash.rs
+  s_9667c85b1e9fc5::t_8e43241af55186 206-207,211-213
+  s_9667c85b1e9fc5::t_e338d6ab46b507 242-243,247-249,252-255
+  s_9667c85b1e9fc5::t_4049d2144cad0c 128-129,139-140,142,146,160-162,182,189-190
+  s_9667c85b1e9fc5::t_8541b1fc6d1863 10,28-61,102-118
+  s_9667c85b1e9fc5::t_fe9627ad96aed4 264-265,269-272,275-277,281,283,285,289,301-302,326,333-334,341,350-358
+  s_9667c85b1e9fc5::t_8c2e05d2d14638 200-201,208,216,220-224,227-234
+  s_9667c85b1e9fc5::t_234d6054684ddb 360-361,363-413,415-435,439-478
+  s_9667c85b1e9fc5::t_15069e826bf63a 1,7
+  s_9667c85b1e9fc5::t_27a00bf1d611c9 359,362
+tests/integration/stash_attribution.rs
+  s_9667c85b1e9fc5::t_8e43241af55186 1346-1348
+  s_9667c85b1e9fc5::t_09b86b794fb0c1 3-4,6-43
+  s_9667c85b1e9fc5::t_014698fecabe63 1262-1345,1349-1366,1368,1385-1386,1398-1412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "4044f7d8f9c7695c18e54f8d103f78a8345d229b",
+  "prompts": {},
+  "sessions": {
+    "s_9667c85b1e9fc5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f207c-19f8-7122-a485-26245da55e48",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

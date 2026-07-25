@@ -1,0 +1,23 @@
+src/commands/login.rs
+  df90dc9fa893c7f4 90-94,97-101,104-108,110-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "fe34c193a569410f2da028e824488357e2312d25",
+  "prompts": {
+    "df90dc9fa893c7f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73f8b1bd-9133-4a4b-87f9-b98804b6b9c5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 26,
+      "total_deletions": 19,
+      "accepted_lines": 26,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,33 @@
+src/commands/checkpoint_agent/presets/droid.rs
+  s_a5f4b12640a58f::t_65684c4d75e8f5 78-80,83-93,95
+  s_a5f4b12640a58f::t_055ecf50db12b9 1-7,9-10,15-77,81-82,94,96-498
+src/commands/checkpoint_agent/presets/parse.rs
+  s_a5f4b12640a58f::t_e17d6ce641deb0 62,64
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_a5f4b12640a58f::t_8373ae0e8f09cd 1-6,8-9,14-362
+src/commands/checkpoint_agent/presets/github_copilot.rs
+  s_a5f4b12640a58f::t_7ed198feb53b74 185-191
+  s_a5f4b12640a58f::t_e75b6f7c45255e 346
+  s_a5f4b12640a58f::t_6b210b63934f58 1-7,9-10,15-184,192-345,347-1031
+src/commands/checkpoint_agent/orchestrator.rs
+  s_a5f4b12640a58f::t_3cce1b8e545b8d 164
+  s_a5f4b12640a58f::t_23dfca5a73508f 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "8f2391355665baa09247b96d8b767c7e2364bfc8",
+  "prompts": {},
+  "sessions": {
+    "s_a5f4b12640a58f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cede33a-f5a5-4d2d-8694-f7b2f0278d54",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/87b99da77fb244a8565eeb9f5e5f5f308bbefe3efedf578f1ac8357a82f6c650"
+    }
+  }
+}

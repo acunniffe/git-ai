@@ -1,0 +1,23 @@
+.github/workflows/release.yml
+  2630bc5 329-335,356-358,366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.20",
+  "base_commit_sha": "3262580d6140860b53318e98f0077ce45627b227",
+  "prompts": {
+    "2630bc5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a7fda058-4a61-4485-acbf-5c3e837832d4",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 1,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}

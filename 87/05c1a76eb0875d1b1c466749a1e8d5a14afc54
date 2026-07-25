@@ -1,0 +1,29 @@
+tests/async_mode.rs
+  1fbe46d49614612a 13
+tests/integration/repos/test_repo.rs
+  1fbe46d49614612a 32-34,36-38,1584-1592,1594-1595
+src/daemon.rs
+  1fbe46d49614612a 89,91,98,103,5977,5987,5990,5999-6001,6003,6006,6049,6131,6166-6167,6177,6180,6185,6187,6190,6203,6219-6220,6223-6224,6232,6235-6238,6243,6252,6263,6288-6289,6594-6595,6605-6606,6608,6610-6613,6621,6674
+src/commands/daemon.rs
+  1fbe46d49614612a 15,184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.17",
+  "base_commit_sha": "8705c1a76eb0875d1b1c466749a1e8d5a14afc54",
+  "prompts": {
+    "1fbe46d49614612a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d1888-36d5-7371-9224-e93ca491a1e7",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 13383,
+      "total_deletions": 12832,
+      "accepted_lines": 12498,
+      "overriden_lines": 147
+    }
+  }
+}

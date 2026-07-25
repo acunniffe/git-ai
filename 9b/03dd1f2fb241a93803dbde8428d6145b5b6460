@@ -1,0 +1,9 @@
+src/commands/checkpoint.rs
+  601fa7cb531db267 54,56-57,635,792-806,811-815,842,870-874,882,915,937,1552,1554-1555,1560,1564,1585,1629,1751,1806,1823,1863-1878
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "9b03dd1f2fb241a93803dbde8428d6145b5b6460",
+  "prompts": {}
+}

@@ -1,0 +1,26 @@
+tests/integration/repos/test_repo.rs
+  f7d298b540ab887f 2434-2441
+src/utils.rs
+  f7d298b540ab887f 108-112,114-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "4300e71b71f56d6b611e37b3ae58086dc815268a",
+  "prompts": {
+    "f7d298b540ab887f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aeb4828a-dc79-4e25-b262-f5f71032b4eb",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 6,
+      "accepted_lines": 18,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/58ec859e71e612130336797c75572b0035694a7a358273b6e2031d79532b31ce"
+    }
+  }
+}

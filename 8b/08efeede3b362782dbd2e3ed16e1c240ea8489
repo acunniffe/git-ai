@@ -1,0 +1,19 @@
+src/authorship/rebase_v3.rs
+  s_122f961aa46a22::t_1a5b7335cdefca 886-887
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "8b08efeede3b362782dbd2e3ed16e1c240ea8489",
+  "prompts": {},
+  "sessions": {
+    "s_122f961aa46a22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c99dd480-07a1-4da6-8ad5-4bc2483187aa",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

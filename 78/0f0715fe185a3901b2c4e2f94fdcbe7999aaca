@@ -1,0 +1,23 @@
+src/commands/git_handlers.rs
+  6c30c2d70cbf58c7 143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "780f0715fe185a3901b2c4e2f94fdcbe7999aaca",
+  "prompts": {
+    "6c30c2d70cbf58c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64d52de0-60ea-41b7-9938-a827e0946ad0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

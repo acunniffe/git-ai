@@ -1,0 +1,73 @@
+src/commands/activity.rs
+  s_8d2579124116c6::t_013c07475d8e43 2,5-24,26-31,39,41-44,46-51,53-61,63-74,76,78-79,83-87,89-93,98,100-101,103-104,107,170,172,180,324-334,339-348,286,310,321-322,254-255,131,134-135,138-139,142,148,195,225-226,336,130,302,207
+  s_0db412aeb21ffe::t_2ef1519d60bafe 52
+  s_8d2579124116c6::t_db261437049fa4 102
+  s_8d2579124116c6::t_0eb1eee25d93c6 109,115,119-123,127-128
+  s_8d2579124116c6::t_67c993cba3b848 168,262,271,287,323,256,227,335,337-338,303
+  s_27ed236e4270d9::t_436e8b1ed547d2 32,38
+  s_8d2579124116c6::t_d48e77ad90e6bc 257-258,260-261,265,267,272-273,276-280,282,285,307-309,311-320
+  s_0db412aeb21ffe::t_e609464cbae1fc 259,230,184,290
+  s_8d2579124116c6::t_e099179db31883 263,269,284
+  s_8d2579124116c6::t_6c4ed39d09f324 264,266,268,270,281,283,288-289,291-301
+  s_8d2579124116c6::t_a80b5a10ec4988 274-275
+  s_8d2579124116c6::t_92bab4562f9ad2 228-229,231,233-235,237,243,245-248,250-253,200
+  s_8d2579124116c6::t_06062f0672e5e8 99,112,114,133,136-137,140-141,143-144,146,169,171,173-174,177-178
+  s_27ed236e4270d9::t_5506e4e39d0b32 113
+  s_8d2579124116c6::t_e37c75b4a32551 106
+  s_8d2579124116c6::t_9aee7757149415 152
+  h_5e32efc4aad69a 80-82,105
+  s_8d2579124116c6::t_7679a432dd8265 238-242,244,249
+  s_8d2579124116c6::t_52e0eb14a52835 181-183,185-188,190-193,208-211,217-218,220-222,203
+  s_86cae81fcd9c97::t_24ca854e14a83d 194,224,206
+  s_8d2579124116c6::t_15ce3fa6d84bc4 212,213-216,219,223
+  s_0db412aeb21ffe::t_9c84f698786722 118,124-126,129
+  s_8d2579124116c6::t_e95a4e924b05c3 196,202,204-205
+  s_8d2579124116c6::t_9f4f325c1f5e34 153
+  s_8d2579124116c6::t_81d38a6662a2bc 4
+  s_8d2579124116c6::t_ec76250efedf60 149-151,154-160,162-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "3350f67d7dab2192101af07e6d2886f19526d52d",
+  "prompts": {},
+  "humans": {
+    "h_5e32efc4aad69a": {
+      "author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  },
+  "sessions": {
+    "s_0db412aeb21ffe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfef8749-d442-403d-b447-4d2895852996",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_86cae81fcd9c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5160589a-86c2-41a5-bdcd-5daee68d43ef",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}
