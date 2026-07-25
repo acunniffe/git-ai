@@ -340,7 +340,7 @@ fn checkpoint_stream_authority_resolves_host_opencode_database_without_sweeping(
     let storage = fixture._temp.path().join("opencode");
     std::fs::create_dir_all(&storage).unwrap();
     let database = storage.join("opencode.db");
-    let connection = rusqlite::Connection::open(&database).unwrap();
+    let connection = crate::model::repository::sqlite::open_with_memory_limits(&database).unwrap();
     connection
         .execute_batch(
             "CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT);
