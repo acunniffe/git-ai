@@ -9,6 +9,7 @@ mod cursor;
 mod droid;
 mod gemini;
 pub mod opencode;
+mod opencode_checkpoint;
 mod pi;
 mod windsurf;
 

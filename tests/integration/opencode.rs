@@ -5,8 +5,11 @@ use serde_json::json;
 use std::fs;
 use std::path::PathBuf;
 
-fn parse_opencode(hook_input: &str) -> Result<Vec<ParsedHookEvent>, GitAiError> {
-    resolve_preset("opencode")?.parse(hook_input, "t_test")
+fn parse_and_enrich_opencode(hook_input: &str) -> Result<Vec<ParsedHookEvent>, GitAiError> {
+    let preset = resolve_preset("opencode")?;
+    let mut events = preset.parse(hook_input, "t_test")?;
+    preset.enrich_authorized_events(hook_input, &mut events)?;
+    Ok(events)
 }
 
 fn opencode_sqlite_fixture_path() -> std::path::PathBuf {
@@ -158,7 +161,7 @@ fn test_opencode_preset_pretooluse_returns_human_checkpoint() {
         );
     }
 
-    let events = parse_opencode(&hook_input).expect("Failed to run OpenCodePreset");
+    let events = parse_and_enrich_opencode(&hook_input).expect("Failed to run OpenCodePreset");
 
     unsafe {
         std::env::remove_var("GIT_AI_OPENCODE_STORAGE_PATH");
@@ -201,7 +204,7 @@ fn test_opencode_preset_posttooluse_returns_ai_checkpoint() {
         );
     }
 
-    let events = parse_opencode(&hook_input).expect("Failed to run OpenCodePreset");
+    let events = parse_and_enrich_opencode(&hook_input).expect("Failed to run OpenCodePreset");
 
     unsafe {
         std::env::remove_var("GIT_AI_OPENCODE_STORAGE_PATH");
@@ -222,7 +225,7 @@ fn test_opencode_preset_posttooluse_returns_ai_checkpoint() {
             );
             assert_eq!(e.context.agent_id.tool, "opencode");
             assert_eq!(e.context.agent_id.id, "test-session-123");
-            // Model is extracted from the OpenCode SQLite fixture at parse time
+            // Model is extracted from the OpenCode SQLite fixture after authorization.
             assert_eq!(e.context.agent_id.model, "gpt-5");
         }
         _ => panic!("Expected PostFileEdit for PostToolUse"),
@@ -251,7 +254,7 @@ fn test_opencode_preset_stores_session_id_in_metadata() {
         );
     }
 
-    let events = parse_opencode(&hook_input).expect("Failed to run OpenCodePreset");
+    let events = parse_and_enrich_opencode(&hook_input).expect("Failed to run OpenCodePreset");
 
     unsafe {
         std::env::remove_var("GIT_AI_OPENCODE_STORAGE_PATH");
@@ -292,7 +295,7 @@ fn test_opencode_preset_sets_repo_working_dir() {
         );
     }
 
-    let events = parse_opencode(&hook_input).expect("Failed to run OpenCodePreset");
+    let events = parse_and_enrich_opencode(&hook_input).expect("Failed to run OpenCodePreset");
 
     unsafe {
         std::env::remove_var("GIT_AI_OPENCODE_STORAGE_PATH");
@@ -331,7 +334,7 @@ fn test_opencode_preset_extracts_apply_patch_paths() {
         );
     }
 
-    let events = parse_opencode(&hook_input).expect("Failed to run OpenCodePreset");
+    let events = parse_and_enrich_opencode(&hook_input).expect("Failed to run OpenCodePreset");
 
     unsafe {
         std::env::remove_var("GIT_AI_OPENCODE_STORAGE_PATH");
@@ -614,8 +617,7 @@ fn test_opencode_checkpoint_sets_parent_session_id_from_db() {
     })
     .to_string();
 
-    let preset = resolve_preset("opencode").unwrap();
-    let events = preset.parse(&hook_input, "t_test").unwrap();
+    let events = parse_and_enrich_opencode(&hook_input).unwrap();
 
     unsafe {
         std::env::remove_var("GIT_AI_OPENCODE_STORAGE_PATH");

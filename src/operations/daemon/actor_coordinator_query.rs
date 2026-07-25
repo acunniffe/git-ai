@@ -171,4 +171,26 @@ impl ActorDaemonCoordinator {
             .map_err(|_| GitAiError::Generic("checkpoint response channel closed".to_string()))??;
         Ok(ControlResponse::ok(None, None))
     }
+
+    pub(crate) async fn ingest_checkpoint_delivery(
+        &self,
+        delivery: crate::model::checkpoint_delivery::CheckpointDelivery,
+    ) -> Result<ControlResponse, GitAiError> {
+        delivery
+            .validate()
+            .map_err(|error| GitAiError::PresetError(error.to_string()))?;
+        self.ingest_checkpoint_control_payload(delivery.request)
+            .await
+    }
+
+    pub(crate) async fn ingest_checkpoint_control_payload(
+        &self,
+        mut request: CheckpointRequest,
+    ) -> Result<ControlResponse, GitAiError> {
+        crate::operations::daemon::checkpoint_stream_authority::authorize_checkpoint_stream_source(
+            &mut request,
+        )?;
+        self.notify_stream_worker_checkpoint(&request);
+        self.ingest_checkpoint_payload(request).await
+    }
 }

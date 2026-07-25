@@ -9,6 +9,7 @@ use crate::metrics::{
     EventAttributes, MetricEvent, OtelTraceValues, PosEncoded, SessionEventValues,
 };
 use crate::model::authorship_log_serialization::{generate_session_id, generate_trace_id};
+use crate::model::checkpoint_request::StreamFormat as CheckpointStreamFormat;
 use crate::model::repository::streams_db::{StreamRecord, StreamsDatabase};
 use crate::model::stream_types::StreamError;
 use crate::model::stream_watermark::{WatermarkStrategy, WatermarkType};
@@ -24,6 +25,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tokio::sync::Notify;
 use tokio::time::{Duration, interval};
+
+mod checkpoint_notification;
+#[cfg(test)]
+mod checkpoint_notification_tests;
 
 const TRIGGERED_SWEEP_COOLDOWN: Duration = Duration::from_secs(30);
 
@@ -215,6 +220,7 @@ impl StreamWorkerHandle {
         trace_id: String,
         tool_use_id: Option<String>,
         stream_path: PathBuf,
+        stream_format: CheckpointStreamFormat,
         repo_work_dir: Option<PathBuf>,
         external_session_id: String,
         external_parent_session_id: Option<String>,
@@ -225,6 +231,7 @@ impl StreamWorkerHandle {
             trace_id,
             tool_use_id,
             stream_path,
+            stream_format,
             repo_work_dir,
             external_session_id,
             external_parent_session_id,
@@ -308,6 +315,7 @@ struct CheckpointNotification {
     trace_id: String,
     tool_use_id: Option<String>,
     stream_path: PathBuf,
+    stream_format: CheckpointStreamFormat,
     repo_work_dir: Option<PathBuf>,
     external_session_id: String,
     external_parent_session_id: Option<String>,
@@ -634,35 +642,6 @@ impl StreamWorker {
         }
 
         Ok(())
-    }
-
-    /// Handle a checkpoint notification.
-    async fn handle_checkpoint_notification(&mut self, notification: CheckpointNotification) {
-        let canonical_path =
-            crate::operations::git::canonicalize::canonicalize_or_self(&notification.stream_path);
-
-        let mut enqueued: HashSet<(PathBuf, String)> = HashSet::new();
-        let tasks = self.enqueue_streams_for_session(
-            &notification.tool,
-            &canonical_path,
-            Priority::Immediate,
-            Some(notification.trace_id.clone()),
-            notification.tool_use_id.clone(),
-            Some(notification.external_session_id.as_str()),
-            notification.external_parent_session_id.as_deref(),
-            notification.repo_work_dir.as_deref(),
-            &notification.session_id,
-            &mut enqueued,
-        );
-
-        for task in tasks {
-            self.priority_queue.push(task);
-        }
-
-        // Sweep subagent transcripts for this main session (Claude only for now)
-        if notification.tool == "claude" {
-            self.sweep_subagents_for_session(&notification);
-        }
     }
 
     /// Discover and enqueue subagent transcripts belonging to a main Claude session.
@@ -1118,13 +1097,15 @@ impl StreamWorker {
         let is_initial_watermark = stream.watermark_value.is_empty()
             || stream.watermark_type.create_initial_watermark().serialize()
                 == stream.watermark_value;
+        let reader_session_id =
+            agent.session_id_for_read(&stream.session_id, &stream.external_session_id);
 
         loop {
             if shutdown_flag.load(Ordering::Relaxed) {
                 break;
             }
 
-            let batch = agent.read_incremental(&path, current_watermark, &stream.session_id)?;
+            let batch = agent.read_incremental(&path, current_watermark, reader_session_id)?;
 
             if batch.events.is_empty() {
                 db.update_watermark(
@@ -1634,6 +1615,7 @@ mod scheduling_tests {
                 trace_id: "trace".to_string(),
                 tool_use_id: None,
                 stream_path: temp.path().join("transcript.jsonl"),
+                stream_format: CheckpointStreamFormat::ClaudeJsonl,
                 repo_work_dir: Some(temp.path().to_path_buf()),
                 external_session_id: "external".to_string(),
                 external_parent_session_id: None,
@@ -1801,6 +1783,7 @@ mod subagent_sweep_tests {
             trace_id: "trace-1".to_string(),
             tool_use_id: None,
             stream_path: main_transcript.clone(),
+            stream_format: CheckpointStreamFormat::ClaudeJsonl,
             repo_work_dir: Some(tmp.path().to_path_buf()),
             external_session_id: "sess-abc".to_string(),
             external_parent_session_id: None,
@@ -1857,7 +1840,8 @@ mod subagent_sweep_tests {
             tool: "claude".to_string(),
             trace_id: "trace-2".to_string(),
             tool_use_id: None,
-            stream_path: main_transcript,
+            stream_path: main_transcript.clone(),
+            stream_format: CheckpointStreamFormat::ClaudeJsonl,
             repo_work_dir: None,
             external_session_id: "sess-xyz".to_string(),
             external_parent_session_id: None,
@@ -1865,118 +1849,6 @@ mod subagent_sweep_tests {
 
         worker.sweep_subagents_for_session(&notification);
         assert_eq!(worker.priority_queue.len(), 0);
-    }
-
-    #[tokio::test]
-    async fn test_handle_checkpoint_skips_subagent_sweep_for_non_claude() {
-        let tmp = TempDir::new().unwrap();
-        let main_transcript = tmp.path().join("sess-abc.jsonl");
-        std::fs::File::create(&main_transcript).unwrap();
-
-        let subagents_dir = tmp.path().join("sess-abc").join("subagents");
-        std::fs::create_dir_all(&subagents_dir).unwrap();
-        let sub = subagents_dir.join("agent-sub1.jsonl");
-        let mut f = std::fs::File::create(&sub).unwrap();
-        writeln!(f, r#"{{"type":"message"}}"#).unwrap();
-
-        let db_path = tmp.path().join("test.db");
-        let db = Arc::new(StreamsDatabase::open(&db_path).unwrap());
-        let mut worker = make_worker(db.clone());
-
-        let notification = CheckpointNotification {
-            session_id: "internal-sess-abc".to_string(),
-            tool: "copilot".to_string(),
-            trace_id: "trace-3".to_string(),
-            tool_use_id: None,
-            stream_path: main_transcript,
-            repo_work_dir: None,
-            external_session_id: "sess-abc".to_string(),
-            external_parent_session_id: None,
-        };
-
-        worker.handle_checkpoint_notification(notification).await;
-
-        // Only the main session should be enqueued — no subagent sweep for copilot
-        assert_eq!(worker.priority_queue.len(), 1);
-        let task = worker.priority_queue.pop().unwrap();
-        assert_eq!(task.session_id, "internal-sess-abc");
-        assert_eq!(task.tool, "copilot");
-    }
-
-    #[tokio::test]
-    async fn test_copilot_checkpoint_enqueues_shared_otel_stream_immediately() {
-        let tmp = TempDir::new().unwrap();
-        let user_dir = tmp.path().join("User");
-        let transcript_dir = user_dir
-            .join("workspaceStorage")
-            .join("workspace-hash")
-            .join("GitHub.copilot-chat")
-            .join("transcripts");
-        std::fs::create_dir_all(&transcript_dir).unwrap();
-        let transcript = transcript_dir.join("sess-otel.jsonl");
-        let mut f = std::fs::File::create(&transcript).unwrap();
-        writeln!(f, r#"{{"type":"session.start"}}"#).unwrap();
-
-        let otel_dir = user_dir.join("globalStorage").join("github.copilot-chat");
-        std::fs::create_dir_all(&otel_dir).unwrap();
-        let otel_db = otel_dir.join("agent-traces.db");
-        std::fs::File::create(&otel_db).unwrap();
-        let canonical_otel_db = std::fs::canonicalize(&otel_db).unwrap();
-
-        let repo_work_dir = tmp.path().join("repo");
-        std::fs::create_dir_all(&repo_work_dir).unwrap();
-
-        let db_path = tmp.path().join("test.db");
-        let db = Arc::new(StreamsDatabase::open(&db_path).unwrap());
-        let mut worker = make_worker(db.clone());
-
-        let notification = CheckpointNotification {
-            session_id: "internal-sess-otel".to_string(),
-            tool: "github-copilot".to_string(),
-            trace_id: "trace-otel".to_string(),
-            tool_use_id: Some("tool-1".to_string()),
-            stream_path: transcript,
-            repo_work_dir: Some(repo_work_dir),
-            external_session_id: "sess-otel".to_string(),
-            external_parent_session_id: None,
-        };
-
-        worker.handle_checkpoint_notification(notification).await;
-
-        let tasks: Vec<_> = worker.priority_queue.iter().collect();
-        assert_eq!(tasks.len(), 2);
-        let transcript_task = tasks
-            .iter()
-            .find(|task| task.stream_kind == "transcript")
-            .unwrap();
-        let otel_task = tasks
-            .iter()
-            .find(|task| task.stream_kind == "otel_traces")
-            .unwrap();
-
-        assert_eq!(transcript_task.priority, Priority::Immediate);
-        assert_eq!(transcript_task.session_id, "internal-sess-otel");
-        assert_eq!(otel_task.priority, Priority::Immediate);
-        assert_eq!(
-            otel_task.session_id,
-            crate::operations::streams::agent::SHARED_STREAM_SESSION_ID
-        );
-        assert_eq!(otel_task.canonical_path, canonical_otel_db);
-
-        let otel_record = db
-            .get_stream(
-                crate::operations::streams::agent::SHARED_STREAM_SESSION_ID,
-                "otel_traces",
-                &canonical_otel_db.display().to_string(),
-            )
-            .unwrap()
-            .unwrap();
-        assert_eq!(otel_record.tool, "github-copilot");
-        assert_eq!(otel_record.stream_format, StreamFormat::CopilotOtelSqlite);
-        assert_eq!(otel_record.watermark_type, WatermarkType::TimestampCursor);
-        assert_eq!(otel_record.external_session_id, "");
-        assert_eq!(otel_record.external_parent_session_id, None);
-        assert_eq!(otel_record.repo_work_dir, None);
     }
 
     #[test]
@@ -2010,6 +1882,7 @@ mod subagent_sweep_tests {
             trace_id: "trace-4".to_string(),
             tool_use_id: None,
             stream_path: main_transcript,
+            stream_format: CheckpointStreamFormat::ClaudeJsonl,
             repo_work_dir: None,
             external_session_id: "sess-dup".to_string(),
             external_parent_session_id: None,

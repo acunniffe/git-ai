@@ -1,8 +1,6 @@
 /// Whether a command currently requires the process-wide daemon telemetry
 /// connection before command dispatch.
 ///
-/// P0 intentionally preserves the existing `checkpoint` behavior so its
-/// failure mode is characterized before the delivery refactor changes it.
 pub(crate) fn command_requires_daemon_preconnect(command: &str) -> bool {
     !matches!(
         command,
@@ -22,6 +20,7 @@ pub(crate) fn command_requires_daemon_preconnect(command: &str) -> bool {
             | "install"
             | "uninstall-hooks"
             | "usage"
+            | "checkpoint"
     )
 }
 
@@ -30,8 +29,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn checkpoint_preconnect_characterizes_current_failure_path() {
-        assert!(command_requires_daemon_preconnect("checkpoint"));
+    fn checkpoint_owns_delivery_without_process_wide_preconnect() {
+        assert!(!command_requires_daemon_preconnect("checkpoint"));
     }
 
     #[test]

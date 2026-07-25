@@ -27,6 +27,24 @@ impl CopilotAgent {
         Self { batch_size }
     }
 
+    fn legacy_transcript_roots() -> Vec<PathBuf> {
+        dirs::config_dir()
+            .into_iter()
+            .flat_map(|path| {
+                [
+                    path.join("github-copilot/sessions"),
+                    path.join("github-copilot/events"),
+                ]
+            })
+            .collect()
+    }
+
+    fn transcript_roots() -> Vec<PathBuf> {
+        let mut roots = Self::legacy_transcript_roots();
+        roots.extend(Self::vscode_workspace_storage_roots());
+        roots
+    }
+
     /// Scan for Copilot transcript files in standard locations.
     ///
     /// Discovers BOTH session.json files and .jsonl event streams.
@@ -34,14 +52,8 @@ impl CopilotAgent {
         let mut paths = Vec::new();
 
         // Standard locations for Copilot transcripts (legacy)
-        let search_dirs = vec![
-            dirs::config_dir().map(|p| p.join("github-copilot/sessions")),
-            dirs::config_dir().map(|p| p.join("github-copilot/events")),
-        ];
-
-        for dir_opt in search_dirs {
-            if let Some(dir) = dir_opt
-                && dir.exists()
+        for dir in Self::legacy_transcript_roots() {
+            if dir.exists()
                 && let Ok(entries) = fs::read_dir(&dir)
             {
                 for entry in entries.flatten() {
@@ -216,6 +228,48 @@ impl Default for CopilotAgent {
 }
 
 impl Agent for CopilotAgent {
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Self::transcript_roots()
+    }
+
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        let (expected_format, expected_extension) = match source
+            .path
+            .extension()
+            .and_then(|extension| extension.to_str())
+        {
+            Some("json") => (
+                crate::model::checkpoint_request::StreamFormat::CopilotSessionJson,
+                "json",
+            ),
+            Some("jsonl") => (
+                crate::model::checkpoint_request::StreamFormat::CopilotEventStreamJsonl,
+                "jsonl",
+            ),
+            _ => {
+                return Err(crate::operations::streams::agent::checkpoint_stream_denied());
+            }
+        };
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "github-copilot",
+            expected_format,
+            Self::transcript_roots(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(
+                    path,
+                    expected_extension,
+                ) {
+                    return None;
+                }
+                Some((path.file_stem()?.to_str()?.to_string(), None))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

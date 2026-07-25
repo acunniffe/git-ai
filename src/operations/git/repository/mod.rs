@@ -18,6 +18,7 @@ mod discovery_no_exec;
 mod git_objects;
 mod identity;
 mod object_reads;
+mod policy;
 
 pub use commits::{Commit, CommitRange, CommitRangeIterator, Object, Parents};
 pub use core::Repository;
@@ -36,4 +37,7 @@ pub use identity::{
     GitAuthorIdentity, GitConfigIdentityResolution, GitIdentityResolution,
     current_git_committer_identity_resolution, global_git_config_committer_identity,
     global_git_config_identity_resolution, parse_git_var_identity, resolve_api_author_identity,
+};
+pub(crate) use policy::{
+    discover_repository_policy_location_no_git_exec, load_repository_policy_context_no_git_exec,
 };

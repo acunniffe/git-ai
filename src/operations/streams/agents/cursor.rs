@@ -26,22 +26,24 @@ impl CursorAgent {
         Self { batch_size }
     }
 
-    /// Scan for Cursor conversation files in standard locations.
-    fn scan_conversation_files() -> Vec<PathBuf> {
-        let mut paths = Vec::new();
-
+    fn conversation_roots() -> Vec<PathBuf> {
         let base_dir = if let Ok(config_dir) = std::env::var("CURSOR_CONFIG_DIR") {
             Some(PathBuf::from(config_dir))
         } else {
             dirs::home_dir().map(|p| p.join(".cursor"))
         };
+        base_dir
+            .into_iter()
+            .map(|path| path.join("projects"))
+            .collect()
+    }
 
-        let search_dirs = vec![base_dir.as_ref().map(|p| p.join("projects"))];
+    /// Scan for Cursor conversation files in standard locations.
+    fn scan_conversation_files() -> Vec<PathBuf> {
+        let mut paths = Vec::new();
 
-        for dir_opt in search_dirs {
-            if let Some(dir) = dir_opt
-                && dir.exists()
-            {
+        for dir in Self::conversation_roots() {
+            if dir.exists() {
                 Self::scan_jsonl_recursive(&dir, &mut paths);
             }
         }
@@ -73,6 +75,30 @@ impl Default for CursorAgent {
 }
 
 impl Agent for CursorAgent {
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Self::conversation_roots()
+    }
+
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "cursor",
+            crate::model::checkpoint_request::StreamFormat::CursorJsonl,
+            Self::conversation_roots(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(
+                    path, "jsonl",
+                ) {
+                    return None;
+                }
+                Some((path.file_stem()?.to_str()?.to_string(), None))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

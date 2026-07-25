@@ -10,7 +10,10 @@ use serde_json::json;
 use std::fs;
 
 fn parse_gemini(hook_input: &str) -> Result<Vec<ParsedHookEvent>, GitAiError> {
-    resolve_preset("gemini")?.parse(hook_input, "t_test")
+    let preset = resolve_preset("gemini")?;
+    let mut events = preset.parse(hook_input, "t_test")?;
+    preset.enrich_authorized_events(hook_input, &mut events)?;
+    Ok(events)
 }
 
 #[test]

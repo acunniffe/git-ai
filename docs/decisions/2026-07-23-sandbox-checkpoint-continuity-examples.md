@@ -224,11 +224,16 @@ Current-code-backed boundaries:
   `src/operations/daemon/daemon_config.rs`
 - current checkpoint ingress:
   `src/operations/daemon/actor_coordinator_query.rs`
+- delivery-aware client ingress:
+  `src/operations/commands/checkpoint_agent/delivery.rs`
+- secure outbox publication and diagnostics:
+  `src/model/repository/checkpoint_outbox/`
 - family sequencing and checkpoint application:
   `src/operations/daemon/actor_coordinator_drain.rs`
 - post-commit note generation:
   `src/operations/daemon/side_effects_commit.rs`
 
-The secure outbox, delivery-aware ingress, importer, and reconciliation edges
-are design proposals. Their contracts are defined in the companion design, but
-no production module implements them yet.
+The secure outbox and delivery-aware live ingress are implemented through P1.
+Daemon import, delivery-ID persistence and deduplication, sandbox-aware startup
+policy, and late reconciliation remain later phases and are not
+production-enabled here.

@@ -30,13 +30,17 @@ impl GeminiAgent {
         Self { batch_size }
     }
 
+    fn session_roots() -> Vec<PathBuf> {
+        vec![gemini_config_dir().join("tmp")]
+    }
+
     /// Scan for Gemini session files in standard locations.
     ///
     /// Searches `.gemini/tmp/*/chats/session-*.jsonl` under the configured Gemini CLI home.
     fn scan_session_files() -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        let gemini_tmp = gemini_config_dir().join("tmp");
+        let gemini_tmp = Self::session_roots().remove(0);
         if gemini_tmp.exists() {
             let Ok(project_dirs) = fs::read_dir(&gemini_tmp) else {
                 return paths;
@@ -76,6 +80,35 @@ impl Default for GeminiAgent {
 }
 
 impl Agent for GeminiAgent {
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Self::session_roots()
+    }
+
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "gemini",
+            crate::model::checkpoint_request::StreamFormat::GeminiJsonl,
+            Self::session_roots(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(
+                    path, "jsonl",
+                ) || path.parent()?.file_name()?.to_str()? != "chats"
+                {
+                    return None;
+                }
+                let name = path.file_name()?.to_str()?;
+                if !name.starts_with("session-") {
+                    return None;
+                }
+                Some((path.file_stem()?.to_str()?.to_string(), None))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

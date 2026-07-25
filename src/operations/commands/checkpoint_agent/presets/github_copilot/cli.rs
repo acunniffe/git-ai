@@ -1,13 +1,10 @@
 use super::super::parse;
 use super::super::{
     ParsedHookEvent, PostBashCall, PostFileEdit, PreBashCall, PreFileEdit, PresetContext,
-    StreamFormat, StreamSource,
 };
 use crate::error::GitAiError;
-use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::working_log::AgentId;
 use crate::operations::commands::checkpoint_agent::bash_tool::ToolClass;
-use crate::operations::streams::model_extraction;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -49,8 +46,6 @@ pub(super) fn parse_cli_hooks(
         .map(str::to_string)
         .unwrap_or_else(|| format!("cli-{}-{}", session_id, tool_name));
 
-    let session_state_path = resolve_copilot_cli_session_path(&session_id);
-
     let mut metadata = HashMap::new();
     metadata.insert("source".to_string(), "copilot-cli".to_string());
 
@@ -58,32 +53,13 @@ pub(super) fn parse_cli_hooks(
         agent_id: AgentId {
             tool: "github-copilot-cli".to_string(),
             id: session_id.clone(),
-            model: session_state_path
-                .as_ref()
-                .and_then(|path| {
-                    model_extraction::extract_model(
-                        path,
-                        crate::operations::streams::sweep::StreamFormat::CopilotEventStreamJsonl,
-                        None,
-                    )
-                    .ok()
-                    .flatten()
-                })
-                .unwrap_or_else(|| "unknown".to_string()),
+            model: "unknown".to_string(),
         },
         external_session_id: session_id.clone(),
         trace_id: trace_id.to_string(),
         cwd: PathBuf::from(cwd),
         metadata,
     };
-
-    let stream_source = session_state_path.map(|path| StreamSource {
-        path,
-        format: StreamFormat::CopilotEventStreamJsonl,
-        session_id: generate_session_id(&session_id, "github-copilot-cli"),
-        external_session_id: session_id.clone(),
-        external_parent_session_id: None,
-    });
 
     let bash_command = parse::bash_command_from_hook_input(data);
 
@@ -97,7 +73,7 @@ pub(super) fn parse_cli_hooks(
             context,
             tool_use_id,
             command: bash_command,
-            stream_source,
+            stream_source: None,
         })]),
         ("PreToolUse", ToolClass::FileEdit) => {
             // Full-file creation tools synthesize an empty pre-edit baseline
@@ -143,21 +119,12 @@ pub(super) fn parse_cli_hooks(
                 context,
                 file_paths: extracted_paths,
                 dirty_files,
-                stream_source,
+                stream_source: None,
                 tool_use_id: Some(tool_use_id),
             })])
         }
         _ => unreachable!("hook_event_name pre-validated by mod.rs fork"),
     }
-}
-
-fn resolve_copilot_cli_session_path(session_id: &str) -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
-    let path = home
-        .join(".copilot/session-state")
-        .join(session_id)
-        .join("events.jsonl");
-    if path.exists() { Some(path) } else { None }
 }
 
 fn classify_cli_tool(tool: &str) -> ToolClass {

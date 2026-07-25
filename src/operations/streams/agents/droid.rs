@@ -24,17 +24,20 @@ impl DroidAgent {
         Self { batch_size }
     }
 
+    fn conversation_roots() -> Vec<PathBuf> {
+        dirs::home_dir()
+            .into_iter()
+            .map(|path| path.join(".factory/sessions"))
+            .collect()
+    }
+
     /// Scan for Droid conversation files in standard locations.
     fn scan_conversation_files() -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        // Droid transcripts are stored in ~/.factory/sessions/<project-dir>/<uuid>.jsonl
-        let search_dirs = vec![dirs::home_dir().map(|p| p.join(".factory/sessions"))];
-
-        for dir_opt in search_dirs {
-            if let Some(sessions_dir) = dir_opt
-                && sessions_dir.exists()
-            {
+        // Droid transcripts are stored in ~/.factory/sessions/<project-dir>/<uuid>.jsonl.
+        for sessions_dir in Self::conversation_roots() {
+            if sessions_dir.exists() {
                 // Recursively scan all project directories under sessions/
                 Self::scan_jsonl_recursive(&sessions_dir, &mut paths);
             }
@@ -74,6 +77,34 @@ impl Default for DroidAgent {
 }
 
 impl Agent for DroidAgent {
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Self::conversation_roots()
+    }
+
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "droid",
+            crate::model::checkpoint_request::StreamFormat::DroidJsonl,
+            Self::conversation_roots(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(
+                    path, "jsonl",
+                ) {
+                    return None;
+                }
+                let name = path.file_name()?.to_str()?;
+                if name.contains(".settings.") {
+                    return None;
+                }
+                Some((path.file_stem()?.to_str()?.to_string(), None))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

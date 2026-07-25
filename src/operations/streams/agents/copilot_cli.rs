@@ -35,6 +35,28 @@ impl Default for CopilotCliAgent {
 }
 
 impl Agent for CopilotCliAgent {
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Self::session_state_base_dir().into_iter().collect()
+    }
+
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "github-copilot-cli",
+            crate::model::checkpoint_request::StreamFormat::CopilotEventStreamJsonl,
+            Self::session_state_base_dir().into_iter().collect(),
+            |path| {
+                if path.file_name()?.to_str()? != "events.jsonl" {
+                    return None;
+                }
+                Some((path.parent()?.file_name()?.to_str()?.to_string(), None))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

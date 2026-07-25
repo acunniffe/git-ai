@@ -6,7 +6,7 @@ use crate::operations::streams::agent::{
     Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
 };
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Windsurf agent that reads Windsurf JSONL transcript files.
@@ -23,6 +23,13 @@ impl WindsurfAgent {
     pub fn with_batch_size(batch_size: usize) -> Self {
         Self { batch_size }
     }
+
+    fn transcript_roots() -> Vec<PathBuf> {
+        dirs::home_dir()
+            .into_iter()
+            .map(|home| home.join(".windsurf/transcripts"))
+            .collect()
+    }
 }
 
 impl Default for WindsurfAgent {
@@ -32,6 +39,26 @@ impl Default for WindsurfAgent {
 }
 
 impl Agent for WindsurfAgent {
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "windsurf",
+            crate::model::checkpoint_request::StreamFormat::WindsurfJsonl,
+            Self::transcript_roots(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(
+                    path, "jsonl",
+                ) {
+                    return None;
+                }
+                Some((path.file_stem()?.to_str()?.to_string(), None))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

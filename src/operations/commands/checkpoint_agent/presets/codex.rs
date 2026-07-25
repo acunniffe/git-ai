@@ -32,18 +32,13 @@ impl CodexPreset {
             })
     }
 
-    fn resolve_transcript_path(data: &serde_json::Value, session_id: &str) -> Option<String> {
-        if let Some(tp) = parse::optional_str(data, "transcript_path") {
-            return Some(tp.to_string());
-        }
-
+    fn discover_transcript_path(session_id: &str) -> Option<PathBuf> {
         crate::operations::streams::agents::CodexAgent::find_rollout_path_for_session_in_home(
             session_id,
             &codex_home_dir(),
         )
         .ok()
         .flatten()
-        .map(|p| p.to_string_lossy().into_owned())
     }
 
     fn extract_filepaths_from_tool_response(hook_data: &serde_json::Value) -> Vec<PathBuf> {
@@ -106,7 +101,8 @@ impl AgentPreset for CodexPreset {
         let is_bash = tool_class == ToolClass::Bash;
         let is_file_edit = tool_class == ToolClass::FileEdit;
 
-        let transcript_path = Self::resolve_transcript_path(&data, &session_id);
+        let transcript_path =
+            parse::optional_str(&data, "transcript_path").map(ToString::to_string);
 
         let mut metadata = HashMap::new();
         if let Some(ref tp) = transcript_path {
@@ -200,6 +196,38 @@ impl AgentPreset for CodexPreset {
         };
 
         Ok(vec![event])
+    }
+
+    fn enrich_authorized_events(
+        &self,
+        _hook_input: &str,
+        events: &mut [ParsedHookEvent],
+    ) -> Result<(), GitAiError> {
+        for event in events {
+            let Some(context) = event.preset_context_mut() else {
+                continue;
+            };
+            if context.metadata.contains_key("transcript_path") {
+                continue;
+            }
+            let Some(path) = Self::discover_transcript_path(&context.external_session_id) else {
+                continue;
+            };
+            context.metadata.insert(
+                "transcript_path".to_string(),
+                path.to_string_lossy().into_owned(),
+            );
+            let source = StreamSource {
+                path,
+                format: StreamFormat::CodexJsonl,
+                session_id: generate_session_id(&context.external_session_id, "codex"),
+                external_session_id: context.external_session_id.clone(),
+                external_parent_session_id: None,
+            };
+            event.set_post_stream_source(source);
+        }
+
+        Ok(())
     }
 }
 
@@ -430,5 +458,58 @@ mod tests {
         let result = CodexPreset.parse(&input, "t_test123456789a");
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Unsupported"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn parse_does_not_scan_codex_home_before_authorized_enrichment() {
+        let temp = tempfile::tempdir().unwrap();
+        let sessions = temp.path().join("sessions/2026/07/25");
+        std::fs::create_dir_all(&sessions).unwrap();
+        let rollout = sessions.join("rollout-2026-07-25-session-pure.jsonl");
+        std::fs::write(&rollout, "{}\n").unwrap();
+        unsafe {
+            std::env::set_var("CODEX_HOME", temp.path());
+        }
+        let input = json!({
+            "cwd": "/project",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Bash",
+            "session_id": "session-pure",
+            "tool_use_id": "tool-pure",
+        })
+        .to_string();
+
+        let mut events = CodexPreset.parse(&input, "t_test").unwrap();
+        let ParsedHookEvent::PostBashCall(event) = &events[0] else {
+            panic!("Expected PostBashCall");
+        };
+        assert!(event.stream_source.is_none());
+        assert!(!event.context.metadata.contains_key("transcript_path"));
+
+        CodexPreset
+            .enrich_authorized_events(&input, &mut events)
+            .unwrap();
+        unsafe {
+            std::env::remove_var("CODEX_HOME");
+        }
+        let ParsedHookEvent::PostBashCall(event) = &events[0] else {
+            panic!("Expected PostBashCall");
+        };
+        assert_eq!(
+            event
+                .stream_source
+                .as_ref()
+                .map(|source| source.path.as_path()),
+            Some(rollout.as_path())
+        );
+        assert_eq!(
+            event
+                .context
+                .metadata
+                .get("transcript_path")
+                .map(String::as_str),
+            rollout.to_str()
+        );
     }
 }

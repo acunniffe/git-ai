@@ -28,6 +28,14 @@ impl CodexAgent {
         Self { batch_size }
     }
 
+    fn session_roots() -> Vec<PathBuf> {
+        let codex_home = codex_home_dir();
+        ["sessions", "archived_sessions"]
+            .into_iter()
+            .map(|subdir| codex_home.join(subdir))
+            .collect()
+    }
+
     /// Search for a rollout file matching the given session ID in the Codex home directory.
     ///
     /// Looks in both `sessions` and `archived_sessions` subdirectories for files
@@ -81,10 +89,7 @@ impl CodexAgent {
     fn scan_session_files() -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        let codex_home = codex_home_dir();
-
-        for subdir in &["sessions", "archived_sessions"] {
-            let search_dir = codex_home.join(subdir);
+        for search_dir in Self::session_roots() {
             if search_dir.exists() {
                 Self::scan_rollout_recursive(&search_dir, &mut paths);
             }
@@ -154,6 +159,37 @@ impl Default for CodexAgent {
 }
 
 impl Agent for CodexAgent {
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Self::session_roots()
+    }
+
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "codex",
+            crate::model::checkpoint_request::StreamFormat::CodexJsonl,
+            Self::session_roots(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(
+                    path, "jsonl",
+                ) {
+                    return None;
+                }
+                let stem = path.file_stem()?.to_str()?;
+                if !stem.starts_with("rollout-") || stem.len() < 36 {
+                    return None;
+                }
+                Some((
+                    stem[stem.len() - 36..].to_string(),
+                    Self::detect_subagent_parent(path),
+                ))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

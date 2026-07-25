@@ -1,11 +1,12 @@
 //! OpenCode agent implementation (SQLite-only).
 
+pub use super::opencode_checkpoint::open_sqlite_readonly;
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::{TimestampWatermark, WatermarkStrategy};
 use crate::operations::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use chrono::DateTime;
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::Connection;
 use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
@@ -24,23 +25,6 @@ impl OpenCodeAgent {
     pub fn with_batch_size(batch_size: usize) -> Self {
         Self { batch_size }
     }
-}
-
-pub fn open_sqlite_readonly(path: &Path) -> Result<Connection, StreamError> {
-    let conn = crate::model::repository::sqlite::open_with_flags_and_memory_limits(
-        path,
-        OpenFlags::SQLITE_OPEN_READ_ONLY,
-    )
-    .map_err(|e| StreamError::Fatal {
-        message: format!("Failed to open OpenCode database {}: {}", path.display(), e),
-    })?;
-
-    conn.execute_batch("PRAGMA busy_timeout = 5000;")
-        .map_err(|e| StreamError::Fatal {
-            message: format!("Failed to set PRAGMAs: {}", e),
-        })?;
-
-    Ok(conn)
 }
 
 /// Read messages from the database, returning each row as a complete JSON object
@@ -198,6 +182,13 @@ impl Default for OpenCodeAgent {
 }
 
 impl Agent for OpenCodeAgent {
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        super::opencode_checkpoint::validate_checkpoint_stream(source)
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }
@@ -209,6 +200,10 @@ impl Agent for OpenCodeAgent {
     fn discover_sessions(&self) -> Result<Vec<DiscoveredSession>, StreamError> {
         // Discovery comes from presets, not sweep.
         Ok(Vec::new())
+    }
+
+    fn session_id_for_read<'a>(&self, _: &'a str, external_session_id: &'a str) -> &'a str {
+        external_session_id
     }
 
     fn read_incremental(

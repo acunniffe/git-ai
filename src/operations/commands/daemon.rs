@@ -229,13 +229,14 @@ pub(crate) fn ensure_daemon_running(
         return Ok(config);
     }
 
-    // In test builds, never auto-spawn a daemon. The test harness manages
-    // daemon lifecycle via DaemonProcess::start / shared daemon pool.
-    // Without this guard, parallel test threads that see a briefly-unavailable
-    // daemon each call spawn_daemon_run_detached, creating a process storm.
+    // Test auto-spawn is opt-in for one serial regression; otherwise the
+    // harness retains its guard against parallel process storms.
     #[cfg(any(test, feature = "test-support"))]
     {
-        Err("daemon not running (test build: auto-spawn disabled)".to_string())
+        match std::env::var("GIT_AI_TEST_ALLOW_DAEMON_AUTOSPAWN") {
+            Ok(value) if value == "1" => ensure_daemon_running_attached(timeout),
+            _ => Err("daemon not running (test build: auto-spawn disabled)".to_string()),
+        }
     }
 
     #[cfg(not(any(test, feature = "test-support")))]

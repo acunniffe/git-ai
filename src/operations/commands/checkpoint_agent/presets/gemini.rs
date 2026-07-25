@@ -7,7 +7,7 @@ use crate::operations::commands::checkpoint_agent::bash_tool::{self, Agent, Tool
 use crate::operations::commands::checkpoint_agent::path_utils::normalize_for_comparison;
 use crate::operations::mdm::paths::gemini_config_dir;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub struct GeminiPreset;
 
@@ -33,14 +33,7 @@ impl AgentPreset for GeminiPreset {
             agent_id: AgentId {
                 tool: "gemini".to_string(),
                 id: session_id.clone(),
-                model: crate::operations::streams::model_extraction::extract_model(
-                    Path::new(transcript_path),
-                    crate::operations::streams::sweep::StreamFormat::GeminiJsonl,
-                    None,
-                )
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| "unknown".to_string()),
+                model: "unknown".to_string(),
             },
             external_session_id: session_id,
             trace_id: trace_id.to_string(),
@@ -71,6 +64,31 @@ impl AgentPreset for GeminiPreset {
             None,
             stream_source,
         )])
+    }
+
+    fn enrich_authorized_events(
+        &self,
+        _hook_input: &str,
+        events: &mut [ParsedHookEvent],
+    ) -> Result<(), GitAiError> {
+        for event in events {
+            let Some(context) = event.preset_context_mut() else {
+                continue;
+            };
+            let Some(path) = context.metadata.get("transcript_path") else {
+                continue;
+            };
+            context.agent_id.model = crate::operations::streams::model_extraction::extract_model(
+                std::path::Path::new(path),
+                crate::operations::streams::sweep::StreamFormat::GeminiJsonl,
+                None,
+            )
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "unknown".to_string());
+        }
+
+        Ok(())
     }
 }
 
@@ -171,5 +189,34 @@ mod tests {
         let events = GeminiPreset.parse(&input, "t_test123456789a").unwrap();
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], ParsedHookEvent::PreFileEdit(_)));
+    }
+
+    #[test]
+    fn parse_does_not_read_model_before_authorized_enrichment() {
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), r#"{"model":"model-from-disk"}"#).unwrap();
+        let input = json!({
+            "transcript_path": temp.path(),
+            "cwd": "/project",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "write_file",
+            "session_id": "session-pure",
+            "tool_input": {"file_path": "/project/main.rs"},
+        })
+        .to_string();
+
+        let mut events = GeminiPreset.parse(&input, "t_test").unwrap();
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "unknown");
+
+        GeminiPreset
+            .enrich_authorized_events(&input, &mut events)
+            .unwrap();
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "model-from-disk");
     }
 }

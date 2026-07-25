@@ -1,6 +1,5 @@
-use super::{AgentPreset, ParsedHookEvent, PresetContext, StreamFormat, StreamSource, claude_wire};
+use super::{AgentPreset, ParsedHookEvent, PresetContext, claude_wire};
 use crate::error::GitAiError;
-use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::working_log::AgentId;
 use crate::operations::commands::checkpoint_agent::bash_tool::{self, Agent, ToolClass};
 use serde::Deserialize;
@@ -122,118 +121,6 @@ impl OpenCodePreset {
 
         Some(joined.to_string_lossy().replace('\\', "/"))
     }
-
-    fn resolve_stream_source(session_id: &str) -> Option<(StreamSource, PathBuf)> {
-        let opencode_path = if let Ok(test_path) = std::env::var("GIT_AI_OPENCODE_STORAGE_PATH") {
-            PathBuf::from(test_path)
-        } else {
-            Self::opencode_data_path().ok()?
-        };
-
-        // Try sqlite first
-        let db_path = Self::resolve_sqlite_db_path(&opencode_path);
-        if let Some(db_path) = db_path {
-            let parent_id = Self::lookup_parent_session(&db_path, session_id);
-            return Some((
-                StreamSource {
-                    path: db_path,
-                    format: StreamFormat::OpenCodeSqlite,
-                    session_id: generate_session_id(session_id, "opencode"),
-                    external_session_id: session_id.to_string(),
-                    external_parent_session_id: parent_id,
-                },
-                opencode_path,
-            ));
-        }
-
-        None
-    }
-
-    fn lookup_parent_session(db_path: &Path, session_id: &str) -> Option<String> {
-        let conn =
-            crate::operations::streams::agents::opencode::open_sqlite_readonly(db_path).ok()?;
-        conn.query_row(
-            "SELECT parent_id FROM session WHERE id = ?",
-            [session_id],
-            |row| row.get::<_, Option<String>>(0),
-        )
-        .ok()
-        .flatten()
-    }
-
-    fn opencode_data_path() -> Result<PathBuf, GitAiError> {
-        #[cfg(target_os = "macos")]
-        {
-            let home = dirs::home_dir().ok_or_else(|| {
-                GitAiError::Generic("Could not determine home directory".to_string())
-            })?;
-            Ok(home.join(".local").join("share").join("opencode"))
-        }
-
-        #[cfg(target_os = "linux")]
-        {
-            if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
-                Ok(PathBuf::from(xdg_data).join("opencode"))
-            } else {
-                let home = dirs::home_dir().ok_or_else(|| {
-                    GitAiError::Generic("Could not determine home directory".to_string())
-                })?;
-                Ok(home.join(".local").join("share").join("opencode"))
-            }
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            if let Ok(app_data) = std::env::var("APPDATA") {
-                Ok(PathBuf::from(app_data).join("opencode"))
-            } else if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-                Ok(PathBuf::from(local_app_data).join("opencode"))
-            } else {
-                Err(GitAiError::Generic(
-                    "Neither APPDATA nor LOCALAPPDATA is set".to_string(),
-                ))
-            }
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            Err(GitAiError::PresetError(
-                "OpenCode storage path not supported on this platform".to_string(),
-            ))
-        }
-    }
-
-    fn resolve_sqlite_db_path(path: &Path) -> Option<PathBuf> {
-        if path.is_file() {
-            return path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .filter(|name| *name == "opencode.db")
-                .map(|_| path.to_path_buf());
-        }
-
-        if !path.is_dir() {
-            return None;
-        }
-
-        let direct_db = path.join("opencode.db");
-        if direct_db.exists() {
-            return Some(direct_db);
-        }
-
-        if path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name == "storage")
-        {
-            let sibling_db = path.parent()?.join("opencode.db");
-            if sibling_db.exists() {
-                return Some(sibling_db);
-            }
-        }
-
-        None
-    }
 }
 
 impl AgentPreset for OpenCodePreset {
@@ -278,32 +165,17 @@ impl AgentPreset for OpenCodePreset {
             metadata.insert("__test_storage_path".to_string(), test_path);
         }
 
-        // Resolve transcript source
-        let transcript_result = Self::resolve_stream_source(&session_id);
-
-        let extracted_model = transcript_result.as_ref().and_then(|(ts, _)| {
-            crate::operations::streams::model_extraction::extract_model(
-                &ts.path,
-                crate::operations::streams::sweep::StreamFormat::OpenCodeSqlite,
-                Some(session_id.as_str()),
-            )
-            .ok()
-            .flatten()
-        });
-
         let context = PresetContext {
             agent_id: AgentId {
                 tool: "opencode".to_string(),
                 id: session_id.clone(),
-                model: extracted_model.unwrap_or_else(|| "unknown".to_string()),
+                model: "unknown".to_string(),
             },
             external_session_id: session_id,
             trace_id: trace_id.to_string(),
             cwd: PathBuf::from(&cwd),
             metadata,
         };
-
-        let stream_source = transcript_result.map(|(source, _)| source);
 
         Ok(vec![claude_wire::build_wire_event(
             is_pre,
@@ -313,8 +185,29 @@ impl AgentPreset for OpenCodePreset {
             bash_command,
             file_paths,
             None,
-            stream_source,
+            None,
         )])
+    }
+
+    fn enrich_authorized_events(
+        &self,
+        _hook_input: &str,
+        events: &mut [ParsedHookEvent],
+    ) -> Result<(), GitAiError> {
+        for event in events {
+            let Some(context) = event.preset_context_mut() else {
+                continue;
+            };
+            let Some((source, model)) =
+                super::opencode_enrichment::stream_source_and_model(&context.external_session_id)
+            else {
+                continue;
+            };
+            context.agent_id.model = model;
+            event.set_post_stream_source(source);
+        }
+
+        Ok(())
     }
 }
 
@@ -496,5 +389,62 @@ mod tests {
             }
             _ => panic!("Expected PreBashCall"),
         }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn parse_does_not_open_storage_before_authorized_enrichment() {
+        let temp = tempfile::tempdir().unwrap();
+        let db_path = temp.path().join("opencode.db");
+        let connection =
+            crate::model::repository::sqlite::open_with_memory_limits(&db_path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT);
+                 CREATE TABLE message (id TEXT, session_id TEXT, data TEXT);
+                 INSERT INTO session VALUES ('session-pure', 'parent-session');
+                 INSERT INTO message VALUES (
+                     'message-1',
+                     'session-pure',
+                     '{\"model\":{\"modelID\":\"model-from-disk\"}}'
+                 );",
+            )
+            .unwrap();
+        drop(connection);
+        unsafe {
+            std::env::set_var("GIT_AI_OPENCODE_STORAGE_PATH", temp.path());
+        }
+        let input = json!({
+            "hook_event_name": "PostToolUse",
+            "session_id": "session-pure",
+            "cwd": "/project",
+            "tool_name": "edit",
+            "tool_input": {"file_path": "/project/main.rs"},
+        })
+        .to_string();
+
+        let mut events = OpenCodePreset.parse(&input, "t_test").unwrap();
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "unknown");
+        assert!(event.stream_source.is_none());
+
+        OpenCodePreset
+            .enrich_authorized_events(&input, &mut events)
+            .unwrap();
+        unsafe {
+            std::env::remove_var("GIT_AI_OPENCODE_STORAGE_PATH");
+        }
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "model-from-disk");
+        let source = event.stream_source.as_ref().expect("stream source");
+        assert_eq!(source.path, db_path);
+        assert_eq!(
+            source.external_parent_session_id.as_deref(),
+            Some("parent-session")
+        );
     }
 }

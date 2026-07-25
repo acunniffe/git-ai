@@ -2,17 +2,19 @@ use crate::checkpoint_content_budget::CheckpointContentBudget;
 use crate::config;
 use crate::error::GitAiError;
 use crate::model::authorship_log_serialization::generate_trace_id;
+#[cfg(test)]
+use crate::model::checkpoint_delivery::CHECKPOINT_DELIVERY_MAX_FILES;
 use crate::model::working_log::{AgentId, CheckpointKind};
+use crate::operations::commands::checkpoint_agent::authorization::{
+    CheckpointFileSnapshot, authorize_events, authorize_repository_path,
+    authorize_repository_workdir, read_checkpoint_file_snapshot, validate_checkpoint_file_count,
+};
 use crate::operations::commands::checkpoint_agent::presets::{
     KnownHumanEdit, ParsedHookEvent, PostBashCall, PostFileEdit, PreBashCall, PreFileEdit,
     StreamSource, UntrackedEdit,
 };
 use crate::operations::git::repo_state::{read_head_state_for_worktree, worktree_root_for_path};
-use crate::operations::git::repository::discover_repository_in_path_no_git_exec;
-use serde::Serialize;
 use std::collections::HashMap;
-use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 // Re-export the types that moved to model so the 11 existing consumers that
@@ -21,23 +23,20 @@ pub use crate::model::checkpoint_request::BaseCommit;
 pub use crate::model::checkpoint_request::CheckpointFile;
 pub use crate::model::checkpoint_request::CheckpointRequest;
 pub use crate::model::checkpoint_request::PreparedPathRole;
-
-#[derive(Serialize)]
-struct CheckpointDebugLogEntry<'a> {
-    timestamp: String,
-    preset_name: &'a str,
-    hook_input: &'a str,
-    trace_id: &'a str,
-    event_count: usize,
-    requests: &'a [CheckpointRequest],
-}
+pub use crate::operations::commands::checkpoint_agent::authorization::{
+    CheckpointAuthorizationDenial, CheckpointPresetOutcome,
+};
 
 struct RepoContext {
     repo_work_dir: PathBuf,
     base_commit: BaseCommit,
 }
 
-const MAX_CHECKPOINT_FILES: usize = 1000;
+pub fn authorize_checkpoint_status_discovery(
+    cwd: &Path,
+) -> Result<(), CheckpointAuthorizationDenial> {
+    authorize_repository_path(cwd, config::Config::get())
+}
 
 fn apply_checkpoint_content_budget(files: &mut [CheckpointFile]) {
     let mut budget = CheckpointContentBudget::from_config(config::Config::get());
@@ -66,21 +65,15 @@ fn apply_dirty_file_overrides(
 fn build_checkpoint_files(file_paths: &[PathBuf]) -> Result<Vec<CheckpointFile>, GitAiError> {
     let perf = std::env::var("GIT_AI_DEBUG_PERFORMANCE").is_ok_and(|v| !v.is_empty() && v != "0");
 
-    if file_paths.len() > MAX_CHECKPOINT_FILES {
-        tracing::warn!(
-            "build_checkpoint_files called with {} paths (max {}); truncating",
-            file_paths.len(),
-            MAX_CHECKPOINT_FILES,
-        );
-    }
-    let capped_paths = &file_paths[..file_paths.len().min(MAX_CHECKPOINT_FILES)];
+    validate_checkpoint_file_count(file_paths.len())
+        .map_err(|denial| GitAiError::PresetError(denial.user_message().to_string()))?;
 
     let mut repo_cache: HashMap<PathBuf, RepoContext> = HashMap::new();
     let mut files = Vec::new();
     let mut content_budget = CheckpointContentBudget::from_config(config::Config::get());
     let max_size = content_budget.max_file_size_bytes();
 
-    for path in capped_paths {
+    for path in file_paths {
         if !path.is_absolute() {
             return Err(GitAiError::PresetError(format!(
                 "file path must be absolute: {}",
@@ -129,18 +122,17 @@ fn build_checkpoint_files(file_paths: &[PathBuf]) -> Result<Vec<CheckpointFile>,
         };
 
         let t_read = std::time::Instant::now();
-        let content = if let Ok(meta) = fs::metadata(path) {
-            if meta.len() as usize > max_size {
+        let content = match read_checkpoint_file_snapshot(path, max_size)? {
+            CheckpointFileSnapshot::Oversized(size) => {
                 tracing::warn!(
                     "skipping file larger than max_checkpoint_file_size_bytes: {} ({} bytes)",
                     path.display(),
-                    meta.len(),
+                    size,
                 );
                 continue;
             }
-            fs::read_to_string(path).ok()
-        } else {
-            Some(String::new())
+            CheckpointFileSnapshot::Missing => Some(String::new()),
+            CheckpointFileSnapshot::Read(content) => content,
         };
         if perf {
             eprintln!(
@@ -167,14 +159,23 @@ fn build_checkpoint_files(file_paths: &[PathBuf]) -> Result<Vec<CheckpointFile>,
 pub fn execute_preset_checkpoint(
     preset_name: &str,
     hook_input: &str,
-) -> Result<Vec<CheckpointRequest>, GitAiError> {
+) -> Result<CheckpointPresetOutcome, GitAiError> {
     let perf = std::env::var("GIT_AI_DEBUG_PERFORMANCE").is_ok_and(|v| !v.is_empty() && v != "0");
     let t0 = std::time::Instant::now();
 
     let trace_id = generate_trace_id();
     let preset = super::presets::resolve_preset(preset_name)?;
-    let events = preset.parse(hook_input, &trace_id)?;
+    let mut events = preset.parse(hook_input, &trace_id)?;
+    events.retain(event_has_checkpoint_target);
+    if events.is_empty() {
+        return Ok(CheckpointPresetOutcome::Authorized(Vec::new()));
+    }
     let events_len = events.len();
+    if let Err(denial) = authorize_events(&mut events, config::Config::get()) {
+        return Ok(CheckpointPresetOutcome::Denied(denial));
+    }
+    preset.enrich_authorized_events(hook_input, &mut events)?;
+    ensure_bash_events_daemon_ready(&events)?;
 
     if perf {
         eprintln!(
@@ -204,78 +205,40 @@ pub fn execute_preset_checkpoint(
         .get_feature_flags()
         .checkpoint_debug_log
     {
-        write_checkpoint_debug_log(preset_name, hook_input, &trace_id, events_len, &requests);
+        super::debug_log::write_checkpoint_debug_log(
+            preset_name,
+            hook_input,
+            &trace_id,
+            events_len,
+            &requests,
+        );
     }
 
-    Ok(requests)
+    Ok(CheckpointPresetOutcome::Authorized(requests))
 }
 
-fn write_checkpoint_debug_log(
-    preset_name: &str,
-    hook_input: &str,
-    trace_id: &str,
-    event_count: usize,
-    requests: &[CheckpointRequest],
-) {
-    let Some(internal_dir) = config::internal_dir_path() else {
-        return;
-    };
-
-    let log_dir = internal_dir.join("checkpoint-debug-logs");
-    let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let log_path = log_dir.join(format!("{}.log", date));
-
-    if let Err(e) = fs::create_dir_all(&log_dir) {
-        eprintln!("[checkpoint_debug_log] failed to create dir: {}", e);
-        return;
+fn ensure_bash_events_daemon_ready(events: &[ParsedHookEvent]) -> Result<(), GitAiError> {
+    if !events.iter().any(|event| {
+        matches!(
+            event,
+            ParsedHookEvent::PreBashCall(_) | ParsedHookEvent::PostBashCall(_)
+        )
+    }) {
+        return Ok(());
     }
 
-    cleanup_old_debug_logs(&log_dir);
-
-    let entry = CheckpointDebugLogEntry {
-        timestamp: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
-        preset_name,
-        hook_input,
-        trace_id,
-        event_count,
-        requests,
-    };
-
-    let Ok(line) = serde_json::to_string(&entry) else {
-        return;
-    };
-
-    let Ok(mut file) = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-    else {
-        return;
-    };
-
-    let _ = file
-        .write_all(line.as_bytes())
-        .and_then(|_| file.write_all(b"\n"))
-        .and_then(|_| file.flush());
+    super::delivery_runtime::ensure_checkpoint_daemon_running()
+        .map(|_| ())
+        .map_err(|_| GitAiError::PresetError("background worker unavailable".to_string()))
 }
 
-fn cleanup_old_debug_logs(log_dir: &Path) {
-    let Ok(entries) = fs::read_dir(log_dir) else {
-        return;
-    };
-
-    let cutoff = chrono::Utc::now() - chrono::Duration::days(14);
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-            continue;
-        };
-        if let Ok(file_date) = chrono::NaiveDate::parse_from_str(stem, "%Y-%m-%d")
-            && file_date < cutoff.date_naive()
-        {
-            let _ = fs::remove_file(&path);
-        }
+fn event_has_checkpoint_target(event: &ParsedHookEvent) -> bool {
+    match event {
+        ParsedHookEvent::PreFileEdit(event) => !event.file_paths.is_empty(),
+        ParsedHookEvent::PostFileEdit(event) => !event.file_paths.is_empty(),
+        ParsedHookEvent::PreBashCall(_) | ParsedHookEvent::PostBashCall(_) => true,
+        ParsedHookEvent::KnownHumanEdit(event) => !event.file_paths.is_empty(),
+        ParsedHookEvent::UntrackedEdit(event) => !event.file_paths.is_empty(),
     }
 }
 
@@ -410,30 +373,9 @@ fn execute_pre_bash_call(e: PreBashCall) -> Result<Vec<CheckpointRequest>, GitAi
     };
 
     let started_at_ns = crate::model::repository::bash_history_db::unix_time_ns();
-    let repo_work_dir = match discover_repository_in_path_no_git_exec(e.context.cwd.as_path())
-        .and_then(|repo| repo.workdir())
-    {
-        Ok(repo_work_dir) => repo_work_dir,
-        Err(error) => {
-            let error_message = error.to_string();
-            bash_tool::signal_daemon_bash_hook_attempt(
-                BashHookAttemptPhase::Start,
-                BashHookAttemptSignal {
-                    original_cwd: e.context.cwd.as_path(),
-                    discovered_repo_work_dir: None,
-                    repo_discovery_error: Some(&error_message),
-                    session_id: &e.context.external_session_id,
-                    tool_use_id: &e.tool_use_id,
-                    agent_id: &e.context.agent_id,
-                    metadata: &e.context.metadata,
-                    trace_id: &e.context.trace_id,
-                    timestamp_ns: started_at_ns,
-                    command: e.command.as_deref(),
-                },
-            );
-            return Ok(vec![]);
-        }
-    };
+    let repo_work_dir =
+        authorize_repository_workdir(e.context.cwd.as_path(), config::Config::get())
+            .map_err(|denial| GitAiError::PresetError(denial.user_message().to_string()))?;
 
     if config::Config::get()
         .get_feature_flags()
@@ -507,30 +449,9 @@ fn execute_post_bash_call(e: PostBashCall) -> Result<Vec<CheckpointRequest>, Git
     };
 
     let ended_at_ns = crate::model::repository::bash_history_db::unix_time_ns();
-    let repo_work_dir = match discover_repository_in_path_no_git_exec(e.context.cwd.as_path())
-        .and_then(|repo| repo.workdir())
-    {
-        Ok(repo_work_dir) => repo_work_dir,
-        Err(error) => {
-            let error_message = error.to_string();
-            bash_tool::signal_daemon_bash_hook_attempt(
-                BashHookAttemptPhase::End,
-                BashHookAttemptSignal {
-                    original_cwd: e.context.cwd.as_path(),
-                    discovered_repo_work_dir: None,
-                    repo_discovery_error: Some(&error_message),
-                    session_id: &e.context.external_session_id,
-                    tool_use_id: &e.tool_use_id,
-                    agent_id: &e.context.agent_id,
-                    metadata: &e.context.metadata,
-                    trace_id: &e.context.trace_id,
-                    timestamp_ns: ended_at_ns,
-                    command: e.command.as_deref(),
-                },
-            );
-            return Ok(vec![]);
-        }
-    };
+    let repo_work_dir =
+        authorize_repository_workdir(e.context.cwd.as_path(), config::Config::get())
+            .map_err(|denial| GitAiError::PresetError(denial.user_message().to_string()))?;
 
     if config::Config::get()
         .get_feature_flags()
@@ -601,4 +522,26 @@ fn execute_post_bash_call(e: PostBashCall) -> Result<Vec<CheckpointRequest>, Git
         e.stream_source,
         metadata,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_builder_rejects_oversized_batch_before_path_processing() {
+        let paths = vec![
+            PathBuf::from("relative-path-must-not-be-processed");
+            CHECKPOINT_DELIVERY_MAX_FILES + 1
+        ];
+
+        let Err(error) = build_checkpoint_files(&paths) else {
+            panic!("an oversized batch must fail closed");
+        };
+        assert!(
+            error
+                .to_string()
+                .contains(CheckpointAuthorizationDenial::FileLimitExceeded.user_message())
+        );
+    }
 }

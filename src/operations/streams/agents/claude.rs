@@ -26,10 +26,7 @@ impl ClaudeAgent {
         Self { batch_size }
     }
 
-    /// Scan for Claude conversation files in standard locations.
-    fn scan_conversation_files() -> Vec<PathBuf> {
-        let mut paths = Vec::new();
-
+    fn conversation_roots() -> Vec<PathBuf> {
         // Check CLAUDE_CONFIG_DIR override first
         let base_dir = if let Ok(config_dir) = std::env::var("CLAUDE_CONFIG_DIR") {
             Some(PathBuf::from(config_dir))
@@ -37,18 +34,21 @@ impl ClaudeAgent {
             dirs::home_dir().map(|p| p.join(".claude"))
         };
 
-        // Search paths:
-        // 1. ~/.claude/projects/**/*.jsonl (or $CLAUDE_CONFIG_DIR/projects/**/*.jsonl)
-        // 2. ~/.config/claude/projects/**/*.jsonl
-        let search_dirs = vec![
+        [
             base_dir.as_ref().map(|p| p.join("projects")),
             dirs::config_dir().map(|p| p.join("claude/projects")),
-        ];
+        ]
+        .into_iter()
+        .flatten()
+        .collect()
+    }
 
-        for dir_opt in search_dirs {
-            if let Some(dir) = dir_opt
-                && dir.exists()
-            {
+    /// Scan for Claude conversation files in standard locations.
+    fn scan_conversation_files() -> Vec<PathBuf> {
+        let mut paths = Vec::new();
+
+        for dir in Self::conversation_roots() {
+            if dir.exists() {
                 // Recursively scan for *.jsonl files
                 Self::scan_jsonl_recursive(&dir, &mut paths);
             }
@@ -101,6 +101,31 @@ impl Default for ClaudeAgent {
 }
 
 impl Agent for ClaudeAgent {
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Self::conversation_roots()
+    }
+
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "claude",
+            crate::model::checkpoint_request::StreamFormat::ClaudeJsonl,
+            Self::conversation_roots(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(
+                    path, "jsonl",
+                ) {
+                    return None;
+                }
+                let external_id = path.file_stem()?.to_str()?.to_string();
+                Some((external_id, Self::detect_subagent_parent(path)))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

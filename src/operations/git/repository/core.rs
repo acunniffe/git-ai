@@ -240,22 +240,7 @@ impl Repository {
     // List all remotes with their URLs as tuples (name, url)
     pub fn remotes_with_urls(&self) -> Result<Vec<(String, String)>, GitAiError> {
         let config = self.get_git_config_file()?;
-        let mut remotes = Vec::new();
-
-        for section in config.sections() {
-            if !section.header().name().eq_ignore_ascii_case(b"remote") {
-                continue;
-            }
-            let Some(name) = section.header().subsection_name() else {
-                continue;
-            };
-            let Some(url) = section.body().value("url") else {
-                continue;
-            };
-            remotes.push((name.to_string(), url.to_string()));
-        }
-
-        Ok(remotes)
+        Ok(super::policy::remotes_with_urls_from_config(&config))
     }
 
     /// Whether git-ai collection is allowed for this repository under `config`.

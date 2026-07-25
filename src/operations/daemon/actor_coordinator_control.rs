@@ -209,37 +209,44 @@ impl ActorDaemonCoordinator {
         false
     }
 
+    pub(crate) fn notify_stream_worker_checkpoint(
+        &self,
+        request: &crate::model::checkpoint_request::CheckpointRequest,
+    ) {
+        let Some(worker) = &self.stream_worker else {
+            return;
+        };
+        let Some(stream_source) = &request.stream_source else {
+            return;
+        };
+        let tool = request
+            .agent_id
+            .as_ref()
+            .map(|agent_id| agent_id.tool.clone())
+            .unwrap_or_else(|| "unknown".to_string());
+        let repo_work_dir = request.files.first().map(|file| file.repo_work_dir.clone());
+
+        worker.notify_checkpoint(
+            stream_source.session_id.clone(),
+            tool,
+            request.trace_id.clone(),
+            request.metadata.get("tool_use_id").cloned(),
+            stream_source.path.clone(),
+            stream_source.format,
+            repo_work_dir,
+            stream_source.external_session_id.clone(),
+            stream_source.external_parent_session_id.clone(),
+        );
+    }
+
     pub(crate) async fn handle_control_request(&self, request: ControlRequest) -> ControlResponse {
         let result = match request {
             ControlRequest::Ping => Ok(ControlResponse::ok(None, None)),
             ControlRequest::CheckpointRun { request } => {
-                if let Some(worker) = &self.stream_worker
-                    && let Some(stream_source) = &request.stream_source
-                {
-                    let session_id = stream_source.session_id.clone();
-                    let tool = request
-                        .agent_id
-                        .as_ref()
-                        .map(|aid| aid.tool.clone())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    let trace_id = request.trace_id.clone();
-                    let tool_use_id = request.metadata.get("tool_use_id").cloned();
-
-                    let repo_work_dir = request.files.first().map(|f| f.repo_work_dir.clone());
-
-                    worker.notify_checkpoint(
-                        session_id,
-                        tool,
-                        trace_id,
-                        tool_use_id,
-                        stream_source.path.clone(),
-                        repo_work_dir,
-                        stream_source.external_session_id.clone(),
-                        stream_source.external_parent_session_id.clone(),
-                    );
-                }
-
-                self.ingest_checkpoint_payload(*request).await
+                self.ingest_checkpoint_control_payload(*request).await
+            }
+            ControlRequest::CheckpointDeliver { delivery } => {
+                self.ingest_checkpoint_delivery(*delivery).await
             }
             ControlRequest::SyncFamily { repo_working_dir } => {
                 self.sync_family(repo_working_dir).await.and_then(|status| {

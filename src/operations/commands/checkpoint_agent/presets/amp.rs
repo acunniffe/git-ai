@@ -71,177 +71,6 @@ impl AmpPreset {
 
         vec![]
     }
-
-    fn resolve_transcript_path(
-        transcript_path: Option<&str>,
-        thread_id: Option<&str>,
-        tool_use_id: Option<&str>,
-    ) -> Option<PathBuf> {
-        // 1. Direct transcript_path field
-        if let Some(path) = transcript_path {
-            let path = PathBuf::from(path);
-            if path.exists() {
-                return Some(path);
-            }
-        }
-
-        // 2. Env var AMP_THREAD_PATH (used for testing)
-        if let Ok(env_path) = std::env::var("AMP_THREAD_PATH")
-            && !env_path.trim().is_empty()
-        {
-            let path = PathBuf::from(&env_path);
-            if path.exists() {
-                return Some(path);
-            }
-        }
-
-        if let Ok(threads_dir) = Self::amp_threads_dir() {
-            // 3a. If threads_dir is actually a file (test override), use it directly
-            if threads_dir.is_file()
-                && threads_dir
-                    .extension()
-                    .and_then(|ext| ext.to_str())
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-            {
-                return Some(threads_dir);
-            }
-
-            // 3b. Platform-specific threads directory + thread_id
-            if let Some(thread_id) = thread_id {
-                let candidate = threads_dir.join(format!("{}.json", thread_id));
-                if candidate.exists() {
-                    return Some(candidate);
-                }
-            }
-
-            // 3c. Search thread files for matching tool_use_id
-            if let Some(tool_use_id) = tool_use_id
-                && let Some(path) = Self::find_thread_file_by_tool_use_id(&threads_dir, tool_use_id)
-            {
-                return Some(path);
-            }
-        }
-
-        None
-    }
-
-    /// Scan thread JSON files in `threads_dir` for one containing the given
-    /// `tool_use_id`. Returns the newest matching file.
-    fn find_thread_file_by_tool_use_id(
-        threads_dir: &std::path::Path,
-        tool_use_id: &str,
-    ) -> Option<PathBuf> {
-        let entries = std::fs::read_dir(threads_dir).ok()?;
-        let mut newest_match: Option<(PathBuf, std::time::SystemTime)> = None;
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-            {
-                continue;
-            }
-
-            // Quick string check before full parse
-            let content = match std::fs::read_to_string(&path) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            if !content.contains(tool_use_id) {
-                continue;
-            }
-
-            // Verify structurally: look for tool_use content block with matching id
-            let parsed: serde_json::Value = match serde_json::from_str(&content) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let has_match = parsed
-                .get("messages")
-                .and_then(|v| v.as_array())
-                .map(|msgs| {
-                    msgs.iter().any(|msg| {
-                        msg.get("content")
-                            .and_then(|v| v.as_array())
-                            .map(|blocks| {
-                                blocks.iter().any(|block| {
-                                    block.get("type").and_then(|v| v.as_str()) == Some("tool_use")
-                                        && block.get("id").and_then(|v| v.as_str())
-                                            == Some(tool_use_id)
-                                })
-                            })
-                            .unwrap_or(false)
-                    })
-                })
-                .unwrap_or(false);
-
-            if !has_match {
-                continue;
-            }
-
-            let modified = entry
-                .metadata()
-                .and_then(|m| m.modified())
-                .unwrap_or(std::time::UNIX_EPOCH);
-
-            match &newest_match {
-                Some((_, newest_modified)) if modified <= *newest_modified => {}
-                _ => newest_match = Some((path, modified)),
-            }
-        }
-
-        newest_match.map(|(path, _)| path)
-    }
-
-    fn amp_threads_dir() -> Result<PathBuf, GitAiError> {
-        if let Ok(test_path) = std::env::var("GIT_AI_AMP_THREADS_PATH") {
-            return Ok(PathBuf::from(test_path));
-        }
-
-        #[cfg(any(target_os = "macos", target_os = "linux"))]
-        {
-            if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
-                return Ok(PathBuf::from(xdg_data).join("amp").join("threads"));
-            }
-
-            let home = dirs::home_dir().ok_or_else(|| {
-                GitAiError::Generic("Could not determine home directory".to_string())
-            })?;
-            Ok(home
-                .join(".local")
-                .join("share")
-                .join("amp")
-                .join("threads"))
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-                return Ok(PathBuf::from(local_app_data).join("amp").join("threads"));
-            }
-            if let Ok(app_data) = std::env::var("APPDATA") {
-                return Ok(PathBuf::from(app_data).join("amp").join("threads"));
-            }
-
-            let home = dirs::home_dir().ok_or_else(|| {
-                GitAiError::Generic("Could not determine home directory".to_string())
-            })?;
-            Ok(home
-                .join("AppData")
-                .join("Local")
-                .join("amp")
-                .join("threads"))
-        }
-
-        #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            Err(GitAiError::Generic(
-                "Amp threads path not supported on this platform".to_string(),
-            ))
-        }
-    }
 }
 
 impl AgentPreset for AmpPreset {
@@ -264,13 +93,6 @@ impl AgentPreset for AmpPreset {
 
         let file_paths = Self::extract_file_paths(&hook_input, cwd);
 
-        // Resolve transcript path for StreamSource
-        let resolved_transcript_path = Self::resolve_transcript_path(
-            hook_input.transcript_path.as_deref(),
-            thread_id.as_deref(),
-            tool_use_id.as_deref(),
-        );
-
         // Build metadata
         let mut metadata = HashMap::new();
         if let Some(ref tool_use_id) = tool_use_id {
@@ -284,12 +106,6 @@ impl AgentPreset for AmpPreset {
         {
             metadata.insert("__test_amp_threads_path".to_string(), threads_path);
         }
-        if let Some(ref path) = resolved_transcript_path {
-            metadata.insert(
-                "transcript_path".to_string(),
-                path.to_string_lossy().to_string(),
-            );
-        }
 
         // Determine session_id: thread_id preferred, falls back to tool_use_id
         let session_id = thread_id
@@ -301,32 +117,13 @@ impl AgentPreset for AmpPreset {
             agent_id: AgentId {
                 tool: "amp".to_string(),
                 id: session_id.clone(),
-                model: resolved_transcript_path
-                    .as_ref()
-                    .and_then(|tp| {
-                        crate::operations::streams::model_extraction::extract_model(
-                            tp,
-                            crate::operations::streams::sweep::StreamFormat::AmpThreadJson,
-                            None,
-                        )
-                        .ok()
-                        .flatten()
-                    })
-                    .unwrap_or_else(|| "unknown".to_string()),
+                model: "unknown".to_string(),
             },
             external_session_id: session_id,
             trace_id: trace_id.to_string(),
             cwd: PathBuf::from(cwd),
             metadata,
         };
-
-        let stream_source = resolved_transcript_path.map(|path| StreamSource {
-            path,
-            format: StreamFormat::AmpThreadJson,
-            session_id: generate_session_id(&context.external_session_id, "amp"),
-            external_session_id: context.external_session_id.clone(),
-            external_parent_session_id: None,
-        });
 
         let bash_command = hook_input
             .tool_input
@@ -356,18 +153,62 @@ impl AgentPreset for AmpPreset {
                 context,
                 tool_use_id: tool_use_id_str,
                 command: bash_command,
-                stream_source,
+                stream_source: None,
             }),
             (false, false) => ParsedHookEvent::PostFileEdit(PostFileEdit {
                 context,
                 file_paths,
                 dirty_files: None,
-                stream_source,
+                stream_source: None,
                 tool_use_id: tool_use_id.clone(),
             }),
         };
 
         Ok(vec![event])
+    }
+
+    fn enrich_authorized_events(
+        &self,
+        hook_input: &str,
+        events: &mut [ParsedHookEvent],
+    ) -> Result<(), GitAiError> {
+        let hook_input: AmpHookInput = parse::hook_json(hook_input)?;
+        let Some(path) = super::amp_enrichment::resolve_transcript_path(
+            hook_input.transcript_path.as_deref(),
+            hook_input.thread_id.as_deref(),
+            hook_input.tool_use_id.as_deref(),
+        ) else {
+            return Ok(());
+        };
+        let model = crate::operations::streams::model_extraction::extract_model(
+            &path,
+            crate::operations::streams::sweep::StreamFormat::AmpThreadJson,
+            None,
+        )
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "unknown".to_string());
+
+        for event in events {
+            let Some(context) = event.preset_context_mut() else {
+                continue;
+            };
+            context.agent_id.model = model.clone();
+            context.metadata.insert(
+                "transcript_path".to_string(),
+                path.to_string_lossy().to_string(),
+            );
+            let source = StreamSource {
+                path: path.clone(),
+                format: StreamFormat::AmpThreadJson,
+                session_id: generate_session_id(&context.external_session_id, "amp"),
+                external_session_id: context.external_session_id.clone(),
+                external_parent_session_id: None,
+            };
+            event.set_post_stream_source(source);
+        }
+
+        Ok(())
     }
 }
 
@@ -540,5 +381,52 @@ mod tests {
             }
             _ => panic!("Expected PostFileEdit"),
         }
+    }
+
+    #[test]
+    fn parse_does_not_read_transcript_before_authorized_enrichment() {
+        let temp = tempfile::tempdir().unwrap();
+        let transcript_path = temp.path().join("thread.json");
+        std::fs::write(
+            &transcript_path,
+            r#"{"messages":[{"usage":{"model":"model-from-disk"}}]}"#,
+        )
+        .unwrap();
+        let input = json!({
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Write",
+            "thread_id": "T-pure-parse",
+            "cwd": "/project",
+            "edited_filepaths": ["/project/main.rs"],
+            "transcript_path": transcript_path,
+        })
+        .to_string();
+
+        let mut events = AmpPreset.parse(&input, "t_test").unwrap();
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "unknown");
+        assert!(event.stream_source.is_none());
+        assert!(!event.context.metadata.contains_key("transcript_path"));
+
+        AmpPreset
+            .enrich_authorized_events(&input, &mut events)
+            .unwrap();
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "model-from-disk");
+        assert_eq!(
+            event
+                .stream_source
+                .as_ref()
+                .map(|source| source.path.as_path()),
+            Some(transcript_path.as_path())
+        );
+        assert_eq!(
+            event.context.metadata.get("transcript_path"),
+            Some(&transcript_path.to_string_lossy().into_owned())
+        );
     }
 }

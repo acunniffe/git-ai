@@ -1,7 +1,20 @@
 use crate::model::checkpoint_delivery::{CheckpointDelivery, CheckpointDeliveryError};
 use sha2::{Digest, Sha256};
 use std::fmt;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+
+mod diagnostics;
+mod publication;
+
+pub use diagnostics::{
+    OutboxFailureClass, OutboxRootState, OutboxRootStatus, RedactedOutboxFailure,
+    inspect_outbox_root, record_publication_failure,
+};
+pub use publication::{
+    DEFAULT_MAX_ENCODED_RECORD_BYTES, DEFAULT_MAX_READY_BYTES, DEFAULT_MAX_READY_RECORDS,
+    OutboxLimits, PublishedRecord, publish_delivery, ready_filename,
+};
 
 pub const CHECKPOINT_OUTBOX_VERSION: &str = "checkpoint-outbox-v1";
 
@@ -11,6 +24,33 @@ pub enum CheckpointOutboxError {
     Encode(String),
     Decode(String),
     OverrideMustBeAbsolute(PathBuf),
+    UnsupportedPlatform,
+    RootIsSymlink,
+    RootIsNotDirectory,
+    RootOwnerMismatch {
+        expected: u32,
+        actual: u32,
+    },
+    RootModeMismatch {
+        expected: u32,
+        actual: u32,
+    },
+    UnsafeReadyRecord,
+    RecordTooLarge {
+        encoded_bytes: u64,
+        max_bytes: u64,
+    },
+    ReadyCapacityExceeded {
+        ready_records: usize,
+        max_records: usize,
+        ready_bytes: u64,
+        max_bytes: u64,
+    },
+    AlreadyPublished,
+    Io {
+        operation: &'static str,
+        kind: std::io::ErrorKind,
+    },
 }
 
 impl fmt::Display for CheckpointOutboxError {
@@ -24,6 +64,50 @@ impl fmt::Display for CheckpointOutboxError {
                 "checkpoint outbox override must be absolute: {}",
                 path.display()
             ),
+            Self::UnsupportedPlatform => {
+                write!(f, "durable checkpoint outbox publication is unsupported")
+            }
+            Self::RootIsSymlink => write!(f, "checkpoint outbox root must not be a symlink"),
+            Self::RootIsNotDirectory => {
+                write!(f, "checkpoint outbox root must be a directory")
+            }
+            Self::RootOwnerMismatch { expected, actual } => write!(
+                f,
+                "checkpoint outbox root owner mismatch (expected uid {}, found {})",
+                expected, actual
+            ),
+            Self::RootModeMismatch { expected, actual } => write!(
+                f,
+                "checkpoint outbox root mode mismatch (expected {:04o}, found {:04o})",
+                expected, actual
+            ),
+            Self::UnsafeReadyRecord => {
+                write!(f, "checkpoint outbox contains an unsafe ready record")
+            }
+            Self::RecordTooLarge {
+                encoded_bytes,
+                max_bytes,
+            } => write!(
+                f,
+                "checkpoint outbox record is too large ({} bytes, maximum {})",
+                encoded_bytes, max_bytes
+            ),
+            Self::ReadyCapacityExceeded {
+                ready_records,
+                max_records,
+                ready_bytes,
+                max_bytes,
+            } => write!(
+                f,
+                "checkpoint outbox capacity exceeded ({} of {} records, {} of {} bytes)",
+                ready_records, max_records, ready_bytes, max_bytes
+            ),
+            Self::AlreadyPublished => {
+                write!(f, "checkpoint outbox delivery is already published")
+            }
+            Self::Io { operation, kind } => {
+                write!(f, "checkpoint outbox {} failed ({:?})", operation, kind)
+            }
         }
     }
 }
@@ -63,11 +147,58 @@ pub fn candidate_roots(
 }
 
 pub fn encode_delivery(delivery: &CheckpointDelivery) -> Result<Vec<u8>, CheckpointOutboxError> {
+    encode_delivery_with_limit(delivery, publication::DEFAULT_MAX_ENCODED_RECORD_BYTES)
+}
+
+fn encode_delivery_with_limit(
+    delivery: &CheckpointDelivery,
+    max_encoded_bytes: u64,
+) -> Result<Vec<u8>, CheckpointOutboxError> {
     delivery.validate()?;
-    let mut bytes = Vec::new();
-    ciborium::into_writer(delivery, &mut bytes)
-        .map_err(|error| CheckpointOutboxError::Encode(error.to_string()))?;
-    Ok(bytes)
+    let mut writer = CappedDeliveryWriter::new(max_encoded_bytes);
+    if let Err(error) = ciborium::into_writer(delivery, &mut writer) {
+        if writer.overflowed {
+            return Err(CheckpointOutboxError::RecordTooLarge {
+                encoded_bytes: max_encoded_bytes.saturating_add(1),
+                max_bytes: max_encoded_bytes,
+            });
+        }
+        return Err(CheckpointOutboxError::Encode(error.to_string()));
+    }
+    Ok(writer.bytes)
+}
+
+struct CappedDeliveryWriter {
+    bytes: Vec<u8>,
+    max_bytes: usize,
+    overflowed: bool,
+}
+
+impl CappedDeliveryWriter {
+    fn new(max_bytes: u64) -> Self {
+        Self {
+            bytes: Vec::new(),
+            max_bytes: usize::try_from(max_bytes).unwrap_or(usize::MAX),
+            overflowed: false,
+        }
+    }
+}
+
+impl Write for CappedDeliveryWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        if bytes.len() > self.max_bytes.saturating_sub(self.bytes.len()) {
+            self.overflowed = true;
+            return Err(std::io::Error::other(
+                "checkpoint delivery exceeds encoded size limit",
+            ));
+        }
+        self.bytes.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 pub fn decode_delivery(bytes: &[u8]) -> Result<CheckpointDelivery, CheckpointOutboxError> {
@@ -79,6 +210,19 @@ pub fn decode_delivery(bytes: &[u8]) -> Result<CheckpointDelivery, CheckpointOut
 
 fn daemon_instance_key(internal_dir: &Path) -> String {
     let mut hasher = Sha256::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        hasher.update(internal_dir.as_os_str().as_bytes());
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        for unit in internal_dir.as_os_str().encode_wide() {
+            hasher.update(unit.to_le_bytes());
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
     hasher.update(internal_dir.to_string_lossy().as_bytes());
     format!("{:x}", hasher.finalize())[..16].to_string()
 }
@@ -184,6 +328,28 @@ mod tests {
     }
 
     #[test]
+    fn capped_encoder_stops_without_buffering_past_the_limit() {
+        let mut value = delivery();
+        value
+            .request
+            .metadata
+            .insert("bounded".to_string(), "x".repeat(4_096));
+
+        assert!(matches!(
+            encode_delivery_with_limit(&value, 128),
+            Err(CheckpointOutboxError::RecordTooLarge {
+                encoded_bytes: 129,
+                max_bytes: 128
+            })
+        ));
+
+        let mut writer = CappedDeliveryWriter::new(4);
+        assert_eq!(writer.write(b"1234").unwrap(), 4);
+        assert!(writer.write(b"5").is_err());
+        assert_eq!(writer.bytes.len(), 4);
+    }
+
+    #[test]
     fn daemon_instance_key_is_stable_and_path_specific() {
         assert_eq!(
             daemon_instance_key(Path::new("/one")),
@@ -192,6 +358,23 @@ mod tests {
         assert_ne!(
             daemon_instance_key(Path::new("/one")),
             daemon_instance_key(Path::new("/two"))
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn daemon_instance_key_distinguishes_non_utf8_paths() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+
+        let first = PathBuf::from(OsString::from_vec(b"/daemon-\x80".to_vec()));
+        let second = PathBuf::from(OsString::from_vec(b"/daemon-\x81".to_vec()));
+        assert_eq!(first.to_string_lossy(), second.to_string_lossy());
+
+        assert_ne!(
+            daemon_instance_key(&first),
+            daemon_instance_key(&second),
+            "distinct native paths must never share a fallback outbox"
         );
     }
 }

@@ -3,6 +3,14 @@
 mod repos;
 
 use git_ai::config::{NotesBackendConfig, NotesBackendKind};
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use git_ai::model::checkpoint_delivery::CHECKPOINT_DELIVERY_SCHEMA_VERSION;
+#[cfg(unix)]
+use git_ai::model::repository::bash_history_db::BashHistoryDatabase;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use git_ai::model::repository::checkpoint_outbox::{
+    candidate_roots, decode_delivery, ready_filename,
+};
 use git_ai::model::working_log::CheckpointKind;
 #[cfg(not(windows))]
 use git_ai::operations::commands::checkpoint_agent::orchestrator::{
@@ -53,6 +61,76 @@ fn daemon_trace_socket_path(repo: &TestRepo) -> PathBuf {
 
 fn daemon_lock_path(repo: &TestRepo) -> PathBuf {
     DaemonConfig::from_home(&repo.daemon_home_path()).lock_path
+}
+
+#[cfg(unix)]
+struct ColdDaemonSocketPaths {
+    directory: PathBuf,
+    control: PathBuf,
+    trace: PathBuf,
+}
+
+#[cfg(unix)]
+impl ColdDaemonSocketPaths {
+    fn new(repo: &TestRepo) -> Self {
+        let test_key = repo
+            .test_home_path()
+            .file_name()
+            .expect("test home should have a final path component");
+        let directory = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("bs")
+            .join(test_key);
+        fs::create_dir_all(&directory).expect("cold-daemon socket directory should be creatable");
+        let control = directory.join("c");
+        let trace = directory.join("t");
+        assert!(
+            control.as_os_str().as_encoded_bytes().len() < 100
+                && trace.as_os_str().as_encoded_bytes().len() < 100,
+            "cold-daemon test socket paths must stay below Unix socket limits"
+        );
+        Self {
+            directory,
+            control,
+            trace,
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for ColdDaemonSocketPaths {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.directory);
+    }
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn ready_checkpoint_outbox_records(repo: &TestRepo) -> Vec<PathBuf> {
+    let daemon_config = DaemonConfig::from_home(&repo.daemon_home_path());
+    let roots = candidate_roots(
+        &daemon_config.internal_dir,
+        None,
+        &std::env::temp_dir(),
+        unsafe { libc::geteuid() },
+    )
+    .expect("test daemon paths should derive valid checkpoint outbox roots");
+    let mut records = Vec::new();
+    for root in roots {
+        let Ok(entries) = fs::read_dir(root) else {
+            continue;
+        };
+        records.extend(
+            entries
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.extension()
+                        .is_some_and(|extension| extension == "ready")
+                }),
+        );
+    }
+    records.sort();
+    records
 }
 
 #[allow(clippy::zombie_processes)]
@@ -1011,6 +1089,177 @@ fn checkpoint_delegate_autostarts_daemon_when_unavailable() {
     );
 }
 
+#[cfg(unix)]
+fn run_authorized_bash_hooks_from_cold_daemon(bash_checkpoints_v2: bool) {
+    let mut repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    repo.patch_git_ai_config(|patch| {
+        patch.feature_flags = Some(json!({"bash_checkpoints_v2": bash_checkpoints_v2}));
+    });
+    let repo_root = repo.canonical_path();
+    let socket_paths = ColdDaemonSocketPaths::new(&repo);
+    let bash_db_path = repo.test_home_path().join(if bash_checkpoints_v2 {
+        "cold-bash-v2.sqlite"
+    } else {
+        "cold-bash-legacy.sqlite"
+    });
+    let bash_db_path_string = bash_db_path.to_string_lossy().into_owned();
+    let session_id = if bash_checkpoints_v2 {
+        "cold-bash-v2-session"
+    } else {
+        "cold-bash-legacy-session"
+    };
+    let tool_use_id = if bash_checkpoints_v2 {
+        "cold-bash-v2-tool"
+    } else {
+        "cold-bash-legacy-tool"
+    };
+
+    assert!(
+        !socket_paths.control.exists(),
+        "the regression must start with a cold daemon"
+    );
+
+    let mut hook_outputs = Vec::new();
+    for hook_event_name in ["PreToolUse", "PostToolUse"] {
+        let hook_input = json!({
+            "session_id": session_id,
+            "cwd": repo_root,
+            "hook_event_name": hook_event_name,
+            "tool_name": "Bash",
+            "tool_use_id": tool_use_id,
+            "tool_input": { "command": "true" },
+            "model": "test-model"
+        })
+        .to_string();
+        let mut command = repo.git_ai_command_without_pre_sync_for_test(
+            &["checkpoint", "codex", "--hook-input", &hook_input],
+            &[],
+        );
+        let output = command
+            .env("GIT_AI_TEST_ALLOW_DAEMON_AUTOSPAWN", "1")
+            .env("GIT_AI_DAEMON_CONTROL_SOCKET", &socket_paths.control)
+            .env("GIT_AI_DAEMON_TRACE_SOCKET", &socket_paths.trace)
+            .env("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", &bash_db_path_string)
+            .output()
+            .expect("failed to invoke authorized Bash checkpoint");
+        assert!(
+            output.status.success(),
+            "Bash hooks must preserve their exit-zero contract: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        hook_outputs.push(format!(
+            "{hook_event_name}: stdout={} stderr={}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    assert!(
+        send_control_request(
+            &socket_paths.control,
+            &ControlRequest::StatusFamily {
+                repo_working_dir: repo_workdir_string(&repo),
+            },
+        )
+        .is_ok(),
+        "an authorized Bash hook should make the cold daemon ready before persistence; {}",
+        hook_outputs.join(" | ")
+    );
+    let db = BashHistoryDatabase::open_at_path(&bash_db_path)
+        .expect("the Bash history database should be readable");
+    let calls = db
+        .all_calls_for_test()
+        .expect("Bash history calls should be readable");
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].session_id, session_id);
+    assert_eq!(calls[0].tool_use_id, tool_use_id);
+    assert!(calls[0].start_trace_id.is_some());
+    assert!(calls[0].end_trace_id.is_some());
+
+    let _ = send_control_request(&socket_paths.control, &ControlRequest::Shutdown);
+    for _ in 0..200 {
+        if !socket_paths.control.exists() && !socket_paths.trace.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+#[serial]
+#[cfg(unix)]
+fn authorized_legacy_bash_hooks_make_cold_daemon_ready_before_persistence() {
+    run_authorized_bash_hooks_from_cold_daemon(false);
+}
+
+#[test]
+#[serial]
+#[cfg(unix)]
+fn authorized_bash_v2_hooks_make_cold_daemon_ready_before_persistence() {
+    run_authorized_bash_hooks_from_cold_daemon(true);
+}
+
+#[test]
+#[serial]
+#[cfg(unix)]
+fn denied_and_empty_checkpoint_hooks_do_not_start_cold_daemon() {
+    let mut repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let socket_paths = ColdDaemonSocketPaths::new(&repo);
+    let empty_hook_input = json!({
+        "cwd": repo.canonical_path(),
+        "file_paths": [],
+    })
+    .to_string();
+    let mut empty_command = repo.git_ai_command_without_pre_sync_for_test(
+        &[
+            "checkpoint",
+            "mock_ai",
+            "--hook-input",
+            &empty_hook_input,
+            "--",
+        ],
+        &[],
+    );
+    let empty_output = empty_command
+        .env("GIT_AI_TEST_ALLOW_DAEMON_AUTOSPAWN", "1")
+        .env("GIT_AI_DAEMON_CONTROL_SOCKET", &socket_paths.control)
+        .env("GIT_AI_DAEMON_TRACE_SOCKET", &socket_paths.trace)
+        .output()
+        .expect("failed to invoke empty checkpoint hook");
+    assert!(empty_output.status.success());
+    assert!(!socket_paths.control.exists());
+
+    repo.patch_git_ai_config(|patch| {
+        patch.allowed_repositories = Some(Vec::new());
+    });
+    let denied_hook_input = json!({
+        "session_id": "denied-cold-bash-session",
+        "cwd": repo.canonical_path(),
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "denied-cold-bash-tool",
+        "tool_input": { "command": "true" }
+    })
+    .to_string();
+    let mut denied_command = repo.git_ai_command_without_pre_sync_for_test(
+        &["checkpoint", "codex", "--hook-input", &denied_hook_input],
+        &[],
+    );
+    let denied_output = denied_command
+        .env("GIT_AI_TEST_ALLOW_DAEMON_AUTOSPAWN", "1")
+        .env("GIT_AI_DAEMON_CONTROL_SOCKET", &socket_paths.control)
+        .env("GIT_AI_DAEMON_TRACE_SOCKET", &socket_paths.trace)
+        .output()
+        .expect("failed to invoke denied checkpoint hook");
+    assert!(denied_output.status.success());
+    assert!(String::from_utf8_lossy(&denied_output.stderr).contains("no repositories are allowed"));
+    assert!(
+        !socket_paths.control.exists(),
+        "authorization denials must happen before Bash daemon readiness"
+    );
+}
+
 #[test]
 #[serial]
 fn checkpoint_fails_hard_when_daemon_startup_is_blocked() {
@@ -1051,6 +1300,198 @@ fn checkpoint_fails_hard_when_daemon_startup_is_blocked() {
     );
 
     drop(held_lock);
+}
+
+#[test]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn checkpoint_empty_allowlist_does_not_publish_outbox() {
+    let mut repo = TestRepo::new_dedicated_daemon();
+    repo.patch_git_ai_config(|patch| {
+        patch.allowed_repositories = Some(Vec::new());
+    });
+    fs::write(
+        repo.path().join("denied-checkpoint.txt"),
+        "sensitive edit\n",
+    )
+    .expect("failed to write denied checkpoint fixture");
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["checkpoint", "mock_ai", "denied-checkpoint.txt"],
+        &[],
+    );
+    let output = command
+        .output()
+        .expect("failed to invoke checkpoint with an empty allowlist");
+
+    assert!(
+        output.status.success(),
+        "checkpoint hooks must keep their exit-zero contract: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("Skipping checkpoint because no repositories are allowed"),
+        "checkpoint should report the existing collection-policy denial: stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        ready_checkpoint_outbox_records(&repo).is_empty(),
+        "a denied checkpoint must not publish any durable outbox record"
+    );
+}
+
+#[test]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn checkpoint_transport_failure_publishes_exact_outbox_record() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let file_path = repo.path().join("deferred-checkpoint.txt");
+    fs::write(&file_path, "base\n").expect("failed to write base checkpoint fixture");
+    repo.git_og(&["add", "deferred-checkpoint.txt"])
+        .expect("failed to stage base checkpoint fixture");
+    repo.git_og(&["commit", "-m", "base commit"])
+        .expect("failed to create base checkpoint commit");
+    let base_commit = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .expect("failed to resolve base checkpoint commit")
+        .trim()
+        .to_string();
+
+    let edited_content = "base\ncaptured while daemon unavailable\n";
+    fs::write(&file_path, edited_content).expect("failed to write deferred checkpoint fixture");
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["checkpoint", "mock_ai", "deferred-checkpoint.txt"],
+        &[],
+    );
+    let output = command
+        .output()
+        .expect("failed to invoke checkpoint without a daemon");
+
+    assert!(
+        output.status.success(),
+        "checkpoint hooks must keep their exit-zero contract: stdout={} stderr={}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let records = ready_checkpoint_outbox_records(&repo);
+    assert_eq!(
+        records.len(),
+        1,
+        "an allowed checkpoint with failed IPC must publish exactly one ready record; records={records:?}, stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let record_path = &records[0];
+    let delivery = decode_delivery(
+        &fs::read(record_path).expect("failed to read published checkpoint outbox record"),
+    )
+    .expect("published checkpoint outbox record should decode");
+    let expected_filename =
+        ready_filename(&delivery).expect("delivery should produce a safe ready filename");
+
+    assert_eq!(
+        record_path.file_name().and_then(|name| name.to_str()),
+        Some(expected_filename.as_str())
+    );
+    delivery
+        .validate()
+        .expect("published checkpoint delivery should validate");
+    assert_eq!(delivery.schema_version, CHECKPOINT_DELIVERY_SCHEMA_VERSION);
+    assert_eq!(delivery.batch_ordinal, 0);
+    assert!(!delivery.delivery_id.is_empty());
+    assert!(!delivery.batch_id.is_empty());
+    assert!(delivery.captured_at_unix_ms > 0);
+    assert!(!delivery.producer_version.is_empty());
+
+    let request = &delivery.request;
+    assert!(!request.trace_id.is_empty());
+    assert_eq!(request.checkpoint_kind, CheckpointKind::AiAgent);
+    assert_eq!(request.path_role, PreparedPathRole::Edited);
+    assert!(request.stream_source.is_none());
+    assert_eq!(
+        request.metadata.get("edit_kind").map(String::as_str),
+        Some("file_edit")
+    );
+    let agent = request
+        .agent_id
+        .as_ref()
+        .expect("mock_ai checkpoint should retain its agent identity");
+    assert_eq!(agent.tool, "mock_ai");
+    assert!(agent.id.starts_with("ai-thread-"));
+    assert_eq!(agent.model, "unknown");
+
+    assert_eq!(request.files.len(), 1);
+    let checkpoint_file = &request.files[0];
+    assert_eq!(
+        checkpoint_file
+            .path
+            .canonicalize()
+            .expect("captured file path should canonicalize"),
+        file_path
+            .canonicalize()
+            .expect("fixture file path should canonicalize")
+    );
+    assert_eq!(
+        checkpoint_file
+            .repo_work_dir
+            .canonicalize()
+            .expect("captured repository path should canonicalize"),
+        repo.canonical_path()
+    );
+    assert_eq!(checkpoint_file.content.as_deref(), Some(edited_content));
+    match &checkpoint_file.base_commit {
+        BaseCommit::Sha(sha) => assert_eq!(sha, &base_commit),
+        BaseCommit::Initial => panic!("committed fixture should capture its base commit SHA"),
+    }
+}
+
+#[test]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn checkpoint_repository_discovery_failure_does_not_publish_outbox() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let nested_repo = repo.path().join("malformed-nested-repo");
+    fs::create_dir_all(&nested_repo).expect("failed to create malformed nested repo fixture");
+    fs::write(
+        nested_repo.join(".git"),
+        "this is not a valid gitdir pointer\n",
+    )
+    .expect("failed to write malformed nested .git fixture");
+    fs::write(nested_repo.join("private-edit.txt"), "sensitive edit\n")
+        .expect("failed to write nested checkpoint fixture");
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &[
+            "checkpoint",
+            "mock_ai",
+            "malformed-nested-repo/private-edit.txt",
+        ],
+        &[],
+    );
+    let output = command
+        .output()
+        .expect("failed to invoke checkpoint for malformed nested repository");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "repository authorization failures must preserve the hook exit-zero contract: stdout={} stderr={stderr}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        ready_checkpoint_outbox_records(&repo).is_empty(),
+        "a checkpoint whose repository cannot be verified must not publish an outbox record"
+    );
+    assert!(
+        stderr
+            .contains("Skipping checkpoint because repository authorization could not be verified"),
+        "repository discovery failure should produce an actionable redacted warning: stderr={stderr}"
+    );
+    assert!(
+        !stderr.contains(repo.path().to_string_lossy().as_ref())
+            && !stderr.contains("private-edit.txt"),
+        "repository discovery diagnostics must not expose repository or file paths: stderr={stderr}"
+    );
 }
 
 #[test]

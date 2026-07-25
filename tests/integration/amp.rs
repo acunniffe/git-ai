@@ -119,10 +119,13 @@ fn test_amp_preset_posttooluse_returns_ai_checkpoint() {
     })
     .to_string();
 
-    let events = resolve_preset("amp")
-        .unwrap()
+    let preset = resolve_preset("amp").unwrap();
+    let mut events = preset
         .parse(&hook_input, "t_test")
         .expect("Amp preset should succeed");
+    preset
+        .enrich_authorized_events(&hook_input, &mut events)
+        .expect("Amp preset enrichment should succeed");
 
     unsafe {
         std::env::remove_var("GIT_AI_AMP_THREADS_PATH");

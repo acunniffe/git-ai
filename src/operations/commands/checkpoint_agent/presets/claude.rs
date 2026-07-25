@@ -5,7 +5,7 @@ use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::working_log::AgentId;
 use crate::operations::commands::checkpoint_agent::bash_tool::{self, Agent, ToolClass};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub struct ClaudePreset;
 
@@ -66,14 +66,7 @@ impl AgentPreset for ClaudePreset {
             agent_id: AgentId {
                 tool: "claude".to_string(),
                 id: session_id.clone(),
-                model: crate::operations::streams::model_extraction::extract_model(
-                    Path::new(transcript_path),
-                    crate::operations::streams::sweep::StreamFormat::ClaudeJsonl,
-                    None,
-                )
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| "unknown".to_string()),
+                model: "unknown".to_string(),
             },
             external_session_id: session_id.clone(),
             trace_id: trace_id.to_string(),
@@ -108,6 +101,31 @@ impl AgentPreset for ClaudePreset {
             None,
             stream_source,
         )])
+    }
+
+    fn enrich_authorized_events(
+        &self,
+        _hook_input: &str,
+        events: &mut [ParsedHookEvent],
+    ) -> Result<(), GitAiError> {
+        for event in events {
+            let Some(context) = event.preset_context_mut() else {
+                continue;
+            };
+            let Some(path) = context.metadata.get("transcript_path") else {
+                continue;
+            };
+            context.agent_id.model = crate::operations::streams::model_extraction::extract_model(
+                std::path::Path::new(path),
+                crate::operations::streams::sweep::StreamFormat::ClaudeJsonl,
+                None,
+            )
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "unknown".to_string());
+        }
+
+        Ok(())
     }
 }
 
@@ -248,5 +266,34 @@ mod tests {
         })
         .to_string();
         assert!(ClaudePreset.parse(&input, "t_test123456789a").is_err());
+    }
+
+    #[test]
+    fn parse_does_not_read_model_before_authorized_enrichment() {
+        let temp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(temp.path(), r#"{"model":"model-from-disk"}"#).unwrap();
+        let input = json!({
+            "transcript_path": temp.path(),
+            "cwd": "/project",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Write",
+            "session_id": "session-pure",
+            "tool_input": {"file_path": "/project/main.rs"},
+        })
+        .to_string();
+
+        let mut events = ClaudePreset.parse(&input, "t_test").unwrap();
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "unknown");
+
+        ClaudePreset
+            .enrich_authorized_events(&input, &mut events)
+            .unwrap();
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "model-from-disk");
     }
 }

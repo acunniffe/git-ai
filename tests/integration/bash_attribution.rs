@@ -248,6 +248,71 @@ fn test_bash_checkpoints_v2_records_for_recovery_without_working_log_checkpoints
 }
 
 #[test]
+fn test_bash_checkpoints_v2_denies_before_attempt_persistence() {
+    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
+    let mut repo = TestRepo::new_with_daemon_env_and_patch(&env, |patch| {
+        patch.feature_flags = Some(json!({
+            "bash_checkpoints_v2": true,
+            "checkpoint_debug_log": true
+        }));
+    });
+    let malformed = repo.path().join("malformed");
+    fs::create_dir_all(&malformed).unwrap();
+    fs::write(malformed.join(".git"), "not a gitdir pointer\n").unwrap();
+    let hook_input = json!({
+        "session_id": "malformed-bash-session",
+        "cwd": malformed.to_string_lossy(),
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "malformed-bash-tool",
+        "tool_input": { "command": "printf sensitive >> private.txt" }
+    })
+    .to_string();
+
+    let output = repo
+        .git_ai(&["checkpoint", "codex", "--hook-input", &hook_input])
+        .expect("an authorization denial should preserve the hook exit-zero contract");
+
+    assert!(output.contains("repository authorization could not be verified"));
+    let db = BashHistoryDatabase::open_at_path(std::path::Path::new(&bash_db_path)).unwrap();
+    assert!(
+        db.all_calls_for_test().unwrap().is_empty(),
+        "a malformed-repository bash hook must not persist an attempt"
+    );
+
+    repo.patch_git_ai_config(|patch| {
+        patch.allowed_repositories = Some(Vec::new());
+    });
+    let hook_input = json!({
+        "session_id": "denied-bash-session",
+        "cwd": repo.canonical_path().to_string_lossy(),
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "denied-bash-tool",
+        "tool_input": { "command": "printf sensitive >> private.txt" }
+    })
+    .to_string();
+    let output = repo
+        .git_ai(&["checkpoint", "codex", "--hook-input", &hook_input])
+        .expect("an authorization denial should preserve the hook exit-zero contract");
+
+    assert!(output.contains("no repositories are allowed"));
+    let db = BashHistoryDatabase::open_at_path(std::path::Path::new(&bash_db_path)).unwrap();
+    assert!(
+        db.all_calls_for_test().unwrap().is_empty(),
+        "an empty-allowlist bash hook must not persist an attempt"
+    );
+    assert!(
+        !repo
+            .test_home_path()
+            .join(".git-ai/internal/checkpoint-debug-logs")
+            .exists(),
+        "a malformed-repository bash hook must not persist its raw hook input"
+    );
+}
+
+#[test]
 fn test_bash_recovery_uses_commit_time_file_timestamps_when_processing_is_delayed() {
     let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
     let env = [
@@ -322,10 +387,12 @@ fn test_bash_recovery_uses_commit_time_file_timestamps_when_processing_is_delaye
 }
 
 #[test]
-fn test_codex_parent_cwd_bash_attempt_recovers_attribution() {
+fn test_codex_parent_cwd_bash_attempt_is_denied_before_persistence() {
     let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
     let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let repo = TestRepo::new_with_daemon_env(&env);
+    let repo = TestRepo::new_with_daemon_env_and_patch(&env, |patch| {
+        patch.feature_flags = Some(json!({"checkpoint_debug_log": true}));
+    });
     let repo_root = repo.canonical_path();
     let parent_cwd = repo_root.parent().unwrap().to_path_buf();
     let repo_name = repo_root.file_name().unwrap().to_string_lossy().to_string();
@@ -346,11 +413,13 @@ fn test_codex_parent_cwd_bash_attempt_recovers_attribution() {
     })
     .to_string();
 
-    repo.git_ai_from_working_dir(
-        &parent_cwd,
-        &["checkpoint", "codex", "--hook-input", &pre_hook_input],
-    )
-    .expect("parent-cwd pre hook should record an attempt");
+    let pre_output = repo
+        .git_ai_from_working_dir(
+            &parent_cwd,
+            &["checkpoint", "codex", "--hook-input", &pre_hook_input],
+        )
+        .expect("parent-cwd authorization denial should preserve hook exit zero");
+    assert!(pre_output.contains("repository authorization could not be verified"));
 
     fs::write(repo_root.join("src/parent-cwd.txt"), "x\n").unwrap();
 
@@ -365,43 +434,37 @@ fn test_codex_parent_cwd_bash_attempt_recovers_attribution() {
     })
     .to_string();
 
-    repo.git_ai_from_working_dir(
-        &parent_cwd,
-        &["checkpoint", "codex", "--hook-input", &post_hook_input],
-    )
-    .expect("parent-cwd post hook should update the persisted attempt");
+    let post_output = repo
+        .git_ai_from_working_dir(
+            &parent_cwd,
+            &["checkpoint", "codex", "--hook-input", &post_hook_input],
+        )
+        .expect("parent-cwd authorization denial should preserve hook exit zero");
+    assert!(post_output.contains("repository authorization could not be verified"));
 
     let commit = repo
         .stage_all_and_commit("Parent cwd bash write")
         .expect("commit should succeed");
 
     let mut file = repo.filename("src/parent-cwd.txt");
-    file.assert_committed_lines(lines!["x".ai()]);
+    file.assert_committed_lines(lines!["x".unattributed_human()]);
     assert!(
-        !commit.authorship_log.metadata.sessions.is_empty(),
-        "parent-cwd bash attempt should create recovered AI attribution"
+        commit.authorship_log.metadata.sessions.is_empty(),
+        "a denied parent-cwd hook must not create false AI session attribution"
     );
 
     let db = BashHistoryDatabase::open_at_path(std::path::Path::new(&bash_db_path)).unwrap();
-    let calls = db.all_calls_for_test().unwrap();
-    assert_eq!(calls.len(), 1);
-    let call = &calls[0];
-    assert_eq!(call.original_cwd, parent_cwd.to_string_lossy().as_ref());
-    assert_eq!(call.repo_work_dir, None);
     assert!(
-        call.repo_discovery_error
-            .as_deref()
-            .is_some_and(|err| err.contains("No git repository found")),
-        "bash call should keep the repo discovery error"
+        db.all_calls_for_test().unwrap().is_empty(),
+        "a denied parent-cwd hook must not persist BashHookAttempt metadata"
     );
-    assert_eq!(call.session_id, "parent-cwd-session");
-    assert_eq!(call.tool_use_id, "parent-cwd-tool");
-    assert_eq!(call.agent_id.tool, "codex");
-    assert_eq!(call.agent_id.id, "parent-cwd-session");
-    assert_eq!(call.command.as_deref(), Some(command.as_str()));
-    assert!(call.start_trace_id.is_some());
-    assert!(call.end_trace_id.is_some());
-    assert!(call.end_time_ns >= Some(call.start_time_ns));
+    assert!(
+        !repo
+            .test_home_path()
+            .join(".git-ai/internal/checkpoint-debug-logs")
+            .exists(),
+        "a denied parent-cwd hook must not persist raw debug input"
+    );
 }
 
 #[test]

@@ -291,8 +291,8 @@ fn build_debug_report(options: DebugOptions) -> String {
     let _ = writeln!(out);
 
     append_git_diagnostics(&mut out, &daemon_diagnostics, &git_diagnostics);
+    super::checkpoint_outbox_debug::append_checkpoint_outbox_debug(&mut out);
     let _ = writeln!(out);
-
     let _ = writeln!(out, "== Git Config ==");
     let _ = writeln!(out, "Command: {}", git_config.command);
     match git_config.output {

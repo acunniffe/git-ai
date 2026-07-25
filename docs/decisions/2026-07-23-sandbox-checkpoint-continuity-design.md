@@ -145,6 +145,15 @@ repository is denied, nothing is sent or persisted. After authorization passes,
 acknowledged requests are not written again; a transport-failed request and the
 remaining unsent requests are written individually.
 
+This deliberately changes the legacy parent-CWD Bash recovery case. If a Bash
+hook's CWD cannot be resolved to an allowed repository without running Git, the
+entire hook is denied before attempt metadata or raw debug input is persisted.
+The producer does not parse shell commands or guess a target repository.
+File and human events instead authorize their resolved file repositories; their
+process CWD is not an authorization anchor. Empty file events are silent no-ops.
+When shorthand input needs a dirty-status scan to discover files, its CWD is
+authorized with read-only repository metadata before Git is run.
+
 ### Daemon startup policy
 
 Sandbox markers are evidence about spawn safety, not evidence that IPC is
@@ -231,12 +240,23 @@ The producer chooses the first root it can validate and write. The daemon scans
 all derived roots, which lets a sandbox fall back to temp even when it can only
 read the normal internal directory.
 
+`GIT_AI_CHECKPOINT_OUTBOX_DIR` is a managed/test deployment setting, not a
+per-hook discovery mechanism. The producer and an already-running host daemon
+must inherit the same absolute value before the daemon starts. Setting or
+changing it only in a sandboxed hook process can strand records and is outside
+the supported v1 contract.
+
 Recovery is supported only when producer and daemon share all of:
 
 - the same effective user identity;
 - the same `DaemonConfig` instance key and allowlist configuration;
 - a host-visible outbox root; and
 - repository/worktree paths with the same meaning in both namespaces.
+
+The v1 delivery wire format supports UTF-8 repository and file paths. A native
+path that cannot be represented as UTF-8 is rejected before live delivery or
+outbox publication with a redacted warning; recovery must not claim that such
+a checkpoint was preserved.
 
 An explicit root solves only outbox visibility. It does not map a container
 worktree path to a host path or reconcile different user identities/config.

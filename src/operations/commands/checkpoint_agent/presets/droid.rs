@@ -116,15 +116,6 @@ impl AgentPreset for DroidPreset {
             .unwrap_or("bash")
             .to_string();
 
-        // Build metadata
-        let extracted_model =
-            crate::operations::streams::model_extraction::extract_model_from_droid_settings(
-                Path::new(&resolved_settings_path),
-            )
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| "unknown".to_string());
-
         let mut metadata = HashMap::new();
         metadata.insert(
             "transcript_path".to_string(),
@@ -139,7 +130,7 @@ impl AgentPreset for DroidPreset {
             agent_id: AgentId {
                 tool: "droid".to_string(),
                 id: session_id.clone(),
-                model: extracted_model,
+                model: "unknown".to_string(),
             },
             external_session_id: session_id,
             trace_id: trace_id.to_string(),
@@ -168,6 +159,30 @@ impl AgentPreset for DroidPreset {
             None,
             stream_source,
         )])
+    }
+
+    fn enrich_authorized_events(
+        &self,
+        _hook_input: &str,
+        events: &mut [ParsedHookEvent],
+    ) -> Result<(), GitAiError> {
+        for event in events {
+            let Some(context) = event.preset_context_mut() else {
+                continue;
+            };
+            let Some(path) = context.metadata.get("settings_path") else {
+                continue;
+            };
+            context.agent_id.model =
+                crate::operations::streams::model_extraction::extract_model_from_droid_settings(
+                    Path::new(path),
+                )
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "unknown".to_string());
+        }
+
+        Ok(())
     }
 }
 
@@ -474,5 +489,36 @@ mod tests {
         assert!(jsonl_s.contains(".factory/sessions/"));
         assert!(jsonl_s.ends_with("test-sess.jsonl"));
         assert!(settings_s.ends_with("test-sess.settings.json"));
+    }
+
+    #[test]
+    fn parse_does_not_read_model_before_authorized_enrichment() {
+        let temp = tempfile::tempdir().unwrap();
+        let transcript_path = temp.path().join("session.jsonl");
+        let settings_path = temp.path().join("session.settings.json");
+        std::fs::write(&settings_path, r#"{"model":"model-from-disk"}"#).unwrap();
+        let input = json!({
+            "cwd": "/project",
+            "hookEventName": "PostToolUse",
+            "tool_name": "Write",
+            "session_id": "session-pure",
+            "transcript_path": transcript_path,
+            "tool_input": {"file_path": "/project/main.rs"},
+        })
+        .to_string();
+
+        let mut events = DroidPreset.parse(&input, "t_test").unwrap();
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "unknown");
+
+        DroidPreset
+            .enrich_authorized_events(&input, &mut events)
+            .unwrap();
+        let ParsedHookEvent::PostFileEdit(event) = &events[0] else {
+            panic!("Expected PostFileEdit");
+        };
+        assert_eq!(event.context.agent_id.model, "model-from-disk");
     }
 }

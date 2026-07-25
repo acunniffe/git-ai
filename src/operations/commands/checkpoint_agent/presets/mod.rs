@@ -3,6 +3,7 @@ pub mod parse;
 mod agent_v1;
 mod ai_tab;
 mod amp;
+mod amp_enrichment;
 mod claude;
 mod claude_wire;
 mod cline;
@@ -18,6 +19,7 @@ mod known_human;
 mod mock_ai;
 mod mock_known_human;
 mod opencode;
+mod opencode_enrichment;
 mod pi;
 mod windsurf;
 
@@ -49,6 +51,26 @@ pub enum ParsedHookEvent {
     PostBashCall(PostBashCall),
     KnownHumanEdit(KnownHumanEdit),
     UntrackedEdit(UntrackedEdit),
+}
+
+impl ParsedHookEvent {
+    pub(crate) fn preset_context_mut(&mut self) -> Option<&mut PresetContext> {
+        match self {
+            Self::PreFileEdit(event) => Some(&mut event.context),
+            Self::PostFileEdit(event) => Some(&mut event.context),
+            Self::PreBashCall(event) => Some(&mut event.context),
+            Self::PostBashCall(event) => Some(&mut event.context),
+            Self::KnownHumanEdit(_) | Self::UntrackedEdit(_) => None,
+        }
+    }
+
+    pub(crate) fn set_post_stream_source(&mut self, source: StreamSource) {
+        match self {
+            Self::PostFileEdit(event) => event.stream_source = Some(source),
+            Self::PostBashCall(event) => event.stream_source = Some(source),
+            _ => {}
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,6 +127,15 @@ pub struct PostBashCall {
 
 pub trait AgentPreset {
     fn parse(&self, hook_input: &str, trace_id: &str) -> Result<Vec<ParsedHookEvent>, GitAiError>;
+
+    fn enrich_authorized_events(
+        &self,
+        hook_input: &str,
+        events: &mut [ParsedHookEvent],
+    ) -> Result<(), GitAiError> {
+        let _ = (hook_input, events);
+        Ok(())
+    }
 }
 
 pub fn resolve_preset(name: &str) -> Result<Box<dyn AgentPreset>, GitAiError> {

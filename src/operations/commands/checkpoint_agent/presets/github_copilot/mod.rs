@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 mod cli;
+mod enrichment;
 mod ide;
 
 pub struct GithubCopilotPreset;
@@ -43,6 +44,14 @@ impl AgentPreset for GithubCopilotPreset {
             "Invalid hook_event_name: {}. Expected one of 'before_edit', 'after_edit', 'PreToolUse', or 'PostToolUse'",
             hook_event_name
         )))
+    }
+
+    fn enrich_authorized_events(
+        &self,
+        hook_input: &str,
+        events: &mut [ParsedHookEvent],
+    ) -> Result<(), GitAiError> {
+        enrichment::enrich_authorized_events(hook_input, events)
     }
 }
 
@@ -190,6 +199,14 @@ pub(super) fn normalize_hook_path(raw_path: &str, cwd: &str) -> Option<String> {
     };
 
     Some(joined.to_string_lossy().replace('\\', "/"))
+}
+
+pub(super) fn transcript_format(path: &str) -> super::StreamFormat {
+    if path.contains("/workspaceStorage/") || path.contains("\\workspaceStorage\\") {
+        super::StreamFormat::CopilotEventStreamJsonl
+    } else {
+        super::StreamFormat::CopilotSessionJson
+    }
 }
 
 #[cfg(test)]

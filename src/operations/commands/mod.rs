@@ -2,6 +2,7 @@ pub mod analyze;
 pub mod r#await;
 pub mod blame;
 pub mod checkpoint_agent;
+pub(crate) mod checkpoint_outbox_debug;
 pub mod ci_handlers;
 pub mod config;
 pub mod daemon;

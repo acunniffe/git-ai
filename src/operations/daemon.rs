@@ -36,6 +36,7 @@ pub(crate) mod actor_coordinator_trace;
 pub(crate) mod actor_coordinator_worktree;
 pub(crate) mod actor_types;
 pub(crate) mod attribution_self_check;
+pub(crate) mod checkpoint_stream_authority;
 pub(crate) mod cherry_pick_helpers;
 pub(crate) mod client_helpers;
 pub(crate) mod daemon_config;
@@ -82,6 +83,8 @@ pub use control_api::{
 pub use crate::model::telemetry::TelemetryEnvelope;
 
 // Test modules.
+#[cfg(test)]
+mod checkpoint_stream_authority_tests;
 #[cfg(test)]
 mod stream_worker_tests;
 #[cfg(test)]

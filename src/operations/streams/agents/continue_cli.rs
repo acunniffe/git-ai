@@ -27,15 +27,19 @@ impl ContinueAgent {
         Self { batch_size }
     }
 
+    fn session_roots() -> Vec<PathBuf> {
+        dirs::home_dir()
+            .into_iter()
+            .map(|path| path.join(".continue/sessions"))
+            .collect()
+    }
+
     /// Scan for Continue session files in `~/.continue/sessions/**/*.json`.
     fn scan_session_files() -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        if let Some(home) = dirs::home_dir() {
-            let pattern = home
-                .join(".continue/sessions/**/*.json")
-                .to_string_lossy()
-                .to_string();
+        if let Some(root) = Self::session_roots().into_iter().next() {
+            let pattern = root.join("**/*.json").to_string_lossy().to_string();
 
             if let Ok(entries) = glob::glob(&pattern) {
                 for entry in entries.flatten() {
@@ -57,6 +61,29 @@ impl Default for ContinueAgent {
 }
 
 impl Agent for ContinueAgent {
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Self::session_roots()
+    }
+
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "continue-cli",
+            crate::model::checkpoint_request::StreamFormat::ContinueJson,
+            Self::session_roots(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(path, "json")
+                {
+                    return None;
+                }
+                Some((path.file_stem()?.to_str()?.to_string(), None))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

@@ -4,6 +4,7 @@
 //! attributes and field order are preserved byte-for-byte from their original
 //! location in `operations/daemon/control_api.rs`.
 
+use crate::model::checkpoint_delivery::CheckpointDelivery;
 use crate::model::checkpoint_request::CheckpointRequest;
 use crate::model::stat_snapshot::StatSnapshot;
 use crate::model::telemetry::TelemetryEnvelope;
@@ -20,6 +21,8 @@ pub enum ControlRequest {
     Ping,
     #[serde(rename = "checkpoint.run")]
     CheckpointRun { request: Box<CheckpointRequest> },
+    #[serde(rename = "checkpoint.deliver")]
+    CheckpointDeliver { delivery: Box<CheckpointDelivery> },
     #[serde(rename = "sync.family")]
     SyncFamily { repo_working_dir: String },
     #[serde(rename = "status.family")]
@@ -162,4 +165,40 @@ pub struct CasSyncPayload {
     pub data: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::checkpoint_delivery::CheckpointDelivery;
+    use crate::model::checkpoint_request::{CheckpointRequest, PreparedPathRole};
+    use crate::model::working_log::CheckpointKind;
+
+    #[test]
+    fn checkpoint_delivery_uses_versioned_control_method() {
+        let delivery = CheckpointDelivery::from_requests_at(
+            vec![CheckpointRequest {
+                trace_id: "trace-1".to_string(),
+                checkpoint_kind: CheckpointKind::Human,
+                agent_id: None,
+                files: Vec::new(),
+                path_role: PreparedPathRole::Edited,
+                stream_source: None,
+                metadata: HashMap::new(),
+            }],
+            42,
+        )
+        .remove(0);
+
+        let request = ControlRequest::CheckpointDeliver {
+            delivery: Box::new(delivery.clone()),
+        };
+        let value = serde_json::to_value(request).unwrap();
+
+        assert_eq!(value["method"], "checkpoint.deliver");
+        assert_eq!(
+            value["params"]["delivery"]["delivery_id"],
+            delivery.delivery_id
+        );
+    }
 }

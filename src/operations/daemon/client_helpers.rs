@@ -37,10 +37,14 @@ pub(crate) fn checkpoint_control_response_timeout(
         // tear down captured state mid-request. Product mode keeps the short
         // control timeout so a wedged prior Git root fails the checkpoint rather
         // than making the caller wait indefinitely.
-        ControlRequest::CheckpointRun { .. } if use_ci_or_test_budget => {
+        ControlRequest::CheckpointRun { .. } | ControlRequest::CheckpointDeliver { .. }
+            if use_ci_or_test_budget =>
+        {
             DAEMON_CHECKPOINT_RESPONSE_TIMEOUT
         }
-        ControlRequest::CheckpointRun { .. } => DAEMON_CONTROL_RESPONSE_TIMEOUT,
+        ControlRequest::CheckpointRun { .. } | ControlRequest::CheckpointDeliver { .. } => {
+            DAEMON_CONTROL_RESPONSE_TIMEOUT
+        }
         ControlRequest::SyncFamily { .. } if use_ci_or_test_budget => {
             DAEMON_CHECKPOINT_RESPONSE_TIMEOUT
         }

@@ -48,6 +48,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 
 [target.'cfg(windows)'.dependencies]
 named_pipe = "0.4.1"
+same-file = "1.0"
 winreg = "0.55"
 
 [features]

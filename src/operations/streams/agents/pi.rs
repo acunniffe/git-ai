@@ -6,7 +6,8 @@ use crate::operations::streams::agent::{
     Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
 };
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
-use std::path::Path;
+use std::io::{BufRead, BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Pi agent that reads Pi JSONL session files.
@@ -23,6 +24,19 @@ impl PiAgent {
     pub fn with_batch_size(batch_size: usize) -> Self {
         Self { batch_size }
     }
+
+    fn session_roots() -> Vec<PathBuf> {
+        let mut roots = Vec::new();
+        if let Ok(path) = std::env::var("PI_CODING_AGENT_SESSION_DIR")
+            && !path.trim().is_empty()
+        {
+            roots.push(PathBuf::from(path));
+        }
+        if let Some(home) = dirs::home_dir() {
+            roots.push(home.join(".pi/agent/sessions"));
+        }
+        roots
+    }
 }
 
 impl Default for PiAgent {
@@ -32,6 +46,38 @@ impl Default for PiAgent {
 }
 
 impl Agent for PiAgent {
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        const MAX_HEADER_BYTES: u64 = 64 * 1024;
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "pi",
+            crate::model::checkpoint_request::StreamFormat::PiJsonl,
+            Self::session_roots(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(
+                    path, "jsonl",
+                ) {
+                    return None;
+                }
+                let file = std::fs::File::open(path).ok()?;
+                let mut reader = BufReader::new(file).take(MAX_HEADER_BYTES + 1);
+                let mut header_line = String::new();
+                let header_bytes = reader.read_line(&mut header_line).ok()? as u64;
+                if header_bytes > MAX_HEADER_BYTES {
+                    return None;
+                }
+                let header: serde_json::Value = serde_json::from_str(&header_line).ok()?;
+                if header.get("type")?.as_str()? != "session" {
+                    return None;
+                }
+                Some((header.get("id")?.as_str()?.to_string(), None))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

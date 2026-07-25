@@ -20,7 +20,6 @@ src/operations/authorship/secrets.rs	711
 src/operations/authorship/stats.rs	851
 src/operations/ci/ci_context.rs	1031
 src/operations/ci/gitlab.rs	800
-src/operations/commands/checkpoint_agent/orchestrator.rs	604
 src/operations/commands/checkpoint_agent/presets/cline.rs	634
 src/operations/commands/checkpoint_agent/presets/cursor.rs	659
 src/operations/commands/checkpoint_agent/presets/github_copilot/ide.rs	1014

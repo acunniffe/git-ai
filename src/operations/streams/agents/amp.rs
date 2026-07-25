@@ -76,6 +76,29 @@ impl Default for AmpAgent {
 }
 
 impl Agent for AmpAgent {
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Self::amp_threads_path().into_iter().collect()
+    }
+
+    fn validate_checkpoint_stream(
+        &self,
+        source: &crate::model::checkpoint_request::StreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        crate::operations::streams::agent::validate_checkpoint_stream_file(
+            source,
+            "amp",
+            crate::model::checkpoint_request::StreamFormat::AmpThreadJson,
+            Self::amp_threads_path().into_iter().collect(),
+            |path| {
+                if !crate::operations::streams::agent::checkpoint_stream_has_extension(path, "json")
+                {
+                    return None;
+                }
+                Some((path.file_stem()?.to_str()?.to_string(), None))
+            },
+        )
+    }
+
     fn batch_size_hint(&self) -> usize {
         self.batch_size
     }

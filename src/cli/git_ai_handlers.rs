@@ -5,13 +5,13 @@ use crate::cli::machine_json::{
     print_machine_json_serializable, resolve_repo_or_machine_error,
 };
 use crate::config;
-use crate::model::daemon_control::ControlRequest;
 use crate::model::repository::internal_db::InternalDatabase;
 use crate::observability::log_message;
 use crate::operations::authorship::ignore::effective_ignore_patterns;
 use crate::operations::authorship::range_authorship;
 use crate::operations::authorship::stats::stats_command;
 use crate::operations::commands;
+use crate::operations::commands::checkpoint_agent::orchestrator::CheckpointAuthorizationDenial;
 use crate::operations::git::repository::{CommitRange, Repository};
 use crate::operations::git::sync_authorship::{
     NotesExistence, fetch_authorship_notes, push_authorship_notes,
@@ -448,8 +448,12 @@ fn handle_checkpoint(args: &[String]) {
         (args[0].as_str(), &args[1..])
     };
 
-    let effective_hook_input =
-        hook_input.unwrap_or_else(|| synthesize_hook_input_from_cli_args(preset_name, file_args));
+    let effective_hook_input = hook_input.unwrap_or_else(|| {
+        synthesize_hook_input_from_cli_args(preset_name, file_args).unwrap_or_else(|denial| {
+            eprintln!("{}", denial.user_message());
+            std::process::exit(0);
+        })
+    });
 
     if perf {
         eprintln!(
@@ -464,7 +468,17 @@ fn handle_checkpoint(args: &[String]) {
             preset_name,
             &effective_hook_input,
         ) {
-            Ok(r) => r,
+            Ok(
+                crate::operations::commands::checkpoint_agent::orchestrator::
+                    CheckpointPresetOutcome::Authorized(requests),
+            ) => requests,
+            Ok(
+                crate::operations::commands::checkpoint_agent::orchestrator::
+                    CheckpointPresetOutcome::Denied(denial),
+            ) => {
+                eprintln!("{}", denial.user_message());
+                std::process::exit(0);
+            }
             Err(e) => {
                 eprintln!("{} preset error: {}", preset_name, e);
                 std::process::exit(0);
@@ -493,44 +507,6 @@ fn handle_checkpoint(args: &[String]) {
         }
     }
 
-    // Check the repository allowlist before sending to the daemon. Collection
-    // is opt-in: with an empty allowlist we deny immediately, without repo
-    // discovery or reading remotes.
-    let t_allowlist = std::time::Instant::now();
-    {
-        let config = config::Config::get();
-        if !config.has_allowed_repositories() {
-            eprintln!(
-                "Skipping checkpoint because no repositories are allowed; add one with `git-ai config --add allowed_repositories <path-or-url>`"
-            );
-            std::process::exit(0);
-        }
-        let mut checked_repos = std::collections::HashSet::new();
-        for request in &requests {
-            for file in &request.files {
-                if checked_repos.insert(file.repo_work_dir.clone())
-                    && let Ok(repo) =
-                        crate::operations::git::repository::discover_repository_in_path_no_git_exec(
-                            &file.repo_work_dir,
-                        )
-                    && !repo.is_collection_allowed(config)
-                {
-                    eprintln!(
-                        "Skipping checkpoint because repository is excluded or not in the allowed_repositories list"
-                    );
-                    std::process::exit(0);
-                }
-            }
-        }
-    }
-
-    if perf {
-        eprintln!(
-            "[perf] checkpoint: allowlist={:.1}ms",
-            t_allowlist.elapsed().as_secs_f64() * 1000.0
-        );
-    }
-
     let t_daemon_config = std::time::Instant::now();
     let daemon_config = crate::operations::daemon::DaemonConfig::from_env_or_default_paths()
         .map_err(|e| e.to_string());
@@ -550,31 +526,40 @@ fn handle_checkpoint(args: &[String]) {
         );
     }
 
-    let mut sent_count = 0u64;
-    for request in requests {
-        let t_send = std::time::Instant::now();
-        let control_request = ControlRequest::CheckpointRun {
-            request: Box::new(request),
-        };
-        let send_result = crate::operations::daemon::send_control_request(
-            &config.control_socket_path,
-            &control_request,
+    let deliveries = crate::model::checkpoint_delivery::CheckpointDelivery::from_requests(requests);
+    if let Some(error) = deliveries
+        .iter()
+        .find_map(|delivery| delivery.validate().err())
+    {
+        eprintln!("Checkpoint delivery unavailable: {}", error);
+        std::process::exit(0);
+    }
+    let t_delivery = std::time::Instant::now();
+    let report =
+        crate::operations::commands::checkpoint_agent::delivery_runtime::
+            deliver_authorized_checkpoint_batch(&config, &deliveries);
+    if perf {
+        eprintln!(
+            "[perf] checkpoint: delivery={:.1}ms",
+            t_delivery.elapsed().as_secs_f64() * 1000.0,
         );
-        if perf {
-            eprintln!(
-                "[perf] checkpoint: ipc_send={:.1}ms",
-                t_send.elapsed().as_secs_f64() * 1000.0,
-            );
-        }
-        if let Err(e) = send_result {
-            eprintln!("Failed to send checkpoint to background worker: {}", e);
-            std::process::exit(0);
-        }
-        sent_count += 1;
+    }
+    if report.published > 0 {
+        eprintln!(
+            "Background worker unavailable; saved checkpoint for delivery when it is available."
+        );
+    }
+    if !report.publication_failures.is_empty() {
+        eprintln!(
+            "Checkpoint could not be delivered or saved; run `git-ai debug` for background service diagnostics."
+        );
     }
 
     if std::env::var_os("GIT_AI_TEST_DB_PATH").is_some() {
-        println!("checkpoint_requests={}", sent_count);
+        println!(
+            "checkpoint_requests={}",
+            report.acknowledged.saturating_add(report.published)
+        );
     }
 
     if perf {
@@ -972,8 +957,11 @@ fn handle_git_hooks(args: &[String]) {
 
 /// Synthesize JSON hook_input from CLI args for mock/test presets that can be
 /// invoked without --hook-input.
-fn synthesize_hook_input_from_cli_args(preset_name: &str, remaining_args: &[String]) -> String {
-    match preset_name {
+fn synthesize_hook_input_from_cli_args(
+    preset_name: &str,
+    remaining_args: &[String],
+) -> Result<String, CheckpointAuthorizationDenial> {
+    Ok(match preset_name {
         "human" | "mock_ai" | "mock_known_human" => {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             let mut paths: Vec<String> = remaining_args
@@ -989,6 +977,8 @@ fn synthesize_hook_input_from_cli_args(preset_name: &str, remaining_args: &[Stri
                 })
                 .collect();
             if paths.is_empty() {
+                crate::operations::commands::checkpoint_agent::orchestrator::
+                    authorize_checkpoint_status_discovery(&cwd)?;
                 paths = discover_dirty_files_from_status(&cwd);
             }
             serde_json::json!({
@@ -1053,7 +1043,7 @@ fn synthesize_hook_input_from_cli_args(preset_name: &str, remaining_args: &[Stri
             .to_string()
         }
         _ => String::new(),
-    }
+    })
 }
 
 fn discover_dirty_files_from_status(cwd: &std::path::Path) -> Vec<String> {
@@ -1064,6 +1054,7 @@ fn discover_dirty_files_from_status(cwd: &std::path::Path) -> Vec<String> {
             .unwrap_or_else(|| cwd.to_path_buf());
 
     let args = vec![
+        "--no-optional-locks".to_string(),
         "-C".to_string(),
         cwd.to_string_lossy().to_string(),
         "status".to_string(),

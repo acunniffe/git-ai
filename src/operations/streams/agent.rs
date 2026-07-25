@@ -1,6 +1,10 @@
 // src/streams/agent.rs
 
 use super::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
+use crate::model::authorship_log_serialization::generate_session_id;
+use crate::model::checkpoint_request::{
+    StreamFormat as CheckpointStreamFormat, StreamSource as CheckpointStreamSource,
+};
 use crate::model::stream_types::{JsonlLineState, StreamBatch, StreamError, read_jsonl_line};
 use crate::model::stream_watermark::{ByteOffsetWatermark, WatermarkStrategy};
 use std::fs::File;
@@ -84,6 +88,26 @@ impl StreamDescriptor {
 /// Combines sweep discovery and incremental reading in one interface.
 /// Agents that don't support sweeping return `SweepStrategy::None`.
 pub trait Agent: Send + Sync {
+    /// Daemon-owned roots used for sweep discovery and bounded checkpoint validation.
+    ///
+    /// Checkpoint IPC must never turn an arbitrary caller-supplied path into a
+    /// host read. Checkpoint validation resolves one claimed candidate beneath
+    /// these roots; it must not require a full `discover_sessions` sweep.
+    fn trusted_stream_roots(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
+
+    /// Validate one checkpoint-provided stream candidate without sweeping agent storage.
+    ///
+    /// Implementations must bind the external session ID to a host-visible candidate
+    /// beneath an agent-owned root. The default is intentionally fail-closed.
+    fn validate_checkpoint_stream(
+        &self,
+        _source: &CheckpointStreamSource,
+    ) -> Result<DiscoveredSession, StreamError> {
+        Err(checkpoint_stream_denied())
+    }
+
     /// Returns the sweep strategy for this agent.
     fn sweep_strategy(&self) -> SweepStrategy;
 
@@ -98,6 +122,18 @@ pub trait Agent: Send + Sync {
     /// The caller loops until an empty batch is returned.
     fn batch_size_hint(&self) -> usize {
         1000
+    }
+
+    /// Select the session identifier passed to `read_incremental`.
+    ///
+    /// Stream bookkeeping uses the internal ID. Agents whose native storage is
+    /// keyed by an external ID can override this reader-boundary mapping.
+    fn session_id_for_read<'a>(
+        &self,
+        session_id: &'a str,
+        _external_session_id: &'a str,
+    ) -> &'a str {
+        session_id
     }
 
     /// Read transcript incrementally from the given watermark.
@@ -158,6 +194,72 @@ pub trait Agent: Send + Sync {
 
     /// Returns the stream descriptors for this agent.
     fn streams(&self) -> Vec<StreamDescriptor>;
+}
+
+pub(crate) fn validate_checkpoint_stream_file(
+    source: &CheckpointStreamSource,
+    expected_tool: &str,
+    expected_format: CheckpointStreamFormat,
+    trusted_roots: Vec<PathBuf>,
+    bind_session: impl FnOnce(&Path) -> Option<(String, Option<String>)>,
+) -> Result<DiscoveredSession, StreamError> {
+    validate_checkpoint_stream_claim(source, expected_tool, expected_format)?;
+    if !source.path.is_absolute() {
+        return Err(checkpoint_stream_denied());
+    }
+
+    let canonical_path = source
+        .path
+        .canonicalize()
+        .map_err(|_| checkpoint_stream_denied())?;
+    if !canonical_path.is_file() {
+        return Err(checkpoint_stream_denied());
+    }
+    let beneath_trusted_root = trusted_roots
+        .into_iter()
+        .filter_map(|root| root.canonicalize().ok())
+        .any(|root| canonical_path.starts_with(root));
+    if !beneath_trusted_root {
+        return Err(checkpoint_stream_denied());
+    }
+
+    let (external_session_id, external_parent_session_id) =
+        bind_session(&canonical_path).ok_or_else(checkpoint_stream_denied)?;
+    if external_session_id != source.external_session_id {
+        return Err(checkpoint_stream_denied());
+    }
+
+    Ok(DiscoveredSession {
+        session_id: source.session_id.clone(),
+        tool: expected_tool.to_string(),
+        stream_path: canonical_path,
+        external_session_id,
+        external_parent_session_id,
+    })
+}
+
+pub(crate) fn validate_checkpoint_stream_claim(
+    source: &CheckpointStreamSource,
+    expected_tool: &str,
+    expected_format: CheckpointStreamFormat,
+) -> Result<(), StreamError> {
+    if source.format != expected_format
+        || source.external_session_id.trim().is_empty()
+        || source.session_id != generate_session_id(&source.external_session_id, expected_tool)
+    {
+        return Err(checkpoint_stream_denied());
+    }
+    Ok(())
+}
+
+pub(crate) fn checkpoint_stream_denied() -> StreamError {
+    StreamError::Fatal {
+        message: "checkpoint stream source authority could not be verified".to_string(),
+    }
+}
+
+pub(crate) fn checkpoint_stream_has_extension(path: &Path, expected: &str) -> bool {
+    path.extension().and_then(|extension| extension.to_str()) == Some(expected)
 }
 
 /// Read a JSONL transcript incrementally using a byte-offset watermark.

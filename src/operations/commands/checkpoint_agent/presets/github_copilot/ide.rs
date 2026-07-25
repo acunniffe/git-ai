@@ -7,9 +7,8 @@ use crate::error::GitAiError;
 use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::working_log::AgentId;
 use crate::operations::commands::checkpoint_agent::bash_tool::ToolClass;
-use crate::operations::streams::model_extraction;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
 // Legacy extension path (before_edit / after_edit)
@@ -105,14 +104,7 @@ pub(super) fn parse_legacy_extension_hooks(
         agent_id: AgentId {
             tool: "github-copilot".to_string(),
             id: session_id.clone(),
-            model: model_extraction::extract_model(
-                Path::new(chat_session_path),
-                crate::operations::streams::sweep::StreamFormat::CopilotSessionJson,
-                None,
-            )
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| "unknown".to_string()),
+            model: "unknown".to_string(),
         },
         external_session_id: session_id,
         trace_id: trace_id.to_string(),
@@ -206,39 +198,13 @@ pub(super) fn parse_vscode_native_hooks(
     }
 
     // Determine transcript format: newer native uses EventStreamJsonl
-    let transcript_format = if transcript_path
-        .as_deref()
-        .map(|p| p.contains("/workspaceStorage/") || p.contains("\\workspaceStorage\\"))
-        .unwrap_or(false)
-    {
-        StreamFormat::CopilotEventStreamJsonl
-    } else {
-        StreamFormat::CopilotSessionJson
-    };
+    let transcript_format = super::transcript_format(transcript_path.as_deref().unwrap());
 
     let context = PresetContext {
         agent_id: AgentId {
             tool: "github-copilot".to_string(),
             id: session_id.clone(),
-            model: transcript_path
-                .as_ref()
-                .and_then(|tp| {
-                    let path = Path::new(tp.as_str());
-                    let sweep_format = match transcript_format {
-                        StreamFormat::CopilotEventStreamJsonl => {
-                            crate::operations::streams::sweep::StreamFormat::CopilotEventStreamJsonl
-                        }
-                        _ => crate::operations::streams::sweep::StreamFormat::CopilotSessionJson,
-                    };
-                    model_extraction::extract_model_from_copilot_vscode_transcript(
-                        path,
-                        sweep_format,
-                        &session_id,
-                    )
-                    .ok()
-                    .flatten()
-                })
-                .unwrap_or_else(|| "unknown".to_string()),
+            model: "unknown".to_string(),
         },
         external_session_id: session_id,
         trace_id: trace_id.to_string(),
@@ -314,13 +280,6 @@ pub(super) fn parse_vscode_native_hooks(
         )));
     }
 
-    // Workaround: VS Code Copilot fires PostToolUse before the file is written to disk.
-    // https://github.com/microsoft/vscode/issues/315926
-    tracing::debug!(
-        "Sleeping 80ms for VS Code Copilot PostToolUse file-write race (vscode#315926)"
-    );
-    std::thread::sleep(std::time::Duration::from_millis(80));
-
     Ok(vec![ParsedHookEvent::PostFileEdit(PostFileEdit {
         context,
         file_paths: extracted_paths,
@@ -334,7 +293,7 @@ pub(super) fn parse_vscode_native_hooks(
 // IDE-specific helpers
 // ---------------------------------------------------------------------------
 
-fn transcript_path_from_hook_data(data: &serde_json::Value) -> Option<&str> {
+pub(super) fn transcript_path_from_hook_data(data: &serde_json::Value) -> Option<&str> {
     parse::optional_str_multi(
         data,
         &[
@@ -667,8 +626,15 @@ mod tests {
             "transcript_path": transcript_path
         })
         .to_string();
-        let events = GithubCopilotPreset
+        let mut events = GithubCopilotPreset
             .parse(&input, "t_test123456789a")
+            .unwrap();
+        assert_eq!(
+            events[0].preset_context_mut().unwrap().agent_id.model,
+            "unknown"
+        );
+        GithubCopilotPreset
+            .enrich_authorized_events(&input, &mut events)
             .unwrap();
 
         match &events[0] {
