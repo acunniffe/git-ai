@@ -933,6 +933,32 @@ fn derive_mappings_from_range_diff(
         }
         _ => &base,
     };
+    // A genuine rebase replays a branch's own commits, so both range-diff
+    // sides stay small. A huge side means this ref move is not a rebase of
+    // the branch's work — typically a stale branch being moved onto a much
+    // newer base, where (with no usable onto hint) the new side spans the
+    // entire upstream divergence. `git range-diff` computes a full diff for
+    // every commit on both sides plus an N×M matching matrix, which has
+    // produced 30+ GB git child processes on large monorepos and taken the
+    // daemon down with them. Skip mapping derivation instead: a range that
+    // size has nothing meaningful to map.
+    let limit = range_diff_commit_limit();
+    let old_count = range_commit_count(repo, &base, old_tip);
+    let new_count = range_commit_count(repo, onto, new_tip);
+    let within_limit =
+        matches!((old_count, new_count), (Some(o), Some(n)) if o <= limit && n <= limit);
+    if !within_limit {
+        tracing::warn!(
+            old_tip = %old_tip,
+            new_tip = %new_tip,
+            old_count = ?old_count,
+            new_count = ?new_count,
+            limit,
+            "skipping range-diff mapping derivation: range too large to be a rebase"
+        );
+        return Ok(Vec::new());
+    }
+
     let range_diff_output = run_range_diff(repo, &base, old_tip, onto, new_tip)?;
     let mut mappings = parse_range_diff_output(&range_diff_output);
 
@@ -987,6 +1013,36 @@ pub(crate) fn list_commits_in_range(repo: &Repository, base: &str, tip: &str) ->
         .unwrap_or_default()
 }
 
+/// Default upper bound on commits per range-diff side. A genuine rebase
+/// replays a branch's own commits, so both sides stay far below this;
+/// ranges beyond it come from stale-branch syncs and similar non-rebase
+/// ref moves where mapping derivation is meaningless and the spawned
+/// `git range-diff` becomes pathologically expensive.
+const MAX_RANGE_DIFF_COMMITS: u64 = 1000;
+
+fn range_diff_commit_limit() -> u64 {
+    std::env::var("GIT_AI_RANGE_DIFF_COMMIT_LIMIT")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(MAX_RANGE_DIFF_COMMITS)
+}
+
+/// Number of commits in `base..tip`, via a single `rev-list --count` spawn.
+/// `None` when the range cannot be resolved.
+fn range_commit_count(repo: &Repository, base: &str, tip: &str) -> Option<u64> {
+    let mut args = repo.global_args_for_exec();
+    args.extend([
+        "rev-list".to_string(),
+        "--count".to_string(),
+        format!("{}..{}", base, tip),
+    ]);
+    let output = exec_git_allow_nonzero(&args).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
+}
+
 fn run_range_diff(
     repo: &Repository,
     old_base: &str,
@@ -1008,8 +1064,28 @@ fn run_range_diff(
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Bounds on range-diff `<` (dropped) commits that may be folded into
+/// neighboring kept commits as squash mappings. A real squash folds a
+/// handful of commits into an adjacent kept one; when the dropped count
+/// dwarfs the matched pairs, the two ranges are not versions of the same
+/// branch — typically a restack undo (`git reset --keep <pre-rebase-tip>`),
+/// where the old range contains every trunk commit since the branch's fork
+/// point. Folding those would fabricate one full-root-tree diff pair per
+/// trunk commit and reverse the entire trunk delta per pair — the daemon
+/// memory bomb reproduced in `scripts/repro/daemon-restack-undo-mapping-bomb`
+/// (~30 GB RSS observed in production on a large monorepo).
+const MAX_SQUASH_FANIN_PER_MATCH: usize = 8;
+const MAX_SQUASH_FANIN_FLOOR: usize = 64;
+
+fn squash_fanin_limit(matched_count: usize) -> usize {
+    MAX_SQUASH_FANIN_FLOOR.max(matched_count.saturating_mul(MAX_SQUASH_FANIN_PER_MATCH))
+}
+
 fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
-    let mut mappings = Vec::new();
+    // (old, new, fabricated): `fabricated` marks squash mappings synthesized
+    // for dropped (`<`) commits, as opposed to `=`/`!` matched pairs.
+    let mut entries: Vec<(String, String, bool)> = Vec::new();
+    let mut matched_count = 0usize;
     let mut pending_dropped: Vec<String> = Vec::new();
     let mut previous_new_sha: Option<String> = None;
 
@@ -1035,7 +1111,7 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
                 // Dropped commit (squashed into a later commit)
                 if !old_sha.chars().all(|c| c == '0') {
                     if let Some(new_sha) = previous_new_sha.as_ref() {
-                        mappings.push((old_sha, new_sha.clone()));
+                        entries.push((old_sha, new_sha.clone(), true));
                     } else {
                         pending_dropped.push(old_sha);
                     }
@@ -1052,10 +1128,11 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
                 }
                 // Map any preceding dropped commits to this new commit (squash)
                 for dropped in pending_dropped.drain(..) {
-                    mappings.push((dropped, new_sha.clone()));
+                    entries.push((dropped, new_sha.clone(), true));
                 }
                 previous_new_sha = Some(new_sha.clone());
-                mappings.push((old_sha, new_sha));
+                entries.push((old_sha, new_sha, false));
+                matched_count += 1;
             }
             _ => {
                 // '>' (new commit) or other — skip
@@ -1064,7 +1141,23 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
         }
     }
 
-    mappings
+    let squash_count = entries.len() - matched_count;
+    let limit = squash_fanin_limit(matched_count);
+    if squash_count > limit {
+        tracing::warn!(
+            dropped = squash_count,
+            matched = matched_count,
+            limit,
+            "range-diff dropped-commit count dwarfs the matched pairs; \
+             skipping squash mappings (the ranges are not two versions of one branch)"
+        );
+        entries.retain(|(_, _, fabricated)| !fabricated);
+    }
+
+    entries
+        .into_iter()
+        .map(|(old_sha, new_sha, _)| (old_sha, new_sha))
+        .collect()
 }
 
 /// Find the first maximal ASCII-hex run in `s` whose length is a valid git OID
@@ -1405,6 +1498,191 @@ fn extract_b_path(diff_header: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Regression: `run_range_diff` was invoked with unbounded ranges. When a
+    /// stale branch is moved onto a much newer base (update-ref / branch
+    /// sync), the new side of the range spans the entire upstream divergence,
+    /// and the spawned `git range-diff` computes a full diff per commit on
+    /// both sides plus an N×M matching matrix — observed ballooning past
+    /// 30 GB on a large monorepo and crashing the daemon with it. Above the
+    /// commit limit, mapping derivation must skip instead of spawning
+    /// range-diff.
+    #[test]
+    fn derive_mappings_skips_when_range_exceeds_commit_limit() {
+        use crate::git::test_utils::TmpRepo;
+
+        let repo = TmpRepo::new().unwrap();
+        repo.write_file("base.txt", "base\n", false).unwrap();
+        repo.commit_all("base").unwrap();
+
+        // Branch with one real commit.
+        repo.create_branch("feature").unwrap();
+        repo.switch_branch("feature").unwrap();
+        repo.write_file("feature.txt", "feature\n", false).unwrap();
+        let old_tip = repo.commit_all("feature work").unwrap();
+
+        // "Upstream" advances by many commits, then replays the feature
+        // commit — the shape of a stale branch landing on a much newer base.
+        repo.switch_branch("main").unwrap();
+        for i in 0..12 {
+            repo.write_file("upstream.txt", &format!("v{i}\n"), false)
+                .unwrap();
+            repo.commit_all(&format!("upstream {i}")).unwrap();
+        }
+        repo.git_command(&["cherry-pick", &old_tip]).unwrap();
+        let new_tip = repo
+            .git_command(&["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .to_string();
+
+        // Control: within the limit the replayed commit is mapped.
+        let mappings =
+            derive_mappings_from_range_diff(repo.gitai_repo(), &old_tip, &new_tip, None).unwrap();
+        assert!(
+            mappings.iter().any(|(old, _)| old == &old_tip),
+            "control: mapping should be derived for small ranges: {:?}",
+            mappings
+        );
+
+        // Above the limit, derivation must skip entirely.
+        // Safety: test-only env var manipulation.
+        unsafe { std::env::set_var("GIT_AI_RANGE_DIFF_COMMIT_LIMIT", "5") };
+        let mappings = derive_mappings_from_range_diff(repo.gitai_repo(), &old_tip, &new_tip, None);
+        unsafe { std::env::remove_var("GIT_AI_RANGE_DIFF_COMMIT_LIMIT") };
+        assert_eq!(
+            mappings.unwrap(),
+            Vec::new(),
+            "oversized ranges must skip range-diff mapping derivation"
+        );
+    }
+
+    fn sha(i: usize) -> String {
+        format!("{:040x}", i + 1)
+    }
+
+    fn matched_line(old: &str, new: &str) -> String {
+        format!(" 1:  {old} = 1:  {new} subject\n")
+    }
+
+    fn dropped_line(old: &str) -> String {
+        format!(" 2:  {old} < -:  ------------ subject\n")
+    }
+
+    /// A genuine squash keeps its fabricated dropped→kept mappings.
+    #[test]
+    fn parse_range_diff_keeps_proportionate_squash_mappings() {
+        let old_a = sha(1);
+        let old_b = sha(2);
+        let old_c = sha(3);
+        let new_a = sha(100);
+        let output = format!(
+            "{}{}{}",
+            dropped_line(&old_a),
+            dropped_line(&old_b),
+            matched_line(&old_c, &new_a),
+        );
+        let mappings = parse_range_diff_output(&output);
+        assert_eq!(
+            mappings,
+            vec![
+                (old_a, new_a.clone()),
+                (old_b, new_a.clone()),
+                (old_c, new_a),
+            ]
+        );
+    }
+
+    /// Regression (restack-undo mapping bomb): when the dropped-commit count
+    /// dwarfs the matched pairs, the ranges are not two versions of one
+    /// branch — mapping every dropped commit fabricates one full-root-tree
+    /// diff pair per trunk commit and blew the daemon past 30 GB RSS on a
+    /// large monorepo. The fabricated mappings must be dropped wholesale
+    /// while the matched pairs survive.
+    #[test]
+    fn parse_range_diff_drops_disproportionate_squash_mappings() {
+        let matched_old_a = sha(1000);
+        let matched_old_b = sha(1001);
+        let new_a = sha(2000);
+        let new_b = sha(2001);
+        let mut output = String::new();
+        output.push_str(&matched_line(&matched_old_a, &new_a));
+        // 70 "dropped" trunk commits > limit max(64, 2 * 8).
+        for i in 0..70 {
+            output.push_str(&dropped_line(&sha(i)));
+        }
+        output.push_str(&matched_line(&matched_old_b, &new_b));
+
+        let mappings = parse_range_diff_output(&output);
+        assert_eq!(
+            mappings,
+            vec![(matched_old_a, new_a), (matched_old_b, new_b)],
+            "only the matched pairs must survive a disproportionate drop count"
+        );
+    }
+
+    /// End-to-end shape of the production incident, on a real repo: rebase a
+    /// small branch onto an advanced trunk, then undo the restack by moving
+    /// the ref back to the pre-rebase tip (what `gt` does via
+    /// `git reset --keep`). Mapping derivation must return only the
+    /// stack-commit pairs — not one fabricated mapping per trunk commit.
+    #[test]
+    fn derive_mappings_restack_undo_yields_only_stack_mappings() {
+        use crate::git::test_utils::TmpRepo;
+
+        let repo = TmpRepo::new().unwrap();
+        repo.write_file("base.txt", "base\n", false).unwrap();
+        repo.commit_all("base").unwrap();
+
+        repo.create_branch("feature").unwrap();
+        repo.switch_branch("feature").unwrap();
+        repo.write_file("f1.txt", "one\n", false).unwrap();
+        repo.commit_all("stack 1").unwrap();
+        repo.write_file("f2.txt", "two\n", false).unwrap();
+        let orig_tip = repo.commit_all("stack 2").unwrap();
+
+        // Trunk advances by more commits than the squash fan-in limit.
+        repo.switch_branch("main").unwrap();
+        for i in 0..70 {
+            repo.write_file("trunk.txt", &format!("tick {i}\n"), false)
+                .unwrap();
+            repo.commit_all(&format!("trunk {i}")).unwrap();
+        }
+
+        // Restack, then capture the rebased tip and its commits.
+        repo.switch_branch("feature").unwrap();
+        repo.git_command(&["rebase", "main"]).unwrap();
+        let rebased_tip = repo
+            .git_command(&["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .to_string();
+        let rebased_commits: Vec<String> = repo
+            .git_command(&["rev-list", "main..HEAD"])
+            .unwrap()
+            .lines()
+            .map(|l| l.trim().to_string())
+            .collect();
+
+        // The undo direction: old tip = rebased tip, new tip = original tip.
+        let mappings =
+            derive_mappings_from_range_diff(repo.gitai_repo(), &rebased_tip, &orig_tip, None)
+                .unwrap();
+
+        assert_eq!(
+            mappings.len(),
+            2,
+            "restack undo must map only the stack commits: {:?}",
+            mappings
+        );
+        for (old, _) in &mappings {
+            assert!(
+                rebased_commits.contains(old),
+                "mapping source {} is not a stack commit (trunk commit leaked in)",
+                old
+            );
+        }
+    }
 
     #[test]
     fn metric_commits_from_mappings_groups_squashed_sources() {
