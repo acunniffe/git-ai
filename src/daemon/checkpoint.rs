@@ -16,8 +16,16 @@ use crate::git::repository::Repository;
 use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+#[cfg(any(test, not(feature = "test-support")))]
+use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+#[cfg(any(test, not(feature = "test-support")))]
+use std::sync::Mutex;
+#[cfg(not(any(test, feature = "test-support")))]
+use std::sync::OnceLock;
+#[cfg(any(test, not(feature = "test-support")))]
+use std::time::Duration;
 use std::time::Instant;
 #[cfg(not(any(test, feature = "test-support")))]
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -43,28 +51,105 @@ use crate::authorship::working_log::AgentId;
 
 #[cfg_attr(any(test, feature = "test-support"), allow(dead_code))]
 const AGENT_USAGE_MIN_INTERVAL_SECS: u64 = 150;
+#[cfg(any(test, not(feature = "test-support")))]
+const AGENT_USAGE_LIMITER_CAPACITY: usize = 10_000;
 
 #[cfg(not(any(test, feature = "test-support")))]
 const KNOWN_HUMAN_MIN_SECS_AFTER_AI: u64 = 1;
 
+#[cfg(any(test, not(feature = "test-support")))]
+struct AgentUsageLimiter {
+    interval: Duration,
+    capacity: usize,
+    last_emitted: HashMap<String, Instant>,
+    expiry_order: VecDeque<(String, Instant)>,
+}
+
+#[cfg(any(test, not(feature = "test-support")))]
+impl AgentUsageLimiter {
+    fn new(interval: Duration, capacity: usize) -> Self {
+        Self {
+            interval,
+            capacity,
+            last_emitted: HashMap::with_capacity(capacity),
+            expiry_order: VecDeque::with_capacity(capacity),
+        }
+    }
+
+    fn should_emit(&mut self, prompt_id: &str, now: Instant) -> bool {
+        self.expire_stale(now);
+
+        if self.last_emitted.contains_key(prompt_id) {
+            return false;
+        }
+        if self.capacity == 0 {
+            return true;
+        }
+
+        while self.last_emitted.len() >= self.capacity {
+            let Some((oldest_id, emitted_at)) = self.expiry_order.pop_front() else {
+                self.last_emitted.clear();
+                break;
+            };
+            if self.last_emitted.get(&oldest_id) == Some(&emitted_at) {
+                self.last_emitted.remove(&oldest_id);
+            }
+        }
+
+        let prompt_id = prompt_id.to_string();
+        self.last_emitted.insert(prompt_id.clone(), now);
+        self.expiry_order.push_back((prompt_id, now));
+        true
+    }
+
+    fn expire_stale(&mut self, now: Instant) {
+        while let Some((prompt_id, emitted_at)) = self.expiry_order.front() {
+            if now.saturating_duration_since(*emitted_at) < self.interval {
+                break;
+            }
+            if self.last_emitted.get(prompt_id) == Some(emitted_at) {
+                self.last_emitted.remove(prompt_id);
+            }
+            self.expiry_order.pop_front();
+        }
+    }
+
+    #[cfg(test)]
+    fn entry_count(&self) -> usize {
+        self.last_emitted.len()
+    }
+
+    #[cfg(test)]
+    fn expiry_count(&self) -> usize {
+        self.expiry_order.len()
+    }
+}
+
+#[cfg(not(any(test, feature = "test-support")))]
+static AGENT_USAGE_LIMITER: OnceLock<Mutex<AgentUsageLimiter>> = OnceLock::new();
+
+#[cfg(any(test, not(feature = "test-support")))]
+fn should_emit_with_limiter(
+    limiter: &Mutex<AgentUsageLimiter>,
+    prompt_id: &str,
+    now: Instant,
+) -> bool {
+    let Ok(mut limiter) = limiter.lock() else {
+        return true;
+    };
+    limiter.should_emit(prompt_id, now)
+}
+
 #[cfg(not(any(test, feature = "test-support")))]
 pub(crate) fn should_emit_agent_usage(agent_id: &AgentId) -> bool {
     let prompt_id = generate_short_hash(&agent_id.id, &agent_id.tool);
-    let now_ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    let Ok(db) = crate::metrics::db::MetricsDatabase::global() else {
-        return true;
-    };
-    let Ok(mut db_lock) = db.lock() else {
-        return true;
-    };
-
-    db_lock
-        .should_emit_agent_usage(&prompt_id, now_ts, AGENT_USAGE_MIN_INTERVAL_SECS)
-        .unwrap_or(true)
+    let limiter = AGENT_USAGE_LIMITER.get_or_init(|| {
+        Mutex::new(AgentUsageLimiter::new(
+            Duration::from_secs(AGENT_USAGE_MIN_INTERVAL_SECS),
+            AGENT_USAGE_LIMITER_CAPACITY,
+        ))
+    });
+    should_emit_with_limiter(limiter, &prompt_id, Instant::now())
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -1112,4 +1197,74 @@ fn compute_line_stats(
     }
 
     Ok(stats)
+}
+
+#[cfg(test)]
+mod agent_usage_limiter_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn suppresses_until_the_interval_expires() {
+        let mut limiter = AgentUsageLimiter::new(Duration::from_secs(150), 10_000);
+        let start = Instant::now();
+
+        assert!(limiter.should_emit("session", start));
+        assert!(!limiter.should_emit("session", start + Duration::from_secs(149)));
+        assert!(limiter.should_emit("session", start + Duration::from_secs(150)));
+    }
+
+    #[test]
+    fn capacity_is_bounded_and_evicts_the_oldest_valid_entry() {
+        assert_eq!(AGENT_USAGE_LIMITER_CAPACITY, 10_000);
+        let mut limiter = AgentUsageLimiter::new(Duration::from_secs(150), 3);
+        let start = Instant::now();
+
+        assert!(limiter.should_emit("first", start));
+        assert!(limiter.should_emit("second", start + Duration::from_secs(1)));
+        assert!(limiter.should_emit("third", start + Duration::from_secs(2)));
+        assert_eq!(limiter.entry_count(), 3);
+        assert_eq!(limiter.expiry_count(), 3);
+
+        assert!(limiter.should_emit("fourth", start + Duration::from_secs(3)));
+        assert_eq!(limiter.entry_count(), 3);
+        assert_eq!(limiter.expiry_count(), 3);
+        assert!(
+            limiter.should_emit("first", start + Duration::from_secs(4)),
+            "the oldest valid entry should have been evicted"
+        );
+        assert!(
+            !limiter.should_emit("third", start + Duration::from_secs(4)),
+            "newer entries should remain suppressed"
+        );
+    }
+
+    #[test]
+    fn stale_entries_are_expired_before_capacity_eviction() {
+        let mut limiter = AgentUsageLimiter::new(Duration::from_secs(10), 2);
+        let start = Instant::now();
+
+        assert!(limiter.should_emit("stale", start));
+        assert!(limiter.should_emit("live", start + Duration::from_secs(9)));
+        assert!(limiter.should_emit("new", start + Duration::from_secs(10)));
+
+        assert_eq!(limiter.entry_count(), 2);
+        assert_eq!(limiter.expiry_count(), 2);
+        assert!(!limiter.should_emit("live", start + Duration::from_secs(10)));
+    }
+
+    #[test]
+    fn poisoned_lock_fails_open() {
+        let limiter = Mutex::new(AgentUsageLimiter::new(Duration::from_secs(150), 1));
+        let _ = std::panic::catch_unwind(|| {
+            let _guard = limiter.lock().unwrap();
+            panic!("poison limiter");
+        });
+
+        assert!(should_emit_with_limiter(
+            &limiter,
+            "session",
+            Instant::now()
+        ));
+    }
 }
