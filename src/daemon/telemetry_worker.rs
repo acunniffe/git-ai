@@ -1247,7 +1247,7 @@ fn flush_sentry_and_posthog(
             let agent = crate::http::build_agent(Some(30));
             let request = agent
                 .post(&endpoint)
-                .set("Content-Type", "application/json");
+                .header("Content-Type", "application/json");
             let _ = crate::http::send_with_body(
                 request,
                 &serde_json::to_string(&ph_event).unwrap_or_default(),
@@ -1499,8 +1499,8 @@ impl SentryClient {
         let agent = crate::http::build_agent(Some(30));
         let request = agent
             .post(&self.endpoint)
-            .set("X-Sentry-Auth", &auth_header)
-            .set("Content-Type", "application/json");
+            .header("X-Sentry-Auth", &auth_header)
+            .header("Content-Type", "application/json");
         let response = crate::http::send_with_body(request, &body)?;
 
         let status = response.status_code;

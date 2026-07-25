@@ -188,30 +188,39 @@ impl ApiContext {
     /// Create a GET request with common headers (User-Agent, X-Distinct-ID)
     /// Use this for all HTTP GET requests to ensure consistent headers.
     /// The returned (Agent, Request) pair uses the system's native certificate store.
-    pub fn http_get(url: &str, timeout_secs: Option<u64>) -> (ureq::Agent, ureq::Request) {
+    pub fn http_get(
+        url: &str,
+        timeout_secs: Option<u64>,
+    ) -> (
+        ureq::Agent,
+        ureq::RequestBuilder<ureq::typestate::WithoutBody>,
+    ) {
         let agent = http::build_agent(timeout_secs);
         let request = agent
             .get(url)
-            .set(
+            .header(
                 "User-Agent",
                 &format!("git-ai/{}", env!("CARGO_PKG_VERSION")),
             )
-            .set("X-Distinct-ID", &config::get_or_create_distinct_id());
+            .header("X-Distinct-ID", &config::get_or_create_distinct_id());
         (agent, request)
     }
 
     /// Create a POST request with common headers (User-Agent, X-Distinct-ID)
     /// Use this for all HTTP POST requests to ensure consistent headers.
     /// The returned (Agent, Request) pair uses the system's native certificate store.
-    pub fn http_post(url: &str, timeout_secs: Option<u64>) -> (ureq::Agent, ureq::Request) {
+    pub fn http_post(
+        url: &str,
+        timeout_secs: Option<u64>,
+    ) -> (ureq::Agent, ureq::RequestBuilder<ureq::typestate::WithBody>) {
         let agent = http::build_agent(timeout_secs);
         let request = agent
             .post(url)
-            .set(
+            .header(
                 "User-Agent",
                 &format!("git-ai/{}", env!("CARGO_PKG_VERSION")),
             )
-            .set("X-Distinct-ID", &config::get_or_create_distinct_id());
+            .header("X-Distinct-ID", &config::get_or_create_distinct_id());
         (agent, request)
     }
 
@@ -313,16 +322,16 @@ impl ApiContext {
         let body_json = serde_json::to_string(body).map_err(GitAiError::JsonError)?;
 
         let (_agent, mut request) = Self::http_post(&url, self.timeout_secs);
-        request = request.set("Content-Type", "application/json");
+        request = request.header("Content-Type", "application/json");
 
         if let Some(api_key) = &self.api_key {
-            request = request.set("X-API-Key", api_key);
+            request = request.header("X-API-Key", api_key);
             if let Some(identity) = &self.author_identity {
-                request = request.set("X-Author-Identity", identity);
+                request = request.header("X-Author-Identity", identity);
             }
         }
         if let Some(token) = &self.auth_token {
-            request = request.set("Authorization", &format!("Bearer {}", token));
+            request = request.header("Authorization", &format!("Bearer {}", token));
         }
 
         http::send_with_body(request, &body_json)
@@ -336,13 +345,13 @@ impl ApiContext {
         let (_agent, mut request) = Self::http_get(&url, self.timeout_secs);
 
         if let Some(api_key) = &self.api_key {
-            request = request.set("X-API-Key", api_key);
+            request = request.header("X-API-Key", api_key);
             if let Some(identity) = &self.author_identity {
-                request = request.set("X-Author-Identity", identity);
+                request = request.header("X-Author-Identity", identity);
             }
         }
         if let Some(token) = &self.auth_token {
-            request = request.set("Authorization", &format!("Bearer {}", token));
+            request = request.header("Authorization", &format!("Bearer {}", token));
         }
 
         http::send(request).map_err(|e| GitAiError::Generic(format!("HTTP request failed: {}", e)))
