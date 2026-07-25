@@ -9,6 +9,7 @@ import dataclasses
 import json
 import math
 import os
+import signal
 import shutil
 import statistics
 import subprocess
@@ -183,11 +184,91 @@ def clone_seed_repo(repo_url: str, seed_repo_dir: Path, real_git: Path) -> tuple
     return seed_repo_dir, seed_head
 
 
+def start_perf_profiler(
+    daemon_proc: subprocess.Popen[str] | None,
+    output_path: Path,
+) -> tuple[subprocess.Popen[bytes], Any]:
+    if daemon_proc is None:
+        raise BenchmarkError("Cannot profile a daemon that is not running")
+    if os.name != "posix":
+        raise BenchmarkError("Flamegraph profiling requires a POSIX perf environment")
+    if shutil.which("perf") is None:
+        raise BenchmarkError("Flamegraph profiling requires `perf` on PATH")
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path = output_path.with_suffix(".log")
+    log_file = log_path.open("w", encoding="utf-8")
+    profiler = subprocess.Popen(
+        [
+            "perf",
+            "record",
+            "-F",
+            "99",
+            "--call-graph",
+            "dwarf,4096",
+            "--output",
+            str(output_path),
+            "--pid",
+            str(daemon_proc.pid),
+        ],
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
+    )
+    time.sleep(0.5)
+    if profiler.poll() is not None:
+        log_file.close()
+        detail = log_path.read_text(encoding="utf-8", errors="replace")
+        raise BenchmarkError(
+            f"perf profiler exited before collection started for {output_path}:\n{detail}"
+        )
+    return profiler, log_file
+
+
+def stop_perf_profiler(
+    profiler: tuple[subprocess.Popen[bytes], Any] | None,
+    output_path: Path | None,
+) -> None:
+    if profiler is None:
+        return
+
+    process, log_file = profiler
+    try:
+        if process.poll() is None:
+            process.send_signal(signal.SIGINT)
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+    finally:
+        log_file.close()
+
+    if process.returncode not in (0, -signal.SIGINT, 130):
+        log_path = output_path.with_suffix(".log") if output_path else None
+        detail = (
+            log_path.read_text(encoding="utf-8", errors="replace")
+            if log_path and log_path.exists()
+            else ""
+        )
+        raise BenchmarkError(
+            f"perf profiler failed for {output_path}: exit={process.returncode}\n{detail}"
+        )
+    if output_path is not None and not output_path.exists():
+        raise BenchmarkError(f"perf profiler did not create {output_path}")
+
+
 def setup_variant_runtime(
     variant: Variant,
     runtime_root: Path,
     real_git: Path,
-) -> tuple[dict[str, str], Path, subprocess.Popen[str] | None, Path]:
+    profile_output: Path | None = None,
+) -> tuple[
+    dict[str, str],
+    Path,
+    subprocess.Popen[str] | None,
+    Path,
+    tuple[subprocess.Popen[bytes], Any] | None,
+]:
     tmp_root = Path("/tmp") if os.name != "nt" else Path(tempfile.gettempdir())
     home_dir = Path(
         tempfile.mkdtemp(prefix=f"gai-nasty-{variant.key}-", dir=str(tmp_root))
@@ -210,6 +291,7 @@ def setup_variant_runtime(
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
 
     daemon_proc: subprocess.Popen[str] | None = None
+    profiler: tuple[subprocess.Popen[bytes], Any] | None = None
     if variant.mode == "daemon":
         daemon_dir = home_dir / ".git-ai" / "internal" / "daemon"
         control_socket = daemon_dir / "control.sock"
@@ -245,9 +327,11 @@ def setup_variant_runtime(
         )
         env["GIT_AI_DAEMON_CHECKPOINT_DELEGATE"] = "true"
         env["GIT_AI_DAEMON_CONTROL_SOCKET"] = str(control_socket)
+        if profile_output is not None:
+            profiler = start_perf_profiler(daemon_proc, profile_output)
 
     git_bin = wrapper_git if variant.mode == "wrapper" else real_git
-    return env, git_bin, daemon_proc, home_dir
+    return env, git_bin, daemon_proc, home_dir, profiler
 
 
 def shutdown_daemon(
@@ -255,9 +339,15 @@ def shutdown_daemon(
     runtime_root: Path,
     env: dict[str, str],
     daemon_proc: subprocess.Popen[str] | None,
+    profiler: tuple[subprocess.Popen[bytes], Any] | None = None,
+    profile_output: Path | None = None,
 ) -> None:
     if variant.mode != "daemon":
         return
+    try:
+        stop_perf_profiler(profiler, profile_output)
+    except BenchmarkError as err:
+        print(f"::warning::{err}")
     try:
         run_cmd(
             [str(variant.binary), "daemon", "shutdown"],
@@ -540,6 +630,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--current-bin", type=Path, default=None)
     parser.add_argument("--main-bin", type=Path, default=None)
+    parser.add_argument(
+        "--flamegraph-dir",
+        type=Path,
+        default=None,
+        help="Collect one perf.data profile per daemon variant and repetition.",
+    )
     parser.add_argument("--keep-artifacts", action="store_true")
     return parser.parse_args()
 
@@ -616,6 +712,9 @@ def main() -> int:
 
         all_results: list[VariantRunResult] = []
 
+        if args.flamegraph_dir is not None:
+            args.flamegraph_dir.mkdir(parents=True, exist_ok=True)
+
         for variant in variants:
             for repetition in range(1, args.repetitions + 1):
                 rep_root = work_root / "runs" / variant.key / f"rep_{repetition:02d}"
@@ -624,8 +723,15 @@ def main() -> int:
                 rep_root.mkdir(parents=True, exist_ok=True)
 
                 runtime_root = rep_root / "runtime"
-                env, git_bin, daemon_proc, home_dir = setup_variant_runtime(
-                    variant, runtime_root, real_git
+                profile_output = (
+                    args.flamegraph_dir
+                    / variant.key
+                    / f"rep_{repetition:02d}.data"
+                    if args.flamegraph_dir is not None
+                    else None
+                )
+                env, git_bin, daemon_proc, home_dir, profiler = setup_variant_runtime(
+                    variant, runtime_root, real_git, profile_output
                 )
                 try:
                     cmd = [
@@ -684,7 +790,14 @@ def main() -> int:
                         if bench_repo.exists():
                             shutil.rmtree(bench_repo, ignore_errors=True)
                 finally:
-                    shutdown_daemon(variant, runtime_root, env, daemon_proc)
+                    shutdown_daemon(
+                        variant,
+                        runtime_root,
+                        env,
+                        daemon_proc,
+                        profiler,
+                        profile_output,
+                    )
                     shutil.rmtree(home_dir, ignore_errors=True)
 
         summary = summarize_variant_runs(all_results)
@@ -719,6 +832,7 @@ def main() -> int:
             "real_git": str(real_git),
             "margin_pct": args.margin_pct,
             "margin_baseline": args.margin_baseline,
+            "flamegraph_dir": str(args.flamegraph_dir) if args.flamegraph_dir else None,
             "variants": {v.key: str(v.binary) for v in variants},
         }
 

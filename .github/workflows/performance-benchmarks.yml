@@ -81,7 +81,7 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: Nightly Full Performance Benchmarks
     runs-on: ubuntu-latest
-    timeout-minutes: 480
+    timeout-minutes: 720
     steps:
       - name: Checkout code
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -114,8 +114,8 @@ jobs:
         run: |
           python3 scripts/benchmarks/git/benchmark_modes_vs_main.py \
             --work-root .benchmarks/nightly-modes \
-            --iterations-basic 5 \
-            --iterations-complex 4 \
+            --iterations-basic 10 \
+            --iterations-complex 10 \
             --margin-pct 25 \
             --margin-baseline main_daemon \
             --enforce-margin
@@ -130,7 +130,7 @@ jobs:
             --files 6 \
             --lines-per-file 1500 \
             --burst-every 15 \
-            --repetitions 5 \
+            --repetitions 10 \
             --margin-pct 25 \
             --margin-baseline main_daemon \
             --enforce-margin
@@ -143,4 +143,65 @@ jobs:
           path: |
             .benchmarks/nightly-modes/artifacts/**
             .benchmarks/nightly-nasty/artifacts/**
+          if-no-files-found: ignore
+
+  nightly-flamegraph-benchmarks:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Nightly Flamegraph Performance Profiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 720
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: stable
+
+      - name: Setup Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Install profiling tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y linux-tools-common linux-tools-generic || true
+          if ! command -v perf >/dev/null 2>&1; then
+            sudo apt-get install -y "linux-tools-$(uname -r)"
+          fi
+          perf --version
+          cargo install inferno --version 0.12.6 --locked
+
+      - name: Run profiled nasty benchmark
+        run: |
+          python3 scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py \
+            --work-root .benchmarks/nightly-flamegraphs \
+            --feature-commits 90 \
+            --main-commits 35 \
+            --side-commits 25 \
+            --files 6 \
+            --lines-per-file 1500 \
+            --burst-every 15 \
+            --repetitions 10 \
+            --flamegraph-dir .benchmarks/nightly-flamegraphs/profiles \
+            --margin-pct 25 \
+            --margin-baseline main_daemon
+
+      - name: Render flamegraphs
+        if: always()
+        run: |
+          bash scripts/benchmarks/git/render_flamegraphs.sh \
+            .benchmarks/nightly-flamegraphs/profiles \
+            .benchmarks/nightly-flamegraphs/artifacts/flamegraphs
+
+      - name: Upload flamegraph artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nightly-flamegraph-benchmarks
+          path: .benchmarks/nightly-flamegraphs/**
           if-no-files-found: ignore
