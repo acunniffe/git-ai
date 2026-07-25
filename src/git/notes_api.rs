@@ -454,7 +454,8 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
     );
 
     // 3+4. Batch-fetch from the HTTP backend and cache as synced rows.
-    fetch_and_cache_notes(&uncached).map(|_| ())
+    http_fetch_and_cache_notes(&uncached);
+    Ok(())
 }
 
 /// Fetch authorship notes for the given commits from the HTTP notes backend
@@ -485,7 +486,7 @@ pub fn warm_cache_for_commits(commit_shas: &[String]) -> Result<Vec<String>, Git
         "fetching authorship notes"
     );
 
-    fetch_and_cache_notes(&uncached)
+    Ok(http_fetch_and_cache_notes(&uncached).into_keys().collect())
 }
 
 /// SHAs among `shas` that already have a note in the local notes-db cache.
@@ -509,75 +510,6 @@ fn cached_note_shas(shas: &[String]) -> std::collections::HashSet<String> {
             std::collections::HashSet::new()
         }
     }
-}
-
-/// Batch-fetch notes for `shas` from the HTTP backend (chunks of 100) and
-/// write them into notes-db as already-synced cache rows. Returns the SHAs
-/// cached. Read errors are logged and skipped (best-effort).
-fn fetch_and_cache_notes(shas: &[String]) -> Result<Vec<String>, GitAiError> {
-    use crate::api::client::{ApiClient, ApiContext};
-
-    let cfg = crate::config::Config::fresh();
-    let backend_url = match cfg.notes_backend_url() {
-        Some(url) => url.to_string(),
-        None => {
-            tracing::debug!(
-                "notes backend fetch: notes_backend.backend_url is not configured; skipping"
-            );
-            return Ok(Vec::new());
-        }
-    };
-    let ctx = ApiContext::new(Some(backend_url));
-    let client = ApiClient::new(ctx);
-
-    // Skip when not authenticated (matches daemon flush_notes pattern).
-    if !client.is_logged_in() && !client.has_api_key() {
-        tracing::debug!("notes backend fetch: not authenticated; skipping");
-        return Ok(Vec::new());
-    }
-
-    let mut cached = Vec::new();
-    for chunk in shas.chunks(100) {
-        let sha_refs: Vec<&str> = chunk.iter().map(|s| s.as_str()).collect();
-        match client.read_notes(&sha_refs) {
-            Ok(response) => {
-                if response.notes.is_empty() {
-                    continue;
-                }
-                let entries: Vec<(String, String)> = response.notes.into_iter().collect();
-                match crate::notes::db::NotesDatabase::global() {
-                    Ok(db) => match db.lock() {
-                        Ok(mut lock) => {
-                            if let Err(e) = lock.cache_synced_notes(&entries) {
-                                tracing::warn!(
-                                    "notes backend fetch: cache_synced_notes error: {}",
-                                    e
-                                );
-                            } else {
-                                tracing::debug!(
-                                    count = entries.len(),
-                                    "notes backend fetch: cached notes from backend"
-                                );
-                                cached.extend(entries.into_iter().map(|(sha, _)| sha));
-                            }
-                        }
-                        Err(e) => {
-                            tracing::warn!("notes backend fetch: DB lock poisoned: {}", e);
-                        }
-                    },
-                    Err(e) => {
-                        tracing::warn!("notes backend fetch: failed to open notes-db: {}", e);
-                    }
-                }
-            }
-            Err(e) => {
-                // Best-effort: log and continue.
-                tracing::warn!("notes backend fetch: read_notes error: {}", e);
-            }
-        }
-    }
-
-    Ok(cached)
 }
 
 // --- HTTP backend helpers (private) ---

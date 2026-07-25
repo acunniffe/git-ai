@@ -596,8 +596,9 @@ mod tests {
         let tmp_db = NamedTempFile::new().expect("tmp notes-db");
 
         let repo = TmpRepo::new().expect("TmpRepo::new");
-        repo.write_file("src.txt", "content", false).expect("write");
-        let sha = repo.commit_all("source commit").expect("commit");
+        repo.write_file("src.txt", "missing content", false)
+            .expect("write");
+        let sha = repo.commit_all("missing source commit").expect("commit");
         repo.git_command(&["remote", "add", "origin", "/nonexistent/git-ai-test-remote"])
             .expect("remote add");
 
