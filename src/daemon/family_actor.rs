@@ -7,6 +7,7 @@ use crate::daemon::reducer;
 use crate::daemon::ref_cursor::RefCursor;
 use crate::error::GitAiError;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 
 pub enum FamilyMsg {
@@ -95,52 +96,84 @@ pub fn spawn_family_actor(family_key: FamilyKey) -> FamilyActorHandle {
     };
 
     tokio::spawn(async move {
-        let analyzers = AnalyzerRegistry::new();
-        let mut state = FamilyState {
+        let analyzers = Arc::new(AnalyzerRegistry::new());
+        let state = Arc::new(Mutex::new(FamilyState {
             family_key: family_key.clone(),
             refs: HashMap::new(),
             worktrees: HashMap::new(),
             last_error: None,
             applied_seq: 0,
             watermarks: WatermarkState::default(),
-        };
-        let mut ref_cursor = RefCursor::new(family_key.clone());
+        }));
+        let ref_cursor = Arc::new(Mutex::new(RefCursor::new(family_key.clone())));
 
         while let Some(msg) = rx.recv().await {
             match msg {
                 FamilyMsg::Apply(cmd, respond_to) => {
-                    let mut cmd = *cmd;
-                    let result = ref_cursor.enrich_command(&mut cmd, &state).and_then(
-                        |command_start_refs| {
-                            reducer::reduce_family_command_with_ref_snapshot(
-                                &mut state,
-                                cmd,
-                                &analyzers,
-                                &command_start_refs,
-                            )
-                            .map(|(applied, _)| applied)
-                        },
-                    );
+                    let state = state.clone();
+                    let ref_cursor = ref_cursor.clone();
+                    let analyzers = analyzers.clone();
+                    let result = crate::tokio_runtime::spawn_blocking_result(move || {
+                        let mut state = state.lock().map_err(|_| {
+                            GitAiError::Generic("family state lock poisoned".to_string())
+                        })?;
+                        let mut ref_cursor = ref_cursor.lock().map_err(|_| {
+                            GitAiError::Generic("ref cursor lock poisoned".to_string())
+                        })?;
+                        let mut cmd = *cmd;
+                        ref_cursor
+                            .enrich_command(&mut cmd, &state)
+                            .and_then(|command_start_refs| {
+                                reducer::reduce_family_command_with_ref_snapshot(
+                                    &mut state,
+                                    cmd,
+                                    &analyzers,
+                                    &command_start_refs,
+                                )
+                                .map(|(applied, _)| applied)
+                            })
+                    })
+                    .await;
                     let _ = respond_to.send(result);
                 }
                 FamilyMsg::ApplyCheckpoint(respond_to) => {
-                    reducer::reduce_checkpoint(&mut state);
-                    let _ = respond_to.send(Ok(ApplyAck {
-                        seq: state.applied_seq,
-                        applied: true,
-                    }));
+                    let state = state.clone();
+                    let result = crate::tokio_runtime::spawn_blocking_result(move || {
+                        let mut state = state.lock().map_err(|_| {
+                            GitAiError::Generic("family state lock poisoned".to_string())
+                        })?;
+                        reducer::reduce_checkpoint(&mut state);
+                        Ok(ApplyAck {
+                            seq: state.applied_seq,
+                            applied: true,
+                        })
+                    })
+                    .await;
+                    let _ = respond_to.send(result);
                 }
                 FamilyMsg::Status(respond_to) => {
-                    let _ = respond_to.send(Ok(FamilyStatus {
-                        family_key: state.family_key.clone(),
-                        applied_seq: state.applied_seq,
-                        last_error: state.last_error.clone(),
-                    }));
+                    let result = state
+                        .lock()
+                        .map_err(|_| GitAiError::Generic("family state lock poisoned".to_string()))
+                        .map(|state| FamilyStatus {
+                            family_key: state.family_key.clone(),
+                            applied_seq: state.applied_seq,
+                            last_error: state.last_error.clone(),
+                        });
+                    let _ = respond_to.send(result);
                 }
                 FamilyMsg::GetWatermarks(respond_to) => {
-                    let _ = respond_to.send(Ok(state.watermarks.clone()));
+                    let result = state
+                        .lock()
+                        .map_err(|_| GitAiError::Generic("family state lock poisoned".to_string()))
+                        .map(|state| state.watermarks.clone());
+                    let _ = respond_to.send(result);
                 }
                 FamilyMsg::UpdateWatermarks(update) => {
+                    let Ok(mut state) = state.lock() else {
+                        tracing::error!("family state lock poisoned");
+                        continue;
+                    };
                     for (path, mtime_ns) in update.per_file {
                         let entry = state.watermarks.per_file.entry(path).or_insert(0);
                         if mtime_ns > *entry {

@@ -190,7 +190,12 @@ fn handle_run(args: &[String]) -> Result<(), String> {
             e
         )
     })?;
+    let worker_threads = std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(4)
+        .max(4);
     let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(worker_threads)
         .enable_all()
         .build()
         .map_err(|e| e.to_string())?;

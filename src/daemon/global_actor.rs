@@ -2,6 +2,7 @@ use crate::daemon::analyzers::AnalyzerRegistry;
 use crate::daemon::domain::{AppliedCommand, GlobalState, NormalizedCommand};
 use crate::daemon::reducer;
 use crate::error::GitAiError;
+use std::sync::{Arc, Mutex};
 use tokio::sync::{mpsc, oneshot};
 
 pub enum GlobalMsg {
@@ -41,14 +42,22 @@ pub fn spawn_global_actor() -> GlobalActorHandle {
     let handle = GlobalActorHandle { tx };
 
     tokio::spawn(async move {
-        let analyzers = AnalyzerRegistry::new();
-        let mut state = GlobalState { applied_seq: 0 };
+        let analyzers = Arc::new(AnalyzerRegistry::new());
+        let state = Arc::new(Mutex::new(GlobalState { applied_seq: 0 }));
 
         while let Some(msg) = rx.recv().await {
             match msg {
                 GlobalMsg::Apply(cmd, respond_to) => {
-                    let result = reducer::reduce_global_command(&mut state, *cmd, &analyzers)
-                        .map(|(applied, _)| applied);
+                    let state = state.clone();
+                    let analyzers = analyzers.clone();
+                    let result = crate::tokio_runtime::spawn_blocking_result(move || {
+                        let mut state = state.lock().map_err(|_| {
+                            GitAiError::Generic("global state lock poisoned".to_string())
+                        })?;
+                        reducer::reduce_global_command(&mut state, *cmd, &analyzers)
+                            .map(|(applied, _)| applied)
+                    })
+                    .await;
                     let _ = respond_to.send(result);
                 }
                 GlobalMsg::Shutdown => break,

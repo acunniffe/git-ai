@@ -48,7 +48,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::{Mutex as AsyncMutex, Notify, mpsc, oneshot};
+use tokio::sync::{Notify, mpsc, oneshot};
 use tokio::time::Duration;
 
 pub mod analyzers;
@@ -2514,9 +2514,11 @@ pub struct ActorDaemonCoordinator {
     backend: Arc<crate::daemon::git_backend::SystemGitBackend>,
     coordinator:
         Arc<crate::daemon::coordinator::Coordinator<crate::daemon::git_backend::SystemGitBackend>>,
-    normalizer: AsyncMutex<
-        crate::daemon::trace_normalizer::TraceNormalizer<
-            crate::daemon::git_backend::SystemGitBackend,
+    normalizer: Arc<
+        Mutex<
+            crate::daemon::trace_normalizer::TraceNormalizer<
+                crate::daemon::git_backend::SystemGitBackend,
+            >,
         >,
     >,
     pending_rebase_original_head_by_worktree: Mutex<HashMap<String, (String, Option<String>)>>,
@@ -2592,7 +2594,6 @@ impl DaemonExitAction {
 
 enum TracePayloadApplyOutcome {
     None,
-    Applied(Box<crate::daemon::domain::AppliedCommand>),
     QueuedFamily,
 }
 
@@ -2603,8 +2604,8 @@ impl ActorDaemonCoordinator {
             coordinator: Arc::new(crate::daemon::coordinator::Coordinator::new(
                 backend.clone(),
             )),
-            normalizer: AsyncMutex::new(crate::daemon::trace_normalizer::TraceNormalizer::new(
-                backend.clone(),
+            normalizer: Arc::new(Mutex::new(
+                crate::daemon::trace_normalizer::TraceNormalizer::new(backend.clone()),
             )),
             backend,
             pending_rebase_original_head_by_worktree: Mutex::new(HashMap::new()),
@@ -4148,7 +4149,7 @@ impl ActorDaemonCoordinator {
     }
 
     async fn drain_ready_family_sequencer_entries_locked(
-        &self,
+        self: &Arc<Self>,
         family: &str,
     ) -> Result<(), GitAiError> {
         let mut ready: Vec<(u64, FamilySequencerEntry)> = Vec::new();
@@ -4208,13 +4209,27 @@ impl ActorDaemonCoordinator {
                             let mut commit_file_timestamp_snapshots =
                                 self.take_cached_commit_file_timestamp_snapshots(&root_sid)?;
                             let applied = self.coordinator.route_command(*command).await?;
-                            let side_effect = self
-                                .maybe_apply_side_effects_for_applied_command(
-                                    Some(family),
-                                    &applied,
-                                    &mut commit_file_timestamp_snapshots,
-                                )
-                                .await;
+                            let coordinator = self.clone();
+                            let applied_for_side_effect = applied.clone();
+                            let family_for_side_effect = family.to_string();
+                            let runtime_handle = tokio::runtime::Handle::current();
+                            let side_effect = tokio::task::spawn_blocking(move || {
+                                runtime_handle.block_on(async move {
+                                    coordinator
+                                        .maybe_apply_side_effects_for_applied_command(
+                                            Some(&family_for_side_effect),
+                                            &applied_for_side_effect,
+                                            &mut commit_file_timestamp_snapshots,
+                                        )
+                                        .await
+                                })
+                            })
+                            .await
+                            .map_err(|error| {
+                                GitAiError::Generic(format!(
+                                    "command side-effect blocking task failed: {error}"
+                                ))
+                            })?;
                             Ok::<_, GitAiError>((applied, side_effect))
                         };
                         let caught = std::panic::AssertUnwindSafe(future);
@@ -4366,12 +4381,18 @@ impl ActorDaemonCoordinator {
                                     self.coordinator.apply_checkpoint(Path::new(&repo_wd)).await;
                                 match ack {
                                     Ok(ack) => {
-                                        apply_checkpoint_side_effect(*request).map(|_| ack.seq)
+                                        crate::tokio_runtime::spawn_blocking_result(move || {
+                                            apply_checkpoint_side_effect(*request).map(|_| ack.seq)
+                                        })
+                                        .await
                                     }
                                     Err(error) => Err(error),
                                 }
                             } else {
-                                apply_checkpoint_side_effect(*request).map(|_| 0)
+                                crate::tokio_runtime::spawn_blocking_result(move || {
+                                    apply_checkpoint_side_effect(*request).map(|_| 0)
+                                })
+                                .await
                             }
                         };
                         let caught = std::panic::AssertUnwindSafe(future);
@@ -5871,14 +5892,25 @@ impl ActorDaemonCoordinator {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
+        let payload_sid = payload
+            .get("sid")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
         if event == TRACE_CONNECTION_CLOSED_EVENT {
             let Some(root_sid) = payload_root_sid.as_deref() else {
                 return Ok(TracePayloadApplyOutcome::None);
             };
-            {
-                let mut normalizer = self.normalizer.lock().await;
-                let _ = normalizer.sweep_orphans_for_roots(&[root_sid.to_string()]);
-            }
+            let normalizer = self.normalizer.clone();
+            let root_sid_owned = root_sid.to_string();
+            crate::tokio_runtime::spawn_blocking_result(move || {
+                let mut normalizer = normalizer.lock().map_err(|_| {
+                    GitAiError::Generic("trace normalizer lock poisoned".to_string())
+                })?;
+                let _ = normalizer.sweep_orphans_for_roots(&[root_sid_owned]);
+                Ok(())
+            })
+            .await?;
             let replaced_family = self
                 .replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)
                 .await?;
@@ -5894,17 +5926,18 @@ impl ActorDaemonCoordinator {
         }
 
         self.maybe_append_pending_root_from_trace_payload(&payload)?;
-        let emitted = {
-            let mut normalizer = self.normalizer.lock().await;
-            normalizer.ingest_payload(&payload)?
-        };
+        let normalizer = self.normalizer.clone();
+        let emitted = crate::tokio_runtime::spawn_blocking_result(move || {
+            normalizer
+                .lock()
+                .map_err(|_| GitAiError::Generic("trace normalizer lock poisoned".to_string()))?
+                .ingest_payload(&payload)
+        })
+        .await?;
         let Some(command) = emitted else {
             if is_terminal_root_trace_event(
                 &event,
-                payload
-                    .get("sid")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default(),
+                &payload_sid,
                 payload_root_sid.as_deref().unwrap_or_default(),
             ) && let Some(root_sid) = payload_root_sid.as_deref()
                 && let Some(family) = self
@@ -5931,24 +5964,14 @@ impl ActorDaemonCoordinator {
             self.cache_commit_file_timestamp_snapshots_for_command(&command)?;
             family_to_drain_after_clear = Some(family);
             TracePayloadApplyOutcome::QueuedFamily
-        } else if let Some(family) = command.family_key.as_ref().map(|family| family.0.clone())
-            && Self::trace_invocation_participates_in_family_sequencer(
-                command.primary_command.as_deref(),
-                &command.raw_argv,
-            )
-        {
+        } else if let Some(family) = command.family_key.as_ref().map(|family| family.0.clone()) {
             self.cache_commit_file_timestamp_snapshots_for_command(&command)?;
             self.append_ready_command_entry(&family, command).await?;
             family_to_drain_after_clear = Some(family);
             TracePayloadApplyOutcome::QueuedFamily
         } else {
-            match self.coordinator.route_command(command).await {
-                Ok(applied) => TracePayloadApplyOutcome::Applied(Box::new(applied)),
-                Err(error) => {
-                    let _ = self.clear_trace_root_tracking(&root_sid);
-                    return Err(error);
-                }
-            }
+            self.coordinator.route_command(command).await?;
+            TracePayloadApplyOutcome::None
         };
         self.clear_trace_root_tracking(&root_sid)?;
         self.drain_ready_family_sequencers_after_root_cleared(family_to_drain_after_clear)
@@ -5960,44 +5983,7 @@ impl ActorDaemonCoordinator {
         if !is_trace_payload(&payload) {
             return Ok(());
         }
-        match self.apply_trace_payload_to_state(payload).await? {
-            TracePayloadApplyOutcome::None | TracePayloadApplyOutcome::QueuedFamily => {}
-            TracePayloadApplyOutcome::Applied(applied) => {
-                if let Some(family) = applied.command.family_key.as_ref().map(|key| key.0.clone()) {
-                    self.begin_family_effect(&family)?;
-                    let mut commit_file_timestamp_snapshots =
-                        Self::start_commit_file_timestamp_snapshots_for_command(&applied.command);
-                    let result = self
-                        .maybe_apply_side_effects_for_applied_command(
-                            Some(&family),
-                            &applied,
-                            &mut commit_file_timestamp_snapshots,
-                        )
-                        .await;
-                    let _ = self.end_family_effect(&family);
-                    if let Err(error) = &result {
-                        let _ = self.record_side_effect_error(&family, applied.seq, error);
-                        tracing::error!(
-                            %error,
-                            %family,
-                            seq = applied.seq,
-                            "async side-effect error"
-                        );
-                    }
-                    if let Err(error) =
-                        self.append_command_completion_log(&family, &applied, &result, applied.seq)
-                    {
-                        let _ = self.record_side_effect_error(&family, applied.seq, &error);
-                        tracing::error!(
-                            %error,
-                            %family,
-                            seq = applied.seq,
-                            "async completion log write failed"
-                        );
-                    }
-                }
-            }
-        }
+        let _ = self.apply_trace_payload_to_state(payload).await?;
 
         Ok(())
     }
@@ -6852,82 +6838,18 @@ fn trace_listener_loop_actor(
                 tracing::debug!(%error, "trace connection open bookkeeping error");
                 continue;
             }
-            if let Err(error) =
-                stream.set_recv_timeout(Some(TRACE_CONNECTION_BOOTSTRAP_READ_TIMEOUT))
-            {
-                tracing::debug!(%error, "trace connection bootstrap timeout setup failed");
-            }
-            let mut reader = BufReader::new(stream);
-            let mut observed_roots = std::collections::BTreeSet::new();
-            match bootstrap_trace_connection_actor_reader(
-                &mut reader,
-                coordinator.clone(),
-                &mut observed_roots,
-            ) {
-                Ok(TraceConnectionBootstrap::Eof) => {
-                    if let Err(error) =
-                        finalize_trace_connection_roots(coordinator.clone(), observed_roots)
-                    {
-                        tracing::debug!(
-                            %error,
-                            "trace connection close bookkeeping error"
-                        );
-                    }
-                    continue;
-                }
-                Ok(TraceConnectionBootstrap::Stop) => {
-                    if let Err(error) =
-                        finalize_trace_connection_roots(coordinator.clone(), observed_roots)
-                    {
-                        tracing::debug!(
-                            %error,
-                            "trace connection close bookkeeping error"
-                        );
-                    }
-                    continue;
-                }
-                Ok(TraceConnectionBootstrap::Continue) => {}
-                Err(error) => {
-                    tracing::debug!(%error, "trace connection bootstrap error");
-                    if let Err(error) =
-                        finalize_trace_connection_roots(coordinator.clone(), observed_roots)
-                    {
-                        tracing::debug!(
-                            %error,
-                            "trace connection close bookkeeping error"
-                        );
-                    }
-                    continue;
-                }
-            }
-            if let Err(error) = reader.get_ref().set_recv_timeout(None) {
-                tracing::debug!(%error, "trace connection bootstrap timeout clear failed");
-            }
-            #[cfg(feature = "test-support")]
-            if let Ok(raw_delay_ms) =
-                std::env::var("GIT_AI_TEST_TRACE_LISTENER_WORKER_SPAWN_DELAY_MS")
-                && let Ok(delay_ms) = raw_delay_ms.parse::<u64>()
-                && delay_ms > 0
-            {
-                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
-            }
             let coord = coordinator.clone();
-            let observed_roots_on_spawn_failure = observed_roots.clone();
             if std::thread::Builder::new()
                 .spawn(move || {
-                    if let Err(e) =
-                        handle_trace_connection_actor_reader(reader, coord, observed_roots)
-                    {
+                    if let Err(e) = handle_trace_connection_actor_with_bootstrap(stream, coord) {
                         tracing::debug!(%e, "trace connection error");
                     }
                 })
                 .is_err()
             {
                 tracing::error!("trace listener: failed to spawn handler thread");
-                if let Err(error) = finalize_trace_connection_roots(
-                    coordinator.clone(),
-                    observed_roots_on_spawn_failure,
-                ) {
+                if let Err(error) = coordinator.trace_unidentified_connection_identified_or_closed()
+                {
                     tracing::debug!(
                         %error,
                         "trace connection close bookkeeping error"
@@ -6985,6 +6907,43 @@ fn trace_listener_loop_actor(
 
         Ok(())
     }
+}
+
+#[cfg(not(windows))]
+fn handle_trace_connection_actor_with_bootstrap(
+    stream: LocalSocketStream,
+    coordinator: Arc<ActorDaemonCoordinator>,
+) -> Result<(), GitAiError> {
+    if let Err(error) = stream.set_recv_timeout(Some(TRACE_CONNECTION_BOOTSTRAP_READ_TIMEOUT)) {
+        tracing::debug!(%error, "trace connection bootstrap timeout setup failed");
+    }
+    let mut reader = BufReader::new(stream);
+    let mut observed_roots = std::collections::BTreeSet::new();
+    match bootstrap_trace_connection_actor_reader(
+        &mut reader,
+        coordinator.clone(),
+        &mut observed_roots,
+    ) {
+        Ok(TraceConnectionBootstrap::Continue) => {}
+        Ok(TraceConnectionBootstrap::Eof | TraceConnectionBootstrap::Stop) => {
+            return finalize_trace_connection_roots(coordinator, observed_roots);
+        }
+        Err(error) => {
+            tracing::debug!(%error, "trace connection bootstrap error");
+            return finalize_trace_connection_roots(coordinator, observed_roots);
+        }
+    }
+    if let Err(error) = reader.get_ref().set_recv_timeout(None) {
+        tracing::debug!(%error, "trace connection bootstrap timeout clear failed");
+    }
+    #[cfg(feature = "test-support")]
+    if let Ok(raw_delay_ms) = std::env::var("GIT_AI_TEST_TRACE_LISTENER_WORKER_SPAWN_DELAY_MS")
+        && let Ok(delay_ms) = raw_delay_ms.parse::<u64>()
+        && delay_ms > 0
+    {
+        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+    }
+    handle_trace_connection_actor_reader(reader, coordinator, observed_roots)
 }
 
 #[cfg(windows)]

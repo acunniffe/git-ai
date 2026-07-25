@@ -1596,6 +1596,83 @@ fn daemon_trace_listener_stalled_connection_does_not_block_later_trace_connectio
 }
 
 #[test]
+#[serial]
+fn daemon_slow_unsequenced_side_effect_does_not_block_unrelated_trace_progress() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let _daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[(
+            "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+            "frobnicate=1500",
+        )],
+    );
+    let trace_socket = daemon_trace_socket_path(&repo);
+
+    let other_repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let slow_session = repos::test_repo::new_daemon_test_sync_session_id();
+    let slow_session_arg = format!("git-ai.testSyncSession={slow_session}");
+    let slow_worktree = repo_workdir_string(&repo);
+    let slow_git_dir = repo.path().join(".git").to_string_lossy().to_string();
+    send_trace_frames(
+        &trace_socket,
+        &[
+            json!({
+                "event": "start",
+                "sid": "slow-unsequenced-side-effect",
+                "argv": ["git", "-c", slow_session_arg, "frobnicate"],
+                "time_ns": 20_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "slow-unsequenced-side-effect",
+                "worktree": slow_worktree,
+                "repo": slow_git_dir,
+                "time_ns": 20_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "slow-unsequenced-side-effect",
+                "code": 0,
+                "time_ns": 20_100u64,
+            }),
+            trace_atexit_frame("slow-unsequenced-side-effect", 0, 20_101u64),
+        ],
+    );
+    thread::sleep(Duration::from_millis(150));
+
+    let trace_env = git_trace_env(&trace_socket);
+    let trace_env_refs = [
+        (trace_env[0].0, trace_env[0].1.as_str()),
+        (trace_env[1].0, trace_env[1].1.as_str()),
+    ];
+    fs::write(other_repo.path().join("fast.txt"), "fast\n")
+        .expect("failed to write unrelated repository file");
+    other_repo
+        .git_og_with_env(&["add", "fast.txt"], &trace_env_refs)
+        .expect("unrelated add should succeed");
+    other_repo
+        .git_og_with_env(&["commit", "-m", "unrelated commit"], &trace_env_refs)
+        .expect("unrelated commit should succeed");
+
+    let started = std::time::Instant::now();
+    let response = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&other_repo),
+        },
+        Duration::from_millis(750),
+    )
+    .expect("slow side effect blocked unrelated trace sequencing");
+    assert!(response.ok, "unrelated family sync failed: {response:?}");
+    assert!(
+        started.elapsed() < Duration::from_millis(750),
+        "unrelated family sync took {:?}",
+        started.elapsed()
+    );
+}
+
+#[test]
 #[cfg(not(windows))]
 fn daemon_stalled_unidentified_trace_connection_does_not_block_checkpoint_control_request() {
     let repo = TestRepo::new_dedicated_daemon();
