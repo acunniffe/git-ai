@@ -1,0 +1,39 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  s_8d88c8fcb33d86::t_bb2102ebdf8567 885-957
+src/daemon/control_api.rs
+  s_8d88c8fcb33d86::t_9c2724a71786c8 59-84
+src/daemon.rs
+  s_8d88c8fcb33d86::t_311aef92ebd4b4 4661-4680
+  s_8d88c8fcb33d86::t_c926cbd468b3d9 5161-5234
+src/commands/checkpoint_agent/orchestrator.rs
+  s_8d88c8fcb33d86::t_532f3098cb8a0d 398-400,402-426,470-472,474-498
+tests/integration/bash_attribution.rs
+  s_8d88c8fcb33d86::t_f21a18ca802111 9
+  s_8d88c8fcb33d86::t_7e828e72f0e82f 179-266
+  s_8d88c8fcb33d86::t_38e91e13e0b604 178
+src/daemon/bash_history_db.rs
+  s_8d88c8fcb33d86::t_588e22f9c2a327 475-598,675-698,735-736,738
+  s_8d88c8fcb33d86::t_9f0389833218e9 8,12-13,41-70,116-153,158-159
+  s_8d88c8fcb33d86::t_54e5172d8c7e42 160,797-821
+  s_8d88c8fcb33d86::t_4d139c857d0b26 154-157
+  s_8d88c8fcb33d86::t_fd89c8525dbbde 161
+  s_8d88c8fcb33d86::t_496701a96cc2e0 737
+tests/integration/fuzzer/helpers.rs
+  s_8d88c8fcb33d86::t_43e614702ebb6a 221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.0",
+  "base_commit_sha": "80c76a257726fb91965b2330bbb44a9138f57d95",
+  "prompts": {},
+  "sessions": {
+    "s_8d88c8fcb33d86": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef9eb-f076-7cb1-97a6-e8a992f028b7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Jean-Michel Bouchard <jim@polarcoordinates.org>"
+    }
+  }
+}

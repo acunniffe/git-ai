@@ -1,0 +1,24 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  19692176777716c4 2378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.8",
+  "base_commit_sha": "45a3762bcb45b778fd9c64168d78397dab2503e4",
+  "prompts": {
+    "19692176777716c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "351b5b39-5603-4cbc-95d4-197701fc2a61",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 2,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/28ac6ec9691a66b2215f7c3bdd7bfc4487932c54eeb4296bc13227e25ec4a5a7"
+    }
+  }
+}

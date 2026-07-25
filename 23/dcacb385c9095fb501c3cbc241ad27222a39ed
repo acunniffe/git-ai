@@ -1,0 +1,32 @@
+tests/async_mode.rs
+  s_d46277b929576d::t_e26462660bf11f 206,217
+  s_d46277b929576d::t_c816a2d5b874df 207-216,218-219
+  s_d46277b929576d::t_007a889d0add57 327-330,340-343
+tests/integration/repos/test_repo.rs
+  s_d46277b929576d::t_7269397b3beb5d 2265
+tests/daemon_mode.rs
+  s_d46277b929576d::t_cf5cbf9fc51394 91-110,112-134
+  s_d46277b929576d::t_2dca7a5db8c982 90,111
+src/commands/daemon.rs
+  s_d46277b929576d::t_e0e1a2f2350fb8 287
+  s_d46277b929576d::t_39a483519fc932 259
+  s_d46277b929576d::t_a9f4d0c45bd213 201-206,210-217,219-230
+  s_d46277b929576d::t_94d4be898beec9 193-195,207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "23dcacb385c9095fb501c3cbc241ad27222a39ed",
+  "prompts": {},
+  "sessions": {
+    "s_d46277b929576d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7d963b3-678f-4ed0-8566-d90a0d657703",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": []
+    }
+  }
+}

@@ -1,0 +1,21 @@
+src/daemon.rs
+  s_657ade7d5a1637::t_3ce267124be594 3500-3509
+src/utils.rs
+  s_657ade7d5a1637::t_bb90b7c4bd5dd0 184-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "02caa7e35f819ba25eb2f763cf4f1e10a31de880",
+  "prompts": {},
+  "sessions": {
+    "s_657ade7d5a1637": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e4b6f48-c39b-428f-95b3-512bd9ffcb4e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,36 @@
+src/commands/status.rs
+  ae3bf5ffd2cd6f36 1,7-8,103,110-111,113-116,118,122,180-335
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.34",
+  "base_commit_sha": "46ac3660808eadb8d7fad0a2752b553814acfb8f",
+  "prompts": {
+    "2ab4b1b729ddd496": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "121654f2-fe78-4df9-8c64-e6d6078c1cba",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 16,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "ae3bf5ffd2cd6f36": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "01f58a9e-b284-42be-a146-eacacc90c84e",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 176,
+      "total_deletions": 13,
+      "accepted_lines": 170,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,62 @@
+tests/repos/test_repo.rs
+  9000962 176-177
+tests/cursor.rs
+  9000962 356-450,452-495
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.19",
+  "base_commit_sha": "552a5a1ffd7f0c35468114ed52cd303fba906126",
+  "prompts": {
+    "9000962": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cf055fd5-3c3c-45d5-8d28-65d3dde6bd10",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@cursor.rs (260-356) Add another E2E test that will verify that the resync logic (@post_commit.rs) works correctly.\n\n\n\nAt the top of the test, create a temp sqlite in a new temp dir that's a copy of the fixture sqlite db, but with edited text in one of the messages. Update it with a string that's easy to recognize in the output.\n\n\n\nCopy the logic from test_cursor_e2e_with_attribution, but before the commit call, change the GIT_AI_CURSOR_GLOBAL_DB_PATH to the path of the temp sqlite db.\n\n\n\nMake sure to remove the temp dir for the sqlite db at the end",
+          "timestamp": "2025-11-12T22:55:09.560Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll create a new E2E test that verifies the resync logic works correctly by modifying the Cursor database after checkpointing but before committing.",
+          "timestamp": "2025-11-12T22:55:18.029Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/cursor.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/scripts/create_test_vsc_db.py"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll create a new E2E test that verifies the resync logic works correctly by modifying the database between checkpoint and commit:",
+          "timestamp": "2025-11-12T22:55:29.040Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/tests/cursor.rs"
+          }
+        }
+      ],
+      "total_additions": 185,
+      "total_deletions": 0,
+      "accepted_lines": 176,
+      "overriden_lines": 0
+    }
+  }
+}

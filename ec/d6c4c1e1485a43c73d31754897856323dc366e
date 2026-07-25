@@ -1,0 +1,25 @@
+src/daemon/ref_cursor.rs
+  s_59382cac373d67::t_65c51c54da2609 2199-2203,2218-2222,2233-2253,4863-4867,4873-4897
+src/daemon/analyzers/history.rs
+  s_59382cac373d67::t_65c51c54da2609 143
+docs/daemon-trace2-ingestion-spec.md
+  s_59382cac373d67::t_211fdfcb4b76a9 173-175
+src/daemon.rs
+  s_59382cac373d67::t_65c51c54da2609 639-642,644,4256-4259,4261,4282-4286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "ecd6c4c1e1485a43c73d31754897856323dc366e",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

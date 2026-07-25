@@ -1,0 +1,24 @@
+src/commands/git_ai_handlers.rs
+  1afb79f25d96dbaa 1313,1401
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.8",
+  "base_commit_sha": "2cab72ad3e5f1d82fd3adff24196668d58fe38ec",
+  "prompts": {
+    "1afb79f25d96dbaa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b66447c4-a06a-4a9a-9f2b-36634e6c98a2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/7b1fab593af446c367a2208bf5c30b73fa1030f31e5e79760ae66f6b11f6c203"
+    }
+  }
+}

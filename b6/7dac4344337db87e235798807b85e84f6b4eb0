@@ -1,0 +1,39 @@
+src/utils.rs
+  cac4cfb65a770f39 10,39-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "b67dac4344337db87e235798807b85e84f6b4eb0",
+  "prompts": {
+    "cac4cfb65a770f39": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cf5922d8-fc01-4fce-9390-48042c1b74e1",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Add a helpful oncelock variable to detext if we're in a windows subsystem linux shell",
+          "timestamp": "2025-12-18T02:14:54.081Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing `src/utils.rs` to understand the context before adding a WSL detection variable.",
+          "timestamp": "2025-12-18T02:14:58.463Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a `OnceLock` variable to detect WSL, following the existing pattern. Checking for WSL by reading `/proc/version` or checking environment variables.",
+          "timestamp": "2025-12-18T02:15:03.162Z"
+        }
+      ],
+      "total_additions": 34,
+      "total_deletions": 0,
+      "accepted_lines": 34,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,8 @@
+src/observability/flush.rs
+  f35143d 15,20-23,29,32-35,98-99,120,147,161,223-224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "2276594c4832449374b4d8a52706353d2aef66c7",
+  "prompts": {}
+}

@@ -1,0 +1,24 @@
+tests/integration/repos/test_repo.rs
+  4fc8bc60fc3c5663 2983-2988,3246-3275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "71ce53651587a0d36bc27d64b3af5c8b7a51be88",
+  "prompts": {
+    "4fc8bc60fc3c5663": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbd15-693a-7153-af8b-b3d304655878",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Codex",
+      "messages": [],
+      "total_additions": 38,
+      "total_deletions": 0,
+      "accepted_lines": 38,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/a918566802cecf8960c8495ce9b2744fee58662e922c985f27222abead70e569"
+    }
+  }
+}

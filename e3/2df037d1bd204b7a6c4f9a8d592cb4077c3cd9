@@ -1,0 +1,24 @@
+tests/integration/repo_storage_unit.rs
+  s_f00ef7c0f45b07::t_f882988937a04f 356-392
+  s_f00ef7c0f45b07::t_9da738505b132c 416-422
+tests/integration/checkpoint_unit.rs
+  s_f00ef7c0f45b07::t_cb8c7adcc4bd94 1263-1266,1268,1317-1320,1363,1365-1368
+src/git/repo_storage.rs
+  s_f00ef7c0f45b07::t_4254631a24d0ac 662-669,722-725
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "e32df037d1bd204b7a6c4f9a8d592cb4077c3cd9",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+src/mdm/agents/opencode.rs
+  s_48e9fed71298c0::t_b2cb305ce6fa4a 218-219,241-244
+agent-support/opencode/git-ai.ts
+  s_48e9fed71298c0::t_c8d5e7df87b800 238,272-279,306-329,333-351,425,428-429
+  s_48e9fed71298c0::t_7f8a8dc2bdf6d7 245-254,281-287,295-299
+  s_48e9fed71298c0::t_e3adb1fa24d5ae 143-155,158-162,354-356,362,364-368,370,377,381-382,384,389,395,399-400,402,413,415-416,420-422,424,426-427,436,438
+  s_48e9fed71298c0::t_d1678662d1d4eb 449-450
+  s_48e9fed71298c0::t_c1ac933fa509aa 21,181-186,201-210,215-220,222-224,226-237,258-259,387,405,441
+  s_48e9fed71298c0::t_9f1e9f804d76e4 163-170,173-180,187-200,211-214,221,225,263-264,407-408,442-443
+agent-support/opencode/README.md
+  s_48e9fed71298c0::t_9b8d6814cce0c4 20-21,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "b5f3cca1d1b4d4ba82ce293bb84f4cd5cf560004",
+  "prompts": {},
+  "sessions": {
+    "s_48e9fed71298c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8e27-0a8c-7eb2-b677-5719a3a20122",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
