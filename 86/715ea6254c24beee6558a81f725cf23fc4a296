@@ -1,0 +1,44 @@
+tests/integration/claude_code.rs
+  s_751e09f5b8f66b::t_3141acac68a2bf 79,138,166
+  s_751e09f5b8f66b::t_d633b7079c386f 379
+src/commands/checkpoint_agent/presets/claude.rs
+  s_751e09f5b8f66b::t_6540b6df191836 228-247,264-279
+  s_751e09f5b8f66b::t_bcba2105a3adcc 51-52,55-58,71
+  s_751e09f5b8f66b::t_8c31a55b067f8a 53-54
+  s_751e09f5b8f66b::t_8734e5cf325045 227,248-263
+tests/integration/rewrite_ops_attribution.rs
+  s_751e09f5b8f66b::t_11c55c4c0e3be2 322
+src/daemon/checkpoint.rs
+  s_751e09f5b8f66b::t_c172a2e2a05fa8 128,143
+  s_751e09f5b8f66b::t_8734e5cf325045 55,61-66,69-127,129,146-151
+  s_751e09f5b8f66b::t_9f8b8780e84016 144-145
+  s_4d9b233c5a1999::t_35a6f7b97f3d59 25
+  s_751e09f5b8f66b::t_e8a1ceeeae82ee 19-20
+  s_751e09f5b8f66b::t_dfb47b216b5ffa 23-24,26,54,130-137,140-141,152,1219,1254-1268
+  s_751e09f5b8f66b::t_6540b6df191836 1201-1218,1220-1253,1269-1270
+  s_751e09f5b8f66b::t_cea118a078d984 27-28,60,68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "86715ea6254c24beee6558a81f725cf23fc4a296",
+  "prompts": {},
+  "sessions": {
+    "s_4d9b233c5a1999": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e6a7bc9-0cb8-47aa-8408-4cab72391b45",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_751e09f5b8f66b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9a5b-bd84-7ff1-a10c-18128c4cf431",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
