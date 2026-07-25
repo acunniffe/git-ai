@@ -566,7 +566,7 @@ mod tests {
 
         set_http_backend_env(tmp_db.path().to_str().unwrap(), &server.url());
 
-        let result = fetch_missing_notes_for_commits(repo.gitai_repo(), &[sha.clone()]);
+        let result = fetch_missing_notes_for_commits(repo.gitai_repo(), std::slice::from_ref(&sha));
 
         // The note must now be in the local cache as an already-synced row.
         let cached = {
@@ -613,7 +613,7 @@ mod tests {
             .create();
 
         set_http_backend_env(tmp_db.path().to_str().unwrap(), &server.url());
-        let result = fetch_missing_notes_for_commits(repo.gitai_repo(), &[sha.clone()]);
+        let result = fetch_missing_notes_for_commits(repo.gitai_repo(), std::slice::from_ref(&sha));
         clear_http_backend_env();
 
         let err = result.expect_err("missing everywhere should still be an error");
