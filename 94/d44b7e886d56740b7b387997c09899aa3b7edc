@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.2",
+  "base_commit_sha": "94d44b7e886d56740b7b387997c09899aa3b7edc",
+  "prompts": {
+    "bb67f639212bf81f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "9d85bfac-3b2a-42cc-b402-408ae7319812",
+        "model": "openai-codex/gpt-5.4"
+      },
+      "human_author": "Siarhei Belavus <Siarhei_Belavus@epam.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 14,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

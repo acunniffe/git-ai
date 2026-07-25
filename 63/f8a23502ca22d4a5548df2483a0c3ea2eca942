@@ -1,0 +1,23 @@
+tests/github_copilot.rs
+  5e723c2 9-16,19,39,135,152,188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "63f8a23502ca22d4a5548df2483a0c3ea2eca942",
+  "prompts": {
+    "5e723c2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9492e55b-9cd8-4fba-85df-5f4ff40105a0",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 43,
+      "total_deletions": 30,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}

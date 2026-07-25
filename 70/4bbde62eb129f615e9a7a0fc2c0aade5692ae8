@@ -1,0 +1,19 @@
+src/git/repository.rs
+  s_22c662336d649a::t_3cdc15f0663c31 1236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "704bbde62eb129f615e9a7a0fc2c0aade5692ae8",
+  "prompts": {},
+  "sessions": {
+    "s_22c662336d649a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "374fbd35-b4a6-48a9-8d7a-f56eb450bfab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

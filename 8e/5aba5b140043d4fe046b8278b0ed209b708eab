@@ -1,0 +1,48 @@
+tests/daemon_mode.rs
+  e7e7672ec6134b0e 4138-4141,4144,4155,4159-4162,4165-4170,4176,4181-4219,4221-4230,4233,4236,4238,4241-4242,4244-4259
+tests/windows_install_script.rs
+  1de99838d60c8a4f 445-453
+install.ps1
+  1de99838d60c8a4f 4-21,27,543-544
+src/commands/daemon.rs
+  e7e7672ec6134b0e 192-203
+src/commands/upgrade.rs
+  1de99838d60c8a4f 53,539-556,572
+  e7e7672ec6134b0e 315-319
+src/daemon.rs
+  e7e7672ec6134b0e 3800-3806,8058,8066,8070,8074-8075
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "8e5aba5b140043d4fe046b8278b0ed209b708eab",
+  "prompts": {
+    "1de99838d60c8a4f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d87f9-2f98-7b70-8fbf-b428121372fa",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 54,
+      "total_deletions": 17,
+      "accepted_lines": 1139,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e40fe1242afb48444a78ce75e7fc708fa0e3dbbf00fcdc6db6b4a0e8cda4e6b0"
+    },
+    "e7e7672ec6134b0e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019da1ec-08b0-7fe0-b125-fbf85535aa88",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 116,
+      "total_deletions": 40,
+      "accepted_lines": 11724,
+      "overriden_lines": 0
+    }
+  }
+}

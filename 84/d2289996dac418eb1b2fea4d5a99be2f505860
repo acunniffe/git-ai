@@ -1,0 +1,24 @@
+src/daemon/telemetry_worker.rs
+  s_c3aa905e9dfee2::t_76f33b2f95f39b 959-969,975-976,978,989,1013,1026,1028,1039,1063,1076-1077,1086
+src/commands/usage.rs
+  s_c3aa905e9dfee2::t_dc3e1d63ceceda 145
+src/metrics/db.rs
+  s_c3aa905e9dfee2::t_29d81ad4e2555b 661,682,830-831
+  s_c3aa905e9dfee2::t_069cdc467610e3 79-80,287,337,341,343-346,369,375-380,386-408,509-520,539-559,639-640,643-644,657-659,671-672,678-680,690,699,713-717,725-729,743-752,754-756,768,770,778,781-786,793-806,816-829,832-839
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "84d2289996dac418eb1b2fea4d5a99be2f505860",
+  "prompts": {},
+  "sessions": {
+    "s_c3aa905e9dfee2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e953b-a3d6-78c1-ab12-b3623076acea",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

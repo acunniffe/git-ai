@@ -1,0 +1,31 @@
+src/daemon.rs
+  71f132d171c301c4 21-23,688,690,1472-1503,1505,1507-1533,1551-1558,1565-1581,1589-1601,1613-1622,1628-1631,1637-1643,1648-1681,1683-1701,1705,1708-1744,3282-3298,3300-3312,3454-3482,6652-6665,6761,6763-6774,7131-7134,7138-7143,7227-7230,7234-7239
+src/daemon/analyzers/history.rs
+  71f132d171c301c4 112,122-135
+src/daemon/reducer.rs
+  71f132d171c301c4 115,117
+src/daemon/domain.rs
+  71f132d171c301c4 145-148,152-155
+src/commands/hooks/revert_hooks.rs
+  71f132d171c301c4 1-16,22-134,139,148-149,156-163,171-174,176-189,192-202,207-210,220,222-253,284-370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.1",
+  "base_commit_sha": "a240f0ccfe232c3f0bc3a8e7e98cfea89e749768",
+  "prompts": {
+    "71f132d171c301c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5597a7ef-171b-4c73-b5b4-da83540f06d5",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}

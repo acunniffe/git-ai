@@ -1,0 +1,24 @@
+readme.es.md
+  64374bc8396f0f71 1-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.2",
+  "base_commit_sha": "11bf7ec41b4cbb0c76ed885354f88addfbe940e0",
+  "prompts": {
+    "64374bc8396f0f71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8ae15d2d-987d-4115-af4c-94d3cf658b33",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 148,
+      "total_deletions": 40,
+      "accepted_lines": 148,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/a45f8d71b70f7bdee3912b07ebf50a65802f769222e6f9c6ceb2a554e634029a"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+.github/workflows/codeql.yml
+  s_1a41cd9a29f411::t_273a3282f7f3d6 76
+.github/dependabot.yml
+  s_1a41cd9a29f411::t_273a3282f7f3d6 40-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "6cd32463a6d4a1c71d3d5e6a43a04574eafbb0c9",
+  "prompts": {},
+  "sessions": {
+    "s_1a41cd9a29f411": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8b40-974e-7ee0-a583-7c0632f048a1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/GitAiService.kt
+  11d03b37dc3ad21b 7,352-415
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/DocumentSaveListener.kt
+  11d03b37dc3ad21b 1-123
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/DocumentChangeTrackerService.kt
+  11d03b37dc3ad21b 4,9,12,43-44,46,48-53
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/model/CheckpointModels.kt
+  11d03b37dc3ad21b 7-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "db74404701431a72134a1e0b0e67db65de2a4a74",
+  "prompts": {
+    "11d03b37dc3ad21b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9e7961-e2a3-4c64-9188-a3037cb57221",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 264,
+      "total_deletions": 803,
+      "accepted_lines": 232,
+      "overriden_lines": 0
+    }
+  }
+}

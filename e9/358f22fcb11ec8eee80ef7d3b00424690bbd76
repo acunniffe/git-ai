@@ -1,0 +1,20 @@
+.gitignore
+  s_122f961aa46a22::t_cd841fe7e90453 44,46-49
+  s_122f961aa46a22::t_c23b5e47b62d3f 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "e9358f22fcb11ec8eee80ef7d3b00424690bbd76",
+  "prompts": {},
+  "sessions": {
+    "s_122f961aa46a22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c99dd480-07a1-4da6-8ad5-4bc2483187aa",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

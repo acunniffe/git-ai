@@ -1,0 +1,24 @@
+src/commands/install_hooks.rs
+  96b7c30da68436d8 408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "fdd3dd5168e7a8ff5c9b0dde7b8855e43673d36a",
+  "prompts": {
+    "96b7c30da68436d8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e58b82fc-5ebf-44d6-9137-ed5b18a6f08a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 3,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/d44a6bcf10464eba176e18d9361c699cf5550a60ee4b8ab75f8c327152619bae"
+    }
+  }
+}
