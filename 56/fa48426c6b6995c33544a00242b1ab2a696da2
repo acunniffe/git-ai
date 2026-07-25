@@ -1,0 +1,31 @@
+skills/git-ai-hooks/SKILL.md
+  fcfd0e5dba88c746 1-251
+skills/git-ai-test/SKILL.md
+  fcfd0e5dba88c746 1-293
+skills/git-ai-architecture/SKILL.md
+  fcfd0e5dba88c746 1-219
+skills/git-ai-attribution/SKILL.md
+  fcfd0e5dba88c746 1-212
+skills/git-ai-add-agent/SKILL.md
+  fcfd0e5dba88c746 1-352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "56fa48426c6b6995c33544a00242b1ab2a696da2",
+  "prompts": {
+    "fcfd0e5dba88c746": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fc2732b0-09d8-4ad2-8393-7fe6acc87c3e",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>",
+      "messages": [],
+      "total_additions": 1327,
+      "total_deletions": 0,
+      "accepted_lines": 1327,
+      "overriden_lines": 0
+    }
+  }
+}

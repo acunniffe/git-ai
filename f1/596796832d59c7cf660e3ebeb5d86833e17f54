@@ -1,0 +1,55 @@
+tests/performance.rs
+  c4a54a1 224,522-526,547-550,552-582,584-594,596-633,638-641
+  4dc05d4 546,583,595
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "f1596796832d59c7cf660e3ebeb5d86833e17f54",
+  "prompts": {
+    "c4a54a1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6eb7befd-9cc1-4fb5-8826-0d641351c539",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/performance.rs:84-147 Now add a test case where we reset each of these test repos HEAD~5 \n\n\n\nWe'll be benchmarking the result of the git reset line use --mixed (default)",
+          "timestamp": "2025-11-30T12:38:26.678Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll add a new test case that benchmarks `git reset HEAD~5` on the performance repos. Let me first read the file to understand the full context and then add the new test.",
+          "timestamp": "2025-11-30T12:38:32.721Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll add a new test case that benchmarks `git reset HEAD~5` on each performance repo:",
+          "timestamp": "2025-11-30T12:38:39.871Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've added the new test case `test_git_reset_head_5` that:\n\n1. **Parameterized with rstest**: Tests all four repos (chromium, react, node, chakracore)\n2. **Uses the Sampler**: Runs the benchmark 10 times for statistical accuracy\n3. **Benchmarks git reset**: Uses `benchmark_git(&[\"reset\", \"HEAD~5\"])` to measure the performance of resetting HEAD by 5 commits (using `--mixed` by default)\n4. **Reports results**: Prints a summary and asserts that the overhead is less than 10% or under 70ms\n\nThe test follows the exact same pattern as the existing performance tests and will measure the overhead introduced by your git wrapper when performing a `git reset HEAD~5` operation on large repositories.",
+          "timestamp": "2025-11-30T12:39:01.073Z"
+        },
+        {
+          "type": "user",
+          "text": "this makes the fs dirty. \n\n\n\nBefore each run of the sampler we need to reset --HARD checkout main or master and then checkout a new branch with the timestamp in nanoseconds. \n\n\n\nThat should happen in the sampler loop, ie before the benchmark starts and not included in its duration",
+          "timestamp": "2025-11-30T12:47:41.723Z"
+        },
+        {
+          "type": "assistant",
+          "text": "You're absolutely right! The `git reset HEAD~5` changes the state of the repository, and we need to reset it to a clean state before each benchmark run. Let me modify the `Sampler` to support a setup function that runs before each benchmark but isn't included in the timing.",
+          "timestamp": "2025-11-30T12:47:51.222Z"
+        }
+      ],
+      "total_additions": 193,
+      "total_deletions": 132,
+      "accepted_lines": 156,
+      "overriden_lines": 0
+    }
+  }
+}

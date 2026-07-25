@@ -1,0 +1,283 @@
+src/authorship/post_commit.rs
+  s_4d604bdd40c765::t_9c8d9871872f24 777-781,785-792,805,808-814
+  s_4d604bdd40c765::t_9e6d9e733215fa 734
+  s_8e83c3b3c7c61d::t_db926e2b8e7569 336
+src/daemon.rs
+  s_1a85c38b16fa1d::t_c533e14c981aa0 4659-4671,4673-4679,4680
+  s_4d604bdd40c765::t_f174e04c535209 4253-4256,4743-4748,4764,4766-4770
+src/authorship/rewrite_revert.rs
+  s_4d604bdd40c765::t_2214ccb72e76ba 208
+  s_4d604bdd40c765::t_06ee7641675289 26
+src/daemon/telemetry_worker.rs
+  s_4d604bdd40c765::t_adafc1063f9359 411-412,426-428,432-434,544-545,571,595-596,604,608,629
+  s_4d604bdd40c765::t_1f1b34abd31905 1054-1057,1061,1075-1076,1083-1085,1111,1114,1118-1119,1122-1124,1409,1461,1463,1604,1605
+src/commands/flush_metrics_db.rs
+  s_4d604bdd40c765::t_f3545954d0d551 37,90,158-159,161-163,170,176
+  s_4d604bdd40c765::t_c09a792f0c7dc0 92,95,102
+src/api/metrics.rs
+  s_4d604bdd40c765::t_e2ccb52eeb1aa0 97,128
+src/metrics/db.rs
+  s_4d604bdd40c765::t_049fb7886f2f98 39,43,47,65,69-70,424,427,429-431,432-433,463-465,480-482,485-486,487-490,629-631,723-725,745-746,1167,1169-1170,1176,1180,1185,1187,1219,1229
+src/commands/checkpoint_agent/bash_tool.rs
+  s_4d604bdd40c765::t_e54732a2332445 723-724,727,732-736,1075-1083
+tests/commit_tree_update_ref.rs
+  s_4d604bdd40c765::t_53e8f516dcf2a4 1599-1602,1656,1662
+src/authorship/rewrite.rs
+  s_4d604bdd40c765::t_ac977ff2e3d330 33,65
+  s_1a85c38b16fa1d::t_3313a9ae039525 223,224-225
+src/daemon/ref_cursor.rs
+  s_f58a98d05d9937::t_66c212cc999af8 3584
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.1",
+  "base_commit_sha": "fb5c37ab501500d6dbf9f8eff694916073d510b9",
+  "prompts": {},
+  "humans": {
+    "h_55c03ed47cd416": {
+      "author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  },
+  "sessions": {
+    "s_036a6de1292055": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1a6e-f593-71b1-8b37-29dabd151fb5",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_0530124e9f5a17": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14984244-894a-465c-bc0b-0f9359297894",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_0844fb27570d8e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5924c828-8379-467c-a0c2-1943fa70ad31",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_0ba1e51f829972": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19fd-406e-78e3-a828-931bfd0e5914",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_0f5812920f4840": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1b22-da84-7df2-a0c7-2b5b5b4bbf34",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_1a85c38b16fa1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1368-2fba-70e1-bd6d-bd045e4ef3c6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_265a605c5598a3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1ad2-b684-7bb2-9cdb-ace8798b8812",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_2d90d8f4c707ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72efe3a5-00fd-461e-9d62-0b73fb23745a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_35dc4a4b913bd2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6143c255-d93d-4a16-bf9f-af1f008b2180",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_362a9c73a1ff77": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19dd-d615-7bf1-86ee-d496ac6d02e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_3880dfc4c35cce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc890d65-8658-4779-b476-3fe806de6214",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_3dfd94f53cf5e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a681e9e-d3c3-4f0a-8f6f-3b78e3b1c3af",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_4d604bdd40c765": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee61a-3160-7480-af4b-dd94e5be48f4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_5822efdedb26cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efcbc-8f48-7602-a00f-b20b39b170ef",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_8e83c3b3c7c61d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca8fbe89-bde1-483e-a6c0-549cee63008a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_93ad1369d7e6f1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1994-05a5-7f83-80be-8f99134d0c9c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_9f07184cc60a68": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-607d47aff9aa4e22ae2ce4346cfa8dfb",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    },
+    "s_b3c79325ff54fc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1ae9-c83a-7c71-a6da-bd3cc77f5895",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b4951e5994e4b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "620ef502-7d5e-4560-9361-ed0d98b50b03",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_b880de3a5e6407": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19db-47e2-7340-a92b-59658d9d09e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_b9c74d90e0aacc": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-88a9bdf107f3460a84a94a562c43798b",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    },
+    "s_c4ca5b937d6408": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1b1d-f1f6-7440-93e9-ad97852606ec",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_d34e7ce9ab7fab": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1919-4021-7083-80a4-d6ad685c2110",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_d4ba0b7e7be54b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7279c43e-98b1-4bdd-96c2-8e55879192f3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_dbb553167a7332": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1378-6188-7562-b85f-cd20f8c541a8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_ddd48773cb990e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52faaf7a-10cf-40f8-98a8-fcc7f4f083b2",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_df5c2180fad6dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "511fa59a-1523-41b7-80fb-431b11a0ec93",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_ea99f27079798b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17d0f6d4-d727-4e33-8c95-d2052548fcd0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_eea46f23857832": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9bc81d39-8ea6-4f3d-ac93-268830a4a7f3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_f58a98d05d9937": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1497-2df7-7341-93a1-ec2edf49d2ac",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

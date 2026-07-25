@@ -1,0 +1,113 @@
+tests/github/push_rewrite.rs
+  1a4dc0a 1-24,26-39,41-80,82-116,118-268,271-627
+  human 25,40,81,269
+tests/github/mod.rs
+  1a4dc0a 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "d9ab30fa97a35fde3343a1a742ca9c9dccedd78e",
+  "prompts": {
+    "1a4dc0a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d7b684e8-8d0e-4a7f-ad50-d6f0c89e3c1d",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/github/basic_pr_test.rs:1-88  let's use this style harness to test our new @src/commands/hooks/push_hooks.rs  with real GitHub repos\n\n\n\ncall the suite push_rewrite.rs\n\n\n\nMain cases\n\n1. a remote with no authorship notes\n\n2. a remote with some notes that area ahead\n\n3. a remote with some notes that are behind\n\n\n\nIt's ok with me if you manually add those notes with a random sha. don't care if it has a corresponding commit in the tree\n\n\n\nOther cases\n\n1. pushing to a fork",
+          "timestamp": "2025-11-23T16:52:24.293Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll create comprehensive integration tests for the push hooks functionality using the GitHub test harness style. Let me first examine the test infrastructure to understand the available utilities.",
+          "timestamp": "2025-11-23T16:52:31.335Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/github/mod.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "glob_file_search",
+          "input": {
+            "glob_pattern": "**/github_test_harness.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "list_dir",
+          "input": {
+            "target_directory": "/Users/aidancunniffe/Desktop/git-ai/tests/github"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/github/github_test_harness.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Looking for existing test utilities for working with git notes",
+            "query": "How to create and push git notes in test repositories?",
+            "target_directories": [
+              "tests"
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me look at how to work with git notes in the test infrastructure:",
+          "timestamp": "2025-11-23T16:52:42.120Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 120,
+            "offset": 62,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/repos/test_repo.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Looking for utilities to work with git notes",
+            "query": "How to create and push git notes in test repository using git command?",
+            "target_directories": [
+              "src/git"
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll create comprehensive integration tests for the push hooks functionality. Let me create the test file:",
+          "timestamp": "2025-11-23T16:52:50.858Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "write",
+          "input": {
+            "file_path": ""
+          }
+        }
+      ],
+      "total_additions": 840,
+      "total_deletions": 87,
+      "accepted_lines": 763,
+      "overriden_lines": 4
+    }
+  }
+}

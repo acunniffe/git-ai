@@ -1,0 +1,65 @@
+src/commands/checkpoint_agent/presets/known_human.rs
+  dacf127c97d5a34b 10,18,47-60,72
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  dacf127c97d5a34b 29-30,70,131,148-149,261-264,268,282,305,462-485
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  dacf127c97d5a34b 66-67,73,80,121
+src/commands/checkpoint_agent/presets/windsurf.rs
+  dacf127c97d5a34b 168
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  dacf127c97d5a34b 16-17,22-23,43,51-52,66,72,83-84,98,136,182
+src/commands/checkpoint_agent/presets/droid.rs
+  dacf127c97d5a34b 191
+src/commands/checkpoint_agent/presets/codex.rs
+  dacf127c97d5a34b 178
+src/commands/checkpoint_agent/presets/mock_known_human.rs
+  dacf127c97d5a34b 42
+src/commands/checkpoint_agent/orchestrator.rs
+  dacf127c97d5a34b 181-188,205-212
+src/commands/checkpoint_agent/presets/claude.rs
+  dacf127c97d5a34b 112
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  dacf127c97d5a34b 71
+src/commands/checkpoint_agent/presets/gemini.rs
+  dacf127c97d5a34b 77
+src/commands/checkpoint_agent/presets/pi.rs
+  dacf127c97d5a34b 29-30,99,165-167,178,190,249
+src/commands/checkpoint_agent/presets/amp.rs
+  dacf127c97d5a34b 348
+src/commands/checkpoint_agent/presets/parse.rs
+  dacf127c97d5a34b 3,89-105,220-235
+src/commands/checkpoint_agent/presets/mod.rs
+  dacf127c97d5a34b 58,67
+src/commands/checkpoint_agent/presets/github_copilot/mod.rs
+  dacf127c97d5a34b 4,72-94
+src/commands/checkpoint_agent/presets/firebender.rs
+  dacf127c97d5a34b 26,130,207-209,218,228,417-439
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  dacf127c97d5a34b 31-32,102,115
+src/commands/checkpoint_agent/presets/mock_ai.rs
+  dacf127c97d5a34b 63
+src/commands/checkpoint_agent/presets/opencode.rs
+  dacf127c97d5a34b 322
+src/commands/checkpoint_agent/presets/cursor.rs
+  dacf127c97d5a34b 119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "aeee7f17e37a421ae74be910d5371746ab815a1a",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 219,
+      "total_deletions": 32,
+      "accepted_lines": 211,
+      "overriden_lines": 0
+    }
+  }
+}

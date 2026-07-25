@@ -1,0 +1,23 @@
+.github/workflows/test.yml
+  80c30504a8581048 37,70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "74889e264979328aff2de7d9caf81737f02ae83d",
+  "prompts": {
+    "80c30504a8581048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7772a860-457c-410c-b406-ef556a9daa21",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

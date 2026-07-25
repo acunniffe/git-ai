@@ -1,0 +1,22 @@
+src/commands/git_ai_handlers.rs
+  s_f961600f868205::t_e4a4d17d555f45 221-226
+  s_f961600f868205::t_01b4fd170e9dc9 1431-1434
+  s_f961600f868205::t_bc0b46ecffaada 1427-1430,1435-1546
+  s_f961600f868205::t_02f1d21863a9f8 768-990
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.9",
+  "base_commit_sha": "2ea0f2c8e993c91b6ebbe4cd57281ab981a201c4",
+  "prompts": {},
+  "sessions": {
+    "s_f961600f868205": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b890081-d4d6-42d5-ba16-2cd34c8c06f1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    }
+  }
+}

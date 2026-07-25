@@ -1,0 +1,81 @@
+tests/integration/post_commit_unit.rs
+  s_1eeb4f6def9ecf::t_6ad69c576a52fe 3,67-70
+  s_1eeb4f6def9ecf::t_9b273582d2868c 2,60,65-66,71-75,77-83
+tests/integration/session_event_attribution.rs
+  s_1eeb4f6def9ecf::t_8276766fb40e90 4-6,207-245,314-353,383-385,594,603-604,632-635,646-684,798-827
+  s_1eeb4f6def9ecf::t_940438e8c77a31 356-357
+  s_1eeb4f6def9ecf::t_961fa60cab3bf4 129,136-139,364-365,367,372
+  s_1eeb4f6def9ecf::t_15b32ae0379e7f 10,12,18-19,115,117-128,130,132-135,140-151,354-355,358-363,366,368-371,373-382
+  s_1eeb4f6def9ecf::t_c993fabd13638e 11,13,93-114,714-741,745-751
+  s_1eeb4f6def9ecf::t_361b2e7b4c9315 116
+  s_1eeb4f6def9ecf::t_556b4362a97429 685-713,752-755
+  s_1eeb4f6def9ecf::t_6ad69c576a52fe 742-744
+  s_1eeb4f6def9ecf::t_2c1c7023b6e071 830
+  s_1eeb4f6def9ecf::t_3a371dc7ba0d65 131
+  s_1eeb4f6def9ecf::t_944a7edfd89630 756-797,828-829
+tests/integration/cold_trace2_repo.rs
+  s_1eeb4f6def9ecf::t_df6a3800e4a565 146
+  s_1eeb4f6def9ecf::t_409cd715d96cc8 138-145
+tests/integration/ci_squash_rebase.rs
+  s_1eeb4f6def9ecf::t_71574308f5a84a 3-6,54-64,66-69
+  s_1eeb4f6def9ecf::t_4358037e61bdf6 1853
+  s_1eeb4f6def9ecf::t_e64975a3ef29e7 65
+  s_1eeb4f6def9ecf::t_72ee359556103f 70,366-435,444-445
+  s_1eeb4f6def9ecf::t_bb99423b17eaaa 71,365
+  s_1eeb4f6def9ecf::t_cb89156ac0c431 436-443
+src/ci/ci_context.rs
+  s_1eeb4f6def9ecf::t_06b3a382916f40 510-511,837-852
+  s_1eeb4f6def9ecf::t_15e6dc0772687a 370,544,830,833-836,853
+src/authorship/authorship_log_serialization.rs
+  s_1eeb4f6def9ecf::t_c0a62cf2dce99f 147-156,350-351
+  s_1eeb4f6def9ecf::t_10e527b7cc3dfa 352-353
+src/authorship/post_commit.rs
+  s_1eeb4f6def9ecf::t_bc1c6f264517a2 297,686
+  s_1eeb4f6def9ecf::t_7bc61a0c3acdb8 139-146,416
+  s_1eeb4f6def9ecf::t_8854cde7e390ea 798
+  s_1eeb4f6def9ecf::t_a5f547c9fe4d7c 323-324,695-696
+  s_1eeb4f6def9ecf::t_9080cd00595d15 691-693
+src/metrics/db.rs
+  s_1eeb4f6def9ecf::t_a08be7abbb67b8 1066-1116
+src/git/repo_storage.rs
+  s_1eeb4f6def9ecf::t_9baf06c163a0c9 981-1007
+  s_1eeb4f6def9ecf::t_134349f64893c4 354-372
+tests/integration/windsurf.rs
+  s_1eeb4f6def9ecf::t_6ad69c576a52fe 18
+  s_1eeb4f6def9ecf::t_3350f19f6e0ea3 19-31,338
+tests/integration/continue_cli.rs
+  s_1eeb4f6def9ecf::t_32b49d0236d95d 16-28,403
+  s_1eeb4f6def9ecf::t_6ad69c576a52fe 15
+tests/integration/gemini.rs
+  s_1eeb4f6def9ecf::t_6ad69c576a52fe 16
+  s_1eeb4f6def9ecf::t_e90586e5e9f62d 17-29,370
+src/authorship/attribution_recovery.rs
+  s_1eeb4f6def9ecf::t_6d628f26ab8d23 1739-1744,1746-1748
+  s_1eeb4f6def9ecf::t_2874c9577a251d 271,645,663-666
+  s_1eeb4f6def9ecf::t_bf3f63f5b9559f 662,1732
+  s_1eeb4f6def9ecf::t_6ad69c576a52fe 1001-1004,1733-1736
+  s_1eeb4f6def9ecf::t_bf551f3a1c3cab 1362
+  s_1eeb4f6def9ecf::t_ed80aa2e2c295a 1,3,23,267,643-644,647-661,667-675,677-692,728-732,946-967,976-998,1013-1025,1721,1723-1731,1737-1738,1749-1788
+  s_1eeb4f6def9ecf::t_2a63a5de1653b0 1722
+  s_1eeb4f6def9ecf::t_098770e1e3e6d9 1789
+  s_1eeb4f6def9ecf::t_848cede06ffa87 4,1745,1905
+  s_1eeb4f6def9ecf::t_8a384ab5192007 999-1000,1005-1012
+  s_1eeb4f6def9ecf::t_740f7aa71a9194 202,268-270,273-278
+  s_1eeb4f6def9ecf::t_b34c1581018890 272,410,524,633,646,676,693-727,968-975,1948,1967,1982,1984-1989
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.9",
+  "base_commit_sha": "5d9db758e04c811b3ee6d224cdf86427a6db37d4",
+  "prompts": {},
+  "sessions": {
+    "s_1eeb4f6def9ecf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24a5-539f-7dd3-9793-1f096a58ff70",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}
