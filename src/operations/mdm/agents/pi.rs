@@ -94,15 +94,17 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_pi_extension_output_path() {
-        assert_eq!(
-            PiInstaller::extension_path(),
-            home_dir()
-                .join(".pi")
-                .join("agent")
-                .join("extensions")
-                .join("git-ai.ts")
-        );
+        with_temp_home(|home| {
+            assert_eq!(
+                PiInstaller::extension_path(),
+                home.join(".pi")
+                    .join("agent")
+                    .join("extensions")
+                    .join("git-ai.ts")
+            );
+        });
     }
 
     #[test]
