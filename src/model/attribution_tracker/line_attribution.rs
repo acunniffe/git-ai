@@ -4,7 +4,9 @@
 //! `LineAttribution` ranges.  All logic is pure algebra over the content
 //! string and attribution slices; no I/O or git calls occur here.
 
-use crate::model::attribution::{Attribution, LineAttribution};
+use crate::model::attribution::{
+    Attribution, LineAttribution, ceil_char_boundary, floor_char_boundary,
+};
 use crate::model::working_log::CheckpointKind;
 
 /// Helper struct to track line boundaries in content
@@ -47,22 +49,6 @@ impl LineBoundaries {
             Some(self.line_ranges[line_num as usize - 1])
         }
     }
-}
-
-fn floor_char_boundary(content: &str, idx: usize) -> usize {
-    let mut i = idx.min(content.len());
-    while i > 0 && !content.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
-}
-
-fn ceil_char_boundary(content: &str, idx: usize) -> usize {
-    let mut i = idx.min(content.len());
-    while i < content.len() && !content.is_char_boundary(i) {
-        i += 1;
-    }
-    i
 }
 
 /// Convert line-based attributions to character-based attributions.

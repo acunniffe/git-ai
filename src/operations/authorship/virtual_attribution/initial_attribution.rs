@@ -2,7 +2,7 @@ use super::diff_utils::collect_committed_hunks;
 use super::types::VirtualAttributions;
 use crate::error::GitAiError;
 use crate::model::attribution_tracker::LineAttribution;
-use crate::model::authorship_log::{HumanRecord, PromptRecord, SessionRecord};
+use crate::model::authorship_log::{HumanRecord, LineRange, PromptRecord, SessionRecord};
 use crate::model::working_log::{CheckpointKind, InitialAttributions};
 use crate::operations::git::repository::Repository;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -124,39 +124,7 @@ impl VirtualAttributions {
                         continue;
                     }
 
-                    // Create line ranges
-                    let mut ranges = Vec::new();
-                    let mut range_start = lines[0];
-                    let mut range_end = lines[0];
-
-                    for &line in &lines[1..] {
-                        if line == range_end + 1 {
-                            range_end = line;
-                        } else {
-                            if range_start == range_end {
-                                ranges.push(crate::model::authorship_log::LineRange::Single(
-                                    range_start,
-                                ));
-                            } else {
-                                ranges.push(crate::model::authorship_log::LineRange::Range(
-                                    range_start,
-                                    range_end,
-                                ));
-                            }
-                            range_start = line;
-                            range_end = line;
-                        }
-                    }
-
-                    // Add the last range
-                    if range_start == range_end {
-                        ranges.push(crate::model::authorship_log::LineRange::Single(range_start));
-                    } else {
-                        ranges.push(crate::model::authorship_log::LineRange::Range(
-                            range_start,
-                            range_end,
-                        ));
-                    }
+                    let ranges = LineRange::compress_lines(&lines);
 
                     let entry = crate::model::authorship_log_serialization::AttestationEntry::new(
                         author_id, ranges,

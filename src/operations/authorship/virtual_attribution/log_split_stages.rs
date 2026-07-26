@@ -281,10 +281,7 @@ impl VirtualAttributions {
             }
 
             for range in LineRange::compress_lines(&lines) {
-                let (start_line, end_line) = match range {
-                    LineRange::Single(l) => (l, l),
-                    LineRange::Range(s, e) => (s, e),
-                };
+                let (start_line, end_line) = range.inclusive_bounds();
                 attrs.push(LineAttribution {
                     start_line,
                     end_line,

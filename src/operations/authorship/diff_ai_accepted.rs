@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use crate::error::GitAiError;
+use crate::model::authorship_log::LineRange;
 use crate::operations::authorship::ignore::{
     build_ignore_matcher, should_ignore_file_with_matcher,
 };
@@ -37,7 +38,7 @@ pub fn diff_ai_accepted_stats(
 
         lines.sort_unstable();
         lines.dedup();
-        let line_ranges = lines_to_ranges(&lines);
+        let line_ranges = LineRange::compress_bounds(&lines);
 
         if line_ranges.is_empty() {
             continue;
@@ -81,95 +82,9 @@ pub fn diff_ai_accepted_stats(
     Ok(stats)
 }
 
-fn lines_to_ranges(lines: &[u32]) -> Vec<(u32, u32)> {
-    if lines.is_empty() {
-        return Vec::new();
-    }
-
-    let mut ranges = Vec::new();
-    let mut start = lines[0];
-    let mut end = lines[0];
-
-    for &line in &lines[1..] {
-        if line == end + 1 {
-            end = line;
-        } else {
-            ranges.push((start, end));
-            start = line;
-            end = line;
-        }
-    }
-
-    ranges.push((start, end));
-
-    ranges
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_lines_to_ranges_empty() {
-        let lines = vec![];
-        let ranges = lines_to_ranges(&lines);
-        assert_eq!(ranges.len(), 0);
-    }
-
-    #[test]
-    fn test_lines_to_ranges_single() {
-        let lines = vec![5];
-        let ranges = lines_to_ranges(&lines);
-        assert_eq!(ranges.len(), 1);
-        assert_eq!(ranges[0], (5, 5));
-    }
-
-    #[test]
-    fn test_lines_to_ranges_consecutive() {
-        let lines = vec![1, 2, 3, 4, 5];
-        let ranges = lines_to_ranges(&lines);
-        assert_eq!(ranges.len(), 1);
-        assert_eq!(ranges[0], (1, 5));
-    }
-
-    #[test]
-    fn test_lines_to_ranges_non_consecutive() {
-        let lines = vec![1, 3, 5, 7];
-        let ranges = lines_to_ranges(&lines);
-        assert_eq!(ranges.len(), 4);
-        assert_eq!(ranges[0], (1, 1));
-        assert_eq!(ranges[1], (3, 3));
-        assert_eq!(ranges[2], (5, 5));
-        assert_eq!(ranges[3], (7, 7));
-    }
-
-    #[test]
-    fn test_lines_to_ranges_mixed() {
-        let lines = vec![1, 2, 3, 5, 6, 10];
-        let ranges = lines_to_ranges(&lines);
-        assert_eq!(ranges.len(), 3);
-        assert_eq!(ranges[0], (1, 3));
-        assert_eq!(ranges[1], (5, 6));
-        assert_eq!(ranges[2], (10, 10));
-    }
-
-    #[test]
-    fn test_lines_to_ranges_two_groups() {
-        let lines = vec![1, 2, 3, 10, 11, 12];
-        let ranges = lines_to_ranges(&lines);
-        assert_eq!(ranges.len(), 2);
-        assert_eq!(ranges[0], (1, 3));
-        assert_eq!(ranges[1], (10, 12));
-    }
-
-    #[test]
-    fn test_lines_to_ranges_large_numbers() {
-        let lines = vec![100, 101, 102, 200, 201];
-        let ranges = lines_to_ranges(&lines);
-        assert_eq!(ranges.len(), 2);
-        assert_eq!(ranges[0], (100, 102));
-        assert_eq!(ranges[1], (200, 201));
-    }
 
     #[test]
     fn test_diff_ai_accepted_stats_default() {

@@ -17,6 +17,13 @@ pub enum LineRange {
 }
 
 impl LineRange {
+    pub(crate) fn inclusive_bounds(&self) -> (u32, u32) {
+        match self {
+            Self::Single(line) => (*line, *line),
+            Self::Range(start, end) => (*start, *end),
+        }
+    }
+
     pub fn contains(&self, line: u32) -> bool {
         match self {
             LineRange::Single(l) => *l == line,
@@ -92,6 +99,25 @@ impl LineRange {
 
     /// Convert a sorted list of line numbers into compressed ranges
     pub fn compress_lines(lines: &[u32]) -> Vec<LineRange> {
+        Self::compress_sorted_lines(lines, |start, end| {
+            if start == end {
+                Self::Single(start)
+            } else {
+                Self::Range(start, end)
+            }
+        })
+    }
+
+    /// Convert sorted line numbers into inclusive tuple bounds without sorting
+    /// or deduplicating the input.
+    pub(crate) fn compress_bounds(lines: &[u32]) -> Vec<(u32, u32)> {
+        Self::compress_sorted_lines(lines, |start, end| (start, end))
+    }
+
+    fn compress_sorted_lines<T>(
+        lines: &[u32],
+        mut make_range: impl FnMut(u32, u32) -> T,
+    ) -> Vec<T> {
         if lines.is_empty() {
             return vec![];
         }
@@ -104,23 +130,13 @@ impl LineRange {
             if line == current_end + 1 {
                 current_end = line;
             } else {
-                // End current range and start new one
-                if current_start == current_end {
-                    ranges.push(LineRange::Single(current_start));
-                } else {
-                    ranges.push(LineRange::Range(current_start, current_end));
-                }
+                ranges.push(make_range(current_start, current_end));
                 current_start = line;
                 current_end = line;
             }
         }
 
-        // Add the last range
-        if current_start == current_end {
-            ranges.push(LineRange::Single(current_start));
-        } else {
-            ranges.push(LineRange::Range(current_start, current_end));
-        }
+        ranges.push(make_range(current_start, current_end));
 
         ranges
     }
@@ -240,6 +256,49 @@ impl SessionRecord {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn line_range_inclusive_bounds_preserve_stored_values() {
+        assert_eq!(LineRange::Single(7).inclusive_bounds(), (7, 7));
+        assert_eq!(LineRange::Range(3, 9).inclusive_bounds(), (3, 9));
+        assert_eq!(LineRange::Range(9, 3).inclusive_bounds(), (9, 3));
+    }
+
+    #[test]
+    fn line_range_compression_primitives_stay_in_parity() {
+        let cases = [
+            (Vec::new(), Vec::new()),
+            (vec![4], vec![LineRange::Single(4)]),
+            (vec![2, 3, 4], vec![LineRange::Range(2, 4)]),
+            (
+                vec![1, 3, 5],
+                vec![
+                    LineRange::Single(1),
+                    LineRange::Single(3),
+                    LineRange::Single(5),
+                ],
+            ),
+            (
+                vec![1, 2, 4, 7, 8, 9],
+                vec![
+                    LineRange::Range(1, 2),
+                    LineRange::Single(4),
+                    LineRange::Range(7, 9),
+                ],
+            ),
+        ];
+
+        for (lines, expected) in cases {
+            assert_eq!(LineRange::compress_lines(&lines), expected);
+            assert_eq!(
+                LineRange::compress_bounds(&lines),
+                expected
+                    .iter()
+                    .map(LineRange::inclusive_bounds)
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
 
     // --- LineRange::shift regression tests ---
 

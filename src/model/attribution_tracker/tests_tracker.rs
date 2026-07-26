@@ -360,7 +360,7 @@ mod tests {
     #[test]
     fn line_attribution_handles_split_multibyte_ranges() {
         let content = "选\n";
-        let attrs = vec![Attribution::new(0, 1, "Alice".into(), TEST_TS)];
+        let attrs = vec![Attribution::new(1, 2, "Alice".into(), TEST_TS)];
         let line_attrs = attributions_to_line_attributions(&attrs, content);
         assert_eq!(line_attrs.len(), 1);
         assert_eq!(line_attrs[0].author_id, "Alice");

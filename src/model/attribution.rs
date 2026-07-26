@@ -5,6 +5,22 @@
 //! ranges) shared by the attribution tracker, working logs, and virtual
 //! attribution, so they live in `model` rather than up in `operations`.
 
+pub(crate) fn floor_char_boundary(content: &str, index: usize) -> usize {
+    let mut boundary = index.min(content.len());
+    while boundary > 0 && !content.is_char_boundary(boundary) {
+        boundary -= 1;
+    }
+    boundary
+}
+
+pub(crate) fn ceil_char_boundary(content: &str, index: usize) -> usize {
+    let mut boundary = index.min(content.len());
+    while boundary < content.len() && !content.is_char_boundary(boundary) {
+        boundary += 1;
+    }
+    boundary
+}
+
 /// Represents a single attribution range in the file.
 /// Ranges can overlap (multiple authors can be attributed to the same text).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -121,6 +137,44 @@ impl Attribution {
             Some((overlap_start, overlap_end))
         } else {
             None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn utf8_char_boundaries_preserve_valid_and_clamp_external_indexes() {
+        let content = "aé€😀z";
+
+        for boundary in [0, 1, 3, 6, 10, content.len()] {
+            assert_eq!(floor_char_boundary(content, boundary), boundary);
+            assert_eq!(ceil_char_boundary(content, boundary), boundary);
+        }
+        assert_eq!(floor_char_boundary(content, usize::MAX), content.len());
+        assert_eq!(ceil_char_boundary(content, usize::MAX), content.len());
+        assert_eq!(floor_char_boundary("", usize::MAX), 0);
+        assert_eq!(ceil_char_boundary("", usize::MAX), 0);
+    }
+
+    #[test]
+    fn utf8_char_boundaries_round_outward_across_multibyte_scalars() {
+        let content = "aé€😀z";
+
+        for (index, expected) in [(2, (1, 3)), (4, (3, 6)), (5, (3, 6))] {
+            assert_eq!(
+                (
+                    floor_char_boundary(content, index),
+                    ceil_char_boundary(content, index)
+                ),
+                expected
+            );
+        }
+        for index in 7..10 {
+            assert_eq!(floor_char_boundary(content, index), 6);
+            assert_eq!(ceil_char_boundary(content, index), 10);
         }
     }
 }

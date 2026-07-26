@@ -294,7 +294,7 @@ fn apply_blame_for_side(
         return;
     }
 
-    let line_ranges = lines_to_ranges(lines);
+    let line_ranges = LineRange::compress_bounds(lines);
     if line_ranges.is_empty() {
         return;
     }
@@ -447,33 +447,8 @@ fn apply_blame_for_side(
 }
 
 // ============================================================================
-// Line-range helpers
+// Line collection helpers
 // ============================================================================
-
-/// Convert a sorted list of line numbers to contiguous ranges.
-/// e.g., `[1, 2, 3, 5, 6, 10]` → `[(1, 3), (5, 6), (10, 10)]`
-fn lines_to_ranges(lines: &[u32]) -> Vec<(u32, u32)> {
-    if lines.is_empty() {
-        return Vec::new();
-    }
-
-    let mut ranges = Vec::new();
-    let mut start = lines[0];
-    let mut end = lines[0];
-
-    for &line in &lines[1..] {
-        if line == end + 1 {
-            end = line;
-        } else {
-            ranges.push((start, end));
-            start = line;
-            end = line;
-        }
-    }
-
-    ranges.push((start, end));
-    ranges
-}
 
 pub(crate) fn collect_lines_by_file(
     hunks: &[DiffHunk],

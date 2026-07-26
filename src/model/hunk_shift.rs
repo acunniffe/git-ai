@@ -91,10 +91,7 @@ pub fn apply_hunk_shifts_to_attestation_entries(
         let mut new_ranges: Vec<LineRange> = Vec::new();
 
         for range in &entry.line_ranges {
-            let (range_start, range_end) = match range {
-                LineRange::Single(l) => (*l, *l),
-                LineRange::Range(s, e) => (*s, *e),
-            };
+            let (range_start, range_end) = range.inclusive_bounds();
 
             for &(seg_start, seg_end, seg_offset) in &segments {
                 let overlap_start = range_start.max(seg_start);

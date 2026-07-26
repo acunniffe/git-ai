@@ -1,5 +1,6 @@
 use super::types::VirtualAttributions;
 use crate::error::GitAiError;
+use crate::model::attribution::{ceil_char_boundary, floor_char_boundary};
 use crate::model::attribution_tracker::Attribution;
 use std::collections::HashMap;
 
@@ -240,18 +241,37 @@ fn merge_char_attributions(
     result
 }
 
-fn floor_char_boundary(content: &str, idx: usize) -> usize {
-    let mut i = idx.min(content.len());
-    while i > 0 && !content.is_char_boundary(i) {
-        i -= 1;
-    }
-    i
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn ceil_char_boundary(content: &str, idx: usize) -> usize {
-    let mut i = idx.min(content.len());
-    while i < content.len() && !content.is_char_boundary(i) {
-        i += 1;
+    #[test]
+    fn secondary_split_byte_range_expands_to_whole_scalar() {
+        let secondary = vec![Attribution::new(1, 2, "secondary".to_string(), 1)];
+
+        assert_eq!(
+            merge_char_attributions(&[], &secondary, "é"),
+            vec![Attribution::new(0, 2, "secondary".to_string(), 1)]
+        );
     }
-    i
+
+    #[test]
+    fn primary_partial_byte_coverage_wins_whole_scalar() {
+        let primary = vec![Attribution::new(1, 2, "primary".to_string(), 1)];
+        let secondary = vec![Attribution::new(0, 2, "secondary".to_string(), 2)];
+
+        assert_eq!(merge_char_attributions(&primary, &secondary, "é"), primary);
+    }
+
+    #[test]
+    fn secondary_range_beyond_content_is_ignored() {
+        let secondary = vec![Attribution::new(
+            usize::MAX,
+            usize::MAX,
+            "secondary".to_string(),
+            1,
+        )];
+
+        assert!(merge_char_attributions(&[], &secondary, "é").is_empty());
+    }
 }

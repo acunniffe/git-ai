@@ -1,6 +1,6 @@
 use crate::error::GitAiError;
 use crate::model::attribution_tracker::LineAttribution;
-use crate::model::authorship_log::{HumanRecord, LineRange, PromptRecord, SessionRecord};
+use crate::model::authorship_log::{HumanRecord, PromptRecord, SessionRecord};
 use crate::model::authorship_log_serialization::AuthorshipLog;
 use crate::model::hunk_shift::{DiffHunk, apply_hunk_shifts_to_line_attributions};
 use crate::operations::authorship::rewrite::compute_diff_trees_batch;
@@ -159,10 +159,7 @@ fn extract_attributions_from_log_shifted(
         let mut raw_attrs: Vec<LineAttribution> = Vec::new();
         for entry in &fa.entries {
             for range in &entry.line_ranges {
-                let (start, end) = match range {
-                    LineRange::Single(l) => (*l, *l),
-                    LineRange::Range(s, e) => (*s, *e),
-                };
+                let (start, end) = range.inclusive_bounds();
                 raw_attrs.push(LineAttribution::new(start, end, entry.hash.clone(), None));
             }
         }
@@ -248,6 +245,7 @@ fn list_commits_in_range(repo: &Repository, base: &str, tip: &str) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::authorship_log::LineRange;
     use crate::model::authorship_log_serialization::{AttestationEntry, FileAttestation};
 
     fn log_with_single_entry(file: &str, hash: &str, start: u32, end: u32) -> AuthorshipLog {
