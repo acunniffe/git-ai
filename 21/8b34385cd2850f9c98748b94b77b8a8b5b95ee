@@ -1,0 +1,23 @@
+src/utils.rs
+  da6b112 10,46-81,130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "218b34385cd2850f9c98748b94b77b8a8b5b95ee",
+  "prompts": {
+    "da6b112": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "fe7f7776-bf5f-4799-8060-bc36504db626",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 55,
+      "total_deletions": 15,
+      "accepted_lines": 39,
+      "overriden_lines": 0
+    }
+  }
+}

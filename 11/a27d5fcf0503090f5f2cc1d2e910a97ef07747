@@ -1,0 +1,53 @@
+installer/windows/build-msi-ci.ps1
+  s_c07cec28a64ec3::t_d67fe86fc525e8 1-16,20-71
+  s_c07cec28a64ec3::t_5ee42cbab69a78 17-19
+installer/windows/build-msi.ps1
+  s_c07cec28a64ec3::t_d05a8f39f485ed 53
+  s_c07cec28a64ec3::t_7fc92e10870434 97
+  s_c07cec28a64ec3::t_338e13885b2fd4 257
+  s_c07cec28a64ec3::t_55325c70135afb 46
+  s_c07cec28a64ec3::t_97a38c38aa532f 203-204,208-215,217,223-228
+  s_c07cec28a64ec3::t_b4ebd7fe65f6d9 202,218-219,221-222,229-230
+  s_c07cec28a64ec3::t_370c222d7f4c62 174,246-248,253,258-274,278-286
+  s_c07cec28a64ec3::t_4766cf2065a123 15-17
+  s_c07cec28a64ec3::t_2059a92e99156f 128-129
+  s_c07cec28a64ec3::t_a1232e5379f12c 1-14,18-45,47-52,54-96,98-122,124-127,130-173,175-178,220,231-232,249-252,287-295
+  s_c07cec28a64ec3::t_44ccaa34dced9c 123
+  s_c07cec28a64ec3::t_1f5ee68b0a3ff4 179-187,189,192,201,216,233-234,238-241
+  s_c07cec28a64ec3::t_fc66cdf263146b 188,190-191,193-198
+  s_c07cec28a64ec3::t_882905f195104e 199-200
+  s_c07cec28a64ec3::t_50cd7c376f6624 205-207
+  s_c07cec28a64ec3::t_647d6ff27ce2da 235-237,243-245,254-256
+  s_c07cec28a64ec3::t_f3b6377285100a 275-277
+installer/windows/idt/Media.idt
+  s_c07cec28a64ec3::t_9501bd8c621bb5 1-3
+installer/windows/idt/File.idt
+  s_c07cec28a64ec3::t_2f47146e2b0393 1,3-5
+  s_c07cec28a64ec3::t_11c87a736f6aba 2
+installer/windows/idt/Property.idt
+  s_c07cec28a64ec3::t_45396a726e0d6d 1-8
+installer/windows/idt/Upgrade.idt
+  s_c07cec28a64ec3::t_6e6daf6e5a7c6c 2-4
+installer/windows/README.md
+  s_c07cec28a64ec3::t_d6bd1291acdb37 74
+  s_c07cec28a64ec3::t_05b474246a7584 1-24,26,28-73,75-82
+  s_c07cec28a64ec3::t_fad9543403ccc0 25,27
+installer/windows/idt/Feature.idt
+  s_c07cec28a64ec3::t_e5d0053559ffac 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "11a27d5fcf0503090f5f2cc1d2e910a97ef07747",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "admin <admin@git-ai-project.com>"
+    }
+  }
+}

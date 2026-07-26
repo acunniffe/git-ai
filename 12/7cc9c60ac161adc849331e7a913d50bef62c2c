@@ -1,0 +1,92 @@
+src/utils.rs
+  4db65a5 3-4,13-14,90-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "127cc9c60ac161adc849331e7a913d50bef62c2c",
+  "prompts": {
+    "4db65a5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3b5744ab-cf2b-4575-a657-80bf3222b073",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Write a utility function to check if we're running in WSL on a windows machine.\n\nUse compiler macros ie #[not(windows)] to set it to false automatically and save the check.\n\nThis should run once, lazzily if its value is checked.\n\nPlace the new fn after normalize_to_posix fn. Imports/consts/etc at the top. Make sure to retain the flow of the existing code",
+          "timestamp": "2025-11-20T13:17:46.482Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing `utils.rs` to understand the structure before adding a lazy WSL check function.",
+          "timestamp": "2025-11-20T13:17:47.878Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a lazy WSL detection function after `normalize_to_posix`, using the same lazy static pattern as the debug functions.",
+          "timestamp": "2025-11-20T13:17:49.217Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linter errors:",
+          "timestamp": "2025-11-20T13:17:53.171Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Fixing the Windows implementation: `/proc/version` isn't available on Windows. Updating to use Windows-specific checks:",
+          "timestamp": "2025-11-20T13:17:55.824Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Removing the `/proc/version` check on Windows since that path doesn't exist there. On Windows, WSL detection is limited; updating the implementation accordingly:",
+          "timestamp": "2025-11-20T13:17:58.400Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Rechecking lints:",
+          "timestamp": "2025-11-20T13:18:02.904Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Added a lazy WSL detection function. Summary:\n\n1. **Lazy initialization**: Uses `std::sync::OnceLock<bool>` (same pattern as the debug functions) to check once on first call.\n2. **Platform-specific**: \n   - On non-Windows (`#[cfg(not(windows))]`): returns `false`\n   - On Windows (`#[cfg(windows)]`): checks WSL environment variables (`WSL_DISTRO_NAME`, `WSLENV`)\n3. **Placement**: Added after `normalize_to_posix` (line 83), before `current_git_ai_exe`.\n\nNote: When running inside WSL, you're on Linux, so `cfg!(windows)` is false and the function returns `false`. If you need to detect WSL from within Linux, we can adjust the implementation.\n\nThe function is ready to use and follows the existing code patterns.",
+          "timestamp": "2025-11-20T13:18:05.364Z"
+        }
+      ],
+      "total_additions": 32,
+      "total_deletions": 0,
+      "accepted_lines": 33,
+      "overriden_lines": 0
+    }
+  }
+}

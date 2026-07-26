@@ -1,0 +1,23 @@
+tests/github_copilot_integration.rs
+  5037235bd029f7a6 227-228,230-232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.32",
+  "base_commit_sha": "dd05fd097874ed4e86a5d23e055a5d907a752fe0",
+  "prompts": {
+    "5037235bd029f7a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b706960c-1aa0-410f-af2a-5be7245a6a05",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 2,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

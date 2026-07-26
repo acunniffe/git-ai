@@ -1,0 +1,107 @@
+src/commands/checkpoint.rs
+  9f60b08 77-80,84-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "b4455ec7e827e8343f3cb40579e586987eeb82b4",
+  "prompts": {
+    "9f60b08": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c0a6b77d-18da-4a86-aace-c2199d2296d0",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/feature_flags.rs:16-17 For some reason this feature flag is causing some of my amend tests to break\n\n\n\n@zsh (681-1018) \n\n\n\nThis feels quite counterintuitive. I'm not sure why the initial blame is needed to make these amend tests work. Can you investigate",
+          "timestamp": "2025-11-30T15:47:25.204Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Looking at this issue, I need to understand what the `inter_commit_move` feature flag does and why it affects the amend tests. Let me investigate.",
+          "timestamp": "2025-11-30T15:47:32.375Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me look at the checkpoint.rs code to understand what `inter_commit_move` controls:",
+          "timestamp": "2025-11-30T15:47:36.985Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I understand the issue. Let me look at the amend tests to confirm my understanding:",
+          "timestamp": "2025-11-30T15:47:45.512Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "glob_file_search",
+          "input": {
+            "globPattern": "**/amend.rs",
+            "targetDirectory": "/Users/aidancunniffe/Desktop/git-ai/tests"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check how the TestRepo handles feature flags and creates AI attributions:",
+          "timestamp": "2025-11-30T15:48:14.926Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me look at how INITIAL attributions work, since that seems to be the mechanism for preserving unstaged AI attribution:",
+          "timestamp": "2025-11-30T15:48:54.623Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me look at how INITIAL attributions are written:",
+          "timestamp": "2025-11-30T15:49:01.142Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me look at how initial attributions are generated during post-commit:",
+          "timestamp": "2025-11-30T15:49:35.765Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me look more closely at what happens during the pre-commit checkpoint processing:",
+          "timestamp": "2025-11-30T15:50:13.785Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me look at how the uncommitted attributions are split in `to_authorship_log_and_initial_working_log`:",
+          "timestamp": "2025-11-30T15:51:11.369Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check if the test repos have git-ai hooks installed:",
+          "timestamp": "2025-11-30T15:51:53.932Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me trace through more carefully - I think I found the issue. Let me check how pre-commit handles the early exit:",
+          "timestamp": "2025-11-30T15:53:45.899Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I understand the issue! Let me explain what's happening:\n\n## Root Cause\n\nThe problem is in the **early exit check** in `checkpoint.rs` (lines 71-82):\n\n```70:82:src/commands/checkpoint.rs\n    // Early exit for human only\n    if is_pre_commit {\n        let has_no_ai_edits = working_log\n            .all_ai_touched_files()\n            .map(|files| files.is_empty())\n            .unwrap_or(true);\n\n        // we can only skip the work here if inter_commit_move is not enabled.\n        // otherwise we might miss an AI attribution that was moved by a user ie: copy / pasting\n        if has_no_ai_edits && !Config::get().get_feature_flags().inter_commit_move {\n            debug_log(\"No AI edits,in pre-commit checkpoint, skipping\");\n            return Ok((0, 0, 0));\n        }\n    }\n```\n\n## The Problem Flow\n\nHere's what happens in the failing tests like `test_amend_add_lines_at_top`:\n\n1. **Initial commit**: Human content committed, working log reset afterward\n2. **AI adds lines via `insert_at()`**: Creates checkpoint with AI attributions in working log\n3. **`git commit --amend`** (without staging AI lines):\n   - Post-commit runs and writes **INITIAL attributions** for the unstaged AI lines\n   - **Deletes the old working log** (which had the checkpoint!)\n   - Creates a **new empty working log** for the amended commit\n4. **`stage_all_and_commit(\"Add AI lines\")`**:\n   - Working log for amended commit has **no checkpoints** (it's new/empty)\n   - **INITIAL attributions exist** with the AI line info\n   - Pre-commit runs: `has_no_ai_edits()` only checks checkpoints → returns `true`\n   - **When `inter_commit_move=false`**: The early exit is taken → no checkpoint processing!\n   - The INITIAL attributions never get processed into the authorship log\n\n## Why `inter_commit_move=true` Fixes It\n\nWhen `inter_commit_move=true`:\n- The condition `has_no_ai_edits && !inter_commit_move` becomes `true && false = false`\n- The early exit is **not taken**\n- Checkpoint processing runs, which reads INITIAL attributions and preserves them\n\n## The Bug\n\nThe early exit check only considers **checkpoints**, not **INITIAL attributions**. The fix would be:",
+          "timestamp": "2025-11-30T15:54:04.952Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me run the amend tests to verify this fix works:",
+          "timestamp": "2025-11-30T15:54:25.057Z"
+        },
+        {
+          "type": "assistant",
+          "text": "All 10 amend tests now pass. Here's a summary of what was happening:\n\n## Summary\n\n**The Issue**: The early exit optimization in `checkpoint.rs` was checking only for AI **checkpoints** in the working log, but NOT for **INITIAL attributions**. \n\n**Why this matters**: INITIAL attributions are created when AI code exists in the working directory but isn't staged during a commit (like in amend scenarios). After the amend, the old working log (with checkpoints) is deleted, and a new empty one is created. The INITIAL attributions file preserves the AI attribution info, but the early exit check was ignoring it.\n\n**The scenario**:\n1. AI adds code → checkpoint created\n2. User runs `git commit --amend` without staging AI code\n3. Post-commit saves AI attribution to INITIAL file, deletes old working log\n4. User stages and commits AI code\n5. Pre-commit sees no checkpoints → **early exit** (when `inter_commit_move=false`)\n6. AI attribution is lost!\n\n**The fix**: Added a check for INITIAL attributions to the early exit condition:\n\n```rust\nlet has_initial_attributions = !working_log.read_initial_attributions().files.is_empty();\n\nif has_no_ai_edits && !has_initial_attributions && !Config::get().get_feature_flags().inter_commit_move {\n    // Only skip if there are NO checkpoints AND NO initial attributions\n}\n```\n\nThis ensures that even with `inter_commit_move: false`, we still process files that have INITIAL attributions from previous commits. The `inter_commit_move` flag is really meant for tracking AI code that gets copied/pasted around (line movement detection via blame), not for this scenario.",
+          "timestamp": "2025-11-30T15:54:39.897Z"
+        }
+      ],
+      "total_additions": 5,
+      "total_deletions": 1,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}

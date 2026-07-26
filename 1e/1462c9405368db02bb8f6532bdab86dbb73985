@@ -1,0 +1,62 @@
+scripts/dev-symlinks.sh
+  85b25f3 5-10,13-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "d63e88b241741dbde7c81539d4e9e969b1da0f27",
+  "prompts": {
+    "85b25f3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9bc3f586-95cd-46e2-9123-4e4a49e64732",
+        "model": "default"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Update @dev-symlinks.sh to support an arg `--release` that will symlink the release target instead of the debug target",
+          "timestamp": "2025-11-04T03:41:21.130Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updating `dev-symlinks.sh` to support `--release` for release builds.",
+          "timestamp": "2025-11-04T03:41:32.996Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/scripts/dev-symlinks.sh"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating the script to support `--release`:",
+          "timestamp": "2025-11-04T03:41:37.488Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/scripts/dev-symlinks.sh"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updated the script to support `--release`:\n\n- Defaults to debug builds (no arguments)\n- Uses release builds when passed `--release`\n- Uses `BUILD_TYPE` in the symlink paths and echo message\n\nUsage:\n- `./dev-symlinks.sh` → symlinks `target/debug/git-ai`\n- `./dev-symlinks.sh --release` → symlinks `target/release/git-ai`",
+          "timestamp": "2025-11-04T03:41:46.599Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Script updated with no linting errors. It supports `--release` for release builds and defaults to debug builds.",
+          "timestamp": "2025-11-04T03:41:53.158Z"
+        }
+      ],
+      "total_additions": 9,
+      "total_deletions": 3,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    }
+  }
+}

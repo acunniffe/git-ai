@@ -1,0 +1,59 @@
+README.md
+  h_ea2010baa7a42b 6,77,84-85,94-95
+  28f5ee2eed5efb4a 76
+  s_a8b316eace3551::t_0a3d9a0597e6a1 79-83
+  s_3baff877b8a4bd::t_66a106d4201f3f 88,90,92,96,98,100,104-106,108,110,112,139-140
+  s_affec37fa72c12::t_9a179146bc3d24 147,149
+  s_affec37fa72c12::t_97ae1c047a6955 118-119,128-132,138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "ad6d4ecc6b6c7688208ef893b4cf1ee73d3338b5",
+  "prompts": {
+    "28f5ee2eed5efb4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87c5c567-f923-42ea-9614-2521074a928c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages_url": "http://localhost:4000/cas/46d2c5ba3d9221661ca0235bbbffe9c898c638f1b8789916726c34e008cd16a0",
+      "total_additions": 16,
+      "total_deletions": 16,
+      "accepted_lines": 16,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_ea2010baa7a42b": {
+      "author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_3baff877b8a4bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f5b8c2a5-64e7-4553-9b0d-25cc44716742",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_a8b316eace3551": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "facce936-7198-431a-9f34-edf878936e3e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_affec37fa72c12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6aab93e-793b-4cf1-b05e-24e3dd784ff5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

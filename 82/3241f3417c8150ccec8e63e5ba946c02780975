@@ -1,0 +1,23 @@
+tests/async_mode.rs
+  d46277b929576d9f 294,473,475,516
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "823241f3417c8150ccec8e63e5ba946c02780975",
+  "prompts": {
+    "d46277b929576d9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7d963b3-678f-4ed0-8566-d90a0d657703",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 22,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}

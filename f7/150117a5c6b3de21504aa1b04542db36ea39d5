@@ -1,0 +1,20 @@
+tests/integration/checkpoint_unit.rs
+  s_3bcfeaf1a60f97::t_14c31754901fbb 1084-1102,1104-1150,1152-1181
+  s_3bcfeaf1a60f97::t_b1cab73abda732 1103,1151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "f7150117a5c6b3de21504aa1b04542db36ea39d5",
+  "prompts": {},
+  "sessions": {
+    "s_3bcfeaf1a60f97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "12023792-3f83-4d40-86fc-2ef1459b1290",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
