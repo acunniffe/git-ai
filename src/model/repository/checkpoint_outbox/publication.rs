@@ -439,11 +439,7 @@ mod tests {
                 .filter_map(|result| result.as_ref().err())
                 .all(|error| matches!(
                     error,
-                    CheckpointOutboxError::AlreadyPublished
-                        | CheckpointOutboxError::Io {
-                            operation: "lock root",
-                            kind: std::io::ErrorKind::WouldBlock,
-                        }
+                    CheckpointOutboxError::AlreadyPublished | CheckpointOutboxError::LockBusy
                 ))
         );
         let paths = entries(&root);
@@ -514,13 +510,7 @@ mod tests {
             }
             Err(error) => panic!("checkpoint publication thread failed: {error}"),
         };
-        assert!(matches!(
-            result,
-            Err(CheckpointOutboxError::Io {
-                operation: "lock root",
-                kind: std::io::ErrorKind::WouldBlock,
-            })
-        ));
+        assert!(matches!(result, Err(CheckpointOutboxError::LockBusy)));
     }
 
     #[test]

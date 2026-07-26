@@ -47,6 +47,7 @@ pub enum CheckpointOutboxError {
         max_bytes: u64,
     },
     AlreadyPublished,
+    LockBusy,
     Io {
         operation: &'static str,
         kind: std::io::ErrorKind,
@@ -105,6 +106,9 @@ impl fmt::Display for CheckpointOutboxError {
             Self::AlreadyPublished => {
                 write!(f, "checkpoint outbox delivery is already published")
             }
+            Self::LockBusy => {
+                write!(f, "checkpoint outbox lock root failed (WouldBlock)")
+            }
             Self::Io { operation, kind } => {
                 write!(f, "checkpoint outbox {} failed ({:?})", operation, kind)
             }
@@ -133,17 +137,28 @@ pub fn candidate_roots(
                 path.to_path_buf(),
             ));
         }
-        roots.push(path.to_path_buf());
+        push_unique_root(&mut roots, path.to_path_buf());
     }
-    roots.push(internal_dir.join("daemon").join(CHECKPOINT_OUTBOX_VERSION));
-    roots.push(temp_dir.join(format!(
-        "{}-{}-{}",
-        CHECKPOINT_OUTBOX_VERSION,
-        effective_uid,
-        daemon_instance_key(internal_dir)
-    )));
-    roots.dedup();
+    push_unique_root(
+        &mut roots,
+        internal_dir.join("daemon").join(CHECKPOINT_OUTBOX_VERSION),
+    );
+    push_unique_root(
+        &mut roots,
+        temp_dir.join(format!(
+            "{}-{}-{}",
+            CHECKPOINT_OUTBOX_VERSION,
+            effective_uid,
+            daemon_instance_key(internal_dir)
+        )),
+    );
     Ok(roots)
+}
+
+fn push_unique_root(roots: &mut Vec<PathBuf>, candidate: PathBuf) {
+    if !roots.contains(&candidate) {
+        roots.push(candidate);
+    }
 }
 
 pub fn encode_delivery(delivery: &CheckpointDelivery) -> Result<Vec<u8>, CheckpointOutboxError> {
@@ -288,6 +303,33 @@ mod tests {
 
         assert_ne!(first[0], second[0]);
         assert_ne!(first[1], second[1]);
+    }
+
+    #[test]
+    fn override_equal_to_temporary_fallback_is_returned_once_and_first() {
+        let temp = tempfile::tempdir().unwrap();
+        let internal_dir = temp.path().join("home/.git-ai/internal");
+        let fallbacks = candidate_roots(&internal_dir, None, temp.path(), 501).unwrap();
+        let temporary_fallback = fallbacks[1].clone();
+
+        let roots =
+            candidate_roots(&internal_dir, Some(&temporary_fallback), temp.path(), 501).unwrap();
+
+        assert_eq!(roots, vec![temporary_fallback, fallbacks[0].clone()]);
+    }
+
+    #[test]
+    fn lock_busy_error_has_stable_display_and_failure_class() {
+        let error = CheckpointOutboxError::LockBusy;
+
+        assert_eq!(
+            error.to_string(),
+            "checkpoint outbox lock root failed (WouldBlock)"
+        );
+        assert_eq!(
+            OutboxFailureClass::from_error(&error),
+            OutboxFailureClass::LockBusy
+        );
     }
 
     #[test]

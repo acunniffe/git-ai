@@ -103,7 +103,12 @@ impl SecureRoot {
         if result == 0 {
             Ok(())
         } else {
-            Err(io_error("lock root", io::Error::last_os_error()))
+            let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::WouldBlock {
+                Err(CheckpointOutboxError::LockBusy)
+            } else {
+                Err(io_error("lock root", error))
+            }
         }
     }
 

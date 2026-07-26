@@ -39,10 +39,7 @@ impl OutboxFailureClass {
             CheckpointOutboxError::RecordTooLarge { .. } => Self::RecordTooLarge,
             CheckpointOutboxError::ReadyCapacityExceeded { .. } => Self::Capacity,
             CheckpointOutboxError::UnsupportedPlatform => Self::UnsupportedPlatform,
-            CheckpointOutboxError::Io {
-                operation: "lock root",
-                kind: std::io::ErrorKind::WouldBlock,
-            } => Self::LockBusy,
+            CheckpointOutboxError::LockBusy => Self::LockBusy,
             CheckpointOutboxError::Io { .. } | CheckpointOutboxError::AlreadyPublished => {
                 Self::Storage
             }

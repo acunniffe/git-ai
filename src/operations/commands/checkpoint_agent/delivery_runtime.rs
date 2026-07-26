@@ -160,13 +160,7 @@ where
 }
 
 fn is_lock_busy(error: &CheckpointOutboxError) -> bool {
-    matches!(
-        error,
-        CheckpointOutboxError::Io {
-            operation: "lock root",
-            kind: std::io::ErrorKind::WouldBlock,
-        }
-    )
+    matches!(error, CheckpointOutboxError::LockBusy)
 }
 
 #[cfg(test)]
@@ -291,10 +285,7 @@ mod tests {
                 }
                 managed_attempts += 1;
                 if managed_attempts == 1 {
-                    Err(CheckpointOutboxError::Io {
-                        operation: "lock root",
-                        kind: std::io::ErrorKind::WouldBlock,
-                    })
+                    Err(CheckpointOutboxError::LockBusy)
                 } else {
                     Ok(())
                 }
