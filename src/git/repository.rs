@@ -1,7 +1,7 @@
 use crate::config;
 use crate::error::GitAiError;
 use crate::git::repo_state::{
-    common_dir_for_git_dir, git_dir_for_worktree, worktree_root_for_path,
+    common_dir_for_git_dir, git_dir_for_worktree, is_valid_git_dir, worktree_root_for_path,
 };
 use crate::git::repo_storage::RepoStorage;
 use crate::git::status::MAX_PATHSPEC_ARGS;
@@ -2172,7 +2172,7 @@ fn discover_repository_paths_no_git_exec(
     };
 
     if start.file_name().and_then(|name| name.to_str()) == Some(".git") {
-        if start.is_dir() {
+        if is_valid_git_dir(&start) {
             let workdir = start.parent().ok_or_else(|| {
                 GitAiError::Generic(format!(
                     "Git directory has no parent workdir: {}",
@@ -2480,8 +2480,8 @@ fn has_intervening_git_dir(file_path: &Path, workdir: &Path) -> bool {
             break;
         }
         let potential_git = workdir.join(parent).join(".git");
-        if potential_git.is_dir() {
-            // A .git directory always indicates a separate independent repo.
+        if is_valid_git_dir(&potential_git) {
+            // A valid .git directory indicates a separate independent repo.
             return true;
         }
         if potential_git.is_file() {
@@ -2576,10 +2576,15 @@ pub fn find_repository_for_file(
 
         // Check for .git directory or file (file for submodules/worktrees)
         let git_path = dir.join(".git");
-        if git_path.exists() {
+        let git_path_metadata = std::fs::metadata(&git_path).ok();
+        let git_path_is_file = git_path_metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.is_file());
+        let git_path_is_dir = git_path_metadata.is_some_and(|metadata| metadata.is_dir());
+        if git_path_is_file || (git_path_is_dir && is_valid_git_dir(&git_path)) {
             // Found a .git - but we need to check if this is a submodule
             // Submodules have a .git file (not directory) that points to the parent's .git/modules
-            if git_path.is_file() {
+            if git_path_is_file {
                 // This is a submodule - read the file to check if it points to modules/
                 if let Ok(content) = std::fs::read_to_string(&git_path)
                     && content.contains("gitdir:")

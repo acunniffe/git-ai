@@ -1216,6 +1216,12 @@ mod tests {
         })
     }
 
+    fn create_git_dir(worktree: &Path) {
+        let git_dir = worktree.join(".git");
+        fs::create_dir_all(&git_dir).expect("create git dir");
+        fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").expect("write HEAD");
+    }
+
     #[test]
     fn payload_timestamp_prefers_stock_trace2_rfc3339_time_over_relative_t_abs() {
         let payload = serde_json::json!({
@@ -1398,7 +1404,7 @@ mod tests {
         let backend = Arc::new(MockBackend::default());
         let temp = tempfile::tempdir().expect("create tempdir");
         let worktree = temp.path().join("repo");
-        fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+        create_git_dir(&worktree);
         backend.set_alias(worktree.to_str().expect("utf8 worktree"), "ci", "commit");
         let mut normalizer = TraceNormalizer::new(backend);
 
@@ -1432,7 +1438,7 @@ mod tests {
         let backend = Arc::new(MockBackend::default());
         let temp = tempfile::tempdir().expect("create tempdir");
         let worktree = temp.path().join("repo");
-        fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+        create_git_dir(&worktree);
         backend.set_alias(
             worktree.to_str().expect("utf8 worktree"),
             "up",
@@ -1491,7 +1497,7 @@ mod tests {
         let backend = Arc::new(MockBackend::default());
         let temp = tempfile::tempdir().expect("create tempdir");
         let worktree = temp.path().join("repo");
-        fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+        create_git_dir(&worktree);
         backend.set_alias(
             worktree.to_str().expect("utf8 worktree"),
             "up",
@@ -1538,7 +1544,7 @@ mod tests {
         let backend = Arc::new(MockBackend::default());
         let temp = tempfile::tempdir().expect("create tempdir");
         let worktree = temp.path().join("repo");
-        fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+        create_git_dir(&worktree);
         let mut normalizer = TraceNormalizer::new(backend);
 
         let start = serde_json::json!({
@@ -1754,7 +1760,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("create tempdir");
         let outer = temp.path().join("outer");
         let clone_dir = outer.join("nested").join("relative-clone");
-        fs::create_dir_all(clone_dir.join(".git")).expect("create clone git dir");
+        create_git_dir(&clone_dir);
 
         let start = serde_json::json!({
             "event":"start",
@@ -1828,7 +1834,7 @@ mod tests {
         assert!(normalizer.ingest_payload(&cmd_name).unwrap().is_none());
 
         // Simulate repo discoverability only once clone is about to exit.
-        fs::create_dir_all(clone_dir.join(".git")).expect("create clone git dir");
+        create_git_dir(&clone_dir);
 
         assert!(normalizer.ingest_payload(&exit).unwrap().is_none());
         let cmd = normalizer
@@ -1847,8 +1853,8 @@ mod tests {
         let temp = tempfile::tempdir().expect("create tempdir");
         let source_repo = temp.path().join("source-repo");
         let cloned_repo = temp.path().join("cloned-repo");
-        fs::create_dir_all(source_repo.join(".git")).expect("create source git dir");
-        fs::create_dir_all(cloned_repo.join(".git")).expect("create cloned git dir");
+        create_git_dir(&source_repo);
+        create_git_dir(&cloned_repo);
 
         let start = serde_json::json!({
             "event":"start",
@@ -1899,7 +1905,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("create tempdir");
         let cwd = temp.path().join("projects"); // non-repo CWD
         let clone_dest = cwd.join("testing-git"); // the clone destination
-        fs::create_dir_all(clone_dest.join(".git")).expect("create clone git dir");
+        create_git_dir(&clone_dest);
 
         let root_sid = "20260327T000000.000000Z-Hdeadbeef-P00010000";
         let child_sid = format!("{}/20260327T000000.000001Z-Hdeadbeef-P00010001", root_sid);
@@ -1993,8 +1999,8 @@ mod tests {
         let temp = tempfile::tempdir().expect("create tempdir");
         let repo_a = temp.path().join("repo-a");
         let repo_b = temp.path().join("repo-b");
-        fs::create_dir_all(repo_a.join(".git")).expect("create repo-a git dir");
-        fs::create_dir_all(repo_b.join(".git")).expect("create repo-b git dir");
+        create_git_dir(&repo_a);
+        create_git_dir(&repo_b);
 
         let start_a = serde_json::json!({
             "event":"start",
@@ -2115,7 +2121,7 @@ mod tests {
         let mut normalizer = TraceNormalizer::new(backend);
         let temp = tempfile::tempdir().expect("create tempdir");
         let repo = temp.path().join("repo");
-        fs::create_dir_all(repo.join(".git")).expect("create git dir");
+        create_git_dir(&repo);
 
         let start = serde_json::json!({
             "event":"start",

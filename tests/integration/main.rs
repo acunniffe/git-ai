@@ -83,6 +83,7 @@ mod install_hooks_comprehensive;
 mod internal_machine_commands;
 mod internal_spawn_safety;
 mod issue_1204_multi_agent;
+mod issue_1415_empty_git_dir;
 mod jetbrains_download;
 mod jetbrains_ide_types;
 mod log;

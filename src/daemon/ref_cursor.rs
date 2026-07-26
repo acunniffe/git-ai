@@ -3717,6 +3717,13 @@ mod tests {
     const F: &str = "6666666666666666666666666666666666666666";
     const G: &str = "7777777777777777777777777777777777777777";
 
+    fn create_git_dir(worktree: &Path) -> PathBuf {
+        let git_dir = worktree.join(".git");
+        fs::create_dir_all(&git_dir).unwrap();
+        fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        git_dir
+    }
+
     #[test]
     fn commit_subject_matches_git_reflog_trailing_whitespace_cleanup() {
         assert_eq!(commit_subject("subject \t"), Some("subject".to_string()));
@@ -3831,7 +3838,7 @@ mod tests {
         // silently lost.
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
@@ -3885,7 +3892,7 @@ mod tests {
         // branch transition is then never found.
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let reference = "refs/heads/feature";
         let head_log = git_dir.join("logs/HEAD");
         let branch_log = git_dir.join("logs").join(reference);
@@ -3941,7 +3948,7 @@ mod tests {
         // match — this commit's own entry. The commit keeps its attribution.
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
@@ -4000,7 +4007,7 @@ mod tests {
         // entry. The hint must be honored, not ignored.
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
@@ -4056,7 +4063,7 @@ mod tests {
         // than the older untraced duplicate.
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
@@ -4182,7 +4189,7 @@ mod tests {
     fn amend_without_message_does_not_match_plain_commit_reflog_entry() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs")).unwrap();
         append_reflog(
             &git_dir,
@@ -4214,7 +4221,7 @@ mod tests {
     fn commit_with_exact_reflog_message_ignores_stale_daemon_head() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
@@ -4252,7 +4259,7 @@ mod tests {
     fn commit_reflog_boundary_skips_untraced_duplicate_message() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
@@ -4290,7 +4297,7 @@ mod tests {
     fn first_observed_head_boundary_skips_prior_reset_history() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
@@ -4325,7 +4332,7 @@ mod tests {
     fn reset_late_reflog_offset_uses_command_message_not_stale_state() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
@@ -4392,7 +4399,7 @@ mod tests {
     fn direct_branch_update_ref_uses_argv_transition_when_reflog_cursor_starts_too_late() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let reference = "refs/heads/feature";
         fs::create_dir_all(git_dir.join("logs").join("refs/heads")).unwrap();
         fs::create_dir_all(git_dir.join("logs")).unwrap();
@@ -4437,7 +4444,7 @@ mod tests {
     fn direct_branch_update_ref_does_not_treat_stale_head_reflog_match_as_current_head_move() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let reference = "refs/heads/feature";
         fs::create_dir_all(git_dir.join("logs").join("refs/heads")).unwrap();
         fs::create_dir_all(git_dir.join("logs")).unwrap();
@@ -4506,7 +4513,7 @@ mod tests {
     fn direct_branch_update_ref_consumes_head_mirror_before_later_unstructured_update_ref() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let reference = "refs/heads/feature";
         append_reflog(&git_dir, reference, &[(A, B, "")]);
         append_reflog(&git_dir, "HEAD", &[(A, B, "")]);
@@ -4550,7 +4557,7 @@ mod tests {
     fn direct_head_update_ref_uses_argv_and_late_cursor_branch_mirror_once() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let reference = "refs/heads/feature";
         append_reflog(&git_dir, reference, &[(A, B, "")]);
         append_reflog(&git_dir, "HEAD", &[(A, B, "")]);
@@ -4606,7 +4613,7 @@ mod tests {
     fn direct_head_update_ref_uses_known_worktree_branch_when_other_branch_matches_same_second() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let current = "refs/heads/main";
         let other = "refs/heads/other";
         append_reflog(&git_dir, current, &[(A, B, "")]);
@@ -4665,7 +4672,7 @@ mod tests {
     fn direct_head_update_ref_without_known_branch_does_not_guess_ambiguous_branch_mirror() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         append_reflog(&git_dir, "refs/heads/main", &[(A, B, "")]);
         append_reflog(&git_dir, "refs/heads/other", &[(A, B, "")]);
         append_reflog(&git_dir, "HEAD", &[(A, B, "")]);
@@ -4691,7 +4698,7 @@ mod tests {
     fn direct_branch_update_ref_does_not_attach_head_when_state_names_different_branch() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let current = "refs/heads/main";
         let updated = "refs/heads/feature";
         append_reflog(&git_dir, updated, &[(A, B, "")]);
@@ -4801,7 +4808,7 @@ mod tests {
     fn rebase_span_stops_at_new_rebase_start_before_finish() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs")).unwrap();
         append_reflog(
             &git_dir,
@@ -4841,7 +4848,7 @@ mod tests {
     fn rebase_span_continuation_skips_stale_abort_before_selected_start() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         let branch_log = git_dir.join("logs/refs/heads/feature");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
@@ -5091,7 +5098,7 @@ mod tests {
     fn rebase_does_not_consume_adjacent_checkout_head_entry() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs")).unwrap();
         append_reflog(
             &git_dir,
@@ -5140,7 +5147,7 @@ mod tests {
     fn failed_explicit_branch_rebase_consumes_noop_start_marker_before_continue() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs")).unwrap();
         append_reflog(
             &git_dir,
@@ -5216,7 +5223,7 @@ mod tests {
     fn cold_rebase_late_ingress_offset_still_recovers_start_and_branch_finish() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
 
         let start_line = format!(
@@ -5282,7 +5289,7 @@ mod tests {
     fn cold_rebase_true_boundary_does_not_replay_older_rebase_span() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
 
         let old_start = format!(
@@ -5366,7 +5373,7 @@ mod tests {
     fn rebase_span_stops_before_later_rebase_after_checkout() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs")).unwrap();
         append_reflog(
             &git_dir,
@@ -5422,7 +5429,7 @@ mod tests {
     fn rebase_does_not_attach_unrelated_branch_with_same_new_tip() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
         append_reflog(
             &git_dir,
@@ -5475,7 +5482,7 @@ mod tests {
     fn rebase_prefers_start_entry_when_expected_state_matches_pick() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs")).unwrap();
         append_reflog(
             &git_dir,
@@ -5528,7 +5535,7 @@ mod tests {
     fn cherry_pick_span_starts_at_first_pick_when_expected_state_matches_second_pick() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs")).unwrap();
         append_reflog(
             &git_dir,
@@ -5572,7 +5579,7 @@ mod tests {
     fn revert_span_starts_at_first_revert_when_expected_state_matches_second_revert() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs")).unwrap();
         append_reflog(
             &git_dir,
@@ -5625,7 +5632,7 @@ mod tests {
     fn pull_rebase_span_starts_at_start_entry_when_expected_state_matches_pick() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
         append_reflog(
             &git_dir,
@@ -5694,7 +5701,7 @@ mod tests {
     fn cold_pull_rebase_late_ingress_offset_still_recovers_start_and_branch_finish() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
 
         let start_line = format!(
@@ -5761,7 +5768,7 @@ mod tests {
     fn cold_pull_rebase_true_boundary_does_not_replay_older_pull_span() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
 
         let old_start = format!(

@@ -8680,6 +8680,7 @@ mod tests {
         std::fs::create_dir_all(head_log.parent().unwrap()).unwrap();
         std::fs::create_dir_all(stash_log.parent().unwrap()).unwrap();
         std::fs::create_dir_all(branch_log.parent().unwrap()).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
         let old_head_reflog = b"old HEAD reflog entry\n";
         let old_reflog = b"old stash reflog entry\n";
         let old_branch_reflog = b"old branch reflog entry\n";
