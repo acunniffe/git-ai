@@ -1,0 +1,101 @@
+tests/integration/main.rs
+  s_f00ef7c0f45b07::t_14a5122469a8c5 41
+src/daemon.rs
+  s_f00ef7c0f45b07::t_f7c97c5fa63d7c 41
+  s_f00ef7c0f45b07::t_18a3314c00ee83 374-375,3916,5261,1808
+  s_f00ef7c0f45b07::t_e6ab2f8699128d 505-514
+  s_f00ef7c0f45b07::t_9d023bc264e2a3 710
+  s_032cf4fb6d69d7::t_a42799b77763eb 734-735
+  s_f00ef7c0f45b07::t_1ed048cce837e6 738,740
+  s_032cf4fb6d69d7::t_3e061505b8a447 741,747,770,4664,4838
+  s_b3918a71142a3e::t_d44077ee010843 764,1325,1866,1869,1875,1846
+  s_032cf4fb6d69d7::t_2828464a087eeb 772
+  s_b3918a71142a3e::t_b897ee897992f4 867
+  s_b3918a71142a3e::t_809ca361022fce 1876-1877,2496,2537,2566,2569,2918,2929,3279,5363,6986,7104
+  s_b3918a71142a3e::t_9438acf042cbd8 1878,2919,2930,3280,3439,3443,4673,5364,5458,5719,5721,5745,6976,6987,7105,1792,1840
+  s_f00ef7c0f45b07::t_ba749b899cfc9c 2586,4550
+  s_f00ef7c0f45b07::t_7eaadc06b100d4 2780-2781,2824
+  s_f00ef7c0f45b07::t_8110027f606120 2975-2976
+  s_f00ef7c0f45b07::t_196bd40ce267d2 2977-2981,2983-2987,2989-2990,2992
+  s_f00ef7c0f45b07::t_a975576c128bc5 3285-3286,3460-3462,3485
+  s_f00ef7c0f45b07::t_ec0124b77a5030 3459
+  s_af2d349a5e032c::t_b76ff431c46f45 3496,3498-3499
+  s_f00ef7c0f45b07::t_3bdf1f9c0e82c0 3640
+  s_f00ef7c0f45b07::t_59adadc21a1289 3908
+  s_f00ef7c0f45b07::t_df379fd9b50588 3912
+  s_f00ef7c0f45b07::t_4646157f744d95 4156-4157
+  s_032cf4fb6d69d7::t_0860afd75daff3 4517-4518
+  s_f00ef7c0f45b07::t_c418e141f8ac5f 4540-4543,4545-4546,4548
+  s_032cf4fb6d69d7::t_502e2be88438da 4653-4663,4665,4667-4672,4675-4685,4689-4697,4704,4709-4714
+  s_032cf4fb6d69d7::t_42d2ebe8df66a3 4674
+  s_032cf4fb6d69d7::t_174828c975d936 4686
+  s_032cf4fb6d69d7::t_e26a2c1b3be88d 4687
+  s_032cf4fb6d69d7::t_0090736ada2b43 4882-4883
+  s_032cf4fb6d69d7::t_a738bcbcf82cc4 4992-4997,5071
+  s_032cf4fb6d69d7::t_16fec90aaed897 5000,5011
+  s_f00ef7c0f45b07::t_9e103d84dc4131 5017
+  s_032cf4fb6d69d7::t_2d224425653365 5024-5025
+  s_032cf4fb6d69d7::t_c02af5737bbdfc 5027,5030,5041,5065-5066,5068-5069,5072,5102
+  s_b3918a71142a3e::t_80d9b8cecfc8a6 5489
+  s_f00ef7c0f45b07::t_70887726b11d70 5682,5698,5718
+  s_f00ef7c0f45b07::t_ae8084c8e66067 5747-5761
+  s_f00ef7c0f45b07::t_3fe1a769c158b7 5777,5790,5792-5804,5810-5820
+  s_b3918a71142a3e::t_a3a35f774aecc7 5982-5983
+  s_f00ef7c0f45b07::t_862af8a7846130 5991-5992,6002,6024,6046,2263
+  s_f00ef7c0f45b07::t_ecf8c7944bf1fa 6883-6884,6892,6894-6896,6913,6919-6920
+  s_f00ef7c0f45b07::t_2b61c0f8eeaf80 6973-6975,1811,1814
+  s_f00ef7c0f45b07::t_a9a4b93b1d239b 7169-7171,7251,7254
+  s_f00ef7c0f45b07::t_47553f3626d70d 7250,7255-7256
+  s_f00ef7c0f45b07::t_0704f300cc817b 7394-7396
+  s_f00ef7c0f45b07::t_3b7a809d5a59e3 7413-7414,1833,1836,1847
+  s_032cf4fb6d69d7::t_9024cdc4db6a67 4688
+  s_f00ef7c0f45b07::t_6e0fec2d75cc39 5010,5077,5080-5081,5105,5108
+  s_032cf4fb6d69d7::t_0d023237258aa7 1738-1739,1742-1743,1746-1749,1762-1770,1773-1783,1839,1841-1842,5070,5073-5074,5093-5101,5103
+  s_f00ef7c0f45b07::t_eeff5695624d1f 1822-1823
+  s_f00ef7c0f45b07::t_f5ba98d3143919 1829,1835
+  s_f00ef7c0f45b07::t_996b152adb368d 1845
+  s_f00ef7c0f45b07::t_106c354e3ab6e7 1849-1850
+  s_f00ef7c0f45b07::t_5127b274ef9496 5084
+  s_032cf4fb6d69d7::t_fbcb6be207e3a5 5090-5091,5116-5117
+  s_f00ef7c0f45b07::t_9320cf8727036f 5092,5118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "e57da7beb8015f05f98d5f56a908e85bba983cc1",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b3918a71142a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de268d2e-4705-4c20-86ca-d1dc04eda164",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

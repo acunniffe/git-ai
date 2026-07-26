@@ -1,0 +1,28 @@
+Cargo.toml
+  4a60f5ac951ddc7b 46-51
+LICENSE
+  4a60f5ac951ddc7b 1,3,5,7-9,11-17,19-23,25-28,30
+.github/workflows/release.yml
+  4a60f5ac951ddc7b 247,252,349-350,352-389,391-396
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.30",
+  "base_commit_sha": "d6b4f3a97de11dd2115baf05fbf24fc82ae1e4bc",
+  "prompts": {
+    "4a60f5ac951ddc7b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9279810e-3d8b-4f0a-8444-0a82624fd8eb",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 84,
+      "total_deletions": 120,
+      "accepted_lines": 82,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/c55d2c5423d60ad0f40f7d127cddde4dd1ed0f5544ea1bfda6f55f3ef0a95a74"
+    }
+  }
+}

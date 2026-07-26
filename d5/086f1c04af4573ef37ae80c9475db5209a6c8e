@@ -1,0 +1,23 @@
+scripts/benchmarks/git/benchmark_nasty_squashes.sh
+  86929f7dd843d4eb 1-505
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "d5086f1c04af4573ef37ae80c9475db5209a6c8e",
+  "prompts": {
+    "86929f7dd843d4eb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c4e55-2d47-7340-969e-ebd57204bfdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 507,
+      "total_deletions": 2,
+      "accepted_lines": 505,
+      "overriden_lines": 0
+    }
+  }
+}

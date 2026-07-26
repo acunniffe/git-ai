@@ -1,0 +1,30 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/VfsRefreshListener.kt
+  34ef4917158f3f3e 38,44-45,47-49,51,53-57,61,66-67,69-71,73,75-76,78,112,119-120,122-127,163-164,168-171,173
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/DocumentChangeListener.kt
+  34ef4917158f3f3e 88-89,119,121-139
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/TrackedAgent.kt
+  34ef4917158f3f3e 7-8,12
+agent-support/intellij/src/test/kotlin/org/jetbrains/plugins/template/listener/VfsRefreshListenerTest.kt
+  34ef4917158f3f3e 4,57-58,64,66,99-100,105,110-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.13",
+  "base_commit_sha": "3fac0843502c47c46f02f4c28c7611fecc018f29",
+  "prompts": {
+    "34ef4917158f3f3e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cf456-f890-7bb3-b920-73acc0454eca",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 157,
+      "total_deletions": 31,
+      "accepted_lines": 136,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/854dd201a6f15d140ef9705f98d77fac8f65c20eeafbf1377e96a9f4f3c0dadc"
+    }
+  }
+}

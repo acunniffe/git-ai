@@ -1,0 +1,41 @@
+tests/integration/session_event_attribution.rs
+  s_362a9c73a1ff77::t_853a877926fba2 3-4,39-56,87-151
+  s_362a9c73a1ff77::t_665ab27f1a9821 152,417-634
+  s_b880de3a5e6407::t_cb3d894382b793 153
+src/metrics/db.rs
+  s_362a9c73a1ff77::t_9bfb7de09afb4d 12,1065-1157
+  s_b880de3a5e6407::t_73e0b21b32f5b9 1158-1159
+src/authorship/attribution_recovery.rs
+  s_362a9c73a1ff77::t_f254b6bcec6fe0 10,204-205,210,222-239
+  s_362a9c73a1ff77::t_d62aee1396279d 493-636,643,650,657-671,679-706,730-738,747,749-805,809-814,818-850,862-913,923-943,946-977,979-1005
+  s_362a9c73a1ff77::t_b654a4a5e8b8b3 637-642,644-649,651-656,672-678
+  s_362a9c73a1ff77::t_17b586f0b762f9 54-55,60
+  s_362a9c73a1ff77::t_aff5cf01e6a0f1 707-711,739-746,748,806-808,815-817,851-861,914-922,944-945,978
+  s_362a9c73a1ff77::t_bf4e7023c606bd 712-729
+  s_362a9c73a1ff77::t_6bd57812f5f1c3 25-53,56-59,61-134,138-169
+  s_362a9c73a1ff77::t_64cb029c1d0842 170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.5",
+  "base_commit_sha": "9cc157587b027d31dd145b461abb12d04df42d18",
+  "prompts": {},
+  "sessions": {
+    "s_362a9c73a1ff77": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19dd-d615-7bf1-86ee-d496ac6d02e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b880de3a5e6407": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19db-47e2-7340-a92b-59658d9d09e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

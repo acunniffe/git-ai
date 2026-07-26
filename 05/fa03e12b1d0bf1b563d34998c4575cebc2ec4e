@@ -1,0 +1,25 @@
+src/authorship/authorship_log_serialization.rs
+  0a1efe2 1303-1304,1329-1330,1337-1342,1365-1370,1374-1375,1466-1468,1478-1479,1498-1499,1506-1511,1538-1543
+  4e0bc1c 621-625
+  82ac861 628-630
+src/authorship/pre_commit.rs
+  4508b27 7
+src/authorship/range_authorship.rs
+  82ac861 237-240,287-293,354-357
+src/authorship/rebase_authorship.rs
+  82ac861 129-132,275-278,688-691,891-894,1197-1200,1253-1257,1390-1393
+src/commands/blame.rs
+  2f0f32c 2,237-238
+  82ac861 570-574
+src/commands/checkpoint.rs
+  c9707c9 564-565
+src/commands/hooks/reset_hooks.rs
+  4508b27 14
+src/git/test_utils/mod.rs
+  ca90d33 2,1290-1291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "ededa38f24b3c944f46da14c43c540145aa01566",
+  "prompts": {}
+}

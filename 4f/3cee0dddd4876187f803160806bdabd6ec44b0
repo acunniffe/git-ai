@@ -1,0 +1,23 @@
+tests/performance.rs
+  4293e35 40,103,169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "4f3cee0dddd4876187f803160806bdabd6ec44b0",
+  "prompts": {
+    "4293e35": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "603434b4-9ffc-4ccd-be53-45cf31b0aa7a",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 0,
+      "accepted_lines": 696,
+      "overriden_lines": 0
+    }
+  }
+}

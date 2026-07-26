@@ -1,0 +1,9 @@
+tests/integration/stash_hooks_unit.rs
+  f4f2b364dfcacebb 1-43,46-68,72-73,75-76,82-99,101-119,121,127-128,134-136,139-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "065dd28533e922508b613c8eddca2766eacc0b29",
+  "prompts": {}
+}

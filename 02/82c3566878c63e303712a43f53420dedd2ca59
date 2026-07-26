@@ -1,0 +1,87 @@
+src/commands/exchange_nonce.rs
+  4892e28dafb4c7ac 1-115,117-129
+src/observability/flush.rs
+  c61ae01cb1de1779 46-48,71-74,76-77,86-87,95-96,205-207,273-276,278-282,286-299,303
+src/commands/install_hooks.rs
+  c61ae01cb1de1779 10,16,22-23,30,32-33,38-78,80-92,107-110,174-175,204,227,232,235,237,239,301,306,309,335,357,362,365,367,369,374,379,381,395-399,403-421
+  4892e28dafb4c7ac 79,130-135,137-138,273-285,290-296
+src/commands/git_ai_handlers.rs
+  4892e28dafb4c7ac 151-153
+install.sh
+  4892e28dafb4c7ac 280-282
+  c61ae01cb1de1779 283
+src/commands/mod.rs
+  4892e28dafb4c7ac 7
+src/metrics/mod.rs
+  c61ae01cb1de1779 16
+src/observability/mod.rs
+  c61ae01cb1de1779 101-118,120-121
+src/metrics/events.rs
+  c61ae01cb1de1779 306-403
+src/metrics/types.rs
+  c61ae01cb1de1779 21
+install.ps1
+  4892e28dafb4c7ac 370-380
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "0282c3566878c63e303712a43f53420dedd2ca59",
+  "prompts": {
+    "4892e28dafb4c7ac": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d652adb0-e4cd-4984-a163-b0f0a2dbd798",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "8688852+Ryan-Adami@users.noreply.github.com",
+      "messages": [],
+      "total_additions": 308,
+      "total_deletions": 203,
+      "accepted_lines": 178,
+      "overriden_lines": 1,
+      "messages_url": "http://localhost:4000/cas/2170f340eabbf0acf4031742dd785e8a7c644e61a7e207555764136f1fe3af41"
+    },
+    "68b0803a147defcd": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1769727878638462000",
+        "model": "unknown"
+      },
+      "human_author": "8688852+Ryan-Adami@users.noreply.github.com",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "a72edd374004515c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "16c86e70-1a55-4d3d-86f9-45c2250c1646",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "8688852+Ryan-Adami@users.noreply.github.com",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/efe374f2e239665c07450febf11a0a0354b9f2d65552f4b64ec716da11330625"
+    },
+    "c61ae01cb1de1779": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d3ebfec2-2390-46df-9e93-d61b6c8b3dd4",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "8688852+Ryan-Adami@users.noreply.github.com",
+      "messages": [],
+      "total_additions": 558,
+      "total_deletions": 246,
+      "accepted_lines": 283,
+      "overriden_lines": 1,
+      "messages_url": "http://localhost:4000/cas/0d316a0eb6632a4992f44e3a7b4b4f3739c8b57dd3ceb5c4cc73843066b89e69"
+    }
+  }
+}
