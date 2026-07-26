@@ -1367,6 +1367,91 @@ sed -i.bak '3s/pick/squash/' "$1"
     feature3.assert_lines_and_blame(crate::lines!["// AI feature 3".ai(), "line 3".ai()]);
 }
 
+/// A no-argument rebase has no immutable old-range boundary because Git may
+/// select a reflog-derived fork point. Small leading squash groups are still
+/// legitimate and should retain authorship within the bounded safety limit.
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn test_implicit_fork_point_rebase_preserves_small_leading_squash() {
+    let repo = TestRepo::new();
+
+    let mut base_file = repo.filename("base.txt");
+    base_file.set_contents(crate::lines!["base content"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    base_file.assert_committed_lines(crate::lines!["base content".human()]);
+
+    let default_branch = repo.current_branch();
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    repo.git(&["branch", "--set-upstream-to", &default_branch, "feature"])
+        .unwrap();
+
+    let mut first_file = repo.filename("first.txt");
+    first_file.set_contents(crate::lines!["first AI source".ai()]);
+    repo.stage_all_and_commit("First AI source").unwrap();
+    base_file.assert_committed_lines(crate::lines!["base content".human()]);
+    first_file.assert_committed_lines(crate::lines!["first AI source".ai()]);
+
+    let mut second_file = repo.filename("second.txt");
+    second_file.set_contents(crate::lines!["second AI source".ai()]);
+    repo.stage_all_and_commit("Second AI source").unwrap();
+    base_file.assert_committed_lines(crate::lines!["base content".human()]);
+    first_file.assert_committed_lines(crate::lines!["first AI source".ai()]);
+    second_file.assert_committed_lines(crate::lines!["second AI source".ai()]);
+    let old_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    // Reorder the two commits, then squash the original first commit into the
+    // original second commit. Its commit-message match makes the original
+    // first commit a leading `<` source in range-diff.
+    let script_path = repo.path().join("leading_squash_editor.sh");
+    std::fs::write(
+        &script_path,
+        r#"#!/bin/sh
+first="$(sed -n '1p' "$1")"
+second="$(sed -n '2p' "$1")"
+{
+  printf '%s\n' "$second"
+  printf '%s\n' "$first" | sed 's/^pick /squash /'
+} > "$1.tmp"
+mv "$1.tmp" "$1"
+"#,
+    )
+    .unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    let mut permissions = std::fs::metadata(&script_path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    std::fs::set_permissions(&script_path, permissions).unwrap();
+
+    repo.git_with_env(
+        &["rebase", "-i"],
+        &[
+            ("GIT_SEQUENCE_EDITOR", script_path.to_str().unwrap()),
+            ("GIT_EDITOR", "true"),
+        ],
+        None,
+    )
+    .expect("implicit-fork-point interactive rebase should succeed");
+
+    let new_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let range_diff = repo
+        .git(&[
+            "range-diff",
+            "-s",
+            "--creation-factor=100",
+            &format!("{default_branch}..{old_tip}"),
+            &format!("{default_branch}..{new_tip}"),
+        ])
+        .unwrap();
+    let leading_sources = leading_dropped_commits_before_first_match(&range_diff);
+    assert_eq!(
+        leading_sources, 1,
+        "test setup must produce one leading squash source\n{range_diff}"
+    );
+
+    base_file.assert_committed_lines(crate::lines!["base content".human()]);
+    first_file.assert_committed_lines(crate::lines!["first AI source".ai()]);
+    second_file.assert_committed_lines(crate::lines!["second AI source".ai()]);
+}
+
 /// Test rebase with rewording (renaming) a commit that has 2 children commits
 /// Verifies that authorship is preserved for all 3 commits after reword
 #[test]
@@ -2225,6 +2310,7 @@ crate::reuse_tests_in_worktree!(
 crate::reuse_tests_in_worktree_with_attrs!(
     (#[cfg(not(target_os = "windows"))])
     test_rebase_squash_preserves_all_authorship,
+    test_implicit_fork_point_rebase_preserves_small_leading_squash,
     test_rebase_reword_commit_with_children,
     test_rebase_interactive_drop_preserves_attribution,
     test_rebase_squash_preserves_human_attribution,
@@ -2859,7 +2945,7 @@ fn test_rebase_same_file_then_ff_merge_preserves_attribution() {
     ]);
 }
 
-const COMMITS_OVER_PENDING_DROPPED_LIMIT: usize = 200;
+const COMMITS_OVER_PENDING_DROPPED_LIMIT: usize = 65;
 
 fn numbered_file_contents(prefix: &str, count: usize) -> String {
     (1..=count)
@@ -2867,8 +2953,18 @@ fn numbered_file_contents(prefix: &str, count: usize) -> String {
         .collect::<String>()
 }
 
-fn expected_ai_numbered_lines(prefix: &str, count: usize) -> Vec<ExpectedLine> {
-    (1..=count).map(|i| format!("{prefix} {i}").ai()).collect()
+#[cfg(not(target_os = "windows"))]
+fn expected_first_ai_numbered_lines(prefix: &str, count: usize) -> Vec<ExpectedLine> {
+    (1..=count)
+        .map(|i| {
+            let line = format!("{prefix} {i}");
+            if i == 1 {
+                line.ai()
+            } else {
+                line.unattributed_human()
+            }
+        })
+        .collect()
 }
 
 fn leading_dropped_commits_before_first_match(range_diff: &str) -> usize {
@@ -2896,15 +2992,17 @@ fn leading_dropped_commits_before_first_match(range_diff: &str) -> usize {
 }
 
 #[test]
+#[cfg(not(target_os = "windows"))]
 fn test_rebase_more_commits_than_pending_dropped_limit_preserves_authorship() {
     use std::fs;
+    use std::io::Write;
+    use std::os::unix::fs::PermissionsExt;
 
     let repo = TestRepo::new();
 
     let mut base_file = repo.filename("base.txt");
     base_file.set_contents(crate::lines!["base"]);
-    repo.stage_all_and_commit("Initial commit").unwrap();
-    let default_branch = repo.current_branch();
+    let base_commit = repo.stage_all_and_commit("Initial commit").unwrap();
 
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     let feature_path = repo.path().join("feature.txt");
@@ -2916,35 +3014,238 @@ fn test_rebase_more_commits_than_pending_dropped_limit_preserves_authorship() {
             numbered_file_contents("ai feature line", commit_number),
         )
         .unwrap();
-        repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
-            .unwrap();
+        if commit_number == 1 {
+            // One attributed source in the leading unmatched group is enough
+            // to prove that the group was preserved. Leaving the other small
+            // commits unattributed keeps this boundary test fast.
+            repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+                .unwrap();
+        }
         repo.git(&["add", "-A"]).unwrap();
         repo.commit(&format!("feature commit {commit_number}"))
             .unwrap();
     }
 
-    repo.git(&["checkout", &default_branch]).unwrap();
-    let mut main_file = repo.filename("main.txt");
-    main_file.set_contents(crate::lines!["main advance".human()]);
-    repo.stage_all_and_commit("Main advances").unwrap();
+    // Make the last commit dominate range-diff's similarity calculation, then
+    // reorder it before the small commits and fixup all of them into it. The
+    // resulting range-diff matches this last commit to the squashed commit and
+    // emits every small commit as a leading `<` entry.
+    let anchor_path = repo.path().join("anchor.txt");
+    fs::write(
+        &anchor_path,
+        numbered_file_contents("dominant anchor line", 1_000),
+    )
+    .unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "anchor.txt"])
+        .unwrap();
+    repo.git(&["add", "-A"]).unwrap();
+    repo.commit("dominant final commit").unwrap();
+    let original_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
-    repo.git(&["checkout", "feature"]).unwrap();
-    repo.git(&["rebase", &default_branch]).unwrap();
+    let script_content = r#"#!/bin/sh
+last="$(grep '^pick ' "$1" | tail -n 1)"
+{
+    printf '%s\n' "$last"
+    grep '^pick ' "$1" | sed '$d; s/^pick /fixup /'
+    grep -v '^pick ' "$1"
+} > "$1.tmp"
+mv "$1.tmp" "$1"
+"#;
+    let script_path = repo.path().join("large_squash_sequence_editor.sh");
+    let mut script_file = fs::File::create(&script_path).unwrap();
+    script_file.write_all(script_content.as_bytes()).unwrap();
+    drop(script_file);
+    let mut permissions = fs::metadata(&script_path).unwrap().permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&script_path, permissions).unwrap();
 
-    let rebased_commit_count = repo
-        .git(&["rev-list", "--count", &format!("{}..HEAD", default_branch)])
-        .unwrap()
-        .trim()
-        .parse::<usize>()
+    let head_relative_upstream = format!("HEAD~{}", COMMITS_OVER_PENDING_DROPPED_LIMIT + 1);
+    repo.git_with_env(
+        &["rebase", "-i", &head_relative_upstream],
+        &[
+            ("GIT_SEQUENCE_EDITOR", script_path.to_str().unwrap()),
+            ("GIT_EDITOR", "true"),
+        ],
+        None,
+    )
+    .unwrap();
+
+    let squashed_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let old_range = format!("{}..{original_tip}", base_commit.commit_sha);
+    let new_range = format!("{}..{squashed_tip}", base_commit.commit_sha);
+    let range_diff = repo
+        .git(&[
+            "range-diff",
+            "-s",
+            "--creation-factor=100",
+            &old_range,
+            &new_range,
+        ])
         .unwrap();
     assert_eq!(
-        rebased_commit_count, COMMITS_OVER_PENDING_DROPPED_LIMIT,
-        "rebase should preserve every feature commit, even when the count exceeds the pending-drop limit"
+        leading_dropped_commits_before_first_match(&range_diff),
+        COMMITS_OVER_PENDING_DROPPED_LIMIT,
+        "test setup must produce one leading `<` entry per small commit\n{range_diff}"
     );
-    feature_file.assert_lines_and_blame(expected_ai_numbered_lines(
+    feature_file.assert_lines_and_blame(expected_first_ai_numbered_lines(
         "ai feature line",
         COMMITS_OVER_PENDING_DROPPED_LIMIT,
     ));
+}
+
+#[test]
+fn test_rebase_onto_divergent_base_does_not_map_old_upstream_authorship() {
+    let repo = TestRepo::new();
+
+    let mut base_file = repo.filename("base.txt");
+    base_file.set_contents(crate::lines!["base"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    base_file.assert_lines_and_blame(crate::lines!["base".human()]);
+    let root = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    repo.git(&["checkout", "-b", "old-upstream"]).unwrap();
+    let mut shared_file = repo.filename("shared.txt");
+    shared_file.set_contents(crate::lines!["shared content".ai()]);
+    repo.stage_all_and_commit("Old upstream").unwrap();
+    base_file.assert_lines_and_blame(crate::lines!["base".human()]);
+    shared_file.assert_lines_and_blame(crate::lines!["shared content".ai()]);
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let mut feature_file = repo.filename("feature.txt");
+    feature_file.set_contents(crate::lines!["feature ai".ai()]);
+    repo.stage_all_and_commit("Feature").unwrap();
+    base_file.assert_lines_and_blame(crate::lines!["base".human()]);
+    shared_file.assert_lines_and_blame(crate::lines!["shared content".ai()]);
+    feature_file.assert_lines_and_blame(crate::lines!["feature ai".ai()]);
+
+    repo.git(&["checkout", "-b", "new-base", &root]).unwrap();
+    shared_file.set_contents(crate::lines!["shared content".human()]);
+    repo.stage_all_and_commit("New base").unwrap();
+    base_file.assert_lines_and_blame(crate::lines!["base".human()]);
+    shared_file.assert_lines_and_blame(crate::lines!["shared content".human()]);
+
+    repo.git(&["checkout", "feature"]).unwrap();
+    repo.git(&["rebase", "--onto", "new-base", "old-upstream"])
+        .unwrap();
+
+    base_file.assert_lines_and_blame(crate::lines!["base".human()]);
+    shared_file.assert_lines_and_blame(crate::lines!["shared content".human()]);
+    feature_file.assert_lines_and_blame(crate::lines!["feature ai".ai()]);
+    let rebased_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let note = repo
+        .read_authorship_note(&rebased_tip)
+        .expect("rebased feature should have an authorship note");
+    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse rebased feature note");
+    assert!(
+        log.attestations
+            .iter()
+            .all(|attestation| attestation.file_path != "shared.txt"),
+        "old-upstream attribution must not be copied into the rebased feature note: {:?}",
+        log.attestations
+    );
+}
+
+#[test]
+#[cfg(not(target_os = "windows"))]
+fn test_implicit_fork_point_rebase_discards_divergent_upstream_authorship() {
+    use std::fs;
+
+    let repo = TestRepo::new();
+
+    let mut base_file = repo.filename("base.txt");
+    base_file.set_contents(crate::lines!["base"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    base_file.assert_committed_lines(crate::lines!["base".human()]);
+    let root = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    repo.git(&["checkout", "-b", "upstream"]).unwrap();
+    let shared_path = repo.path().join("shared.txt");
+    let mut shared_file = repo.filename("shared.txt");
+    for commit_number in 1..=COMMITS_OVER_PENDING_DROPPED_LIMIT {
+        fs::write(
+            &shared_path,
+            numbered_file_contents("shared line", commit_number),
+        )
+        .unwrap();
+        if commit_number == 1 {
+            repo.git_ai(&["checkpoint", "mock_ai", "shared.txt"])
+                .unwrap();
+        }
+        repo.git(&["add", "-A"]).unwrap();
+        repo.commit(&format!("old upstream {commit_number}"))
+            .unwrap();
+        shared_file.assert_committed_lines(expected_first_ai_numbered_lines(
+            "shared line",
+            commit_number,
+        ));
+    }
+    let old_upstream_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let feature_path = repo.path().join("feature.txt");
+    fs::write(&feature_path, "feature ai\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+        .unwrap();
+    repo.git(&["add", "-A"]).unwrap();
+    repo.commit("feature").unwrap();
+    let old_feature_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let mut feature_file = repo.filename("feature.txt");
+    shared_file.assert_committed_lines(expected_first_ai_numbered_lines(
+        "shared line",
+        COMMITS_OVER_PENDING_DROPPED_LIMIT,
+    ));
+    feature_file.assert_committed_lines(crate::lines!["feature ai".ai()]);
+    repo.git(&["branch", "--set-upstream-to=upstream", "feature"])
+        .unwrap();
+
+    // Force-rewrite the configured upstream onto divergent history. Its reflog
+    // retains old_upstream_tip, so no-argument `git rebase` implicitly chooses
+    // that old tip via fork-point even though it checks out the new tip.
+    repo.git(&["checkout", "upstream"]).unwrap();
+    repo.git(&["reset", "--hard", &root]).unwrap();
+    fs::write(
+        &shared_path,
+        numbered_file_contents("shared line", COMMITS_OVER_PENDING_DROPPED_LIMIT),
+    )
+    .unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "shared.txt"])
+        .unwrap();
+    repo.git(&["add", "-A"]).unwrap();
+    repo.commit("divergent upstream").unwrap();
+    let new_upstream_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    shared_file.assert_committed_lines(
+        (1..=COMMITS_OVER_PENDING_DROPPED_LIMIT)
+            .map(|i| format!("shared line {i}").human())
+            .collect(),
+    );
+
+    repo.git(&["checkout", "feature"]).unwrap();
+    repo.git(&["rebase"]).unwrap();
+    let rebased_feature_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    let range_diff = repo
+        .git(&[
+            "range-diff",
+            "-s",
+            "--creation-factor=100",
+            &format!("{new_upstream_tip}..{old_feature_tip}"),
+            &format!("{new_upstream_tip}..{rebased_feature_tip}"),
+        ])
+        .unwrap();
+    assert!(
+        leading_dropped_commits_before_first_match(&range_diff) > 64,
+        "the observed checkout boundary must expose the divergent upstream prefix\n{range_diff}"
+    );
+    assert_ne!(
+        old_upstream_tip, new_upstream_tip,
+        "test setup must force-rewrite the configured upstream"
+    );
+    shared_file.assert_committed_lines(
+        (1..=COMMITS_OVER_PENDING_DROPPED_LIMIT)
+            .map(|i| format!("shared line {i}").human())
+            .collect(),
+    );
+    feature_file.assert_committed_lines(crate::lines!["feature ai".ai()]);
 }
 
 #[test]

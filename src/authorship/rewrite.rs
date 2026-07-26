@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::authorship::authorship_log_serialization::AuthorshipLog;
 use crate::authorship::hunk_shift::{DiffHunk, parse_hunk_header};
@@ -7,10 +8,11 @@ use crate::error::GitAiError;
 use crate::git::notes_api;
 use crate::git::repo_state::is_valid_git_oid;
 use crate::git::repository::{
-    Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin_streaming,
+    Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin, exec_git_stdin_streaming,
 };
 
 const EMPTY_TREE_SHA: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+const MAX_UNTRUSTED_UNMATCHED_COMMITS: usize = 64;
 
 #[derive(Debug)]
 pub enum RewriteEvent {
@@ -47,6 +49,20 @@ pub(crate) enum RewriteMetricOperation {
     Revert,
     UpdateRef,
     NonFastForward,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UnmatchedCommitPolicy {
+    /// The old range begins at the immutable upstream passed to the rebase, so
+    /// every unmatched group belongs to that rewrite.
+    PreserveAll,
+    /// An untrusted old range can contain either a real small squash or a
+    /// divergent-history prefix. Preserve the leading unmatched run only up
+    /// to the historical safety limit.
+    PreserveLeadingBounded,
+    /// An explicit divergent-base rewrite (for example, `rebase --onto`) can
+    /// expose unrelated old-upstream commits even when the prefix is small.
+    DiscardLeading,
 }
 
 impl RewriteMetricOperation {
@@ -288,26 +304,38 @@ fn resolve_tree_shas(
         return Ok(sha_to_tree);
     }
 
-    let mut rev_parse_args = repo.global_args_for_exec();
-    rev_parse_args.push("rev-parse".to_string());
-    for sha in &shas_to_resolve {
-        if let Some(arg) = tree_revision_arg(sha) {
-            rev_parse_args.push(arg);
-        }
-    }
-    let rev_output = exec_git(&rev_parse_args)?;
-    let rev_stdout = String::from_utf8_lossy(&rev_output.stdout);
-    let tree_shas: Vec<&str> = rev_stdout.lines().collect();
+    let mut cat_file_args = repo.global_args_for_exec();
+    cat_file_args.extend([
+        "cat-file".to_string(),
+        "--batch-check=%(objectname) %(objecttype)".to_string(),
+    ]);
+    let stdin_data = shas_to_resolve
+        .iter()
+        .filter_map(|sha| tree_revision_arg(sha))
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    let output = exec_git_stdin(&cat_file_args, stdin_data.as_bytes())?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let tree_lines = stdout.lines().collect::<Vec<_>>();
 
-    if tree_shas.len() != shas_to_resolve.len() {
+    if tree_lines.len() != shas_to_resolve.len() {
         return Err(GitAiError::Generic(format!(
-            "rev-parse returned {} trees for {} commits",
-            tree_shas.len(),
+            "cat-file returned {} trees for {} commits",
+            tree_lines.len(),
             shas_to_resolve.len()
         )));
     }
 
-    for (commit, tree) in shas_to_resolve.into_iter().zip(tree_shas) {
+    for (commit, line) in shas_to_resolve.into_iter().zip(tree_lines) {
+        let mut fields = line.split_whitespace();
+        let tree = fields.next().unwrap_or_default();
+        let object_type = fields.next().unwrap_or_default();
+        if object_type != "tree" || !is_valid_git_oid(tree) {
+            return Err(GitAiError::Generic(format!(
+                "cat-file failed to resolve tree for {commit}: {line}"
+            )));
+        }
         sha_to_tree.insert(commit, tree.to_string());
     }
 
@@ -407,6 +435,8 @@ pub(crate) fn handle_rewrite_event_with_metrics(
             new_tip,
             onto.as_deref(),
             RewriteMetricOperation::NonFastForward,
+            None,
+            UnmatchedCommitPolicy::PreserveLeadingBounded,
         ),
         RewriteEvent::CherryPickComplete {
             sources,
@@ -447,6 +477,8 @@ pub fn handle_non_fast_forward_rewrite(
         new_tip,
         onto,
         RewriteMetricOperation::NonFastForward,
+        None,
+        UnmatchedCommitPolicy::PreserveLeadingBounded,
     )
     .map(|_| ())
 }
@@ -457,8 +489,25 @@ pub(crate) fn handle_non_fast_forward_rewrite_with_operation(
     new_tip: &str,
     onto: Option<&str>,
     operation: RewriteMetricOperation,
+    trusted_old_range_base: Option<&str>,
+    untrusted_unmatched_commit_policy: UnmatchedCommitPolicy,
 ) -> Result<RewriteOutcome, GitAiError> {
-    let mappings = derive_mappings_from_range_diff(repo, old_tip, new_tip, onto)?;
+    let (old_range_base, unmatched_commit_policy) = if operation == RewriteMetricOperation::Rebase {
+        match trusted_old_range_base {
+            Some(base) => (Some(base), UnmatchedCommitPolicy::PreserveAll),
+            None => (None, untrusted_unmatched_commit_policy),
+        }
+    } else {
+        (None, untrusted_unmatched_commit_policy)
+    };
+    let mappings = derive_mappings_from_range_diff(
+        repo,
+        old_tip,
+        new_tip,
+        onto,
+        old_range_base,
+        unmatched_commit_policy,
+    )?;
     if mappings.is_empty() {
         return Ok(RewriteOutcome::empty());
     }
@@ -740,7 +789,7 @@ const DIFF_TREE_STREAM_CHUNK_SIZE: usize = 50;
 /// are zipped with shifts positionally.
 struct PendingShift {
     new_sha: String,
-    log: AuthorshipLog,
+    raw_note: Arc<str>,
 }
 
 fn shift_authorship_notes_with_existing_mode(
@@ -755,50 +804,63 @@ fn shift_authorship_notes_with_existing_mode(
     }
 
     // Batch-read all notes for source and target commits in O(1) git calls
-    let all_shas: Vec<String> = mappings
-        .iter()
-        .flat_map(|(src, dst)| [src.clone(), dst.clone()])
-        .collect();
-    let notes_map = notes_api::read_notes_batch(repo, &all_shas)?;
+    let all_shas = unique_pair_shas(mappings);
+    let notes_map = notes_api::read_notes_batch(repo, &all_shas)?
+        .into_iter()
+        .map(|(sha, note)| (sha, Arc::<str>::from(note)))
+        .collect::<HashMap<_, _>>();
 
     // Determine which mappings need processing
     let mut pending: Vec<PendingShift> = Vec::new();
     let mut verbatim_writes: Vec<(String, String)> = Vec::new();
     let mut diff_pairs: Vec<(String, String)> = Vec::new();
     let mut existing_by_target: HashMap<String, AuthorshipLog> = HashMap::new();
+    let mut blocked_targets = HashSet::new();
+    let mut inspected_targets: HashSet<String> = HashSet::new();
 
-    for (source_sha, new_sha) in mappings {
+    for (_, new_sha) in mappings {
+        if !inspected_targets.insert(new_sha.clone()) {
+            continue;
+        }
         if let Some(existing_raw) = notes_map.get(new_sha) {
-            if let Ok(existing_log) = AuthorshipLog::deserialize_from_string(existing_raw) {
-                if !existing_log.attestations.is_empty() {
+            match AuthorshipLog::deserialize_from_string(existing_raw) {
+                Ok(existing_log) if !existing_log.attestations.is_empty() => {
                     if merge_existing_targets {
                         existing_by_target
                             .entry(new_sha.clone())
                             .or_insert(existing_log);
                     } else {
-                        continue;
+                        blocked_targets.insert(new_sha.clone());
                     }
                 }
-            } else {
-                continue;
+                Ok(_) => {}
+                Err(_) => {
+                    blocked_targets.insert(new_sha.clone());
+                }
             }
+        }
+    }
+
+    for (source_sha, new_sha) in mappings {
+        if blocked_targets.contains(new_sha) {
+            continue;
         }
 
         let Some(raw_note) = notes_map.get(source_sha) else {
             continue;
         };
 
-        let Ok(log) = AuthorshipLog::deserialize_from_string(raw_note) else {
+        if AuthorshipLog::deserialize_from_string(raw_note).is_err() {
             if !merge_existing_targets {
-                verbatim_writes.push((new_sha.clone(), raw_note.clone()));
+                verbatim_writes.push((new_sha.clone(), raw_note.to_string()));
             }
             continue;
-        };
+        }
 
         diff_pairs.push((source_sha.clone(), new_sha.clone()));
         pending.push(PendingShift {
             new_sha: new_sha.clone(),
-            log,
+            raw_note: Arc::clone(raw_note),
         });
     }
 
@@ -929,7 +991,9 @@ fn apply_chunk_shifts(
     use crate::authorship::hunk_shift::apply_hunk_shifts_to_file_attestation;
 
     for (diff_result, shift) in chunk.iter().zip(pending_iter) {
-        let mut log = shift.log;
+        let Ok(mut log) = AuthorshipLog::deserialize_from_string(&shift.raw_note) else {
+            continue;
+        };
 
         for (old_path, new_path) in &diff_result.renames {
             for attestation in &mut log.attestations {
@@ -966,6 +1030,8 @@ fn derive_mappings_from_range_diff(
     old_tip: &str,
     new_tip: &str,
     onto_hint: Option<&str>,
+    trusted_old_range_base: Option<&str>,
+    unmatched_commit_policy: UnmatchedCommitPolicy,
 ) -> Result<Vec<(String, String)>, GitAiError> {
     let Some(base) = find_merge_base(repo, old_tip, new_tip) else {
         return Ok(Vec::new());
@@ -993,13 +1059,41 @@ fn derive_mappings_from_range_diff(
         }
         _ => &base,
     };
-    let range_diff_output = run_range_diff(repo, &base, old_tip, onto, new_tip)?;
-    let mut mappings = parse_range_diff_output(&range_diff_output);
+    let mut old_range_base = trusted_old_range_base.unwrap_or(&base);
+    let mut unmatched_commit_policy = unmatched_commit_policy;
+    let range_diff_output = match run_range_diff(repo, old_range_base, old_tip, onto, new_tip) {
+        Ok(output) => output,
+        Err(error) => {
+            let invalid_trusted_boundary = trusted_old_range_base
+                .is_some_and(|candidate| resolve_commit_revspec(repo, candidate).is_none());
+            if !invalid_trusted_boundary {
+                return Err(error);
+            }
 
-    let merge_mappings = derive_merge_commit_mappings(repo, &base, old_tip, new_tip, &mappings)?;
+            // Trusted boundaries are built from immutable trace2/reflog data and
+            // should resolve. Keep their valid path spawn-free; if range-diff
+            // rejects one, verify that the boundary itself is invalid before
+            // falling back rather than swallowing an unrelated Git failure.
+            old_range_base = &base;
+            unmatched_commit_policy = UnmatchedCommitPolicy::DiscardLeading;
+            run_range_diff(repo, old_range_base, old_tip, onto, new_tip)?
+        }
+    };
+    let mut mappings =
+        parse_range_diff_output_with_policy(&range_diff_output, unmatched_commit_policy);
+
+    let merge_mappings =
+        derive_merge_commit_mappings(repo, old_range_base, old_tip, new_tip, &mappings)?;
     mappings.extend(merge_mappings);
 
     Ok(mappings)
+}
+
+fn resolve_commit_revspec(repo: &Repository, revspec: &str) -> Option<String> {
+    repo.revparse_single(&format!("{revspec}^{{commit}}"))
+        .ok()
+        .map(|object| object.id())
+        .filter(|oid| is_valid_git_oid(oid))
 }
 
 fn is_ancestor(repo: &Repository, ancestor: &str, descendant: &str) -> bool {
@@ -1068,23 +1162,26 @@ fn run_range_diff(
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Maximum number of unmatched old-range (`<`) commits buffered ahead of the
-/// first matched pair. A genuine rebase squash absorbs a handful of commits
-/// into the first surviving one, so small queues are drained into that match
-/// as before. But when the count exceeds this bound the history is divergent
-/// — e.g. a restack undo (`git reset --keep <pre-rebase-tip>`), where the old
-/// range spans every trunk commit landed since the branch forked — and the
-/// whole queue is discarded, permanently. Without this, each bogus mapping
-/// whose source commit has an authorship note becomes a full-root-tree diff
-/// pair, and daemon memory scales as
-/// (trunk commits since fork) × (lines modified on trunk).
-const MAX_PENDING_DROPPED_COMMITS: usize = 64;
-
-fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
+fn parse_range_diff_output_with_policy(
+    output: &str,
+    unmatched_commit_policy: UnmatchedCommitPolicy,
+) -> Vec<(String, String)> {
     let mut mappings = Vec::new();
-    let mut pending_dropped: Vec<String> = Vec::new();
+    let mut pending_unmatched: Vec<String> = Vec::new();
     let mut pending_overflowed = false;
     let mut previous_new_sha: Option<String> = None;
+
+    let flush_pending = |mappings: &mut Vec<(String, String)>,
+                         pending: &mut Vec<String>,
+                         overflowed: &mut bool,
+                         target: &str| {
+        if !*overflowed {
+            mappings.extend(pending.drain(..).map(|source| (source, target.to_string())));
+        } else {
+            pending.clear();
+        }
+        *overflowed = false;
+    };
 
     for line in output.lines() {
         let trimmed = line.trim();
@@ -1092,7 +1189,7 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
             continue;
         }
 
-        // Find first 40-char hex SHA
+        // Find the first full SHA-1 or SHA-256 object ID.
         let Some((old_sha, rest)) = find_next_sha(trimmed) else {
             continue;
         };
@@ -1105,20 +1202,25 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
 
         match status_char {
             '<' => {
-                // Dropped commit (squashed into a later commit)
-                if !old_sha.chars().all(|c| c == '0') {
-                    if let Some(new_sha) = previous_new_sha.as_ref() {
-                        mappings.push((old_sha, new_sha.clone()));
-                    } else if !pending_overflowed {
-                        pending_dropped.push(old_sha);
-                        if pending_dropped.len() > MAX_PENDING_DROPPED_COMMITS {
-                            // Divergent history (e.g. restack undo), not a
-                            // squash: discard the queue and stop collecting so
-                            // the mapping count stays bounded.
-                            pending_dropped.clear();
-                            pending_dropped.shrink_to_fit();
-                            pending_overflowed = true;
-                        }
+                if old_sha.chars().all(|c| c == '0') {
+                    continue;
+                }
+                if !pending_overflowed {
+                    if previous_new_sha.is_none()
+                        && unmatched_commit_policy == UnmatchedCommitPolicy::DiscardLeading
+                    {
+                        pending_unmatched.clear();
+                        pending_overflowed = true;
+                        continue;
+                    }
+                    pending_unmatched.push(old_sha);
+                    if previous_new_sha.is_none()
+                        && unmatched_commit_policy == UnmatchedCommitPolicy::PreserveLeadingBounded
+                        && pending_unmatched.len() > MAX_UNTRUSTED_UNMATCHED_COMMITS
+                    {
+                        pending_unmatched.clear();
+                        pending_unmatched.shrink_to_fit();
+                        pending_overflowed = true;
                     }
                 }
             }
@@ -1131,10 +1233,13 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
                 if old_sha.chars().all(|c| c == '0') || new_sha.chars().all(|c| c == '0') {
                     continue;
                 }
-                // Map any preceding dropped commits to this new commit (squash)
-                for dropped in pending_dropped.drain(..) {
-                    mappings.push((dropped, new_sha.clone()));
-                }
+                let pending_target = previous_new_sha.as_deref().unwrap_or(&new_sha);
+                flush_pending(
+                    &mut mappings,
+                    &mut pending_unmatched,
+                    &mut pending_overflowed,
+                    pending_target,
+                );
                 previous_new_sha = Some(new_sha.clone());
                 mappings.push((old_sha, new_sha));
             }
@@ -1145,7 +1250,21 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
         }
     }
 
+    if let Some(previous_new_sha) = previous_new_sha {
+        flush_pending(
+            &mut mappings,
+            &mut pending_unmatched,
+            &mut pending_overflowed,
+            &previous_new_sha,
+        );
+    }
+
     mappings
+}
+
+#[cfg(test)]
+fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
+    parse_range_diff_output_with_policy(output, UnmatchedCommitPolicy::PreserveAll)
 }
 
 /// Find the first maximal ASCII-hex run in `s` whose length is a valid git OID
@@ -1284,19 +1403,16 @@ fn get_commit_parents_batch(repo: &Repository, shas: &[String]) -> HashMap<Strin
     }
     let mut args = repo.global_args_for_exec();
     args.extend([
-        "show".to_string(),
-        "-s".to_string(),
-        "--format=%H %P".to_string(),
+        "rev-list".to_string(),
+        "--parents".to_string(),
         "--no-walk".to_string(),
+        "--stdin".to_string(),
     ]);
-    args.extend(shas.iter().cloned());
+    let stdin_data = shas.join("\n") + "\n";
 
-    let Ok(output) = exec_git_allow_nonzero(&args) else {
+    let Ok(output) = exec_git_stdin(&args, stdin_data.as_bytes()) else {
         return HashMap::new();
     };
-    if !output.status.success() {
-        return HashMap::new();
-    }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     stdout
@@ -1515,6 +1631,105 @@ fn extract_b_path(diff_header: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolve_tree_shas_accepts_large_batches_via_stdin() {
+        let repo = crate::git::test_utils::TmpRepo::new().expect("create repo");
+        repo.write_file("file.txt", "content\n", false)
+            .expect("write file");
+        let head = repo.commit_all("initial").expect("commit");
+        let revisions = vec![head.clone(); 2_048];
+
+        let resolved =
+            resolve_tree_shas(repo.gitai_repo(), &revisions).expect("resolve tree batch");
+
+        assert_eq!(resolved.len(), 1);
+        assert!(resolved.contains_key(&head));
+    }
+
+    #[test]
+    fn get_commit_parents_batch_accepts_large_input_via_stdin() {
+        let repo = crate::git::test_utils::TmpRepo::new().expect("create repo");
+        repo.write_file("file.txt", "content\n", false)
+            .expect("write file");
+        let head = repo.commit_all("initial").expect("commit");
+        let revisions = vec![head.clone(); 2_048];
+
+        let parents = get_commit_parents_batch(repo.gitai_repo(), &revisions);
+
+        assert_eq!(parents.get(&head), Some(&Vec::new()));
+    }
+
+    #[test]
+    fn invalid_trusted_old_range_base_falls_back_and_discards_leading_sources() {
+        let repo = crate::git::test_utils::TmpRepo::new().expect("create repo");
+        repo.write_file("seed.txt", "seed\n", false)
+            .expect("write seed");
+        repo.commit_all("seed").expect("commit seed");
+        repo.create_branch("feature").expect("create feature");
+
+        repo.write_file("main.txt", "main\n", false)
+            .expect("write main");
+        let main_tip = repo.commit_all("main").expect("commit main");
+
+        repo.switch_branch("feature").expect("switch to feature");
+        repo.write_file("dropped.txt", "dropped\n", false)
+            .expect("write dropped source");
+        let dropped_source = repo
+            .commit_all("source omitted from rewritten history")
+            .expect("commit dropped source");
+        repo.write_file("feature.txt", "feature\n", false)
+            .expect("write feature");
+        let old_tip = repo.commit_all("feature").expect("commit feature");
+
+        repo.switch_branch("main").expect("switch to main");
+        repo.git_command(&["cherry-pick", &old_tip])
+            .expect("replay retained source");
+        let new_tip = repo
+            .git_command(&["rev-parse", "HEAD"])
+            .expect("resolve rewritten tip")
+            .trim()
+            .to_string();
+
+        let invalid_old_range_base = format!("{old_tip}~999");
+        let mappings = derive_mappings_from_range_diff(
+            repo.gitai_repo(),
+            &old_tip,
+            &new_tip,
+            Some(&main_tip),
+            Some(&invalid_old_range_base),
+            UnmatchedCommitPolicy::PreserveAll,
+        )
+        .expect("invalid trusted boundary should fall back");
+
+        assert_eq!(mappings, vec![(old_tip, new_tip)]);
+        assert!(
+            mappings.iter().all(|(source, _)| source != &dropped_source),
+            "falling back must also downgrade the leading-source policy"
+        );
+    }
+
+    #[test]
+    fn merging_existing_skips_unparseable_source_before_resolving_diff_trees() {
+        let repo = crate::git::test_utils::TmpRepo::new().expect("create repo");
+        repo.write_file("source.txt", "source\n", false)
+            .expect("write source");
+        let source = repo.commit_all("source").expect("commit source");
+        notes_api::write_note(repo.gitai_repo(), &source, "unsupported authorship schema")
+            .expect("write malformed source note");
+
+        // A non-existent destination makes any attempted tree resolution fail.
+        // The malformed source note cannot be shifted, so the mapping must be
+        // rejected before tree lookup and diff-tree work are queued.
+        let nonexistent_target = "f".repeat(40);
+        let writes = shift_authorship_notes_merging_existing_with_notes(
+            repo.gitai_repo(),
+            &[(source, nonexistent_target)],
+        )
+        .expect("unparseable source should be skipped before diff work");
+
+        assert!(writes.is_empty());
+    }
 
     #[test]
     fn metric_commits_from_mappings_groups_squashed_sources() {
@@ -1847,7 +2062,10 @@ Binary files a/image.png and b/image.png differ
             "201:  {} = 1:  {} AI feature commit\n",
             sha_a, sha_b
         ));
-        let mappings = parse_range_diff_output(&output);
+        let mappings = parse_range_diff_output_with_policy(
+            &output,
+            UnmatchedCommitPolicy::PreserveLeadingBounded,
+        );
         // Only the matched pair, not 200 bogus mappings
         assert_eq!(mappings.len(), 1);
         assert_eq!(mappings[0], (sha_a, sha_b));
@@ -1855,9 +2073,8 @@ Binary files a/image.png and b/image.png differ
 
     #[test]
     fn test_parse_range_diff_output_small_pending_dropped_still_mapped() {
-        // A bounded number of `<` commits ahead of the first match is a
-        // genuine squash and must still be drained into it — the overflow
-        // guard only fires past MAX_PENDING_DROPPED_COMMITS.
+        // A scoped rebase maps unmatched commits ahead of the first match to
+        // that destination commit as squash sources.
         let dropped = "1".repeat(40);
         let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
         let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
@@ -1871,6 +2088,123 @@ Binary files a/image.png and b/image.png differ
         assert_eq!(
             mappings,
             vec![(dropped, new_matched.clone()), (old_matched, new_matched),]
+        );
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_bounded_non_rebase_preserves_small_leading_squash() {
+        let dropped = "1".repeat(40);
+        let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let output = format!(
+            "\
+1:  {} < -:  ---------------------------------------- dropped
+2:  {} = 1:  {} matched\n",
+            dropped, old_matched, new_matched,
+        );
+
+        let mappings = parse_range_diff_output_with_policy(
+            &output,
+            UnmatchedCommitPolicy::PreserveLeadingBounded,
+        );
+
+        assert_eq!(
+            mappings,
+            vec![(dropped, new_matched.clone()), (old_matched, new_matched)]
+        );
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_bounded_non_rebase_enforces_leading_boundary() {
+        let old_matched = "a".repeat(40);
+        let new_matched = "b".repeat(40);
+
+        for (dropped_count, expected_mapping_count) in [(64, 65), (65, 1)] {
+            let mut output = String::new();
+            for index in 1..=dropped_count {
+                let sha = format!("{index:040}");
+                output.push_str(&format!(
+                    "{index}:  {sha} < -:  ---------------------------------------- dropped\n"
+                ));
+            }
+            output.push_str(&format!(
+                "{}:  {old_matched} = 1:  {new_matched} matched\n",
+                dropped_count + 1
+            ));
+
+            let mappings = parse_range_diff_output_with_policy(
+                &output,
+                UnmatchedCommitPolicy::PreserveLeadingBounded,
+            );
+
+            assert_eq!(
+                mappings.len(),
+                expected_mapping_count,
+                "unexpected mapping count for {dropped_count} leading commits"
+            );
+            assert_eq!(
+                mappings.last(),
+                Some(&(old_matched.clone(), new_matched.clone()))
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_bounded_non_rebase_preserves_large_post_match_group() {
+        let old_first = "a".repeat(40);
+        let new_first = "b".repeat(40);
+        let old_second = "c".repeat(40);
+        let new_second = "d".repeat(40);
+        let mut output = format!("1:  {old_first} = 1:  {new_first} first\n");
+        for index in 1..=65 {
+            let sha = format!("{index:040}");
+            output.push_str(&format!(
+                "{}:  {} < -:  ---------------------------------------- dropped\n",
+                index + 1,
+                sha
+            ));
+        }
+        output.push_str(&format!("67:  {old_second} = 2:  {new_second} second\n"));
+
+        let mappings = parse_range_diff_output_with_policy(
+            &output,
+            UnmatchedCommitPolicy::PreserveLeadingBounded,
+        );
+
+        assert_eq!(mappings.len(), 67);
+        assert_eq!(mappings[0], (old_first, new_first.clone()));
+        for (index, (old_sha, mapped_new_sha)) in mappings[1..66].iter().enumerate() {
+            assert_eq!(old_sha, &format!("{:040}", index + 1));
+            assert_eq!(mapped_new_sha, &new_first);
+        }
+        assert_eq!(mappings[66], (old_second, new_second));
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_untrusted_rebase_preserves_small_leading_group() {
+        let leading = "1".repeat(40);
+        let old_matched = "a".repeat(40);
+        let new_matched = "b".repeat(40);
+        let post_match = "c".repeat(40);
+        let output = format!(
+            "\
+1:  {leading} < -:  ---------------------------------------- unrelated upstream
+2:  {old_matched} = 1:  {new_matched} matched
+3:  {post_match} < -:  ---------------------------------------- squashed feature\n"
+        );
+
+        let mappings = parse_range_diff_output_with_policy(
+            &output,
+            UnmatchedCommitPolicy::PreserveLeadingBounded,
+        );
+
+        assert_eq!(
+            mappings,
+            vec![
+                (leading, new_matched.clone()),
+                (old_matched, new_matched.clone()),
+                (post_match, new_matched),
+            ]
         );
     }
 
@@ -1901,16 +2235,14 @@ Binary files a/image.png and b/image.png differ
     }
 
     #[test]
-    fn test_parse_range_diff_output_exactly_64_leading_drops_still_mapped() {
-        // Exactly MAX_PENDING_DROPPED_COMMITS (64) leading `<` commits should
-        // all be mapped to the first matched new SHA, plus the match's own old
-        // SHA — total of 65 mappings. Start at 1 so the first SHA is not all
-        // zeros and is therefore not skipped.
-        const MAX_DROPPED: usize = 64;
+    fn test_parse_range_diff_output_large_squash_preserves_all_leading_drops() {
+        // A scoped rebase can legitimately squash an arbitrary number of old
+        // commits into the first matched destination commit.
+        const DROPPED_COUNT: usize = 65;
         let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
         let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
         let mut output = String::new();
-        for i in 1..=MAX_DROPPED {
+        for i in 1..=DROPPED_COUNT {
             let sha = format!("{:040}", i);
             output.push_str(&format!(
                 "{}:  {} < -:  ---------------------------------------- dropped {}\n",
@@ -1919,49 +2251,43 @@ Binary files a/image.png and b/image.png differ
         }
         output.push_str(&format!(
             "{}:  {} = 1:  {} matched\n",
-            MAX_DROPPED + 1,
+            DROPPED_COUNT + 1,
             old_matched,
             new_matched,
         ));
         let mappings = parse_range_diff_output(&output);
-        // 64 dropped + 1 matched
-        assert_eq!(mappings.len(), MAX_DROPPED + 1);
-        // All dropped commits map to new_matched
-        for i in 1..=MAX_DROPPED {
+        assert_eq!(mappings.len(), DROPPED_COUNT + 1);
+        for i in 1..=DROPPED_COUNT {
             let sha = format!("{:040}", i);
             assert_eq!(mappings[i - 1], (sha, new_matched.clone()));
         }
-        // The matched pair is last
-        assert_eq!(mappings[MAX_DROPPED], (old_matched, new_matched));
+        assert_eq!(mappings[DROPPED_COUNT], (old_matched, new_matched));
     }
 
     #[test]
-    fn test_parse_range_diff_output_exactly_65_leading_drops_discards_all() {
-        // Exactly MAX_PENDING_DROPPED_COMMITS + 1 (65) leading `<` commits
-        // exceeds the limit, so ALL of them are discarded — only the matched
-        // pair's own mapping survives. Start at 1 so the first SHA is not all
-        // zeros and is therefore not skipped.
-        const MAX_DROPPED_PLUS_1: usize = 65;
+    fn test_parse_range_diff_output_non_rebase_preserves_unmatched_after_match() {
         let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
         let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
-        let mut output = String::new();
-        for i in 1..=MAX_DROPPED_PLUS_1 {
-            let sha = format!("{:040}", i);
-            output.push_str(&format!(
-                "{}:  {} < -:  ---------------------------------------- dropped {}\n",
-                i, sha, i
-            ));
-        }
-        output.push_str(&format!(
-            "{}:  {} = 1:  {} matched\n",
-            MAX_DROPPED_PLUS_1 + 1,
-            old_matched,
-            new_matched,
-        ));
-        let mappings = parse_range_diff_output(&output);
-        // Only the matched pair survived
-        assert_eq!(mappings.len(), 1);
-        assert_eq!(mappings[0], (old_matched, new_matched));
+        let old_unmatched = "cccccccccccccccccccccccccccccccccccccccc".to_string();
+        let output = format!(
+            "\
+1:  {} = 1:  {} matched
+2:  {} < -:  ---------------------------------------- unrelated\n",
+            old_matched, new_matched, old_unmatched,
+        );
+
+        let mappings = parse_range_diff_output_with_policy(
+            &output,
+            UnmatchedCommitPolicy::PreserveLeadingBounded,
+        );
+
+        assert_eq!(
+            mappings,
+            vec![
+                (old_matched, new_matched.clone()),
+                (old_unmatched, new_matched),
+            ]
+        );
     }
 
     #[test]
@@ -2320,9 +2646,14 @@ diff --git a/c.txt b/c.txt
         const SOURCE_COUNT: usize = DIFF_TREE_STREAM_CHUNK_SIZE + 5;
         let target_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
         let pending: Vec<PendingShift> = (1..=SOURCE_COUNT)
-            .map(|index| PendingShift {
-                new_sha: target_sha.clone(),
-                log: authorship_log_for_streaming_merge_test(index),
+            .map(|index| {
+                let raw_note = authorship_log_for_streaming_merge_test(index)
+                    .serialize_to_string()
+                    .expect("serialize source log");
+                PendingShift {
+                    new_sha: target_sha.clone(),
+                    raw_note: Arc::<str>::from(raw_note),
+                }
             })
             .collect();
 

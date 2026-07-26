@@ -219,3 +219,50 @@ fn ref_cursor_does_not_spawn_git_on_trace_ingestion_path() {
         );
     }
 }
+
+#[test]
+fn performance_repro_batches_user_scaled_git_setup() {
+    let script_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("repro_1985.sh");
+    let script = fs::read_to_string(&script_path).expect("read repro_1985.sh");
+
+    let scaled_loop = Regex::new(
+        r#"(?s)for i in \$\(seq [^)]*"\$(STACK_COMMITS|TRUNK_COMMITS|BASE_FILES)"\); do(.*?)\n[ \t]*done"#,
+    )
+    .unwrap();
+    let mut scaled_variables = Vec::new();
+    for captures in scaled_loop.captures_iter(&script) {
+        let variable = captures.get(1).unwrap().as_str();
+        let body = captures.get(2).unwrap().as_str();
+        scaled_variables.push(variable);
+        for git_command in ["qgit ", "tgit ", "gai "] {
+            assert!(
+                !body.contains(git_command),
+                "{variable} loop must prepare or stream batched input, not invoke `{git_command}`"
+            );
+        }
+    }
+    for variable in ["STACK_COMMITS", "TRUNK_COMMITS", "BASE_FILES"] {
+        assert!(
+            scaled_variables.contains(&variable),
+            "expected to inspect at least one {variable} loop"
+        );
+    }
+
+    let note_loop =
+        Regex::new(r#"(?s)while read -r sha; do(.*?)done < "\$(?:ORIG|TRUNK)_COMMITS_FILE""#)
+            .unwrap();
+    let note_loops = note_loop.captures_iter(&script).collect::<Vec<_>>();
+    assert_eq!(note_loops.len(), 2, "expected feature and trunk note loops");
+    for captures in note_loops {
+        let body = captures.get(1).unwrap().as_str();
+        assert!(
+            !body.contains("qgit "),
+            "note loops must stream one fast-import transaction, not invoke Git per note"
+        );
+    }
+
+    assert!(
+        script.matches("qgit fast-import").count() >= 2,
+        "synthetic histories and notes must each use one batched fast-import process"
+    );
+}
