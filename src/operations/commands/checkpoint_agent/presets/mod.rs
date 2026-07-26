@@ -163,3 +163,34 @@ pub fn resolve_preset(name: &str) -> Result<Box<dyn AgentPreset>, GitAiError> {
         _ => Err(GitAiError::PresetError(format!("Unknown preset: {}", name))),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simple_presets_share_legacy_path_payload_semantics() {
+        let payload = r#"{"file_paths":["src/lib.rs",42,"","src/lib.rs"],"cwd":"relative/root"}"#;
+        let expected_paths = vec![
+            PathBuf::from("src/lib.rs"),
+            PathBuf::from(""),
+            PathBuf::from("src/lib.rs"),
+        ];
+
+        for preset_name in ["human", "mock_ai", "mock_known_human"] {
+            let events = resolve_preset(preset_name)
+                .unwrap()
+                .parse(payload, "trace")
+                .unwrap();
+            let (cwd, file_paths) = match &events[0] {
+                ParsedHookEvent::UntrackedEdit(event) => (&event.cwd, &event.file_paths),
+                ParsedHookEvent::PostFileEdit(event) => (&event.context.cwd, &event.file_paths),
+                ParsedHookEvent::KnownHumanEdit(event) => (&event.cwd, &event.file_paths),
+                event => panic!("unexpected event for {preset_name}: {event:?}"),
+            };
+
+            assert_eq!(cwd, &PathBuf::from("relative/root"), "{preset_name}");
+            assert_eq!(file_paths, &expected_paths, "{preset_name}");
+        }
+    }
+}

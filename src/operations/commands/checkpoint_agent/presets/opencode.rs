@@ -1,10 +1,10 @@
-use super::{AgentPreset, ParsedHookEvent, PresetContext, claude_wire};
+use super::{AgentPreset, ParsedHookEvent, PresetContext, claude_wire, parse};
 use crate::error::GitAiError;
 use crate::model::working_log::AgentId;
 use crate::operations::commands::checkpoint_agent::bash_tool::{self, Agent, ToolClass};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub struct OpenCodePreset;
 
@@ -18,109 +18,6 @@ struct OpenCodeHookInput {
     tool_name: Option<String>,
     #[serde(default, alias = "toolUseId")]
     tool_use_id: Option<String>,
-}
-
-impl OpenCodePreset {
-    pub(crate) fn extract_filepaths_from_tool_input(
-        tool_input: Option<&serde_json::Value>,
-        cwd: &str,
-    ) -> Vec<PathBuf> {
-        let mut raw_paths = Vec::new();
-
-        if let Some(value) = tool_input {
-            Self::collect_tool_paths(value, &mut raw_paths);
-        }
-
-        let mut normalized_paths = Vec::new();
-        for raw in raw_paths {
-            if let Some(path) = Self::normalize_hook_path(&raw, cwd) {
-                let pb = PathBuf::from(&path);
-                if !normalized_paths.contains(&pb) {
-                    normalized_paths.push(pb);
-                }
-            }
-        }
-
-        normalized_paths
-    }
-
-    fn collect_tool_paths(value: &serde_json::Value, out: &mut Vec<String>) {
-        match value {
-            serde_json::Value::Object(map) => {
-                for (key, val) in map {
-                    let key_lower = key.to_ascii_lowercase();
-                    let is_single_path_key = key_lower == "file_path"
-                        || key_lower == "filepath"
-                        || key_lower == "path"
-                        || key_lower == "fspath";
-
-                    let is_multi_path_key = key_lower == "files"
-                        || key_lower == "filepaths"
-                        || key_lower == "file_paths";
-
-                    if is_single_path_key {
-                        if let Some(path) = val.as_str() {
-                            out.push(path.to_string());
-                        }
-                    } else if is_multi_path_key {
-                        match val {
-                            serde_json::Value::String(path) => out.push(path.to_string()),
-                            serde_json::Value::Array(paths) => {
-                                for path_value in paths {
-                                    if let Some(path) = path_value.as_str() {
-                                        out.push(path.to_string());
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    Self::collect_tool_paths(val, out);
-                }
-            }
-            serde_json::Value::Array(arr) => {
-                for item in arr {
-                    Self::collect_tool_paths(item, out);
-                }
-            }
-            serde_json::Value::String(s) => {
-                if s.starts_with("file://") {
-                    out.push(s.to_string());
-                }
-                super::parse::collect_apply_patch_paths_from_text(s, out);
-            }
-            _ => {}
-        }
-    }
-
-    fn normalize_hook_path(raw_path: &str, cwd: &str) -> Option<String> {
-        let trimmed = raw_path.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-
-        let path_without_scheme = trimmed
-            .strip_prefix("file://localhost")
-            .or_else(|| trimmed.strip_prefix("file://"))
-            .unwrap_or(trimmed);
-
-        let path = Path::new(path_without_scheme);
-        let joined = if path.is_absolute()
-            || path_without_scheme.starts_with("\\\\")
-            || path_without_scheme
-                .as_bytes()
-                .get(1)
-                .map(|b| *b == b':')
-                .unwrap_or(false)
-        {
-            PathBuf::from(path_without_scheme)
-        } else {
-            Path::new(cwd).join(path_without_scheme)
-        };
-
-        Some(joined.to_string_lossy().replace('\\', "/"))
-    }
 }
 
 impl AgentPreset for OpenCodePreset {
@@ -144,7 +41,7 @@ impl AgentPreset for OpenCodePreset {
             tool_use_id,
         } = hook_input;
 
-        let file_paths = Self::extract_filepaths_from_tool_input(tool_input.as_ref(), &cwd);
+        let file_paths = parse::nested_tool_file_paths(tool_input.as_ref(), &cwd);
         let bash_command = tool_input
             .as_ref()
             .and_then(|value| {
@@ -311,35 +208,6 @@ mod tests {
             }
             _ => panic!("Expected PostFileEdit"),
         }
-    }
-
-    #[test]
-    fn test_opencode_normalize_hook_path_absolute() {
-        assert_eq!(
-            OpenCodePreset::normalize_hook_path("/home/user/file.rs", "/project"),
-            Some("/home/user/file.rs".to_string())
-        );
-    }
-
-    #[test]
-    fn test_opencode_normalize_hook_path_relative() {
-        assert_eq!(
-            OpenCodePreset::normalize_hook_path("src/main.rs", "/project"),
-            Some("/project/src/main.rs".to_string())
-        );
-    }
-
-    #[test]
-    fn test_opencode_normalize_hook_path_file_uri() {
-        assert_eq!(
-            OpenCodePreset::normalize_hook_path("file:///home/user/file.rs", "/project"),
-            Some("/home/user/file.rs".to_string())
-        );
-    }
-
-    #[test]
-    fn test_opencode_normalize_hook_path_empty() {
-        assert_eq!(OpenCodePreset::normalize_hook_path("", "/project"), None);
     }
 
     #[test]

@@ -12,6 +12,36 @@ pub fn hook_json<T: DeserializeOwned>(hook_input: &str) -> Result<T, GitAiError>
         .map_err(|e| GitAiError::PresetError(format!("Invalid JSON in hook_input: {}", e)))
 }
 
+/// Parse the legacy `{file_paths, cwd}` checkpoint payload used by simple
+/// human and mock presets.
+///
+/// An exactly empty payload means "no paths, current directory"; whitespace is
+/// still parsed as JSON so the legacy error text and fallback behavior remain
+/// unchanged.
+pub(super) fn legacy_file_paths_and_cwd(
+    hook_input: &str,
+) -> Result<(Vec<PathBuf>, PathBuf), GitAiError> {
+    let current_dir = || std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if hook_input.is_empty() {
+        return Ok((Vec::new(), current_dir()));
+    }
+
+    let data: Value = serde_json::from_str(hook_input)
+        .map_err(|e| GitAiError::PresetError(format!("Invalid JSON: {}", e)))?;
+    let file_paths = string_array(&data, "file_paths")
+        .unwrap_or_default()
+        .into_iter()
+        .map(PathBuf::from)
+        .collect();
+    let cwd = data
+        .get("cwd")
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+        .unwrap_or_else(current_dir);
+
+    Ok((file_paths, cwd))
+}
+
 pub fn required_str<'a>(data: &'a Value, key: &str) -> Result<&'a str, GitAiError> {
     data.get(key)
         .and_then(|v| v.as_str())
@@ -93,6 +123,101 @@ pub fn file_paths_from_tool_input(data: &Value, cwd: &str) -> Vec<PathBuf> {
     }
 
     vec![]
+}
+
+/// Recursively extract, normalize, and deduplicate path-like values from tool
+/// payloads while preserving their first-seen order.
+pub(super) fn nested_tool_file_paths<'a>(
+    values: impl IntoIterator<Item = &'a Value>,
+    cwd: &str,
+) -> Vec<PathBuf> {
+    let mut raw_paths = Vec::new();
+    for value in values {
+        collect_nested_tool_paths(value, &mut raw_paths);
+    }
+
+    let mut normalized_paths = Vec::new();
+    for raw in raw_paths {
+        if let Some(path) = normalize_nested_tool_path(&raw, cwd) {
+            let path = PathBuf::from(path);
+            if !normalized_paths.contains(&path) {
+                normalized_paths.push(path);
+            }
+        }
+    }
+    normalized_paths
+}
+
+fn collect_nested_tool_paths(value: &Value, out: &mut Vec<String>) {
+    match value {
+        Value::Object(map) => {
+            for (key, value) in map {
+                let key = key.to_ascii_lowercase();
+                let is_single_path =
+                    matches!(key.as_str(), "file_path" | "filepath" | "path" | "fspath");
+                let is_multiple_paths =
+                    matches!(key.as_str(), "files" | "filepaths" | "file_paths");
+
+                if is_single_path {
+                    if let Some(path) = value.as_str() {
+                        out.push(path.to_string());
+                    }
+                } else if is_multiple_paths {
+                    match value {
+                        Value::String(path) => out.push(path.to_string()),
+                        Value::Array(paths) => {
+                            out.extend(
+                                paths
+                                    .iter()
+                                    .filter_map(Value::as_str)
+                                    .map(ToString::to_string),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+                collect_nested_tool_paths(value, out);
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                collect_nested_tool_paths(value, out);
+            }
+        }
+        Value::String(value) => {
+            if value.starts_with("file://") {
+                out.push(value.to_string());
+            }
+            collect_apply_patch_paths_from_text(value, out);
+        }
+        _ => {}
+    }
+}
+
+fn normalize_nested_tool_path(raw_path: &str, cwd: &str) -> Option<String> {
+    let trimmed = raw_path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let path_without_scheme = trimmed
+        .strip_prefix("file://localhost")
+        .or_else(|| trimmed.strip_prefix("file://"))
+        .unwrap_or(trimmed);
+    let path = Path::new(path_without_scheme);
+    let joined = if path.is_absolute()
+        || path_without_scheme.starts_with("\\\\")
+        || path_without_scheme
+            .as_bytes()
+            .get(1)
+            .is_some_and(|byte| *byte == b':')
+    {
+        PathBuf::from(path_without_scheme)
+    } else {
+        Path::new(cwd).join(path_without_scheme)
+    };
+
+    Some(joined.to_string_lossy().replace('\\', "/"))
 }
 
 pub fn bash_command_from_hook_input(data: &Value) -> Option<String> {
@@ -243,6 +368,80 @@ mod tests {
     fn test_resolve_absolute_relative() {
         let result = resolve_absolute("src/main.rs", "/home/user/project");
         assert_eq!(result, PathBuf::from("/home/user/project/src/main.rs"));
+    }
+
+    #[test]
+    fn test_legacy_file_paths_and_cwd_preserves_payload_semantics() {
+        let (paths, cwd) = legacy_file_paths_and_cwd(
+            r#"{"file_paths":["src/lib.rs",42,""],"cwd":"relative/root"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(paths, vec![PathBuf::from("src/lib.rs"), PathBuf::from("")]);
+        assert_eq!(cwd, PathBuf::from("relative/root"));
+
+        let (_, empty_cwd) = legacy_file_paths_and_cwd(r#"{"file_paths":[],"cwd":""}"#).unwrap();
+        assert_eq!(empty_cwd, PathBuf::from(""));
+    }
+
+    #[test]
+    fn test_legacy_file_paths_and_cwd_distinguishes_empty_from_whitespace() {
+        let expected_cwd = std::env::current_dir().unwrap();
+        assert_eq!(
+            legacy_file_paths_and_cwd("").unwrap(),
+            (Vec::new(), expected_cwd)
+        );
+
+        let GitAiError::PresetError(message) =
+            legacy_file_paths_and_cwd(" ").expect_err("whitespace must be parsed as JSON")
+        else {
+            panic!("expected preset error");
+        };
+        assert_eq!(
+            message,
+            "Invalid JSON: EOF while parsing a value at line 1 column 1"
+        );
+    }
+
+    #[test]
+    fn test_legacy_file_paths_and_cwd_falls_back_for_missing_or_wrong_types() {
+        let expected_cwd = std::env::current_dir().unwrap();
+        for payload in ["{}", "null", r#"{"file_paths":"src/lib.rs","cwd":42}"#] {
+            assert_eq!(
+                legacy_file_paths_and_cwd(payload).unwrap(),
+                (Vec::new(), expected_cwd.clone())
+            );
+        }
+    }
+
+    #[test]
+    fn test_file_paths_from_nested_values_normalizes_and_deduplicates() {
+        let tool_input = json!([
+            {"file_path": "src/main.rs"},
+            {"nested": {"files": ["src/lib.rs", 42, ""]}},
+            "file:///tmp/output.rs",
+            "*** Update File: src/main.rs\n*** Move to: src/moved.rs"
+        ]);
+        let tool_response = json!({
+            "FilePath": "/repo/src/main.rs",
+            "FILES": [
+                " file://localhost/tmp/output.rs ",
+                "C:\\repo\\windows.rs",
+                "\\\\server\\share\\file.rs"
+            ]
+        });
+
+        assert_eq!(
+            nested_tool_file_paths([&tool_input, &tool_response], "/repo"),
+            vec![
+                PathBuf::from("/repo/src/main.rs"),
+                PathBuf::from("/repo/src/lib.rs"),
+                PathBuf::from("/tmp/output.rs"),
+                PathBuf::from("/repo/src/moved.rs"),
+                PathBuf::from("C:/repo/windows.rs"),
+                PathBuf::from("//server/share/file.rs"),
+            ]
+        );
     }
 
     #[test]

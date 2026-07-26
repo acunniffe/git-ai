@@ -1,4 +1,3 @@
-use super::opencode::OpenCodePreset;
 use super::parse;
 use super::{AgentPreset, ParsedHookEvent, PresetContext, claude_wire};
 use crate::error::GitAiError;
@@ -267,8 +266,7 @@ impl AgentPreset for ClinePreset {
 
         let parameters = Self::normalize_parameters(&tool.parameters);
         let filtered_for_paths = Self::filter_content_keys(&parameters);
-        let mut file_paths =
-            OpenCodePreset::extract_filepaths_from_tool_input(Some(&filtered_for_paths), &cwd);
+        let mut file_paths = parse::nested_tool_file_paths([&filtered_for_paths], &cwd);
         for path in Self::extract_paths_from_parameters(&parameters, &cwd) {
             if !file_paths.contains(&path) {
                 file_paths.push(path);

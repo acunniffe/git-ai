@@ -1,4 +1,3 @@
-use super::opencode::OpenCodePreset;
 use super::parse;
 use super::{
     AgentPreset, ParsedHookEvent, PostBashCall, PostFileEdit, PreBashCall, PreFileEdit,
@@ -166,8 +165,7 @@ impl AgentPreset for CodexPreset {
                     })
                 } else if is_file_edit {
                     let tool_input = data.get("tool_input").or_else(|| data.get("toolInput"));
-                    let mut file_paths =
-                        OpenCodePreset::extract_filepaths_from_tool_input(tool_input, cwd);
+                    let mut file_paths = parse::nested_tool_file_paths(tool_input, cwd);
 
                     if file_paths.is_empty() {
                         file_paths = Self::extract_filepaths_from_tool_response(&data);
