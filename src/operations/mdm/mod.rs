@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod editor_cli;
+pub(crate) mod editor_extension;
 pub mod file_ops;
 pub mod hook_installer;
 pub mod hooks_merge;

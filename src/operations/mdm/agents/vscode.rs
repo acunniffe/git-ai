@@ -1,5 +1,9 @@
 use crate::error::GitAiError;
 use crate::operations::mdm::editor_cli::resolve_editor_cli;
+use crate::operations::mdm::editor_extension::{
+    ExtensionInstallOutcome, GIT_AI_VSCODE_EXTENSION_ID, ensure_vsc_editor_extension,
+    is_vsc_editor_extension_installed,
+};
 use crate::operations::mdm::hook_installer::{
     HookCheckResult, HookInstaller, HookInstallerParams, InstallResult, UninstallResult,
 };
@@ -8,8 +12,8 @@ use crate::operations::mdm::version::{
     MIN_CODE_VERSION, get_editor_version, parse_version, version_meets_requirement,
 };
 use crate::operations::mdm::vscode_settings::{
-    install_vsc_editor_extension, is_github_codespaces, is_vsc_editor_extension_installed,
-    settings_paths_for_products, should_process_settings_target, update_vscode_chat_hook_settings,
+    is_github_codespaces, settings_paths_for_products, should_process_settings_target,
+    update_vscode_chat_hook_settings,
 };
 use std::path::PathBuf;
 
@@ -18,6 +22,45 @@ pub struct VSCodeInstaller;
 impl VSCodeInstaller {
     fn settings_targets() -> Vec<PathBuf> {
         settings_paths_for_products(&["Code", "Code - Insiders"])
+    }
+
+    fn extension_result(outcome: ExtensionInstallOutcome) -> Option<InstallResult> {
+        let result = match outcome {
+            ExtensionInstallOutcome::CliUnavailable => return None,
+            ExtensionInstallOutcome::AlreadyInstalled => InstallResult {
+                changed: false,
+                diff: None,
+                message: "VS Code: Extension already installed".to_string(),
+            },
+            ExtensionInstallOutcome::PendingInstall => InstallResult {
+                changed: true,
+                diff: None,
+                message: "VS Code: Pending extension install".to_string(),
+            },
+            ExtensionInstallOutcome::Installed => InstallResult {
+                changed: true,
+                diff: None,
+                message: "VS Code: Extension installed".to_string(),
+            },
+            ExtensionInstallOutcome::CheckFailed(error) => InstallResult {
+                changed: false,
+                diff: None,
+                message: format!("VS Code: Failed to check extension: {}", error),
+            },
+            ExtensionInstallOutcome::InstallFailed(error) => {
+                tracing::debug!(
+                    "VS Code: Error automatically installing extension: {}",
+                    error
+                );
+                InstallResult {
+                    changed: false,
+                    diff: None,
+                    message: "VS Code: Unable to automatically install extension. Please cmd+click on the following link to install: vscode:extension/git-ai.git-ai-vscode (or navigate to https://marketplace.visualstudio.com/items?itemName=git-ai.git-ai-vscode in your browser)".to_string(),
+                }
+            }
+        };
+
+        Some(result)
     }
 }
 
@@ -61,7 +104,7 @@ impl HookInstaller for VSCodeInstaller {
         // VS Code hooks are installed via extension, not config files
         // Check if extension is installed
         if let Some(cli) = &resolved_cli {
-            match is_vsc_editor_extension_installed(cli, "git-ai.git-ai-vscode") {
+            match is_vsc_editor_extension_installed(cli, GIT_AI_VSCODE_EXTENSION_ID) {
                 Ok(true) => {
                     return Ok(HookCheckResult {
                         tool_installed: true,
@@ -128,62 +171,11 @@ impl HookInstaller for VSCodeInstaller {
             return Ok(results);
         }
 
-        // Install VS Code extension
-        if let Some(cli) = resolve_editor_cli("code") {
-            match is_vsc_editor_extension_installed(&cli, "git-ai.git-ai-vscode") {
-                Ok(true) => {
-                    results.push(InstallResult {
-                        changed: false,
-                        diff: None,
-                        message: "VS Code: Extension already installed".to_string(),
-                    });
-                }
-                Ok(false) => {
-                    if dry_run {
-                        results.push(InstallResult {
-                            changed: true,
-                            diff: None,
-                            message: "VS Code: Pending extension install".to_string(),
-                        });
-                    } else {
-                        match install_vsc_editor_extension(&cli, "git-ai.git-ai-vscode") {
-                            Ok(()) => {
-                                results.push(InstallResult {
-                                    changed: true,
-                                    diff: None,
-                                    message: "VS Code: Extension installed".to_string(),
-                                });
-                            }
-                            Err(e) => {
-                                tracing::debug!(
-                                    "VS Code: Error automatically installing extension: {}",
-                                    e
-                                );
-                                results.push(InstallResult {
-                                    changed: false,
-                                    diff: None,
-                                    message: "VS Code: Unable to automatically install extension. Please cmd+click on the following link to install: vscode:extension/git-ai.git-ai-vscode (or navigate to https://marketplace.visualstudio.com/items?itemName=git-ai.git-ai-vscode in your browser)".to_string(),
-                                });
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    results.push(InstallResult {
-                        changed: false,
-                        diff: None,
-                        message: format!("VS Code: Failed to check extension: {}", e),
-                    });
-                }
-            }
-        } else {
-            // resolve_editor_cli returned None -- the only way to reach this
-            // branch. VS Code was detected only from its config dotfiles
-            // (~/.vscode) and isn't actually installed, so there's nothing to
-            // install the extension into. Don't emit a misleading "unable to
-            // install" nag here; genuine install/check failures are already
-            // reported by the match arms above. (The chat-hook settings below are
-            // configured independently of the editor CLI and still run.)
+        let cli = resolve_editor_cli("code");
+        let extension_outcome =
+            ensure_vsc_editor_extension(cli.as_ref(), GIT_AI_VSCODE_EXTENSION_ID, dry_run, || {});
+        if let Some(result) = Self::extension_result(extension_outcome) {
+            results.push(result);
         }
 
         for settings_path in Self::settings_targets() {
@@ -243,6 +235,49 @@ impl HookInstaller for VSCodeInstaller {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_extension_result(
+        outcome: ExtensionInstallOutcome,
+        expected_changed: bool,
+        expected_message: &str,
+    ) {
+        let result = VSCodeInstaller::extension_result(outcome).expect("expected a result");
+        assert_eq!(result.changed, expected_changed);
+        assert!(result.diff.is_none());
+        assert_eq!(result.message, expected_message);
+    }
+
+    #[test]
+    fn extension_outcomes_keep_vscode_messages() {
+        assert!(
+            VSCodeInstaller::extension_result(ExtensionInstallOutcome::CliUnavailable).is_none()
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::AlreadyInstalled,
+            false,
+            "VS Code: Extension already installed",
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::PendingInstall,
+            true,
+            "VS Code: Pending extension install",
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::Installed,
+            true,
+            "VS Code: Extension installed",
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::CheckFailed(GitAiError::Generic("boom".to_string())),
+            false,
+            "VS Code: Failed to check extension: Generic error: boom",
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::InstallFailed(GitAiError::Generic("boom".to_string())),
+            false,
+            "VS Code: Unable to automatically install extension. Please cmd+click on the following link to install: vscode:extension/git-ai.git-ai-vscode (or navigate to https://marketplace.visualstudio.com/items?itemName=git-ai.git-ai-vscode in your browser)",
+        );
+    }
 
     #[test]
     fn test_vscode_installer_name() {

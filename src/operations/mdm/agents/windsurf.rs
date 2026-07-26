@@ -1,5 +1,8 @@
 use crate::error::GitAiError;
 use crate::operations::mdm::editor_cli::resolve_editor_cli;
+use crate::operations::mdm::editor_extension::{
+    ExtensionInstallOutcome, GIT_AI_VSCODE_EXTENSION_ID, ensure_vsc_editor_extension,
+};
 use crate::operations::mdm::hook_installer::{
     HookCheckResult, HookInstaller, HookInstallerParams, InstallResult, UninstallResult,
 };
@@ -8,9 +11,7 @@ use crate::operations::mdm::hooks_merge::{
     upsert_singleton_command_hook,
 };
 use crate::operations::mdm::paths::home_dir;
-use crate::operations::mdm::vscode_settings::{
-    install_vsc_editor_extension, is_github_codespaces, is_vsc_editor_extension_installed,
-};
+use crate::operations::mdm::vscode_settings::is_github_codespaces;
 
 use serde_json::{Value, json};
 use std::fs;
@@ -120,6 +121,59 @@ impl WindsurfInstaller {
                 }
             },
         )
+    }
+
+    fn extension_install_announcements() -> [&'static str; 2] {
+        [
+            "Installing extensions...",
+            "\tInstalling extension 'git-ai.git-ai-vscode'...",
+        ]
+    }
+
+    fn announce_extension_install() {
+        for message in Self::extension_install_announcements() {
+            println!("{message}");
+        }
+    }
+
+    fn extension_result(outcome: ExtensionInstallOutcome) -> Option<InstallResult> {
+        let result = match outcome {
+            ExtensionInstallOutcome::CliUnavailable => return None,
+            ExtensionInstallOutcome::AlreadyInstalled => InstallResult {
+                changed: false,
+                diff: None,
+                message: "Windsurf: Extension already installed".to_string(),
+            },
+            ExtensionInstallOutcome::PendingInstall => InstallResult {
+                changed: true,
+                diff: None,
+                message: "Windsurf: Pending extension install".to_string(),
+            },
+            ExtensionInstallOutcome::Installed => InstallResult {
+                changed: true,
+                diff: None,
+                message: "\tExtension 'git-ai.git-ai-vscode' was successfully installed."
+                    .to_string(),
+            },
+            ExtensionInstallOutcome::CheckFailed(error) => InstallResult {
+                changed: false,
+                diff: None,
+                message: format!("Windsurf: Failed to check extension: {}", error),
+            },
+            ExtensionInstallOutcome::InstallFailed(error) => {
+                tracing::debug!(
+                    "Windsurf: Error automatically installing extension: {}",
+                    error
+                );
+                InstallResult {
+                    changed: false,
+                    diff: None,
+                    message: "Windsurf: Unable to automatically install extension. Please cmd+click on the following link to install: windsurf:extension/git-ai.git-ai-vscode (or search for 'git-ai-vscode' in the Windsurf extensions tab)".to_string(),
+                }
+            }
+        };
+
+        Some(result)
     }
 }
 
@@ -255,63 +309,15 @@ impl HookInstaller for WindsurfInstaller {
             return Ok(results);
         }
 
-        // Install VS Code extension
-        if let Some(cli) = resolve_editor_cli("windsurf") {
-            match is_vsc_editor_extension_installed(&cli, "git-ai.git-ai-vscode") {
-                Ok(true) => {
-                    results.push(InstallResult {
-                        changed: false,
-                        diff: None,
-                        message: "Windsurf: Extension already installed".to_string(),
-                    });
-                }
-                Ok(false) => {
-                    if dry_run {
-                        results.push(InstallResult {
-                            changed: true,
-                            diff: None,
-                            message: "Windsurf: Pending extension install".to_string(),
-                        });
-                    } else {
-                        println!("Installing extensions...");
-                        println!("\tInstalling extension 'git-ai.git-ai-vscode'...");
-                        match install_vsc_editor_extension(&cli, "git-ai.git-ai-vscode") {
-                            Ok(()) => {
-                                results.push(InstallResult {
-                                    changed: true,
-                                    diff: None,
-                                    message: "\tExtension 'git-ai.git-ai-vscode' was successfully installed.".to_string(),
-                                });
-                            }
-                            Err(e) => {
-                                tracing::debug!(
-                                    "Windsurf: Error automatically installing extension: {}",
-                                    e
-                                );
-                                results.push(InstallResult {
-                                    changed: false,
-                                    diff: None,
-                                    message: "Windsurf: Unable to automatically install extension. Please cmd+click on the following link to install: windsurf:extension/git-ai.git-ai-vscode (or search for 'git-ai-vscode' in the Windsurf extensions tab)".to_string(),
-                                });
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    results.push(InstallResult {
-                        changed: false,
-                        diff: None,
-                        message: format!("Windsurf: Failed to check extension: {}", e),
-                    });
-                }
-            }
-        } else {
-            // resolve_editor_cli returned None -- the only way to reach this
-            // branch. Windsurf was detected only from its config dotfiles
-            // (~/.codeium) and isn't actually installed, so there's nothing to
-            // install the extension into. Don't emit a misleading "unable to
-            // install" nag here; genuine install/check failures are already
-            // reported by the match arms above.
+        let cli = resolve_editor_cli("windsurf");
+        let extension_outcome = ensure_vsc_editor_extension(
+            cli.as_ref(),
+            GIT_AI_VSCODE_EXTENSION_ID,
+            dry_run,
+            Self::announce_extension_install,
+        );
+        if let Some(result) = Self::extension_result(extension_outcome) {
+            results.push(result);
         }
 
         Ok(results)
@@ -334,6 +340,60 @@ impl HookInstaller for WindsurfInstaller {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn assert_extension_result(
+        outcome: ExtensionInstallOutcome,
+        expected_changed: bool,
+        expected_message: &str,
+    ) {
+        let result = WindsurfInstaller::extension_result(outcome).expect("expected a result");
+        assert_eq!(result.changed, expected_changed);
+        assert!(result.diff.is_none());
+        assert_eq!(result.message, expected_message);
+    }
+
+    #[test]
+    fn extension_outcomes_keep_windsurf_messages() {
+        assert!(
+            WindsurfInstaller::extension_result(ExtensionInstallOutcome::CliUnavailable).is_none()
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::AlreadyInstalled,
+            false,
+            "Windsurf: Extension already installed",
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::PendingInstall,
+            true,
+            "Windsurf: Pending extension install",
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::Installed,
+            true,
+            "\tExtension 'git-ai.git-ai-vscode' was successfully installed.",
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::CheckFailed(GitAiError::Generic("boom".to_string())),
+            false,
+            "Windsurf: Failed to check extension: Generic error: boom",
+        );
+        assert_extension_result(
+            ExtensionInstallOutcome::InstallFailed(GitAiError::Generic("boom".to_string())),
+            false,
+            "Windsurf: Unable to automatically install extension. Please cmd+click on the following link to install: windsurf:extension/git-ai.git-ai-vscode (or search for 'git-ai-vscode' in the Windsurf extensions tab)",
+        );
+    }
+
+    #[test]
+    fn extension_install_announcements_keep_windsurf_stdout_text_and_order() {
+        assert_eq!(
+            WindsurfInstaller::extension_install_announcements(),
+            [
+                "Installing extensions...",
+                "\tInstalling extension 'git-ai.git-ai-vscode'...",
+            ]
+        );
+    }
 
     #[test]
     fn test_install_extras_does_not_nag_when_cli_absent() {
