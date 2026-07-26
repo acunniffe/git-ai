@@ -1,0 +1,25 @@
+src/git/repository.rs
+  s_74728b61a57c4b::t_3f9d4a53af295d 2744,2770
+  s_74728b61a57c4b::t_c35beb5534d631 2718
+  s_74728b61a57c4b::t_7d1363ecb5b17a 3339-3351
+  s_74728b61a57c4b::t_b09bbc741caa83 2790
+  s_74728b61a57c4b::t_7b67d64e5c26ef 2791
+src/commands/checkpoint_agent/bash_tool.rs
+  s_74728b61a57c4b::t_50a7100874d979 727
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "02938171cf6ef2781a2ceac77ed4cb7546207895",
+  "prompts": {},
+  "sessions": {
+    "s_74728b61a57c4b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eeff9-e4b2-7622-81a7-f9886b685a5d",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

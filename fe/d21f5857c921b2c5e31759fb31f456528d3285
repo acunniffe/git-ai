@@ -1,0 +1,23 @@
+src/transcripts/agents/claude.rs
+  s_12e965d1da53af::t_1ee6d8ad0fc946 284
+src/transcripts/agents/codex.rs
+  s_12e965d1da53af::t_5ffc02115b09be 275
+src/transcripts/db.rs
+  s_12e965d1da53af::t_5fd23e2c4ce6f7 363-376
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.5",
+  "base_commit_sha": "fed21f5857c921b2c5e31759fb31f456528d3285",
+  "prompts": {},
+  "sessions": {
+    "s_12e965d1da53af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b761d17-9c3e-4ab8-9597-c00f2545d4e3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

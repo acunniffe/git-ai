@@ -1,0 +1,114 @@
+src/daemon/analyzers/history.rs
+  s_f00ef7c0f45b07::t_99849dc12efc03 418
+tests/integration/fuzzer/model.rs
+  s_f00ef7c0f45b07::t_607b167dc6225e 102-106
+  s_f00ef7c0f45b07::t_d734846a99fe3a 7,61-63,99-101,107,109-114
+src/authorship/rewrite_revert.rs
+  s_f00ef7c0f45b07::t_15b06b5c7c752c 1,7-8,10,58-60,62-75,79-87,91-97,104,108-139
+  s_f00ef7c0f45b07::t_433e0fbfd083bb 22,34-45,48,140-148
+tests/integration/rewrite_ops_attribution.rs
+  s_f00ef7c0f45b07::t_07ee1ddeb8c45c 77-111
+  s_f00ef7c0f45b07::t_32b4ab989c03f2 112-133,136-145
+  s_f00ef7c0f45b07::t_94758a8d14d283 134-135
+src/authorship/post_commit.rs
+  s_f00ef7c0f45b07::t_3f2c6d813f8761 76-99,308
+  s_f00ef7c0f45b07::t_654aed96894834 11,343-348,350-356
+  s_f00ef7c0f45b07::t_42f10e696d517e 209-218,220-228,231-256,258-271,273
+src/ci/ci_context.rs
+  s_f00ef7c0f45b07::t_7f31cf4e297b57 447,449-453
+tests/integration/pull_rebase_ff.rs
+  s_f00ef7c0f45b07::t_22c75a07ac7d35 921-992,998-1015,1018-1019,1022,1025-1027
+  s_f00ef7c0f45b07::t_13a5bc160eccc7 993-997
+  s_f00ef7c0f45b07::t_a5130674ff8a74 1084
+  s_f00ef7c0f45b07::t_10205da57b8fb0 1016-1017,1020-1021,1023-1024
+src/daemon/reducer.rs
+  s_f00ef7c0f45b07::t_283e3c75b9e1ea 124
+src/commands/checkpoint_agent/orchestrator.rs
+  s_f00ef7c0f45b07::t_914330675e58ef 104
+  s_f00ef7c0f45b07::t_53f9769df42dd0 10
+src/authorship/rewrite.rs
+  s_f00ef7c0f45b07::t_c315068226ce09 674-681,690,700,748-751,753-759,762,765,771-776
+src/commands/ci_handlers.rs
+  s_f00ef7c0f45b07::t_7f31cf4e297b57 24-35,286
+src/daemon/analyzers/workspace.rs
+  s_f00ef7c0f45b07::t_90d32b9ee77633 138
+tests/integration/main.rs
+  s_f00ef7c0f45b07::t_22d3e860146083 62
+src/daemon/analyzers/generic.rs
+  s_f00ef7c0f45b07::t_d911f7422264ba 118
+src/daemon/ref_cursor.rs
+  s_f00ef7c0f45b07::t_57e4bceb4c8455 1659-1691,1693-1697,1701-1714
+  s_f00ef7c0f45b07::t_9a70bac8d2d8be 780
+  s_f00ef7c0f45b07::t_02fc421ed04810 1612
+  s_f00ef7c0f45b07::t_94758a8d14d283 1692,1698-1700
+  s_f00ef7c0f45b07::t_238ff291c6761b 2213-2238,2247-2249,2251-2263,2265-2267,2300-2352,2409-2438
+  s_f00ef7c0f45b07::t_93364959f58b29 434-435,439-455
+  s_f00ef7c0f45b07::t_9cd2f3c4bfb0fa 1771
+  s_f00ef7c0f45b07::t_002f69aa9950a0 2239-2246,2250,2268-2286,2289-2299
+  s_f00ef7c0f45b07::t_b045082ee2702c 2357-2361,2367,2369-2376,2378-2380,2383-2393,2396,2401
+  s_f00ef7c0f45b07::t_44b7e2c8359c60 19,96,955-959,999-1002,1034-1039,1084,1132
+  s_f00ef7c0f45b07::t_bb45c7ceea7796 2353-2356,2362-2366,2368,2377,2381-2382,2394-2395,2397-2400,2402-2408
+  s_f00ef7c0f45b07::t_c479642985e8a6 265-306
+  s_f00ef7c0f45b07::t_5c082c1fa8fcb3 17,81-88,94
+  s_f00ef7c0f45b07::t_7c897d10b8a8fd 2264
+  s_f00ef7c0f45b07::t_d02b0601fc0d23 802,818,825-826,1053-1054
+  s_f00ef7c0f45b07::t_bf5233fc90413d 330,402,1081-1083,1085-1089,1093,1127-1131,1133-1154
+  s_f00ef7c0f45b07::t_607b167dc6225e 436-438,2287-2288
+  s_f00ef7c0f45b07::t_089e2f64a68347 122
+  s_f00ef7c0f45b07::t_1ee236d4ce06ec 828-830,951-954,960-961,994-998,1003-1014,1016-1018,1020-1026,1030-1033,1040-1043
+  s_f00ef7c0f45b07::t_b5280f3e74aee2 323,470,483,496,527,546,616,636,677,707,721,750,768,851,877,1064
+  s_f00ef7c0f45b07::t_2b78a4566d01a1 962-993,1015,1019,1027-1029
+  s_f00ef7c0f45b07::t_e3a7fed12e9974 1079
+  s_f00ef7c0f45b07::t_7c4761698403dc 1345-1386
+  s_f00ef7c0f45b07::t_febad537e32da9 18,27,95
+  s_f00ef7c0f45b07::t_76c78792e49f5a 10,1626-1627,1631,1637-1640,1643
+  s_f00ef7c0f45b07::t_8cafc81511092f 176,1219
+src/daemon/family_actor.rs
+  s_f00ef7c0f45b07::t_e529909c57453f 185
+src/daemon/global_actor.rs
+  s_f00ef7c0f45b07::t_e9267f39ce2485 83
+src/daemon/coordinator.rs
+  s_f00ef7c0f45b07::t_301a341742e87d 170,192
+src/daemon/trace_normalizer.rs
+  s_f00ef7c0f45b07::t_14cd49aa2de267 654
+tests/commit_tree_update_ref.rs
+  s_f00ef7c0f45b07::t_e8118aaaeaae9f 1264-1278,1287-1301
+  s_f00ef7c0f45b07::t_607b167dc6225e 1279-1286
+  s_f00ef7c0f45b07::t_73228af5bf8954 18,112-157
+Taskfile.yml
+  s_f00ef7c0f45b07::t_a42a2bb9a5b4ef 72
+tests/integration/ci_handlers_comprehensive.rs
+  s_f00ef7c0f45b07::t_3ed4c68c10aa86 94
+src/daemon/analyzers/transport.rs
+  s_f00ef7c0f45b07::t_f5152a2eaf3b49 144
+src/daemon.rs
+  s_f00ef7c0f45b07::t_77c4e2bf55af4e 800,805-808
+  s_f00ef7c0f45b07::t_7f31cf4e297b57 4438
+  s_f00ef7c0f45b07::t_fbf524e5d42ae2 1352-1367,3760-3761,3786-3788,3790
+  s_f00ef7c0f45b07::t_2ec074a6fd9042 4243
+  s_f00ef7c0f45b07::t_10205da57b8fb0 3762,3789
+  s_f00ef7c0f45b07::t_73571b9395743c 768-781,783,791,802-804,813
+  s_f00ef7c0f45b07::t_0aee1af0f396c7 784,819
+tests/integration/fuzzer/engine.rs
+  s_f00ef7c0f45b07::t_868c7726d49603 35-43
+src/daemon/domain.rs
+  s_f00ef7c0f45b07::t_8658a720bdc2c9 56
+src/git/refs.rs
+  s_f00ef7c0f45b07::t_357d8b733a84a2 468-477,486-490
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "b0449cb1d128eec99905f65a93f2412eda8ea171",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,33 @@
+docs/superpowers/plans/2026-06-23-bash-attribution-recovery.md
+  s_50c8cc07abd384::t_81b4138428e4f9 891-893
+  s_50c8cc07abd384::t_c6eaeb453b13ce 1097
+  s_50c8cc07abd384::t_8df3bee934bc5d 1243-1248,1252-1255,1257,1260,1268-1270,1272,1275,1281,1285
+  s_50c8cc07abd384::t_c9dca8d867db67 911-912
+  s_50c8cc07abd384::t_70f11a8f1860d2 1425
+  s_50c8cc07abd384::t_0740b6f63376ff 698
+  s_50c8cc07abd384::t_c33586db616b4d 983,985
+  s_50c8cc07abd384::t_6d12ea58addd4b 1606
+  s_50c8cc07abd384::t_bd5172ba196916 683
+  s_50c8cc07abd384::t_ace9d358113eb4 1-682,684-697,699-890,894-910,913-982,984,986-1068,1070-1096,1098-1134,1137-1242,1249-1251,1256,1258-1259,1261-1267,1271,1273-1274,1276-1280,1282-1284,1286-1296,1300-1304,1307-1408,1410-1424,1426-1605
+  s_50c8cc07abd384::t_85f7334a88813e 1135-1136
+  s_50c8cc07abd384::t_7186c53c733c8c 1305-1306
+  s_50c8cc07abd384::t_e07a2b2daf2a61 1297-1299
+  s_50c8cc07abd384::t_bc01f056817ec9 1069
+  s_50c8cc07abd384::t_423fa725224027 1409
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "c4a67d3eff338886f55af457654c5afa2cc4f15f",
+  "prompts": {},
+  "sessions": {
+    "s_50c8cc07abd384": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1e4e321-1caf-47bf-b232-0be284c09477",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

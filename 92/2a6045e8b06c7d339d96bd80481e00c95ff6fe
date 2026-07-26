@@ -1,0 +1,19 @@
+README.md
+  s_75c29d259614ee::t_f8802141403d87 4,6,8,10,20,38,60,65,73,75,81,83-88,94,97-98,103-105,110-113,115,123,125,132,136,158,180,184,195,199,205,207,210,213,215,217,221,223,227,233-237,239,248,251,253,255-257,260,262,264-266,268,270,272-273,275,277,281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.8",
+  "base_commit_sha": "922a6045e8b06c7d339d96bd80481e00c95ff6fe",
+  "prompts": {},
+  "sessions": {
+    "s_75c29d259614ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "653d2079-7d1b-4ab0-9b66-ce09f63e69eb",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+src/commands/diff.rs
+  s_c316e86963221e::t_b360216f2addb9 1020-1022,1024
+tests/commit_hunks.rs
+  s_c316e86963221e::t_319cd73fa20152 459,465
+  s_c316e86963221e::t_2c1d3735ca16f6 508-510
+  s_c316e86963221e::t_981ae5222cf82e 336-338
+  s_c316e86963221e::t_af72107b623681 7
+  s_c316e86963221e::t_86a3cb0ce3b043 426-428
+  s_c316e86963221e::t_969c8e97e40f90 381-383
+  s_c316e86963221e::t_10bcd6b4c4c080 283-296
+  s_c316e86963221e::t_c3808f3d859bbb 43-45
+  s_c316e86963221e::t_26bbb8f4fddd1c 175-179
+  s_c316e86963221e::t_079b17bed13c89 227-229,236
+  s_c316e86963221e::t_6ec3a7c0077962 107-114
+  s_c316e86963221e::t_dfbe2b24d5d15a 460-464
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "333444e06c066a80dfafa3d41dde0b6deee4566c",
+  "prompts": {},
+  "sessions": {
+    "s_c316e86963221e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08d8c9e4-d405-4ffe-b2b0-01c5d7b0fa9e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

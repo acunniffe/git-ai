@@ -1,0 +1,36 @@
+src/authorship/rebase_authorship.rs
+  1d4852182c5b9ba9 544-551
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.4",
+  "base_commit_sha": "939364080f56beaab0ecbbf7827486a10d0ba492",
+  "prompts": {
+    "136e76e7ebbd143f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3adcb4db-7a49-42cf-a001-c8ca6a1bbd2f",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "shortdiv",
+      "messages": [],
+      "total_additions": 226,
+      "total_deletions": 5,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "1d4852182c5b9ba9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9b4a3b2f-6c59-47da-ab58-9f8bdac69c70",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "shortdiv",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 1,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}

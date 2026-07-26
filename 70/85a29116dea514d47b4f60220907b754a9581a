@@ -1,0 +1,21 @@
+src/git/range_diff.rs
+  s_2fd109c0a1a2c6::t_b4cc3b31fafefa 222-230
+  s_2fd109c0a1a2c6::t_0fc59ad65860a0 63
+  s_2fd109c0a1a2c6::t_0cd944eb6b7c84 76-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "7085a29116dea514d47b4f60220907b754a9581a",
+  "prompts": {},
+  "sessions": {
+    "s_2fd109c0a1a2c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9b1afea-e6a4-4989-a342-2f1e00430a37",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

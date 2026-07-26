@@ -1,0 +1,43 @@
+src/utils.rs
+  s_69a54df0345dbf::t_90747110bdffd8 51,53
+src/daemon/telemetry_handle.rs
+  s_69a54df0345dbf::t_8a5ad40bd41178 3
+  s_69a54df0345dbf::t_e865caac534e36 110
+src/commands/install_hooks.rs
+  s_69a54df0345dbf::t_9607a81e2fa53d 311,313,316,320
+  s_69a54df0345dbf::t_003bf600a227e7 241
+  s_69a54df0345dbf::t_9933a52e90082e 271
+tests/daemon_mode.rs
+  s_69a54df0345dbf::t_b11003813bd51d 325-327
+tests/integration/graphite.rs
+  s_69a54df0345dbf::t_d6c65ea1257f8d 315-316
+  s_69a54df0345dbf::t_269057d9c6a474 336
+tests/integration/repos/test_repo.rs
+  s_69a54df0345dbf::t_b6fb77682a7a64 2847
+  s_69a54df0345dbf::t_ff2983604fbf37 2867,2874
+  s_69a54df0345dbf::t_d408df623644a6 380-381
+  s_69a54df0345dbf::t_9bbf3e146be3ca 2887
+src/commands/git_ai_handlers.rs
+  s_69a54df0345dbf::t_7199f6803bd0f2 35-37,40,42-72
+src/commands/git_handlers.rs
+  s_69a54df0345dbf::t_5836e2d0a9c912 361
+  s_69a54df0345dbf::t_cedaea0e361a57 69,71,73-84,86-87,89-92,94-109,111-116,118-119,121-124,126-128,130,132-134,136,138-144
+  s_69a54df0345dbf::t_68c85117b2c9e6 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "332430c0c06c065ed74724ccd65798c41b0778c3",
+  "prompts": {},
+  "sessions": {
+    "s_69a54df0345dbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a46a182e-c0bb-4405-9496-ba072ce77795",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": []
+    }
+  }
+}

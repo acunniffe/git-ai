@@ -1,0 +1,63 @@
+tests/gemini.rs
+  91a8a00bb6ab25b0 811
+tests/repos/test_repo.rs
+  91a8a00bb6ab25b0 118-129,153,200-201,206-225,330-341,353,355
+tests/cursor.rs
+  91a8a00bb6ab25b0 469
+tests/rebase.rs
+  91a8a00bb6ab25b0 251,386,399,661,754,924,1057
+tests/subdirs.rs
+  91a8a00bb6ab25b0 1-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "d9df0a4e714a4806822eddff4a6f6fbff8762eca",
+  "prompts": {
+    "91a8a00bb6ab25b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9c8846d4-ad83-4d0a-a83f-5f1284813a26",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "In @tests check out @tests/simple_additions.rs\n\n\n\nUsing parts of that test harness and/or customizing the harness as needed, create a new test file 'subdirs' where you will test if everything still works if git commit is run from within a subdirectory. Everything else should be normal.\n\n\n\nI believe the test will fail for now but just stop once you've implemented the test",
+          "timestamp": "2025-12-10T02:05:25.784Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the test harness to understand how it works, then creating a subdirectory test.",
+          "timestamp": "2025-12-10T02:05:28.082Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "tests/test_utils.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "tests/repos/test_repo.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "tests/repos/test_file.rs"
+          }
+        }
+      ],
+      "total_additions": 422,
+      "total_deletions": 239,
+      "accepted_lines": 191,
+      "overriden_lines": 0
+    }
+  }
+}

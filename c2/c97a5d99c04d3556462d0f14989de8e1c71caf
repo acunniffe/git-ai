@@ -1,0 +1,24 @@
+src/transcripts/agents/copilot.rs
+  s_395f5898107085::t_b0934fc76ed59e 90-91,94-100,104-106,109-118
+src/daemon/sweep_coordinator.rs
+  s_395f5898107085::t_062335a2516c8e 90
+  s_395f5898107085::t_d7ac97efd7dc68 91-101
+  s_395f5898107085::t_d6d7c2e533bf54 5
+  s_395f5898107085::t_57529aa3e0ee62 84-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "c2c97a5d99c04d3556462d0f14989de8e1c71caf",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,63 @@
+tests/integration/amp.rs
+  75b8b35dceb7e11d 1,5-24,26-27,31,34,38,42,44-53,55-56,59,68-249,251-378
+  s_74a31c9b27ce26::t_01acd5727b33e7 3
+src/commands/checkpoint_agent/transcript_readers.rs
+  s_74a31c9b27ce26::t_641eb4a9084236 2176
+src/commands/blame.rs
+  s_74a31c9b27ce26::t_641eb4a9084236 1239-1240
+tests/integration/main.rs
+  s_74a31c9b27ce26::t_a7be986afacb79 121
+src/commands/checkpoint_agent/presets/pi.rs
+  s_74a31c9b27ce26::t_cac7426f018852 164-166
+CHANGELOG.md
+  s_74a31c9b27ce26::t_cda2fd9ee1f229 9-49
+src/authorship/post_commit.rs
+  s_74a31c9b27ce26::t_b8f5249b0f2854 519-520
+  s_74a31c9b27ce26::t_da0ce2bf844ae1 518,521-525,527-532
+  s_74a31c9b27ce26::t_cac7426f018852 526
+src/daemon/transcript_worker.rs
+  s_74a31c9b27ce26::t_cac7426f018852 8-9,14,202-207,393-395,397,410,422,519-522
+src/commands/install_hooks.rs
+  s_74a31c9b27ce26::t_9d6161d10e2fd1 749-750
+src/commands/checkpoint_agent/presets/github_copilot.rs
+  s_74a31c9b27ce26::t_cac7426f018852 143-145,249-251
+src/commands/checkpoint.rs
+  s_74a31c9b27ce26::t_641eb4a9084236 1015-1016
+  s_74a31c9b27ce26::t_dd79604121febe 1011-1013
+  s_74a31c9b27ce26::t_78584e7042125b 892-893
+  s_74a31c9b27ce26::t_3100bfcb3b40c3 978,983-985
+src/authorship/internal_db.rs
+  s_74a31c9b27ce26::t_81c730220e35b7 1-11
+src/commands/git_ai_handlers.rs
+  s_74a31c9b27ce26::t_a273d1371d7288 410-411,419
+  s_74a31c9b27ce26::t_b60db5da8d4466 420-423,425
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ce97302b57b37ccafcb780cb8c0d4438bd2815eb",
+  "prompts": {
+    "75b8b35dceb7e11d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ffd64922-c64c-40e8-9619-70e9280abcfa",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 29066,
+      "total_deletions": 26403,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_74a31c9b27ce26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f769e90b-24f1-4f4b-92c3-236cbea1cee2",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

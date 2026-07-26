@@ -1,0 +1,47 @@
+agent-support/opencode/git-ai.ts
+  37902deaaadaaad7 27,86-89,92,118,120-123,126
+src/commands/checkpoint_agent/mod.rs
+  37902deaaadaaad7 3
+src/commands/checkpoint_agent/opencode_preset.rs
+  37902deaaadaaad7 1-443
+tests/fixtures/opencode-storage/part/msg-assistant-001/prt-003.json
+  37902deaaadaaad7 1-10
+src/commands/git_ai_handlers.rs
+  37902deaaadaaad7 11,430-445
+tests/opencode.rs
+  37902deaaadaaad7 1-479
+tests/fixtures/opencode-storage/message/test-session-123/msg-assistant-001.json
+  37902deaaadaaad7 1-11
+tests/fixtures/opencode-storage/part/msg-assistant-001/prt-001.json
+  37902deaaadaaad7 1-10
+tests/fixtures/opencode-storage/part/msg-assistant-001/prt-002.json
+  37902deaaadaaad7 1-19
+src/mdm/agents/opencode.rs
+  37902deaaadaaad7 166-168,183-188
+tests/fixtures/opencode-storage/part/msg-user-001/prt-001.json
+  37902deaaadaaad7 1-10
+tests/fixtures/opencode-storage/message/test-session-123/msg-user-001.json
+  37902deaaadaaad7 1-9
+src/authorship/prompt_utils.rs
+  37902deaaadaaad7 8,177,460-504
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "a3e30f789885c83fd9ef50d74677b18f63bd25bd",
+  "prompts": {
+    "37902deaaadaaad7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "122da244-84a2-43ce-b7b8-3e78121eb700",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1099,
+      "total_deletions": 95,
+      "accepted_lines": 1077,
+      "overriden_lines": 0
+    }
+  }
+}

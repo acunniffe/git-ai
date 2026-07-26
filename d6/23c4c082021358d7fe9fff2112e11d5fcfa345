@@ -1,0 +1,37 @@
+README.md
+  d666ce7120d953c1 116-118
+  411e37c9194e0ac5 113-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "d623c4c082021358d7fe9fff2112e11d5fcfa345",
+  "prompts": {
+    "411e37c9194e0ac5": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1766414256071119000",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "d666ce7120d953c1": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1766414264228745000",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
