@@ -2010,7 +2010,7 @@ fn apply_cherry_pick_no_commit_rewrite(
         .iter()
         .map(|source| (source.clone(), new_head.to_string()))
         .collect::<Vec<_>>();
-    crate::git::sync_authorship::fetch_missing_notes_for_commits(repo, sources)?;
+    crate::git::sync_authorship::fetch_missing_notes_for_commits_best_effort(repo, sources);
     let shifted_notes =
         crate::authorship::rewrite::shift_authorship_notes_merging_existing_with_notes(
             repo, &mappings,

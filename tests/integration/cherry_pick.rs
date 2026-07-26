@@ -1116,16 +1116,6 @@ fn test_cherry_pick_skip_failed_next_conflict_does_not_double_skip_refcursor_sou
     conflict_c.assert_committed_lines(crate::lines!["base".human(), "AI_C_VERSION".ai(),]);
 }
 
-fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
-    match payload.downcast::<String>() {
-        Ok(message) => *message,
-        Err(payload) => match payload.downcast::<&'static str>() {
-            Ok(message) => (*message).to_string(),
-            Err(_) => "unknown panic payload".to_string(),
-        },
-    }
-}
-
 fn git_common_dir(repo: &TestRepo) -> PathBuf {
     let raw = repo
         .git_og(&["rev-parse", "--git-common-dir"])
@@ -1139,7 +1129,7 @@ fn git_common_dir(repo: &TestRepo) -> PathBuf {
 }
 
 #[test]
-fn test_cherry_pick_from_remote_reports_notes_import_failure() {
+fn test_cherry_pick_from_remote_continues_when_notes_import_fails() {
     let source_repo = TestRepo::new();
     let mut source_file = source_repo.filename("file.txt");
     source_file.set_contents(crate::lines!["base"]);
@@ -1176,19 +1166,12 @@ fn test_cherry_pick_from_remote_reports_notes_import_failure() {
     fs::write(notes_dir.join("ai.lock"), "stale lock\n").expect("notes lock should be writable");
 
     target_repo.git(&["cherry-pick", &ai_commit]).unwrap();
+    target_repo.sync_daemon_force();
 
-    let sync = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        target_repo.sync_daemon_force();
-    }));
-    let panic_message = panic_payload_to_string(
-        sync.expect_err("daemon sync must fail when cherry-pick source notes cannot be imported"),
-    );
-    assert!(
-        panic_message.contains("daemon completion log reported an error"),
-        "daemon sync must report notes import failure instead of silently dropping cherry-pick attribution for {}; got: {}",
-        ai_commit,
-        panic_message
-    );
+    target_file.assert_committed_lines(crate::lines![
+        "base".human(),
+        "AI line".unattributed_human(),
+    ]);
 }
 
 #[test]
@@ -1237,7 +1220,7 @@ crate::reuse_tests_in_worktree!(
     test_cherry_pick_bad_args_dont_corrupt_subsequent_attribution,
     test_cherry_pick_skip_preserves_subsequent_attribution,
     test_cherry_pick_from_remote_without_prefetched_notes,
-    test_cherry_pick_from_remote_reports_notes_import_failure,
+    test_cherry_pick_from_remote_continues_when_notes_import_fails,
     test_cherry_pick_no_commit_defers_to_final_commit_tree,
     test_cherry_pick_skip_failed_next_conflict_advances_pending_remote_tracking_source,
     test_cherry_pick_skip_failed_next_conflict_does_not_double_skip_refcursor_sources,
