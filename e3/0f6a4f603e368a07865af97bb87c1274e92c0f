@@ -1,0 +1,20 @@
+tests/integration/daemon_ipc_memory.rs
+  s_59382cac373d67::t_04e02fefb26528 3-4
+  s_59382cac373d67::t_d0ce9a94ae1e75 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "e30f6a4f603e368a07865af97bb87c1274e92c0f",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

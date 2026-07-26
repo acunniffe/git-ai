@@ -1,0 +1,21 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  s_74728b61a57c4b::t_da5285d9e7fde1 723-724,732-736
+  s_74728b61a57c4b::t_50a7100874d979 727
+  s_74728b61a57c4b::t_e09545d57603dc 1076-1084
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "42e02577d884e8735ff21217bfbe0cdf568906fa",
+  "prompts": {},
+  "sessions": {
+    "s_74728b61a57c4b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eeff9-e4b2-7622-81a7-f9886b685a5d",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

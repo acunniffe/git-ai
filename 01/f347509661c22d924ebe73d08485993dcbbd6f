@@ -1,0 +1,34 @@
+tests/integration/main.rs
+  s_af2d349a5e032c::t_7c442b3fb8ab20 108
+src/authorship/mod.rs
+  s_032cf4fb6d69d7::t_20333d17abb399 8
+  s_032cf4fb6d69d7::t_5b963d5af8995d 17
+  s_032cf4fb6d69d7::t_d756e1e15cf398 18
+  s_032cf4fb6d69d7::t_667581eee48b16 19
+  s_032cf4fb6d69d7::t_2f89185ac81fc9 21
+  s_af2d349a5e032c::t_8403fb861c3153 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "01f347509661c22d924ebe73d08485993dcbbd6f",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

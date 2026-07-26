@@ -1,0 +1,35 @@
+src/commands/install_hooks.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 16
+src/diagnostics.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 21
+tests/daemon_mode.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 546,612
+tests/integration/repos/test_repo.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 394,1762
+tests/integration/repos/mod.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 95,206
+tests/integration/graphite.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 289
+tests/async_mode.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 256,376
+tests/integration/daemon_commit_carryover.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 30
+tests/commit_tree_update_ref.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 113,155,209,260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.9",
+  "base_commit_sha": "515a916c9525e15ba8a15de7f4a3410e5d41fda2",
+  "prompts": {},
+  "sessions": {
+    "s_7e719d19471fd9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f38e7-aa09-72c3-b383-9aa431d64253",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

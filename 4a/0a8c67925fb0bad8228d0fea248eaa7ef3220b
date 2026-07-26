@@ -1,0 +1,24 @@
+tests/integration/pull_rebase_ff.rs
+  9bd26911646056ce 556-723,734
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.4",
+  "base_commit_sha": "4a0a8c67925fb0bad8228d0fea248eaa7ef3220b",
+  "prompts": {
+    "9bd26911646056ce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ada13522-e295-43ea-8781-abffbddb7aed",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 174,
+      "total_deletions": 5,
+      "accepted_lines": 169,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/dd01290781abedf25e03064e69fe21ab4ae2d459099a57d5f82351f20a3a8e6e"
+    }
+  }
+}

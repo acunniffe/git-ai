@@ -1,0 +1,33 @@
+src/commands/checkpoint.rs
+  s_a73b2a35c101af::t_ca08d58a730ab5 13
+  s_a73b2a35c101af::t_94efedb03ab2cf 142-147
+  s_a73b2a35c101af::t_2197539b739394 263-264
+  s_a73b2a35c101af::t_2afa09d40673aa 283
+  s_a73b2a35c101af::t_7efddbf5f0524a 284-289,293
+src/commands/post_commit.rs
+  s_a73b2a35c101af::t_142ebe233c127f 33
+  s_a73b2a35c101af::t_cbc2dc58cf8733 51-52
+  s_a73b2a35c101af::t_60a80ebcd93aba 23-32,35-50
+  s_a73b2a35c101af::t_9c586d68d9ff65 7
+  s_a73b2a35c101af::t_059c38e8ac5233 10-14,17-20
+src/commands/helpers.rs
+  s_a73b2a35c101af::t_b94fa26516352d 104-131,133-140,153-154,158-169,183
+  s_a73b2a35c101af::t_9f24b027e4f67f 132,141-152,155-157,170-182
+  s_a73b2a35c101af::t_1b18e8321f62b2 50-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "e080d08cf74d40b9799ca615bed02bece92dea38",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

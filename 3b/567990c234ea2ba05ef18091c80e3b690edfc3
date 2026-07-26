@@ -1,0 +1,50 @@
+src/commands/checkpoint_agent/orchestrator.rs
+  s_1a2f15cbe36c46::t_6cd110f11db1b6 67,100,173
+  s_1a2f15cbe36c46::t_2ebc9f8c255390 77
+  s_1a2f15cbe36c46::t_cb33333e97d9ee 61-66,68-76,78-84
+  s_1a2f15cbe36c46::t_c91d61175b1100 99,174
+  s_1a2f15cbe36c46::t_e9267e4ad7ac65 350,373,400
+  s_1a2f15cbe36c46::t_1e30dc61708609 3
+src/config.rs
+  s_1a2f15cbe36c46::t_cf9fa35734499f 21-23,188-189,273-276,338-341
+  s_1a2f15cbe36c46::t_d483720f9af350 1772-1774,2017-2019,2165-2167
+  s_1a2f15cbe36c46::t_33fc58a7ec39f9 1725-1730
+  s_1a2f15cbe36c46::t_57f9ea85c3439e 1187,1196-1212,1241-1242,1274-1275
+  s_1a2f15cbe36c46::t_02b4d3dca954b1 653-662
+tests/integration/repos/test_repo.rs
+  s_1a2f15cbe36c46::t_65d3597edf11d4 1248-1259
+src/daemon.rs
+  s_1a2f15cbe36c46::t_99d3d7f56eb142 2,923
+  s_1a2f15cbe36c46::t_49f49555358705 922,960-966
+src/checkpoint_content_budget.rs
+  s_1a2f15cbe36c46::t_6cc2883004dc39 1-74
+tests/daemon_mode.rs
+  s_1a2f15cbe36c46::t_0dbdf0ba0b434f 1556-1557
+  s_1a2f15cbe36c46::t_d8a1ed923c9a11 1558-1621
+src/commands/config.rs
+  s_1a2f15cbe36c46::t_64a62e2313a2e1 122-124,380-392,525-530,846-867,1214-1227
+tests/integration/checkpoint_size.rs
+  s_1a2f15cbe36c46::t_737ab33eb11385 272
+  s_1a2f15cbe36c46::t_8a8d0f29d06da8 2,5,149-271
+tests/integration/config_cli_coverage.rs
+  s_1a2f15cbe36c46::t_c3762bc860da13 78-114,238-239,304-305
+  s_1a2f15cbe36c46::t_4d92773535dda1 77
+src/lib.rs
+  s_1a2f15cbe36c46::t_6340555c8d5347 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.12",
+  "base_commit_sha": "3b567990c234ea2ba05ef18091c80e3b690edfc3",
+  "prompts": {},
+  "sessions": {
+    "s_1a2f15cbe36c46": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4321-34b7-78d1-964c-05919a68e527",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

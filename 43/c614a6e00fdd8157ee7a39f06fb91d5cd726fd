@@ -1,0 +1,24 @@
+src/mdm/utils.rs
+  192816f4f485acce 3,196-200,291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "43c614a6e00fdd8157ee7a39f06fb91d5cd726fd",
+  "prompts": {
+    "192816f4f485acce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "706408c9-94e5-47e5-8743-a7be94c15ccc",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 0,
+      "accepted_lines": 7,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/3617860e80a12588e660adb3f632224fa017b6d9c9f92de4cdbd295ae0cab4c7"
+    }
+  }
+}

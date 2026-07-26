@@ -1,0 +1,26 @@
+install.ps1
+  a0943e6239cb40bb 51-86,88-102,274-278,281-283,286-290,312-313,315,317,320,335-336
+.github/workflows/release.yml
+  a0943e6239cb40bb 316-339,346,362-363,368-370,394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.29",
+  "base_commit_sha": "d6739efa62e364b0c103389326cd401b467a88c9",
+  "prompts": {
+    "a0943e6239cb40bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c771b83-cf12-4303-a071-2168a501cc45",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 110,
+      "total_deletions": 13,
+      "accepted_lines": 107,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/013d489ab6ec3fb22fa4ac269ea8a438a857d3e4c707dea18e4386f196d81f79"
+    }
+  }
+}
