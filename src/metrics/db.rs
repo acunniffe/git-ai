@@ -278,9 +278,20 @@ impl MetricsDatabase {
             return Ok(PathBuf::from(test_path));
         }
 
-        let home = dirs::home_dir()
-            .ok_or_else(|| GitAiError::Generic("Could not determine home directory".to_string()))?;
-        Ok(home.join(".git-ai").join("internal").join("metrics-db"))
+        let internal = crate::config::internal_dir_path().ok_or_else(|| {
+            GitAiError::Generic("Could not determine git-ai internal directory".to_string())
+        })?;
+        Ok(internal.join("metrics-db"))
+    }
+
+    /// Test-only accessor for the resolved on-disk database path, so the
+    /// integration test crate can assert `GIT_AI_INTERNAL_DIR` routing against the
+    /// real resolver. `database_path()` is a pure path computation (it creates no
+    /// files), so this has no side effects. Mirrors
+    /// `DaemonConfig::from_internal_dir_for_test`.
+    #[cfg(feature = "test-support")]
+    pub fn database_path_for_test() -> Result<PathBuf, GitAiError> {
+        Self::database_path()
     }
 
     /// Initialize schema and handle migrations
@@ -3008,6 +3019,47 @@ mod tests {
         assert!(path.to_string_lossy().contains(".git-ai"));
         assert!(path.to_string_lossy().contains("internal"));
         assert!(path.to_string_lossy().ends_with("metrics-db"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_database_path_honors_git_ai_internal_dir() {
+        // Save and clear the env vars this test mutates so it can't leak state into
+        // other in-process tests (env mutation is process-global). Restored on exit.
+        let prev_internal = std::env::var_os("GIT_AI_INTERNAL_DIR");
+        let prev_metrics_override = std::env::var_os("GIT_AI_TEST_METRICS_DB_PATH");
+        // SAFETY: this test is serialized via #[serial], so no other test is reading
+        // or writing these env vars concurrently.
+        unsafe {
+            std::env::remove_var("GIT_AI_TEST_METRICS_DB_PATH");
+            std::env::remove_var("GIT_AI_INTERNAL_DIR");
+        }
+
+        // When GIT_AI_INTERNAL_DIR is set to an absolute machine-local dir, the metrics
+        // DB path must be rerouted to <that dir>/metrics-db (no .git-ai/internal segments).
+        let internal_dir = std::env::temp_dir().join("git-ai-metrics-db-reroute-test");
+        unsafe { std::env::set_var("GIT_AI_INTERNAL_DIR", &internal_dir) };
+        let path = MetricsDatabase::database_path().unwrap();
+        assert_eq!(path, internal_dir.join("metrics-db"));
+
+        // Precedence: when BOTH GIT_AI_INTERNAL_DIR and the per-DB test override are set,
+        // the test override must still win.
+        let override_path = std::env::temp_dir().join("git-ai-metrics-db-explicit-override");
+        unsafe { std::env::set_var("GIT_AI_TEST_METRICS_DB_PATH", &override_path) };
+        let path = MetricsDatabase::database_path().unwrap();
+        assert_eq!(path, override_path);
+
+        // Restore the prior environment so we don't leak into other in-process tests.
+        unsafe {
+            match prev_internal {
+                Some(v) => std::env::set_var("GIT_AI_INTERNAL_DIR", v),
+                None => std::env::remove_var("GIT_AI_INTERNAL_DIR"),
+            }
+            match prev_metrics_override {
+                Some(v) => std::env::set_var("GIT_AI_TEST_METRICS_DB_PATH", v),
+                None => std::env::remove_var("GIT_AI_TEST_METRICS_DB_PATH"),
+            }
+        }
     }
 
     #[test]

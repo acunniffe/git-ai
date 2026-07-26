@@ -2,7 +2,6 @@
 // It has been superseded by use-case-specific databases.
 
 use crate::error::GitAiError;
-use dirs;
 use rusqlite::{Connection, params};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -184,9 +183,20 @@ impl InternalDatabase {
             return Ok(PathBuf::from(test_path));
         }
 
-        let home = dirs::home_dir()
-            .ok_or_else(|| GitAiError::Generic("Could not determine home directory".to_string()))?;
-        Ok(home.join(".git-ai").join("internal").join("db"))
+        let internal = crate::config::internal_dir_path().ok_or_else(|| {
+            GitAiError::Generic("Could not determine git-ai internal directory".to_string())
+        })?;
+        Ok(internal.join("db"))
+    }
+
+    /// Test-only accessor for the resolved on-disk database path, so the
+    /// integration test crate can assert `GIT_AI_INTERNAL_DIR` routing against the
+    /// real resolver. `database_path()` is a pure path computation (it creates no
+    /// files), so this has no side effects. Mirrors
+    /// `DaemonConfig::from_internal_dir_for_test`.
+    #[cfg(feature = "test-support")]
+    pub fn database_path_for_test() -> Result<PathBuf, GitAiError> {
+        Self::database_path()
     }
 
     /// Initialize schema and handle migrations
@@ -621,6 +631,55 @@ mod tests {
             assert!(path.to_string_lossy().contains(".git-ai"));
             assert!(path.to_string_lossy().contains("internal"));
             assert!(path.to_string_lossy().ends_with("db"));
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_database_path_honors_git_ai_internal_dir() {
+        // Save and clear the env vars this test mutates so it can't leak state into
+        // other in-process tests (env mutation is process-global). Restored on exit.
+        // The authorship DB override honors both the new and legacy var names, so clear
+        // both to expose the GIT_AI_INTERNAL_DIR reroute branch.
+        let prev_internal = std::env::var_os("GIT_AI_INTERNAL_DIR");
+        let prev_test_override = std::env::var_os("GIT_AI_TEST_DB_PATH");
+        let prev_legacy_override = std::env::var_os("GITAI_TEST_DB_PATH");
+        // SAFETY: this test is serialized via #[serial], so no other test is reading
+        // or writing these env vars concurrently.
+        unsafe {
+            std::env::remove_var("GIT_AI_TEST_DB_PATH");
+            std::env::remove_var("GITAI_TEST_DB_PATH");
+            std::env::remove_var("GIT_AI_INTERNAL_DIR");
+        }
+
+        // When GIT_AI_INTERNAL_DIR is set to an absolute machine-local dir, the authorship
+        // DB path must be rerouted to <that dir>/db (no .git-ai/internal segments).
+        let internal_dir = std::env::temp_dir().join("git-ai-internal-db-reroute-test");
+        unsafe { std::env::set_var("GIT_AI_INTERNAL_DIR", &internal_dir) };
+        let path = InternalDatabase::database_path().unwrap();
+        assert_eq!(path, internal_dir.join("db"));
+
+        // Precedence: when BOTH GIT_AI_INTERNAL_DIR and the per-DB test override are set,
+        // the test override must still win.
+        let override_path = std::env::temp_dir().join("git-ai-internal-db-explicit-override");
+        unsafe { std::env::set_var("GIT_AI_TEST_DB_PATH", &override_path) };
+        let path = InternalDatabase::database_path().unwrap();
+        assert_eq!(path, override_path);
+
+        // Restore the prior environment so we don't leak into other in-process tests.
+        unsafe {
+            match prev_internal {
+                Some(v) => std::env::set_var("GIT_AI_INTERNAL_DIR", v),
+                None => std::env::remove_var("GIT_AI_INTERNAL_DIR"),
+            }
+            match prev_test_override {
+                Some(v) => std::env::set_var("GIT_AI_TEST_DB_PATH", v),
+                None => std::env::remove_var("GIT_AI_TEST_DB_PATH"),
+            }
+            match prev_legacy_override {
+                Some(v) => std::env::set_var("GITAI_TEST_DB_PATH", v),
+                None => std::env::remove_var("GITAI_TEST_DB_PATH"),
+            }
         }
     }
 

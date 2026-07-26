@@ -1468,9 +1468,34 @@ pub fn git_ai_dir_path() -> Option<PathBuf> {
     Some(home_dir().join(".git-ai"))
 }
 
-/// Returns the path to the internal state directory (~/.git-ai/internal)
-/// This is where git-ai stores internal files like distinct_id, update_check, etc.
+/// Parses the `GIT_AI_INTERNAL_DIR` environment override.
+///
+/// Returns the value verbatim as a path when the variable is set to something with
+/// at least one non-whitespace character; an empty or whitespace-only value is
+/// treated as unset (matching the `GIT_AI_DAEMON_HOME` handling). This is the
+/// single source of truth for parsing the override so every consumer (e.g.
+/// [`internal_dir_path`] and the daemon's config resolution) agrees on it.
+pub fn git_ai_internal_dir_env_override() -> Option<PathBuf> {
+    std::env::var_os("GIT_AI_INTERNAL_DIR")
+        .filter(|value| !value.to_string_lossy().trim().is_empty())
+        .map(PathBuf::from)
+}
+
+/// Returns the path to the internal state directory (default: ~/.git-ai/internal)
+/// This is where git-ai stores internal files like distinct_id, update_check, the
+/// SQLite databases, and the daemon runtime files (sockets, lock, pid, logs).
+///
+/// When the `GIT_AI_INTERNAL_DIR` environment variable is set (see
+/// [`git_ai_internal_dir_env_override`]), that value IS the internal directory
+/// verbatim (no `.git-ai`/`internal` segments appended). This lets machines
+/// sharing an NFS home directory each use a unique machine-local internal
+/// directory so they never collide on SQLite databases, daemon sockets, or lock
+/// files. An empty or whitespace-only value is treated as unset, preserving the
+/// default behavior byte-for-byte.
 pub fn internal_dir_path() -> Option<PathBuf> {
+    if let Some(dir) = git_ai_internal_dir_env_override() {
+        return Some(dir);
+    }
     git_ai_dir_path().map(|dir| dir.join("internal"))
 }
 
@@ -2689,5 +2714,33 @@ mod tests {
             None => unsafe { std::env::remove_var("GIT_AI_TRANSCRIPT_STREAMING_LOOKBACK_DAYS") },
         }
         assert_eq!(result, None);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_internal_dir_path_honors_env_var() {
+        let previous = std::env::var_os("GIT_AI_INTERNAL_DIR");
+
+        // Unset => default location ending in .git-ai/internal.
+        unsafe { std::env::remove_var("GIT_AI_INTERNAL_DIR") };
+        let default = internal_dir_path().expect("default internal dir");
+        assert!(default.ends_with("internal"));
+        assert!(default.parent().is_some_and(|p| p.ends_with(".git-ai")));
+
+        // Set to an absolute path => returned verbatim (no extra segments).
+        unsafe { std::env::set_var("GIT_AI_INTERNAL_DIR", "/abs/machine-local") };
+        assert_eq!(
+            internal_dir_path(),
+            Some(PathBuf::from("/abs/machine-local"))
+        );
+
+        // Empty string => treated as unset (byte-for-byte default).
+        unsafe { std::env::set_var("GIT_AI_INTERNAL_DIR", "") };
+        assert_eq!(internal_dir_path(), Some(default));
+
+        match previous {
+            Some(v) => unsafe { std::env::set_var("GIT_AI_INTERNAL_DIR", v) },
+            None => unsafe { std::env::remove_var("GIT_AI_INTERNAL_DIR") },
+        }
     }
 }

@@ -177,7 +177,7 @@ impl Drop for DaemonProcessActiveGuard {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonConfig {
     pub internal_dir: PathBuf,
     pub lock_path: PathBuf,
@@ -235,6 +235,16 @@ impl DaemonConfig {
         Self::from_internal_dir(internal_dir)
     }
 
+    /// Test-only constructor exposing the internal-dir path resolution so the
+    /// integration harness can predict the exact socket/lock/DB paths a daemon
+    /// launched with `GIT_AI_INTERNAL_DIR=<dir>` will resolve. Mirrors the
+    /// production resolution performed by [`Self::from_default_paths`] when the
+    /// env var is set.
+    #[cfg(feature = "test-support")]
+    pub fn from_internal_dir_for_test(internal_dir: &Path) -> Self {
+        Self::from_internal_dir(internal_dir.to_path_buf())
+    }
+
     pub fn from_default_paths() -> Result<Self, GitAiError> {
         let internal_dir = config::internal_dir_path().ok_or_else(|| {
             GitAiError::Generic("Unable to determine ~/.git-ai/internal path".to_string())
@@ -243,7 +253,14 @@ impl DaemonConfig {
     }
 
     pub fn from_env_or_default_paths() -> Result<Self, GitAiError> {
-        let mut config = if let Ok(home) = std::env::var("GIT_AI_DAEMON_HOME")
+        // GIT_AI_INTERNAL_DIR is the highest-precedence internal-dir source so it
+        // wins even if a stale GIT_AI_DAEMON_HOME is also set. An empty or
+        // whitespace-only value is treated as unset (see
+        // config::git_ai_internal_dir_env_override). The explicit socket overrides
+        // below remain most specific and still apply on top.
+        let mut config = if let Some(dir) = crate::config::git_ai_internal_dir_env_override() {
+            Self::from_internal_dir(dir)
+        } else if let Ok(home) = std::env::var("GIT_AI_DAEMON_HOME")
             && !home.trim().is_empty()
         {
             Self::from_home(Path::new(&home))
@@ -282,6 +299,13 @@ impl DaemonConfig {
 
     pub fn test_completion_log_dir(&self) -> PathBuf {
         self.internal_dir.join("daemon").join("test-completions")
+    }
+
+    /// Path to the streams/transcripts SQLite DB. Named `transcripts-db` for
+    /// backwards compatibility with existing installations. Centralized here so
+    /// the daemon's open path and tests resolve the same literal (no drift).
+    pub fn transcripts_db_path(&self) -> PathBuf {
+        self.internal_dir.join("transcripts-db")
     }
 
     pub fn test_completion_log_path_for_family(&self, family_key: &str) -> PathBuf {
@@ -2211,8 +2235,53 @@ pub(crate) fn remove_stale_daemon_files(_config: &DaemonConfig) {}
 
 #[cfg(not(windows))]
 fn daemon_is_test_mode() -> bool {
+    // GIT_AI_TEST_COMPLETION_LOG_DIR is a test-only signal (the integration
+    // harness drives a daemon purely via GIT_AI_INTERNAL_DIR -- no
+    // GIT_AI_TEST_DB_PATH -- and sets it so the daemon still emits the test-sync
+    // completion log and keeps stderr on the console). It is gated behind
+    // test/test-support so a production RELEASE binary cannot be coerced into
+    // test mode by an env var; the test daemon is built with --features
+    // test-support, so it still honors the signal.
+    #[cfg(any(test, feature = "test-support"))]
+    let completion_log_signal = std::env::var_os("GIT_AI_TEST_COMPLETION_LOG_DIR").is_some();
+    #[cfg(not(any(test, feature = "test-support")))]
+    let completion_log_signal = false;
+
     std::env::var_os("GIT_AI_TEST_DB_PATH").is_some()
         || std::env::var_os("GITAI_TEST_DB_PATH").is_some()
+        || completion_log_signal
+}
+
+/// Resolve the daemon's test-sync completion-log directory.
+///
+/// Gated behind test/test-support: a production RELEASE binary (built without
+/// `test-support`) always returns `None`, so no completion log is written and the
+/// daemon cannot be coerced into emitting one by an env var. The test daemon is
+/// built with `--features test-support`, so it still resolves the dir from
+/// `GIT_AI_TEST_COMPLETION_LOG_DIR` (the internal-dir-driven harness mode) or the
+/// legacy `GIT_AI_TEST_DB_PATH`-gated location.
+fn resolve_test_completion_log_dir() -> Option<PathBuf> {
+    #[cfg(any(test, feature = "test-support"))]
+    {
+        std::env::var_os("GIT_AI_TEST_COMPLETION_LOG_DIR")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var("GIT_AI_TEST_DB_PATH")
+                    .ok()
+                    .or_else(|| std::env::var("GITAI_TEST_DB_PATH").ok())
+                    .map(|_| {
+                        DaemonConfig::from_env_or_default_paths()
+                            .map(|config| config.test_completion_log_dir())
+                            .unwrap_or_else(|_| {
+                                std::env::temp_dir().join("git-ai-daemon-test-completions-fallback")
+                            })
+                    })
+            })
+    }
+    #[cfg(not(any(test, feature = "test-support")))]
+    {
+        None
+    }
 }
 
 fn daemon_log_dir(config: &DaemonConfig) -> PathBuf {
@@ -2617,16 +2686,9 @@ impl ActorDaemonCoordinator {
             side_effect_errors_by_family: Mutex::new(HashMap::new()),
             side_effect_exec_locks: Mutex::new(HashMap::new()),
             bash_sessions: Mutex::new(crate::daemon::bash_sessions::BashSessionState::new()),
-            test_completion_log_dir: std::env::var("GIT_AI_TEST_DB_PATH")
-                .ok()
-                .or_else(|| std::env::var("GITAI_TEST_DB_PATH").ok())
-                .map(|_| {
-                    DaemonConfig::from_env_or_default_paths()
-                        .map(|config| config.test_completion_log_dir())
-                        .unwrap_or_else(|_| {
-                            std::env::temp_dir().join("git-ai-daemon-test-completions-fallback")
-                        })
-                }),
+            // Test-only; None in production release builds (see
+            // resolve_test_completion_log_dir).
+            test_completion_log_dir: resolve_test_completion_log_dir(),
             test_completion_log_lock: Mutex::new(()),
             trace_ingest_tx: std::sync::OnceLock::new(),
             telemetry_worker: None,
@@ -7416,7 +7478,7 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
     {
         // Named "transcripts-db" for backwards compatibility with existing installations.
         // TODO: rename to "streams-db" with a migration that moves the file.
-        let streams_db_path = config.internal_dir.join("transcripts-db");
+        let streams_db_path = config.transcripts_db_path();
         match crate::streams::db::StreamsDatabase::open(&streams_db_path) {
             Ok(streams_db) => {
                 let streams_db = std::sync::Arc::new(streams_db);
@@ -7983,6 +8045,82 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    #[serial]
+    fn test_daemon_config_honors_internal_dir_env() {
+        let _internal = EnvVarGuard::unset("GIT_AI_INTERNAL_DIR");
+        let _home = EnvVarGuard::unset("GIT_AI_DAEMON_HOME");
+        let _ctrl = EnvVarGuard::unset("GIT_AI_DAEMON_CONTROL_SOCKET");
+        let _trace = EnvVarGuard::unset("GIT_AI_DAEMON_TRACE_SOCKET");
+
+        // Unset => default internal dir ends with .git-ai/internal.
+        let default = DaemonConfig::from_env_or_default_paths().unwrap();
+        assert!(default.internal_dir.ends_with("internal"));
+
+        // Set => internal dir is the var verbatim, and runtime files derive from it.
+        let _set = EnvVarGuard::set("GIT_AI_INTERNAL_DIR", "/abs/machine-local");
+        let cfg = DaemonConfig::from_env_or_default_paths().unwrap();
+        assert_eq!(cfg.internal_dir, PathBuf::from("/abs/machine-local"));
+        assert!(cfg.lock_path.starts_with("/abs/machine-local/daemon"));
+        assert!(
+            cfg.control_socket_path
+                .starts_with("/abs/machine-local/daemon")
+        );
+        assert!(
+            cfg.trace_socket_path
+                .starts_with("/abs/machine-local/daemon")
+        );
+        assert_eq!(
+            cfg,
+            DaemonConfig::from_internal_dir(PathBuf::from("/abs/machine-local"))
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_internal_dir_empty_is_unset() {
+        let _home = EnvVarGuard::unset("GIT_AI_DAEMON_HOME");
+        let _ctrl = EnvVarGuard::unset("GIT_AI_DAEMON_CONTROL_SOCKET");
+        let _trace = EnvVarGuard::unset("GIT_AI_DAEMON_TRACE_SOCKET");
+
+        let _unset = EnvVarGuard::unset("GIT_AI_INTERNAL_DIR");
+        let default = DaemonConfig::from_env_or_default_paths().unwrap();
+
+        let _empty = EnvVarGuard::set("GIT_AI_INTERNAL_DIR", "");
+        let empty = DaemonConfig::from_env_or_default_paths().unwrap();
+        assert_eq!(default, empty);
+    }
+
+    #[test]
+    #[serial]
+    fn test_internal_dir_beats_daemon_home() {
+        let _ctrl = EnvVarGuard::unset("GIT_AI_DAEMON_CONTROL_SOCKET");
+        let _trace = EnvVarGuard::unset("GIT_AI_DAEMON_TRACE_SOCKET");
+        let _home = EnvVarGuard::set("GIT_AI_DAEMON_HOME", "/some/stale/home");
+        let _internal = EnvVarGuard::set("GIT_AI_INTERNAL_DIR", "/abs/machine-local");
+
+        let cfg = DaemonConfig::from_env_or_default_paths().unwrap();
+        assert_eq!(cfg.internal_dir, PathBuf::from("/abs/machine-local"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_socket_overrides_still_apply_over_internal_dir() {
+        let _home = EnvVarGuard::unset("GIT_AI_DAEMON_HOME");
+        let _internal = EnvVarGuard::set("GIT_AI_INTERNAL_DIR", "/abs/machine-local");
+        let _ctrl = EnvVarGuard::set("GIT_AI_DAEMON_CONTROL_SOCKET", "/explicit/control.sock");
+        let _trace = EnvVarGuard::set("GIT_AI_DAEMON_TRACE_SOCKET", "/explicit/trace.sock");
+
+        let cfg = DaemonConfig::from_env_or_default_paths().unwrap();
+        assert_eq!(cfg.internal_dir, PathBuf::from("/abs/machine-local"));
+        assert_eq!(
+            cfg.control_socket_path,
+            PathBuf::from("/explicit/control.sock")
+        );
+        assert_eq!(cfg.trace_socket_path, PathBuf::from("/explicit/trace.sock"));
     }
 
     fn sample_checkpoint_request() -> ControlRequest {

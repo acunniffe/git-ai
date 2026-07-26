@@ -83,6 +83,12 @@ struct DaemonProcess {
     control_socket_path: PathBuf,
     trace_socket_path: PathBuf,
     stderr_log_path: PathBuf,
+    /// When set, this daemon was launched purely via `GIT_AI_INTERNAL_DIR`
+    /// (no `GIT_AI_DAEMON_HOME`, no explicit socket overrides, no
+    /// `GIT_AI_TEST_DB_PATH`). All of its runtime paths (sockets, lock, DBs)
+    /// are derived from this internal dir by production code, exactly as a real
+    /// machine with a machine-local `GIT_AI_INTERNAL_DIR` would resolve them.
+    internal_dir_override: Option<PathBuf>,
 }
 
 #[cfg(windows)]
@@ -251,6 +257,107 @@ impl DaemonProcess {
                 control_socket_path: control_socket_path.clone(),
                 trace_socket_path: trace_socket_path.clone(),
                 stderr_log_path: stderr_log_path.clone(),
+                internal_dir_override: None,
+            };
+            match daemon.wait_until_ready(repo_path, &mut child) {
+                Ok(()) => {
+                    drop(child);
+                    return daemon;
+                }
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    attempt += 1;
+                    if matches!(error, DaemonReadyError::LoaderInitFailure(_))
+                        && attempt < DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS
+                    {
+                        eprintln!(
+                            "[test-harness] daemon loader init failed (attempt {}/{}), respawning: {}",
+                            attempt,
+                            DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS,
+                            error.message()
+                        );
+                        continue;
+                    }
+                    panic!("{}", error.message());
+                }
+            }
+        }
+    }
+
+    /// Start a dedicated daemon driven *only* by `GIT_AI_INTERNAL_DIR`.
+    ///
+    /// Unlike [`Self::start_with_env`], this does NOT set `GIT_AI_DAEMON_HOME`,
+    /// `GIT_AI_DAEMON_CONTROL_SOCKET`, `GIT_AI_DAEMON_TRACE_SOCKET`, or
+    /// `GIT_AI_TEST_DB_PATH`. Every runtime path the daemon uses (control/trace
+    /// sockets, daemon.lock, the 4 SQLite DBs) is therefore resolved by
+    /// production code purely from `internal_dir`, exercising the real
+    /// `GIT_AI_INTERNAL_DIR` precedence chain end-to-end. This simulates a
+    /// machine that sets a unique machine-local internal directory.
+    fn start_with_internal_dir(repo_path: &Path, test_home: &Path, internal_dir: &Path) -> Self {
+        let config = DaemonConfig::from_internal_dir_for_test(internal_dir);
+        let control_socket_path = config.control_socket_path.clone();
+        let trace_socket_path = config.trace_socket_path.clone();
+        let stderr_log_path = internal_dir.join("daemon").join("daemon.test.stderr.log");
+        fs::create_dir_all(
+            stderr_log_path
+                .parent()
+                .expect("daemon stderr path should have parent"),
+        )
+        .expect("failed to create daemon log dir");
+        let stderr_log = fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&stderr_log_path)
+            .expect("failed to create daemon stderr log");
+
+        let spawn_daemon = || {
+            let mut command = Command::new(get_binary_path());
+            command
+                .arg("bg")
+                .arg("run")
+                .current_dir(test_home)
+                // The internal dir is the ONLY path knob. No daemon-home, no
+                // socket overrides, no test DB path: prove the production
+                // resolution chain agrees with the client.
+                .env("GIT_AI_INTERNAL_DIR", internal_dir)
+                // Test-only: enable the test-sync completion log (and keep
+                // stderr on the console) without setting GIT_AI_TEST_DB_PATH,
+                // which would otherwise override the daemon's authorship DB and
+                // defeat the point of proving internal-dir resolution.
+                .env(
+                    "GIT_AI_TEST_COMPLETION_LOG_DIR",
+                    config.test_completion_log_dir(),
+                )
+                .stdout(Stdio::null())
+                .stderr(
+                    stderr_log
+                        .try_clone()
+                        .expect("failed to clone daemon stderr log file"),
+                );
+            configure_test_home_env(&mut command, test_home);
+            command
+                .spawn()
+                .expect("failed to spawn git-ai subprocess for test mode")
+        };
+
+        let mut attempt = 0;
+        loop {
+            let mut child = spawn_daemon();
+            let pid = child.id();
+            assign_daemon_to_test_job(pid);
+
+            let daemon = Self {
+                pid,
+                daemon_home: test_home.to_path_buf(),
+                // The daemon resolves its DB from the internal dir; the client
+                // does too. Recorded for completeness / debugging.
+                test_db_path: internal_dir.join("db"),
+                control_socket_path: control_socket_path.clone(),
+                trace_socket_path: trace_socket_path.clone(),
+                stderr_log_path: stderr_log_path.clone(),
+                internal_dir_override: Some(internal_dir.to_path_buf()),
             };
             match daemon.wait_until_ready(repo_path, &mut child) {
                 Ok(()) => {
@@ -489,7 +596,7 @@ impl DaemonProcess {
     }
 }
 
-fn configure_test_home_env(command: &mut Command, test_home: &Path) {
+pub(crate) fn configure_test_home_env(command: &mut Command, test_home: &Path) {
     command.env("HOME", test_home);
     if !command
         .get_envs()
@@ -1144,6 +1251,13 @@ pub struct TestRepo {
     /// Base repo's test DB path for cleanup.
     _base_test_db_path: Option<PathBuf>,
     daemon_family_key: OnceLock<String>,
+    /// When set, all git + git-ai subprocesses for this repo run with
+    /// `GIT_AI_INTERNAL_DIR=<dir>` and WITHOUT the explicit
+    /// `GIT_AI_DAEMON_HOME` / socket / test-DB overrides, so the client side
+    /// resolves all runtime paths from production code exactly as the daemon
+    /// (also started with the same internal dir) does. Used to exercise the
+    /// real `GIT_AI_INTERNAL_DIR` precedence chain end-to-end.
+    internal_dir_override: Option<PathBuf>,
 }
 
 #[allow(dead_code)]
@@ -1423,6 +1537,7 @@ impl TestRepo {
             _base_repo_path: Some(base_path),
             _base_test_db_path: Some(base_test_db_path),
             daemon_family_key: OnceLock::new(),
+            internal_dir_override: None,
         };
 
         repo.apply_default_config_patch();
@@ -1454,6 +1569,7 @@ impl TestRepo {
             _base_repo_path: None,
             _base_test_db_path: None,
             daemon_family_key: OnceLock::new(),
+            internal_dir_override: None,
         };
 
         repo.apply_default_config_patch();
@@ -1485,6 +1601,7 @@ impl TestRepo {
             _base_repo_path: None,
             _base_test_db_path: None,
             daemon_family_key: OnceLock::new(),
+            internal_dir_override: None,
         };
 
         repo.apply_default_config_patch();
@@ -1497,6 +1614,54 @@ impl TestRepo {
             daemon_env,
         ));
         repo.test_db_path = daemon.test_db_path.clone();
+        repo.daemon_process = Some(daemon);
+        repo.sync_test_home_config();
+
+        repo
+    }
+
+    /// Create a TestRepo backed by a dedicated daemon that is driven *only* by
+    /// `GIT_AI_INTERNAL_DIR`. The provided `internal_dir` becomes the single
+    /// source of truth for every runtime path (control/trace sockets,
+    /// daemon.lock, daemon.pid.json, and the 4 SQLite DBs) on BOTH the daemon
+    /// and the client side -- no `GIT_AI_DAEMON_HOME`, no explicit socket
+    /// overrides, no `GIT_AI_TEST_DB_PATH`. This exercises the production
+    /// `GIT_AI_INTERNAL_DIR` resolution chain end-to-end, simulating a machine
+    /// that sets a unique machine-local internal directory.
+    pub fn new_with_internal_dir(internal_dir: &Path) -> Self {
+        ensure_isolated_process_home();
+
+        let mut rng = rand::rng();
+        let n: u64 = rng.random_range(0..10000000000);
+        let base = std::env::temp_dir();
+        let path = base.join(n.to_string());
+        let test_home = base.join(format!("{}-home", n));
+        // Recorded for completeness; the daemon resolves its DB from internal_dir.
+        let test_db_path = internal_dir.join("db");
+
+        clone_template_to(&path);
+
+        let mut repo = Self {
+            path,
+            feature_flags: FeatureFlags::default(),
+            config_patch: None,
+            test_db_path,
+            test_home,
+            daemon_scope: DaemonTestScope::Dedicated,
+            daemon_process: None,
+            _base_repo_path: None,
+            _base_test_db_path: None,
+            daemon_family_key: OnceLock::new(),
+            internal_dir_override: Some(internal_dir.to_path_buf()),
+        };
+
+        repo.apply_default_config_patch();
+
+        let daemon = Arc::new(DaemonProcess::start_with_internal_dir(
+            &repo.path,
+            &repo.test_home,
+            internal_dir,
+        ));
         repo.daemon_process = Some(daemon);
         repo.sync_test_home_config();
 
@@ -1569,6 +1734,7 @@ impl TestRepo {
             _base_repo_path: Some(main_path),
             _base_test_db_path: None,
             daemon_family_key: OnceLock::new(),
+            internal_dir_override: None,
         };
 
         repo.apply_default_config_patch();
@@ -1603,6 +1769,7 @@ impl TestRepo {
             _base_repo_path: None,
             _base_test_db_path: None,
             daemon_family_key: OnceLock::new(),
+            internal_dir_override: None,
         };
 
         let mut repo = repo;
@@ -1651,6 +1818,7 @@ impl TestRepo {
             _base_repo_path: None,
             _base_test_db_path: None,
             daemon_family_key: OnceLock::new(),
+            internal_dir_override: None,
         };
 
         // Ensure the upstream default branch is named "main" for consistency across Git versions
@@ -1692,6 +1860,7 @@ impl TestRepo {
             _base_repo_path: None,
             _base_test_db_path: None,
             daemon_family_key: OnceLock::new(),
+            internal_dir_override: None,
         };
 
         // Ensure the default branch is named "main" for consistency across Git versions
@@ -1737,6 +1906,7 @@ impl TestRepo {
             _base_repo_path: None,
             _base_test_db_path: None,
             daemon_family_key: OnceLock::new(),
+            internal_dir_override: None,
         };
 
         repo.apply_default_config_patch();
@@ -1842,8 +2012,11 @@ impl TestRepo {
     }
 
     fn daemon_completion_log_path_for_family(&self, family_key: &str) -> PathBuf {
-        DaemonConfig::from_home(&self.daemon_home_path())
-            .test_completion_log_path_for_family(family_key)
+        let config = match &self.internal_dir_override {
+            Some(internal_dir) => DaemonConfig::from_internal_dir_for_test(internal_dir),
+            None => DaemonConfig::from_home(&self.daemon_home_path()),
+        };
+        config.test_completion_log_path_for_family(family_key)
     }
 
     pub(crate) fn daemon_total_completion_count(&self) -> u64 {
@@ -2384,17 +2557,27 @@ impl TestRepo {
     fn configure_git_ai_env(&self, command: &mut Command) {
         // Isolate all git + git-ai config reads from developer machine settings.
         configure_test_home_env(command, &self.test_home);
-        command.env("GIT_AI_DAEMON_HOME", self.daemon_home_path());
-        command.env(
-            "GIT_AI_DAEMON_CONTROL_SOCKET",
-            self.daemon_control_socket_path(),
-        );
-        command.env(
-            "GIT_AI_DAEMON_TRACE_SOCKET",
-            self.daemon_trace_socket_path(),
-        );
-        command.env("GIT_AI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
-        command.env("GITAI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+
+        if let Some(internal_dir) = &self.internal_dir_override {
+            // Internal-dir mode: GIT_AI_INTERNAL_DIR is the sole path knob. We
+            // deliberately set NONE of the daemon-home / socket / test-DB
+            // overrides so the client resolves every runtime path from
+            // production code, just like the daemon (started with the same
+            // internal dir) does. This is the real end-to-end precedence chain.
+            command.env("GIT_AI_INTERNAL_DIR", internal_dir);
+        } else {
+            command.env("GIT_AI_DAEMON_HOME", self.daemon_home_path());
+            command.env(
+                "GIT_AI_DAEMON_CONTROL_SOCKET",
+                self.daemon_control_socket_path(),
+            );
+            command.env(
+                "GIT_AI_DAEMON_TRACE_SOCKET",
+                self.daemon_trace_socket_path(),
+            );
+            command.env("GIT_AI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+            command.env("GITAI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+        }
 
         if self.has_active_daemon() {
             command.env("GIT_AI_DAEMON_CHECKPOINT_DELEGATE", "true");
@@ -3725,6 +3908,11 @@ mod tests {
     }
 
     #[test]
+    // This asserts the DEFAULT internal-dir resolution (~/.git-ai/internal),
+    // which only holds when GIT_AI_INTERNAL_DIR is unset. Serialize it against
+    // the internal_dir tests that temporarily set that env var so they cannot
+    // interleave and observe each other's mutation.
+    #[serial_test::serial(git_ai_internal_dir_env)]
     fn test_isolated_process_home_controls_git_ai_internal_dir() {
         ensure_isolated_process_home();
 

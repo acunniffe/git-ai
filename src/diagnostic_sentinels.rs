@@ -13,9 +13,15 @@ pub fn is_debug_self_check_remote_url(url: &str) -> bool {
 }
 
 pub fn debug_self_check_root() -> PathBuf {
-    crate::mdm::utils::home_dir()
-        .join(".git-ai")
-        .join("internal")
+    // Honors GIT_AI_INTERNAL_DIR (machine-local on a shared NFS home). Falls back
+    // to the default ~/.git-ai/internal when the internal dir cannot be resolved,
+    // preserving prior behavior.
+    crate::config::internal_dir_path()
+        .unwrap_or_else(|| {
+            crate::mdm::utils::home_dir()
+                .join(".git-ai")
+                .join("internal")
+        })
         .join(DEBUG_SELF_CHECK_DIR_NAME)
 }
 

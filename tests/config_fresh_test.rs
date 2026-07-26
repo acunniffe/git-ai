@@ -79,6 +79,35 @@ impl Drop for HomeEnvGuard {
     }
 }
 
+/// RAII guard that clears the `GIT_AI_API_KEY` env var for the duration of a
+/// test, restoring the prior value on drop. `Config` resolves the API key from
+/// `GIT_AI_API_KEY` ahead of the on-disk config, so tests that
+/// assert on the file-config api_key must clear any ambient value to remain
+/// hermetic (otherwise they fail on a developer machine that has the var set,
+/// while passing in CI's clean environment).
+struct ApiKeyEnvGuard {
+    original: Option<String>,
+}
+
+impl ApiKeyEnvGuard {
+    fn clear() -> Self {
+        let original = env::var("GIT_AI_API_KEY").ok();
+        unsafe { env::remove_var("GIT_AI_API_KEY") };
+        ApiKeyEnvGuard { original }
+    }
+}
+
+impl Drop for ApiKeyEnvGuard {
+    fn drop(&mut self) {
+        unsafe {
+            match &self.original {
+                Some(v) => env::set_var("GIT_AI_API_KEY", v),
+                None => env::remove_var("GIT_AI_API_KEY"),
+            }
+        }
+    }
+}
+
 /// Test that Config::fresh() picks up changes to config file
 #[test]
 #[serial]
@@ -154,6 +183,8 @@ fn test_config_fresh_picks_up_api_key_changes() {
     std::fs::create_dir_all(&config_dir).expect("Failed to create config dir");
 
     let _home_guard = HomeEnvGuard::set(temp_dir.path());
+    // Clear any ambient GIT_AI_API_KEY so this test exercises file config only.
+    let _api_key_guard = ApiKeyEnvGuard::clear();
 
     // Initially no API key
     let file_config = git_ai::config::FileConfig::default();
@@ -296,6 +327,8 @@ fn test_oauth_client_uses_fresh_config() {
 fn test_api_context_picks_up_api_key_changes() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let _home_guard = HomeEnvGuard::set(temp_dir.path());
+    // Clear any ambient GIT_AI_API_KEY so this test exercises file config only.
+    let _api_key_guard = ApiKeyEnvGuard::clear();
 
     let config_dir = temp_dir.path().join(".git-ai");
     std::fs::create_dir_all(&config_dir).expect("Failed to create config dir");

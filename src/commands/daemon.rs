@@ -352,6 +352,30 @@ fn powershell_single_quote_literal(value: &OsStr) -> String {
     format!("'{}'", value.to_string_lossy().replace('\'', "''"))
 }
 
+/// Sanitize the environment of a child `Command` that will run the detached
+/// daemon, removing ONLY the variables that must not leak into it while leaving
+/// every other inherited variable in place.
+///
+/// Two classes of variables are removed:
+/// - The git plumbing variables in [`crate::daemon::GIT_ENV_VARS_TO_SANITIZE`]
+///   (e.g. `GIT_DIR`, `GIT_WORK_TREE`): the daemon is repository-agnostic and
+///   these would override its `-C` flag and break repository resolution.
+/// - `GIT_AI`: it controls argv[0] dispatch (`GIT_AI=git` -> `handle_git`); a
+///   daemon that inherited it would route `bg run` to the git proxy instead of
+///   starting as a daemon.
+///
+/// Crucially, this does NOT call `env_clear()` and does NOT remove
+/// `GIT_AI_INTERNAL_DIR`. The detached daemon MUST inherit `GIT_AI_INTERNAL_DIR`
+/// from the spawning client/proxy so that the client and the daemon compute
+/// byte-for-byte identical socket / lock / DB paths. Dropping it here would make
+/// the client talk to one set of paths while the daemon listens on another.
+fn sanitize_child_env_for_detached_daemon(child: &mut Command) {
+    for var in crate::daemon::GIT_ENV_VARS_TO_SANITIZE {
+        child.env_remove(var);
+    }
+    child.env_remove("GIT_AI");
+}
+
 #[cfg(any(windows, not(any(test, feature = "test-support"))))]
 fn spawn_daemon_run_detached(config: &DaemonConfig) -> Result<(), String> {
     // Use current_git_ai_exe() instead of current_exe() to resolve through
@@ -379,11 +403,7 @@ fn spawn_daemon_run_detached(config: &DaemonConfig) -> Result<(), String> {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        // Remove git environment variables that must not leak into the daemon.
-        for var in crate::daemon::GIT_ENV_VARS_TO_SANITIZE {
-            child.env_remove(var);
-        }
-        child.env_remove("GIT_AI");
+        sanitize_child_env_for_detached_daemon(&mut child);
 
         let preferred_flags =
             CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB;
@@ -416,16 +436,7 @@ fn spawn_daemon_run_detached(config: &DaemonConfig) -> Result<(), String> {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        // Remove git environment variables that must not leak into the daemon.
-        // The daemon is repository-agnostic; variables like GIT_DIR override
-        // the -C flag and cause repository resolution failures.
-        for var in crate::daemon::GIT_ENV_VARS_TO_SANITIZE {
-            child.env_remove(var);
-        }
-        // GIT_AI controls debug routing in the binary (GIT_AI=git → handle_git).
-        // A daemon that inherits this would route "bg run" to the git proxy instead
-        // of starting as a daemon.
-        child.env_remove("GIT_AI");
+        sanitize_child_env_for_detached_daemon(&mut child);
         child.spawn().map(|_| ()).map_err(|e| e.to_string())
     }
 }
@@ -444,10 +455,7 @@ fn spawn_daemon_run_with_piped_stderr(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    for var in crate::daemon::GIT_ENV_VARS_TO_SANITIZE {
-        child.env_remove(var);
-    }
-    child.env_remove("GIT_AI");
+    sanitize_child_env_for_detached_daemon(&mut child);
     child.spawn().map_err(|e| e.to_string())
 }
 
@@ -791,4 +799,64 @@ fn print_help() {
     eprintln!("  git-ai bg shutdown [--hard]");
     eprintln!("  git-ai bg restart [--hard]");
     eprintln!("  git-ai bg tail [-n <lines>] [--full] [-f | --follow]");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsStr;
+
+    /// The detached daemon must inherit `GIT_AI_INTERNAL_DIR` from the spawning
+    /// client/proxy so client and daemon compute identical socket/lock/DB paths.
+    /// The env sanitizer removes only git plumbing vars and `GIT_AI`; it must
+    /// neither `env_clear()` nor remove `GIT_AI_INTERNAL_DIR`. A regression that
+    /// dropped the var here would silently break client/daemon path agreement.
+    #[test]
+    fn sanitize_child_env_preserves_internal_dir_and_removes_only_git_vars() {
+        let mut command = Command::new("git-ai");
+        sanitize_child_env_for_detached_daemon(&mut command);
+
+        // get_envs() reports ONLY the explicit modifications applied above:
+        // env_remove(k) shows up as (k, None); inherited vars do not appear.
+        let removed: Vec<&OsStr> = command
+            .get_envs()
+            .filter(|(_, value)| value.is_none())
+            .map(|(key, _)| key)
+            .collect();
+
+        // Every git plumbing var and GIT_AI must be removed.
+        for var in crate::daemon::GIT_ENV_VARS_TO_SANITIZE {
+            assert!(
+                removed.contains(&OsStr::new(var)),
+                "{} must be removed from the detached daemon env",
+                var
+            );
+        }
+        assert!(
+            removed.contains(&OsStr::new("GIT_AI")),
+            "GIT_AI must be removed from the detached daemon env"
+        );
+
+        // GIT_AI_INTERNAL_DIR must NOT be removed -- it must be inherited so the
+        // daemon resolves the same internal dir as its spawning client.
+        assert!(
+            !removed.contains(&OsStr::new("GIT_AI_INTERNAL_DIR")),
+            "GIT_AI_INTERNAL_DIR must be inherited by the detached daemon, not removed"
+        );
+
+        // The sanitizer must not wholesale-clear the environment: the only
+        // modifications it makes are removals (no env_clear, no sets), so every
+        // entry get_envs() reports is a removal and nothing else.
+        let total_modifications = command.get_envs().count();
+        let removal_count = command.get_envs().filter(|(_, v)| v.is_none()).count();
+        assert_eq!(
+            total_modifications, removal_count,
+            "sanitizer must only remove vars, never set or clear the whole env"
+        );
+        assert_eq!(
+            removal_count,
+            crate::daemon::GIT_ENV_VARS_TO_SANITIZE.len() + 1,
+            "sanitizer should remove exactly the git plumbing vars plus GIT_AI"
+        );
+    }
 }

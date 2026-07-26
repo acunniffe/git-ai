@@ -80,6 +80,7 @@ mod ignore_prompts;
 mod ignore_unit;
 mod initial_attributions;
 mod install_hooks_comprehensive;
+mod internal_dir;
 mod internal_machine_commands;
 mod internal_spawn_safety;
 mod issue_1204_multi_agent;

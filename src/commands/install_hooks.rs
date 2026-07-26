@@ -985,6 +985,10 @@ fn cleanup_legacy_envelope_logs() {
     let Some(home) = dirs::home_dir() else {
         return;
     };
+    // Intentionally the historical default path (NOT routed through
+    // config::internal_dir_path() / GIT_AI_INTERNAL_DIR): these legacy envelope
+    // logs only ever existed under the default ~/.git-ai/internal, so cleanup
+    // targets that location regardless of any machine-local internal dir.
     let internal = home.join(".git-ai").join("internal");
 
     // Remove the entire logs directory
