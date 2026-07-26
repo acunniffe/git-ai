@@ -1,6 +1,9 @@
-use crate::operations::daemon::trace_helpers::trace_payload_time_ns;
+use crate::operations::daemon::trace_helpers::{
+    trace_payload_time_ns, trace_token_is_git_executable,
+    trace_token_is_git_executable_ascii_case_insensitive,
+};
 
-use super::frame_helpers::payload_timestamp_ns;
+use super::frame_helpers::{canonical_invocation, payload_timestamp_ns};
 
 #[test]
 fn timestamp_aggregators_retain_distinct_precedence_and_fallback_semantics() {
@@ -20,4 +23,23 @@ fn timestamp_aggregators_retain_distinct_precedence_and_fallback_semantics() {
 
     assert_eq!(trace_payload_time_ns(&serde_json::json!({})), None);
     assert!(payload_timestamp_ns(&serde_json::json!({})).unwrap() > 0);
+}
+
+#[test]
+fn canonical_invocation_keeps_case_insensitive_executable_prefix_policy() {
+    let executable = "C:/Program Files/Git/cmd/GIT.EXE";
+    assert!(!trace_token_is_git_executable(executable));
+    assert!(trace_token_is_git_executable_ascii_case_insensitive(
+        executable
+    ));
+
+    let raw_argv = vec![
+        executable.to_string(),
+        "status".to_string(),
+        "--short".to_string(),
+    ];
+    assert_eq!(
+        canonical_invocation(&raw_argv, None),
+        (Some("status".to_string()), vec!["--short".to_string()])
+    );
 }

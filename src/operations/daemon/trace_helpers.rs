@@ -263,12 +263,24 @@ pub fn trace_argv_primary_command(argv: &[String]) -> Option<String> {
     None
 }
 
-pub(crate) fn trace_token_is_git_executable(token: &str) -> bool {
-    let file_name = Path::new(token)
+fn trace_token_executable_name(token: &str) -> &str {
+    Path::new(token)
         .file_name()
         .and_then(|name| name.to_str())
-        .unwrap_or(token);
+        .unwrap_or(token)
+}
+
+/// Exact executable recognition used by trace command selection.
+pub(crate) fn trace_token_is_git_executable(token: &str) -> bool {
+    let file_name = trace_token_executable_name(token);
     file_name == "git" || file_name == "git.exe"
+}
+
+/// ASCII-case-insensitive executable recognition used only when stripping the
+/// executable prefix from a canonical invocation.
+pub(crate) fn trace_token_is_git_executable_ascii_case_insensitive(token: &str) -> bool {
+    let file_name = trace_token_executable_name(token);
+    file_name.eq_ignore_ascii_case("git") || file_name.eq_ignore_ascii_case("git.exe")
 }
 
 /// Returns true when the trace2 event's command+argument pair is
@@ -364,6 +376,19 @@ mod tests {
                 "tokens: {tokens:?}"
             );
         }
+    }
+
+    #[test]
+    fn shared_git_executable_policy_remains_case_sensitive() {
+        assert!(trace_token_is_git_executable("git"));
+        assert!(trace_token_is_git_executable("/usr/local/bin/git"));
+        assert!(trace_token_is_git_executable(
+            "C:/Program Files/Git/cmd/git.exe"
+        ));
+        assert!(!trace_token_is_git_executable("GIT.EXE"));
+        assert!(!trace_token_is_git_executable(
+            "C:/Program Files/Git/cmd/GIT.EXE"
+        ));
     }
 
     #[test]

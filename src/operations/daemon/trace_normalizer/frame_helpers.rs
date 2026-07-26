@@ -1,6 +1,7 @@
 use crate::error::GitAiError;
 use crate::operations::daemon::trace_helpers::{
     rfc3339_to_unix_nanos, trace_argv_primary_command, trace_token_is_git_executable,
+    trace_token_is_git_executable_ascii_case_insensitive,
 };
 use crate::operations::git::cli_parser::parse_git_cli_args;
 use crate::operations::git::repo_state::worktree_root_for_path;
@@ -75,14 +76,8 @@ pub(super) fn merge_reflog_start_offsets_from_payload(
 }
 
 pub(super) fn trace_argv_has_executable_prefix(argv: &[String]) -> bool {
-    let Some(first) = argv.first() else {
-        return false;
-    };
-    let file_name = std::path::Path::new(first)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or(first);
-    file_name.eq_ignore_ascii_case("git") || file_name.eq_ignore_ascii_case("git.exe")
+    argv.first()
+        .is_some_and(|token| trace_token_is_git_executable_ascii_case_insensitive(token))
 }
 
 pub(super) fn trace_argv_invocation_tokens(argv: &[String]) -> &[String] {
