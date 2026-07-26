@@ -2,6 +2,7 @@ src/authorship/stats.rs
   s_bb41e8da5f31b5::t_c4388ec235c940 538-539
   s_bb41e8da5f31b5::t_35c9d9900a99c2 2-3,11,482-483,486-487,492-495,511-537,540-604
   s_bb41e8da5f31b5::t_b7552183ebe3a1 605
+  s_bb41e8da5f31b5::t_28c884faaad880 7
 tests/integration/stats.rs
   s_bb41e8da5f31b5::t_5bedca5ccddf96 908-953,958-962,964-966,968-973,985-994,1015
   s_bb41e8da5f31b5::t_e53dce173609f1 974-984
