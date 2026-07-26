@@ -1,9 +1,11 @@
 //! Amp agent implementation with sweep discovery.
 
-use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::stream_types::{StreamBatch, StreamError};
-use crate::model::stream_watermark::{RecordIndexWatermark, WatermarkStrategy};
-use crate::operations::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
+use crate::model::stream_watermark::WatermarkStrategy;
+use crate::operations::streams::agent::{Agent, StreamDescriptor, discover_path_sessions};
+use crate::operations::streams::reader::{
+    JsonArrayStreamSpec, RecordIndexAdvancePolicy, read_json_array_stream,
+};
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::operations::streams::timestamp::event_timestamp_or_file_time;
 use std::fs;
@@ -123,35 +125,13 @@ impl Agent for AmpAgent {
             retry_after: Duration::from_secs(30),
         })?;
 
-        let mut sessions = Vec::new();
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-
-            let Some(file_stem) = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_string())
-            else {
-                continue;
-            };
-
-            let session_id = generate_session_id(&file_stem, "amp");
-            let session = DiscoveredSession {
-                session_id,
-                tool: "amp".to_string(),
-                stream_path: path,
-                external_session_id: file_stem,
-                external_parent_session_id: None,
-            };
-
-            sessions.push(session);
-        }
-
-        Ok(sessions)
+        let paths = entries.flatten().map(|entry| entry.path()).filter(|path| {
+            path.is_file()
+                && path.extension().and_then(|extension| extension.to_str()) == Some("json")
+        });
+        Ok(discover_path_sessions("amp", paths, |path| {
+            Some((path.file_stem()?.to_str()?.to_string(), None))
+        }))
     }
 
     fn read_incremental(
@@ -160,75 +140,24 @@ impl Agent for AmpAgent {
         watermark: Box<dyn WatermarkStrategy>,
         session_id: &str,
     ) -> Result<StreamBatch, StreamError> {
-        // Downcast watermark to RecordIndexWatermark
-        let record_watermark = watermark
-            .as_any()
-            .downcast_ref::<RecordIndexWatermark>()
-            .ok_or_else(|| StreamError::Fatal {
+        read_json_array_stream(
+            path,
+            watermark,
+            session_id,
+            JsonArrayStreamSpec::new(
+                "Amp",
+                "messages",
+                self.batch_size_hint(),
+                RecordIndexAdvancePolicy::ConvertedUsize,
+            ),
+            |path| StreamError::Fatal {
                 message: format!(
-                    "Amp reader requires RecordIndexWatermark, got incompatible type for session {}",
-                    session_id
+                    "Missing 'messages' array in Amp thread file: {}",
+                    path.display()
                 ),
-            })?;
-
-        let skip_count = record_watermark.0 as usize;
-
-        let file = fs::File::open(path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                StreamError::Fatal {
-                    message: format!("Transcript file not found: {}", path.display()),
-                }
-            } else if e.kind() == std::io::ErrorKind::PermissionDenied {
-                StreamError::Fatal {
-                    message: format!("Permission denied reading transcript: {}", path.display()),
-                }
-            } else {
-                StreamError::Transient {
-                    message: format!("Failed to read transcript file: {}", e),
-                    retry_after: Duration::from_secs(5),
-                }
-            }
-        })?;
-
-        let reader = std::io::BufReader::new(file);
-        let mut parsed: serde_json::Value =
-            serde_json::from_reader(reader).map_err(|e| StreamError::Parse {
-                line: 0,
-                message: format!("Invalid JSON in {}: {}", path.display(), e),
-            })?;
-
-        let messages = match parsed
-            .as_object_mut()
-            .and_then(|obj| obj.remove("messages"))
-        {
-            Some(serde_json::Value::Array(arr)) => arr,
-            _ => {
-                return Err(StreamError::Fatal {
-                    message: format!(
-                        "Missing 'messages' array in Amp thread file: {}",
-                        path.display()
-                    ),
-                });
-            }
-        };
-
-        let batch_limit = self.batch_size_hint();
-
-        // Skip first `skip_count` messages (already processed), take up to batch_limit
-        let events: Vec<serde_json::Value> = messages
-            .into_iter()
-            .skip(skip_count)
-            .take(batch_limit)
-            .collect();
-
-        let new_watermark = Box::new(RecordIndexWatermark::new(
-            (skip_count + events.len()) as u64,
-        ));
-
-        Ok(StreamBatch {
-            events,
-            new_watermark,
-        })
+            },
+            || false,
+        )
     }
 
     fn extract_event_timestamp(
@@ -241,22 +170,16 @@ impl Agent for AmpAgent {
     }
 
     fn streams(&self) -> Vec<StreamDescriptor> {
-        let format = StreamFormat::AmpThreadJson;
-        vec![StreamDescriptor {
-            stream_kind: "transcript",
-            format,
-            watermark_type: format.watermark_type(),
-            path_resolver: PathResolverKind::Identity,
-            shared: false,
-            watermark_type_resolver: None,
-            format_resolver: None,
-        }]
+        vec![StreamDescriptor::identity_transcript(
+            StreamFormat::AmpThreadJson,
+        )]
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::stream_watermark::RecordIndexWatermark;
 
     #[test]
     fn test_sweep_strategy() {

@@ -1,10 +1,12 @@
 //! GitHub Copilot agent implementation with sweep discovery.
 
-use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::stream_types::{StreamBatch, StreamError};
-use crate::model::stream_watermark::{RecordIndexWatermark, WatermarkStrategy, WatermarkType};
+use crate::model::stream_watermark::{WatermarkStrategy, WatermarkType};
 use crate::operations::streams::agent::{
-    Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
+    Agent, PathResolverKind, StreamDescriptor, discover_path_sessions,
+};
+use crate::operations::streams::reader::{
+    JsonArrayStreamSpec, RecordIndexAdvancePolicy, read_json_array_stream, read_jsonl_byte_stream,
 };
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::operations::streams::timestamp::event_timestamp_or_file_time;
@@ -281,32 +283,11 @@ impl Agent for CopilotAgent {
     }
 
     fn discover_sessions(&self) -> Result<Vec<DiscoveredSession>, StreamError> {
-        let paths = Self::scan_transcript_files();
-        let mut sessions = Vec::new();
-
-        for path in paths {
-            // Copilot chat_session_id from the hook payload matches the file stem
-            let Some(external_session_id) = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_string())
-            else {
-                continue;
-            };
-            let session_id = generate_session_id(&external_session_id, "github-copilot");
-
-            let session = DiscoveredSession {
-                session_id,
-                tool: "github-copilot".to_string(),
-                stream_path: path,
-                external_session_id,
-                external_parent_session_id: None,
-            };
-
-            sessions.push(session);
-        }
-
-        Ok(sessions)
+        Ok(discover_path_sessions(
+            "github-copilot",
+            Self::scan_transcript_files(),
+            |path| Some((path.file_stem()?.to_str()?.to_string(), None)),
+        ))
     }
 
     fn streams(&self) -> Vec<StreamDescriptor> {
@@ -460,86 +441,34 @@ fn read_session_json(
     session_id: &str,
     batch_limit: usize,
 ) -> Result<StreamBatch, StreamError> {
-    let record_watermark = watermark
-        .as_any()
-        .downcast_ref::<RecordIndexWatermark>()
-        .ok_or_else(|| StreamError::Fatal {
-            message: format!(
-                "Copilot session reader requires RecordIndexWatermark, got incompatible type for session {}",
-                session_id
-            ),
-        })?;
-
-    let skip_count = record_watermark.0 as usize;
-
-    // Check if running in Codespaces or Remote Containers - if so, return empty transcript
-    let is_codespaces = std::env::var("CODESPACES").ok().as_deref() == Some("true");
-    let is_remote_containers = std::env::var("REMOTE_CONTAINERS").ok().as_deref() == Some("true");
-
-    if is_codespaces || is_remote_containers {
-        return Ok(StreamBatch {
-            events: Vec::new(),
-            new_watermark: watermark,
-        });
-    }
-
-    let file = std::fs::File::open(path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            StreamError::Fatal {
-                message: format!("Transcript file not found: {}", path.display()),
-            }
-        } else if e.kind() == std::io::ErrorKind::PermissionDenied {
-            StreamError::Fatal {
-                message: format!("Permission denied reading transcript: {}", path.display()),
-            }
-        } else {
-            StreamError::Transient {
-                message: format!("Failed to read transcript file: {}", e),
-                retry_after: std::time::Duration::from_secs(5),
-            }
-        }
-    })?;
-
-    let reader = std::io::BufReader::new(file);
-    let mut session_json: serde_json::Value =
-        serde_json::from_reader(reader).map_err(|e| StreamError::Parse {
+    read_json_array_stream(
+        path,
+        watermark,
+        session_id,
+        JsonArrayStreamSpec::new(
+            "Copilot session",
+            "requests",
+            batch_limit,
+            RecordIndexAdvancePolicy::ConvertedUsize,
+        ),
+        |_| StreamError::Parse {
             line: 0,
-            message: format!("Invalid JSON in {}: {}", path.display(), e),
-        })?;
-
-    let requests = match session_json
-        .as_object_mut()
-        .and_then(|obj| obj.remove("requests"))
-    {
-        Some(serde_json::Value::Array(arr)) => arr,
-        _ => {
-            return Err(StreamError::Parse {
-                line: 0,
-                message: "requests array not found in Copilot session JSON".to_string(),
-            });
-        }
-    };
-
-    let events: Vec<serde_json::Value> = requests
-        .into_iter()
-        .skip(skip_count)
-        .take(batch_limit)
-        .collect();
-
-    let new_watermark = Box::new(RecordIndexWatermark::new(
-        (skip_count + events.len()) as u64,
-    ));
-
-    Ok(StreamBatch {
-        events,
-        new_watermark,
-    })
+            message: "requests array not found in Copilot session JSON".to_string(),
+        },
+        || {
+            // VS Code does not expose local transcript files in these remote modes.
+            let is_codespaces = std::env::var("CODESPACES").ok().as_deref() == Some("true");
+            let is_remote_containers =
+                std::env::var("REMOTE_CONTAINERS").ok().as_deref() == Some("true");
+            is_codespaces || is_remote_containers
+        },
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::stream_watermark::ByteOffsetWatermark;
+    use crate::model::stream_watermark::{ByteOffsetWatermark, RecordIndexWatermark};
 
     #[test]
     fn test_sweep_strategy() {

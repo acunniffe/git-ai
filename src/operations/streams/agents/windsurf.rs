@@ -2,9 +2,8 @@
 
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
-use crate::operations::streams::agent::{
-    Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
-};
+use crate::operations::streams::agent::{Agent, StreamDescriptor};
+use crate::operations::streams::reader::read_jsonl_byte_stream;
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::operations::streams::timestamp::file_time_fallback;
 use std::path::{Path, PathBuf};
@@ -99,16 +98,9 @@ impl Agent for WindsurfAgent {
     }
 
     fn streams(&self) -> Vec<StreamDescriptor> {
-        let format = StreamFormat::WindsurfJsonl;
-        vec![StreamDescriptor {
-            stream_kind: "transcript",
-            format,
-            watermark_type: format.watermark_type(),
-            path_resolver: PathResolverKind::Identity,
-            shared: false,
-            watermark_type_resolver: None,
-            format_resolver: None,
-        }]
+        vec![StreamDescriptor::identity_transcript(
+            StreamFormat::WindsurfJsonl,
+        )]
     }
 }
 

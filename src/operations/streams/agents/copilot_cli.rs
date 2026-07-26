@@ -1,9 +1,7 @@
-use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
-use crate::operations::streams::agent::{
-    Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
-};
+use crate::operations::streams::agent::{Agent, StreamDescriptor, discover_path_sessions};
+use crate::operations::streams::reader::read_jsonl_byte_stream;
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::operations::streams::timestamp::event_timestamp_or_file_time;
 use std::fs;
@@ -80,39 +78,19 @@ impl Agent for CopilotCliAgent {
             retry_after: Duration::from_secs(60),
         })?;
 
-        let mut sessions = Vec::new();
-
-        for entry in entries.flatten() {
-            let dir_path = entry.path();
-            if !dir_path.is_dir() {
-                continue;
+        let paths = entries.flatten().filter_map(|entry| {
+            let directory = entry.path();
+            if !directory.is_dir() {
+                return None;
             }
-
-            let events_path = dir_path.join("events.jsonl");
-            if !events_path.exists() {
-                continue;
-            }
-
-            let Some(external_session_id) = dir_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_string())
-            else {
-                continue;
-            };
-
-            let session_id = generate_session_id(&external_session_id, "github-copilot-cli");
-
-            sessions.push(DiscoveredSession {
-                session_id,
-                tool: "github-copilot-cli".to_string(),
-                stream_path: events_path,
-                external_session_id,
-                external_parent_session_id: None,
-            });
-        }
-
-        Ok(sessions)
+            let events_path = directory.join("events.jsonl");
+            events_path.exists().then_some(events_path)
+        });
+        Ok(discover_path_sessions(
+            "github-copilot-cli",
+            paths,
+            |path| Some((path.parent()?.file_name()?.to_str()?.to_string(), None)),
+        ))
     }
 
     fn read_incremental(
@@ -179,16 +157,9 @@ impl Agent for CopilotCliAgent {
     }
 
     fn streams(&self) -> Vec<StreamDescriptor> {
-        let format = StreamFormat::CopilotEventStreamJsonl;
-        vec![StreamDescriptor {
-            stream_kind: "transcript",
-            format,
-            watermark_type: format.watermark_type(),
-            path_resolver: PathResolverKind::Identity,
-            shared: false,
-            watermark_type_resolver: None,
-            format_resolver: None,
-        }]
+        vec![StreamDescriptor::identity_transcript(
+            StreamFormat::CopilotEventStreamJsonl,
+        )]
     }
 }
 

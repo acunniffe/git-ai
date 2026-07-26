@@ -1,12 +1,10 @@
 //! Codex agent implementation with sweep discovery.
 
-use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
 use crate::operations::mdm::paths::codex_home_dir;
-use crate::operations::streams::agent::{
-    Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
-};
+use crate::operations::streams::agent::{Agent, StreamDescriptor, discover_path_sessions};
+use crate::operations::streams::reader::read_jsonl_byte_stream;
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::operations::streams::timestamp::event_timestamp_or_file_time;
 use std::fs::{self, File};
@@ -200,32 +198,21 @@ impl Agent for CodexAgent {
     }
 
     fn discover_sessions(&self) -> Result<Vec<DiscoveredSession>, StreamError> {
-        let paths = Self::scan_session_files();
-        let mut sessions = Vec::new();
-
-        for path in paths {
-            // Codex filename: rollout-2026-02-06T20-35-49-019c35bd-ad8e-7422-834c-3605bc4ee7ac
-            // The hook payload sends the UUID as session_id/thread_id (last 36 chars)
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            if stem.len() < 36 {
-                continue;
-            }
-            let external_session_id = stem[stem.len() - 36..].to_string();
-            let session_id = generate_session_id(&external_session_id, "codex");
-            let external_parent_session_id = Self::detect_subagent_parent(&path);
-
-            sessions.push(DiscoveredSession {
-                session_id,
-                tool: "codex".to_string(),
-                stream_path: path,
-                external_session_id,
-                external_parent_session_id,
-            });
-        }
-
-        Ok(sessions)
+        Ok(discover_path_sessions(
+            "codex",
+            Self::scan_session_files(),
+            |path| {
+                // The hook payload sends the UUID suffix from the rollout filename.
+                let stem = path.file_stem()?.to_str()?;
+                if stem.len() < 36 {
+                    return None;
+                }
+                Some((
+                    stem[stem.len() - 36..].to_string(),
+                    Self::detect_subagent_parent(path),
+                ))
+            },
+        ))
     }
 
     fn read_incremental(
@@ -282,16 +269,9 @@ impl Agent for CodexAgent {
     }
 
     fn streams(&self) -> Vec<StreamDescriptor> {
-        let format = StreamFormat::CodexJsonl;
-        vec![StreamDescriptor {
-            stream_kind: "transcript",
-            format,
-            watermark_type: format.watermark_type(),
-            path_resolver: PathResolverKind::Identity,
-            shared: false,
-            watermark_type_resolver: None,
-            format_resolver: None,
-        }]
+        vec![StreamDescriptor::identity_transcript(
+            StreamFormat::CodexJsonl,
+        )]
     }
 }
 

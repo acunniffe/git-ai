@@ -1,12 +1,10 @@
 //! Gemini agent implementation with sweep discovery.
 
-use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
 use crate::operations::mdm::paths::gemini_config_dir;
-use crate::operations::streams::agent::{
-    Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
-};
+use crate::operations::streams::agent::{Agent, StreamDescriptor, discover_path_sessions};
+use crate::operations::streams::reader::read_jsonl_byte_stream;
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::operations::streams::timestamp::event_timestamp_or_file_time;
 use std::fs;
@@ -119,32 +117,11 @@ impl Agent for GeminiAgent {
     }
 
     fn discover_sessions(&self) -> Result<Vec<DiscoveredSession>, StreamError> {
-        let paths = Self::scan_session_files();
-        let mut sessions = Vec::new();
-
-        for path in paths {
-            // Gemini session_id from the hook payload matches the file stem
-            let Some(external_session_id) = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_string())
-            else {
-                continue;
-            };
-            let session_id = generate_session_id(&external_session_id, "gemini");
-
-            let session = DiscoveredSession {
-                session_id,
-                tool: "gemini".to_string(),
-                stream_path: path,
-                external_session_id,
-                external_parent_session_id: None,
-            };
-
-            sessions.push(session);
-        }
-
-        Ok(sessions)
+        Ok(discover_path_sessions(
+            "gemini",
+            Self::scan_session_files(),
+            |path| Some((path.file_stem()?.to_str()?.to_string(), None)),
+        ))
     }
 
     fn read_incremental(
@@ -173,16 +150,9 @@ impl Agent for GeminiAgent {
     }
 
     fn streams(&self) -> Vec<StreamDescriptor> {
-        let format = StreamFormat::GeminiJsonl;
-        vec![StreamDescriptor {
-            stream_kind: "transcript",
-            format,
-            watermark_type: format.watermark_type(),
-            path_resolver: PathResolverKind::Identity,
-            shared: false,
-            watermark_type_resolver: None,
-            format_resolver: None,
-        }]
+        vec![StreamDescriptor::identity_transcript(
+            StreamFormat::GeminiJsonl,
+        )]
     }
 }
 

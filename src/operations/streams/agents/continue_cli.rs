@@ -1,9 +1,11 @@
 //! Continue CLI agent implementation with sweep discovery.
 
-use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::stream_types::{StreamBatch, StreamError};
-use crate::model::stream_watermark::{RecordIndexWatermark, WatermarkStrategy};
-use crate::operations::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
+use crate::model::stream_watermark::WatermarkStrategy;
+use crate::operations::streams::agent::{Agent, StreamDescriptor, discover_path_sessions};
+use crate::operations::streams::reader::{
+    JsonArrayStreamSpec, RecordIndexAdvancePolicy, read_json_array_stream,
+};
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::operations::streams::timestamp::file_time_fallback;
 use std::path::{Path, PathBuf};
@@ -94,32 +96,11 @@ impl Agent for ContinueAgent {
     }
 
     fn discover_sessions(&self) -> Result<Vec<DiscoveredSession>, StreamError> {
-        let paths = Self::scan_session_files();
-        let mut sessions = Vec::new();
-
-        for path in paths {
-            // Continue session_id from the hook payload matches the file stem
-            let Some(external_session_id) = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_string())
-            else {
-                continue;
-            };
-            let session_id = generate_session_id(&external_session_id, "continue-cli");
-
-            let session = DiscoveredSession {
-                session_id,
-                tool: "continue-cli".to_string(),
-                stream_path: path,
-                external_session_id,
-                external_parent_session_id: None,
-            };
-
-            sessions.push(session);
-        }
-
-        Ok(sessions)
+        Ok(discover_path_sessions(
+            "continue-cli",
+            Self::scan_session_files(),
+            |path| Some((path.file_stem()?.to_str()?.to_string(), None)),
+        ))
     }
 
     fn read_incremental(
@@ -128,71 +109,24 @@ impl Agent for ContinueAgent {
         watermark: Box<dyn WatermarkStrategy>,
         session_id: &str,
     ) -> Result<StreamBatch, StreamError> {
-        // Downcast watermark to RecordIndexWatermark
-        let record_watermark = watermark
-            .as_any()
-            .downcast_ref::<RecordIndexWatermark>()
-            .ok_or_else(|| StreamError::Fatal {
+        read_json_array_stream(
+            path,
+            watermark,
+            session_id,
+            JsonArrayStreamSpec::new(
+                "Continue",
+                "history",
+                self.batch_size_hint(),
+                RecordIndexAdvancePolicy::OriginalU64,
+            ),
+            |path| StreamError::Fatal {
                 message: format!(
-                    "Continue reader requires RecordIndexWatermark, got incompatible type for session {}",
-                    session_id
+                    "Missing 'history' array in Continue transcript: {}",
+                    path.display()
                 ),
-            })?;
-
-        let already_processed = record_watermark.0;
-
-        let file = std::fs::File::open(path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                StreamError::Fatal {
-                    message: format!("Transcript file not found: {}", path.display()),
-                }
-            } else if e.kind() == std::io::ErrorKind::PermissionDenied {
-                StreamError::Fatal {
-                    message: format!("Permission denied reading transcript: {}", path.display()),
-                }
-            } else {
-                StreamError::Transient {
-                    message: format!("Failed to read transcript file: {}", e),
-                    retry_after: Duration::from_secs(5),
-                }
-            }
-        })?;
-
-        let reader = std::io::BufReader::new(file);
-        let mut parsed: serde_json::Value =
-            serde_json::from_reader(reader).map_err(|e| StreamError::Parse {
-                line: 0,
-                message: format!("Invalid JSON in {}: {}", path.display(), e),
-            })?;
-
-        let history = match parsed.as_object_mut().and_then(|obj| obj.remove("history")) {
-            Some(serde_json::Value::Array(arr)) => arr,
-            _ => {
-                return Err(StreamError::Fatal {
-                    message: format!(
-                        "Missing 'history' array in Continue transcript: {}",
-                        path.display()
-                    ),
-                });
-            }
-        };
-
-        let batch_limit = self.batch_size_hint();
-
-        let events: Vec<serde_json::Value> = history
-            .into_iter()
-            .skip(already_processed as usize)
-            .take(batch_limit)
-            .collect();
-
-        let new_watermark = Box::new(RecordIndexWatermark::new(
-            already_processed + events.len() as u64,
-        ));
-
-        Ok(StreamBatch {
-            events,
-            new_watermark,
-        })
+            },
+            || false,
+        )
     }
 
     fn extract_event_timestamp(
@@ -205,22 +139,16 @@ impl Agent for ContinueAgent {
     }
 
     fn streams(&self) -> Vec<StreamDescriptor> {
-        let format = StreamFormat::ContinueJson;
-        vec![StreamDescriptor {
-            stream_kind: "transcript",
-            format,
-            watermark_type: format.watermark_type(),
-            path_resolver: PathResolverKind::Identity,
-            shared: false,
-            watermark_type_resolver: None,
-            format_resolver: None,
-        }]
+        vec![StreamDescriptor::identity_transcript(
+            StreamFormat::ContinueJson,
+        )]
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::stream_watermark::RecordIndexWatermark;
 
     #[test]
     fn test_sweep_strategy() {

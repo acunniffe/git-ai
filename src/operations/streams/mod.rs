@@ -44,6 +44,7 @@
 pub mod agent;
 pub mod agents;
 pub mod model_extraction;
+pub(crate) mod reader;
 pub mod sweep;
 pub(crate) mod timestamp;
 

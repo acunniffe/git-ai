@@ -5,10 +5,8 @@ use crate::model::authorship_log_serialization::generate_session_id;
 use crate::model::checkpoint_request::{
     StreamFormat as CheckpointStreamFormat, StreamSource as CheckpointStreamSource,
 };
-use crate::model::stream_types::{JsonlLineState, StreamBatch, StreamError, read_jsonl_line};
-use crate::model::stream_watermark::{ByteOffsetWatermark, WatermarkStrategy};
-use std::fs::File;
-use std::io::{BufReader, Seek, SeekFrom};
+use crate::model::stream_types::{StreamBatch, StreamError};
+use crate::model::stream_watermark::WatermarkStrategy;
 use std::path::{Path, PathBuf};
 
 /// Sentinel session_id for shared stream watermark rows.
@@ -53,6 +51,18 @@ pub struct StreamDescriptor {
 }
 
 impl StreamDescriptor {
+    pub(crate) fn identity_transcript(format: StreamFormat) -> Self {
+        Self {
+            stream_kind: "transcript",
+            format,
+            watermark_type: format.watermark_type(),
+            path_resolver: PathResolverKind::Identity,
+            shared: false,
+            watermark_type_resolver: None,
+            format_resolver: None,
+        }
+    }
+
     pub fn resolve_path(&self, stream_path: &Path) -> Option<PathBuf> {
         match &self.path_resolver {
             PathResolverKind::Identity => Some(stream_path.to_path_buf()),
@@ -262,99 +272,24 @@ pub(crate) fn checkpoint_stream_has_extension(path: &Path, expected: &str) -> bo
     path.extension().and_then(|extension| extension.to_str()) == Some(expected)
 }
 
-/// Read a JSONL transcript incrementally using a byte-offset watermark.
-///
-/// Agent-specific readers share the same I/O and malformed-line behavior; only
-/// the reader name and open-error wording vary for compatibility with existing
-/// diagnostics.
-pub(super) fn read_jsonl_byte_stream(
-    path: &Path,
-    watermark: Box<dyn WatermarkStrategy>,
-    session_id: &str,
-    batch_limit: usize,
-    reader_name: &str,
-    open_error_verb: &str,
-) -> Result<StreamBatch, StreamError> {
-    let byte_watermark = watermark
-        .as_any()
-        .downcast_ref::<ByteOffsetWatermark>()
-        .ok_or_else(|| StreamError::Fatal {
-            message: format!(
-                "{} reader requires ByteOffsetWatermark, got incompatible type for session {}",
-                reader_name, session_id
-            ),
-        })?;
-
-    let start_offset = byte_watermark.0;
-    let file = File::open(path).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::NotFound {
-            StreamError::Fatal {
-                message: format!("Transcript file not found: {}", path.display()),
-            }
-        } else if error.kind() == std::io::ErrorKind::PermissionDenied {
-            StreamError::Fatal {
-                message: format!("Permission denied reading transcript: {}", path.display()),
-            }
-        } else {
-            StreamError::Transient {
-                message: format!("Failed to {} transcript file: {}", open_error_verb, error),
-                retry_after: std::time::Duration::from_secs(5),
-            }
-        }
-    })?;
-
-    let mut reader = BufReader::new(file);
-    reader
-        .seek(SeekFrom::Start(start_offset))
-        .map_err(|error| StreamError::Transient {
-            message: format!("Failed to seek to offset {}: {}", start_offset, error),
-            retry_after: std::time::Duration::from_secs(5),
-        })?;
-
-    let mut events = Vec::with_capacity(batch_limit);
-    let mut current_offset = start_offset;
-    let mut line_number = 0;
-    let mut line = String::new();
-
-    loop {
-        match read_jsonl_line(&mut reader, &mut line).map_err(|error| StreamError::Transient {
-            message: format!("I/O error reading line: {}", error),
-            retry_after: std::time::Duration::from_secs(5),
-        })? {
-            JsonlLineState::Eof | JsonlLineState::Partial => break,
-            JsonlLineState::Complete(bytes_read) => {
-                line_number += 1;
-                current_offset += bytes_read as u64;
-            }
-        }
-
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let entry = match serde_json::from_str(&line) {
-            Ok(value) => value,
-            Err(error) => {
-                tracing::warn!(
-                    line = line_number,
-                    path = %path.display(),
-                    error = %error,
-                    "skipping malformed JSON line"
-                );
-                continue;
-            }
-        };
-
-        events.push(entry);
-        if events.len() >= batch_limit {
-            break;
-        }
-    }
-
-    Ok(StreamBatch {
-        events,
-        new_watermark: Box::new(ByteOffsetWatermark::new(current_offset)),
-    })
+pub(super) fn discover_path_sessions(
+    tool: &str,
+    paths: impl IntoIterator<Item = PathBuf>,
+    mut bind_session: impl FnMut(&Path) -> Option<(String, Option<String>)>,
+) -> Vec<DiscoveredSession> {
+    paths
+        .into_iter()
+        .filter_map(|stream_path| {
+            let (external_session_id, external_parent_session_id) = bind_session(&stream_path)?;
+            Some(DiscoveredSession {
+                session_id: generate_session_id(&external_session_id, tool),
+                tool: tool.to_string(),
+                stream_path,
+                external_session_id,
+                external_parent_session_id,
+            })
+        })
+        .collect()
 }
 
 const ALL_AGENT_TYPES: &[&str] = &[
@@ -401,4 +336,64 @@ pub fn get_all_agents() -> Vec<(String, Box<dyn Agent>)> {
         .iter()
         .filter_map(|&name| get_agent(name).map(|agent| (name.to_string(), agent)))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identity_transcript_descriptor_has_the_standard_policy() {
+        let descriptor = StreamDescriptor::identity_transcript(StreamFormat::AmpThreadJson);
+
+        assert_eq!(descriptor.stream_kind, "transcript");
+        assert_eq!(descriptor.format, StreamFormat::AmpThreadJson);
+        assert_eq!(
+            descriptor.watermark_type,
+            StreamFormat::AmpThreadJson.watermark_type()
+        );
+        assert!(matches!(
+            descriptor.path_resolver,
+            PathResolverKind::Identity
+        ));
+        assert!(!descriptor.shared);
+        assert!(descriptor.watermark_type_resolver.is_none());
+        assert!(descriptor.format_resolver.is_none());
+    }
+
+    #[test]
+    fn path_discovery_preserves_input_order_and_parent_binding() {
+        let paths = vec![
+            PathBuf::from("/sessions/beta.json"),
+            PathBuf::from("/sessions/skip.json"),
+            PathBuf::from("/sessions/alpha.json"),
+        ];
+
+        let sessions = discover_path_sessions("test-tool", paths, |path| {
+            let external_id = path.file_stem()?.to_str()?.to_string();
+            if external_id == "skip" {
+                return None;
+            }
+            let parent = (external_id == "alpha").then(|| "parent-session".to_string());
+            Some((external_id, parent))
+        });
+
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(sessions[0].external_session_id, "beta");
+        assert_eq!(
+            sessions[0].stream_path,
+            PathBuf::from("/sessions/beta.json")
+        );
+        assert_eq!(sessions[0].external_parent_session_id, None);
+        assert_eq!(sessions[1].external_session_id, "alpha");
+        assert_eq!(
+            sessions[1].external_parent_session_id.as_deref(),
+            Some("parent-session")
+        );
+        assert_eq!(sessions[0].tool, "test-tool");
+        assert_eq!(
+            sessions[0].session_id,
+            generate_session_id("beta", "test-tool")
+        );
+    }
 }
