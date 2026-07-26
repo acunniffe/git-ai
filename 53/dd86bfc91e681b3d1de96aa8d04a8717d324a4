@@ -1,0 +1,26 @@
+src/api/notes.rs
+  s_a0e7afeb591111::t_8b3c4ed778eaac 93-97
+  s_a0e7afeb591111::t_abfee8c9602cab 44-50
+  s_a0e7afeb591111::t_584e2dd67d03e8 178-225
+src/error.rs
+  s_a0e7afeb591111::t_995e4962d66fa1 19-23
+  s_a0e7afeb591111::t_6a8369272b6e0c 304-321
+  s_a0e7afeb591111::t_fe3a024e73f564 101
+  s_a0e7afeb591111::t_797d3984350b4a 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "53dd86bfc91e681b3d1de96aa8d04a8717d324a4",
+  "prompts": {},
+  "sessions": {
+    "s_a0e7afeb591111": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06a9e76d-17dc-4a63-a860-e25089a41f39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jean-Michel Bouchard <jim@polarcoordinates.org>"
+    }
+  }
+}

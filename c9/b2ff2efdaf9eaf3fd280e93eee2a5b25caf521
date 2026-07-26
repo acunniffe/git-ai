@@ -1,0 +1,23 @@
+src/commands/upgrade.rs
+  d46277b929576d9f 1784-1790,1792-1796,1798,1800-1813,1820-1823,1829-1832,1838-1841
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "c9b2ff2efdaf9eaf3fd280e93eee2a5b25caf521",
+  "prompts": {
+    "d46277b929576d9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7d963b3-678f-4ed0-8566-d90a0d657703",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 39,
+      "total_deletions": 75,
+      "accepted_lines": 39,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,48 @@
+src/commands/analyze/mod.rs
+  s_3dfd94f53cf5e8::t_a12213c548894a 113
+  s_3dfd94f53cf5e8::t_74fc2a2a561ff1 136-137
+  s_3dfd94f53cf5e8::t_bd271ea68aebc5 199
+src/commands/analyze/cube.rs
+  s_3dfd94f53cf5e8::t_f77e080a9b4dc7 99-102
+  s_3dfd94f53cf5e8::t_fc2b704705c92e 87-88
+  s_3dfd94f53cf5e8::t_f9806cefb278c9 77
+  s_3dfd94f53cf5e8::t_4615774d679374 21-23
+src/commands/analyze/sessions.rs
+  s_3dfd94f53cf5e8::t_af62d706660a52 641-645,650-662,666-681,685-700
+  s_3dfd94f53cf5e8::t_aa6b387a3102dd 1238-1242,1245,1254
+  s_3dfd94f53cf5e8::t_25c65e20d38c3c 1264,1273
+  s_3dfd94f53cf5e8::t_345ffd96862bda 946-956
+  s_3dfd94f53cf5e8::t_4e9a786d073199 1166-1178,1189
+  s_3dfd94f53cf5e8::t_f77e080a9b4dc7 1215,1229
+  s_3dfd94f53cf5e8::t_96a7b8d871d9b6 580
+  s_3dfd94f53cf5e8::t_9a6d1b700f05a1 14
+  s_3dfd94f53cf5e8::t_872c987c5a174b 1048-1051
+  s_3dfd94f53cf5e8::t_39ab5f9aa40bda 265
+  s_3dfd94f53cf5e8::t_ef7761b84b63a4 414
+src/commands/git_ai_handlers.rs
+  s_0844fb27570d8e::t_bc899ebd03b03f 346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.4",
+  "base_commit_sha": "25f15ea9e716774e4841ef1458038721c4f1dd45",
+  "prompts": {},
+  "sessions": {
+    "s_0844fb27570d8e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5924c828-8379-467c-a0c2-1943fa70ad31",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_3dfd94f53cf5e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a681e9e-d3c3-4f0a-8f6f-3b78e3b1c3af",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

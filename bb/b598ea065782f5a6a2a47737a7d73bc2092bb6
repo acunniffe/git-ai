@@ -1,0 +1,30 @@
+src/commands/git_ai_handlers.rs
+  s_f00ef7c0f45b07::t_1dea6c68cdb62e 178-179
+  s_032cf4fb6d69d7::t_018c2ab6b783a4 231,679,699,723,740
+src/commands/mod.rs
+  s_f00ef7c0f45b07::t_1dea6c68cdb62e 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "bbb598ea065782f5a6a2a47737a7d73bc2092bb6",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

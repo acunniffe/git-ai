@@ -1,0 +1,19 @@
+tests/integration/repos/test_repo.rs
+  s_c8bbd0943d96d5::t_eec7fdef9d1cc6 2846-2848
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "94506dbc7f29ada33c2ec1c7e9bc2a3812e4f063",
+  "prompts": {},
+  "sessions": {
+    "s_c8bbd0943d96d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eeb3a-fa95-7760-b77a-04522f5b6aed",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

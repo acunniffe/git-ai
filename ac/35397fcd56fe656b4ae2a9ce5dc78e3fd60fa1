@@ -1,0 +1,23 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  6bd1e5fc57948816 1605-1610,1621-1627,1631-1637,1702-1705,1708-1712
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "ac35397fcd56fe656b4ae2a9ce5dc78e3fd60fa1",
+  "prompts": {
+    "6bd1e5fc57948816": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4e84c32a-8064-4342-bbd8-bc5a3240ee9f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 29,
+      "total_deletions": 30,
+      "accepted_lines": 29,
+      "overriden_lines": 0
+    }
+  }
+}

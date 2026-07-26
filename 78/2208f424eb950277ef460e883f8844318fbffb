@@ -1,0 +1,87 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "782208f424eb950277ef460e883f8844318fbffb",
+  "prompts": {
+    "477a1657d45efeaf": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "693cdb8b-b22b-42b7-ae56-242faa8bb809",
+        "model": "composer-1"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/authorship/range_authorship.rs:179-182 add better docs here",
+          "timestamp": "2025-12-07T15:17:54.226Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the function to understand its behavior before improving the documentation.",
+          "timestamp": "2025-12-07T15:17:56.401Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Checking related functions for context:",
+          "timestamp": "2025-12-07T15:17:58.930Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Improving the function documentation:",
+          "timestamp": "2025-12-07T15:18:00.358Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updating the function documentation:",
+          "timestamp": "2025-12-07T15:18:01.720Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linter errors:",
+          "timestamp": "2025-12-07T15:18:06.667Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updated the function documentation. The new docs include:\n\n1. **Overview**: Explains that it creates an authorship log for a commit range by treating it as a squash\n2. **Step-by-step process**: Lists the 6 steps the function performs\n3. **Special cases**: Documents handling of empty tree and no files changed\n4. **Parameter documentation**: Documents all 5 parameters with descriptions\n5. **Return value**: Explains what the function returns\n6. **Cross-reference**: References the similar function for context\n\nThe documentation follows Rust documentation conventions and provides enough detail for users to understand the function's behavior.",
+          "timestamp": "2025-12-07T15:18:07.684Z"
+        },
+        {
+          "type": "user",
+          "text": "ok add it back in",
+          "timestamp": "2025-12-07T15:18:38.518Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Restoring the documentation:",
+          "timestamp": "2025-12-07T15:18:40.429Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Restored the documentation. It includes details about the function's behavior, parameters, return value, and special cases.",
+          "timestamp": "2025-12-07T15:18:43.564Z"
+        },
+        {
+          "type": "user",
+          "text": "sorry reverted it. bring it back",
+          "timestamp": "2025-12-07T15:20:54.325Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Restoring the documentation:",
+          "timestamp": "2025-12-07T15:20:56.893Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Restored the documentation. It includes details about the function's behavior, parameters, return value, and special cases.",
+          "timestamp": "2025-12-07T15:21:00.828Z"
+        }
+      ],
+      "total_additions": 37,
+      "total_deletions": 2,
+      "accepted_lines": 36,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,24 @@
+src/git/repository.rs
+  b7300148f5fccc6d 1289-1294
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "931245084ff207f99a8d944fe97ca90dd319af5e",
+  "prompts": {
+    "b7300148f5fccc6d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "48d8d7ee-b577-418d-98d6-e0d29bd8369e",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "8688852+Ryan-Adami@users.noreply.github.com",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 6,
+      "accepted_lines": 6,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/0342a6b4a1518ab70f3fb7c7c0995d7986b9195ba9fba29fab6405bcfd8eb301"
+    }
+  }
+}

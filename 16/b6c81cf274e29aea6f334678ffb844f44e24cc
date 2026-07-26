@@ -1,0 +1,22 @@
+src/ci/gitlab.rs
+  s_706ace95c05718::t_1e5580fe2de3aa 11,24-49,51-65
+  s_706ace95c05718::t_376c9536b26d2e 307-311,316,321,323-332,342
+  s_706ace95c05718::t_a42a72e2aa6590 50,312-315,317-320,522,583,586
+  s_706ace95c05718::t_58122f347365ab 458-521,523-582,584-585,587-592
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "16b6c81cf274e29aea6f334678ffb844f44e24cc",
+  "prompts": {},
+  "sessions": {
+    "s_706ace95c05718": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4787c04c-33ba-4e48-a627-5bae746356f2",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jean-Michel Bouchard <jim@polarcoordinates.org>"
+    }
+  }
+}
