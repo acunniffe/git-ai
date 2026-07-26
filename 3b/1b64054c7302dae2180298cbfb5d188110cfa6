@@ -14,7 +14,7 @@ src/authorship/rewrite.rs
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "development:1.6.16",
-  "base_commit_sha": "743a29f305ed90951b5e1733ba66cadf8fc1d7cf",
+  "base_commit_sha": "3b1b64054c7302dae2180298cbfb5d188110cfa6",
   "prompts": {},
   "sessions": {
     "s_4b321b35f327bb": {
