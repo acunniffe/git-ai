@@ -720,6 +720,14 @@ pub(crate) fn shift_authorship_notes_merging_existing_with_notes(
     shift_authorship_notes_with_existing_mode(repo, mappings, true)
 }
 
+/// Maximum number of diff-tree pairs to compute in a single batch before
+/// applying shifts and dropping the parsed `DiffTreeResult` structures.
+/// Each result holds per-pair `Vec<u32>` of added lines and `Vec<DiffHunk>`
+/// hunks, and without chunking the cumulative allocation scales linearly with
+/// the pair count. Chunking bounds the live set to `CHUNK_SIZE` pairs and
+/// trades one extra git spawn per chunk for bounded peak RSS.
+const DIFF_TREE_PAIRS_CHUNK_SIZE: usize = 50;
+
 fn shift_authorship_notes_with_existing_mode(
     repo: &Repository,
     mappings: &[(String, String)],
@@ -793,47 +801,55 @@ fn shift_authorship_notes_with_existing_mode(
         return Ok(Vec::new());
     }
 
-    // Single batched diff-tree call for all pairs
-    let diff_results = if !diff_pairs.is_empty() {
-        compute_diff_trees_batch(repo, &diff_pairs)?
-    } else {
-        Vec::new()
-    };
-
-    // Apply shifts and merge logs that share a target commit
+    // Apply shifts in bounded chunks: compute the diff-trees for a slice of
+    // pairs, fold those shifts into `merged_by_target`, and drop the parsed
+    // `DiffTreeResult`s before moving on. Materializing all pairs at once has
+    // driven the daemon to multi-GB RSS when a bad mapping set turns every
+    // pair into a full-root-tree diff.
     let mut merged_by_target = existing_by_target;
 
-    for shift in pending {
-        let diff_result = &diff_results[shift.diff_pair_idx];
-        let mut log = shift.log;
+    // `pending` is ordered by `diff_pair_idx`, so it can be consumed with a
+    // cursor as the chunks advance.
+    let mut pending_iter = pending.into_iter().peekable();
+    let mut chunk_start = 0;
+    while chunk_start < diff_pairs.len() {
+        let chunk_end = (chunk_start + DIFF_TREE_PAIRS_CHUNK_SIZE).min(diff_pairs.len());
+        let diff_results = compute_diff_trees_batch(repo, &diff_pairs[chunk_start..chunk_end])?;
 
-        for (old_path, new_path) in &diff_result.renames {
-            for attestation in &mut log.attestations {
-                if attestation.file_path == *old_path {
-                    attestation.file_path = new_path.clone();
+        while let Some(shift) = pending_iter.next_if(|s| s.diff_pair_idx < chunk_end) {
+            let diff_result = &diff_results[shift.diff_pair_idx - chunk_start];
+            let mut log = shift.log;
+
+            for (old_path, new_path) in &diff_result.renames {
+                for attestation in &mut log.attestations {
+                    if attestation.file_path == *old_path {
+                        attestation.file_path = new_path.clone();
+                    }
+                }
+            }
+
+            if !diff_result.hunks_by_file.is_empty() {
+                log.attestations = log
+                    .attestations
+                    .iter()
+                    .filter_map(|fa| match diff_result.hunks_by_file.get(&fa.file_path) {
+                        Some(hunks) => apply_hunk_shifts_to_file_attestation(fa, hunks),
+                        None => Some(fa.clone()),
+                    })
+                    .collect();
+            }
+
+            log.metadata.base_commit_sha = shift.new_sha.clone();
+
+            match merged_by_target.get_mut(&shift.new_sha) {
+                Some(existing) => merge_authorship_logs(existing, &log),
+                None => {
+                    merged_by_target.insert(shift.new_sha, log);
                 }
             }
         }
 
-        if !diff_result.hunks_by_file.is_empty() {
-            log.attestations = log
-                .attestations
-                .iter()
-                .filter_map(|fa| match diff_result.hunks_by_file.get(&fa.file_path) {
-                    Some(hunks) => apply_hunk_shifts_to_file_attestation(fa, hunks),
-                    None => Some(fa.clone()),
-                })
-                .collect();
-        }
-
-        log.metadata.base_commit_sha = shift.new_sha.clone();
-
-        match merged_by_target.get_mut(&shift.new_sha) {
-            Some(existing) => merge_authorship_logs(existing, &log),
-            None => {
-                merged_by_target.insert(shift.new_sha, log);
-            }
-        }
+        chunk_start = chunk_end;
     }
 
     let mut all_writes = verbatim_writes;
@@ -1008,9 +1024,22 @@ fn run_range_diff(
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Maximum number of unmatched old-range (`<`) commits buffered ahead of the
+/// first matched pair. A genuine rebase squash absorbs a handful of commits
+/// into the first surviving one, so small queues are drained into that match
+/// as before. But when the count exceeds this bound the history is divergent
+/// — e.g. a restack undo (`git reset --keep <pre-rebase-tip>`), where the old
+/// range spans every trunk commit landed since the branch forked — and the
+/// whole queue is discarded, permanently. Without this, each bogus mapping
+/// whose source commit has an authorship note becomes a full-root-tree diff
+/// pair, and daemon memory scales as
+/// (trunk commits since fork) × (lines modified on trunk).
+const MAX_PENDING_DROPPED_COMMITS: usize = 64;
+
 fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
     let mut mappings = Vec::new();
     let mut pending_dropped: Vec<String> = Vec::new();
+    let mut pending_overflowed = false;
     let mut previous_new_sha: Option<String> = None;
 
     for line in output.lines() {
@@ -1036,8 +1065,16 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
                 if !old_sha.chars().all(|c| c == '0') {
                     if let Some(new_sha) = previous_new_sha.as_ref() {
                         mappings.push((old_sha, new_sha.clone()));
-                    } else {
+                    } else if !pending_overflowed {
                         pending_dropped.push(old_sha);
+                        if pending_dropped.len() > MAX_PENDING_DROPPED_COMMITS {
+                            // Divergent history (e.g. restack undo), not a
+                            // squash: discard the queue and stop collecting so
+                            // the mapping count stays bounded.
+                            pending_dropped.clear();
+                            pending_dropped.shrink_to_fit();
+                            pending_overflowed = true;
+                        }
                     }
                 }
             }
@@ -1639,33 +1676,6 @@ Binary files a/image.png and b/image.png differ
     }
 
     #[test]
-    fn test_parse_range_diff_output_matched_then_dropped_maps_all_to_destination() {
-        let output = "\
-1:  1111111111111111111111111111111111111111 ! 1:  4444444444444444444444444444444444444444 AI commit 1
-2:  2222222222222222222222222222222222222222 < -:  ---------------------------------------- AI commit 2
-3:  3333333333333333333333333333333333333333 < -:  ---------------------------------------- AI commit 3
-";
-        let mappings = parse_range_diff_output(output);
-        assert_eq!(
-            mappings,
-            vec![
-                (
-                    "1111111111111111111111111111111111111111".to_string(),
-                    "4444444444444444444444444444444444444444".to_string()
-                ),
-                (
-                    "2222222222222222222222222222222222222222".to_string(),
-                    "4444444444444444444444444444444444444444".to_string()
-                ),
-                (
-                    "3333333333333333333333333333333333333333".to_string(),
-                    "4444444444444444444444444444444444444444".to_string()
-                ),
-            ]
-        );
-    }
-
-    #[test]
     fn test_parse_range_diff_output_null_shas_skipped() {
         let output = " 1:  0000000000000000000000000000000000000000 = 1:  bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb Subject\n";
         let mappings = parse_range_diff_output(output);
@@ -1708,6 +1718,113 @@ Binary files a/image.png and b/image.png differ
     fn test_parse_range_diff_output_empty() {
         let mappings = parse_range_diff_output("");
         assert!(mappings.is_empty());
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_matched_then_dropped_maps_all_to_destination() {
+        // Matches AFTER the first `!` match are still mapped — this is the
+        // genuine squash path (drops between matched pairs).
+        let output = "\
+1:  1111111111111111111111111111111111111111 ! 1:  4444444444444444444444444444444444444444 AI commit 1
+2:  2222222222222222222222222222222222222222 < -:  ---------------------------------------- AI commit 2
+3:  3333333333333333333333333333333333333333 < -:  ---------------------------------------- AI commit 3
+";
+        let mappings = parse_range_diff_output(output);
+        assert_eq!(
+            mappings,
+            vec![
+                (
+                    "1111111111111111111111111111111111111111".to_string(),
+                    "4444444444444444444444444444444444444444".to_string()
+                ),
+                (
+                    "2222222222222222222222222222222222222222".to_string(),
+                    "4444444444444444444444444444444444444444".to_string()
+                ),
+                (
+                    "3333333333333333333333333333333333333333".to_string(),
+                    "4444444444444444444444444444444444444444".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_divergent_history_discards_pending() {
+        // Regression: restack-undo (moving a branch tip backward to undo a
+        // rebase) produces a range-diff where the old range spans every trunk
+        // commit since the fork point. All those trunk commits appear as `<`
+        // before the first stack-commit match. They must be discarded — they
+        // were never part of a squash.
+        let sha_a = "1".repeat(40);
+        let sha_b = "2".repeat(40);
+        let mut output = String::new();
+        // 200 divergent trunk commits before the first real match
+        for i in 0..200 {
+            let sha = format!("{:040}", i);
+            output.push_str(&format!(
+                "{}:  {} < -:  ---------------------------------------- trunk commit {}\n",
+                i + 1,
+                sha,
+                i
+            ));
+        }
+        // One real matched pair
+        output.push_str(&format!(
+            "201:  {} = 1:  {} AI feature commit\n",
+            sha_a, sha_b
+        ));
+        let mappings = parse_range_diff_output(&output);
+        // Only the matched pair, not 200 bogus mappings
+        assert_eq!(mappings.len(), 1);
+        assert_eq!(mappings[0], (sha_a, sha_b));
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_small_pending_dropped_still_mapped() {
+        // A bounded number of `<` commits ahead of the first match is a
+        // genuine squash and must still be drained into it — the overflow
+        // guard only fires past MAX_PENDING_DROPPED_COMMITS.
+        let dropped = "1".repeat(40);
+        let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let output = format!(
+            "\
+1:  {} < -:  ---------------------------------------- dropped
+2:  {} = 1:  {} matched\n",
+            dropped, old_matched, new_matched,
+        );
+        let mappings = parse_range_diff_output(&output);
+        assert_eq!(
+            mappings,
+            vec![(dropped, new_matched.clone()), (old_matched, new_matched),]
+        );
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_pending_after_first_match_still_mapped() {
+        // After the first match, `<` commits between matches are genuine
+        // squashes and must still be mapped to the most recently seen new sha.
+        let old_1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_1 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let old_dropped = "cccccccccccccccccccccccccccccccccccccccc".to_string();
+        let old_2 = "dddddddddddddddddddddddddddddddddddddddd".to_string();
+        let new_2 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_string();
+        let output = format!(
+            "\
+1:  {} ! 1:  {} commit a
+2:  {} < -:  ---------------------------------------- squashed into previous
+3:  {} ! 2:  {} commit c\n",
+            old_1, new_1, old_dropped, old_2, new_2,
+        );
+        let mappings = parse_range_diff_output(&output);
+        // old_1→new_1 (first match, seen_first_match set to true),
+        // old_dropped→new_1 (maps to previous_new_sha, which is still new_1),
+        // old_2→new_2 (second match, updates previous_new_sha)
+        assert_eq!(mappings.len(), 3);
+        assert_eq!(mappings[0], (old_1, new_1.clone()));
+        assert_eq!(mappings[1], (old_dropped, new_1));
+        assert_eq!(mappings[2], (old_2, new_2));
     }
 
     #[test]
