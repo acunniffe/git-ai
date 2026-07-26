@@ -1,0 +1,21 @@
+src/transcripts/agents/mod.rs
+  s_395f5898107085::t_e386d763013bcf 7
+src/transcripts/agents/copilot_otel.rs
+  s_395f5898107085::t_108b386de44c71 1-306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "410048f6b8fda1ce18f093ea0c4b363456989b71",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

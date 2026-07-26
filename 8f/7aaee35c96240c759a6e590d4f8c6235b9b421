@@ -1,0 +1,50 @@
+agent-support/vscode/package.json
+  s_a2abfef8d555b5::t_d6c9a7c0e54479 35
+  s_a2abfef8d555b5::t_f6fb989c4e6ba8 32-34,36-37
+agent-support/vscode/src/utils/binary-path.ts
+  s_a2abfef8d555b5::t_f6fb989c4e6ba8 5,19-21,23-24,27-28,33-34,41-44,97
+  s_99d23d751672ff::t_2729366d021898 2
+  s_99d23d751672ff::t_67768b8b94d818 35-36
+  s_99d23d751672ff::t_bf62e3a86eaec6 22
+  s_99d23d751672ff::t_5015cb7d19510f 37-40
+  s_99d23d751672ff::t_feea3b0379bc24 10
+agent-support/vscode/src/ai-edit-manager.ts
+  s_a2abfef8d555b5::t_f6fb989c4e6ba8 4,6,501,503
+  s_a2abfef8d555b5::t_6298e4eeafcd3e 68-72
+agent-support/vscode/src/utils/config.ts
+  s_a2abfef8d555b5::t_f6fb989c4e6ba8 18-22
+agent-support/vscode/src/blame-service.ts
+  s_a2abfef8d555b5::t_6298e4eeafcd3e 210-215
+agent-support/vscode/src/extension.ts
+  s_a2abfef8d555b5::t_6298e4eeafcd3e 62-69
+  s_a2abfef8d555b5::t_f6fb989c4e6ba8 11
+  s_99d23d751672ff::t_3d84cfeea1f3a7 60-61
+agent-support/vscode/src/blame-lens-manager.ts
+  s_99d23d751672ff::t_862bcbeee0316a 210
+  s_a2abfef8d555b5::t_6298e4eeafcd3e 198-199,205-209,211-212
+  s_99d23d751672ff::t_6f7975f1aac871 200-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.2",
+  "base_commit_sha": "8f7aaee35c96240c759a6e590d4f8c6235b9b421",
+  "prompts": {},
+  "sessions": {
+    "s_99d23d751672ff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de85cb5a-6862-4cfd-aa32-0fe3ca3cef3d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": null
+    },
+    "s_a2abfef8d555b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e5048-5385-77c2-8da4-b9e08a49af1f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

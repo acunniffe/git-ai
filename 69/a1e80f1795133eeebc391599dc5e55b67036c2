@@ -1,0 +1,10 @@
+src/commands/upgrade.rs
+  349771e 289,292,437
+src/observability/mod.rs
+  f35143d 181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "69a1e80f1795133eeebc391599dc5e55b67036c2",
+  "prompts": {}
+}

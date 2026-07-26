@@ -1,0 +1,41 @@
+src/authorship/pre_commit.rs
+  4508b27 6-7
+src/commands/hooks/reset_hooks.rs
+  4508b27 7-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "6a1e8f70fd2e26b47a13efc961c6408a19f02708",
+  "prompts": {
+    "4508b27": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "28c65c7c-e754-4a3e-83f1-b97270359a52",
+        "model": "gpt-5-codex"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "get a checkpoint to run pre reset so last changes make it to working log"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you fix the pre-reset hook to properly run a checkpoint before reset. Let me first examine the current state of the file to understand the context better."
+        },
+        {
+          "type": "assistant",
+          "text": "I can see the issue. The `pre_reset_hook` function is trying to use an undefined `default_author` variable. I need to fix this by:\n\n1. Getting the author using `get_commit_default_author` \n2. Adding the missing `GitAiError` import\n3. Handling the checkpoint result properly\n\nLet me fix this:"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check for any linter errors:"
+        }
+      ],
+      "total_additions": 467,
+      "total_deletions": 0,
+      "accepted_lines": 468,
+      "overriden_lines": 4
+    }
+  }
+}

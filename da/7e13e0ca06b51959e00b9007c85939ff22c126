@@ -1,0 +1,9 @@
+tests/integration/simple_additions.rs
+  b8f8aac7de3cda16 1750-1843,1845-1912,1915-1970,1976,1980-1984,1986-2044,2047-2048,2050-2061,2063-2066,2068-2083,2112-2300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "da7e13e0ca06b51959e00b9007c85939ff22c126",
+  "prompts": {}
+}

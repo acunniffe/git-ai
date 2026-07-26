@@ -1,0 +1,223 @@
+src/commands/search.rs
+  s_a73b2a35c101af::t_c289df7eb78bfb 27
+  s_a73b2a35c101af::t_ef1a79ecef38c7 94
+  s_a73b2a35c101af::t_e39a5be31db891 153
+  s_a73b2a35c101af::t_5a3faf578c88cc 285-288,290-293
+  s_a73b2a35c101af::t_632cfd0370661f 1-26,28-93,95-129,131-152,154-167,175-284,289,294-448,451-452
+  s_a73b2a35c101af::t_3e9181608504ff 130
+  s_a73b2a35c101af::t_86a7e94368fff4 168-174
+  s_a73b2a35c101af::t_8355163778f764 449-450
+src/commands/README.md
+  s_a73b2a35c101af::t_f1ffd6bdc133f2 1-35
+.github/workflows/release.yml
+  s_a73b2a35c101af::t_bac8a19fd86a59 1,9-10,21-40,44,46,50-51,53-55,59-74,83-84,88-90,92-94,97-98,100-102,104-106,108-117,119-126,129-130,132-134,137-138,140-143,147,149-150,152-153,155-156,158-159,161-162,164-165,167,169-200,202,204,206-236,238,240-241,243-245,247-256,260-261,264,268,270-275,277,280-282,284,288-327
+src/transcripts/watermark.rs
+  s_a73b2a35c101af::t_1adac7e0a7375f 73-74,77-89
+  s_a73b2a35c101af::t_0a7dc6ff5d19bb 1-72,75-76,90-222
+src/observability/mod.rs
+  s_a73b2a35c101af::t_37a07b55d9e15c 67-80
+  s_a73b2a35c101af::t_df6b7c5dc69838 1-3
+src/core/README.md
+  s_a73b2a35c101af::t_96609ae5d3ce6c 1-37
+src/metrics/mod.rs
+  s_a73b2a35c101af::t_535063a1482dfd 1-7
+src/api/metrics.rs
+  s_a73b2a35c101af::t_31f77150ebef90 1-100
+src/mdm/mod.rs
+  s_a73b2a35c101af::t_5bcb6b17fc99fb 677-903
+  s_a73b2a35c101af::t_a28cff9c7c4f0b 333
+  s_a73b2a35c101af::t_129617fdbe407f 262-266
+  s_a73b2a35c101af::t_c7dec42b486ce0 441-442,444-445,449-450
+  s_a73b2a35c101af::t_c841f7d9ee3adf 511
+  s_a73b2a35c101af::t_dca29b40a19157 398-421
+  s_a73b2a35c101af::t_191fafaaa5ab5d 1403-1422
+  s_a73b2a35c101af::t_00ff5ca3656bbb 2022
+  s_a73b2a35c101af::t_eef6fd98b907b4 244,250-255,260
+  s_a73b2a35c101af::t_2babc4d204eb66 564-565
+  s_a73b2a35c101af::t_bdf7a03166b352 367
+  s_a73b2a35c101af::t_cdb4af4f3bb046 219-220
+  s_a73b2a35c101af::t_b16ef2f8e2fe09 259
+  s_a73b2a35c101af::t_8e77089004be7c 1822-2021
+src/transcripts/metadata.rs
+  s_a73b2a35c101af::t_a5260961b5dcce 69-70,76-77
+  s_a73b2a35c101af::t_24c8c5df407844 20,24-25,28-29,32-35,42-46
+  s_a73b2a35c101af::t_25cc37814f0e7a 1-19,21-23,26-27,30-31,36-41,47-68,71-75,78-211
+src/commands/bg.rs
+  s_a73b2a35c101af::t_d942a3bbcf363e 12-18,47-52,55-60,62,64-142
+  s_a73b2a35c101af::t_225c9f4e2a862d 29-34,38-45
+  s_a73b2a35c101af::t_a718ccf80f801f 54,61,63
+src/commands/doctor.rs
+  s_a73b2a35c101af::t_521d760d7d8808 1-479
+src/ci/README.md
+  s_a73b2a35c101af::t_3965d56e4176cb 1-23
+src/observability/perf_regression.rs
+  s_a73b2a35c101af::t_7c1ec99161da26 1-394
+src/ci/mod.rs
+  s_a73b2a35c101af::t_9f974a66ff836b 669
+  s_a73b2a35c101af::t_93033ef1395912 950,952,954-1009,1012-1015,1018-1021,1026-1071,1075,1083-1086,1088-1098,1101-1280,1290-1297,1335-1396
+  s_a73b2a35c101af::t_6bc8f9ccd36db6 331-334,337-340,343-344,347-351,356-357,360,363-364,372-382
+  s_a73b2a35c101af::t_5e14242ba09fe9 212,214
+  s_a73b2a35c101af::t_d1761e0d8bd5ad 435-436,438-455,457-459
+  s_a73b2a35c101af::t_1ce18f5379dc2b 541-542,545,547,550-567,569-571
+  s_a73b2a35c101af::t_4cc1d0abed06c3 361
+  s_a73b2a35c101af::t_937beff0c89bc5 397-403,405-408,412-418,429,432-434,437,456,460-473,476-528,530-534,536-540,543-544,548-549,568,572-668,670-691,693-718,722,725-734
+  s_a73b2a35c101af::t_7ca366a3beec87 738-757
+  s_a73b2a35c101af::t_03f2f53574a369 172-173,175,189
+src/daemon/README.md
+  s_a73b2a35c101af::t_502cf80aad4326 1-50
+src/lib.rs
+  s_a73b2a35c101af::t_023e8782dcb848 1
+  s_a73b2a35c101af::t_a7e5c43f47ee83 6
+src/metrics/aggregator.rs
+  s_a73b2a35c101af::t_93f036238132e9 1-235
+src/commands/migrate.rs
+  s_a73b2a35c101af::t_6f625378fd517f 256
+  s_a73b2a35c101af::t_e02deeab8b3c70 1-255,257-392,394-604
+  s_a73b2a35c101af::t_f50b818ae19722 393
+src/daemon/event_loop.rs
+  s_a73b2a35c101af::t_2645e1e6573bec 106,108
+  s_a73b2a35c101af::t_f637bb870a20be 272,277
+src/api/cas.rs
+  s_a73b2a35c101af::t_96bfce2ba82744 1-31,33-76
+  s_a73b2a35c101af::t_2a08cebf9a3f3b 32
+src/metrics/incremental.rs
+  s_a73b2a35c101af::t_4d53b2ccf675e2 1-269
+src/commands/push_notes.rs
+  s_a73b2a35c101af::t_dc747ced401df9 1-2,4-64,66-126,129-130
+  s_a73b2a35c101af::t_9951c421e31be5 3
+  s_a73b2a35c101af::t_0c1a8d570ea985 65
+  s_a73b2a35c101af::t_71de442902143a 127-128
+src/observability/logging.rs
+  s_a73b2a35c101af::t_ce78f7ee42a112 1-412
+src/transcripts/mod.rs
+  s_a73b2a35c101af::t_26ae0446e9c9a5 132-137,139,141-148
+  s_a73b2a35c101af::t_7312ee9ec527eb 10,12-13,15,17,19-20
+src/presets/README.md
+  s_a73b2a35c101af::t_231a7f5226e394 1-33
+src/daemon/run.rs
+  s_a73b2a35c101af::t_dc098e313ad691 61-64
+  s_a73b2a35c101af::t_356dd106d10f13 14-15
+  s_a73b2a35c101af::t_e6b9b20d31fa72 247-258,261,270-283,294-320
+  s_a73b2a35c101af::t_60678cbe7d2ef3 198-227
+  s_a73b2a35c101af::t_e2bc307a5a8200 88-91
+src/commands/gc.rs
+  s_a73b2a35c101af::t_51709181f39cd6 1-198,200-230
+  s_a73b2a35c101af::t_f4619fe54eea2c 199
+src/metrics/cache.rs
+  s_a73b2a35c101af::t_c6879365c77fbf 114,126,138,145,159,177
+  s_a73b2a35c101af::t_daef1d9a235daa 77-82
+  s_a73b2a35c101af::t_c9b2467a920a91 1-76,83-113,115-125,127-137,139-144,146-158,160-176,178-182
+src/core/mod.rs
+  s_a73b2a35c101af::t_1a7c1634ec5b45 3
+src/daemon/log_rotation.rs
+  s_a73b2a35c101af::t_503f941ad6c0f1 1-13,15-196
+  s_a73b2a35c101af::t_fcb1889f2deb6c 14
+src/daemon/service.rs
+  s_a73b2a35c101af::t_23e60df95672a7 1-478
+src/api/auth.rs
+  s_a73b2a35c101af::t_feb4c09f5a4d1e 1-15,17-63,66-105
+  s_a73b2a35c101af::t_e8855d8e7c56bf 16
+  s_a73b2a35c101af::t_64b58996f5087d 64-65
+src/mdm/README.md
+  s_a73b2a35c101af::t_41b131fe2849cb 1-45
+src/core/merge.rs
+  s_a73b2a35c101af::t_3022e14074203b 237
+  s_a73b2a35c101af::t_5c1741c58b2e6b 1-236,238-514,516-582
+  s_a73b2a35c101af::t_7bd96ccfca37d7 515
+src/daemon/mod.rs
+  s_a73b2a35c101af::t_de1ea82a7bcd31 15
+  s_a73b2a35c101af::t_a3f052dd9bc58d 7,9,19
+src/daemon/post_commit_worker.rs
+  s_a73b2a35c101af::t_1ccf4b667da159 10
+  s_a73b2a35c101af::t_c887daceb7ae2a 142-157
+src/daemon/startup.rs
+  s_a73b2a35c101af::t_c9d1c66f949419 12
+  s_a73b2a35c101af::t_cab13eefae8bf3 6,20
+src/commands/stats.rs
+  s_a73b2a35c101af::t_88e30ca1b1c3e3 209,212,215
+  s_a73b2a35c101af::t_b1303b6cd701c0 79,229,245
+  s_a73b2a35c101af::t_6f19bcfff036d4 417
+  s_a73b2a35c101af::t_fb4203887fc3a5 2,5,15,21-22,32,43,54,61-63,70,72,75-77,80-163,166,168-198,200-207,227,243,248-260,267-270,275-305,307,309-310,312-324,326-345,347-349,351-352,355-366,368-372,374-382,384-385,426-442,447
+  s_a73b2a35c101af::t_324ea20376b13b 9
+  s_a73b2a35c101af::t_97c054c4ec5853 448
+  s_a73b2a35c101af::t_cdd96a70ef5e91 1,3-4,6-8,10-14,16-20,23-31,33-42,44-53,55-60,64-69,71,73-74,78,164-165,167,199,208,210-211,213-214,216-226,228,230-242,244,246-247,261-266,271-274,306,308,311,325,346,350,353-354,367,373,383,386-416,418-425,443-446,449-450
+src/api/client.rs
+  s_a73b2a35c101af::t_98dd25c6b87517 1-32,34-38,40-44,55,57-61,68,71-185
+  s_a73b2a35c101af::t_72aa720a0099c1 33,39,45-54,56,62-67,69-70
+src/transcripts/sweep.rs
+  s_a73b2a35c101af::t_ad87400da51e88 1-131,133-151,153-157,159-160,165-166,169-171,173-189,191-194,196-211,213-226,228-237,239-241,243-258,260-276,278-305
+  s_a73b2a35c101af::t_49d78d31dda43a 190,227,259
+  s_a73b2a35c101af::t_e5fc93ca2d3aaa 152,158,161-164,167-168,172,212,242
+  s_a73b2a35c101af::t_9186a66664c9e7 195,238,277
+  s_a73b2a35c101af::t_6989c8ef153ab5 132
+src/commands/perf.rs
+  s_a73b2a35c101af::t_f3528cec798765 1-122
+Cargo.toml
+  s_a73b2a35c101af::t_bd623c3a5b6a4c 42-54
+  s_a73b2a35c101af::t_af3802b3e055ce 25
+src/transcripts/README.md
+  s_a73b2a35c101af::t_6846d6c820319a 1-35
+src/core/stash.rs
+  s_a73b2a35c101af::t_00fe752f86920e 55-117,127-135,153-166,169-170,199-218,332-402,498-499,544,547-618,620-674
+  s_a73b2a35c101af::t_e366d8abc555d8 619
+.github/workflows/ci.yml
+  s_a73b2a35c101af::t_8b5a0c0a22699d 1-53
+src/daemon/stats_persistence.rs
+  s_a73b2a35c101af::t_8284fb6cf36166 1-125
+Taskfile.yml
+  s_a73b2a35c101af::t_f5be0323f3e013 49-50,52,54,59,61-64
+src/api/mod.rs
+  s_a73b2a35c101af::t_ea0f0b79251399 1-5
+  s_a73b2a35c101af::t_8adea745073075 6-19
+scripts/install.sh
+  s_a73b2a35c101af::t_e026f5d9471432 1-250
+src/daemon/commit_detector.rs
+  s_a73b2a35c101af::t_4da0f1704087f4 246,264
+  s_a73b2a35c101af::t_7f2ffcdb0e30c6 12
+scripts/install.ps1
+  s_a73b2a35c101af::t_c26973c297356b 1-213
+src/main.rs
+  s_a73b2a35c101af::t_f933c37f4e73a3 45
+  s_a73b2a35c101af::t_479a52dd48236e 39-44
+  s_a73b2a35c101af::t_7f620a0230f7bb 72
+  s_a73b2a35c101af::t_5296dbb802e694 70-71
+  s_a73b2a35c101af::t_105ffc40fbfaaf 27-38
+  s_a73b2a35c101af::t_ae492dd7e9ba94 63,65,68
+  s_a73b2a35c101af::t_7c9f425ef545af 73
+  s_a73b2a35c101af::t_44e2fab39ff9bc 19-21,24
+src/api/rate_limit.rs
+  s_a73b2a35c101af::t_370f1e76d3aa4e 1-39,41-52,54-57,65,67,69-73,75-78,83,85-187
+  s_a73b2a35c101af::t_acdc0a957b1c62 74,79-82,84
+  s_a73b2a35c101af::t_213d5af5fa954f 53,58-64,66,68
+  s_a73b2a35c101af::t_71753963742424 40
+src/observability/README.md
+  s_a73b2a35c101af::t_86925c9568cda2 1-34
+TODO.md
+  s_a73b2a35c101af::t_82e4a5c2a6172d 3,7-9,11-13,17-20,24-27,31-35,39-41,43,45-53,55,57-58,60,62-65,67,69-71,73,75-78,80,82,84-89
+  s_a73b2a35c101af::t_62de4d93f4076e 5,10,15,22,29,37
+src/commands/mod.rs
+  s_a73b2a35c101af::t_fcab3f9a5cde36 17-18
+  s_a73b2a35c101af::t_69c41fda7a1e98 10-12
+  s_a73b2a35c101af::t_561fe145ae447b 19
+src/daemon/health.rs
+  s_a73b2a35c101af::t_a6e33f67595c7b 93-95,98,113-125
+  s_a73b2a35c101af::t_850834645783a2 1-92,96-97,99-112,126-127
+src/daemon/stash_worker.rs
+  s_a73b2a35c101af::t_869e19e72b9444 44-46,50-51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "a68cfdf40637076d70c9c862fb8aded5950066e6",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

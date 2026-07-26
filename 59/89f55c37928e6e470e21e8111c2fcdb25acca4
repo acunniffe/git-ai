@@ -1,0 +1,31 @@
+src/commands/notes_migrate.rs
+  s_59382cac373d67::t_daa973e60f6874 17,19,22-63,65-79,84-100,103-104,108-112,114-126,197,210,215-217,220,227-228,231-236,238-243,248,251,256,258-282,285-287
+  s_59382cac373d67::t_e691007ff7327b 332-333,335-342,361,368,375,382-418,421-422,424-436,441-513,516-520,522-523,525-535,537-544,546-550,552-553,555-565,567-569,571-572,574-588
+  s_59382cac373d67::t_8196f4301afc23 80-83,101-102,113,794-819
+  s_59382cac373d67::t_1dea6b6fa923ec 105-107,360,362-367,369-374,376-380
+  s_59382cac373d67::t_dc2b6bea703a22 64,437-440
+  s_59382cac373d67::t_7984af26899b3c 820
+tests/integration/notes_migrate_memory.rs
+  s_59382cac373d67::t_daa326ba9e4ea1 68,106
+  s_59382cac373d67::t_c00437915b57d6 8-20,22-56,58-61
+  s_59382cac373d67::t_2d87ac8596ff71 1-7,62-66,69-81,84-101,103-105,108-109
+  s_59382cac373d67::t_dc2b6bea703a22 21,57,67,82-83,102,107
+tests/integration/main.rs
+  s_59382cac373d67::t_2d87ac8596ff71 110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "5989f55c37928e6e470e21e8111c2fcdb25acca4",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
