@@ -1,0 +1,19 @@
+tests/integration/cherry_pick.rs
+  s_b37519137c3531::t_7d4e5603fb7057 1132,1169,1171-1174,1223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "5520d43aa145fdd8f40059f13d56682395dc253e",
+  "prompts": {},
+  "sessions": {
+    "s_b37519137c3531": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9b92-d3f3-7060-bb00-981fc0554ecb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
