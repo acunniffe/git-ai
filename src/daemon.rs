@@ -2469,6 +2469,13 @@ struct PendingSquashMerge {
 }
 
 #[derive(Debug, Clone)]
+struct PendingCherryPickSources {
+    source_oids: Vec<String>,
+    // Async processing could not confirm that Git started a sequencer.
+    speculative: bool,
+}
+
+#[derive(Debug, Clone)]
 struct PendingCherryPickNoCommit {
     source_commits: Vec<String>,
     head: String,
@@ -2517,7 +2524,7 @@ pub struct ActorDaemonCoordinator {
         >,
     >,
     pending_rebase_original_head_by_worktree: Mutex<HashMap<String, (String, Option<String>)>>,
-    pending_cherry_pick_sources_by_worktree: Mutex<HashMap<String, Vec<String>>>,
+    pending_cherry_pick_sources_by_worktree: Mutex<HashMap<String, PendingCherryPickSources>>,
     pending_cherry_pick_no_commit_by_worktree: Mutex<HashMap<String, PendingCherryPickNoCommit>>,
     pending_squash_merge_by_worktree: Mutex<HashMap<String, PendingSquashMerge>>,
     inflight_effects_by_family: Mutex<HashMap<String, usize>>,
@@ -2931,7 +2938,7 @@ impl ActorDaemonCoordinator {
             map.shrink_to_fit();
         }
         if let Ok(mut map) = self.pending_cherry_pick_sources_by_worktree.lock() {
-            map.retain(|_, sources| !sources.is_empty());
+            map.retain(|_, pending| !pending.source_oids.is_empty());
         }
         if let Ok(mut map) = self.pending_squash_merge_by_worktree.lock() {
             map.retain(|_, pending| {
@@ -4481,7 +4488,8 @@ impl ActorDaemonCoordinator {
     fn set_pending_cherry_pick_sources_for_worktree(
         &self,
         worktree: &Path,
-        sources: Vec<String>,
+        source_oids: Vec<String>,
+        speculative: bool,
     ) -> Result<(), GitAiError> {
         let mut map = self
             .pending_cherry_pick_sources_by_worktree
@@ -4490,12 +4498,39 @@ impl ActorDaemonCoordinator {
                 GitAiError::Generic("pending cherry-pick sources map lock poisoned".to_string())
             })?;
         let key = Self::worktree_state_key(worktree);
-        if sources.is_empty() {
+        if source_oids.is_empty() {
             map.remove(&key);
         } else {
-            map.insert(key, sources);
+            map.insert(
+                key,
+                PendingCherryPickSources {
+                    source_oids,
+                    speculative,
+                },
+            );
         }
         Ok(())
+    }
+
+    fn prepare_pending_cherry_pick_sources_for_explicit_command(
+        &self,
+        worktree: &Path,
+    ) -> Result<bool, GitAiError> {
+        let mut map = self
+            .pending_cherry_pick_sources_by_worktree
+            .lock()
+            .map_err(|_| {
+                GitAiError::Generic("pending cherry-pick sources map lock poisoned".to_string())
+            })?;
+        let key = Self::worktree_state_key(worktree);
+        match map.get(&key) {
+            Some(pending) if !pending.speculative => Ok(false),
+            Some(_) => {
+                map.remove(&key);
+                Ok(true)
+            }
+            None => Ok(true),
+        }
     }
 
     fn clear_pending_cherry_pick_sources_for_worktree(
@@ -4524,23 +4559,21 @@ impl ActorDaemonCoordinator {
             })?;
         Ok(map
             .remove(&Self::worktree_state_key(worktree))
+            .map(|pending| pending.source_oids)
             .unwrap_or_default())
     }
 
     fn pending_cherry_pick_sources_for_worktree(
         &self,
         worktree: &Path,
-    ) -> Result<Vec<String>, GitAiError> {
+    ) -> Result<Option<PendingCherryPickSources>, GitAiError> {
         let map = self
             .pending_cherry_pick_sources_by_worktree
             .lock()
             .map_err(|_| {
                 GitAiError::Generic("pending cherry-pick sources map lock poisoned".to_string())
             })?;
-        Ok(map
-            .get(&Self::worktree_state_key(worktree))
-            .cloned()
-            .unwrap_or_default())
+        Ok(map.get(&Self::worktree_state_key(worktree)).cloned())
     }
 
     fn set_pending_cherry_pick_no_commit_for_worktree(
@@ -5194,24 +5227,42 @@ impl ActorDaemonCoordinator {
                     let is_continue = cherry_pick_command_has_flag(cmd, "--continue");
                     let is_skip = cherry_pick_command_has_flag(cmd, "--skip");
                     let explicit_source_args = cherry_pick_source_args_for_side_effect(cmd);
+                    let can_replace_pending = explicit_source_args.is_empty()
+                        || self
+                            .prepare_pending_cherry_pick_sources_for_explicit_command(worktree)?;
+                    let cherry_pick_state_exists = cherry_pick_state_exists_for_worktree(worktree);
+                    let mut source_oids_are_speculative = !explicit_source_args.is_empty()
+                        && new_commits.is_empty()
+                        && !cherry_pick_state_exists;
                     // Async processing may run after `--continue` removes CHERRY_PICK_HEAD.
                     // A single explicit source remains bounded to one batched object lookup.
                     let can_resolve_without_live_state = explicit_source_args.len() == 1
                         && !cherry_pick_source_is_range(&explicit_source_args[0]);
-                    let mut source_oids = cmd.cherry_pick_source_oids.clone();
+                    let mut source_oids = if can_replace_pending {
+                        cmd.cherry_pick_source_oids.clone()
+                    } else {
+                        Vec::new()
+                    };
                     let mut source_oids_from_daemon_pending = false;
-                    if source_oids.is_empty()
+                    if can_replace_pending
+                        && source_oids.is_empty()
                         && (can_resolve_without_live_state
                             || !new_commits.is_empty()
-                            || cherry_pick_state_exists_for_worktree(worktree))
+                            || cherry_pick_state_exists)
                     {
                         let repo = find_repository_in_path(&worktree.to_string_lossy())?;
                         source_oids =
                             resolve_explicit_cherry_pick_sources_for_side_effect(&repo, cmd)?;
                     }
-                    if source_oids.is_empty() && (is_continue || is_skip) {
-                        source_oids = self.pending_cherry_pick_sources_for_worktree(worktree)?;
-                        source_oids_from_daemon_pending = !source_oids.is_empty();
+                    if (is_continue || is_skip)
+                        && let Some(pending) =
+                            self.pending_cherry_pick_sources_for_worktree(worktree)?
+                    {
+                        source_oids_are_speculative = pending.speculative;
+                        if source_oids.is_empty() {
+                            source_oids = pending.source_oids;
+                            source_oids_from_daemon_pending = true;
+                        }
                     }
                     let skipped_sources = usize::from(is_skip && source_oids_from_daemon_pending);
                     let applied_source_oids = source_oids
@@ -5244,7 +5295,11 @@ impl ActorDaemonCoordinator {
                             .skip(consumed_sources.min(source_oids.len()))
                             .cloned()
                             .collect();
-                        self.set_pending_cherry_pick_sources_for_worktree(worktree, remaining)?;
+                        self.set_pending_cherry_pick_sources_for_worktree(
+                            worktree,
+                            remaining,
+                            source_oids_are_speculative,
+                        )?;
                     }
                 }
             }
