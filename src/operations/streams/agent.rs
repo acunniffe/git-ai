@@ -292,6 +292,14 @@ pub(super) fn discover_path_sessions(
         .collect()
 }
 
+/// Fallback timestamp from file metadata when an event lacks a per-event timestamp.
+///
+/// Kept at its original public path for downstream callers; stream adapters use
+/// the shared timestamp-policy module directly.
+pub fn file_time_fallback(meta: &std::fs::Metadata, is_first_event: bool) -> u32 {
+    super::timestamp::file_time_fallback(meta, is_first_event)
+}
+
 const ALL_AGENT_TYPES: &[&str] = &[
     "claude",
     "cursor",

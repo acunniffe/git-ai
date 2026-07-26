@@ -5,6 +5,14 @@ use git_ai::operations::streams::agent::Agent;
 use git_ai::operations::streams::agents::CopilotAgent;
 
 #[test]
+fn legacy_file_time_fallback_path_remains_public() {
+    let file = tempfile::NamedTempFile::new().unwrap();
+    let metadata = file.as_file().metadata().unwrap();
+
+    let _ = git_ai::operations::streams::agent::file_time_fallback(&metadata, false);
+}
+
+#[test]
 fn test_copilot_vscode_event_stream_timestamps() {
     let content = load_fixture("copilot_vscode_event_stream.jsonl");
     let events: Vec<serde_json::Value> = content
