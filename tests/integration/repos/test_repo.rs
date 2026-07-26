@@ -1066,44 +1066,6 @@ fn daemon_sync_registry() -> &'static Mutex<DaemonSyncRegistry> {
     DAEMON_SYNC_REGISTRY.get_or_init(|| Mutex::new(DaemonSyncRegistry::default()))
 }
 
-pub(crate) fn git_primary_command<'a>(args: &'a [&'a str]) -> Option<(&'a str, Option<&'a str>)> {
-    let mut iter = args.iter().copied();
-    while let Some(arg) = iter.next() {
-        if arg == "--" {
-            break;
-        }
-        match arg {
-            "-c" | "-C" | "--config-env" | "--exec-path" | "--git-dir" | "--namespace"
-            | "--super-prefix" | "--work-tree" => {
-                iter.next();
-            }
-            _ if arg.starts_with("-c")
-                || arg.starts_with("-C")
-                || arg.starts_with("--config-env=")
-                || arg.starts_with("--exec-path=")
-                || arg.starts_with("--git-dir=")
-                || arg.starts_with("--namespace=")
-                || arg.starts_with("--super-prefix=")
-                || arg.starts_with("--work-tree=") => {}
-            _ if arg.starts_with('-') => {}
-            _ => return Some((arg, iter.next().filter(|next| !next.starts_with('-')))),
-        }
-    }
-    None
-}
-
-pub(crate) fn git_command_routes_to_clone_target(args: &[&str]) -> bool {
-    git_primary_command(args).map(|(command, _)| command) == Some("clone")
-}
-
-pub(crate) fn git_command_requires_daemon_sync(args: &[&str]) -> bool {
-    let Some((command, _subcommand)) = git_primary_command(args) else {
-        return false;
-    };
-
-    matches!(command, "notes")
-}
-
 fn git_ai_primary_command<'a>(args: &'a [&'a str]) -> Option<&'a str> {
     args.iter().copied().find(|arg| !arg.starts_with('-'))
 }
@@ -1204,13 +1166,11 @@ fn git_invocation_routes_to_clone_target(invocation: &ParsedGitInvocation) -> bo
     invocation.command.as_deref() == Some("clone")
 }
 
-fn clone_target_path(args: &[&str], cwd: &Path) -> Option<PathBuf> {
-    let argv = args
-        .iter()
-        .map(|arg| (*arg).to_string())
-        .collect::<Vec<_>>();
-    let clone_index = argv.iter().position(|arg| arg == "clone")?;
-    let target = extract_clone_target_directory(&argv[clone_index + 1..])?;
+fn clone_target_path(invocation: &ParsedGitInvocation, cwd: &Path) -> Option<PathBuf> {
+    if invocation.command.as_deref() != Some("clone") {
+        return None;
+    }
+    let target = extract_clone_target_directory(&invocation.command_args)?;
     let target_path = PathBuf::from(target);
     let resolved = if target_path.is_absolute() {
         target_path
@@ -1225,6 +1185,35 @@ fn env_explicitly_enables_trace2(envs: &[(&str, &str)]) -> bool {
         matches!(*key, "GIT_TRACE2" | "GIT_TRACE2_EVENT" | "GIT_TRACE2_PERF")
             && !matches!(*value, "" | "0")
     })
+}
+
+enum GitExecutionLocation {
+    RepoViaC { process_cwd: Option<PathBuf> },
+    WorkingDirectory(PathBuf),
+}
+
+impl GitExecutionLocation {
+    fn repo_context<'a>(&'a self, repo_path: &'a Path) -> &'a Path {
+        match self {
+            Self::RepoViaC { .. } => repo_path,
+            Self::WorkingDirectory(path) => path,
+        }
+    }
+
+    fn configure_command(&self, command: &mut Command, repo_path: &Path, args: &mut Vec<String>) {
+        match self {
+            Self::RepoViaC { process_cwd } => {
+                args.push("-C".to_string());
+                args.push(repo_path.to_str().unwrap().to_string());
+                if let Some(process_cwd) = process_cwd {
+                    command.current_dir(process_cwd);
+                }
+            }
+            Self::WorkingDirectory(path) => {
+                command.current_dir(path);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -2323,7 +2312,7 @@ impl TestRepo {
         families
     }
 
-    pub(crate) fn record_daemon_family_expected_completion_session(&self, session: &str) {
+    fn record_daemon_family_expected_completion_session(&self, session: &str) {
         if !self.has_active_daemon() {
             return;
         }
@@ -2343,11 +2332,7 @@ impl TestRepo {
         registry.raise_expected_checkpoint_count(&family_key, count);
     }
 
-    pub(crate) fn append_daemon_test_sync_session_args(
-        &self,
-        args: &mut Vec<String>,
-        session: &str,
-    ) {
+    fn append_daemon_test_sync_session_args(&self, args: &mut Vec<String>, session: &str) {
         if !self.has_active_daemon() {
             return;
         }
@@ -2855,7 +2840,9 @@ impl TestRepo {
                     && git_invocation_routes_to_clone_target(&tracked_invocation)
                 {
                     let clone_cwd = self.path.as_path();
-                    if let Some(target_repo_path) = clone_target_path(args, clone_cwd) {
+                    if let Some(target_repo_path) =
+                        clone_target_path(&tracked_invocation, clone_cwd)
+                    {
                         self.sync_daemon_clone_target(&target_repo_path);
                     }
                 } else if daemon_command_pending {
@@ -2956,21 +2943,51 @@ impl TestRepo {
         envs: &[(&str, &str)],
         working_dir: Option<&std::path::Path>,
     ) -> Result<String, String> {
-        let canonical_working_dir = if let Some(working_dir_path) = working_dir {
-            Some(working_dir_path.canonicalize().map_err(|e| {
-                format!(
-                    "Failed to canonicalize working directory {}: {}",
-                    working_dir_path.display(),
-                    e
-                )
-            })?)
+        let location = if let Some(working_dir_path) = working_dir {
+            GitExecutionLocation::WorkingDirectory(working_dir_path.canonicalize().map_err(
+                |e| {
+                    format!(
+                        "Failed to canonicalize working directory {}: {}",
+                        working_dir_path.display(),
+                        e
+                    )
+                },
+            )?)
         } else {
-            None
+            GitExecutionLocation::RepoViaC { process_cwd: None }
         };
+        self.run_git_with_env(args, envs, location)
+    }
 
-        let command_context = canonical_working_dir
-            .as_deref()
-            .or(Some(self.path.as_path()));
+    pub(crate) fn git_with_env_using_c_flag_from(
+        &self,
+        process_cwd: &Path,
+        args: &[&str],
+        envs: &[(&str, &str)],
+    ) -> Result<String, String> {
+        let process_cwd = process_cwd.canonicalize().map_err(|error| {
+            format!(
+                "Failed to canonicalize git process working directory {}: {}",
+                process_cwd.display(),
+                error
+            )
+        })?;
+        self.run_git_with_env(
+            args,
+            envs,
+            GitExecutionLocation::RepoViaC {
+                process_cwd: Some(process_cwd),
+            },
+        )
+    }
+
+    fn run_git_with_env(
+        &self,
+        args: &[&str],
+        envs: &[(&str, &str)],
+        location: GitExecutionLocation,
+    ) -> Result<String, String> {
+        let command_context = Some(location.repo_context(self.path.as_path()));
         let tracked_invocation = self.parsed_git_invocation_for_tracking(args, command_context);
 
         if git_invocation_requires_daemon_sync(&tracked_invocation) {
@@ -2991,24 +3008,13 @@ impl TestRepo {
 
             let mut command = Command::new(real_git_executable());
 
-            // If working_dir is provided, use current_dir instead of -C flag
-            // This tests that git-ai correctly finds the repository root when run from a subdirectory
-            // The working_dir will be canonicalized to ensure it's an absolute path
             let mut command_args = Vec::<String>::new();
             if let Some(session) = daemon_test_sync_session.as_deref() {
                 self.append_daemon_test_sync_session_args(&mut command_args, session);
             }
-            if let Some(absolute_working_dir) = canonical_working_dir.as_ref() {
-                command_args.extend(args.iter().map(|arg| (*arg).to_string()));
-                command
-                    .args(&command_args)
-                    .current_dir(absolute_working_dir);
-            } else {
-                command_args.push("-C".to_string());
-                command_args.push(self.path.to_str().unwrap().to_string());
-                command_args.extend(args.iter().map(|arg| (*arg).to_string()));
-                command.args(&command_args);
-            }
+            location.configure_command(&mut command, self.path.as_path(), &mut command_args);
+            command_args.extend(args.iter().map(|arg| (*arg).to_string()));
+            command.args(&command_args);
 
             self.configure_command_env(&mut command);
 
@@ -3042,10 +3048,10 @@ impl TestRepo {
                 };
                 if command_affects_daemon {
                     if git_invocation_routes_to_clone_target(&tracked_invocation) {
-                        let clone_cwd = canonical_working_dir
-                            .as_deref()
-                            .unwrap_or(self.path.as_path());
-                        if let Some(target_repo_path) = clone_target_path(args, clone_cwd) {
+                        let clone_cwd = location.repo_context(self.path.as_path());
+                        if let Some(target_repo_path) =
+                            clone_target_path(&tracked_invocation, clone_cwd)
+                        {
                             self.sync_daemon_clone_target(&target_repo_path);
                         }
                     } else if daemon_command_pending {
@@ -3983,6 +3989,21 @@ mod tests {
             .and_then(|(_, value)| value)
             .map(PathBuf::from);
         assert_eq!(notes_db_path, Some(explicit_notes_db));
+    }
+
+    #[test]
+    fn clone_target_path_uses_resolved_clone_invocation() {
+        let repo = TestRepo::new();
+        repo.git(&["config", "alias.copy", "clone"]).unwrap();
+        let invocation = repo.parsed_git_invocation_for_tracking(
+            &["copy", "source", "nested/target"],
+            Some(repo.path().as_path()),
+        );
+
+        assert_eq!(
+            clone_target_path(&invocation, repo.path().as_path()),
+            Some(repo.path().join("nested/target"))
+        );
     }
 
     #[test]

@@ -1,18 +1,14 @@
 use std::ops::Deref;
 use std::path::Path;
-use std::process::Command;
 
-use super::test_repo::{
-    TestRepo, git_command_requires_daemon_sync, git_command_routes_to_clone_target,
-    new_daemon_test_sync_session_id, real_git_executable,
-};
+use super::test_repo::TestRepo;
 
 #[allow(dead_code)]
 pub(crate) struct TestRepoWithCFlag {
     inner: TestRepo,
 }
 
-#[allow(clippy::expect_fun_call, dead_code)]
+#[allow(dead_code)]
 impl TestRepoWithCFlag {
     pub(crate) fn new() -> Self {
         Self {
@@ -25,86 +21,8 @@ impl TestRepoWithCFlag {
         _working_dir: &Path,
         args: &[&str],
     ) -> Result<String, String> {
-        let arbitrary_dir = std::env::temp_dir();
-        let command_affects_daemon = self
-            .inner
-            .git_command_affects_daemon_for_tracking(args, Some(self.inner.path().as_path()));
-
-        if git_command_requires_daemon_sync(args) {
-            self.inner.sync_daemon_force();
-        }
-
-        let daemon_command_pending =
-            command_affects_daemon && !git_command_routes_to_clone_target(args);
-        let daemon_test_sync_session = daemon_command_pending.then(new_daemon_test_sync_session_id);
-        let mut full_args = vec![
-            "-C".to_string(),
-            self.inner.path().to_str().unwrap().to_string(),
-        ];
-        if let Some(session) = daemon_test_sync_session.as_deref() {
-            self.inner
-                .append_daemon_test_sync_session_args(&mut full_args, session);
-        }
-        full_args.extend(args.iter().map(|arg| (*arg).to_string()));
-
-        let mut command = Command::new(real_git_executable());
-        command.current_dir(&arbitrary_dir);
-        command.args(&full_args);
-        command.env("HOME", self.inner.test_home_path());
-        command.env(
-            "GIT_CONFIG_GLOBAL",
-            self.inner.test_home_path().join(".gitconfig"),
-        );
-        command.env(
-            "XDG_CONFIG_HOME",
-            self.inner.test_home_path().join(".config"),
-        );
-        command.env("GIT_CONFIG_NOSYSTEM", "1");
-        let trace_socket = self.inner.daemon_trace_socket_path();
-        let nesting =
-            std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string());
-        command.env(
-            "GIT_TRACE2_EVENT",
-            git_ai::operations::daemon::DaemonConfig::trace2_event_target_for_path(&trace_socket),
-        );
-        command.env("GIT_TRACE2_EVENT_NESTING", nesting);
-
-        if let Some(patch) = &self.inner.config_patch
-            && let Ok(patch_json) = serde_json::to_string(patch)
-        {
-            command.env("GIT_AI_TEST_CONFIG_PATCH", patch_json);
-        }
-
-        command.env(
-            "GIT_AI_TEST_DB_PATH",
-            self.inner.test_db_path().to_str().unwrap(),
-        );
-        command.env(
-            "GITAI_TEST_DB_PATH",
-            self.inner.test_db_path().to_str().unwrap(),
-        );
-
-        let output = command.output().expect(&format!(
-            "Failed to execute git command with -C flag: {:?}",
-            args
-        ));
-
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-        if daemon_command_pending {
-            self.inner.record_daemon_family_expected_completion_session(
-                daemon_test_sync_session
-                    .as_deref()
-                    .expect("daemon test sync session should exist"),
-            );
-        }
-
-        if output.status.success() {
-            Ok(if stdout.is_empty() { stderr } else { stdout })
-        } else {
-            Err(stderr)
-        }
+        self.inner
+            .git_with_env_using_c_flag_from(&std::env::temp_dir(), args, &[])
     }
 
     pub(crate) fn git_with_env(
@@ -113,93 +31,11 @@ impl TestRepoWithCFlag {
         envs: &[(&str, &str)],
         working_dir: Option<&Path>,
     ) -> Result<String, String> {
-        if working_dir.is_none() {
-            return self.inner.git_with_env(args, envs, None);
-        }
-
-        let arbitrary_dir = std::env::temp_dir();
-        let command_affects_daemon = self
-            .inner
-            .git_command_affects_daemon_for_tracking(args, Some(self.inner.path().as_path()));
-
-        if git_command_requires_daemon_sync(args) {
-            self.inner.sync_daemon_force();
-        }
-
-        let daemon_command_pending =
-            command_affects_daemon && !git_command_routes_to_clone_target(args);
-        let daemon_test_sync_session = daemon_command_pending.then(new_daemon_test_sync_session_id);
-        let mut full_args = vec![
-            "-C".to_string(),
-            self.inner.path().to_str().unwrap().to_string(),
-        ];
-        if let Some(session) = daemon_test_sync_session.as_deref() {
+        if working_dir.is_some() {
             self.inner
-                .append_daemon_test_sync_session_args(&mut full_args, session);
-        }
-        full_args.extend(args.iter().map(|arg| (*arg).to_string()));
-
-        let mut command = Command::new(real_git_executable());
-        command.current_dir(&arbitrary_dir);
-        command.args(&full_args);
-        command.env("HOME", self.inner.test_home_path());
-        command.env(
-            "GIT_CONFIG_GLOBAL",
-            self.inner.test_home_path().join(".gitconfig"),
-        );
-        command.env(
-            "XDG_CONFIG_HOME",
-            self.inner.test_home_path().join(".config"),
-        );
-        command.env("GIT_CONFIG_NOSYSTEM", "1");
-        let trace_socket = self.inner.daemon_trace_socket_path();
-        let nesting =
-            std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string());
-        command.env(
-            "GIT_TRACE2_EVENT",
-            git_ai::operations::daemon::DaemonConfig::trace2_event_target_for_path(&trace_socket),
-        );
-        command.env("GIT_TRACE2_EVENT_NESTING", nesting);
-
-        if let Some(patch) = &self.inner.config_patch
-            && let Ok(patch_json) = serde_json::to_string(patch)
-        {
-            command.env("GIT_AI_TEST_CONFIG_PATCH", patch_json);
-        }
-
-        command.env(
-            "GIT_AI_TEST_DB_PATH",
-            self.inner.test_db_path().to_str().unwrap(),
-        );
-        command.env(
-            "GITAI_TEST_DB_PATH",
-            self.inner.test_db_path().to_str().unwrap(),
-        );
-
-        for (key, value) in envs {
-            command.env(key, value);
-        }
-
-        let output = command.output().expect(&format!(
-            "Failed to execute git command with -C flag and env: {:?}",
-            args
-        ));
-
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-        if daemon_command_pending {
-            self.inner.record_daemon_family_expected_completion_session(
-                daemon_test_sync_session
-                    .as_deref()
-                    .expect("daemon test sync session should exist"),
-            );
-        }
-
-        if output.status.success() {
-            Ok(if stdout.is_empty() { stderr } else { stdout })
+                .git_with_env_using_c_flag_from(&std::env::temp_dir(), args, envs)
         } else {
-            Err(stderr)
+            self.inner.git_with_env(args, envs, None)
         }
     }
 }
@@ -236,5 +72,43 @@ impl Deref for WorktreeTestRepo {
 
     fn deref(&self) -> &Self::Target {
         &self.inner
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn c_flag_adapter_preserves_success_stdout_and_stderr() {
+        let repo = TestRepoWithCFlag::new();
+        repo.git(&[
+            "config",
+            "alias.mixed-output",
+            "!echo stdout-token && echo stderr-token >&2",
+        ])
+        .unwrap();
+
+        let output = repo
+            .git_from_working_dir(repo.path().as_path(), &["mixed-output"])
+            .unwrap();
+
+        assert!(output.contains("stdout-token"), "{output:?}");
+        assert!(output.contains("stderr-token"), "{output:?}");
+    }
+
+    #[test]
+    fn c_flag_adapter_uses_repo_root_from_unrelated_process_cwd() {
+        let repo = TestRepoWithCFlag::new();
+        let unrelated = tempfile::tempdir().unwrap();
+
+        let top_level = repo
+            .git_from_working_dir(unrelated.path(), &["rev-parse", "--show-toplevel"])
+            .unwrap();
+
+        assert_eq!(
+            Path::new(top_level.trim()).canonicalize().unwrap(),
+            repo.path().canonicalize().unwrap()
+        );
     }
 }
