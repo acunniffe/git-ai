@@ -32,6 +32,47 @@ pub fn notes_path_for_object(oid: &str) -> String {
     }
 }
 
+fn normalize_note_path(path: &mut String) -> Option<usize> {
+    // Notes fanout components are always two hex characters. Collapse a valid
+    // path in place so reads need one lookup entry per object instead of one
+    // entry for every possible fanout depth.
+    let mut component_len = 0;
+    let mut fanout_depth = 0;
+    let mut valid = true;
+    path.retain(|character| {
+        if character == '/' {
+            valid &= component_len == 2;
+            component_len = 0;
+            fanout_depth += 1;
+            false
+        } else {
+            component_len += character.len_utf8();
+            true
+        }
+    });
+
+    (valid && component_len > 0).then_some(fanout_depth)
+}
+
+fn append_note_deletions(script: &mut Vec<u8>, oid: &str) {
+    // Write directly into the fast-import buffer; constructing every path as a
+    // separate String would add 20 allocations for SHA-1 and 32 for SHA-256.
+    let oid = oid.as_bytes();
+    script.extend_from_slice(b"D ");
+    script.extend_from_slice(oid);
+    script.push(b'\n');
+
+    for prefix_end in (2..oid.len()).step_by(2) {
+        script.extend_from_slice(b"D ");
+        for component_start in (0..prefix_end).step_by(2) {
+            script.extend_from_slice(&oid[component_start..component_start + 2]);
+            script.push(b'/');
+        }
+        script.extend_from_slice(&oid[prefix_end..]);
+        script.push(b'\n');
+    }
+}
+
 #[doc(hidden)]
 pub fn flat_note_pathspec_for_commit(commit_sha: &str) -> String {
     flat_note_pathspec_for_ref(AI_AUTHORSHIP_FULL_REF, commit_sha)
@@ -206,53 +247,35 @@ pub fn note_blob_oids_for_commits_from_ref(
         return Ok(HashMap::new());
     }
 
-    let mut path_to_commit = HashMap::new();
-    let mut fanout_prefixes = HashSet::new();
+    // Borrow the requested IDs and keep a single slot per unique commit. The
+    // returned tree paths are normalized in place before probing this map.
+    let mut notes_by_commit = HashMap::with_capacity(commit_shas.len());
+    let mut fanout_prefixes = HashSet::with_capacity(commit_shas.len().min(256));
     for commit_sha in commit_shas {
-        let flat_path = commit_sha.clone();
-        path_to_commit.insert(flat_path, commit_sha.clone());
-
-        let fanout_path = notes_path_for_object(commit_sha);
-        path_to_commit.insert(fanout_path, commit_sha.clone());
+        notes_by_commit.insert(commit_sha.as_str(), None);
         if commit_sha.len() > 2 {
             fanout_prefixes.insert(commit_sha[..2].to_string());
         }
     }
 
-    let mut result = HashMap::new();
     let Some(root_entries) = ls_tree_note_entries(repo, notes_ref, false, &[])? else {
         return Ok(HashMap::new());
     };
 
-    for entry in root_entries {
-        if let Some(commit_sha) = path_to_commit.get(&entry.path) {
-            if entry.object_type != "blob" {
-                return Err(GitAiError::Generic(format!(
-                    "authorship note path {} in {} is {}, expected blob",
-                    entry.path, notes_ref, entry.object_type
-                )));
-            }
-            result.entry(commit_sha.clone()).or_insert(entry.oid);
-        }
-    }
+    record_matching_note_entries(root_entries, notes_ref, &mut notes_by_commit)?;
 
     let mut prefixes = fanout_prefixes.into_iter().collect::<Vec<_>>();
     prefixes.sort();
     if let Some(entries) = ls_tree_note_entries(repo, notes_ref, true, &prefixes)? {
-        for entry in entries {
-            if let Some(commit_sha) = path_to_commit.get(&entry.path) {
-                if entry.object_type != "blob" {
-                    return Err(GitAiError::Generic(format!(
-                        "authorship note path {} in {} is {}, expected blob",
-                        entry.path, notes_ref, entry.object_type
-                    )));
-                }
-                result.entry(commit_sha.clone()).or_insert(entry.oid);
-            }
-        }
+        record_matching_note_entries(entries, notes_ref, &mut notes_by_commit)?;
     }
 
-    Ok(result)
+    Ok(notes_by_commit
+        .into_iter()
+        .filter_map(|(commit_sha, note)| {
+            note.map(|(_preference, blob_oid)| (commit_sha.to_string(), blob_oid))
+        })
+        .collect())
 }
 
 #[derive(Debug)]
@@ -260,6 +283,34 @@ struct LsTreeNoteEntry {
     object_type: String,
     oid: String,
     path: String,
+}
+
+fn record_matching_note_entries(
+    entries: Vec<LsTreeNoteEntry>,
+    notes_ref: &str,
+    notes_by_commit: &mut HashMap<&str, Option<(usize, String)>>,
+) -> Result<(), GitAiError> {
+    for mut entry in entries {
+        let Some(preference) = normalize_note_path(&mut entry.path) else {
+            continue;
+        };
+        let Some(current_note) = notes_by_commit.get_mut(entry.path.as_str()) else {
+            continue;
+        };
+        if entry.object_type != "blob" {
+            return Err(GitAiError::Generic(format!(
+                "authorship note path {} in {} is {}, expected blob",
+                entry.path, notes_ref, entry.object_type
+            )));
+        }
+        if current_note
+            .as_ref()
+            .is_none_or(|(current_preference, _)| preference < *current_preference)
+        {
+            *current_note = Some((preference, entry.oid));
+        }
+    }
+    Ok(())
 }
 
 fn ls_tree_note_entries(
@@ -422,11 +473,7 @@ pub(in crate::git) fn notes_add_batch(
 
     for (idx, (commit_sha, _note_content)) in deduped_entries.iter().enumerate() {
         let fanout_path = notes_path_for_object(commit_sha);
-        let flat_path = commit_sha.clone();
-        if flat_path != fanout_path {
-            script.extend_from_slice(format!("D {}\n", flat_path).as_bytes());
-        }
-        script.extend_from_slice(format!("D {}\n", fanout_path).as_bytes());
+        append_note_deletions(&mut script, commit_sha);
         script.extend_from_slice(format!("M 100644 :{} {}\n", idx + 1, fanout_path).as_bytes());
     }
     script.extend_from_slice(b"\n");
@@ -489,11 +536,7 @@ pub(in crate::git) fn notes_add_blob_batch(
 
     for (commit_sha, blob_oid) in &deduped_entries {
         let fanout_path = notes_path_for_object(commit_sha);
-        let flat_path = commit_sha.clone();
-        if flat_path != fanout_path {
-            script.extend_from_slice(format!("D {}\n", flat_path).as_bytes());
-        }
-        script.extend_from_slice(format!("D {}\n", fanout_path).as_bytes());
+        append_note_deletions(&mut script, commit_sha);
         script.extend_from_slice(format!("M 100644 {} {}\n", blob_oid, fanout_path).as_bytes());
     }
     script.extend_from_slice(b"\n");
@@ -1079,6 +1122,35 @@ mod tests {
             ),
             "ab/c1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"
         );
+    }
+
+    #[test]
+    fn test_append_note_deletions_includes_every_fanout_depth() {
+        let mut short_script = Vec::new();
+        append_note_deletions(&mut short_script, "a");
+        append_note_deletions(&mut short_script, "ab");
+        assert_eq!(String::from_utf8(short_script).unwrap(), "D a\nD ab\n");
+
+        let mut script = Vec::new();
+        append_note_deletions(&mut script, "abcdef");
+        assert_eq!(
+            String::from_utf8(script).unwrap(),
+            "D abcdef\nD ab/cdef\nD ab/cd/ef\n"
+        );
+    }
+
+    #[test]
+    fn test_normalize_note_path_in_place() {
+        for (path, expected_depth) in [("abcdef", 0), ("ab/cdef", 1), ("ab/cd/ef", 2)] {
+            let mut path = path.to_string();
+            assert_eq!(normalize_note_path(&mut path), Some(expected_depth));
+            assert_eq!(path, "abcdef");
+        }
+
+        for invalid_path in ["", "/abcdef", "a/bcdef", "ab/", "ab//cdef"] {
+            let mut path = invalid_path.to_string();
+            assert_eq!(normalize_note_path(&mut path), None);
+        }
     }
 
     #[test]
