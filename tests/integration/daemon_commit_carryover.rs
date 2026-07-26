@@ -1,6 +1,5 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use git_ai::model::authorship_log_serialization::AuthorshipLog;
 use git_ai::operations::daemon::DaemonConfig;
 use std::fs;
 use std::time::{Duration, SystemTime};
@@ -56,10 +55,7 @@ fn test_daemon_commit_uses_immutable_commit_content_not_next_worktree_edit() {
         .unwrap()
         .trim()
         .to_string();
-    let note = repo
-        .read_authorship_note(&commit_sha)
-        .expect("commit should have an authorship note");
-    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse authorship note");
+    let log = repo.require_authorship_log(&commit_sha);
     let race_attestation = log
         .attestations
         .iter()

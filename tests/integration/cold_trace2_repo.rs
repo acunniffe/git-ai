@@ -84,11 +84,7 @@ fn run_traced_git_without_sync(repo: &TestRepo, args: &[&str]) -> String {
 }
 
 fn assert_ai_authorship_note(repo: &TestRepo, commit_sha: &str) {
-    let note = repo
-        .read_authorship_note(commit_sha)
-        .unwrap_or_else(|| panic!("commit {commit_sha} should have an authorship note"));
-    let log = AuthorshipLog::deserialize_from_string(&note)
-        .unwrap_or_else(|error| panic!("failed to parse authorship note: {}", error));
+    let log = repo.require_authorship_log(commit_sha);
     assert!(
         log.attestations
             .iter()

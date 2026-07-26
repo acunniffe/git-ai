@@ -1,7 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::model::authorship_log::PromptRecord;
-use git_ai::model::authorship_log_serialization::AuthorshipLog;
 use git_ai::model::working_log::AgentId;
 use git_ai::operations::git::notes_api::write_note;
 use std::collections::HashMap;
@@ -292,11 +291,7 @@ fn test_rebase_preserves_human_only_commit_note_metadata() {
     let prod_commit = repo.stage_all_and_commit("Prod human commit").unwrap();
 
     // Sanity check: original commit has a note and it's metadata-only.
-    let old_note = repo
-        .read_authorship_note(&prod_commit.commit_sha)
-        .expect("original commit should have an authorship note");
-    let old_log =
-        AuthorshipLog::deserialize_from_string(&old_note).expect("parse original authorship note");
+    let old_log = repo.require_authorship_log(&prod_commit.commit_sha);
     assert!(
         old_log.metadata.prompts.is_empty(),
         "precondition: human-only commit should have no prompts"
@@ -311,11 +306,7 @@ fn test_rebase_preserves_human_only_commit_note_metadata() {
     let rebased_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
     // Regression check: rebased commit should still carry the metadata-only note.
-    let rebased_note = repo
-        .read_authorship_note(&rebased_sha)
-        .expect("rebased commit should preserve metadata-only authorship note");
-    let rebased_log = AuthorshipLog::deserialize_from_string(&rebased_note)
-        .expect("parse rebased authorship note");
+    let rebased_log = repo.require_authorship_log(&rebased_sha);
     assert!(
         rebased_log.metadata.prompts.is_empty(),
         "rebased human-only commit should still have no prompts"
@@ -349,11 +340,7 @@ fn test_rebase_preserves_prompt_only_commit_note_metadata() {
         .stage_all_and_commit("Prod human commit")
         .expect("create prod commit");
 
-    let original_note = repo
-        .read_authorship_note(&prod_commit.commit_sha)
-        .expect("source commit should have authorship note");
-    let mut original_log =
-        AuthorshipLog::deserialize_from_string(&original_note).expect("parse source note");
+    let mut original_log = repo.require_authorship_log(&prod_commit.commit_sha);
     assert!(
         original_log.metadata.prompts.is_empty(),
         "precondition: source commit should not have prompts before test mutation"
@@ -397,11 +384,7 @@ fn test_rebase_preserves_prompt_only_commit_note_metadata() {
     repo.git(&["rebase", "dev"]).unwrap();
     let rebased_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
-    let rebased_note = repo
-        .read_authorship_note(&rebased_sha)
-        .expect("rebased commit should preserve prompt-only note");
-    let rebased_log =
-        AuthorshipLog::deserialize_from_string(&rebased_note).expect("parse rebased note");
+    let rebased_log = repo.require_authorship_log(&rebased_sha);
     assert_eq!(rebased_log.metadata.prompts.len(), 1);
     assert_eq!(rebased_log.metadata.base_commit_sha, rebased_sha);
 
@@ -1525,11 +1508,7 @@ fn test_rebase_preserves_custom_attributes_from_config() {
 
     // Verify custom attributes were set on the original commit
     let original_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let original_note = repo
-        .read_authorship_note(&original_sha)
-        .expect("original commit should have authorship note");
-    let original_log =
-        AuthorshipLog::deserialize_from_string(&original_note).expect("parse original note");
+    let original_log = repo.require_authorship_log(&original_sha);
     assert!(
         original_log.metadata.prompts.is_empty(),
         "new-format test should produce sessions, not prompts"
@@ -1558,11 +1537,7 @@ fn test_rebase_preserves_custom_attributes_from_config() {
 
     // Verify custom attributes survived the rebase
     let rebased_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let rebased_note = repo
-        .read_authorship_note(&rebased_sha)
-        .expect("rebased commit should have authorship note");
-    let rebased_log =
-        AuthorshipLog::deserialize_from_string(&rebased_note).expect("parse rebased note");
+    let rebased_log = repo.require_authorship_log(&rebased_sha);
     assert!(
         rebased_log.metadata.prompts.is_empty(),
         "rebased commit should not have prompts"
@@ -1614,14 +1589,8 @@ fn test_rebase_prompt_metrics_update_per_commit() {
     let commit2 = repo.stage_all_and_commit("AI commit 2 - 4 lines").unwrap();
 
     // Verify pre-rebase: commit 1 has 2 accepted, commit 2 has 4
-    let note1 = repo
-        .read_authorship_note(&commit1.commit_sha)
-        .expect("commit 1 should have note");
-    let log1 = AuthorshipLog::deserialize_from_string(&note1).expect("parse note 1");
-    let note2 = repo
-        .read_authorship_note(&commit2.commit_sha)
-        .expect("commit 2 should have note");
-    let log2 = AuthorshipLog::deserialize_from_string(&note2).expect("parse note 2");
+    let log1 = repo.require_authorship_log(&commit1.commit_sha);
+    let log2 = repo.require_authorship_log(&commit2.commit_sha);
 
     // Session format: verify pre-rebase sessions exist and attestation line counts differ
     assert!(
@@ -1686,16 +1655,8 @@ fn test_rebase_prompt_metrics_update_per_commit() {
         .to_string();
 
     // Verify post-rebase: metrics should differ between the two commits
-    let rebased_note1 = repo
-        .read_authorship_note(&rebased_parent)
-        .expect("rebased commit 1 should have note");
-    let rebased_log1 =
-        AuthorshipLog::deserialize_from_string(&rebased_note1).expect("parse rebased note 1");
-    let rebased_note2 = repo
-        .read_authorship_note(&rebased_tip)
-        .expect("rebased commit 2 should have note");
-    let rebased_log2 =
-        AuthorshipLog::deserialize_from_string(&rebased_note2).expect("parse rebased note 2");
+    let rebased_log1 = repo.require_authorship_log(&rebased_parent);
+    let rebased_log2 = repo.require_authorship_log(&rebased_tip);
 
     // Session format: verify sessions survive rebase and attestation line counts differ
     assert!(
@@ -1771,10 +1732,7 @@ fn test_rebase_file_delete_recreate_preserves_attribution() {
     let recreate_commit = repo.stage_all_and_commit("Recreate AI file").unwrap();
 
     // Verify pre-rebase: recreated file has attributions
-    let pre_note = repo
-        .read_authorship_note(&recreate_commit.commit_sha)
-        .expect("recreated commit should have note");
-    let pre_log = AuthorshipLog::deserialize_from_string(&pre_note).expect("parse pre note");
+    let pre_log = repo.require_authorship_log(&recreate_commit.commit_sha);
     assert!(
         !pre_log.attestations.is_empty(),
         "precondition: recreated file should have attestations"
@@ -1792,11 +1750,7 @@ fn test_rebase_file_delete_recreate_preserves_attribution() {
 
     // Check rebased tip (the recreate commit)
     let rebased_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let rebased_note = repo
-        .read_authorship_note(&rebased_sha)
-        .expect("rebased recreate commit should have note");
-    let rebased_log =
-        AuthorshipLog::deserialize_from_string(&rebased_note).expect("parse rebased note");
+    let rebased_log = repo.require_authorship_log(&rebased_sha);
 
     assert!(
         !rebased_log.attestations.is_empty(),
@@ -1845,10 +1799,7 @@ fn test_rebase_file_delete_recreate_different_content_preserves_attribution() {
         .unwrap();
 
     // Verify pre-rebase: recreated file has attributions
-    let pre_note = repo
-        .read_authorship_note(&recreate_commit.commit_sha)
-        .expect("recreated commit should have note");
-    let pre_log = AuthorshipLog::deserialize_from_string(&pre_note).expect("parse pre note");
+    let pre_log = repo.require_authorship_log(&recreate_commit.commit_sha);
     assert!(
         !pre_log.attestations.is_empty(),
         "precondition: recreated file should have attestations"
@@ -1866,11 +1817,7 @@ fn test_rebase_file_delete_recreate_different_content_preserves_attribution() {
 
     // Check rebased tip (the recreate commit)
     let rebased_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let rebased_note = repo
-        .read_authorship_note(&rebased_sha)
-        .expect("rebased recreate commit should have note");
-    let rebased_log =
-        AuthorshipLog::deserialize_from_string(&rebased_note).expect("parse rebased note");
+    let rebased_log = repo.require_authorship_log(&rebased_sha);
 
     assert!(
         !rebased_log.attestations.is_empty(),
@@ -2300,11 +2247,7 @@ fn test_rebase_file_delete_recreate_after_hunk_modification() {
 
     // Check the final commit (recreate) has correct attributions
     let rebased_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let rebased_note = repo
-        .read_authorship_note(&rebased_sha)
-        .expect("rebased recreate commit should have note");
-    let rebased_log =
-        AuthorshipLog::deserialize_from_string(&rebased_note).expect("parse rebased note");
+    let rebased_log = repo.require_authorship_log(&rebased_sha);
 
     assert!(
         !rebased_log.attestations.is_empty(),
@@ -2450,10 +2393,7 @@ func handleOrder() {
 
     // Verify humans block exists before squash
     let human_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let human_note = repo
-        .read_authorship_note(&human_sha)
-        .expect("human commit should have authorship note");
-    let human_log = AuthorshipLog::deserialize_from_string(&human_note).expect("parse human note");
+    let human_log = repo.require_authorship_log(&human_sha);
     assert!(
         !human_log.metadata.humans.is_empty(),
         "Pre-squash: human commit should have humans metadata block"
@@ -2535,11 +2475,7 @@ sed -i.bak '3s/pick/fixup/' "$1"
 
     // Verify the merged note has the humans block preserved
     let squashed_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let squashed_note = repo
-        .read_authorship_note(&squashed_sha)
-        .expect("squashed commit should have authorship note");
-    let squashed_log =
-        AuthorshipLog::deserialize_from_string(&squashed_note).expect("parse squashed note");
+    let squashed_log = repo.require_authorship_log(&squashed_sha);
     assert!(
         !squashed_log.metadata.humans.is_empty(),
         "Post-squash: humans metadata block must be preserved (issue #1214)"
@@ -2608,10 +2544,7 @@ func serve() {
 
     // Verify session metadata exists on commit 1
     let sha1 = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let note1 = repo
-        .read_authorship_note(&sha1)
-        .expect("AI commit 1 should have note");
-    let log1 = AuthorshipLog::deserialize_from_string(&note1).expect("parse note 1");
+    let log1 = repo.require_authorship_log(&sha1);
     assert_eq!(
         log1.metadata.sessions.len(),
         1,
@@ -2708,11 +2641,7 @@ sed -i.bak '3s/pick/fixup/' "$1"
 
     // Verify the merged note has sessions metadata preserved
     let squashed_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let squashed_note = repo
-        .read_authorship_note(&squashed_sha)
-        .expect("squashed commit should have authorship note");
-    let squashed_log =
-        AuthorshipLog::deserialize_from_string(&squashed_note).expect("parse squashed note");
+    let squashed_log = repo.require_authorship_log(&squashed_sha);
     // Each mock_ai checkpoint creates a distinct session, so the squashed
     // note should have all 3 sessions merged from the 3 original commits.
     assert_eq!(

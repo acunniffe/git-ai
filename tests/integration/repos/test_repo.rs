@@ -3226,6 +3226,16 @@ impl TestRepo {
             .filter(|note| !note.trim().is_empty())
     }
 
+    pub fn require_authorship_log(&self, commit_sha: &str) -> AuthorshipLog {
+        let note = self
+            .read_authorship_note(commit_sha)
+            .unwrap_or_else(|| panic!("commit {commit_sha} should have an authorship note"));
+
+        AuthorshipLog::deserialize_from_string(&note).unwrap_or_else(|error| {
+            panic!("failed to parse authorship note for commit {commit_sha}: {error}")
+        })
+    }
+
     pub fn read_authorship_note_in_git_dir(
         &self,
         git_dir: &Path,

@@ -468,11 +468,7 @@ fn test_fast_forward_update_ref_bounds_recovery_to_new_tip_parent() {
         .to_string();
     assert_eq!(new_head, new_tip);
 
-    let note = local
-        .read_authorship_note(&new_head)
-        .expect("fast-forward update-ref finalization should write an authorship note");
-    let log =
-        AuthorshipLog::deserialize_from_string(&note).expect("authorship note should deserialize");
+    let log = local.require_authorship_log(&new_head);
     let attested_files: BTreeSet<String> = log
         .attestations
         .iter()
@@ -1534,11 +1530,7 @@ fn test_regular_rebase_conflict_ai_resolution_preserves_original_and_resolution_
 
     let setup = setup_regular_rebase_conflict();
     let repo = setup.repo;
-    let original_note = repo
-        .read_authorship_note(&setup.feature_ai_commit_sha)
-        .expect("feature AI commit should have authorship note");
-    let original_log =
-        AuthorshipLog::deserialize_from_string(&original_note).expect("parse original note");
+    let original_log = repo.require_authorship_log(&setup.feature_ai_commit_sha);
     let original_sessions = session_keys(&original_log);
     assert!(
         !original_sessions.is_empty(),
@@ -1635,11 +1627,7 @@ fn test_regular_rebase_conflict_keep_feature_side_preserves_feature_attribution(
 
     let setup = setup_regular_rebase_conflict();
     let repo = setup.repo;
-    let original_note = repo
-        .read_authorship_note(&setup.feature_ai_commit_sha)
-        .expect("feature AI commit should have authorship note");
-    let original_log =
-        AuthorshipLog::deserialize_from_string(&original_note).expect("parse original note");
+    let original_log = repo.require_authorship_log(&setup.feature_ai_commit_sha);
     let original_sessions = session_keys(&original_log);
     assert!(
         !original_sessions.is_empty(),
@@ -1690,11 +1678,7 @@ fn test_regular_rebase_conflict_keep_both_sides_preserves_each_original_source()
 
     let setup = setup_regular_rebase_conflict_with_trailing_newlines();
     let repo = setup.repo;
-    let original_note = repo
-        .read_authorship_note(&setup.feature_ai_commit_sha)
-        .expect("feature AI commit should have authorship note");
-    let original_log =
-        AuthorshipLog::deserialize_from_string(&original_note).expect("parse original note");
+    let original_log = repo.require_authorship_log(&setup.feature_ai_commit_sha);
     let original_sessions = session_keys(&original_log);
     assert!(
         !original_sessions.is_empty(),

@@ -1,7 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::model::authorship_log::PromptRecord;
-use git_ai::model::authorship_log_serialization::AuthorshipLog;
 use git_ai::model::working_log::AgentId;
 use git_ai::operations::git::notes_api::write_note;
 use std::collections::HashMap;
@@ -93,11 +92,7 @@ fn test_cherry_pick_preserves_human_only_commit_note_metadata() {
         .stage_all_and_commit("human-only commit")
         .expect("create source commit");
 
-    let source_note = repo
-        .read_authorship_note(&source_commit.commit_sha)
-        .expect("source commit should have a metadata-only note");
-    let source_log =
-        AuthorshipLog::deserialize_from_string(&source_note).expect("parse source note");
+    let source_log = repo.require_authorship_log(&source_commit.commit_sha);
     assert!(source_log.metadata.prompts.is_empty());
     assert!(source_log.metadata.sessions.is_empty());
 
@@ -106,10 +101,7 @@ fn test_cherry_pick_preserves_human_only_commit_note_metadata() {
         .unwrap();
     let new_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
-    let new_note = repo
-        .read_authorship_note(&new_commit)
-        .expect("cherry-picked commit should preserve metadata-only note");
-    let new_log = AuthorshipLog::deserialize_from_string(&new_note).expect("parse new note");
+    let new_log = repo.require_authorship_log(&new_commit);
     assert!(new_log.metadata.prompts.is_empty());
     assert!(new_log.metadata.sessions.is_empty());
     assert_eq!(new_log.metadata.base_commit_sha, new_commit);
@@ -131,11 +123,7 @@ fn test_cherry_pick_preserves_prompt_only_commit_note_metadata() {
         .stage_all_and_commit("human-only commit")
         .expect("create source commit");
 
-    let source_note = repo
-        .read_authorship_note(&source_commit.commit_sha)
-        .expect("source commit should have authorship note");
-    let mut source_log =
-        AuthorshipLog::deserialize_from_string(&source_note).expect("parse source note");
+    let mut source_log = repo.require_authorship_log(&source_commit.commit_sha);
     assert!(
         source_log.metadata.prompts.is_empty(),
         "precondition: source commit should not have AI prompts before test mutation"
@@ -182,10 +170,7 @@ fn test_cherry_pick_preserves_prompt_only_commit_note_metadata() {
         .unwrap();
     let new_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
-    let new_note = repo
-        .read_authorship_note(&new_commit)
-        .expect("cherry-picked commit should preserve prompt-only note");
-    let new_log = AuthorshipLog::deserialize_from_string(&new_note).expect("parse new note");
+    let new_log = repo.require_authorship_log(&new_commit);
     assert_eq!(new_log.metadata.prompts.len(), 1);
     assert_eq!(new_log.metadata.base_commit_sha, new_commit);
 
@@ -600,11 +585,7 @@ fn test_cherry_pick_preserves_custom_attributes_from_config() {
     let feature_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
     // Verify custom attributes were set on the original commit
-    let original_note = repo
-        .read_authorship_note(&feature_commit)
-        .expect("original commit should have authorship note");
-    let original_log =
-        AuthorshipLog::deserialize_from_string(&original_note).expect("parse original note");
+    let original_log = repo.require_authorship_log(&feature_commit);
     assert!(
         original_log.metadata.prompts.is_empty(),
         "new-format test should produce sessions, not prompts"
@@ -627,10 +608,7 @@ fn test_cherry_pick_preserves_custom_attributes_from_config() {
 
     // Verify custom attributes survived the cherry-pick
     let new_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let new_note = repo
-        .read_authorship_note(&new_commit)
-        .expect("cherry-picked commit should have authorship note");
-    let new_log = AuthorshipLog::deserialize_from_string(&new_note).expect("parse new note");
+    let new_log = repo.require_authorship_log(&new_commit);
     assert!(
         new_log.metadata.prompts.is_empty(),
         "cherry-picked commit should not have prompts"

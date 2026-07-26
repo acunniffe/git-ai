@@ -10,10 +10,7 @@ use std::fs;
 /// Read the authorship note for HEAD, parse it, and return the full log.
 fn head_authorship_log(repo: &TestRepo) -> AuthorshipLog {
     let sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let note = repo
-        .read_authorship_note(&sha)
-        .expect("HEAD should have an authorship note");
-    AuthorshipLog::deserialize_from_string(&note).expect("parse note")
+    repo.require_authorship_log(&sha)
 }
 
 // ===========================================================================

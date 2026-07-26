@@ -31,13 +31,9 @@ use git_ai::operations::git::repository as GitAiRepository;
 // ============================================================================
 
 /// Parse the authorship note for `sha`.  Panics if the note is absent.
-/// Uses repo.read_authorship_note() for daemon-safe access.
+/// Uses the shared TestRepo helper for daemon-safe access and deserialization.
 fn parse_note(repo: &TestRepo, sha: &str) -> AuthorshipLog {
-    let raw = repo
-        .read_authorship_note(sha)
-        .unwrap_or_else(|| panic!("commit {} has no authorship note", sha));
-    AuthorshipLog::deserialize_from_string(&raw)
-        .unwrap_or_else(|e| panic!("failed to parse note for {}: {}", sha, e))
+    repo.require_authorship_log(sha)
 }
 
 /// Return the N most-recent commit SHAs ordered oldest→newest:

@@ -98,13 +98,9 @@ fn test_post_commit_utf8_filename_with_ai_attribution() {
         .trim()
         .to_string();
 
-    let note = repo
-        .read_authorship_note(&head_sha)
-        .expect("should have authorship note");
-
     // The note should reference the Chinese filename
     // Deserialize and check attestations contain the file
-    let log = AuthorshipLog::deserialize_from_string(&note).unwrap();
+    let log = repo.require_authorship_log(&head_sha);
 
     // Debug output
     println!("Authorship log attestations: {:?}", log.attestations);

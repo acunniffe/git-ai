@@ -37,11 +37,7 @@ fn assert_ci_rewrite_succeeded(output: &str) {
 }
 
 fn authorship_files(repo: &TestRepo, commit_sha: &str) -> Vec<String> {
-    let note = repo
-        .read_authorship_note(commit_sha)
-        .unwrap_or_else(|| panic!("expected authorship note for {commit_sha}"));
-    AuthorshipLog::deserialize_from_string(&note)
-        .expect("authorship note should deserialize")
+    repo.require_authorship_log(commit_sha)
         .attestations
         .iter()
         .map(|attestation| attestation.file_path.clone())
@@ -403,8 +399,6 @@ fn test_ci_local_sync_skips_non_rebase_force_push() {
 
 #[test]
 fn test_ci_local_open_pr_rebase_single_commit() {
-    use git_ai::model::authorship_log_serialization::AuthorshipLog;
-
     let repo = direct_test_repo();
 
     let mut base_file = repo.filename("base.txt");
@@ -466,11 +460,8 @@ fn test_ci_local_open_pr_rebase_single_commit() {
         output
     );
 
-    let note = repo
-        .read_authorship_note(&current_head_sha)
-        .expect("rebased single PR commit should have an authorship note");
-    let files: Vec<String> = AuthorshipLog::deserialize_from_string(&note)
-        .unwrap()
+    let files: Vec<String> = repo
+        .require_authorship_log(&current_head_sha)
         .attestations
         .iter()
         .map(|a| a.file_path.clone())

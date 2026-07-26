@@ -1,6 +1,5 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use git_ai::model::authorship_log_serialization::AuthorshipLog;
 use std::collections::HashMap;
 
 fn deterministic_commit_env(timestamp: &'static str) -> [(&'static str, &'static str); 2] {
@@ -317,11 +316,7 @@ fn test_squash_merge_preserves_custom_attributes_from_config() {
 
     // Verify custom attributes were set on the feature commits
     let feature_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let feature_note = repo
-        .read_authorship_note(&feature_sha)
-        .expect("feature commit should have authorship note");
-    let feature_log =
-        AuthorshipLog::deserialize_from_string(&feature_note).expect("parse feature note");
+    let feature_log = repo.require_authorship_log(&feature_sha);
     for prompt in feature_log.metadata.sessions.values() {
         assert_eq!(
             prompt.custom_attributes.as_ref(),
@@ -337,11 +332,7 @@ fn test_squash_merge_preserves_custom_attributes_from_config() {
 
     // Verify custom attributes survived the squash merge
     let squash_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let squash_note = repo
-        .read_authorship_note(&squash_sha)
-        .expect("squash commit should have authorship note");
-    let squash_log =
-        AuthorshipLog::deserialize_from_string(&squash_note).expect("parse squash note");
+    let squash_log = repo.require_authorship_log(&squash_sha);
     assert!(
         !squash_log.metadata.sessions.is_empty(),
         "squash commit should have session records"

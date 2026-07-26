@@ -1,6 +1,5 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use git_ai::model::authorship_log_serialization::AuthorshipLog;
 use std::collections::HashMap;
 
 /// Test amending a commit by adding AI-authored lines at the top of the file.
@@ -536,11 +535,7 @@ fn test_amend_preserves_custom_attributes_from_config() {
 
     // Verify custom attributes were set on the original commit
     let original_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let original_note = repo
-        .read_authorship_note(&original_sha)
-        .expect("original commit should have authorship note");
-    let original_log =
-        AuthorshipLog::deserialize_from_string(&original_note).expect("parse original note");
+    let original_log = repo.require_authorship_log(&original_sha);
     assert!(
         original_log.metadata.prompts.is_empty(),
         "new-format test should produce sessions, not prompts"
@@ -565,11 +560,7 @@ fn test_amend_preserves_custom_attributes_from_config() {
 
     // Verify custom attributes survived the amend
     let amended_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let amended_note = repo
-        .read_authorship_note(&amended_sha)
-        .expect("amended commit should have authorship note");
-    let amended_log =
-        AuthorshipLog::deserialize_from_string(&amended_note).expect("parse amended note");
+    let amended_log = repo.require_authorship_log(&amended_sha);
     assert!(
         amended_log.metadata.prompts.is_empty(),
         "new-format test should produce sessions, not prompts"
@@ -616,11 +607,7 @@ fn test_amend_delete_ai_line_removes_prompt_from_note() {
         .unwrap();
 
     let original_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let original_note = repo
-        .read_authorship_note(&original_sha)
-        .expect("original commit should have a note");
-    let original_log =
-        AuthorshipLog::deserialize_from_string(&original_note).expect("should parse original note");
+    let original_log = repo.require_authorship_log(&original_sha);
     assert!(
         original_log.metadata.prompts.is_empty(),
         "new-format test should produce sessions, not prompts"
@@ -638,11 +625,7 @@ fn test_amend_delete_ai_line_removes_prompt_from_note() {
         .unwrap();
 
     let amended_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let amended_note = repo
-        .read_authorship_note(&amended_sha)
-        .expect("amended commit should have a note");
-    let amended_log =
-        AuthorshipLog::deserialize_from_string(&amended_note).expect("should parse amended note");
+    let amended_log = repo.require_authorship_log(&amended_sha);
 
     assert!(
         amended_log.metadata.prompts.is_empty(),
@@ -678,11 +661,7 @@ fn test_amend_delete_prior_commit_ai_line_no_foreign_prompt_in_note() {
     repo.stage_all_and_commit("Commit A with AI line").unwrap();
 
     let commit_a_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let commit_a_note = repo
-        .read_authorship_note(&commit_a_sha)
-        .expect("commit A should have a note");
-    let commit_a_log =
-        AuthorshipLog::deserialize_from_string(&commit_a_note).expect("should parse commit A note");
+    let commit_a_log = repo.require_authorship_log(&commit_a_sha);
     assert!(
         commit_a_log.metadata.prompts.is_empty(),
         "new-format test should produce sessions, not prompts"
@@ -723,11 +702,7 @@ fn test_amend_delete_prior_commit_ai_line_no_foreign_prompt_in_note() {
     .unwrap();
 
     let amended_b_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let amended_b_note = repo
-        .read_authorship_note(&amended_b_sha)
-        .expect("amended B should have a note");
-    let amended_b_log = AuthorshipLog::deserialize_from_string(&amended_b_note)
-        .expect("should parse amended B note");
+    let amended_b_log = repo.require_authorship_log(&amended_b_sha);
 
     // The amended B note must NOT contain any of commit A's session IDs.
     // They are foreign to commit B and have no corresponding attestation.
@@ -770,11 +745,7 @@ fn test_amend_delete_known_human_line_preserves_human_record_in_note() {
         .unwrap();
 
     let original_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let original_note = repo
-        .read_authorship_note(&original_sha)
-        .expect("original commit should have a note");
-    let original_log =
-        AuthorshipLog::deserialize_from_string(&original_note).expect("should parse original note");
+    let original_log = repo.require_authorship_log(&original_sha);
     assert!(
         !original_log.metadata.humans.is_empty(),
         "precondition: original commit should have HumanRecord entries"
@@ -794,11 +765,7 @@ fn test_amend_delete_known_human_line_preserves_human_record_in_note() {
     .unwrap();
 
     let amended_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let amended_note = repo
-        .read_authorship_note(&amended_sha)
-        .expect("amended commit should have a note");
-    let amended_log =
-        AuthorshipLog::deserialize_from_string(&amended_note).expect("should parse amended note");
+    let amended_log = repo.require_authorship_log(&amended_sha);
 
     // The HumanRecord must survive the amend even though its attributed line was deleted.
     // The note is a commit-level record of contributors; removing a line doesn't erase

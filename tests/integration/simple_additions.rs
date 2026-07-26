@@ -2,7 +2,6 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::config::AuthorConfig;
 use git_ai::model::attribution_tracker::Attribution;
-use git_ai::model::authorship_log_serialization::AuthorshipLog;
 use git_ai::model::working_log::{CheckpointKind, WorkingLogEntry};
 use std::fs;
 
@@ -1878,10 +1877,7 @@ fn test_known_human_record_includes_email() {
 
     // Verify the HumanRecord has the full identity with email
     let sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let note = repo
-        .read_authorship_note(&sha)
-        .expect("human commit should have note");
-    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse note");
+    let log = repo.require_authorship_log(&sha);
     assert!(
         !log.metadata.humans.is_empty(),
         "should have humans metadata"
@@ -1913,10 +1909,7 @@ fn test_session_record_human_author_includes_email() {
     file.assert_committed_lines(crate::lines!["fn main() {}".ai()]);
 
     let sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let note = repo
-        .read_authorship_note(&sha)
-        .expect("AI commit should have note");
-    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse note");
+    let log = repo.require_authorship_log(&sha);
     assert!(
         !log.metadata.sessions.is_empty(),
         "should have sessions metadata"
@@ -1985,10 +1978,7 @@ fn test_author_config_overrides_session_and_known_human_records() {
         .unwrap();
 
     let sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let note = repo
-        .read_authorship_note(&sha)
-        .expect("AI commit should have authorship note");
-    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse note");
+    let log = repo.require_authorship_log(&sha);
     assert!(!log.metadata.sessions.is_empty());
     for session in log.metadata.sessions.values() {
         assert_eq!(
@@ -2004,10 +1994,7 @@ fn test_author_config_overrides_session_and_known_human_records() {
         .unwrap();
 
     let sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
-    let note = repo
-        .read_authorship_note(&sha)
-        .expect("known-human commit should have authorship note");
-    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse note");
+    let log = repo.require_authorship_log(&sha);
     assert!(!log.metadata.humans.is_empty());
     for human in log.metadata.humans.values() {
         assert_eq!(human.author, "Config User <config@example.com>");
@@ -2039,10 +2026,7 @@ fn test_author_config_partial_overrides_fall_back_to_git_committer_identity() {
         .unwrap()
         .trim()
         .to_string();
-    let note = name_repo
-        .read_authorship_note(&sha)
-        .expect("AI commit should have note");
-    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse note");
+    let log = name_repo.require_authorship_log(&sha);
     for session in log.metadata.sessions.values() {
         assert_eq!(
             session.human_author.as_deref(),
@@ -2073,10 +2057,7 @@ fn test_author_config_partial_overrides_fall_back_to_git_committer_identity() {
         .unwrap()
         .trim()
         .to_string();
-    let note = email_repo
-        .read_authorship_note(&sha)
-        .expect("AI commit should have note");
-    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse note");
+    let log = email_repo.require_authorship_log(&sha);
     for session in log.metadata.sessions.values() {
         assert_eq!(
             session.human_author.as_deref(),
@@ -2087,10 +2068,7 @@ fn test_author_config_partial_overrides_fall_back_to_git_committer_identity() {
 
 /// Helper: assert every SessionRecord.human_author in the note for `sha` contains the email.
 fn assert_session_authors_have_email(repo: &TestRepo, sha: &str) {
-    let note = repo
-        .read_authorship_note(sha)
-        .unwrap_or_else(|| panic!("commit {} should have authorship note", &sha[..8]));
-    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse note");
+    let log = repo.require_authorship_log(sha);
     assert!(
         !log.metadata.sessions.is_empty(),
         "commit {} should have sessions metadata",
@@ -2111,10 +2089,7 @@ fn assert_session_authors_have_email(repo: &TestRepo, sha: &str) {
 
 /// Helper: assert every HumanRecord.author in the note for `sha` contains the email.
 fn assert_human_records_have_email(repo: &TestRepo, sha: &str) {
-    let note = repo
-        .read_authorship_note(sha)
-        .unwrap_or_else(|| panic!("commit {} should have authorship note", &sha[..8]));
-    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse note");
+    let log = repo.require_authorship_log(sha);
     assert!(
         !log.metadata.humans.is_empty(),
         "commit {} should have humans metadata",
