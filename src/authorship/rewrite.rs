@@ -340,21 +340,19 @@ fn build_diff_tree_stdin(
     Ok(stdin_data)
 }
 
-fn compute_diff_tree_stdin(
-    repo: &Repository,
-    stdin_data: String,
-    pair_count: usize,
-) -> Result<Vec<DiffTreeResult>, GitAiError> {
-    // Single git diff-tree --stdin call.
-    //
-    // We intentionally use the General profile (no PatchParse prefix forcing)
-    // here: `diff-tree` is plumbing and -- unlike the `git diff` porcelain --
-    // ignores the user's diff.{noprefix,mnemonicPrefix,srcPrefix,dstPrefix},
-    // diff.external, and per-path textconv attributes. It always emits raw
-    // content with default `a/`..`b/` prefixes, which is exactly what
-    // extract_b_path / parse_diff_tree_output expect. (Contrast diff_added_lines
-    // in repository.rs, which DOES run `git diff` and therefore must force
-    // InternalGitProfile::PatchParse.)
+/// Build the arg list for `git diff-tree --stdin -p -U0 -M --no-color -r`.
+/// Shared by the chunked streaming path and the non-chunked
+/// `compute_diff_tree_stdin` path.
+///
+/// We intentionally use the General profile (no PatchParse prefix forcing)
+/// here: `diff-tree` is plumbing and -- unlike the `git diff` porcelain --
+/// ignores the user's diff.{noprefix,mnemonicPrefix,srcPrefix,dstPrefix},
+/// diff.external, and per-path textconv attributes. It always emits raw
+/// content with default `a/`..`b/` prefixes, which is exactly what
+/// extract_b_path / parse_diff_tree_output expect. (Contrast diff_added_lines
+/// in repository.rs, which DOES run `git diff` and therefore must force
+/// InternalGitProfile::PatchParse.)
+fn build_diff_tree_stdin_args(repo: &Repository) -> Vec<String> {
     let mut args = repo.global_args_for_exec();
     args.extend([
         "diff-tree".to_string(),
@@ -365,13 +363,21 @@ fn compute_diff_tree_stdin(
         "--no-color".to_string(),
         "-r".to_string(),
     ]);
+    args
+}
 
+fn compute_diff_tree_stdin(
+    repo: &Repository,
+    stdin_data: String,
+    pair_count: usize,
+) -> Result<Vec<DiffTreeResult>, GitAiError> {
     // Stream the output line-by-line into the parser instead of buffering it:
     // after a rebase across a large trunk delta, every pair's root-tree diff
     // contains that whole delta, so the batched output is
     // (trunk delta bytes) x (pair count) and buffering it has driven the
     // daemon to multi-GB RSS. The parsed hunk/line structures are a small
     // fraction of the raw patch text.
+    let args = build_diff_tree_stdin_args(repo);
     let mut parser = BatchedDiffTreeParser::new(pair_count);
     exec_git_stdin_streaming(&args, stdin_data.as_bytes(), |line| parser.feed_line(line))?;
     Ok(parser.finish())
@@ -720,21 +726,26 @@ pub(crate) fn shift_authorship_notes_merging_existing_with_notes(
     shift_authorship_notes_with_existing_mode(repo, mappings, true)
 }
 
-/// Maximum number of diff-tree pairs to compute in a single batch before
-/// applying shifts and dropping the parsed `DiffTreeResult` structures.
-/// Each result holds per-pair `Vec<u32>` of added lines and `Vec<DiffHunk>`
-/// hunks, and without chunking the cumulative allocation scales linearly with
-/// the pair count. Chunking bounds the live set to `CHUNK_SIZE` pairs and
-/// trades one extra git spawn per chunk for bounded peak RSS.
-const DIFF_TREE_PAIRS_CHUNK_SIZE: usize = 50;
+/// Maximum number of diff-tree results to hold in memory at once before
+/// pausing stdout reads (which blocks git's pipe) to apply shifts and
+/// drop the parsed structures. Bounds peak RSS to `CHUNK_SIZE` pairs worth
+/// of `Vec<u32>` added-line lists + `Vec<DiffHunk>` hunks, without the cost
+/// of extra git spawns.
+const DIFF_TREE_STREAM_CHUNK_SIZE: usize = 50;
+
+/// A pending authorship-log shift awaiting its diff-tree result. Built 1:1
+/// with (and in the same order as) the `diff_pairs` sent to git, so results
+/// are zipped with shifts positionally.
+struct PendingShift {
+    new_sha: String,
+    log: AuthorshipLog,
+}
 
 fn shift_authorship_notes_with_existing_mode(
     repo: &Repository,
     mappings: &[(String, String)],
     merge_existing_targets: bool,
 ) -> Result<Vec<(String, String)>, GitAiError> {
-    use crate::authorship::hunk_shift::apply_hunk_shifts_to_file_attestation;
-
     tracing::debug!("shift_authorship_notes: {} mappings", mappings.len());
 
     if mappings.is_empty() {
@@ -749,12 +760,6 @@ fn shift_authorship_notes_with_existing_mode(
     let notes_map = notes_api::read_notes_batch(repo, &all_shas)?;
 
     // Determine which mappings need processing
-    struct PendingShift {
-        new_sha: String,
-        log: AuthorshipLog,
-        diff_pair_idx: usize,
-    }
-
     let mut pending: Vec<PendingShift> = Vec::new();
     let mut verbatim_writes: Vec<(String, String)> = Vec::new();
     let mut diff_pairs: Vec<(String, String)> = Vec::new();
@@ -788,12 +793,10 @@ fn shift_authorship_notes_with_existing_mode(
             continue;
         };
 
-        let diff_pair_idx = diff_pairs.len();
         diff_pairs.push((source_sha.clone(), new_sha.clone()));
         pending.push(PendingShift {
             new_sha: new_sha.clone(),
             log,
-            diff_pair_idx,
         });
     }
 
@@ -801,55 +804,46 @@ fn shift_authorship_notes_with_existing_mode(
         return Ok(Vec::new());
     }
 
-    // Apply shifts in bounded chunks: compute the diff-trees for a slice of
-    // pairs, fold those shifts into `merged_by_target`, and drop the parsed
-    // `DiffTreeResult`s before moving on. Materializing all pairs at once has
-    // driven the daemon to multi-GB RSS when a bad mapping set turns every
-    // pair into a full-root-tree diff.
+    // Stream diff-tree output in bounded chunks from a single git spawn.
+    //
+    // One `git diff-tree --stdin` is fired with all pairs. The
+    // `BatchedDiffTreeParser` accumulates results as lines arrive; every
+    // `DIFF_TREE_STREAM_CHUNK_SIZE` completed pairs, the callback drains them,
+    // applies shifts, and drops the parsed structures — all inline inside the
+    // stdout read loop. While we process, we stop reading stdout, the OS pipe
+    // buffer fills, and git blocks on write() until we resume. That
+    // back-pressure bounds peak RSS without spawning one git process per
+    // chunk. Materializing all pairs at once has driven the daemon to
+    // multi-GB RSS when a bad mapping set turns every pair into a
+    // full-root-tree diff.
     let mut merged_by_target = existing_by_target;
 
-    // `pending` is ordered by `diff_pair_idx`, so it can be consumed with a
-    // cursor as the chunks advance.
-    let mut pending_iter = pending.into_iter().peekable();
-    let mut chunk_start = 0;
-    while chunk_start < diff_pairs.len() {
-        let chunk_end = (chunk_start + DIFF_TREE_PAIRS_CHUNK_SIZE).min(diff_pairs.len());
-        let diff_results = compute_diff_trees_batch(repo, &diff_pairs[chunk_start..chunk_end])?;
+    // `pending` is 1:1 with `diff_pairs`, so results are zipped with shifts
+    // positionally as the chunks advance.
+    let mut pending_iter = pending.into_iter();
 
-        while let Some(shift) = pending_iter.next_if(|s| s.diff_pair_idx < chunk_end) {
-            let diff_result = &diff_results[shift.diff_pair_idx - chunk_start];
-            let mut log = shift.log;
+    if !diff_pairs.is_empty() {
+        let unique_shas = unique_pair_shas(&diff_pairs);
+        let sha_to_tree = resolve_tree_shas(repo, &unique_shas)?;
+        let stdin_data = build_diff_tree_stdin(&diff_pairs, &sha_to_tree)?;
+        let diff_args = build_diff_tree_stdin_args(repo);
+        let mut parser = BatchedDiffTreeParser::new(diff_pairs.len());
 
-            for (old_path, new_path) in &diff_result.renames {
-                for attestation in &mut log.attestations {
-                    if attestation.file_path == *old_path {
-                        attestation.file_path = new_path.clone();
-                    }
-                }
+        exec_git_stdin_streaming(&diff_args, stdin_data.as_bytes(), |line| {
+            parser.feed_line(line);
+
+            // Drain completed results inline while we hold the pipe —
+            // this is the back-pressure: git blocks while we process.
+            if parser.completed_count() >= DIFF_TREE_STREAM_CHUNK_SIZE {
+                let chunk = parser.take_completed();
+                apply_chunk_shifts(&mut merged_by_target, chunk, &mut pending_iter);
             }
+        })?;
 
-            if !diff_result.hunks_by_file.is_empty() {
-                log.attestations = log
-                    .attestations
-                    .iter()
-                    .filter_map(|fa| match diff_result.hunks_by_file.get(&fa.file_path) {
-                        Some(hunks) => apply_hunk_shifts_to_file_attestation(fa, hunks),
-                        None => Some(fa.clone()),
-                    })
-                    .collect();
-            }
-
-            log.metadata.base_commit_sha = shift.new_sha.clone();
-
-            match merged_by_target.get_mut(&shift.new_sha) {
-                Some(existing) => merge_authorship_logs(existing, &log),
-                None => {
-                    merged_by_target.insert(shift.new_sha, log);
-                }
-            }
-        }
-
-        chunk_start = chunk_end;
+        // Drain the tail: the in-progress result plus any padding needed if
+        // git produced fewer result separators than expected.
+        let final_chunk = parser.take_all();
+        apply_chunk_shifts(&mut merged_by_target, final_chunk, &mut pending_iter);
     }
 
     let mut all_writes = verbatim_writes;
@@ -914,6 +908,54 @@ fn merge_authorship_logs(target: &mut AuthorshipLog, source: &AuthorshipLog) {
             .humans
             .entry(key.clone())
             .or_insert_with(|| record.clone());
+    }
+}
+
+/// Apply hunk/rename shifts from a chunk of `DiffTreeResult`s to the
+/// corresponding `PendingShift`s, merging shifted logs into
+/// `merged_by_target`. Called inline inside the stdout read loop so the
+/// pipe blocks git while we process.
+///
+/// `pending_iter` yields shifts in the same order as `diff_pairs`, so the
+/// Nth diff result always corresponds to the Nth pending shift — the two
+/// sequences are zipped positionally.
+fn apply_chunk_shifts(
+    merged_by_target: &mut HashMap<String, AuthorshipLog>,
+    chunk: Vec<DiffTreeResult>,
+    pending_iter: &mut impl Iterator<Item = PendingShift>,
+) {
+    use crate::authorship::hunk_shift::apply_hunk_shifts_to_file_attestation;
+
+    for (diff_result, shift) in chunk.iter().zip(pending_iter) {
+        let mut log = shift.log;
+
+        for (old_path, new_path) in &diff_result.renames {
+            for attestation in &mut log.attestations {
+                if attestation.file_path == *old_path {
+                    attestation.file_path = new_path.clone();
+                }
+            }
+        }
+
+        if !diff_result.hunks_by_file.is_empty() {
+            log.attestations = log
+                .attestations
+                .iter()
+                .filter_map(|fa| match diff_result.hunks_by_file.get(&fa.file_path) {
+                    Some(hunks) => apply_hunk_shifts_to_file_attestation(fa, hunks),
+                    None => Some(fa.clone()),
+                })
+                .collect();
+        }
+
+        log.metadata.base_commit_sha = shift.new_sha.clone();
+
+        match merged_by_target.get_mut(&shift.new_sha) {
+            Some(existing) => merge_authorship_logs(existing, &log),
+            None => {
+                merged_by_target.insert(shift.new_sha, log);
+            }
+        }
     }
 }
 
@@ -1298,7 +1340,7 @@ impl BatchedDiffTreeParser {
     fn new(expected_pairs: usize) -> Self {
         Self {
             expected_pairs,
-            results: Vec::with_capacity(expected_pairs),
+            results: Vec::with_capacity(expected_pairs.min(DIFF_TREE_STREAM_CHUNK_SIZE)),
             current: DiffTreeChunkParser::default(),
             seen_first_header: false,
         }
@@ -1317,19 +1359,48 @@ impl BatchedDiffTreeParser {
         }
     }
 
-    fn finish(mut self) -> Vec<DiffTreeResult> {
-        // Push final chunk
+    fn completed_count(&self) -> usize {
+        self.results.len()
+    }
+
+    /// Drain and return all completed results, leaving the parser ready to
+    /// accumulate more. The `expected_pairs` count is adjusted so final
+    /// padding still accounts for already-drained results.
+    fn take_completed(&mut self) -> Vec<DiffTreeResult> {
+        let drained = std::mem::take(&mut self.results);
+        self.expected_pairs = self.expected_pairs.saturating_sub(drained.len());
+        // Re-allocate at chunk capacity so subsequent push() calls don't
+        // re-allocate incrementally.
+        self.results = Vec::with_capacity(self.expected_pairs.min(DIFF_TREE_STREAM_CHUNK_SIZE));
+        drained
+    }
+
+    /// Drain remaining completed results (including the in-progress chunk) and
+    /// pad with empty entries if git produced fewer result separators than
+    /// expected.
+    fn take_all(&mut self) -> Vec<DiffTreeResult> {
+        // Push the in-progress chunk if any
         if self.seen_first_header {
-            self.results.push(self.current.finish());
+            let chunk = std::mem::take(&mut self.current);
+            self.results.push(chunk.finish());
+            self.seen_first_header = false;
         }
 
-        // If git produced fewer results than pairs, pad with empty results
-        // (happens when trees are identical — no separator line emitted)
-        while self.results.len() < self.expected_pairs {
-            self.results.push(DiffTreeResult::default());
+        let mut drained = std::mem::take(&mut self.results);
+
+        // Pad to expected count for identical trees
+        while drained.len() < self.expected_pairs {
+            drained.push(DiffTreeResult::default());
         }
 
-        self.results
+        self.expected_pairs = 0;
+        drained
+    }
+
+    /// Consume self and return all results (padded to expected_pairs).
+    fn finish(self) -> Vec<DiffTreeResult> {
+        let mut parser = self;
+        parser.take_all()
     }
 }
 
@@ -2016,5 +2087,40 @@ index eee..fff 100644
         assert_eq!(streamed[0].added_lines_by_file["src/new.rs"], vec![5]);
         assert_eq!(streamed[1].added_lines_by_file["g.txt"], vec![11, 12]);
         assert_eq!(streamed[2], DiffTreeResult::default());
+    }
+
+    #[test]
+    fn test_batched_diff_tree_parser_can_drain_completed_chunks() {
+        let output = "\
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+diff --git a/a.txt b/a.txt
+@@ -1,0 +1 @@
++a
+cccccccccccccccccccccccccccccccccccccccc dddddddddddddddddddddddddddddddddddddddd
+diff --git a/b.txt b/b.txt
+@@ -1,0 +1 @@
++b
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee ffffffffffffffffffffffffffffffffffffffff
+diff --git a/c.txt b/c.txt
+@@ -1,0 +1 @@
++c
+";
+
+        let mut parser = BatchedDiffTreeParser::new(3);
+        let mut chunks = Vec::new();
+        for line in output.lines() {
+            parser.feed_line(line);
+            if parser.completed_count() >= 2 {
+                chunks.push(parser.take_completed());
+            }
+        }
+        chunks.push(parser.take_all());
+
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].len(), 2);
+        assert_eq!(chunks[1].len(), 1);
+        assert!(chunks[0][0].hunks_by_file.contains_key("a.txt"));
+        assert!(chunks[0][1].hunks_by_file.contains_key("b.txt"));
+        assert!(chunks[1][0].hunks_by_file.contains_key("c.txt"));
     }
 }
