@@ -1,0 +1,8 @@
+tests/github/github_test_harness.rs
+  747dc23 254
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "942d835003bd4df4f8d9cf844322979dfdd34ae8",
+  "prompts": {}
+}

@@ -1,0 +1,78 @@
+agent-support/vscode/src/ai-edit-manager.ts
+  a3005824f81a703f 3,234
+  9de376a7170590b5 28-30,50-53,100-122,125-130,154-164,315,317-321,326
+  34c7207a3ad05298 235-237
+tests/fixtures/copilot_session_empty_then_patched.jsonl
+  8881883af1866232 1-3
+src/commands/checkpoint_agent/agent_presets.rs
+  8881883af1866232 1676-1677,1682-1727,1739-1746,1948-1952
+  a3005824f81a703f 1660-1663,1667-1675,1678-1681
+agent-support/vscode/src/extension.ts
+  9de376a7170590b5 89-95
+tests/github_copilot.rs
+  8881883af1866232 986-987,995-996,1000,1003-1010,1013,1018-1127
+  a3005824f81a703f 784-985,988-994,997-999,1001-1002,1011-1012,1014-1017
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "ab500665b24aa4f6679d0d8fcc67ce187ea74619",
+  "prompts": {
+    "34c7207a3ad05298": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "28a36b02-37f2-4522-a15b-8166a54f5095",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/bd917f40c41b8ac7c90ee5175736aaf5ef48194949c2cae0169610a156ebad7a"
+    },
+    "8881883af1866232": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b8f617a7-1d6d-4485-aa5c-052486091c94",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 207,
+      "total_deletions": 29,
+      "accepted_lines": 188,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/af032bf9a634dbf7a2f76436141670cc8426550b9a741e49d21df3889fb85575"
+    },
+    "9de376a7170590b5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "82f877e3-3181-46fa-9be3-19215f58f892",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 65,
+      "total_deletions": 6,
+      "accepted_lines": 61,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/8a8f45b613553bf3f48f1ba6719196054171e841fd6a2b92bdc8121b60d1e863"
+    },
+    "a3005824f81a703f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "069ba375-9f20-4805-b12c-39318db91b76",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 250,
+      "total_deletions": 4,
+      "accepted_lines": 239,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/012d4a94f22a80c57d9c487f1a0b81f08648c2742cd62b3f20a0295021b80aac"
+    }
+  }
+}

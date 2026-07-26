@@ -1,0 +1,22 @@
+.github/workflows/e2e-tests.yml
+  4b5bf39 1-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "d63e88b241741dbde7c81539d4e9e969b1da0f27",
+  "prompts": {
+    "4b5bf39": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b708c617-897b-4167-b305-7e1548f0ff57",
+        "model": "default"
+      },
+      "human_author": "Atnes Ness <atnesness@gmail.com>",
+      "messages": [],
+      "total_additions": 69,
+      "total_deletions": 4,
+      "accepted_lines": 65,
+      "overriden_lines": 0
+    }
+  }
+}

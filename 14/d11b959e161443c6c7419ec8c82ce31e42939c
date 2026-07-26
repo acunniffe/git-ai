@@ -1,0 +1,258 @@
+tests/claude_code.rs
+  f0cae675a161e796 102-108
+src/config.rs
+  f0cae675a161e796 160-161,171,173-175,177,699-706,708-710,712-715,717-720
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "14d11b959e161443c6c7419ec8c82ce31e42939c",
+  "prompts": {
+    "f0cae675a161e796": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6ffd8922-5813-4ef3-bf7a-8f2127bbe577",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/config.rs:18-19 We want to deprecate ignore_prompts (which currently defaults to false)\n\nAnd replace it with \n\nshare_prompts_in_repositories: [] < with the same remote blob patterns as allow_repositories   /  exclude_repositories \n\nWe'll have to look for everywhere in the codebase where ignore_prompts is checked and make sure we have an instance level singleton? Maybe in config struct that tells you weather prompts should be ignored given the context of the repo where git ai is currently running",
+          "timestamp": "2025-12-19T18:08:58.143Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll analyze the codebase to understand the current `ignore_prompts` implementation and how the pattern matching works for `allow_repositories`. Let me gather the necessary context.",
+          "timestamp": "2025-12-19T18:09:05.386Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me look at the actual usage in `post_commit.rs` to understand how `ignore_prompts` is currently being used:",
+          "timestamp": "2025-12-19T18:09:11.151Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I have a good understanding of the current implementation. Let me clarify a few important design decisions before creating the plan:",
+          "timestamp": "2025-12-19T18:09:35.313Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I have all the information I need to create a plan.",
+          "timestamp": "2025-12-19T18:10:25.897Z"
+        },
+        {
+          "type": "user",
+          "text": "Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.\n\nTo-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.",
+          "timestamp": "2025-12-19T18:11:19.207Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {}
+        },
+        {
+          "type": "assistant",
+          "text": "Let me start making the changes. First, I'll update the `Config` struct:",
+          "timestamp": "2025-12-19T18:11:30.501Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {}
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me add the `should_share_prompts` method and remove the old methods. First, let me replace the old methods with the new one:",
+          "timestamp": "2025-12-19T18:11:58.902Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {}
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me update the `build_config()` function. First, I'll replace the `ignore_prompts` parsing with `share_prompts_in_repositories`:",
+          "timestamp": "2025-12-19T18:12:22.362Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me update the Config struct initialization in `build_config()`:",
+          "timestamp": "2025-12-19T18:12:30.811Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {}
+        },
+        {
+          "type": "assistant",
+          "text": "Let me update `apply_test_config_patch`:",
+          "timestamp": "2025-12-19T18:12:48.088Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {}
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me update the comment for the `strip_prompt_messages` function and check for test updates:",
+          "timestamp": "2025-12-19T18:13:22.679Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {}
+        },
+        {
+          "type": "assistant",
+          "text": "The code compiles with only minor unrelated warnings. The `Serialize` warning is because `ConfigPatch` is conditionally compiled for tests. Let me add tests for the new `should_share_prompts` functionality:",
+          "timestamp": "2025-12-19T18:13:55.336Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me update the test file to add a helper for `share_prompts_in_repositories` and add tests for `should_share_prompts`:",
+          "timestamp": "2025-12-19T18:14:03.673Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me run the tests to verify they pass:",
+          "timestamp": "2025-12-19T18:14:36.059Z"
+        },
+        {
+          "type": "assistant",
+          "text": "All tests pass. Let me verify the full codebase compiles and run all tests:",
+          "timestamp": "2025-12-19T18:22:20.258Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {}
+        },
+        {
+          "type": "assistant",
+          "text": "All tasks are complete. Here's a summary of the changes made:\n\n## Summary of Changes\n\n### 1. `src/config.rs` - Core Configuration Changes\n\n**Struct updates:**\n- Replaced `ignore_prompts: bool` with `share_prompts_in_repositories: Vec<Pattern>` in `Config` struct\n- Replaced `ignore_prompts: Option<bool>` with `share_prompts_in_repositories: Option<Vec<String>>` in `FileConfig` struct\n- Removed `ignore_prompts` field from `ConfigPatch` struct (breaking change)\n\n**Method changes:**\n- Removed `get_ignore_prompts()` and `ignore_prompts()` methods\n- Added new `should_share_prompts(&self, repository: &Option<Repository>) -> bool` method that:\n  - Returns `false` if `share_prompts_in_repositories` is empty (opt-in model)\n  - Returns `true` only if the repository's remote URL matches any pattern in the list\n  - Returns `false` if no repository is provided or remotes can't be fetched\n\n**`build_config()` updates:**\n- Now parses `share_prompts_in_repositories` patterns using the same glob pattern parsing as `allow_repositories`\n\n**Test helper updates:**\n- Updated `create_test_config()` to use `share_prompts_in_repositories: vec![]`\n- Removed `ignore_prompts` handling from `apply_test_config_patch()`\n- Added new `create_test_config_with_share_prompts()` helper\n- Added 4 new tests for `should_share_prompts` functionality\n\n### 2. `src/authorship/post_commit.rs` - Usage Site Update\n\n- Changed the prompt stripping logic from checking `ignore_prompts()` to checking `!should_share_prompts(&Some(repo.clone()))`\n- Updated the comment to reflect the new behavior\n\n## Migration Guide\n\nUsers with existing configs need to migrate:\n- `\"ignore_prompts\": false` → `\"share_prompts_in_repositories\": [\"*\"]` (share everywhere)\n- `\"ignore_prompts\": true` → `\"share_prompts_in_repositories\": []` (share nowhere, which is now the default)",
+          "timestamp": "2025-12-19T18:22:34.932Z"
+        },
+        {
+          "type": "user",
+          "text": "@src/config.rs:122 noticing that this code could be run once instead of twice for the exclude and allow. it's going to get the same remotes each time but it'll be slow",
+          "timestamp": "2025-12-19T18:24:34.922Z"
+        },
+        {
+          "type": "assistant",
+          "text": "You're absolutely right! We're calling `repository.remotes_with_urls()` multiple times - once in `should_share_prompts`, and potentially twice in `is_allowed_repository` (once for excludes, once for allows). This is inefficient since fetching remotes involves git operations.\n\nLet me refactor this to fetch remotes only once and reuse them:",
+          "timestamp": "2025-12-19T18:24:43.939Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's add a convenience method for callers who need to check both policies on the same repository (like in git hooks), so they can fetch remotes just once:",
+          "timestamp": "2025-12-19T18:25:05.345Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's verify everything compiles and add a test for the new convenience method:",
+          "timestamp": "2025-12-19T18:25:14.947Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Let me verify the final build:",
+          "timestamp": "2025-12-19T18:25:40.864Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Excellent catch! I've optimized the code to avoid fetching remotes multiple times. Here's what I changed:\n\n## Performance Optimization Summary\n\n### Problem\n- `repository.remotes_with_urls()` was being called multiple times:\n  - Twice in `is_allowed_repository()` (once for excludes, once for allows)\n  - Once in `should_share_prompts()`\n  - If both methods were called on the same repo, that's 3 separate git operations!\n\n### Solution\n\n**1. Created private helper methods that accept pre-fetched remotes:**\n- `is_allowed_repository_with_remotes()` - does the actual logic with remotes\n- `should_share_prompts_with_remotes()` - does the actual logic with remotes\n\n**2. Public methods now fetch once and delegate:**\n```rust\npub fn is_allowed_repository(&self, repository: &Option<Repository>) -> bool {\n    // Fetch remotes ONCE\n    let remotes = repository\n        .as_ref()\n        .and_then(|repo| repo.remotes_with_urls().ok());\n    \n    // Reuse for both exclude and allow checks\n    self.is_allowed_repository_with_remotes(remotes.as_ref())\n}\n```\n\n**3. Added a convenience method for checking both policies:**\n```rust\npub fn check_repository_policies(&self, repository: &Option<Repository>) -> (bool, bool) {\n    // Fetch remotes ONCE\n    let remotes = repository.as_ref().and_then(|repo| repo.remotes_with_urls().ok());\n    \n    // Check both policies with the same remotes\n    let is_allowed = self.is_allowed_repository_with_remotes(remotes.as_ref());\n    let should_share = self.should_share_prompts_with_remotes(remotes.as_ref());\n    \n    (is_allowed, should_share)\n}\n```\n\n**Benefits:**\n- ✅ Each public method now fetches remotes **only once**\n- ✅ Callers who need both checks can use `check_repository_policies()` to fetch remotes **only once** for both\n- ✅ All existing tests pass\n- ✅ Added new test to verify the combined check works correctly\n\nThis should significantly improve performance, especially in git hooks where these checks may be called frequently!",
+          "timestamp": "2025-12-19T18:25:47.748Z"
+        },
+        {
+          "type": "user",
+          "text": "@docs/enterprise-configuration.mdx:19-20 update the docs (removed) As of 1.0.24 saving prompts is disabled by default\n\ndocument share_prompts_in_repositories @config.rs (17-18)",
+          "timestamp": "2025-12-19T19:24:48.524Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've updated the documentation to reflect the breaking change from `ignore_prompts` to `share_prompts_in_repositories`. Here's what was changed:\n\n## Documentation Updates in `docs/enterprise-configuration.mdx`\n\n### 1. **Updated Configuration Options Table**\n- ✅ Removed `ignore_prompts` entry\n- ✅ Added `share_prompts_in_repositories` with description: \"Share prompts in authorship logs only for repositories matching these patterns\"\n- ✅ Noted default: \"Empty list (prompts not shared by default as of v1.0.24)\"\n\n### 2. **Updated Example Configuration**\n- Replaced `\"ignore_prompts\": false` with `\"share_prompts_in_repositories\": [...]` showing a practical example\n\n### 3. **Replaced \"Privacy-First Setup\" Section**\nNow titled **\"Sharing Prompts in Authorship Logs\"** with:\n- ⚠️ **Prominent callout**: \"As of v1.0.24, prompt sharing is disabled by default\"\n- Three clear examples:\n  - Share in all repos: `[\"*\"]`\n  - Share in specific repos: pattern-based list\n  - Keep private everywhere: `[]` or omit field (default)\n\n### 4. **Updated Glob Pattern Support Section**\n- Updated text to mention `share_prompts_in_repositories` alongside `allow_repositories` and `exclude_repositories`\n- Added `share_prompts_in_repositories` to the comprehensive glob pattern examples\n\n### 5. **Updated Metadata**\n- Changed description from \"control prompts\" to \"control prompt sharing\" for clarity\n- Added \"prompt sharing\" to keywords\n\nThe documentation now clearly communicates:\n- The new opt-in model (prompts are **not** shared by default)\n- The version where this changed (v1.0.24)\n- How to configure prompt sharing with glob patterns\n- Migration path from the old `ignore_prompts` field",
+          "timestamp": "2025-12-19T19:25:48.305Z"
+        },
+        {
+          "type": "user",
+          "text": "cargo test is broken",
+          "timestamp": "2025-12-19T19:39:21.819Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "glob_file_search",
+          "input": {
+            "globPattern": "**/ignore_prompts*.rs"
+          }
+        },
+        {
+          "type": "user",
+          "text": "Oh we should update the code! If there are no remotes save the prompts. that's ok :)",
+          "timestamp": "2025-12-19T19:41:55.634Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Ah good point! If there are no remotes (local-only repository), it's safe to share prompts. The pattern matching is meant to restrict sharing when pushing to certain remote repositories, but local repos are fine. Let me update the logic:",
+          "timestamp": "2025-12-19T19:42:05.724Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's add a test for this new behavior:",
+          "timestamp": "2025-12-19T19:42:26.075Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Ah, I see the issue! The `Config` uses a `OnceLock` singleton that's initialized once and never changes. So when tests modify the config file, the already-initialized Config doesn't pick up the changes.\n\nThe test repos need to use the test config patching mechanism. Let me look at how to properly configure this in tests:",
+          "timestamp": "2025-12-19T19:43:15.600Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I see the issue - the tests are running in-process and the `Config` singleton persists across tests. The tests need to use the config patching mechanism, but we removed `ignore_prompts` from `ConfigPatch`. Let me add test support for `share_prompts_in_repositories`:",
+          "timestamp": "2025-12-19T19:43:33.294Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's update the tests to use the proper test patching mechanism:",
+          "timestamp": "2025-12-19T19:43:54.780Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Excellent! Now let's run all tests to make sure everything is working:",
+          "timestamp": "2025-12-19T19:44:28.070Z"
+        },
+        {
+          "type": "user",
+          "text": "why might these tests be failing in CI but not locally?\n\ntest test_claude_preset_no_filepath_when_tool_input_missing ... ok\ntest test_parse_example_claude_code_jsonl_with_model ... ok\ntest test_claude_e2e_prefers_latest_checkpoint_for_prompts ... FAILED\n\nfailures:\n\n---- test_claude_e2e_prefers_latest_checkpoint_for_prompts stdout ----\nCompiling git-ai binary for tests...\n\nthread 'test_claude_e2e_prefers_latest_checkpoint_for_prompts' (18391) panicked at tests/claude_code.rs:161:5:\nPrompt record should contain messages from the latest checkpoint\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    test_claude_e2e_prefers_latest_checkpoint_for_prompts\n\ntest result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s\n\nerror: test failed, to rerun pass `--test claude_code`\nError: Process completed with exit code 101.\n0s",
+          "timestamp": "2025-12-19T19:55:11.735Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I see the issue! The test `test_claude_e2e_prefers_latest_checkpoint_for_prompts` doesn't configure prompt sharing, so with the new default behavior (prompts NOT shared unless configured), the messages are being stripped. The test expects messages to be present.\n\nSince this is a local repo with no remotes, it should actually share prompts based on our logic (local repos are safe). However, the test repo might not be set up correctly. Let me fix the test:",
+          "timestamp": "2025-12-19T19:55:24.060Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Actually, wait - I realize the issue with my logic. If `share_prompts_in_repositories` is empty (the default), we return `false` immediately before checking if it's a local repo. The local repo exception should apply even when no patterns are configured. Let me fix this:",
+          "timestamp": "2025-12-19T19:55:36.099Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's also update the documentation to reflect that local repos always share prompts:",
+          "timestamp": "2025-12-19T19:55:50.629Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let's add a test for the local repo behavior and run all tests:",
+          "timestamp": "2025-12-19T19:56:00.000Z"
+        }
+      ],
+      "total_additions": 35,
+      "total_deletions": 20,
+      "accepted_lines": 35,
+      "overriden_lines": 0
+    }
+  }
+}

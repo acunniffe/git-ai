@@ -1,0 +1,40 @@
+src/api/metrics.rs
+  47a30a167ba3059b 10-11
+src/commands/git_ai_handlers.rs
+  2c943350505578e6 508-509,511
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.34",
+  "base_commit_sha": "8689ef03ba1528e22ca24b3e5fedb5b8b0f0d746",
+  "prompts": {
+    "2c943350505578e6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "60cffa26-1816-4759-bf5b-fba637128b98",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 4,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/6756edf3ac2075cd7f0f1b591d6ecc5c35550c910aa00ba6ed2288126f3de2ee"
+    },
+    "47a30a167ba3059b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "10f9ec79-6450-4287-8c47-5be7f28bba65",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/9c62e41c5ef0ada12e8c02af926eb76e818a47d1ad8f04639d533116c192c4a9"
+    }
+  }
+}

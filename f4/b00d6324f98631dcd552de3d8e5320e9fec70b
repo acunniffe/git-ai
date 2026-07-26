@@ -1,0 +1,119 @@
+src/transcripts/agents/codex.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 81
+src/transcripts/agents/continue_cli.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 34
+src/transcripts/agents/droid.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 32
+src/auth/credentials.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 84
+src/uuid.rs
+  s_ba4e223de8de79::t_5a4e19c3318a4a 2-3,5,7,12-16
+src/commands/checkpoint_agent/presets/droid.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 206
+src/authorship/rebase_authorship.rs
+  s_ba4e223de8de79::t_d49116b0e48709 2896
+  s_ba4e223de8de79::t_39448b38c2e67e 2872,2879-2881,2890,2901
+  s_ba4e223de8de79::t_896271db0455d0 340,351,432,443,657,668,1318,2064,2871,2953,2969,3274,3286,3888
+src/metrics/db.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 100
+src/authorship/virtual_attribution.rs
+  s_ba4e223de8de79::t_4dd2451eef44aa 141,206,266
+  s_ba4e223de8de79::t_5c513847a0f467 157-158
+  s_ba4e223de8de79::t_2f28827833e0c8 211,218
+  s_ba4e223de8de79::t_338e24b6e5d6ab 276,285,291
+  s_ba4e223de8de79::t_c17fbcdb1e1077 139,205,264
+  s_ba4e223de8de79::t_8936f657c53c53 130,196,252
+  s_ba4e223de8de79::t_31f5d8d74f73bd 146
+  s_ba4e223de8de79::t_d49116b0e48709 153,217,282
+  s_ba4e223de8de79::t_985d3708c4e09c 138,204,263
+src/api/client.rs
+  s_ba4e223de8de79::t_8ab14072d9ed88 6,9
+.cargo/config.toml
+  s_ba4e223de8de79::t_fd344d19f5f60a 7-12
+src/commands/config.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 53
+src/commands/install_hooks.rs
+  s_ba4e223de8de79::t_896271db0455d0 333,441
+  s_ba4e223de8de79::t_af1d76fc47cc99 1043
+src/daemon.rs
+  s_ba4e223de8de79::t_2b06690082146f 4939,5762,5919
+src/git/authorship_traversal.rs
+  s_ba4e223de8de79::t_cbf9ed50c5bf99 45
+  s_ba4e223de8de79::t_896271db0455d0 198,253,276
+  s_ba4e223de8de79::t_4dd2451eef44aa 16
+src/utils.rs
+  s_ba4e223de8de79::t_68e235323c7b78 9-42
+  s_ba4e223de8de79::t_5cd861662640bf 66-92
+  s_ba4e223de8de79::t_b1cd4c1a480560 55-65
+  s_ba4e223de8de79::t_664556d0255b6b 43-54
+src/daemon/checkpoint.rs
+  s_ba4e223de8de79::t_4dd2451eef44aa 862-863
+  s_ba4e223de8de79::t_985d3708c4e09c 858
+  s_ba4e223de8de79::t_adf45f479e7e56 905,910
+  s_ba4e223de8de79::t_c17fbcdb1e1077 447,860
+  s_ba4e223de8de79::t_697aa7a42c3f76 440,446,471-472,474,478
+  s_ba4e223de8de79::t_8936f657c53c53 436,828
+  s_ba4e223de8de79::t_896271db0455d0 259,435
+  s_ba4e223de8de79::t_d49116b0e48709 892
+src/mdm/spinner.rs
+  s_ba4e223de8de79::t_5eae431c4be761 1-5,8-9,12-13,16-32,35,38,42-51,55-56,60-61,65-66,71-85,103
+src/git/repository.rs
+  s_ba4e223de8de79::t_c65191cf54ae97 1621-1622
+  s_ba4e223de8de79::t_dd507673b2d590 1596,1598,1607-1608,1614,1618
+  s_ba4e223de8de79::t_af1d76fc47cc99 2221
+src/commands/checkpoint_agent/presets/amp.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 209,228
+src/authorship/authorship_log_serialization.rs
+  s_ba4e223de8de79::t_9fa63555cfdc59 728-731
+src/mdm/utils.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 413,424
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 151
+src/transcripts/agents/amp.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 41,51
+src/transcripts/agents/copilot_cli.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 27
+src/transcripts/agents/cursor.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 33
+tests/integration/virtual_attribution_unit.rs
+  s_ba4e223de8de79::t_435457dbf792c6 34
+Cargo.toml
+  s_ba4e223de8de79::t_32b16facdfd97d 32
+  s_ba4e223de8de79::t_cc92a602c2fd3d 57
+src/authorship/range_authorship.rs
+  s_ba4e223de8de79::t_896271db0455d0 228,260,274
+src/authorship/internal_db.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 186
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 187,198
+src/commands/upgrade.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 512
+src/transcripts/agents/copilot.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 38-39,91,95,99
+src/transcripts/agents/gemini.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 35
+src/commands/checkpoint_agent/presets/windsurf.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 86
+src/commands/checkpoint_agent/presets/codex.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 39
+src/mdm/skills_installer.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 41,50
+src/transcripts/agents/claude.rs
+  s_ba4e223de8de79::t_af1d76fc47cc99 35,43,370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "f4b00d6324f98631dcd552de3d8e5320e9fec70b",
+  "prompts": {},
+  "sessions": {
+    "s_ba4e223de8de79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "81f985e5-0182-4a69-b30b-d3d0cb3a9b96",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

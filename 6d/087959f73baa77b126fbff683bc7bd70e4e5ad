@@ -1,0 +1,26 @@
+src/authorship/stats.rs
+  601fa7cb531db267 610-613
+src/commands/checkpoint.rs
+  601fa7cb531db267 54,56-57,635,792-806,808-812,839,867-871,879,912,934,1549,1551-1552,1557,1561,1582,1626,1748,1803,1820,1860-1875
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "6d087959f73baa77b126fbff683bc7bd70e4e5ad",
+  "prompts": {
+    "601fa7cb531db267": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "535048a0-adb2-46f7-b663-5c12833c69ab",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 71,
+      "total_deletions": 30,
+      "accepted_lines": 63,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/89fc7757c9ce367db70a577f9bf1c3810b9d2ff8841edd8eb58c5d44a2fb688e"
+    }
+  }
+}

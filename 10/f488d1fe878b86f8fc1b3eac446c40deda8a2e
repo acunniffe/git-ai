@@ -1,0 +1,121 @@
+src/observability/mod.rs
+  16a09daf5481e02b 2,42-43,157-158,166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "10f488d1fe878b86f8fc1b3eac446c40deda8a2e",
+  "prompts": {
+    "16a09daf5481e02b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b7b112d6-9895-44b2-8d2a-01d5d87ecd02",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "In our telemetry @src/observability/mod.rs:150-161 can we specifically seperate tags? I want to be able to set tags from the function above so I can group better in Sentry",
+          "timestamp": "2025-12-30T19:49:58.184Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you add tags support to the `log_performance` function. Let me first read the full file to understand the current structure.",
+          "timestamp": "2025-12-30T19:50:02.946Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/observability/mod.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I'll add tags support to the `log_performance` function. I'll add a `tags` field to the `PerformanceEnvelope` struct and update the function signature to accept tags.",
+          "timestamp": "2025-12-30T19:50:07.543Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/observability/mod.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/observability/mod.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/observability/mod.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check for any compilation errors and find all the places where `log_performance` is called so we can update them:",
+          "timestamp": "2025-12-30T19:50:17.180Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "output_mode": "content",
+            "pattern": "log_performance\\("
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check the existing calls to `log_performance` and update them:",
+          "timestamp": "2025-12-30T19:50:21.290Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/observability/wrapper_performance_targets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll update the calls to `log_performance` to include the new `tags` parameter:",
+          "timestamp": "2025-12-30T19:50:24.497Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/observability/wrapper_performance_targets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/observability/wrapper_performance_targets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me verify there are no compilation errors:",
+          "timestamp": "2025-12-30T19:50:30.910Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've successfully added tags support to the `log_performance` function. Here's what I changed:\n\n## Changes Made:\n\n1. **Added `HashMap` import** to support tags\n2. **Updated `PerformanceEnvelope` struct** to include an optional `tags` field\n3. **Modified `log_performance` function** to accept a `tags` parameter\n\nNow you can pass tags to better group your metrics in Sentry! Here's how to use it:\n\n```rust\nuse std::collections::HashMap;\n\n// Example without tags (backward compatible)\nlog_performance(\n    \"my_operation\",\n    duration,\n    Some(json!({\"key\": \"value\"})),\n    None,\n);\n\n// Example with tags for better grouping\nlet mut tags = HashMap::new();\ntags.insert(\"command\".to_string(), \"commit\".to_string());\ntags.insert(\"repo_type\".to_string(), \"monorepo\".to_string());\ntags.insert(\"environment\".to_string(), \"production\".to_string());\n\nlog_performance(\n    \"git_wrapper_overhead\",\n    duration,\n    Some(json!({\"details\": \"additional context\"})),\n    Some(tags),\n);\n```\n\nThe tags will be serialized separately in the performance envelope, making them easy to filter and group by in Sentry's interface. All existing calls have been updated to pass `None` for tags, so they remain backward compatible.",
+          "timestamp": "2025-12-30T19:50:34.242Z"
+        }
+      ],
+      "total_additions": 12,
+      "total_deletions": 1,
+      "accepted_lines": 6,
+      "overriden_lines": 2
+    }
+  }
+}
