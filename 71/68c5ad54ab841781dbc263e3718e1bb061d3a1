@@ -1,0 +1,43 @@
+tests/integration/claude_code.rs
+  0cd56453d16f4fdd 13,21-28,254,262-267,269,404,412-417,419,423-425
+tests/integration/transcripts_claude_reader.rs
+  0cd56453d16f4fdd 20,23,28-33,35
+tests/integration/droid.rs
+  0cd56453d16f4fdd 18,26-36,329
+tests/integration/amp.rs
+  0cd56453d16f4fdd 23-24,32-35,37-38,42-43,51-54,56-57,364-368
+tests/integration/opencode.rs
+  0cd56453d16f4fdd 17,22,25,31,34-35,37,39-80,82-86,88,90-95,97-100,412
+tests/integration/codex.rs
+  0cd56453d16f4fdd 18,24,26-31,33-34,702
+tests/integration/github_copilot.rs
+  0cd56453d16f4fdd 23,25,28-36,40,42,45-53,56-57
+tests/integration/cursor.rs
+  0cd56453d16f4fdd 18,26-30,33-34,522
+tests/integration/continue_cli.rs
+  0cd56453d16f4fdd 16,22,24-26,28,483
+tests/integration/windsurf.rs
+  0cd56453d16f4fdd 185-186,190-191,193-198,200-201
+tests/integration/gemini.rs
+  0cd56453d16f4fdd 18,26-29,31-32,577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "7168c5ad54ab841781dbc263e3718e1bb061d3a1",
+  "prompts": {
+    "0cd56453d16f4fdd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ebe5db68-314a-4040-b703-c40f67efbd3b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1859,
+      "total_deletions": 3520,
+      "accepted_lines": 220,
+      "overriden_lines": 0
+    }
+  }
+}

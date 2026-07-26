@@ -1,0 +1,66 @@
+Cargo.toml
+  0e7d5e31c65460a0 3,7,16,29,31-32
+skills/prompt-analysis/SKILL.md
+  0e7d5e31c65460a0 33
+CONTRIBUTING.md
+  0e7d5e31c65460a0 41,44-45,48
+README.md
+  0e7d5e31c65460a0 40,76-77
+Taskfile.yml
+  0e7d5e31c65460a0 3-7,9,16-17,19,26-27
+agent-support/opencode/README.md
+  0e7d5e31c65460a0 25
+src/commands/git_ai_handlers.rs
+  0e7d5e31c65460a0 11,263
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/GitAiService.kt
+  0e7d5e31c65460a0 71-73,90-91,94-95,99-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "5496a8a303be63437c3bb387c81b7ef9c2c0d792",
+  "prompts": {
+    "0e7d5e31c65460a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ba117821-fa6f-4d01-8a85-16828bbcc339",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 38,
+      "total_deletions": 194,
+      "accepted_lines": 38,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/96eb4e32f7967a4ff0e33fd06b62e14c6302bd1e1f4f8488dbbd7da0e1a080aa"
+    },
+    "57d0f0ed9eded560": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc7fecd1-008b-4b63-b78c-11da6e5206ed",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 65,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/49809ca9fb69eec9807f4bde26989bb5a26aacf496e0ee49fb0929c8ad93f3ba"
+    },
+    "7ab300f83765924d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0bb9cc67-237b-44c2-9ff6-745eb98d6a61",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 21,
+      "messages_url": "https://usegitai.com/cas/5ef3c647a228ae13450fb4588692c659045d37e5dc0150fa9f30b3813e25713c"
+    }
+  }
+}

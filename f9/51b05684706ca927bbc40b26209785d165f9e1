@@ -1,0 +1,32 @@
+src/commands/git_ai_handlers.rs
+  s_75354bb0e7737f::t_6ca12d8174f440 1146-1153
+src/commands/install_hooks.rs
+  s_75354bb0e7737f::t_f0b9759d500727 201-202,205-208,235-236,239-242,734-735,738-741
+src/git/repository.rs
+  s_75354bb0e7737f::t_6897a0420f33a5 2744,2770,2782-2806,3167-3195
+src/commands/debug.rs
+  s_75354bb0e7737f::t_96f80223e8aee9 9,103-104,878-881,886-909,912,918-919,1258
+tests/integration/internal_spawn_safety.rs
+  s_75354bb0e7737f::t_2f070d857661c9 1-4,7-8,97-169
+  s_75354bb0e7737f::t_bef80d844d304c 177-178
+src/commands/notes_migrate.rs
+  s_75354bb0e7737f::t_dd427b4595d133 305
+src/process_timeout.rs
+  s_75354bb0e7737f::t_89413dcb76bb81 67-78,88-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.9",
+  "base_commit_sha": "f951b05684706ca927bbc40b26209785d165f9e1",
+  "prompts": {},
+  "sessions": {
+    "s_75354bb0e7737f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f204f-49a0-7222-9794-7ac70c4c07cc",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

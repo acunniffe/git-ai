@@ -1,0 +1,26 @@
+src/metrics/local_stats.rs
+  s_8d2579124116c6::t_3919afc6f8f1de 88-98
+  s_8d2579124116c6::t_be4577c2166956 154-158
+  s_8d2579124116c6::t_b97a5d30c4d87e 206-213
+  s_8d2579124116c6::t_5018c3e599a92d 227-243
+  s_8d2579124116c6::t_fc46d511c71a4a 279
+  s_8d2579124116c6::t_e768eecfbf2867 167
+src/commands/activity.rs
+  s_8d2579124116c6::t_0eb1eee25d93c6 114-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "e9f298b0e9ed33f04fcf77cccc609b67657eeb73",
+  "prompts": {},
+  "sessions": {
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

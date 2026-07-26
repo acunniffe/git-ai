@@ -1,0 +1,36 @@
+src/commands/install_hooks.rs
+  b05b818d679016df 803-804,807-808
+corehooks_implementation_report_fixes_1_6.md
+  b05b818d679016df 1-119
+src/main.rs
+  b05b818d679016df 29-30,32-34,43-53
+src/commands/core_hook_trampoline.rs
+  b05b818d679016df 1-419
+src/commands/core_hooks.rs
+  b05b818d679016df 106-143,152-153,155-162,171,175,216,226,230-232,261-262,306-307,333,406,414-421,585,592-599,663-664,678-684,690,712,740-741,750-754,756-761,770,790,806-807,818-820,829-831,840-842,1090-1116,1660,1667,1669-1670,1675-1679,1684,1691-1698,1700-1702,1711-1713,1716-1717,1744,1746-1758,1760,1786-1787,1820-1839
+src/commands/git_ai_handlers.rs
+  b05b818d679016df 34-39
+src/commands/mod.rs
+  b05b818d679016df 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "8c2eae34599b24a9765c0bf25c187a542c2248d0",
+  "prompts": {
+    "b05b818d679016df": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c62da-942d-7633-843b-f1fcd525e819",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 793,
+      "total_deletions": 161,
+      "accepted_lines": 774,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/7a2110c62669b94b12a5a6a98811cc103a04b28035decdd616f51f77a5cee026"
+    }
+  }
+}

@@ -1,0 +1,221 @@
+agent-support/vscode/src/extension.ts
+  427ab543e1935b85 2-5,12-19,25,27-40
+agent-support/vscode/tsconfig.json
+  427ab543e1935b85 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.27",
+  "base_commit_sha": "817318ee5f104d7f4a9c76c6c4f1d15704e40d10",
+  "prompts": {
+    "427ab543e1935b85": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8635277a-5db8-4039-9c1f-03cef8f1480b",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@package.json can you install posthog AND emit one event on startup \"vscode_extension_startup\"\n\n^^ should one once per launch. I'd also love to know if it was cursor or vscode or windsurf. any way to send that along? Maybe bundle ID?",
+          "timestamp": "2026-01-02T18:27:09.235Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll explore the codebase to understand the extension structure and see if there's already detection for the host IDE (Cursor vs VSCode vs Windsurf).",
+          "timestamp": "2026-01-02T18:27:15.291Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/utils/host-kind.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I found exactly what we need. The codebase already has a `detectIDEHost()` function in `host-kind.ts` that detects Cursor, Windsurf, VSCode, or Unknown. We can use this to send the IDE type with the PostHog event.",
+          "timestamp": "2026-01-02T18:27:24.702Z"
+        },
+        {
+          "type": "user",
+          "text": "you can get distinctId from $HOME/.git-ai/internal/distinct_id file. \n\nRead it in, trim it, that's the ID. If you don't have one set distinct_id to \"unknown\"",
+          "timestamp": "2026-01-02T18:32:35.792Z"
+        },
+        {
+          "type": "user",
+          "text": "Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.\n\nTo-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.",
+          "timestamp": "2026-01-02T18:33:01.469Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Add posthog-node dependency to package.json",
+                "id": "install-posthog",
+                "status": "in_progress"
+              },
+              {
+                "content": "Add PostHog init, distinct ID reader, and vscode_extension_startup event in extension.ts",
+                "id": "emit-startup-event",
+                "status": "pending"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai/agent-support/vscode && yarn add posthog-node",
+            "is_background": false,
+            "required_permissions": [
+              "network"
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Add posthog-node dependency to package.json",
+                "id": "install-posthog",
+                "status": "completed"
+              },
+              {
+                "content": "Add PostHog init, distinct ID reader, and vscode_extension_startup event in extension.ts",
+                "id": "emit-startup-event",
+                "status": "in_progress"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll update `extension.ts` to add PostHog initialization, the distinct ID reader, and the startup event:",
+          "timestamp": "2026-01-02T18:33:24.038Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Add PostHog init, distinct ID reader, and vscode_extension_startup event in extension.ts",
+                "id": "emit-startup-event",
+                "status": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "All tasks are complete. Here's a summary of the changes:\n\n**1. Added `posthog-node` dependency** - installed via yarn, now in `package.json`\n\n**2. Updated [`src/extension.ts`](src/extension.ts):**\n- Added imports for `fs`, `os`, `path`, and `PostHog`\n- Created `getDistinctId()` helper that reads from `~/.git-ai/internal/distinct_id` (falls back to `\"unknown\"`)\n- Initialized PostHog and emits `vscode_extension_startup` event on activation with:\n  - `ide_host`: `\"cursor\"` | `\"windsurf\"` | `\"vscode\"` | `\"unknown\"`\n  - `app_name`: The full app name (e.g., \"Cursor\", \"Visual Studio Code\")\n  - `uri_scheme`: The URI scheme (e.g., \"cursor\", \"vscode\")\n  - `extension_version`: The extension version from package.json\n- Added cleanup via `posthog.shutdown()` on deactivation\n\n**Note:** You'll need to replace `\"YOUR_API_KEY\"` on line 27 with your actual PostHog project API key.",
+          "timestamp": "2026-01-02T18:33:46.253Z"
+        },
+        {
+          "type": "user",
+          "text": "why won't yarn compile run now",
+          "timestamp": "2026-01-02T18:39:07.360Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai/agent-support/vscode && yarn compile",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The issue is that `posthog-node` includes type definitions that reference browser-only types (`ErrorEvent`, `PromiseRejectionEvent`) and optional dependencies like `express`. The fix is to add `skipLibCheck: true` to your `tsconfig.json` to skip type-checking of declaration files in `node_modules`.",
+          "timestamp": "2026-01-02T18:39:17.528Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/tsconfig.json"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/tsconfig.json"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai/agent-support/vscode && yarn compile",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Fixed! Added `skipLibCheck: true` to `tsconfig.json`. This tells TypeScript to skip type-checking of `.d.ts` declaration files in `node_modules`, which avoids issues with `posthog-node`'s type definitions referencing browser-only types (`ErrorEvent`, `PromiseRejectionEvent`) and optional dependencies like `express`.\n\nThis is a common and recommended setting for VS Code extensions.",
+          "timestamp": "2026-01-02T18:39:33.809Z"
+        },
+        {
+          "type": "user",
+          "text": "@src/extension.ts:26-27 how do I add the posthog key in a way that it'll compile in as a string? this is a VSCode extension so don't control the env",
+          "timestamp": "2026-01-02T18:49:50.230Z"
+        },
+        {
+          "type": "assistant",
+          "text": "For a VS Code extension, here are a few options:\n\n**Option A: Hardcode it (recommended for PostHog)**\n\nPostHog public API keys are designed to be embedded in client code—they're not secrets. Just put it directly in the string:\n\n```typescript\nconst posthog = new PostHog(\"phc_xxxxxxxxxxxx\", { host: \"https://us.i.posthog.com\" });\n```\n\n**Option B: Gitignored config file**\n\nCreate a `src/secrets.ts` that's gitignored:\n\n```typescript\n// src/secrets.ts (add to .gitignore)\nexport const POSTHOG_KEY = \"phc_xxxxxxxxxxxx\";\n```\n\nThen import it:\n\n```typescript\nimport { POSTHOG_KEY } from \"./secrets\";\nconst posthog = new PostHog(POSTHOG_KEY, { host: \"https://us.i.posthog.com\" });\n```\n\n**Option C: Build-time replacement with esbuild**\n\nIf you switch to esbuild for bundling (common for VS Code extensions), you can use `define`:\n\n```javascript\n// esbuild.js\nrequire('esbuild').build({\n  define: {\n    'process.env.POSTHOG_KEY': JSON.stringify(process.env.POSTHOG_KEY)\n  }\n})\n```\n\n---\n\n**My recommendation:** Just use Option A. PostHog project API keys are public by design—they only allow ingesting events, not reading data. It's the same as how PostHog's JS snippet includes the key directly in webpage source code.",
+          "timestamp": "2026-01-02T18:50:03.341Z"
+        }
+      ],
+      "total_additions": 30,
+      "total_deletions": 0,
+      "accepted_lines": 29,
+      "overriden_lines": 1
+    }
+  }
+}

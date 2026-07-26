@@ -1,0 +1,23 @@
+agent-support/vscode/package.json
+  a79dee457d451cf5 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.30",
+  "base_commit_sha": "ebc9fbe5533801f198dd7fbb72fd4550e49e2a80",
+  "prompts": {
+    "a79dee457d451cf5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ba3d1b7e-3bb2-4406-9dee-0498e37177c0",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

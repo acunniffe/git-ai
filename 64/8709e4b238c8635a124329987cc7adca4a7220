@@ -1,0 +1,41 @@
+src/observability/flush.rs
+  d3e0f16d3576d048 16-25
+src/utils.rs
+  66d18a7828dc3444 285-335
+  d3e0f16d3576d048 134-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "648709e4b238c8635a124329987cc7adca4a7220",
+  "prompts": {
+    "66d18a7828dc3444": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21e496e9-e0ec-4e01-a7a2-1fd7fbf944f7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 51,
+      "total_deletions": 0,
+      "accepted_lines": 51,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/0c780057cad4f07793ee7cacc89aefb795880bddaf5cad0a817108d15b7ba6f6"
+    },
+    "d3e0f16d3576d048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c0b4998-f138-4e5c-ae29-0f9ad8a7524c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 54,
+      "total_deletions": 0,
+      "accepted_lines": 54,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/8f90d5fce1762f1d62cd43f610f8cc175d534296fc3d5ca85dc3356f5df76675"
+    }
+  }
+}

@@ -1,0 +1,46 @@
+tests/integration/ci_context_unit.rs
+  s_3d1be30355fcfb::t_1f3c0fc57453b4 2
+src/authorship/post_commit.rs
+  s_3d1be30355fcfb::t_8e4377be6d92d5 845-996
+src/git/repository.rs
+  s_3d1be30355fcfb::t_75909f5f8392f5 3552-3761
+src/git/refs.rs
+  s_3d1be30355fcfb::t_eefc5ed777886a 744-751,753-760,762-843
+  s_3d1be30355fcfb::t_f15899ac4c8226 752,761
+tests/integration/ignore_unit.rs
+  s_3d1be30355fcfb::t_300a5a7e48fb0f 3-4
+tests/integration/refs_unit.rs
+  s_3d1be30355fcfb::t_f15899ac4c8226 5,8
+tests/integration/repository_unit.rs
+  s_3d1be30355fcfb::t_4d98137b909e3c 2-3
+src/authorship/stats.rs
+  s_3d1be30355fcfb::t_1e5f8f1d9e0082 559
+  s_3d1be30355fcfb::t_f018fbb55568c6 560-776
+src/authorship/ignore.rs
+  s_3d1be30355fcfb::t_0c6cbcc4f48c4b 291-474
+src/authorship/prompt_utils.rs
+  s_3d1be30355fcfb::t_f15899ac4c8226 1070-1072
+  s_3d1be30355fcfb::t_1e5ef30c6bc2fc 764-1069,1073-1172
+tests/integration/prompt_utils_unit.rs
+  s_3d1be30355fcfb::t_9cb79f8ab73638 3
+src/ci/ci_context.rs
+  s_3d1be30355fcfb::t_3387bff2a72a02 299-334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "caa91bcb58e408155513093886e44249b243d50d",
+  "prompts": {},
+  "sessions": {
+    "s_3d1be30355fcfb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3ee5829-c959-4f89-9d4c-a0a6c2215db6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/e6f37e9801cb0eb9b53b9309d365827989469ba5c303a52673947ebed5b31808"
+    }
+  }
+}
