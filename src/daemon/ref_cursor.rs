@@ -4111,7 +4111,7 @@ mod tests {
     fn commit_reflog_subject_rewritten_by_hook_falls_back_to_hinted_entry() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
@@ -4159,7 +4159,7 @@ mod tests {
     fn commit_reflog_subject_rewrite_fallback_does_not_guess_without_hint() {
         let temp = tempfile::tempdir().unwrap();
         let worktree = temp.path().join("repo");
-        let git_dir = worktree.join(".git");
+        let git_dir = create_git_dir(&worktree);
         let head_log = git_dir.join("logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
 
