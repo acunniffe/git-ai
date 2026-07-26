@@ -143,6 +143,24 @@ fn test_notes_add_batch_writes_multiple_notes() {
 }
 
 #[test]
+fn test_notes_add_batch_keeps_last_duplicate_entry() {
+    let (repo, gitai_repo) = repo_with_handle();
+
+    fs::write(repo.path().join("duplicate.txt"), "duplicate\n").unwrap();
+    repo.stage_all_and_commit("Duplicate note target")
+        .expect("commit duplicate note target");
+    let commit_sha = head_sha(&repo);
+
+    let entries = vec![
+        (commit_sha.clone(), "first".to_string()),
+        (commit_sha.clone(), "last".to_string()),
+    ];
+    notes_add_batch(&gitai_repo, &entries).expect("write duplicate batch");
+
+    assert_eq!(read_note(&gitai_repo, &commit_sha).as_deref(), Some("last"));
+}
+
+#[test]
 fn test_notes_add_batch_replaces_notes_at_every_legacy_fanout_depth() {
     let (repo, gitai_repo) = repo_with_handle();
 
