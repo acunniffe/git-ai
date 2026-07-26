@@ -33,6 +33,12 @@ pub fn daemon_worktree_from_repo_path(repo_path: &Path) -> Option<PathBuf> {
     None
 }
 
+pub fn rfc3339_to_unix_nanos(value: &str) -> Option<u128> {
+    chrono::DateTime::parse_from_rfc3339(value)
+        .ok()
+        .and_then(|timestamp| u128::try_from(timestamp.timestamp_nanos_opt()?).ok())
+}
+
 pub fn trace_payload_worktree_hint(payload: &Value) -> Option<PathBuf> {
     let normalize = |path: PathBuf| worktree_root_for_path(&path).unwrap_or(path);
     let argv = trace_payload_argv(payload);
@@ -143,7 +149,7 @@ pub fn trace_payload_time_ns(payload: &Value) -> Option<u128> {
     payload
         .get("time")
         .and_then(Value::as_str)
-        .and_then(super::rfc3339_to_unix_nanos)
+        .and_then(rfc3339_to_unix_nanos)
         .or_else(|| {
             payload
                 .get("time_ns")
@@ -220,14 +226,7 @@ pub fn trace_argv_primary_command(argv: &[String]) -> Option<String> {
     let mut idx = 0;
     if argv
         .first()
-        .map(|token| {
-            let file_name = Path::new(token)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or(token);
-            file_name == "git" || file_name == "git.exe"
-        })
-        .unwrap_or(false)
+        .is_some_and(|token| trace_token_is_git_executable(token))
     {
         idx = 1;
     }
@@ -262,6 +261,14 @@ pub fn trace_argv_primary_command(argv: &[String]) -> Option<String> {
         return Some(token.to_string());
     }
     None
+}
+
+pub(crate) fn trace_token_is_git_executable(token: &str) -> bool {
+    let file_name = Path::new(token)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(token);
+    file_name == "git" || file_name == "git.exe"
 }
 
 /// Returns true when the trace2 event's command+argument pair is
@@ -299,13 +306,7 @@ pub fn trace_command_uses_target_repo_context_only(primary_command: Option<&str>
 pub fn trace_invocation_args(argv: &[String]) -> &[String] {
     if argv
         .first()
-        .map(|token| {
-            Path::new(token)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name == "git" || name == "git.exe")
-        })
-        .unwrap_or(false)
+        .is_some_and(|token| trace_token_is_git_executable(token))
     {
         &argv[1..]
     } else {
@@ -332,4 +333,123 @@ pub fn trace_invocation_command_args(
         .and_then(|idx| invocation.get(idx + 1..))
         .map(|args| args.to_vec())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn argv(tokens: &[&str]) -> Vec<String> {
+        tokens.iter().map(|token| (*token).to_string()).collect()
+    }
+
+    #[test]
+    fn trace_argv_primary_command_recognizes_git_executable_paths() {
+        let cases = [
+            (vec!["git", "status"], Some("status")),
+            (vec!["git.exe", "status"], Some("status")),
+            (vec!["/usr/local/bin/git", "status"], Some("status")),
+            (
+                vec!["C:/Program Files/Git/cmd/git.exe", "status"],
+                Some("status"),
+            ),
+            (vec!["GIT.EXE", "status"], Some("GIT.EXE")),
+            (vec!["other-git", "status"], Some("other-git")),
+        ];
+
+        for (tokens, expected) in cases {
+            assert_eq!(
+                trace_argv_primary_command(&argv(&tokens)).as_deref(),
+                expected,
+                "tokens: {tokens:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn trace_argv_primary_command_handles_global_option_matrix() {
+        for option in [
+            "-c",
+            "--config-env",
+            "--git-dir",
+            "--work-tree",
+            "--namespace",
+            "--super-prefix",
+            "--exec-path",
+            "--worktree-attributes",
+            "--attr-source",
+        ] {
+            let tokens = argv(&["git", option, "option-value", "commit", "-m", "message"]);
+            assert_eq!(
+                trace_argv_primary_command(&tokens).as_deref(),
+                Some("commit"),
+                "option: {option}"
+            );
+        }
+
+        let inline = argv(&["git", "--git-dir=/repo/.git", "status"]);
+        assert_eq!(
+            trace_argv_primary_command(&inline).as_deref(),
+            Some("status")
+        );
+    }
+
+    #[test]
+    fn trace_argv_primary_command_fails_closed_for_malformed_dash_c() {
+        assert_eq!(trace_argv_primary_command(&argv(&["git", "-C"])), None);
+        assert_eq!(
+            trace_argv_primary_command(&argv(&["git", "-C", "commit"])),
+            None
+        );
+    }
+
+    #[test]
+    fn trace_root_sid_splits_child_session_ids() {
+        let root = "20260327T000000.000000Z-Hdeadbeef-P00010000";
+        let child = format!("{root}/20260327T000000.000001Z-Hdeadbeef-P00010001");
+
+        assert_eq!(trace_root_sid(root), root);
+        assert_eq!(trace_root_sid(&child), root);
+    }
+
+    #[test]
+    fn daemon_worktree_from_repo_path_resolves_linked_worktree_gitdir() {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let worktree = temp.path().join("linked-worktree");
+        let worktree_gitdir = worktree.join(".git");
+        let repo_dir = temp.path().join("common.git/worktrees/linked-worktree");
+        fs::create_dir_all(&repo_dir).expect("create linked repo dir");
+        fs::write(
+            repo_dir.join("gitdir"),
+            format!("{}\n", worktree_gitdir.display()),
+        )
+        .expect("write gitdir");
+
+        assert_eq!(daemon_worktree_from_repo_path(&repo_dir), Some(worktree));
+    }
+
+    #[test]
+    fn trace_payload_argv_filters_non_string_values() {
+        let payload = serde_json::json!({
+            "argv": ["git", 42, null, "status"]
+        });
+
+        assert_eq!(trace_payload_argv(&payload), argv(&["git", "status"]));
+    }
+
+    #[test]
+    fn rfc3339_nanos_conversion_preserves_valid_and_pre_epoch_behavior() {
+        assert_eq!(
+            crate::operations::daemon::rfc3339_to_unix_nanos("2026-06-09T22:47:40.822668Z"),
+            Some(1_781_045_260_822_668_000)
+        );
+        assert_eq!(
+            crate::operations::daemon::rfc3339_to_unix_nanos("1969-12-31T23:59:59.999999999Z"),
+            None
+        );
+        assert_eq!(
+            crate::operations::daemon::rfc3339_to_unix_nanos("not-a-timestamp"),
+            None
+        );
+    }
 }

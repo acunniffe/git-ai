@@ -1,10 +1,12 @@
 use crate::error::GitAiError;
+use crate::operations::daemon::trace_helpers::{
+    rfc3339_to_unix_nanos, trace_argv_primary_command, trace_token_is_git_executable,
+};
 use crate::operations::git::cli_parser::parse_git_cli_args;
 use crate::operations::git::repo_state::worktree_root_for_path;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::PendingTraceCommand;
 
@@ -31,25 +33,6 @@ pub(super) fn payload_timestamp_ns(payload: &Value) -> Result<u128, GitAiError> 
         return Ok((seconds * 1_000_000_000_f64) as u128);
     }
     Ok(crate::model::clock::now_nanos())
-}
-
-pub(super) fn rfc3339_to_unix_nanos(value: &str) -> Option<u128> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .ok()
-        .and_then(|timestamp| u128::try_from(timestamp.timestamp_nanos_opt()?).ok())
-}
-
-pub(super) fn payload_argv(payload: &Value) -> Vec<String> {
-    payload
-        .get("argv")
-        .and_then(Value::as_array)
-        .map(|argv| {
-            argv.iter()
-                .filter_map(Value::as_str)
-                .map(ToString::to_string)
-                .collect()
-        })
-        .unwrap_or_default()
 }
 
 pub(super) fn payload_worktree(payload: &Value) -> Option<PathBuf> {
@@ -89,23 +72,6 @@ pub(super) fn merge_reflog_start_offsets_from_payload(
     for (key, offset) in payload_reflog_start_offsets(payload) {
         pending.reflog_start_offsets.entry(key).or_insert(offset);
     }
-}
-
-pub(super) fn worktree_from_def_repo_repo(repo: &Path) -> Option<PathBuf> {
-    if repo.file_name().and_then(|name| name.to_str()) == Some(".git") {
-        return repo.parent().map(PathBuf::from);
-    }
-
-    let linked_gitdir = repo.join("gitdir");
-    if linked_gitdir.is_file() {
-        let content = fs::read_to_string(&linked_gitdir).ok()?;
-        let path = PathBuf::from(content.trim());
-        if path.file_name().and_then(|name| name.to_str()) == Some(".git") {
-            return path.parent().map(PathBuf::from);
-        }
-    }
-
-    None
 }
 
 pub(super) fn trace_argv_has_executable_prefix(argv: &[String]) -> bool {
@@ -153,10 +119,6 @@ pub(super) fn args_after_command(argv: &[String], command: &str) -> Vec<String> 
         .unwrap_or_default()
 }
 
-pub(super) fn root_sid(sid: &str) -> &str {
-    sid.split('/').next().unwrap_or(sid)
-}
-
 pub(super) fn is_internal_cmd_name(name: &str) -> bool {
     name.starts_with("_run_")
 }
@@ -171,59 +133,6 @@ pub(super) fn worktree_from_argv(argv: &[String]) -> Option<PathBuf> {
         idx += 1;
     }
     None
-}
-
-pub(super) fn argv_primary_command(argv: &[String]) -> Option<String> {
-    let mut idx = 0;
-    if argv.first().map(|v| is_git_binary(v)).unwrap_or(false) {
-        idx = 1;
-    }
-    while idx < argv.len() {
-        let token = argv[idx].as_str();
-        if token == "-C" {
-            idx += 2;
-            continue;
-        }
-        if takes_value_option(token) {
-            idx += 2;
-            continue;
-        }
-        if token.starts_with("--") && token.contains('=') {
-            idx += 1;
-            continue;
-        }
-        if token.starts_with('-') {
-            idx += 1;
-            continue;
-        }
-        return Some(token.to_string());
-    }
-    None
-}
-
-pub(super) fn is_git_binary(token: &str) -> bool {
-    if token == "git" || token == "git.exe" {
-        return true;
-    }
-    std::path::Path::new(token)
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(|name| name == "git" || name == "git.exe")
-        .unwrap_or(false)
-}
-
-pub(super) fn takes_value_option(token: &str) -> bool {
-    matches!(
-        token,
-        "-c" | "--config-env"
-            | "--git-dir"
-            | "--work-tree"
-            | "--namespace"
-            | "--super-prefix"
-            | "--exec-path"
-            | "--worktree-attributes"
-            | "--attr-source"
-    )
 }
 
 pub(super) fn command_may_mutate_refs(primary_command: Option<&str>, raw_argv: &[String]) -> bool {
@@ -243,16 +152,16 @@ pub(super) fn select_primary_command(
 ) -> Option<String> {
     if let Some(name) = root_cmd_name
         && !is_internal_cmd_name(name)
-        && !is_git_binary(name)
+        && !trace_token_is_git_executable(name)
     {
         return Some(name.to_string());
     }
 
     for child in observed_child_commands {
-        if !is_internal_cmd_name(child) && !is_git_binary(child) {
+        if !is_internal_cmd_name(child) && !trace_token_is_git_executable(child) {
             return Some(child.clone());
         }
     }
 
-    argv_primary_command(argv)
+    trace_argv_primary_command(argv)
 }

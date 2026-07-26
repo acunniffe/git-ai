@@ -277,12 +277,6 @@ pub(crate) fn post_conflict_resolution_working_log(
     Ok(Some((result.commit_sha, result.authorship_note)))
 }
 
-pub fn rfc3339_to_unix_nanos(value: &str) -> Option<u128> {
-    chrono::DateTime::parse_from_rfc3339(value)
-        .ok()
-        .and_then(|timestamp| u128::try_from(timestamp.timestamp_nanos_opt()?).ok())
-}
-
 pub fn apply_checkpoint_side_effect(mut request: CheckpointRequest) -> Result<(), GitAiError> {
     if request.files.is_empty() {
         return Ok(());

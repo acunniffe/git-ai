@@ -1,6 +1,7 @@
 use crate::error::GitAiError;
 use crate::model::domain::{FamilyKey, NormalizedCommand};
 use crate::operations::daemon::git_backend::GitBackend;
+use crate::operations::daemon::trace_helpers::{trace_argv_primary_command, trace_root_sid};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -8,13 +9,12 @@ use std::sync::Arc;
 mod event_handlers;
 mod frame_helpers;
 
-use frame_helpers::{
-    argv_primary_command, command_may_mutate_refs, payload_timestamp_ns, root_sid,
-    select_primary_command,
-};
+use frame_helpers::{command_may_mutate_refs, payload_timestamp_ns, select_primary_command};
 
 #[cfg(test)]
 mod tests_clone;
+#[cfg(test)]
+mod tests_frame_primitives;
 #[cfg(test)]
 pub(super) mod tests_lifecycle;
 
@@ -181,7 +181,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
         worktree: Option<&Path>,
         family_key: Option<&FamilyKey>,
     ) -> Result<Option<String>, GitAiError> {
-        let argv_primary = argv_primary_command(raw_argv);
+        let argv_primary = trace_argv_primary_command(raw_argv);
         let selected = select_primary_command(root_cmd_name, observed_child_commands, raw_argv)
             .or_else(|| argv_primary.clone());
         let should_resolve_alias = match (&selected, &argv_primary) {
@@ -247,7 +247,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             .get("sid")
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| GitAiError::Generic("trace payload missing sid".to_string()))?;
-        let root_sid = root_sid(sid).to_string();
+        let root_sid = trace_root_sid(sid).to_string();
         if self.is_completed_root(&root_sid) {
             return Ok(None);
         }

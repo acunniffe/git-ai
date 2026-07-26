@@ -2,6 +2,9 @@ use crate::error::GitAiError;
 use crate::model::domain::{CommandScope, Confidence, FamilyKey, NormalizedCommand};
 use crate::observability;
 use crate::operations::daemon::git_backend::GitBackend;
+use crate::operations::daemon::trace_helpers::{
+    daemon_worktree_from_repo_path, trace_argv_primary_command, trace_payload_argv,
+};
 use crate::operations::git::repo_state::{
     common_dir_for_repo_path, common_dir_for_worktree, worktree_root_for_path,
 };
@@ -9,9 +12,9 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 use super::frame_helpers::{
-    argv_primary_command, canonical_invocation, is_internal_cmd_name,
-    merge_reflog_start_offsets_from_payload, payload_cwd, payload_reflog_start_offsets,
-    payload_worktree, trace_debug_lifecycle, worktree_from_argv, worktree_from_def_repo_repo,
+    canonical_invocation, is_internal_cmd_name, merge_reflog_start_offsets_from_payload,
+    payload_cwd, payload_reflog_start_offsets, payload_worktree, trace_debug_lifecycle,
+    worktree_from_argv,
 };
 use super::{DeferredRootExit, PendingTraceCommand, TraceNormalizer};
 
@@ -30,7 +33,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             return Ok(None);
         }
 
-        let raw_argv = super::frame_helpers::payload_argv(payload);
+        let raw_argv = trace_payload_argv(payload);
         let worktree = payload_worktree(payload)
             .or_else(|| worktree_from_argv(&raw_argv))
             .or_else(|| payload_cwd(payload))
@@ -114,7 +117,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             .get("repo")
             .and_then(Value::as_str)
             .map(PathBuf::from)
-            .map(|repo| worktree_from_def_repo_repo(&repo).unwrap_or(repo))
+            .map(|repo| daemon_worktree_from_repo_path(&repo).unwrap_or(repo))
             .map(|repo| worktree_root_for_path(&repo).unwrap_or(repo));
 
         let pending_worktree = self
@@ -126,7 +129,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             .state
             .pending
             .get(root_sid)
-            .and_then(|pending| argv_primary_command(&pending.raw_argv))
+            .and_then(|pending| trace_argv_primary_command(&pending.raw_argv))
             .is_some_and(|command| matches!(command.as_str(), "clone" | "init"));
 
         // For clone/init the root process's def_repo carries the newly created
