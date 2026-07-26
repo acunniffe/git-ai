@@ -1342,6 +1342,38 @@ fn checkpoint_empty_allowlist_does_not_publish_outbox() {
 }
 
 #[test]
+fn dedicated_daemon_home_config_projects_config_patch_fields() {
+    let repo = TestRepo::new_with_daemon_env_and_patch(&[], |patch| {
+        patch.codex_hooks_format = Some("hooks_json".to_string());
+        patch.transcript_streaming_lookback_days = Some(30);
+        patch.telemetry_oss_disabled = Some(true);
+    });
+
+    let config_path = repo.daemon_home_path().join(".git-ai").join("config.json");
+    let config: Value = serde_json::from_slice(
+        &fs::read(&config_path).expect("dedicated daemon HOME config should exist"),
+    )
+    .expect("dedicated daemon HOME config should be valid JSON");
+
+    assert_eq!(
+        (
+            config.get("codex_hooks_format"),
+            config.get("transcript_streaming_lookback_days"),
+            config.get("telemetry_oss"),
+            config.get("telemetry_oss_disabled"),
+        ),
+        (
+            Some(&json!("hooks_json")),
+            Some(&json!(30)),
+            Some(&json!("off")),
+            None,
+        ),
+        "the dedicated daemon config should project the ConfigPatch fields, \
+         with telemetry_oss_disabled translated to legacy telemetry_oss"
+    );
+}
+
+#[test]
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn checkpoint_transport_failure_publishes_exact_outbox_record() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);

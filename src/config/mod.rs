@@ -17,6 +17,8 @@ mod file;
 mod notes_backend;
 mod patterns;
 mod prompt_storage;
+#[cfg(any(test, feature = "test-support"))]
+mod test_support;
 
 #[cfg(test)]
 mod tests;
