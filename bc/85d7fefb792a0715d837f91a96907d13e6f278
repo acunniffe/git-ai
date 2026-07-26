@@ -1,0 +1,24 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/DocumentSaveListener.kt
+  11d03b37dc3ad21b 75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.8",
+  "base_commit_sha": "bc85d7fefb792a0715d837f91a96907d13e6f278",
+  "prompts": {
+    "11d03b37dc3ad21b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9e7961-e2a3-4c64-9188-a3037cb57221",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 123,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/2dbc9861118e3e8e7b1addcb7aa3c8115671eddd97f1848a5ca6735e065a7913"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+src/authorship/range_authorship.rs
+  1408a65 43-48,96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "80e7cc707d04a04133cee865d1a2a2ba2fdb6032",
+  "prompts": {
+    "1408a65": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a5fa298e-03a6-40d5-9c96-13e9b72a3917",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 47,
+      "total_deletions": 41,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}

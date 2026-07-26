@@ -1,0 +1,59 @@
+tests/integration/gix_config_tests.rs
+  s_59382cac373d67::t_c9f3f06ecc191d 2,125-127,131-132,134-144,236-237,240-241,241-250,245-250,458,462,463
+  f77269fac5df9d40 349
+  s_59382cac373d67::t_34046a18f74c78 145-172,175-176,178-187,178-186,213-235,218-239,348,459-460,462,463
+  s_59382cac373d67::t_4e47b123ab974a 28-31,173-174
+  s_59382cac373d67::t_f47f634140bb40 346-363,350-363,468
+  s_59382cac373d67::t_7eaa9f66d0d522 188,206,208-209,213
+  s_59382cac373d67::t_eb4bb94e6981cb 128-130,133,238-240,242-244
+  s_59382cac373d67::t_61211f04cbdf8b 177
+  s_59382cac373d67::t_f6c1c136c46a7b 189-205,207,210-212,214-217
+  s_59382cac373d67::t_936a3ed8e15e3e 346-347,458-461,468
+src/commands/git_hook_handlers.rs
+  s_59382cac373d67::t_8b11734f57afae 289
+  s_59382cac373d67::t_376805a0c2e562 612-627
+src/config.rs
+  s_59382cac373d67::t_9e9603563528b8 15
+tests/integration/main.rs
+  s_59382cac373d67::t_c9f3f06ecc191d 56
+src/git/mod.rs
+  s_59382cac373d67::t_9e9603563528b8 3
+src/utils.rs
+  s_59382cac373d67::t_9e9603563528b8 2-3,14-32
+  s_59382cac373d67::t_f4782daeddb56c 33-34
+src/git/repository.rs
+  s_59382cac373d67::t_9e9603563528b8 1143,2391
+  s_59382cac373d67::t_7a49871b9f04ae 46-47,1413,1425-1437,1526,1543-1558,1560
+Cargo.toml
+  s_59382cac373d67::t_9e9603563528b8 15,38
+  s_59382cac373d67::t_7c7d178db005d4 40
+Cargo.lock
+  s_59382cac373d67::t_181780b3319429 1024,1035,1037
+src/git/config_reader.rs
+  s_59382cac373d67::t_45e3514255fbac 3
+  s_59382cac373d67::t_8b11734f57afae 138,142-151,167,173,443-456
+  s_59382cac373d67::t_7c7d178db005d4 139-141
+  s_59382cac373d67::t_61211f04cbdf8b 56,226-227,295-296,301-302,322-323,325,354
+  s_59382cac373d67::t_9e9603563528b8 1-2,4-55,57-137,152-166,168-172,174-225,228-294,297-300,303-321,324,326-353,355-442,457-488
+src/daemon/git_backend.rs
+  s_59382cac373d67::t_8b11734f57afae 886-891
+  s_59382cac373d67::t_e640396ecbb517 885
+tests/integration/daemon_git_config_memory.rs
+  s_59382cac373d67::t_c9f3f06ecc191d 1-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "9d48487ca12f06aff4999f0023ae2e5d200b99a4",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

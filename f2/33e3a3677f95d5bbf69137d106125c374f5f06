@@ -1,0 +1,26 @@
+src/ci/ci_context.rs
+  9948271debc84f23 160,167-172
+tests/integration/ci_squash_rebase.rs
+  9948271debc84f23 490-819,828-829
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "f233e3a3677f95d5bbf69137d106125c374f5f06",
+  "prompts": {
+    "9948271debc84f23": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "281715b5-ce5d-428c-b47b-3676e1fc0aee",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 339,
+      "total_deletions": 2,
+      "accepted_lines": 339,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/452bef4f0b70b1d103fc78bc07324af46b00d54c11d7fc715538535dbb49eaad"
+    }
+  }
+}
