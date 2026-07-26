@@ -1899,6 +1899,70 @@ Binary files a/image.png and b/image.png differ
     }
 
     #[test]
+    fn test_parse_range_diff_output_exactly_64_leading_drops_still_mapped() {
+        // Exactly MAX_PENDING_DROPPED_COMMITS (64) leading `<` commits should
+        // all be mapped to the first matched new SHA, plus the match's own old
+        // SHA — total of 65 mappings. Start at 1 so the first SHA is not all
+        // zeros and is therefore not skipped.
+        const MAX_DROPPED: usize = 64;
+        let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let mut output = String::new();
+        for i in 1..=MAX_DROPPED {
+            let sha = format!("{:040}", i);
+            output.push_str(&format!(
+                "{}:  {} < -:  ---------------------------------------- dropped {}\n",
+                i, sha, i
+            ));
+        }
+        output.push_str(&format!(
+            "{}:  {} = 1:  {} matched\n",
+            MAX_DROPPED + 1,
+            old_matched,
+            new_matched,
+        ));
+        let mappings = parse_range_diff_output(&output);
+        // 64 dropped + 1 matched
+        assert_eq!(mappings.len(), MAX_DROPPED + 1);
+        // All dropped commits map to new_matched
+        for i in 1..=MAX_DROPPED {
+            let sha = format!("{:040}", i);
+            assert_eq!(mappings[i - 1], (sha, new_matched.clone()));
+        }
+        // The matched pair is last
+        assert_eq!(mappings[MAX_DROPPED], (old_matched, new_matched));
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_exactly_65_leading_drops_discards_all() {
+        // Exactly MAX_PENDING_DROPPED_COMMITS + 1 (65) leading `<` commits
+        // exceeds the limit, so ALL of them are discarded — only the matched
+        // pair's own mapping survives. Start at 1 so the first SHA is not all
+        // zeros and is therefore not skipped.
+        const MAX_DROPPED_PLUS_1: usize = 65;
+        let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let mut output = String::new();
+        for i in 1..=MAX_DROPPED_PLUS_1 {
+            let sha = format!("{:040}", i);
+            output.push_str(&format!(
+                "{}:  {} < -:  ---------------------------------------- dropped {}\n",
+                i, sha, i
+            ));
+        }
+        output.push_str(&format!(
+            "{}:  {} = 1:  {} matched\n",
+            MAX_DROPPED_PLUS_1 + 1,
+            old_matched,
+            new_matched,
+        ));
+        let mappings = parse_range_diff_output(&output);
+        // Only the matched pair survived
+        assert_eq!(mappings.len(), 1);
+        assert_eq!(mappings[0], (old_matched, new_matched));
+    }
+
+    #[test]
     fn test_is_tree_pair_separator_valid() {
         let line =
             "1778ed95466977076f4e5908e6500789be732d2e 471b7bbf5998ffa15a81b17ee9f6854a357a2a6a";
@@ -2122,5 +2186,193 @@ diff --git a/c.txt b/c.txt
         assert!(chunks[0][0].hunks_by_file.contains_key("a.txt"));
         assert!(chunks[0][1].hunks_by_file.contains_key("b.txt"));
         assert!(chunks[1][0].hunks_by_file.contains_key("c.txt"));
+    }
+
+    fn diff_tree_stream_with_identical_pairs(
+        pair_count: usize,
+        identical_pair_numbers: &[usize],
+    ) -> String {
+        let mut output = String::new();
+        for pair_number in 1..=pair_count {
+            let old_oid = format!("{:040x}", pair_number);
+            let new_oid = if identical_pair_numbers.contains(&pair_number) {
+                old_oid.clone()
+            } else {
+                format!("{:040x}", pair_number + 10_000)
+            };
+            output.push_str(&format!("{old_oid} {new_oid}\n"));
+            if !identical_pair_numbers.contains(&pair_number) {
+                output.push_str(&format!(
+                    "diff --git a/file_{pair_number}.txt b/file_{pair_number}.txt\n\
+                     @@ -1,0 +1 @@\n\
+                     +line {pair_number}\n"
+                ));
+            }
+        }
+        output
+    }
+
+    #[test]
+    fn test_batched_diff_tree_parser_preserves_identical_pairs_across_drain_boundary() {
+        let output = diff_tree_stream_with_identical_pairs(
+            DIFF_TREE_STREAM_CHUNK_SIZE + 2,
+            &[
+                DIFF_TREE_STREAM_CHUNK_SIZE - 1,
+                DIFF_TREE_STREAM_CHUNK_SIZE,
+                DIFF_TREE_STREAM_CHUNK_SIZE + 1,
+            ],
+        );
+
+        let mut parser = BatchedDiffTreeParser::new(DIFF_TREE_STREAM_CHUNK_SIZE + 2);
+        let mut chunks = Vec::new();
+        for line in output.lines() {
+            parser.feed_line(line);
+            if parser.completed_count() >= DIFF_TREE_STREAM_CHUNK_SIZE {
+                chunks.push(parser.take_completed());
+            }
+        }
+        chunks.push(parser.take_all());
+
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].len(), DIFF_TREE_STREAM_CHUNK_SIZE);
+        assert_eq!(chunks[1].len(), 2);
+
+        let results: Vec<_> = chunks.into_iter().flatten().collect();
+        assert_eq!(results.len(), DIFF_TREE_STREAM_CHUNK_SIZE + 2);
+        assert!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE - 3]
+                .hunks_by_file
+                .contains_key("file_48.txt")
+        );
+        assert_eq!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE - 2],
+            DiffTreeResult::default()
+        );
+        assert_eq!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE - 1],
+            DiffTreeResult::default()
+        );
+        assert_eq!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE],
+            DiffTreeResult::default()
+        );
+        assert!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE + 1]
+                .hunks_by_file
+                .contains_key("file_52.txt")
+        );
+    }
+
+    fn authorship_log_for_streaming_merge_test(index: usize) -> AuthorshipLog {
+        use crate::authorship::authorship_log::{
+            HumanRecord, LineRange, PromptRecord, SessionRecord,
+        };
+        use crate::authorship::authorship_log_serialization::AttestationEntry;
+        use crate::authorship::working_log::AgentId;
+
+        let hash = format!("{index:016x}");
+        let mut log = AuthorshipLog::new();
+        log.get_or_create_file(&format!("file_{index}.txt"))
+            .add_entry(AttestationEntry::new(
+                hash.clone(),
+                vec![LineRange::Single(1)],
+            ));
+
+        let agent_id = AgentId {
+            tool: "test".to_string(),
+            id: format!("agent-{index}"),
+            model: "model".to_string(),
+        };
+        log.metadata.prompts.insert(
+            hash.clone(),
+            PromptRecord {
+                agent_id: agent_id.clone(),
+                human_author: None,
+                messages_url: Some(format!("https://example.com/{index}")),
+                total_additions: 1,
+                total_deletions: 0,
+                accepted_lines: 1,
+                overriden_lines: 0,
+                custom_attributes: None,
+            },
+        );
+        log.metadata.sessions.insert(
+            format!("s_{index}"),
+            SessionRecord {
+                agent_id,
+                human_author: None,
+                custom_attributes: None,
+            },
+        );
+        log.metadata.humans.insert(
+            format!("h_{index}"),
+            HumanRecord {
+                author: format!("Human {index} <human-{index}@example.com>"),
+            },
+        );
+        log
+    }
+
+    #[test]
+    fn test_apply_chunk_shifts_merges_same_target_across_streaming_chunks() {
+        const SOURCE_COUNT: usize = DIFF_TREE_STREAM_CHUNK_SIZE + 5;
+        let target_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let pending: Vec<PendingShift> = (1..=SOURCE_COUNT)
+            .map(|index| PendingShift {
+                new_sha: target_sha.clone(),
+                log: authorship_log_for_streaming_merge_test(index),
+            })
+            .collect();
+
+        let output = diff_tree_stream_with_identical_pairs(
+            SOURCE_COUNT,
+            &(1..=SOURCE_COUNT).collect::<Vec<_>>(),
+        );
+        let mut parser = BatchedDiffTreeParser::new(SOURCE_COUNT);
+        let mut pending_iter = pending.into_iter();
+        let mut merged_by_target = HashMap::new();
+        let mut chunk_lengths = Vec::new();
+
+        for line in output.lines() {
+            parser.feed_line(line);
+            if parser.completed_count() >= DIFF_TREE_STREAM_CHUNK_SIZE {
+                let chunk = parser.take_completed();
+                chunk_lengths.push(chunk.len());
+                apply_chunk_shifts(&mut merged_by_target, chunk, &mut pending_iter);
+            }
+        }
+
+        let final_chunk = parser.take_all();
+        chunk_lengths.push(final_chunk.len());
+        apply_chunk_shifts(&mut merged_by_target, final_chunk, &mut pending_iter);
+
+        assert_eq!(chunk_lengths, vec![DIFF_TREE_STREAM_CHUNK_SIZE, 5]);
+        assert_eq!(pending_iter.count(), 0);
+        let merged = merged_by_target
+            .get(&target_sha)
+            .expect("all source logs should merge into the shared target SHA");
+        assert_eq!(merged.attestations.len(), SOURCE_COUNT);
+        assert_eq!(merged.metadata.prompts.len(), SOURCE_COUNT);
+        assert_eq!(merged.metadata.sessions.len(), SOURCE_COUNT);
+        assert_eq!(merged.metadata.humans.len(), SOURCE_COUNT);
+        assert_eq!(merged.metadata.base_commit_sha, target_sha);
+
+        for index in 1..=SOURCE_COUNT {
+            assert!(
+                merged
+                    .attestations
+                    .iter()
+                    .any(|attestation| attestation.file_path == format!("file_{index}.txt")),
+                "merged target should include file_{index}.txt from source commit {index}"
+            );
+            assert!(
+                merged
+                    .metadata
+                    .prompts
+                    .contains_key(&format!("{index:016x}"))
+            );
+            assert!(merged.metadata.sessions.contains_key(&format!("s_{index}")));
+            assert!(merged.metadata.humans.contains_key(&format!("h_{index}")));
+        }
     }
 }
