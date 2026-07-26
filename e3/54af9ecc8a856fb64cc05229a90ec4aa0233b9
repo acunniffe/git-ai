@@ -1,0 +1,24 @@
+scripts/benchmarks/git/benchmark_modes_vs_main.py
+  8a69382429cc74a6 1-1034
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "e354af9ecc8a856fb64cc05229a90ec4aa0233b9",
+  "prompts": {
+    "8a69382429cc74a6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c6497-b6c7-7f71-9730-bc3efeca5d6a",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1039,
+      "total_deletions": 5,
+      "accepted_lines": 1034,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/a311bd7e55187e98b4fb113c914049d60a1123d4b00bab5103cc9703ea5dbf23"
+    }
+  }
+}

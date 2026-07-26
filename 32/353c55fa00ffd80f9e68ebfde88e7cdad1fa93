@@ -1,0 +1,32 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  293268f972235922 26,138-142,145-146,155-163,184,196,300,303-304,306,311-313,315-321,323-333,335-352,355-356,359,361,366,467-474,479,484-495,497-499,501-504,508-515,517-518,521-533,553-554,565,568-569,571,575-580,591,599-600,608,610-612,614-617,624-626,631,633,650,856,896,898-901,903-907,920-924,926-929,931,943-945,960-962,1302-1308,1312-1315,1318-1319,1332,1346-1366,1382,1401,1404-1407,1412-1414,1416,1419-1422,1669,1693-1699,1705-1706,1710-1712,1725,1735,1741,1746,1753,1759-1762,1776-1778,1784-1787,1789-1795,1808-1812,1821,1828,1840,1847,1858
+tests/integration/bash_tool_provenance.rs
+  293268f972235922 377,1399
+tests/integration/bash_tool_benchmark.rs
+  293268f972235922 227,535
+src/commands/checkpoint_agent/amp_preset.rs
+  293268f972235922 208
+tests/integration/bash_tool_conformance.rs
+  293268f972235922 154,322,489-490,504-508,872,874-875,1289,1413,1566
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "32353c55fa00ffd80f9e68ebfde88e7cdad1fa93",
+  "prompts": {
+    "293268f972235922": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "34741536-abcc-42cf-89df-82f40cf18979",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 452,
+      "total_deletions": 737,
+      "accepted_lines": 311,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e0d74321db9d3f4604e88d2e16c37b12891046afea92eeb6ea3246ce7331cfc9"
+    }
+  }
+}

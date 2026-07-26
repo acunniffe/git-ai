@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "ea09a250c87925b72d4ee5dcdbc512abaf5de37e",
+  "prompts": {
+    "17c18106443b9289": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8168cd9c-b854-475d-80ef-df93f8e2bdbb",
+        "model": "composer-1"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 44,
+      "total_deletions": 1,
+      "accepted_lines": 44,
+      "overriden_lines": 0
+    }
+  }
+}

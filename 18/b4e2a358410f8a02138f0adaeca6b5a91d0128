@@ -1,0 +1,82 @@
+tests/integration/prompt_across_commit.rs
+  s_3b8401a0cbe012::t_8ae6ed1f9c92fe 105-107,118-123
+src/auth/credentials.rs
+  s_3b8401a0cbe012::t_4223fc3abaa738 12
+src/paths.rs
+  s_3b8401a0cbe012::t_ba99b09fc3419e 63
+src/commands/helpers.rs
+  s_3b8401a0cbe012::t_4223fc3abaa738 52-84
+src/commands/install.rs
+  s_3b8401a0cbe012::t_ee8b8adad9f8de 3
+  s_3b8401a0cbe012::t_6fce2ab1de8302 40
+tests/integration/post_commit_unit.rs
+  s_3b8401a0cbe012::t_346603c57d590e 63,66-71
+src/core/merge.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 102-110,112-117
+src/daemon/mod.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 18
+src/daemon/repo_resolver.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 74-75
+src/daemon/rewrite_worker.rs
+  s_3b8401a0cbe012::t_80c770214a3ae7 1358
+  s_3b8401a0cbe012::t_9e8fc2b034d851 370-375
+src/daemon/service.rs
+  s_3b8401a0cbe012::t_4223fc3abaa738 58,320
+src/daemon/sqlite_ffi.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 68-69,116-117,145-146,187,232-233
+src/commands/checkpoint.rs
+  s_3b8401a0cbe012::t_ba99b09fc3419e 201
+  s_3b8401a0cbe012::t_9e8fc2b034d851 534-538,570-574,619,621,650-652,805-809
+src/git_cmd.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 12,36-40
+src/daemon/telemetry_queue.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 102-103,122,154-156,176-180
+  s_3b8401a0cbe012::t_ba99b09fc3419e 153
+tests/integration/simple_additions.rs
+  s_3b8401a0cbe012::t_53f19c5c6e9475 227-244
+src/daemon/post_commit_worker.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 80-82,84-90,122
+src/daemon/trace2_listener.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 127
+tests/integration/background_agent_attribution.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 10-13,25-28,45-48,84-87,135-138,168-171
+tests/integration/telemetry_queue_e2e.rs
+  s_3b8401a0cbe012::t_ba99b09fc3419e 163,212,260,312,328,377
+  s_3b8401a0cbe012::t_9e8fc2b034d851 164-166,400-404
+  s_3b8401a0cbe012::t_6383610c0e255f 406
+src/daemon/telemetry_worker.rs
+  s_3b8401a0cbe012::t_ba99b09fc3419e 185,200,211,234
+  s_3b8401a0cbe012::t_9e8fc2b034d851 186-188,196-199,201-203,212-214,235-237,348-350
+src/core/stash.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 156-164
+  s_3b8401a0cbe012::t_037c53af338b2b 462
+tests/integration/repos/test_repo.rs
+  s_3b8401a0cbe012::t_620502ff9e79b4 2707
+  s_3b8401a0cbe012::t_a9793999e8c46f 2238-2240
+  s_3b8401a0cbe012::t_8ee4c53cebbae3 2668-2669
+  s_3b8401a0cbe012::t_77ba1aaa13cab6 2625
+src/commands/flush_metrics_db.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 4-7
+src/commands/post_commit.rs
+  s_3b8401a0cbe012::t_4e1b8e5049e57c 103-109,114-118
+  s_3b8401a0cbe012::t_9e8fc2b034d851 110-113
+  s_3b8401a0cbe012::t_38f8cb267afe29 101-102,119-121
+src/daemon/event_loop.rs
+  s_3b8401a0cbe012::t_9e8fc2b034d851 198-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "18b4e2a358410f8a02138f0adaeca6b5a91d0128",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

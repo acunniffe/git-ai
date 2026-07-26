@@ -1,0 +1,28 @@
+src/authorship/rewrite_revert.rs
+  s_53c2b266fceff9::t_e45f7255f3176c 31-36
+src/git/sync_authorship.rs
+  s_53c2b266fceff9::t_48a2fe45b8560d 282-286
+src/authorship/rewrite_reset.rs
+  s_53c2b266fceff9::t_65889c3b115377 27-33
+src/authorship/post_commit.rs
+  s_53c2b266fceff9::t_c4e33fce24f3f1 444-451
+src/authorship/rewrite.rs
+  s_53c2b266fceff9::t_9866f51472e9c4 75-80
+  s_53c2b266fceff9::t_4d3859636ca608 34-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.12",
+  "base_commit_sha": "31451725515a374ae85b50b634e0f89b4a40a6b2",
+  "prompts": {},
+  "sessions": {
+    "s_53c2b266fceff9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7904330e-caba-4122-be31-b819e81999c5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Siddhant Khare <Siddhant-K-code@users.noreply.github.com>"
+    }
+  }
+}

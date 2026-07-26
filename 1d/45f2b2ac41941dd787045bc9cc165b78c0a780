@@ -1,0 +1,21 @@
+tests/integration/main.rs
+  s_f2b9b4d0a5efa6::t_badd2eba4df2a4 91
+tests/integration/proxy_passthrough.rs
+  s_f2b9b4d0a5efa6::t_909d0d460f979d 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "1d45f2b2ac41941dd787045bc9cc165b78c0a780",
+  "prompts": {},
+  "sessions": {
+    "s_f2b9b4d0a5efa6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf28d639-11e1-4851-b914-d16eb53d907b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

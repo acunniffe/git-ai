@@ -1,0 +1,38 @@
+src/git/repository.rs
+  s_13e48d840a2980::t_a325706927195d 4,2175,2483
+  s_13e48d840a2980::t_7dcec1e2948730 2484
+  s_13e48d840a2980::t_a102a62a2a0131 2580-2582
+  s_13e48d840a2980::t_df7139fa74c590 2579,2583-2584,2587
+tests/integration/main.rs
+  s_13e48d840a2980::t_5721d1e1ad04cc 84
+src/git/repo_state.rs
+  s_13e48d840a2980::t_a325706927195d 19-22,27
+  s_13e48d840a2980::t_df7139fa74c590 15-18
+src/daemon/ref_cursor.rs
+  s_13e48d840a2980::t_d2134a5ba3b621 3767,3821,3877,3936,3992,4040,4072,4110,4148,4183,4250,4295,4364,4408,4464,4523,4549,4659,4699,4949,4998,5074,5140,5224,5280,5333,5386,5430,5483,5552,5619
+  s_13e48d840a2980::t_9dd4a3a8a6d9af 3646,3648-3652
+  s_13e48d840a2980::t_25fb0eb4781a3f 3647
+src/daemon/trace_normalizer.rs
+  s_13e48d840a2980::t_e93949666502d5 1219-1224
+  s_13e48d840a2980::t_18f6a9d4799046 1407,1441,1500,1547,1763,1837,1856-1857,1908,2002-2003,2124
+src/daemon.rs
+  s_13e48d840a2980::t_1063b966cf6092 8678
+tests/integration/issue_1415_empty_git_dir.rs
+  s_13e48d840a2980::t_5721d1e1ad04cc 1-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "469ad81aaed1b4769783c6d939b3bbbf0bc2cc39",
+  "prompts": {},
+  "sessions": {
+    "s_13e48d840a2980": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f765a-288a-7a62-a9ff-7d178ae1f739",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

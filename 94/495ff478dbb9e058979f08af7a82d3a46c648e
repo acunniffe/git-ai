@@ -1,0 +1,27 @@
+src/observability/mod.rs
+  905e78355a5396c6 9-10,14-15,51-59,66,75,216-238
+src/metrics/mod.rs
+  905e78355a5396c6 4,19,62,64-67,76,78-79,81
+src/observability/flush.rs
+  905e78355a5396c6 1,4-5,7,127-129,144,153,168,382-403,419,433,436-438,441-447,453,460,716-782
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "94495ff478dbb9e058979f08af7a82d3a46c648e",
+  "prompts": {
+    "905e78355a5396c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f93ca03-76da-4ce7-9d59-ec6308c089c0",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 173,
+      "total_deletions": 53,
+      "accepted_lines": 163,
+      "overriden_lines": 0
+    }
+  }
+}

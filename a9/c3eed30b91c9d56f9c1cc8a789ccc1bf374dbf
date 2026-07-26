@@ -1,0 +1,24 @@
+src/observability/mod.rs
+  ba0e21e99f0ca60d 204-214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "a9c3eed30b91c9d56f9c1cc8a789ccc1bf374dbf",
+  "prompts": {
+    "ba0e21e99f0ca60d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2db1d42e-bc65-4b0a-b017-1abdaf7f6264",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 2,
+      "accepted_lines": 11,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/d2ab43d44dc3fb7bf703df8de4971c9121ddafcb6abe6b1dc18470bfffc9e7df"
+    }
+  }
+}

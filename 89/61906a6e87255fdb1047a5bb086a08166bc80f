@@ -1,0 +1,22 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.38",
+  "base_commit_sha": "8961906a6e87255fdb1047a5bb086a08166bc80f",
+  "prompts": {
+    "dbdeac62d821152e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5600db8f-b00b-4e8f-9815-162829c6936b",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 470,
+      "total_deletions": 34,
+      "accepted_lines": 459,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/2ffd813c712fc7851d8adf63bbb26585d5d87d1096028440109c2300872927f4"
+    }
+  }
+}

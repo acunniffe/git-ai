@@ -1,0 +1,32 @@
+src/mdm/agents/cursor.rs
+  s_a2be596689b277::t_7d886acbbb097b 387-390
+src/commands/install_hooks.rs
+  s_a2be596689b277::t_3510d3c2ededcf 459-464
+  s_a2be596689b277::t_e28c61c9216812 10
+  s_a2be596689b277::t_a728590a781ebe 646-653
+tests/git-compat/whitelist.csv
+  s_a2be596689b277::t_e5df0240428387 18
+src/mdm/agents/vscode.rs
+  s_a2be596689b277::t_74223efbb5f568 183-185,188-189,192,199-227
+src/mdm/utils.rs
+  s_a2be596689b277::t_0051f4b9f5dcbf 1586-1594
+  s_a2be596689b277::t_b4ca9d5e1e62c7 740-748
+src/config.rs
+  s_a2be596689b277::t_d84739ea5116b1 1135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "6cd779ee5ad8641ce36fb4fb9064a2af03ecba86",
+  "prompts": {},
+  "sessions": {
+    "s_a2be596689b277": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6701ebd2-1093-45c8-b893-dfe78275e794",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

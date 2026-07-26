@@ -1,0 +1,19 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/TelemetryService.kt
+  s_edec1fe48ce502::t_e250779d913f48 3-4,247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "be6fcb2e3b59cd35f80f35696ff2cef11a9e24d2",
+  "prompts": {},
+  "sessions": {
+    "s_edec1fe48ce502": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-e1696047b2f248f0b5ed92e1dcb8e8ee",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
