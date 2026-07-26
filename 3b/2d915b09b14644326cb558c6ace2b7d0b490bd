@@ -1,0 +1,25 @@
+install.ps1
+  s_2740b0b2a8bdc6::t_698b40fec8d9c2 259,278-280,283-284,295-296
+src/commands/daemon.rs
+  s_2740b0b2a8bdc6::t_0053f9fd6de33a 351-354,430
+src/daemon.rs
+  s_2740b0b2a8bdc6::t_e216e949210244 6988
+src/utils.rs
+  s_2740b0b2a8bdc6::t_0076b9fb66c7a2 73-112,1202-1244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "3b2d915b09b14644326cb558c6ace2b7d0b490bd",
+  "prompts": {},
+  "sessions": {
+    "s_2740b0b2a8bdc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6cfb-8eed-7430-8509-7cb0df96f1ba",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

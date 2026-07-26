@@ -1,0 +1,8 @@
+.github/workflows/release.yml
+  59932ce 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "fb2e38d833c4070ddc7c4284e62685f3c83d8f25",
+  "prompts": {}
+}

@@ -1,0 +1,24 @@
+README.md
+  5e3e625a3eeb8c62 52-53,56,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "f507e0d3c157f9cee6331df06d4c0f07ad7d07bf",
+  "prompts": {
+    "5e3e625a3eeb8c62": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19f133bd-53ee-4f7f-9811-52f4263834a8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 6,
+      "accepted_lines": 4,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/d9c9ff60ac581839cafee00fd1eb12e8dde4193bbaae6672d766b4259c288b71"
+    }
+  }
+}

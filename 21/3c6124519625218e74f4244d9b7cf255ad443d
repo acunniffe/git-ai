@@ -1,0 +1,27 @@
+src/git/sync_authorship.rs
+  77d09677bd084688 2-3,195-198,320-325
+tests/integration/notes_merge_mixed_fanout.rs
+  77d09677bd084688 224-230,232-265,268-269,276,283-286
+src/git/refs.rs
+  77d09677bd084688 551,553-561,563-564
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "213c6124519625218e74f4244d9b7cf255ad443d",
+  "prompts": {
+    "77d09677bd084688": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "75abc1de-df35-40b1-9638-7de36529f800",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 69,
+      "total_deletions": 14,
+      "accepted_lines": 72,
+      "overriden_lines": 1
+    }
+  }
+}

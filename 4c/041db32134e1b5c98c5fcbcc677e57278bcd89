@@ -1,0 +1,40 @@
+tests/windows_install_script.rs
+  s_8d9d36585aec71::t_bfdc51fd03e698 332,377,401
+tests/integration/repos/test_repo.rs
+  s_8d9d36585aec71::t_a85ab7f6f0e79c 1704
+  s_8d9d36585aec71::t_e0e1c395af584d 1435
+  s_8d9d36585aec71::t_188bc316b0defe 1720
+  s_8d9d36585aec71::t_d0c4c2271b5c69 1793
+  s_8d9d36585aec71::t_d795999cc8065a 1773
+  s_8d9d36585aec71::t_3841eccfde150b 88-90
+  s_8d9d36585aec71::t_a7620c82d28bde 1868
+  s_8d9d36585aec71::t_ae599361e47d8b 1782
+  s_8d9d36585aec71::t_499427181c2765 2197
+  s_8d9d36585aec71::t_975690771b2772 1965-1968
+  s_8d9d36585aec71::t_e10739a1fc18a8 1912
+  s_8d9d36585aec71::t_c4680c542dd971 2202
+  s_8d9d36585aec71::t_434c8d6ceaa038 2265
+tests/async_mode.rs
+  s_8d9d36585aec71::t_08233d20fea282 231,254,275,427,429,454,456,504
+  s_8d9d36585aec71::t_57ce188fc57991 346
+  s_8d9d36585aec71::t_5d5e0e068b373f 314
+tests/daemon_mode.rs
+  s_8d9d36585aec71::t_1a4a02cf7033d2 1011,1716,1777,1817,1920,2058,2116,2240,2362,2524,2833,2947,3018,3140,3256,3310,3369,3482,3604,3738,3781,3858,3914,4093,4153,4198,4341,4383,4428,4464,4489,4547,4676,4766
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "4c041db32134e1b5c98c5fcbcc677e57278bcd89",
+  "prompts": {},
+  "sessions": {
+    "s_8d9d36585aec71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33d20787-e26d-4a7f-9364-7a48fad08505",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": []
+    }
+  }
+}

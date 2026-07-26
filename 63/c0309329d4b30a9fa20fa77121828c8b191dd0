@@ -1,0 +1,32 @@
+src/commands/ci_handlers.rs
+  b414720 2,59-60,62,64,193-195,205-207
+tests/repos/test_repo.rs
+  bfe0695 47-48,245
+tests/cherry_pick.rs
+  f9a223b 152,355
+src/lib.rs
+  bb90f34 7
+src/commands/git_handlers.rs
+  35eb637 178-181,235-236
+  0e12013 171-177,246-251
+tests/github/github_test_harness.rs
+  cb93822 289-290
+src/authorship/range_authorship.rs
+  7876fb6 151
+src/ci/github.rs
+  b414720 7
+src/config.rs
+  b625807 15,82,87,125
+src/commands/checkpoint.rs
+  157b67d 299,301,307-308,314,361
+  0148017 119-126,217
+src/authorship/rebase_authorship.rs
+  82ac861 8
+src/main.rs
+  bb90f34 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "63c0309329d4b30a9fa20fa77121828c8b191dd0",
+  "prompts": {}
+}

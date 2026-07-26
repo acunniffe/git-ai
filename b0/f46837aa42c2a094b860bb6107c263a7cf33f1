@@ -1,0 +1,11 @@
+src/daemon.rs
+  ef1f189321dbf7c9 7592,7594-7595,7602,7607
+src/commands/daemon.rs
+  ef1f189321dbf7c9 180-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.7",
+  "base_commit_sha": "b0f46837aa42c2a094b860bb6107c263a7cf33f1",
+  "prompts": {}
+}
