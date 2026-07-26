@@ -16,7 +16,13 @@ pub struct ClineInstaller;
 const MANAGED_MARKER: &str = "# git-ai-managed: cline";
 const PRE_HOOK_NAME: &str = "PreToolUse";
 const POST_HOOK_NAME: &str = "PostToolUse";
-const CLINE_PUBLISHER_ID: &str = "saoudrizwan.claude-dev";
+const CLINE_EXTENSION_ID: &str = "saoudrizwan.claude-dev";
+const EXTENSION_MANIFEST_PATHS: &[&str] = &[
+    ".vscode/extensions/extensions.json",
+    ".vscode-server/extensions/extensions.json",
+    ".cursor/extensions/extensions.json",
+    ".windsurf/extensions/extensions.json",
+];
 #[cfg(target_os = "macos")]
 const CLINE_DOCUMENTS_ACCESS_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -37,7 +43,7 @@ impl ClineInstaller {
                     base.join(p)
                         .join("User")
                         .join("globalStorage")
-                        .join(CLINE_PUBLISHER_ID)
+                        .join(CLINE_EXTENSION_ID)
                 })
                 .collect()
         }
@@ -51,7 +57,7 @@ impl ClineInstaller {
                     base.join(p)
                         .join("User")
                         .join("globalStorage")
-                        .join(CLINE_PUBLISHER_ID)
+                        .join(CLINE_EXTENSION_ID)
                 })
                 .collect()
         }
@@ -69,7 +75,7 @@ impl ClineInstaller {
                     base.join(p)
                         .join("User")
                         .join("globalStorage")
-                        .join(CLINE_PUBLISHER_ID)
+                        .join(CLINE_EXTENSION_ID)
                 })
                 .collect()
         }
@@ -78,6 +84,33 @@ impl ClineInstaller {
         {
             vec![]
         }
+    }
+
+    fn extension_manifest_has_cline(path: &Path) -> bool {
+        let Ok(content) = fs::read_to_string(path) else {
+            return false;
+        };
+        let Ok(extensions) = serde_json::from_str::<serde_json::Value>(&content) else {
+            return false;
+        };
+
+        extensions.as_array().is_some_and(|extensions| {
+            extensions.iter().any(|extension| {
+                extension
+                    .get("identifier")
+                    .and_then(|identifier| identifier.get("id"))
+                    .and_then(|id| id.as_str())
+                    == Some(CLINE_EXTENSION_ID)
+            })
+        })
+    }
+
+    fn extension_manifest_paths() -> Vec<PathBuf> {
+        let home = home_dir();
+        EXTENSION_MANIFEST_PATHS
+            .iter()
+            .map(|path| home.join(path))
+            .collect()
     }
 
     fn hooks_dir() -> PathBuf {
@@ -254,7 +287,10 @@ impl HookInstaller for ClineInstaller {
     }
 
     fn check_hooks(&self, params: &HookInstallerParams) -> Result<HookCheckResult, GitAiError> {
-        let tool_installed = Self::storage_paths().iter().any(|p| p.exists());
+        let tool_installed = Self::storage_paths().iter().any(|path| path.exists())
+            || Self::extension_manifest_paths()
+                .iter()
+                .any(|path| Self::extension_manifest_has_cline(path));
 
         if !tool_installed || Self::is_windows() {
             // Cline hooks are not supported on Windows today; report the tool if it
@@ -395,6 +431,88 @@ mod tests {
                 binary_path: create_test_binary_path(),
             };
             let result = ClineInstaller.check_hooks(&params).unwrap();
+            assert!(!result.tool_installed);
+            assert!(!result.hooks_installed);
+            assert!(!result.hooks_up_to_date);
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_cline_check_detects_editor_extension_manifests() {
+        with_temp_home(|home| {
+            let storage = home.join("cline-storage");
+            unsafe { std::env::set_var("GIT_AI_CLINE_STORAGE_PATH", &storage) };
+            fs::create_dir_all(home.join("Documents")).unwrap();
+
+            let manifest_paths = [
+                ".vscode/extensions/extensions.json",
+                ".vscode-server/extensions/extensions.json",
+                ".cursor/extensions/extensions.json",
+                ".windsurf/extensions/extensions.json",
+            ];
+            let params = HookInstallerParams {
+                binary_path: create_test_binary_path(),
+            };
+
+            for relative_path in manifest_paths {
+                let manifest_path = home.join(relative_path);
+                fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+                fs::write(
+                    &manifest_path,
+                    r#"[
+  {
+    "identifier": {
+      "id": "saoudrizwan.claude-dev",
+      "uuid": "test-uuid"
+    },
+    "version": "4.0.11",
+    "relativeLocation": "saoudrizwan.claude-dev-4.0.11"
+  }
+]"#,
+                )
+                .unwrap();
+
+                let result = ClineInstaller.check_hooks(&params).unwrap();
+                assert!(
+                    result.tool_installed,
+                    "Cline should be detected from {relative_path}"
+                );
+
+                fs::remove_file(manifest_path).unwrap();
+            }
+        });
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    #[serial]
+    fn test_cline_check_does_not_inspect_documents_for_unrelated_extension_manifest() {
+        with_temp_home(|home| {
+            let storage = home.join("cline-storage");
+            unsafe { std::env::set_var("GIT_AI_CLINE_STORAGE_PATH", &storage) };
+
+            let manifest_path = home.join(".vscode/extensions/extensions.json");
+            fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+            fs::write(
+                manifest_path,
+                r#"[
+  {
+    "identifier": {
+      "id": "git-ai.git-ai-vscode"
+    },
+    "relativeLocation": "saoudrizwan.claude-dev-4.0.11"
+  }
+]"#,
+            )
+            .unwrap();
+            fs::write(home.join("Documents"), "not a directory").unwrap();
+
+            let params = HookInstallerParams {
+                binary_path: create_test_binary_path(),
+            };
+            let result = ClineInstaller.check_hooks(&params).unwrap();
+
             assert!(!result.tool_installed);
             assert!(!result.hooks_installed);
             assert!(!result.hooks_up_to_date);
