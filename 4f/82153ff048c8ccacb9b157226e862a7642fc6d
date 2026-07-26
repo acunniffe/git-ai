@@ -1,0 +1,50 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/DocumentChangeListener.kt
+  cc4ab0bd017f5e32 120-121
+  9a87cf3630a2e1e5 84-90,122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.10",
+  "base_commit_sha": "4f82153ff048c8ccacb9b157226e862a7642fc6d",
+  "prompts": {
+    "0e9cdb99bb202dfb": {
+      "agent_id": {
+        "tool": "junie",
+        "id": "1773269013089",
+        "model": "unknown"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 39,
+      "total_deletions": 13,
+      "accepted_lines": 29,
+      "overriden_lines": 0
+    },
+    "9a87cf3630a2e1e5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f2b6faaa-ff74-475d-baa5-830429506b6e",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 107,
+      "total_deletions": 20,
+      "accepted_lines": 22,
+      "overriden_lines": 6
+    },
+    "cc4ab0bd017f5e32": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ec24de13-a8b1-4ff0-86ab-49b4d3923f1d",
+        "model": "claude-4.6-opus-max-thinking"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 25,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

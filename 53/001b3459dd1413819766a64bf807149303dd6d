@@ -1,0 +1,25 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  381053640db11045 20
+src/commands/git_ai_handlers.rs
+  381053640db11045 293,306-314,355,372,389,406,423,440,457,471,488,505,519,536,597-603
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "53001b3459dd1413819766a64bf807149303dd6d",
+  "prompts": {
+    "381053640db11045": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "624f89ef-ff33-4c84-aeaa-d909dea2500f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Daniel Thorne <ldthorne96@gmail.com>",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 0,
+      "accepted_lines": 30,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,82 @@
+src/daemon/global_actor.rs
+  s_944d199f213f02::t_3526fc8ffcda97 85
+src/daemon/reducer.rs
+  s_944d199f213f02::t_3526fc8ffcda97 291
+src/authorship/rewrite_reset.rs
+  s_944d199f213f02::t_6f6aa884e8fa3a 150
+src/daemon/test_sync.rs
+  s_944d199f213f02::t_17a7b06fe7b275 19-21
+src/daemon.rs
+  s_944d199f213f02::t_03eda84deae922 4491-4494
+  s_944d199f213f02::t_fd6404b9003f7a 4484
+  s_944d199f213f02::t_264ada84584e2d 6812
+  s_944d199f213f02::t_47b3be5c324d42 4479-4483,4485-4490,4495-4497
+src/daemon/analyzers/history.rs
+  s_944d199f213f02::t_3526fc8ffcda97 420
+src/authorship/rewrite_restore.rs
+  s_944d199f213f02::t_3eea19811dc2d9 109,114,117,125-136,138-139,141-142,144-145,148-154
+  s_944d199f213f02::t_4760920f159529 1-108,110-113,115-116,118-124,137,140,143,146-147,155-156
+  s_944d199f213f02::t_5c7533784b135c 157-183
+src/daemon/coordinator.rs
+  s_944d199f213f02::t_3526fc8ffcda97 172,196
+src/git/cli_parser.rs
+  s_944d199f213f02::t_d9ec6a12112c35 800-805,815-848
+  s_944d199f213f02::t_17a7b06fe7b275 806-814
+  s_944d199f213f02::t_9c9e67a82e075b 144-206
+src/git/command_classification.rs
+  s_944d199f213f02::t_f09913bf1063c6 632-649
+  s_944d199f213f02::t_1d9a56968ff403 124
+  s_944d199f213f02::t_b521804e6eca82 89
+  s_944d199f213f02::t_162726fbb86ed6 582
+  s_944d199f213f02::t_17a7b06fe7b275 617-624
+src/daemon/analyzers/transport.rs
+  s_944d199f213f02::t_3526fc8ffcda97 146
+src/daemon/family_actor.rs
+  s_944d199f213f02::t_3526fc8ffcda97 194
+src/daemon/trace_normalizer.rs
+  s_944d199f213f02::t_3526fc8ffcda97 702
+src/daemon/domain.rs
+  s_944d199f213f02::t_ec6978733b8407 184-192
+  s_944d199f213f02::t_a8dcce2fc8543e 59-63
+src/daemon/ref_cursor.rs
+  s_944d199f213f02::t_a2d6ad9f900a38 5
+  s_944d199f213f02::t_6dcc2d6770aecb 3406
+  s_944d199f213f02::t_b7b813b0e9655d 194
+  s_944d199f213f02::t_3526fc8ffcda97 3568
+  s_944d199f213f02::t_30ea7895328013 849-872
+tests/integration/main.rs
+  s_944d199f213f02::t_9aaea6c50bfe54 68
+src/daemon/analyzers/generic.rs
+  s_944d199f213f02::t_3526fc8ffcda97 120
+src/authorship/mod.rs
+  s_944d199f213f02::t_5979b2fc08479a 21
+tests/integration/git_restore_source_attribution.rs
+  s_944d199f213f02::t_599167089de3ef 88-101,107,110-202,204,208-209,212-217,221-223,225-230,233-234,236-251,254-256,262-265,267
+  s_944d199f213f02::t_b18ac7a1165f2e 1-16,18-41,44-87
+  s_944d199f213f02::t_df6b831ad77709 17
+  s_944d199f213f02::t_ba50a680a078b8 203,205-207,218-220,224
+  s_944d199f213f02::t_17a7b06fe7b275 42-43,102-106,108-109,210-211,231-232,235,252-253,257-261,266
+src/daemon/analyzers/workspace.rs
+  s_944d199f213f02::t_3526fc8ffcda97 154
+  s_944d199f213f02::t_e9d6351132bee1 178-186,195-242,260-276
+  s_944d199f213f02::t_c33fe980adb271 48-61
+  s_944d199f213f02::t_17a7b06fe7b275 187-194,243-259
+src/daemon/analyzers/mod.rs
+  s_944d199f213f02::t_3e1c7d40622d4f 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.11",
+  "base_commit_sha": "6224642cbaf6bf0de47b449c8c9e84d179e02f44",
+  "prompts": {},
+  "sessions": {
+    "s_944d199f213f02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1be3334c-4956-4f59-aa13-fffb04db4f6a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

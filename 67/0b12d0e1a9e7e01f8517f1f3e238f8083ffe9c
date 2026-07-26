@@ -1,0 +1,27 @@
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_32164374f01f12::t_117bc29d4b1f27 1-412,414-849
+  s_32164374f01f12::t_23a9362ec6a826 413
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_32164374f01f12::t_23a9362ec6a826 140,273
+  s_32164374f01f12::t_56c88f35230ff9 1-139,141-272,274-378
+src/commands/checkpoint_agent/presets/github_copilot/mod.rs
+  s_32164374f01f12::t_6dbebb78143e2d 1-200,202-204,261-305,307-328
+  s_32164374f01f12::t_da5185347f98c8 306
+  s_32164374f01f12::t_4250ab820889ea 201,205-260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "670b12d0e1a9e7e01f8517f1f3e238f8083ffe9c",
+  "prompts": {},
+  "sessions": {
+    "s_32164374f01f12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9fc214cf-6b53-4d7e-9dd0-35049f95cdec",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe"
+    }
+  }
+}

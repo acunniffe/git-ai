@@ -1,0 +1,24 @@
+src/commands/checkpoint.rs
+  6bf027081a6def25 481-548,603,661-673
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.5",
+  "base_commit_sha": "b32c73f330a1f7c963b129fe25a1e6f58d6b2baa",
+  "prompts": {
+    "6bf027081a6def25": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d4b12-8bb3-7ed3-a3be-cca0cad393a6",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 173,
+      "total_deletions": 89,
+      "accepted_lines": 88,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e5fdba0e773ab622e3552617452e60d6fc173d14d78b95cab3349ec75244634e"
+    }
+  }
+}

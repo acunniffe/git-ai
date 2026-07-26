@@ -1,0 +1,55 @@
+src/config.rs
+  d99ed50fa05ae317 16-18,21,31,67,86-87,101,108-109,171-189,197,200,202,208,243-250,294,296,303,383-399,404,414,423,433,558-559,565,582-592,607,623,708,710,713,726,731-732,734-735,739,741,743-744,748,750,753-756,760-761,763-766,768-769,773-776,778-779,781,783,786-787,791,793,795-798
+README.md
+  d99ed50fa05ae317 55-56,59,62,65-66,69,72
+src/authorship/internal_db.rs
+  d99ed50fa05ae317 145
+docs/reference.mdx
+  d99ed50fa05ae317 283
+docs/enterprise-configuration.mdx
+  d99ed50fa05ae317 34-35,95,106-108,125,127,129,133-135,139,145-146,150,154-157
+tests/ignore_prompts.rs
+  d99ed50fa05ae317 86-87,89-90,139,199,201,286
+src/commands/config.rs
+  d99ed50fa05ae317 99,110,222,224,229,301-302,381,383,528-529,658
+tests/initial_attributions.rs
+  d99ed50fa05ae317 66,155,231,248,319,408
+tests/repos/test_repo.rs
+  d99ed50fa05ae317 48-49,124-125
+src/authorship/authorship_log.rs
+  d99ed50fa05ae317 201-203,256
+src/authorship/authorship_log_serialization.rs
+  d99ed50fa05ae317 777,844,893,1072,1243,1267
+src/commands/hooks/push_hooks.rs
+  d99ed50fa05ae317 60-64
+src/commands/flush_cas.rs
+  d99ed50fa05ae317 3,6-18,21,23,25-32,125-137,157-166
+src/authorship/post_commit.rs
+  d99ed50fa05ae317 1,91-102,108-109,111-122,124-139,313-374
+tests/claude_code.rs
+  d99ed50fa05ae317 104,106
+src/api/client.rs
+  d99ed50fa05ae317 142-146
+src/authorship/virtual_attribution.rs
+  d99ed50fa05ae317 366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "46ff19a6356dfa8aefa887401a7dbd6c10ad2cbd",
+  "prompts": {
+    "d99ed50fa05ae317": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c763bad-eca3-4c2b-ba06-ff5a84c61771",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 493,
+      "total_deletions": 215,
+      "accepted_lines": 385,
+      "overriden_lines": 2
+    }
+  }
+}

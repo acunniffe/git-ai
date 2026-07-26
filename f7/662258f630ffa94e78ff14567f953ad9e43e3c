@@ -1,0 +1,65 @@
+src/metrics/db.rs
+  s_e5091f66d18bd9::t_6470a12c429b52 161-162,181,197-200,211,219,1485,1677,1719,1760,1824
+src/streams/db.rs
+  s_e5091f66d18bd9::t_d8da5b95d869b4 152-155
+  s_e5091f66d18bd9::t_3fd23c78e501d5 998,1069
+src/lib.rs
+  s_e5091f66d18bd9::t_a8901e2f2690b2 20
+src/sqlite.rs
+  s_e5091f66d18bd9::t_2873f0662f9ebf 1-49,52-58
+  s_e5091f66d18bd9::t_d8da5b95d869b4 50-51
+src/commands/analyze/sessions.rs
+  s_e5091f66d18bd9::t_a9e2af599ce91b 741,1533-1536,1540,1558,1572,1614,1645,1675,1728,1741,1757,1774,1804
+src/streams/agents/opencode.rs
+  s_e5091f66d18bd9::t_774f6c9210e46a 36,358,451,483,529-538
+  s_e5091f66d18bd9::t_d8da5b95d869b4 31-32,34
+tests/integration/main.rs
+  s_e5091f66d18bd9::t_d06eae12f6c3c0 123
+tests/integration/opencode.rs
+  s_e5091f66d18bd9::t_d8da5b95d869b4 35-39
+  s_e5091f66d18bd9::t_3f317458835e57 22
+src/daemon/bash_history_db.rs
+  s_e5091f66d18bd9::t_4d34e0f07aac7b 894,903,905
+  s_e5091f66d18bd9::t_2aa41f8f914d26 904
+  s_e5091f66d18bd9::t_cbec23e049facb 913-914
+  s_e5091f66d18bd9::t_10665f24169738 92,149,153-163,166-169,197,202-209
+  s_e5091f66d18bd9::t_96d081dd7fc1e3 150
+  s_e5091f66d18bd9::t_2209f0380bf3bf 186-188
+  s_e5091f66d18bd9::t_e66eac7615306d 896-897
+  s_e5091f66d18bd9::t_66333438856362 181-185,189-190,216
+  s_e5091f66d18bd9::t_124a8a4d9d7503 906-912
+src/streams/model_extraction.rs
+  s_e5091f66d18bd9::t_ab6407de19cdb8 347
+src/daemon/telemetry_worker.rs
+  s_e5091f66d18bd9::t_f649a32bfefa9d 1435-1436,1500-1501,1564-1565,1642-1643,1717-1718,1770-1771,1811-1812
+src/streams/agents/copilot_otel.rs
+  s_e5091f66d18bd9::t_f20e15804fd1a8 353,407,424,438,465,493,522,706,766,829,879,901,965
+src/error.rs
+  s_e5091f66d18bd9::t_83bd5916f84ab1 176-178,279-281
+src/notes/db.rs
+  s_e5091f66d18bd9::t_6338c8d2993aac 73-74,87,108,583
+tests/integration/sqlite_connection_policy.rs
+  s_e5091f66d18bd9::t_d8da5b95d869b4 24-25
+  s_e5091f66d18bd9::t_54a4f88b33baea 5,26
+  s_e5091f66d18bd9::t_4322b0db5577d2 1-4,6-23,27-59
+scripts/create_test_vsc_db.py
+  s_e5091f66d18bd9::t_4706c2322e311e 46-47
+src/authorship/internal_db.rs
+  s_e5091f66d18bd9::t_47d1da760f3c3b 118-119,156,534,577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.8",
+  "base_commit_sha": "f7662258f630ffa94e78ff14567f953ad9e43e3c",
+  "prompts": {},
+  "sessions": {
+    "s_e5091f66d18bd9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1e87-65b8-7960-9c57-dd4639ffba93",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

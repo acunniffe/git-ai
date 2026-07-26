@@ -1,0 +1,118 @@
+src/authorship/stats.rs
+  a6bcdcf51f19c92d 79,82
+src/commands/git_handlers.rs
+  a6bcdcf51f19c92d 152,198,479,584,770,773,792,795
+src/commands/daemon.rs
+  a6bcdcf51f19c92d 9,309,312,376,379
+src/commands/hooks/switch_hooks.rs
+  a6bcdcf51f19c92d 27,32,45,48,51,55,72,88,94,97,128,135,140,143
+src/git/repo_storage.rs
+  a6bcdcf51f19c92d 7,129,132,181,195,198,476,479,760,763,768,771
+src/commands/hooks/push_hooks.rs
+  a6bcdcf51f19c92d 20,23,32,35,40,53,57,60,63
+src/commands/hooks/rebase_hooks.rs
+  a6bcdcf51f19c92d 13,20,24,30,33,42,45,53,66-67,71,74,84-85,92,96,100,105,121,127,135,140-141,144,150,152,155,163,217,220,226,230,235,242,247,250,254,258,262,268,272,276-277,282,289,300,310,385,388,404,411
+src/mdm/agents/cursor.rs
+  a6bcdcf51f19c92d 358,361
+src/commands/prompts_db.rs
+  a6bcdcf51f19c92d 830,833,990,1010,1013,1054,1057,1099,1102,1110,1113,1163,1166,1175,1178,1195,1198,1288,1291,1314
+src/commands/ci_handlers.rs
+  a6bcdcf51f19c92d 63,66,79,81,123,126,139,141,262,268
+src/authorship/attribution_tracker.rs
+  a6bcdcf51f19c92d 311,314,328,332,372,377
+src/commands/checkpoint_agent/opencode_preset.rs
+  a6bcdcf51f19c92d 270
+src/mdm/jetbrains/detection.rs
+  a6bcdcf51f19c92d 125,128
+src/commands/hooks/plumbing_rewrite_hooks.rs
+  a6bcdcf51f19c92d 26,30
+src/authorship/range_authorship.rs
+  a6bcdcf51f19c92d 101,181,184,203,215,218,223,244,248,292,295,304,308
+src/commands/git_ai_handlers.rs
+  a6bcdcf51f19c92d 1086,1333,1336
+src/authorship/rebase_authorship.rs
+  a6bcdcf51f19c92d 146,149,158,161,169,172,185,188,205,208,226,229,268,271,273,276,578,581,609,624,629,632,662,665,696,700,709,712,1089,1094,1104,1107,1115,1119,1123,1169,1172,1174,1180,1185,1275,1282,1488,1493,1816,1819,1823,1826,1877,1881,1902,1905,1907,1919,1923,1969,1974,2046,2050,2992,2996,2999,3033,3040,3043,3061,3064,3100,3104,3121,3125,3135,3138,3144,3148,3169,3172,3463,3467,3495,3499,3501,3504-3505,3508,3526,3530,3538,3542,3585,3589,3591,3594-3595,3598
+src/commands/git_hook_handlers.rs
+  a6bcdcf51f19c92d 364,368
+src/commands/checkpoint_agent/bash_tool.rs
+  a6bcdcf51f19c92d 17,382,385,395,579,582,690,706,741,744,753,758,762,837,841,869,873,892,990,994,1001,1005,1015,1019,1062,1065,1139,1150,1154,1158,1167,1202,1205,1212,1216,1219,1240,1254,1267,1298,1301,1308,1312,1315,1396,1400,1418,1451,1485,1490,1506,1509,1565,1621,1624,1631,1637,1654,1666,1669
+src/commands/checkpoint_agent/amp_preset.rs
+  a6bcdcf51f19c92d 209
+src/commands/hooks/clone_hooks.rs
+  a6bcdcf51f19c92d 16,21,24,30,33,41,56,61
+src/authorship/git_ai_hooks.rs
+  a6bcdcf51f19c92d 61,64,74,77,88,91,95,98,125,128,133,136,147,151,157,160,164,167
+src/authorship/prompt_utils.rs
+  a6bcdcf51f19c92d 182,201,204,236,239,277,280,320,323,365,368,406,409,442,445,463,466,533,536,576,579,605,608
+src/commands/hooks/commit_hooks.rs
+  a6bcdcf51f19c92d 53
+src/mdm/utils.rs
+  a6bcdcf51f19c92d 195,199
+src/observability/wrapper_performance_targets.rs
+  a6bcdcf51f19c92d 5,61,64-65,71,87-88,92,115,132-133,136,138-139,142
+src/authorship/internal_db.rs
+  a6bcdcf51f19c92d 318,429,433,450,453
+src/commands/checkpoint_agent/agent_presets.rs
+  a6bcdcf51f19c92d 88,91,324,1038,1208,1456,1485,3357
+src/commands/show_prompt.rs
+  a6bcdcf51f19c92d 50,57,60,76,79,91,95,108,111
+src/config.rs
+  a6bcdcf51f19c92d 755
+src/mdm/agents/jetbrains.rs
+  a6bcdcf51f19c92d 65,68,71,74,98,101,106,109,168,172
+src/mdm/agents/vscode.rs
+  a6bcdcf51f19c92d 154,157
+src/daemon/telemetry_worker.rs
+  a6bcdcf51f19c92d 254,521,531,566,569
+src/git/sync_authorship.rs
+  a6bcdcf51f19c92d 107,110,114,117,119-120,122-123,126,143,146,160,164,167-168,171,175,178,181,192,195,197,200,205,208,210,215,218,247,251,259,262,267,294,309,312,314,320,323,325,330
+src/commands/hooks/cherry_pick_hooks.rs
+  a6bcdcf51f19c92d 13,20,24,30,33,39,45,49,54,68-69,73,76,91-92,99,103,107,112,120,125,130-131,134,140,142,145,148,320,325,328,355,369,372,376,381,393-394,403,406,412,416,421,428,435,439,445,448,452,456,460,466,470-471,482,492,507,510
+src/authorship/post_commit.rs
+  a6bcdcf51f19c92d 99,102,187,204,207,213,216,273,276,279,286
+src/git/refs.rs
+  a6bcdcf51f19c92d 340,343,570,573,629,681
+src/commands/hooks/stash_hooks.rs
+  a6bcdcf51f19c92d 36,49,77,80,82,85,90,99,102,109,116,124,129,132,136,139,145,177,202,207,211,225,228,232,235,246,249,255,264,269,273,321,324,466
+src/commands/hooks/update_ref_hooks.rs
+  a6bcdcf51f19c92d 81,84,96,99
+src/git/repository.rs
+  a6bcdcf51f19c92d 1252,1255
+src/authorship/virtual_attribution.rs
+  a6bcdcf51f19c92d 2110,2113,2119,2136,2139,2150,2162,2177,2202,2205,2219,2223-2224,2226
+src/commands/hooks/reset_hooks.rs
+  a6bcdcf51f19c92d 41,50,54,57,63,72,84,87,91,168,171,184,187,192,209,215,232,235,238,241,256,259,263,266,276,284,287,319,322,325,328,340,343,361,364,380,383
+src/authorship/pre_commit.rs
+  a6bcdcf51f19c92d 34,38
+src/commands/hooks/fetch_hooks.rs
+  a6bcdcf51f19c92d 26,36,39,43,46,70,73,87,90,96,102,116,119,122,126,180,183,224,245,248,286,289,380,383,393,397,401,407,411,432,440
+src/commands/checkpoint.rs
+  a6bcdcf51f19c92d 19,264,270,375,385,388,631,634,649,666,669,688,691,748,752,793,797,816,819,826,830,842,845,861,865,903,906,917,920,932,935,1003,1006,1198,1266,1269,1356,1359,1369,1372,1382,1385,1400,1403,1419,1422,1431,1434,1743,1747,1834,1838,1871,1874,1879,1882,1983,1987,1992,1996,2013,2017-2018,2021,2060,2064,2075,2079,2091,2095,2100,2104
+src/commands/hooks/merge_hooks.rs
+  a6bcdcf51f19c92d 39,42
+src/commands/hooks/checkout_hooks.rs
+  a6bcdcf51f19c92d 48,53,66,69,72,76,97,116,119,129,135,138,174,181,186,189,198
+src/mdm/jetbrains/download.rs
+  a6bcdcf51f19c92d 18,125,128,139,142,157,161,166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "28bfe59eb1ed2bb8265115768fcaa45ccc185dfe",
+  "prompts": {
+    "a6bcdcf51f19c92d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84365ffc-bffe-41d6-b7e2-11822ec2da90",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 2195,
+      "total_deletions": 2262,
+      "accepted_lines": 764,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/9972585358a55f5f45a7f45956cf50cb652949e834b1d6feca679fa899ccfcf1"
+    }
+  }
+}

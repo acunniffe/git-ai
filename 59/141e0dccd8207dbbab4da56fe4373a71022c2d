@@ -1,0 +1,76 @@
+src/mdm/git_clients/sublime_merge.rs
+  f7eceb53c924dc37 128,159,386
+src/mdm/ensure_git_symlinks.rs
+  e77e60f52764c69a 2-3,5-12,14-15,18-30,32,38,41
+  2b68af21130356fd 1,4,13,16-17,31,33-37,39-40,42
+src/commands/install_hooks.rs
+  2b68af21130356fd 104-108
+  f7eceb53c924dc37 8,212,393
+src/mdm/mod.rs
+  2b68af21130356fd 2,11
+src/mdm/git_clients/fork_app.rs
+  f7eceb53c924dc37 91,114,212,242
+src/mdm/utils.rs
+  f7eceb53c924dc37 301-302,304-316
+src/mdm/git_client_installer.rs
+  f7eceb53c924dc37 7-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.38",
+  "base_commit_sha": "59141e0dccd8207dbbab4da56fe4373a71022c2d",
+  "prompts": {
+    "2b68af21130356fd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5de1d0bf-983d-402b-88b5-af0cad88df77",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 132,
+      "total_deletions": 42,
+      "accepted_lines": 21,
+      "overriden_lines": 0
+    },
+    "694019910dfd52f5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7b78cc8-9aa1-4da4-a896-5a645f466fea",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 8,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "e77e60f52764c69a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7a3c48b-c2f0-4119-b82a-fbbe928d4796",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 73,
+      "accepted_lines": 28,
+      "overriden_lines": 0
+    },
+    "f7eceb53c924dc37": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7c651239-0a8b-4af9-9c61-df02e6e0927d",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 43,
+      "total_deletions": 31,
+      "accepted_lines": 28,
+      "overriden_lines": 0
+    }
+  }
+}

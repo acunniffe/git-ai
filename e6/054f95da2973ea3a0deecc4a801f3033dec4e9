@@ -1,0 +1,21 @@
+src/daemon/checkpoint_worker.rs
+  s_3b8401a0cbe012::t_3ffabb3b92121e 212
+  s_3b8401a0cbe012::t_65769fd4ccdde3 255-287
+  s_3b8401a0cbe012::t_90b43f5c4cd9ff 49-67,69,74,95-96,99-101,107,110-111,116-118,143,145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "e6054f95da2973ea3a0deecc4a801f3033dec4e9",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

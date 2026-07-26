@@ -1,0 +1,27 @@
+tests/integration/fuzzer/workflows.rs
+  s_af2d349a5e032c::t_624ec982605860 225,227,243,404,414,417,425,471,473,560,562,624,626,638,779,782,867,876,878,880,882,891,902,1011,1013,1023,1025,1102,1104,1112,1114
+  s_af2d349a5e032c::t_b80e784e875c25 223,241,245,403,431,470,558,623,636,640,778,795,865,900,904,1010,1022,1031,1100,1111
+tests/integration/fuzzer/operations.rs
+  s_af2d349a5e032c::t_ecda531bba7d6c 312,391,401,462,927,1661,1664,1679,1804,2097,2099,2135,2263,2266,2269,2772,2775,2830,2833,2893,2895,3462,3465,3736,3743,4150,4152,4162,4317,4319,4328,4330,4612,4614,4748,4867,4915,4990,4992,5006,5093,5153,5202,5281,5283,5299
+tests/integration/fuzzer/oracle.rs
+  s_af2d349a5e032c::t_3376d2e12af722 113
+  s_af2d349a5e032c::t_62d43e0eb76dcd 199
+  s_af2d349a5e032c::t_57afab32b1822b 455,461-466
+  s_af2d349a5e032c::t_5d35da9f8d50e1 167-168,170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "eb932d4020af672e4b9ef1d6765af2201e6a7c81",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
