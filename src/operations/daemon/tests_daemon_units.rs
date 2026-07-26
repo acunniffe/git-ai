@@ -4,10 +4,7 @@ use crate::model::checkpoint_request::{
 };
 use crate::model::working_log::CheckpointKind;
 use crate::operations::daemon::actor_coordinator_side_effects::commit_enrichment_unrecoverable_error;
-use crate::operations::daemon::cherry_pick_helpers::{
-    cherry_pick_source_args_from_command_args, rebase_new_tip_from_command,
-    revert_source_args_from_command_args,
-};
+use crate::operations::daemon::cherry_pick_helpers::rebase_new_tip_from_command;
 use crate::operations::daemon::revert_rebase_helpers::strict_rebase_original_head_from_command;
 use serial_test::serial;
 use std::collections::HashMap;
@@ -257,41 +254,6 @@ fn conflict_resolution_note_read_errors_are_not_silently_ignored() {
     assert!(
         result.is_err(),
         "corrupt destination notes must fail closed instead of being treated as absent"
-    );
-}
-
-#[test]
-fn revert_source_args_do_not_treat_bare_gpg_sign_as_value_option() {
-    assert_eq!(
-        revert_source_args_from_command_args(&["--gpg-sign".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-    assert_eq!(
-        revert_source_args_from_command_args(&["-S".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-    assert_eq!(
-        revert_source_args_from_command_args(&["-Smy-key".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-}
-
-#[test]
-fn cherry_pick_source_args_do_not_treat_bare_gpg_sign_as_value_option() {
-    assert_eq!(
-        cherry_pick_source_args_from_command_args(&[
-            "--gpg-sign".to_string(),
-            "HEAD~1".to_string()
-        ]),
-        vec!["HEAD~1"]
-    );
-    assert_eq!(
-        cherry_pick_source_args_from_command_args(&["-S".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-    assert_eq!(
-        cherry_pick_source_args_from_command_args(&["-Smy-key".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
     );
 }
 

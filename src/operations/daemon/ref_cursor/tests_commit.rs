@@ -25,38 +25,6 @@ fn commit_subject_matches_git_reflog_trailing_whitespace_cleanup() {
 }
 
 #[test]
-fn revert_source_args_do_not_treat_bare_gpg_sign_as_value_option() {
-    assert_eq!(
-        revert_source_args(&["--gpg-sign".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-    assert_eq!(
-        revert_source_args(&["-S".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-    assert_eq!(
-        revert_source_args(&["-Smy-key".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-}
-
-#[test]
-fn cherry_pick_source_args_do_not_treat_bare_gpg_sign_as_value_option() {
-    assert_eq!(
-        cherry_pick_source_args(&["--gpg-sign".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-    assert_eq!(
-        cherry_pick_source_args(&["-S".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-    assert_eq!(
-        cherry_pick_source_args(&["-Smy-key".to_string(), "HEAD~1".to_string()]),
-        vec!["HEAD~1"]
-    );
-}
-
-#[test]
 fn cold_start_late_ingress_offset_does_not_skip_commit_on_uninitialized_head_cursor() {
     // Regression for the concurrent-burst / rebase-patch-stack flake. Unlike
     // the initialized-cursor case below, here the worktree HEAD cursor is

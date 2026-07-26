@@ -12,6 +12,7 @@ pub mod path_format;
 pub mod refs;
 pub mod repo_state;
 pub mod repository;
+pub(crate) mod sequencer_args;
 
 pub mod authorship_traversal;
 

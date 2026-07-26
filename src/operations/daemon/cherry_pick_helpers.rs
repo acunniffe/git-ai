@@ -5,6 +5,9 @@ use crate::clients::git_cli::exec_git;
 use crate::error::GitAiError;
 use crate::operations::git::oid::is_non_zero_oid;
 use crate::operations::git::repository::Repository;
+use crate::operations::git::sequencer_args::{
+    cherry_pick_source_args_from_command_args, revert_source_args,
+};
 
 use super::{
     is_valid_oid, parsed_invocation_for_normalized_command, rebase_is_control_mode,
@@ -128,49 +131,6 @@ pub(crate) fn cherry_pick_command_has_flag(
     }
 
     parsed.command_args.iter().any(|arg| arg == flag)
-}
-
-pub(crate) fn cherry_pick_source_args_from_command_args(args: &[String]) -> Vec<&str> {
-    let mut sources = Vec::new();
-    let mut idx = 0usize;
-    while idx < args.len() {
-        let arg = args[idx].as_str();
-        if arg == "--" {
-            sources.extend(args[idx + 1..].iter().map(String::as_str));
-            break;
-        }
-        if matches!(arg, "--abort" | "--continue" | "--quit" | "--skip") {
-            return Vec::new();
-        }
-        if matches!(
-            arg,
-            "-m" | "--mainline" | "-X" | "--strategy-option" | "--strategy"
-        ) {
-            idx = idx.saturating_add(2);
-            continue;
-        }
-        if arg.starts_with("--mainline=")
-            || arg.starts_with("--strategy=")
-            || arg.starts_with("--strategy-option=")
-            || arg == "--gpg-sign"
-            || arg.starts_with("--gpg-sign=")
-            || arg.starts_with("-m")
-            || arg.starts_with("-X")
-            || arg.starts_with("-S")
-        {
-            idx += 1;
-            continue;
-        }
-        if arg.starts_with('-') {
-            idx += 1;
-            continue;
-        }
-        if !arg.is_empty() {
-            sources.push(arg);
-        }
-        idx += 1;
-    }
-    sources
 }
 
 fn cherry_pick_source_is_range(source: &str) -> bool {
@@ -323,55 +283,10 @@ pub(crate) fn revert_source_args_for_side_effect(
         return Vec::new();
     }
 
-    revert_source_args_from_command_args(&parsed.command_args)
+    revert_source_args(&parsed.command_args)
         .into_iter()
         .map(ToOwned::to_owned)
         .collect()
-}
-
-pub(crate) fn revert_source_args_from_command_args(args: &[String]) -> Vec<&str> {
-    let args = if args.first().is_some_and(|arg| arg == "revert") {
-        &args[1..]
-    } else {
-        args
-    };
-    let mut sources = Vec::new();
-    let mut idx = 0usize;
-    while idx < args.len() {
-        let arg = args[idx].as_str();
-        if arg == "--" {
-            sources.extend(args[idx + 1..].iter().map(String::as_str));
-            break;
-        }
-        if matches!(arg, "--abort" | "--continue" | "--quit" | "--skip") {
-            return Vec::new();
-        }
-        if matches!(arg, "-m" | "--mainline") {
-            idx = idx.saturating_add(2);
-            continue;
-        }
-        if arg.starts_with("--mainline=")
-            || arg == "--gpg-sign"
-            || arg.starts_with("--gpg-sign=")
-            || arg.starts_with("-S")
-        {
-            idx += 1;
-            continue;
-        }
-        if matches!(arg, "-n" | "--no-commit" | "--no-edit" | "-e" | "--edit") {
-            idx += 1;
-            continue;
-        }
-        if arg.starts_with('-') {
-            idx += 1;
-            continue;
-        }
-        if !arg.is_empty() {
-            sources.push(arg);
-        }
-        idx += 1;
-    }
-    sources
 }
 
 pub(crate) fn resolve_explicit_revert_sources_for_side_effect(
