@@ -26,13 +26,8 @@ fn test_github_copilot_human_checkpoint_before_edit() {
         }
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &hook_input.to_string())
+        .unwrap();
 
     // Now commit the changes
     repo.stage_all_and_commit("Add constants").unwrap();
@@ -75,13 +70,8 @@ fn test_github_copilot_human_checkpoint_scoped_to_files() {
         }
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &hook_input.to_string())
+        .unwrap();
 
     // Commit the changes
     repo.stage_all_and_commit("Add constants").unwrap();
@@ -119,13 +109,8 @@ fn test_github_copilot_human_then_ai_checkpoint() {
         }
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &human_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &human_hook_input.to_string())
+        .unwrap();
 
     // AI makes a change
     file.insert_at(2, crate::lines!["const z = 3;".ai()]);
@@ -182,13 +167,8 @@ fn test_github_copilot_multiple_files_with_dirty_files() {
         }
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &hook_input.to_string())
+        .unwrap();
 
     // Commit the changes
     repo.stage_all_and_commit("Add constants").unwrap();
@@ -217,12 +197,7 @@ fn test_github_copilot_empty_will_edit_filepaths_fails() {
         "dirtyFiles": {}
     });
 
-    let result = repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &hook_input.to_string(),
-    ]);
+    let result = repo.checkpoint_with_hook_input("github-copilot", &hook_input.to_string());
 
     // Should exit 0 (to avoid interrupting agent hooks) but print error message
     let output = result.unwrap();
@@ -254,13 +229,8 @@ fn test_github_copilot_human_checkpoint_with_clean_file() {
         }
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &hook_input.to_string())
+        .unwrap();
 
     // Now make a change
     file.insert_at(1, crate::lines!["const y = 2;"]);

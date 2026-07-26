@@ -401,7 +401,7 @@ fn test_opencode_e2e_checkpoint_and_commit() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "opencode", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("opencode", &pre_hook_input)
         .unwrap();
 
     fs::write(&file_path, "// initial\n// Hello World\n").unwrap();
@@ -416,7 +416,7 @@ fn test_opencode_e2e_checkpoint_and_commit() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "opencode", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("opencode", &post_hook_input)
         .unwrap();
 
     unsafe {
@@ -545,7 +545,7 @@ fn test_opencode_checkpoint_tool_use_id_matches_transcript_callid() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "opencode", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("opencode", &pre_hook_input)
         .unwrap();
 
     std::fs::write(&file_path, "// initial\n// AI edit\n").unwrap();
@@ -562,7 +562,7 @@ fn test_opencode_checkpoint_tool_use_id_matches_transcript_callid() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "opencode", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("opencode", &post_hook_input)
         .unwrap();
 
     unsafe {

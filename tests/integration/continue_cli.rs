@@ -302,7 +302,7 @@ fn test_continue_cli_e2e_with_attribution() {
     .to_string();
 
     let result = repo
-        .git_ai(&["checkpoint", "continue-cli", "--hook-input", &hook_input])
+        .checkpoint_with_hook_input("continue-cli", &hook_input)
         .unwrap();
 
     println!("Checkpoint output: {}", result);
@@ -370,7 +370,7 @@ fn test_continue_cli_e2e_human_checkpoint() {
     .to_string();
 
     let result = repo
-        .git_ai(&["checkpoint", "continue-cli", "--hook-input", &hook_input])
+        .checkpoint_with_hook_input("continue-cli", &hook_input)
         .unwrap();
 
     println!("Checkpoint output: {}", result);
@@ -421,7 +421,7 @@ fn test_continue_cli_e2e_multiple_tool_calls() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "continue-cli", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("continue-cli", &hook_input)
         .unwrap();
 
     let commit = repo.stage_all_and_commit("Add multiple lines").unwrap();
@@ -462,7 +462,7 @@ fn test_continue_cli_e2e_preserves_model_on_commit() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "continue-cli", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("continue-cli", &hook_input)
         .unwrap();
 
     let commit = repo.stage_all_and_commit("Add line").unwrap();

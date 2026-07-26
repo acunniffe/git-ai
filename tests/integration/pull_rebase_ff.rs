@@ -1312,7 +1312,7 @@ fn checkpoint_claude_file_edit(
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("claude", &hook_input)
         .expect("claude checkpoint should succeed");
 }
 

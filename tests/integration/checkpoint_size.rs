@@ -234,7 +234,7 @@ fn test_checkpoint_total_size_budget_applies_to_bash_checkpoints() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("codex", &pre_hook)
         .expect("pre bash checkpoint should succeed");
 
     fs::write(&kept_path, "a".repeat(48)).expect("write kept edit");
@@ -253,7 +253,7 @@ fn test_checkpoint_total_size_budget_applies_to_bash_checkpoints() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("codex", &post_hook)
         .expect("post bash checkpoint should succeed");
 
     let checkpoints = repo.current_working_logs().read_all_checkpoints().unwrap();

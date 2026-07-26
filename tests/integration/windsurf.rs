@@ -266,7 +266,7 @@ fn test_windsurf_e2e_with_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("windsurf", &hook_input)
         .unwrap();
 
     let commit = repo.stage_all_and_commit("Add windsurf edit").unwrap();
@@ -308,7 +308,7 @@ fn test_windsurf_e2e_human_checkpoint() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("windsurf", &hook_input)
         .unwrap();
 
     fs::write(&file_path, "const x = 1;\nconst y = 2;\n").unwrap();
@@ -384,7 +384,7 @@ fn test_windsurf_preset_post_run_command_detects_changed_files() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("windsurf", &pre_hook_input)
         .unwrap();
 
     thread::sleep(Duration::from_millis(50));
@@ -402,7 +402,7 @@ fn test_windsurf_preset_post_run_command_detects_changed_files() {
     .to_string();
 
     // Post-run also via CLI since the bash tool state is in the repo
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("windsurf", &post_hook_input)
         .unwrap();
 
     // Verify that files were changed (commit and check attribution)
@@ -431,7 +431,7 @@ fn test_windsurf_preset_post_run_command_without_snapshot_falls_back_gracefully(
     .to_string();
 
     // Use CLI to ensure it doesn't error
-    let result = repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &hook_input]);
+    let result = repo.checkpoint_with_hook_input("windsurf", &hook_input);
     assert!(
         result.is_ok(),
         "orphan post_run_command should not error: {:?}",
@@ -458,7 +458,7 @@ fn test_windsurf_e2e_run_command_attribution() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("windsurf", &pre_hook)
         .unwrap();
 
     thread::sleep(Duration::from_millis(50));
@@ -474,7 +474,7 @@ fn test_windsurf_e2e_run_command_attribution() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("windsurf", &post_hook)
         .unwrap();
 
     let commit = repo.stage_all_and_commit("Windsurf bash edit").unwrap();
@@ -514,7 +514,7 @@ fn test_windsurf_known_human_suppressed_during_pending_ai_edit() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("windsurf", &pre_hook)
         .unwrap();
 
     // Step 2: Windsurf edits the file.
@@ -534,7 +534,7 @@ fn test_windsurf_known_human_suppressed_during_pending_ai_edit() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("windsurf", &post_hook)
         .unwrap();
 
     // Commit and verify attribution.
@@ -589,7 +589,7 @@ fn test_known_human_works_after_ai_edit_completes() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("windsurf", &pre_hook)
         .unwrap();
     fs::write(&file_path, "base\nai line\n").unwrap();
     let post_hook = json!({
@@ -600,7 +600,7 @@ fn test_known_human_works_after_ai_edit_completes() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "windsurf", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("windsurf", &post_hook)
         .unwrap();
 
     // Now a genuine human edit after the AI edit completed.

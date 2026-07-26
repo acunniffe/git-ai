@@ -197,7 +197,7 @@ fn test_amp_e2e_checkpoint_and_commit() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "amp", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("amp", &pre_hook_input)
         .unwrap();
 
     fs::write(&file_path, "// initial\n// Hello from amp\n").unwrap();
@@ -212,7 +212,7 @@ fn test_amp_e2e_checkpoint_and_commit() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "amp", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("amp", &post_hook_input)
         .unwrap();
 
     unsafe {
@@ -271,7 +271,7 @@ fn test_amp_post_commit_resyncs_latest_thread_transcript() {
         "edited_filepaths": [file_path.to_string_lossy().to_string()]
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "amp", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("amp", &pre_hook_input)
         .unwrap();
 
     fs::write(&file_path, "// initial\n// ai edit\n").unwrap();
@@ -283,7 +283,7 @@ fn test_amp_post_commit_resyncs_latest_thread_transcript() {
         "edited_filepaths": [file_path.to_string_lossy().to_string()]
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "amp", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("amp", &post_hook_input)
         .unwrap();
 
     append_assistant_message(

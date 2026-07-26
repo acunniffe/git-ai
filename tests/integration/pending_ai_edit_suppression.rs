@@ -17,7 +17,7 @@ fn fire_pre_edit_checkpoint(repo: &TestRepo, file_paths: &[&str]) {
         "will_edit_filepaths": abs_paths,
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &payload])
+    repo.checkpoint_with_hook_input("agent-v1", &payload)
         .unwrap();
 }
 

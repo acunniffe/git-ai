@@ -139,7 +139,7 @@ fn test_codex_preset_bash_recovery_minimizes_dirty_untracked_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("codex pre-hook checkpoint should succeed");
 
     // AI bash tool edits the file.
@@ -160,7 +160,7 @@ fn test_codex_preset_bash_recovery_minimizes_dirty_untracked_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("codex post-hook checkpoint should succeed");
 
     repo.stage_all_and_commit("After codex bash").unwrap();
@@ -203,7 +203,7 @@ fn test_bash_checkpoints_v2_records_for_recovery_without_working_log_checkpoints
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("codex pre-hook checkpoint should succeed");
 
     fs::write(&file_path, "original line\nwritten by bash\n").unwrap();
@@ -219,7 +219,7 @@ fn test_bash_checkpoints_v2_records_for_recovery_without_working_log_checkpoints
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("codex post-hook checkpoint should succeed");
 
     let checkpoints = repo.current_working_logs().read_all_checkpoints().unwrap();
@@ -271,7 +271,7 @@ fn test_bash_checkpoints_v2_denies_before_attempt_persistence() {
     .to_string();
 
     let output = repo
-        .git_ai(&["checkpoint", "codex", "--hook-input", &hook_input])
+        .checkpoint_with_hook_input("codex", &hook_input)
         .expect("an authorization denial should preserve the hook exit-zero contract");
 
     assert!(output.contains("repository authorization could not be verified"));
@@ -294,7 +294,7 @@ fn test_bash_checkpoints_v2_denies_before_attempt_persistence() {
     })
     .to_string();
     let output = repo
-        .git_ai(&["checkpoint", "codex", "--hook-input", &hook_input])
+        .checkpoint_with_hook_input("codex", &hook_input)
         .expect("an authorization denial should preserve the hook exit-zero contract");
 
     assert!(output.contains("no repositories are allowed"));
@@ -342,7 +342,7 @@ fn test_bash_recovery_uses_commit_time_file_timestamps_when_processing_is_delaye
         "transcript_path": transcript_path.to_string_lossy().to_string()
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("codex pre-hook checkpoint should succeed");
 
     fs::write(&file_path, "dirty pre-bash line\nai bash line\n").unwrap();
@@ -357,7 +357,7 @@ fn test_bash_recovery_uses_commit_time_file_timestamps_when_processing_is_delaye
         "transcript_path": transcript_path.to_string_lossy().to_string()
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("codex post-hook checkpoint should succeed");
 
     repo.git_without_test_sync_for_test(

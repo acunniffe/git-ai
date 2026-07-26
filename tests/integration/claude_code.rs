@@ -214,14 +214,14 @@ fn test_claude_e2e_prefers_latest_checkpoint_for_prompts() {
 
     // First AI edit and checkpoint with empty transcript/model
     fs::write(&file_path, "fn main() {}\n// ai line one\n").unwrap();
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("claude", &hook_input)
         .unwrap();
 
     // Second AI edit with the real transcript content
     let fixture = fixture_path("example-claude-code.jsonl");
     fs::copy(&fixture, &transcript_path).unwrap();
     fs::write(&file_path, "fn main() {}\n// ai line one\n// ai line two\n").unwrap();
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("claude", &hook_input)
         .unwrap();
 
     // Commit the changes

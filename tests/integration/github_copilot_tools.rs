@@ -43,13 +43,8 @@ fn test_replace_string_in_file_basic() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // AI makes the edit with raw I/O
     std::fs::write(&file_path, "# Human comment\nimport argparse\n\ndef main():\n    parser = argparse.ArgumentParser(description=\"Hello World CLI\")\n    parser.parse_args()\n    print(\"Hello, World!\")\n\nif __name__ == \"__main__\":\n    main()\n").unwrap();
@@ -71,13 +66,8 @@ fn test_replace_string_in_file_basic() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     // Sync daemon before assertions
     repo.sync_daemon();
@@ -139,13 +129,8 @@ fn test_copilot_cli_edit_tool_attribution() {
         }
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // AI makes the edit (Copilot CLI writes to disk before PostToolUse)
     std::fs::write(
@@ -172,13 +157,8 @@ fn test_copilot_cli_edit_tool_attribution() {
         }
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     // Sync daemon before assertions
     repo.sync_daemon();
@@ -225,13 +205,8 @@ fn test_copilot_cli_create_tool_attribution() {
         }
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // Copilot CLI writes the file
     std::fs::write(&new_file, "print('hello world')\n").unwrap();
@@ -252,13 +227,8 @@ fn test_copilot_cli_create_tool_attribution() {
         }
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     repo.sync_daemon();
 
@@ -308,13 +278,8 @@ fn test_copilot_cli_claude_format_edit_update_attribution() {
         "tool_name": "Edit",
         "tool_input": patch,
     });
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // AI writes the edit to disk before PostToolUse.
     std::fs::write(
@@ -335,13 +300,8 @@ fn test_copilot_cli_claude_format_edit_update_attribution() {
             "text_result_for_llm": "Updated 1 file(s): jokes.csv"
         }
     });
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     repo.sync_daemon();
     repo.git(&["add", "jokes.csv"]).unwrap();
@@ -385,13 +345,8 @@ fn test_copilot_cli_claude_format_edit_create_attribution() {
         "tool_name": "Edit",
         "tool_input": patch,
     });
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // Copilot CLI writes the new file.
     std::fs::write(&new_file, "hi\nbye\n").unwrap();
@@ -408,13 +363,8 @@ fn test_copilot_cli_claude_format_edit_create_attribution() {
             "text_result_for_llm": "Added 1 file(s): hello.txt"
         }
     });
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     repo.sync_daemon();
     repo.git(&["add", "hello.txt"]).unwrap();
@@ -453,13 +403,8 @@ fn test_copilot_cli_claude_format_write_overwrite_attribution() {
         "tool_name": "Write",
         "tool_input": patch,
     });
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     std::fs::write(&file_path, "new draft\nsecond line\n").unwrap();
 
@@ -475,13 +420,8 @@ fn test_copilot_cli_claude_format_write_overwrite_attribution() {
             "text_result_for_llm": "Wrote 1 file(s): story.txt"
         }
     });
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     repo.sync_daemon();
     repo.git(&["add", "story.txt"]).unwrap();
@@ -519,12 +459,7 @@ fn test_copilot_cli_view_tool_skipped() {
 
     // Should exit 0 but print a skip/error message (non-edit tool)
     let output = repo
-        .git_ai(&[
-            "checkpoint",
-            "github-copilot",
-            "--hook-input",
-            &hook_input.to_string(),
-        ])
+        .checkpoint_with_hook_input("github-copilot", &hook_input.to_string())
         .unwrap();
 
     assert!(
@@ -573,13 +508,8 @@ fn test_run_in_terminal_bash_checkpoint() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // Simulate the bash command writing a file directly to disk — raw I/O only,
     // no set_contents/filename helpers between Pre and PostToolUse.
@@ -603,13 +533,8 @@ fn test_run_in_terminal_bash_checkpoint() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     // Sync daemon before assertions
     repo.sync_daemon();
@@ -654,13 +579,8 @@ fn test_run_in_terminal_no_changes() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // Command runs but doesn't modify any files
 
@@ -683,12 +603,7 @@ fn test_run_in_terminal_no_changes() {
     });
 
     // This should succeed but not create a checkpoint (no file changes)
-    let result = repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ]);
+    let result = repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string());
 
     // Should either succeed with no checkpoint or fail with "No editable file paths" error
     match result {

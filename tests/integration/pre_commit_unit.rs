@@ -108,7 +108,7 @@ fn test_pre_commit_checkpoint_context_uses_inflight_bash_agent_context() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("pre-hook checkpoint should succeed");
 
     // Modify a file and commit — the pre-commit hook should detect the active

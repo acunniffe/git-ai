@@ -114,7 +114,7 @@ fn run_iteration(
 
     // Time checkpoint
     let checkpoint_start = Instant::now();
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("claude", &hook_input)
         .expect("Checkpoint should succeed");
     let checkpoint_duration = checkpoint_start.elapsed();
 

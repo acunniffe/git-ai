@@ -245,13 +245,13 @@ fn test_droid_e2e_prefers_latest_checkpoint_for_prompts() {
     .to_string();
 
     fs::write(&file_path, "// initial\n// ai line one\n").unwrap();
-    repo.git_ai(&["checkpoint", "droid", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("droid", &hook_input)
         .unwrap();
 
     let fixture = fixture_path("droid-session.jsonl");
     fs::copy(&fixture, &transcript_path).unwrap();
     fs::write(&file_path, "// initial\n// ai line one\n// ai line two\n").unwrap();
-    repo.git_ai(&["checkpoint", "droid", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("droid", &hook_input)
         .unwrap();
 
     let commit = repo.stage_all_and_commit("Add AI lines").unwrap();

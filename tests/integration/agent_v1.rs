@@ -263,7 +263,7 @@ fn test_agent_v1_relative_dirty_files_e2e_attribution() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &human_payload])
+    repo.checkpoint_with_hook_input("agent-v1", &human_payload)
         .unwrap();
 
     let post_edit_content = "original line\nAI added line\n";
@@ -281,7 +281,7 @@ fn test_agent_v1_relative_dirty_files_e2e_attribution() {
         }
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &ai_payload])
+    repo.checkpoint_with_hook_input("agent-v1", &ai_payload)
         .unwrap();
 
     repo.stage_all_and_commit("AI edit").unwrap();
@@ -313,7 +313,7 @@ fn test_agent_v1_shell_command_e2e_attribution() {
         "command": "printf 'created by shell\\n' >> script-output.txt"
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &pre_payload])
+    repo.checkpoint_with_hook_input("agent-v1", &pre_payload)
         .unwrap();
 
     fs::write(&file_path, "base line\ncreated by shell\n").unwrap();
@@ -328,7 +328,7 @@ fn test_agent_v1_shell_command_e2e_attribution() {
         "command": "printf 'created by shell\\n' >> script-output.txt"
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &post_payload])
+    repo.checkpoint_with_hook_input("agent-v1", &post_payload)
         .unwrap();
 
     repo.stage_all_and_commit("Agent v1 shell edit").unwrap();

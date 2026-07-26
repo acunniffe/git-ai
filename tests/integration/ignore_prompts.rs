@@ -23,7 +23,7 @@ fn checkpoint_with_message(repo: &TestRepo, message: &str, edited_files: Vec<Str
 
     let hook_input_str = serde_json::to_string(&hook_input).unwrap();
 
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &hook_input_str])
+    repo.checkpoint_with_hook_input("agent-v1", &hook_input_str)
         .expect("checkpoint should succeed");
 }
 
@@ -53,7 +53,7 @@ fn checkpoint_with_message_and_conversation_id(
 
     let hook_input_str = serde_json::to_string(&hook_input).unwrap();
 
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &hook_input_str])
+    repo.checkpoint_with_hook_input("agent-v1", &hook_input_str)
         .expect("checkpoint should succeed");
 }
 
@@ -73,7 +73,7 @@ fn checkpoint_with_empty_transcript(repo: &TestRepo, edited_files: Vec<String>) 
 
     let hook_input_str = serde_json::to_string(&hook_input).unwrap();
 
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &hook_input_str])
+    repo.checkpoint_with_hook_input("agent-v1", &hook_input_str)
         .expect("checkpoint should succeed");
 }
 

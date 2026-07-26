@@ -50,7 +50,7 @@ fn test_codex_exec_command_produces_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("exec_command pre-hook should succeed (not be rejected)");
 
     // Codex edits file via exec_command
@@ -74,7 +74,7 @@ fn test_codex_exec_command_produces_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("exec_command post-hook should succeed (not be rejected)");
 
     let commit = repo
@@ -136,7 +136,7 @@ fn test_cursor_shell_tool_full_cycle_produces_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "cursor", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("cursor", &pre_hook_input)
         .expect("cursor shell pre-hook should succeed");
 
     // Cursor's Shell tool modifies the file
@@ -163,7 +163,7 @@ fn test_cursor_shell_tool_full_cycle_produces_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "cursor", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("cursor", &post_hook_input)
         .expect("cursor shell post-hook should succeed");
 
     let commit = repo
@@ -222,7 +222,7 @@ fn test_multi_agent_codex_edit_not_stolen_by_claude_pre_hook() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &claude_pre])
+    repo.checkpoint_with_hook_input("claude", &claude_pre)
         .expect("claude pre-hook should succeed");
 
     // Step 2: Codex fires PreToolUse (Bash) - captures snapshot before its own edit
@@ -236,7 +236,7 @@ fn test_multi_agent_codex_edit_not_stolen_by_claude_pre_hook() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &codex_pre])
+    repo.checkpoint_with_hook_input("codex", &codex_pre)
         .expect("codex pre-hook should succeed");
 
     // Step 3: Codex edits the file
@@ -257,7 +257,7 @@ fn test_multi_agent_codex_edit_not_stolen_by_claude_pre_hook() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &codex_post])
+    repo.checkpoint_with_hook_input("codex", &codex_post)
         .expect("codex post-hook should succeed");
 
     // Step 5: Claude fires PostToolUse (Bash) - Claude's bash did NOT edit the file,
@@ -272,7 +272,7 @@ fn test_multi_agent_codex_edit_not_stolen_by_claude_pre_hook() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &claude_post])
+    repo.checkpoint_with_hook_input("claude", &claude_post)
         .expect("claude post-hook should succeed");
 
     // Commit and verify attribution
@@ -323,7 +323,7 @@ fn test_multi_agent_cursor_edit_not_stolen_by_claude_pre_hook() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &claude_pre])
+    repo.checkpoint_with_hook_input("claude", &claude_pre)
         .expect("claude pre-hook should succeed");
 
     // Step 2: Cursor fires preToolUse (Write) - captures snapshot before edit
@@ -338,7 +338,7 @@ fn test_multi_agent_cursor_edit_not_stolen_by_claude_pre_hook() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "cursor", "--hook-input", &cursor_pre])
+    repo.checkpoint_with_hook_input("cursor", &cursor_pre)
         .expect("cursor pre-hook should succeed");
 
     // Step 3: Cursor edits the file
@@ -360,7 +360,7 @@ fn test_multi_agent_cursor_edit_not_stolen_by_claude_pre_hook() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "cursor", "--hook-input", &cursor_post])
+    repo.checkpoint_with_hook_input("cursor", &cursor_post)
         .expect("cursor post-hook should succeed");
 
     // Step 5: Claude fires PostToolUse (Bash) - Claude did NOT edit the file
@@ -373,7 +373,7 @@ fn test_multi_agent_cursor_edit_not_stolen_by_claude_pre_hook() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &claude_post])
+    repo.checkpoint_with_hook_input("claude", &claude_post)
         .expect("claude post-hook should succeed");
 
     // Commit and verify attribution
@@ -419,7 +419,7 @@ fn test_multi_agent_codex_apply_patch_not_stolen_by_active_claude() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &claude_pre])
+    repo.checkpoint_with_hook_input("claude", &claude_pre)
         .expect("claude pre-hook should succeed");
 
     // Codex fires PreToolUse (apply_patch)
@@ -436,7 +436,7 @@ fn test_multi_agent_codex_apply_patch_not_stolen_by_active_claude() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &codex_pre])
+    repo.checkpoint_with_hook_input("codex", &codex_pre)
         .expect("codex pre-hook should succeed");
 
     // Codex apply_patch modifies file
@@ -456,7 +456,7 @@ fn test_multi_agent_codex_apply_patch_not_stolen_by_active_claude() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &codex_post])
+    repo.checkpoint_with_hook_input("codex", &codex_post)
         .expect("codex post-hook should succeed");
 
     // Claude fires PostToolUse (its bash didn't edit the file)
@@ -469,7 +469,7 @@ fn test_multi_agent_codex_apply_patch_not_stolen_by_active_claude() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &claude_post])
+    repo.checkpoint_with_hook_input("claude", &claude_post)
         .expect("claude post-hook should succeed");
 
     // Commit and verify
@@ -516,7 +516,7 @@ fn test_multi_agent_separate_files_correct_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &claude_pre])
+    repo.checkpoint_with_hook_input("claude", &claude_pre)
         .expect("claude pre-hook");
 
     // Codex pre-hook (will edit file_b)
@@ -530,7 +530,7 @@ fn test_multi_agent_separate_files_correct_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &codex_pre])
+    repo.checkpoint_with_hook_input("codex", &codex_pre)
         .expect("codex pre-hook");
 
     // Both agents edit their own files
@@ -547,7 +547,7 @@ fn test_multi_agent_separate_files_correct_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &claude_post])
+    repo.checkpoint_with_hook_input("claude", &claude_post)
         .expect("claude post-hook");
 
     // Codex post-hook
@@ -561,7 +561,7 @@ fn test_multi_agent_separate_files_correct_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &codex_post])
+    repo.checkpoint_with_hook_input("codex", &codex_post)
         .expect("codex post-hook");
 
     // Commit both files together

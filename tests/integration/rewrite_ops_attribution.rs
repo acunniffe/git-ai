@@ -329,7 +329,7 @@ fn claude_checkpoint(repo: &TestRepo, event: &str, file_path: &Path, session_id:
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("claude", &hook_input)
         .unwrap_or_else(|error| panic!("claude {event} checkpoint failed: {error}"));
 }
 

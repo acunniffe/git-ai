@@ -45,13 +45,8 @@ fn test_create_file_pre_tool_use_empty_dirty_files() {
     });
 
     // Run PreToolUse checkpoint
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // Simulate create_file PostToolUse hook
     let post_hook_input = json!({
@@ -69,13 +64,8 @@ fn test_create_file_pre_tool_use_empty_dirty_files() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     // Sync daemon to ensure checkpoint is processed before commit
     repo.sync_daemon();
@@ -142,13 +132,8 @@ fn test_create_file_rapid_multi_file_no_contamination() {
             "cwd": repo.path().to_str().unwrap()
         });
 
-        repo.git_ai(&[
-            "checkpoint",
-            "github-copilot",
-            "--hook-input",
-            &pre_hook.to_string(),
-        ])
-        .unwrap();
+        repo.checkpoint_with_hook_input("github-copilot", &pre_hook.to_string())
+            .unwrap();
 
         // PostToolUse
         let post_hook = json!({
@@ -166,13 +151,8 @@ fn test_create_file_rapid_multi_file_no_contamination() {
             "cwd": repo.path().to_str().unwrap()
         });
 
-        repo.git_ai(&[
-            "checkpoint",
-            "github-copilot",
-            "--hook-input",
-            &post_hook.to_string(),
-        ])
-        .unwrap();
+        repo.checkpoint_with_hook_input("github-copilot", &post_hook.to_string())
+            .unwrap();
     }
 
     // Sync daemon to ensure all checkpoints are processed before commit
@@ -226,13 +206,8 @@ fn test_create_file_ignores_transcript_session_files() {
     let mut new_file = repo.filename("new.py");
     new_file.set_contents(crate::lines!["print(\"new file\")"]);
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     let post_hook_input = json!({
         "timestamp": "2026-04-09T17:36:05.970Z",
@@ -249,13 +224,8 @@ fn test_create_file_ignores_transcript_session_files() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     // Sync daemon to ensure checkpoint is processed before commit
     repo.sync_daemon();
@@ -304,13 +274,8 @@ fn test_create_file_uses_payload_content_not_disk() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // PostToolUse hook - checkpoint uses content from payload
     let post_hook_input = json!({
@@ -328,13 +293,8 @@ fn test_create_file_uses_payload_content_not_disk() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     // Sync daemon to ensure checkpoint is processed before commit
     repo.sync_daemon();
@@ -377,13 +337,8 @@ fn test_create_file_ignores_top_level_edited_filepaths() {
         "cwd": repo.path().to_str().unwrap()
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &pre_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &pre_hook_input.to_string())
+        .unwrap();
 
     // PostToolUse hook with stale edited_filepaths at top level (shouldn't be used)
     let post_hook_input = json!({
@@ -403,13 +358,8 @@ fn test_create_file_ignores_top_level_edited_filepaths() {
         "edited_filepaths": [old_file_path.to_str().unwrap()],
     });
 
-    repo.git_ai(&[
-        "checkpoint",
-        "github-copilot",
-        "--hook-input",
-        &post_hook_input.to_string(),
-    ])
-    .unwrap();
+    repo.checkpoint_with_hook_input("github-copilot", &post_hook_input.to_string())
+        .unwrap();
 
     // Sync daemon to ensure checkpoint is processed before commit
     repo.sync_daemon();

@@ -286,7 +286,7 @@ fn test_gemini_e2e_with_attribution() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "gemini", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("gemini", &hook_input)
         .unwrap();
 
     let commit = repo.stage_all_and_commit("Add gemini edits").unwrap();
@@ -339,7 +339,7 @@ fn test_gemini_e2e_human_checkpoint() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "gemini", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("gemini", &hook_input)
         .unwrap();
 
     fs::write(
@@ -441,7 +441,7 @@ fn test_gemini_e2e_multiple_tool_calls() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "gemini", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("gemini", &hook_input)
         .unwrap();
 
     let commit = repo.stage_all_and_commit("Add multiple lines").unwrap();
@@ -480,7 +480,7 @@ fn test_gemini_e2e_with_resync() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "gemini", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("gemini", &hook_input)
         .unwrap();
 
     let commit = repo.stage_all_and_commit("Add gemini edits").unwrap();
@@ -527,7 +527,7 @@ fn test_gemini_e2e_partial_staging() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "gemini", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("gemini", &hook_input)
         .unwrap();
 
     let commit = repo.commit("Partial staging").unwrap();
@@ -567,7 +567,7 @@ fn test_gemini_preset_bash_tool_aftertool_detects_changes() {
         "transcript_path": fixture_path_str,
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "gemini", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("gemini", &pre_hook_input)
         .unwrap();
 
     let output_path = repo.path().join("output.txt");
@@ -583,7 +583,7 @@ fn test_gemini_preset_bash_tool_aftertool_detects_changes() {
         "transcript_path": fixture_path_str,
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "gemini", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("gemini", &post_hook_input)
         .unwrap();
 
     let commit = repo.stage_all_and_commit("Gemini bash edit").unwrap();

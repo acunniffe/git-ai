@@ -30,7 +30,7 @@ fn test_claude_file_edit_checkpoint_propagates_tool_use_id_to_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("claude", &pre_hook)
         .expect("pre checkpoint should succeed");
 
     fs::write(&file_path, "const x = 1;\nconst y = 2;\n").unwrap();
@@ -48,7 +48,7 @@ fn test_claude_file_edit_checkpoint_propagates_tool_use_id_to_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("claude", &post_hook)
         .expect("post checkpoint should succeed");
 
     let checkpoints = repo.current_working_logs().read_all_checkpoints().unwrap();
@@ -96,7 +96,7 @@ fn test_codex_bash_checkpoint_propagates_tool_use_id_to_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("codex", &pre_hook)
         .expect("pre bash checkpoint should succeed");
 
     fs::write(&file_path, "fn main() {}\nfn added() {}\n").unwrap();
@@ -114,7 +114,7 @@ fn test_codex_bash_checkpoint_propagates_tool_use_id_to_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("codex", &post_hook)
         .expect("post bash checkpoint should succeed");
 
     let checkpoints = repo.current_working_logs().read_all_checkpoints().unwrap();
@@ -161,7 +161,7 @@ fn test_file_edit_checkpoint_has_edit_kind_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("claude", &pre_hook)
         .expect("pre checkpoint should succeed");
 
     fs::write(&file_path, "const x = 1;\nconst y = 2;\n").unwrap();
@@ -179,7 +179,7 @@ fn test_file_edit_checkpoint_has_edit_kind_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "claude", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("claude", &post_hook)
         .expect("post checkpoint should succeed");
 
     let checkpoints = repo.current_working_logs().read_all_checkpoints().unwrap();
@@ -227,7 +227,7 @@ fn test_bash_checkpoint_has_edit_kind_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("codex", &pre_hook)
         .expect("pre bash checkpoint should succeed");
 
     fs::write(&file_path, "fn main() {}\nfn added() {}\n").unwrap();
@@ -245,7 +245,7 @@ fn test_bash_checkpoint_has_edit_kind_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("codex", &post_hook)
         .expect("post bash checkpoint should succeed");
 
     let checkpoints = repo.current_working_logs().read_all_checkpoints().unwrap();
@@ -292,7 +292,7 @@ fn test_gemini_file_edit_checkpoint_propagates_tool_use_id_to_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "gemini", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("gemini", &pre_hook)
         .expect("gemini pre checkpoint should succeed");
 
     fs::write(&file_path, "print('hello')\nprint('world')\n").unwrap();
@@ -310,7 +310,7 @@ fn test_gemini_file_edit_checkpoint_propagates_tool_use_id_to_metadata() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "gemini", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("gemini", &post_hook)
         .expect("gemini post checkpoint should succeed");
 
     let checkpoints = repo.current_working_logs().read_all_checkpoints().unwrap();

@@ -13,8 +13,7 @@ fn parse_ai_tab(hook_input: &str) -> Result<Vec<ParsedHookEvent>, GitAiError> {
 
 fn run_ai_tab_checkpoint(repo: &TestRepo, hook_payload: serde_json::Value) {
     let hook_input = hook_payload.to_string();
-    let args: Vec<&str> = vec!["checkpoint", "ai_tab", "--hook-input", hook_input.as_str()];
-    match repo.git_ai(&args) {
+    match repo.checkpoint_with_hook_input("ai_tab", &hook_input) {
         Ok(output) => {
             println!("git_ai checkpoint output: {}", output);
         }

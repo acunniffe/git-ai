@@ -387,7 +387,7 @@ fn checkpoint_agent_v1(
     });
     let hook_input_str = serde_json::to_string(&hook_input).expect("hook input should serialize");
 
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &hook_input_str])
+    repo.checkpoint_with_hook_input("agent-v1", &hook_input_str)
         .expect("agent-v1 checkpoint should succeed");
 }
 

@@ -105,7 +105,7 @@ fn codex_checkpoint(
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &hook_input])
+    repo.checkpoint_with_hook_input("codex", &hook_input)
         .expect("codex checkpoint should succeed");
 }
 

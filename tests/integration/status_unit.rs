@@ -259,7 +259,7 @@ fn test_status_preserves_lowercase_agent_identifier() {
         "will_edit_filepaths": ["status-agent.txt"]
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &pre_payload])
+    repo.checkpoint_with_hook_input("agent-v1", &pre_payload)
         .unwrap();
 
     fs::write(&file_path, "base\nAI line\n").unwrap();
@@ -272,7 +272,7 @@ fn test_status_preserves_lowercase_agent_identifier() {
         "conversation_id": "cline-status-test"
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &post_payload])
+    repo.checkpoint_with_hook_input("agent-v1", &post_payload)
         .unwrap();
 
     let status = status_json(&repo);

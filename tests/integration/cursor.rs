@@ -332,7 +332,7 @@ fn test_cursor_e2e_with_attribution() {
     .to_string();
 
     let result = repo
-        .git_ai(&["checkpoint", "cursor", "--hook-input", &hook_input])
+        .checkpoint_with_hook_input("cursor", &hook_input)
         .unwrap();
 
     println!("Checkpoint output: {}", result);
@@ -411,7 +411,7 @@ fn test_cursor_e2e_with_resync() {
     .to_string();
 
     let result = repo
-        .git_ai(&["checkpoint", "cursor", "--hook-input", &hook_input])
+        .checkpoint_with_hook_input("cursor", &hook_input)
         .unwrap();
 
     println!("Checkpoint output: {}", result);
@@ -515,7 +515,7 @@ fn test_cursor_checkpoint_routes_nested_worktree_file_to_worktree_repo() {
     .to_string();
 
     let output = repo
-        .git_ai(&["checkpoint", "cursor", "--hook-input", &hook_input])
+        .checkpoint_with_hook_input("cursor", &hook_input)
         .expect("cursor checkpoint should succeed");
     println!("Checkpoint output: {}", output);
 

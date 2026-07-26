@@ -217,7 +217,7 @@ fn test_codex_commit_inside_bash_inflight_is_attributed_to_codex() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("pre-hook checkpoint should succeed");
 
     fs::write(
@@ -239,7 +239,7 @@ fn test_codex_commit_inside_bash_inflight_is_attributed_to_codex() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("post-hook checkpoint should succeed");
 
     let commit = repo
@@ -302,7 +302,7 @@ fn test_codex_commit_inside_bash_inflight_repeated_append_keeps_file_ai() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("pre-hook checkpoint should succeed");
 
     readme.set_contents(crate::lines!["Project README", "Updated by Codex".ai()]);
@@ -320,7 +320,7 @@ fn test_codex_commit_inside_bash_inflight_repeated_append_keeps_file_ai() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("post-hook checkpoint should succeed");
 
     repo.stage_all_and_commit("Codex append proof")
@@ -344,13 +344,8 @@ fn test_codex_commit_inside_bash_inflight_repeated_append_keeps_file_ai() {
     })
     .to_string();
 
-    repo.git_ai(&[
-        "checkpoint",
-        "codex",
-        "--hook-input",
-        &second_pre_hook_input,
-    ])
-    .expect("second pre-hook checkpoint should succeed");
+    repo.checkpoint_with_hook_input("codex", &second_pre_hook_input)
+        .expect("second pre-hook checkpoint should succeed");
 
     readme.set_contents(crate::lines![
         "Project README",
@@ -371,13 +366,8 @@ fn test_codex_commit_inside_bash_inflight_repeated_append_keeps_file_ai() {
     })
     .to_string();
 
-    repo.git_ai(&[
-        "checkpoint",
-        "codex",
-        "--hook-input",
-        &second_post_hook_input,
-    ])
-    .expect("second post-hook checkpoint should succeed");
+    repo.checkpoint_with_hook_input("codex", &second_post_hook_input)
+        .expect("second post-hook checkpoint should succeed");
 
     repo.stage_all_and_commit("Codex append proof 2")
         .expect("second Codex append commit should succeed");
@@ -420,7 +410,7 @@ fn test_codex_file_edit_then_bash_pretooluse_does_not_steal_ai_commit_attributio
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("pre-hook checkpoint should succeed");
 
     fs::write(
@@ -442,7 +432,7 @@ fn test_codex_file_edit_then_bash_pretooluse_does_not_steal_ai_commit_attributio
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("post-hook checkpoint should succeed");
 
     repo.stage_all_and_commit("Codex status commit")
@@ -485,7 +475,7 @@ fn test_codex_file_edit_then_camel_case_bash_pretooluse_does_not_steal_ai_commit
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("pre-hook checkpoint should succeed");
 
     fs::write(
@@ -507,7 +497,7 @@ fn test_codex_file_edit_then_camel_case_bash_pretooluse_does_not_steal_ai_commit
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("post-hook checkpoint should succeed");
 
     repo.stage_all_and_commit("Codex status camel commit")
@@ -547,7 +537,7 @@ fn test_codex_read_only_bash_post_tool_use_before_edit_does_not_steal_commit_att
         "transcript_path": transcript_path.to_string_lossy().to_string()
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &which_git_pre])
+    repo.checkpoint_with_hook_input("codex", &which_git_pre)
         .expect("read-only pre-hook should succeed");
 
     let which_git_post = json!({
@@ -561,7 +551,7 @@ fn test_codex_read_only_bash_post_tool_use_before_edit_does_not_steal_commit_att
         "transcript_path": transcript_path.to_string_lossy().to_string()
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &which_git_post])
+    repo.checkpoint_with_hook_input("codex", &which_git_post)
         .expect("read-only post-hook should succeed");
 
     let commit_pre = json!({
@@ -576,7 +566,7 @@ fn test_codex_read_only_bash_post_tool_use_before_edit_does_not_steal_commit_att
         "transcript_path": transcript_path.to_string_lossy().to_string()
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &commit_pre])
+    repo.checkpoint_with_hook_input("codex", &commit_pre)
         .expect("commit pre-hook should succeed");
 
     fs::write(
@@ -597,7 +587,7 @@ fn test_codex_read_only_bash_post_tool_use_before_edit_does_not_steal_commit_att
         "transcript_path": transcript_path.to_string_lossy().to_string()
     })
     .to_string();
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &commit_post])
+    repo.checkpoint_with_hook_input("codex", &commit_post)
         .expect("commit post-hook should succeed");
 
     repo.stage_all_and_commit("Codex readonly bash commit")
@@ -641,7 +631,7 @@ fn test_codex_commit_inside_bash_inflight_repeated_append_keeps_file_ai_standard
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("pre-hook checkpoint should succeed");
 
     let readme_path = repo_root.join("README.md");
@@ -660,7 +650,7 @@ fn test_codex_commit_inside_bash_inflight_repeated_append_keeps_file_ai_standard
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("post-hook checkpoint should succeed");
 
     repo.stage_all_and_commit("Codex append proof")
@@ -684,13 +674,8 @@ fn test_codex_commit_inside_bash_inflight_repeated_append_keeps_file_ai_standard
     })
     .to_string();
 
-    repo.git_ai(&[
-        "checkpoint",
-        "codex",
-        "--hook-input",
-        &second_pre_hook_input,
-    ])
-    .expect("second pre-hook checkpoint should succeed");
+    repo.checkpoint_with_hook_input("codex", &second_pre_hook_input)
+        .expect("second pre-hook checkpoint should succeed");
 
     fs::write(
         &readme_path,
@@ -711,13 +696,8 @@ fn test_codex_commit_inside_bash_inflight_repeated_append_keeps_file_ai_standard
     })
     .to_string();
 
-    repo.git_ai(&[
-        "checkpoint",
-        "codex",
-        "--hook-input",
-        &second_post_hook_input,
-    ])
-    .expect("second post-hook checkpoint should succeed");
+    repo.checkpoint_with_hook_input("codex", &second_post_hook_input)
+        .expect("second post-hook checkpoint should succeed");
 
     repo.stage_all_and_commit("Codex append proof 2")
         .expect("second Codex append commit should succeed");
@@ -760,7 +740,7 @@ fn test_codex_e2e_bash_pre_and_post_tool_use_full_cycle() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("bash pre-hook should succeed");
 
     fs::write(&file_path, "print('world')\nprint('from codex')\n").unwrap();
@@ -778,7 +758,7 @@ fn test_codex_e2e_bash_pre_and_post_tool_use_full_cycle() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("bash post-hook should succeed");
 
     let commit = repo
@@ -834,7 +814,7 @@ fn test_codex_e2e_apply_patch_file_edit_full_cycle() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("apply_patch pre-hook should succeed");
 
     fs::write(&file_path, "fn new_func() {}\nfn helper() {}\n").unwrap();
@@ -852,7 +832,7 @@ fn test_codex_e2e_apply_patch_file_edit_full_cycle() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("apply_patch post-hook should succeed");
 
     let commit = repo
@@ -910,7 +890,7 @@ fn test_codex_e2e_apply_patch_scoped_to_edited_file_only() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("scoped pre-hook should succeed");
 
     fs::write(&file_a, "patched a\n").unwrap();
@@ -929,7 +909,7 @@ fn test_codex_e2e_apply_patch_scoped_to_edited_file_only() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("scoped post-hook should succeed");
 
     repo.stage_all_and_commit("Scoped codex edit")
@@ -973,7 +953,7 @@ fn test_codex_e2e_bash_then_apply_patch_in_same_session() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &bash_pre])
+    repo.checkpoint_with_hook_input("codex", &bash_pre)
         .expect("bash pre-hook should succeed");
 
     let bash_post = json!({
@@ -988,7 +968,7 @@ fn test_codex_e2e_bash_then_apply_patch_in_same_session() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &bash_post])
+    repo.checkpoint_with_hook_input("codex", &bash_post)
         .expect("bash post-hook should succeed");
 
     let patch_pre = json!({
@@ -1004,7 +984,7 @@ fn test_codex_e2e_bash_then_apply_patch_in_same_session() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &patch_pre])
+    repo.checkpoint_with_hook_input("codex", &patch_pre)
         .expect("apply_patch pre-hook should succeed");
 
     fs::write(&file_path, "# updated by codex\ndef main(): pass\n").unwrap();
@@ -1022,7 +1002,7 @@ fn test_codex_e2e_bash_then_apply_patch_in_same_session() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &patch_post])
+    repo.checkpoint_with_hook_input("codex", &patch_post)
         .expect("apply_patch post-hook should succeed");
 
     let commit = repo
@@ -1087,7 +1067,7 @@ fn test_codex_e2e_bash_modifies_multiple_files_all_attributed() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook])
+    repo.checkpoint_with_hook_input("codex", &pre_hook)
         .expect("pre-hook should succeed");
 
     fs::write(&file_a, "// modified a\nfn a() {}\n").unwrap();
@@ -1106,7 +1086,7 @@ fn test_codex_e2e_bash_modifies_multiple_files_all_attributed() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook])
+    repo.checkpoint_with_hook_input("codex", &post_hook)
         .expect("post-hook should succeed");
 
     repo.stage_all_and_commit("Codex multi-file bash edit")
@@ -1157,7 +1137,7 @@ fn test_codex_e2e_apply_patch_preserves_human_lines() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("pre-hook should succeed");
 
     fs::write(
@@ -1179,7 +1159,7 @@ fn test_codex_e2e_apply_patch_preserves_human_lines() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("post-hook should succeed");
 
     repo.stage_all_and_commit("Codex appends to config")
@@ -1223,7 +1203,7 @@ fn test_codex_e2e_namespaced_apply_patch_file_edit_full_cycle() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("namespaced apply_patch pre-hook should succeed");
 
     fs::write(&file_path, "fn new_func() {}\nfn helper() {}\n").unwrap();
@@ -1241,7 +1221,7 @@ fn test_codex_e2e_namespaced_apply_patch_file_edit_full_cycle() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("namespaced apply_patch post-hook should succeed");
 
     let commit = repo
@@ -1297,7 +1277,7 @@ fn test_codex_e2e_namespaced_exec_command_bash_full_cycle() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("namespaced exec_command pre-hook should succeed");
 
     fs::write(&file_path, "print('world')\nprint('from codex')\n").unwrap();
@@ -1315,7 +1295,7 @@ fn test_codex_e2e_namespaced_exec_command_bash_full_cycle() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("namespaced exec_command post-hook should succeed");
 
     let commit = repo
@@ -1380,7 +1360,7 @@ fn test_codex_e2e_multi_tool_use_parallel_wrapper() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
         .expect("multi_tool_use.parallel pre-hook should succeed");
 
     fs::write(&file_path, "fn new_func() {}\n").unwrap();
@@ -1407,7 +1387,7 @@ fn test_codex_e2e_multi_tool_use_parallel_wrapper() {
     })
     .to_string();
 
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+    repo.checkpoint_with_hook_input("codex", &post_hook_input)
         .expect("multi_tool_use.parallel post-hook should succeed");
 
     let commit = repo

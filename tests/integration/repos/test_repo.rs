@@ -2600,6 +2600,18 @@ impl TestRepo {
         self.git_ai_with_env(args, &[])
     }
 
+    /// Run the standard preset checkpoint form with inline hook input.
+    ///
+    /// Tests that need a custom CWD, environment, stdin, or trailing checkpoint
+    /// arguments should keep using the lower-level command helpers.
+    pub fn checkpoint_with_hook_input(
+        &self,
+        preset: &str,
+        hook_input: &str,
+    ) -> Result<String, String> {
+        self.git_ai(&["checkpoint", preset, "--hook-input", hook_input])
+    }
+
     pub fn git_ai_without_pre_sync_for_test(&self, args: &[&str]) -> Result<String, String> {
         self.git_ai_with_env_inner(args, &[], false)
     }
