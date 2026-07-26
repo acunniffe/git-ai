@@ -1,0 +1,28 @@
+.github/workflows/release.yml
+  91a4b0313563a01c 123
+install.ps1
+  91a4b0313563a01c 407-418
+.cargo/config.toml
+  91a4b0313563a01c 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "d112a597d0ba1a515538e950641201d6becb3a7d",
+  "prompts": {
+    "91a4b0313563a01c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "93bcbf75-87e6-44b4-84c5-7ea49bf46f7e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 20,
+      "total_deletions": 1,
+      "accepted_lines": 20,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/89cd0a374ead83ea9c574b129ef4f9fe3f6ffb0426e91ff513e74d82f1d65806"
+    }
+  }
+}

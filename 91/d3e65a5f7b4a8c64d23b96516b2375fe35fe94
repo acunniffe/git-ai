@@ -1,0 +1,32 @@
+src/utils.rs
+  s_64e8f27d934849::t_fbed1ba697ca24 303,305,307-309
+tests/integration/superuser_guard.rs
+  s_64e8f27d934849::t_f074f3a87b81b1 115-116
+  s_64e8f27d934849::t_0e6024c06fae42 87-88
+  s_64e8f27d934849::t_63b8acce9f65dc 52-53
+src/main.rs
+  s_64e8f27d934849::t_a8c19662a73679 4
+  s_64e8f27d934849::t_c84115031ebe0c 79
+install.sh
+  s_64e8f27d934849::t_c4d32f1f5b0dd9 173
+  s_64e8f27d934849::t_a42f9c8ea504a7 192,194-196
+install.ps1
+  s_64e8f27d934849::t_b2ceff5d1c3700 363,365-367
+  s_64e8f27d934849::t_9e4f4420c87f31 343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "91d3e65a5f7b4a8c64d23b96516b2375fe35fe94",
+  "prompts": {},
+  "sessions": {
+    "s_64e8f27d934849": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51f34527-8189-47ce-b809-a328bd6d1639",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

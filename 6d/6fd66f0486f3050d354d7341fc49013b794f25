@@ -1,0 +1,20 @@
+agent-support/visualstudio/src/GitAiVS/Listeners/TextBufferListener.cs
+  s_61bbcfe4478210::t_dd90eb2040e095 74
+  s_61bbcfe4478210::t_20309c69372530 50-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "6d6fd66f0486f3050d354d7341fc49013b794f25",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

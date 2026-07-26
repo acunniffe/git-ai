@@ -1,0 +1,71 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/startup/DocumentTrackerStartupActivity.kt
+  07a4cb8e826ec759 1-18
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/DocumentChangeListener.kt
+  5af243c22c2a50b6 9,137-143,146,150,159-163,168-171,175,177-188
+  41e58b031322fb24 7-8,10,13-16,19-20,27-29,32-91,95,98-136,144-145,147-149,151-158,164-167,172-174,176,189-211,213,249
+agent-support/intellij/build.gradle.kts
+  07a4cb8e826ec759 59-61
+  41e58b031322fb24 47-49,143
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/GitAiService.kt
+  5af243c22c2a50b6 6,118,120,124,131-135,137,143,171
+  41e58b031322fb24 1-5,7-117,119,121-123,125-130,136,138-142,144-170,172-196
+agent-support/intellij/.gitignore
+  07a4cb8e826ec759 7
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/model/CheckpointModels.kt
+  5af243c22c2a50b6 3-4,7-8,10-46,48-107
+  41e58b031322fb24 1-2,5-6,9,47,108-109
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/DocumentChangeTrackerService.kt
+  07a4cb8e826ec759 17,22,26
+agent-support/intellij/src/main/resources/META-INF/plugin.xml
+  07a4cb8e826ec759 14-15,18
+  41e58b031322fb24 16-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.39",
+  "base_commit_sha": "7a7660e6ba20000b599f86dc5559191f66ca737a",
+  "prompts": {
+    "07a4cb8e826ec759": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5feed3a3-b20d-44f2-8ed6-465673c7c795",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 42,
+      "total_deletions": 20,
+      "accepted_lines": 28,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/fb90a78f844a8ad172d3f72357a952af1af8ef6456566a62ed594bf0d820ee66"
+    },
+    "41e58b031322fb24": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87741f10-5b56-4449-b2a2-5cdef34e55f8",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 461,
+      "total_deletions": 65,
+      "accepted_lines": 356,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/7dcabfe355164731e3a88986255a49180a2899c746424817ca1aa9e340369231"
+    },
+    "5af243c22c2a50b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "550b6d61-2314-46c6-aee6-13dba945e39f",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 148,
+      "total_deletions": 52,
+      "accepted_lines": 145,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/ab67333879ab25083432e6f30a08d9ca2693dce1e7c034ead1be206ed1931348"
+    }
+  }
+}

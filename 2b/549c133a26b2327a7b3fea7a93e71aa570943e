@@ -1,0 +1,71 @@
+tests/integration/github_copilot.rs
+  75b8b35dceb7e11d 1-853
+src/transcripts/agents/codex.rs
+  75b8b35dceb7e11d 1-382
+src/transcripts/agents/opencode.rs
+  75b8b35dceb7e11d 1-415
+tests/integration/transcripts_e2e.rs
+  75b8b35dceb7e11d 1-250
+src/transcripts/sweep.rs
+  75b8b35dceb7e11d 80-86
+tests/integration/droid.rs
+  75b8b35dceb7e11d 1-474
+tests/integration/gemini.rs
+  75b8b35dceb7e11d 1-809
+src/transcripts/agents/pi.rs
+  75b8b35dceb7e11d 1-408
+src/transcripts/agent.rs
+  75b8b35dceb7e11d 46-52
+src/transcripts/agents/gemini.rs
+  75b8b35dceb7e11d 1-310
+tests/integration/continue_cli.rs
+  75b8b35dceb7e11d 1-710
+src/transcripts/agents/mod.rs
+  75b8b35dceb7e11d 1,3-4,8-11,13,15-17,21-24
+tests/integration/windsurf.rs
+  75b8b35dceb7e11d 1-632
+src/transcripts/agents/claude.rs
+  75b8b35dceb7e11d 361-440,534-586
+tests/integration/codex.rs
+  75b8b35dceb7e11d 1-733
+tests/integration/transcripts_claude_reader.rs
+  75b8b35dceb7e11d 1-226
+src/transcripts/model_extraction.rs
+  75b8b35dceb7e11d 23-29
+tests/integration/opencode.rs
+  75b8b35dceb7e11d 1-396
+src/transcripts/agents/amp.rs
+  75b8b35dceb7e11d 1-439
+tests/integration/amp.rs
+  75b8b35dceb7e11d 1-383
+tests/integration/agent_presets_comprehensive.rs
+  75b8b35dceb7e11d 1-1110
+src/transcripts/agents/windsurf.rs
+  75b8b35dceb7e11d 1-287
+src/transcripts/agents/continue_cli.rs
+  75b8b35dceb7e11d 1-337
+tests/integration/claude_code.rs
+  75b8b35dceb7e11d 1-1001
+tests/integration/cursor.rs
+  75b8b35dceb7e11d 1-656
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "2b549c133a26b2327a7b3fea7a93e71aa570943e",
+  "prompts": {
+    "75b8b35dceb7e11d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ffd64922-c64c-40e8-9619-70e9280abcfa",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 29066,
+      "total_deletions": 26403,
+      "accepted_lines": 10981,
+      "overriden_lines": 0
+    }
+  }
+}

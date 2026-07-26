@@ -1,0 +1,67 @@
+src/git/refs.rs
+  f4f2b364dfcacebb 25,34,39,44,518
+  s_3d1be30355fcfb::t_eefc5ed777886a 742-743
+  s_f4f2b364dfcace::t_60e385fe3d5704 24,33,38,43,517
+src/daemon.rs
+  f4f2b364dfcacebb 1888,3686-3690
+  s_f4f2b364dfcace::t_7939d266949066 3685,1887
+src/commands/checkpoint.rs
+  f4f2b364dfcacebb 37-41,113,249,358,1587,2156
+  s_f4f2b364dfcace::t_969828749a8567 36,112,248,357,1586,2155
+src/authorship/post_commit.rs
+  f4f2b364dfcacebb 24,27,30,36,40-44,346,425
+  s_3d1be30355fcfb::t_8e4377be6d92d5 774
+  s_f4f2b364dfcace::t_2afa426c4d4d9e 23,26,29,35,39,345,424
+src/authorship/rebase_authorship.rs
+  f4f2b364dfcacebb 21,33,2211,2330,3337,3575,4125,4536
+  s_f4f2b364dfcace::t_8630e34af32ff4 20,32,2210,2329,3336,3574,3936,4124,4535
+src/authorship/prompt_utils.rs
+  f4f2b364dfcacebb 171,244,289,334,379,422,624
+  s_f4f2b364dfcace::t_6fdbf5b70678ec 170,243,288,333,378,421,623
+src/authorship/range_authorship.rs
+  f4f2b364dfcacebb 18
+  s_f4f2b364dfcace::t_5e909a09f8f73e 17
+src/ci/ci_context.rs
+  s_3d1be30355fcfb::t_3387bff2a72a02 297-298
+  f4f2b364dfcacebb 269-273
+  s_f4f2b364dfcace::t_bd324cf0eea4b3 268
+src/git/repo_storage.rs
+  f4f2b364dfcacebb 72,151
+  s_f4f2b364dfcace::t_0dc32cd6953b2a 71,150
+src/authorship/stats.rs
+  f4f2b364dfcacebb 434,507
+  s_3d1be30355fcfb::t_f018fbb55568c6 559,569-570,576,609,614
+  s_f4f2b364dfcace::t_6f4e9c3666698a 433,506
+src/git/repository.rs
+  f4f2b364dfcacebb 75,254,2561,2594,3341,3415
+  s_3d1be30355fcfb::t_75909f5f8392f5 3551
+  s_f4f2b364dfcace::t_67830c2a7273e8 74,253,2560,2593,3340,3414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "a0ed3dea4db8199492cd4223a4a550976bfcedb5",
+  "prompts": {},
+  "sessions": {
+    "s_3d1be30355fcfb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3ee5829-c959-4f89-9d4c-a0a6c2215db6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/e6f37e9801cb0eb9b53b9309d365827989469ba5c303a52673947ebed5b31808"
+    },
+    "s_f4f2b364dfcace": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/703451899103d419f9adbbfb658091393571dbc53b33c7cb0c9fb02d86652978"
+    }
+  }
+}

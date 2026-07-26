@@ -1,0 +1,41 @@
+tests/integration/sandboxed_checkpoints.rs
+  s_dae1e2a4e711cb::t_ce315c27134349 1-50,53-62,65-154,159-169,174-176,191
+  s_dae1e2a4e711cb::t_9f8cb325674679 177-179,181-190
+  s_dae1e2a4e711cb::t_0d6ee8210da49d 180
+  s_dae1e2a4e711cb::t_7c4bd831e59258 51-52,63-64
+  s_dae1e2a4e711cb::t_5ecb16f3a5c959 155-158,170-173
+src/lib.rs
+  s_dae1e2a4e711cb::t_47893ef82526e1 22-23
+src/daemon.rs
+  s_dae1e2a4e711cb::t_58b8ed2746a329 7406-7407
+src/commands/git_ai_handlers.rs
+  s_dae1e2a4e711cb::t_5ecb16f3a5c959 459-470,472
+  s_dae1e2a4e711cb::t_1d1d7b03d96a92 614,616
+  s_dae1e2a4e711cb::t_58b8ed2746a329 48,471,473-481,592-597,615,617,623-633,1173-1177,1193
+  s_dae1e2a4e711cb::t_0281d03c7005d0 618-622
+tests/integration/main.rs
+  s_dae1e2a4e711cb::t_5ecb16f3a5c959 117-118
+src/sandboxed_checkpoints.rs
+  s_dae1e2a4e711cb::t_ee050d11693d06 9-11,134,143,147,154,166-173,258
+  s_dae1e2a4e711cb::t_c3a52d9ef0c912 244-250,398,419-421
+  s_dae1e2a4e711cb::t_1cf1a9efd1d8a4 251
+  s_dae1e2a4e711cb::t_5ecb16f3a5c959 1,340-341,347-348
+  s_dae1e2a4e711cb::t_47893ef82526e1 2,4-8,12-133,135-142,144-146,148-153,155-165,174-243,252-257,259-339,342-346,349-397,399-418,422-427
+  s_dae1e2a4e711cb::t_e4ad86337df2eb 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "aeea00d3a6c720cc3efb75e0c0523387e78e5a59",
+  "prompts": {},
+  "sessions": {
+    "s_dae1e2a4e711cb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7b60-f79b-75e3-9141-dd54894b6481",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
