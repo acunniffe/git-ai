@@ -1,5 +1,5 @@
 use crate::clients::api::client::ApiClient;
-use crate::clients::api::error::http_status_error;
+use crate::clients::api::response::ResponseEnvelope;
 use crate::error::GitAiError;
 use crate::model::api_types::{CreateBundleRequest, CreateBundleResponse};
 
@@ -22,18 +22,6 @@ impl ApiClient {
         request: CreateBundleRequest,
     ) -> Result<CreateBundleResponse, GitAiError> {
         let response = self.context().post_json("/api/bundles", &request)?;
-        let status_code = response.status_code;
-
-        let body = response
-            .as_str()
-            .map_err(|e| GitAiError::Generic(format!("Failed to read response body: {}", e)))?;
-
-        if status_code == 200 {
-            let bundle_response: CreateBundleResponse =
-                serde_json::from_str(body).map_err(GitAiError::JsonError)?;
-            return Ok(bundle_response);
-        }
-
-        Err(http_status_error("bundle create", status_code, body, "unexpected error").into())
+        ResponseEnvelope::read(&response)?.decode_json(200, "bundle create", "unexpected error")
     }
 }

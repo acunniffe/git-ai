@@ -6,7 +6,8 @@
 //! `has_api_key()` is true (matching the CAS pattern).
 
 use crate::clients::api::client::ApiClient;
-use crate::clients::api::error::http_status_error;
+use crate::clients::api::first_non_hex;
+use crate::clients::api::response::ResponseEnvelope;
 use crate::error::GitAiError;
 use crate::model::api_types::{NotesReadResponse, NotesUploadRequest, NotesUploadResponse};
 
@@ -24,17 +25,7 @@ impl ApiClient {
         request: NotesUploadRequest,
     ) -> Result<NotesUploadResponse, GitAiError> {
         let response = self.context().post_json("/worker/notes/upload", &request)?;
-        let status_code = response.status_code;
-
-        let body = response
-            .as_str()
-            .map_err(|e| GitAiError::Generic(format!("Failed to read response body: {}", e)))?;
-
-        if status_code == 200 {
-            return serde_json::from_str(body).map_err(GitAiError::JsonError);
-        }
-
-        Err(http_status_error("notes upload", status_code, body, "unexpected error").into())
+        ResponseEnvelope::read(&response)?.decode_json(200, "notes upload", "unexpected error")
     }
 
     /// Read authorship notes by commit SHAs. Max 100 per call.
@@ -49,31 +40,27 @@ impl ApiClient {
     /// * `Err(GitAiError)` - On invalid input, network, or server errors
     pub fn read_notes(&self, commit_shas: &[&str]) -> Result<NotesReadResponse, GitAiError> {
         // Validate that all SHAs are hex strings before making the request
-        for sha in commit_shas {
-            if !sha.chars().all(|c| c.is_ascii_hexdigit()) {
-                return Err(GitAiError::Generic(format!(
-                    "Commit SHA contains non-hex characters: {}",
-                    sha
-                )));
-            }
+        if let Some(sha) = first_non_hex(commit_shas) {
+            // Retain this legacy Generic variant because its exact display is
+            // part of the existing input-validation contract.
+            return Err(GitAiError::Generic(format!(
+                "Commit SHA contains non-hex characters: {}",
+                sha
+            )));
         }
 
         let query = commit_shas.join(",");
         let endpoint = format!("/worker/notes/?commits={}", query);
         let response = self.context().get(&endpoint)?;
-        let status_code = response.status_code;
+        let response = ResponseEnvelope::read(&response)?;
 
-        let body = response
-            .as_str()
-            .map_err(|e| GitAiError::Generic(format!("Failed to read response body: {}", e)))?;
-
-        match status_code {
-            200 => serde_json::from_str(body).map_err(GitAiError::JsonError),
+        match response.status_code() {
+            200 => response.parse_json(),
             // All SHAs not found — return empty response gracefully
             404 => Ok(NotesReadResponse {
                 notes: std::collections::HashMap::new(),
             }),
-            _ => Err(http_status_error("notes read", status_code, body, "unexpected error").into()),
+            _ => Err(response.into_error("notes read", "unexpected error")),
         }
     }
 }
@@ -90,12 +77,9 @@ mod tests {
         let client = ApiClient::new(ctx);
 
         let result = client.read_notes(&["not-a-hex-sha"]);
-        assert!(result.is_err());
-        let err = result.unwrap_err().to_string();
-        assert!(
-            err.contains("non-hex"),
-            "error should mention non-hex: {}",
-            err
+        assert_eq!(
+            result.expect_err("invalid SHA should fail").to_string(),
+            "Generic error: Commit SHA contains non-hex characters: not-a-hex-sha"
         );
     }
 

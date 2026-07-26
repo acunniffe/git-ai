@@ -104,18 +104,42 @@ impl ApiContext {
         config::Config::fresh().api_base_url().to_string()
     }
 
+    fn from_auth_token_resolver<ResolveAuthToken>(
+        base_url: Option<String>,
+        identity_resolver: AuthorIdentityResolver,
+        resolve_auth_token: ResolveAuthToken,
+    ) -> Self
+    where
+        ResolveAuthToken: FnOnce() -> Option<String>,
+    {
+        let cfg = config::Config::fresh();
+        let api_key = cfg.api_key().map(str::to_string);
+        let author_identity = api_key.as_ref().and_then(|_| identity_resolver());
+
+        Self {
+            base_url: base_url.unwrap_or_else(Self::default_base_url),
+            auth_token: resolve_auth_token(),
+            api_key,
+            author_identity,
+            timeout_secs: Some(30),
+        }
+    }
+
+    fn with_common_headers(request: ureq::Request) -> ureq::Request {
+        request
+            .set(
+                "User-Agent",
+                &format!("git-ai/{}", env!("CARGO_PKG_VERSION")),
+            )
+            .set("X-Distinct-ID", &config::get_or_create_distinct_id())
+    }
+
     /// Create a GET request with common headers (User-Agent, X-Distinct-ID)
     /// Use this for all HTTP GET requests to ensure consistent headers.
     /// The returned (Agent, Request) pair uses the system's native certificate store.
     pub fn http_get(url: &str, timeout_secs: Option<u64>) -> (ureq::Agent, ureq::Request) {
         let agent = http::build_agent(timeout_secs);
-        let request = agent
-            .get(url)
-            .set(
-                "User-Agent",
-                &format!("git-ai/{}", env!("CARGO_PKG_VERSION")),
-            )
-            .set("X-Distinct-ID", &config::get_or_create_distinct_id());
+        let request = Self::with_common_headers(agent.get(url));
         (agent, request)
     }
 
@@ -124,13 +148,7 @@ impl ApiContext {
     /// The returned (Agent, Request) pair uses the system's native certificate store.
     pub fn http_post(url: &str, timeout_secs: Option<u64>) -> (ureq::Agent, ureq::Request) {
         let agent = http::build_agent(timeout_secs);
-        let request = agent
-            .post(url)
-            .set(
-                "User-Agent",
-                &format!("git-ai/{}", env!("CARGO_PKG_VERSION")),
-            )
-            .set("X-Distinct-ID", &config::get_or_create_distinct_id());
+        let request = Self::with_common_headers(agent.post(url));
         (agent, request)
     }
 
@@ -142,20 +160,7 @@ impl ApiContext {
     /// only invoked when an API key is configured. Pass
     /// [`crate::operations::git::repository::resolve_api_author_identity`].
     pub fn new(base_url: Option<String>, identity_resolver: AuthorIdentityResolver) -> Self {
-        let cfg = config::Config::fresh();
-        let api_key = cfg.api_key().map(|s| s.to_string());
-        let author_identity = if api_key.is_some() {
-            identity_resolver()
-        } else {
-            None
-        };
-        Self {
-            base_url: base_url.unwrap_or_else(Self::default_base_url),
-            auth_token: try_load_auth_token(),
-            api_key,
-            author_identity,
-            timeout_secs: Some(30),
-        }
+        Self::from_auth_token_resolver(base_url, identity_resolver, try_load_auth_token)
     }
 
     /// Create a new API context explicitly without authentication
@@ -166,20 +171,7 @@ impl ApiContext {
         base_url: Option<String>,
         identity_resolver: AuthorIdentityResolver,
     ) -> Self {
-        let cfg = config::Config::fresh();
-        let api_key = cfg.api_key().map(|s| s.to_string());
-        let author_identity = if api_key.is_some() {
-            identity_resolver()
-        } else {
-            None
-        };
-        Self {
-            base_url: base_url.unwrap_or_else(Self::default_base_url),
-            auth_token: None,
-            api_key,
-            author_identity,
-            timeout_secs: Some(30),
-        }
+        Self::from_auth_token_resolver(base_url, identity_resolver, || None)
     }
 
     /// Create a new API context with authentication
@@ -191,20 +183,7 @@ impl ApiContext {
         auth_token: String,
         identity_resolver: AuthorIdentityResolver,
     ) -> Self {
-        let cfg = config::Config::fresh();
-        let api_key = cfg.api_key().map(|s| s.to_string());
-        let author_identity = if api_key.is_some() {
-            identity_resolver()
-        } else {
-            None
-        };
-        Self {
-            base_url: base_url.unwrap_or_else(Self::default_base_url),
-            auth_token: Some(auth_token),
-            api_key,
-            author_identity,
-            timeout_secs: Some(30),
-        }
+        Self::from_auth_token_resolver(base_url, identity_resolver, || Some(auth_token))
     }
 
     /// Set a custom timeout
@@ -233,6 +212,35 @@ impl ApiContext {
         Ok(joined)
     }
 
+    fn apply_auth_headers(&self, mut request: ureq::Request) -> ureq::Request {
+        if let Some(api_key) = &self.api_key {
+            request = request.set("X-API-Key", api_key);
+            if let Some(identity) = &self.author_identity {
+                request = request.set("X-Author-Identity", identity);
+            }
+        }
+        if let Some(token) = &self.auth_token {
+            request = request.set("Authorization", &format!("Bearer {}", token));
+        }
+        request
+    }
+
+    fn request_error(error: String) -> GitAiError {
+        // Keep the legacy Generic wrapper because callers observe its exact
+        // "Generic error: HTTP request failed: ..." Display text.
+        GitAiError::Generic(format!("HTTP request failed: {}", error))
+    }
+
+    fn authenticated_json_post_request(&self, url: &str) -> ureq::Request {
+        let (_agent, request) = Self::http_post(url, self.timeout_secs);
+        self.apply_auth_headers(request.set("Content-Type", "application/json"))
+    }
+
+    fn authenticated_get_request(&self, url: &str) -> ureq::Request {
+        let (_agent, request) = Self::http_get(url, self.timeout_secs);
+        self.apply_auth_headers(request)
+    }
+
     /// Make a POST request with JSON body
     pub fn post_json<T: serde::Serialize>(
         &self,
@@ -241,41 +249,15 @@ impl ApiContext {
     ) -> Result<http::Response, GitAiError> {
         let url = self.build_url(endpoint)?;
         let body_json = serde_json::to_string(body).map_err(GitAiError::JsonError)?;
+        let request = self.authenticated_json_post_request(&url);
 
-        let (_agent, mut request) = Self::http_post(&url, self.timeout_secs);
-        request = request.set("Content-Type", "application/json");
-
-        if let Some(api_key) = &self.api_key {
-            request = request.set("X-API-Key", api_key);
-            if let Some(identity) = &self.author_identity {
-                request = request.set("X-Author-Identity", identity);
-            }
-        }
-        if let Some(token) = &self.auth_token {
-            request = request.set("Authorization", &format!("Bearer {}", token));
-        }
-
-        http::send_with_body(request, &body_json)
-            .map_err(|e| GitAiError::Generic(format!("HTTP request failed: {}", e)))
+        http::send_with_body(request, &body_json).map_err(Self::request_error)
     }
 
     /// Make a GET request
     pub fn get(&self, endpoint: &str) -> Result<http::Response, GitAiError> {
         let url = self.build_url(endpoint)?;
-
-        let (_agent, mut request) = Self::http_get(&url, self.timeout_secs);
-
-        if let Some(api_key) = &self.api_key {
-            request = request.set("X-API-Key", api_key);
-            if let Some(identity) = &self.author_identity {
-                request = request.set("X-Author-Identity", identity);
-            }
-        }
-        if let Some(token) = &self.auth_token {
-            request = request.set("Authorization", &format!("Bearer {}", token));
-        }
-
-        http::send(request).map_err(|e| GitAiError::Generic(format!("HTTP request failed: {}", e)))
+        http::send(self.authenticated_get_request(&url)).map_err(Self::request_error)
     }
 }
 
@@ -350,6 +332,54 @@ mod tests {
     fn test_api_context_default_timeout() {
         let ctx = ApiContext::without_auth(Some("https://example.com".to_string()), || None);
         assert_eq!(ctx.timeout_secs, Some(30));
+    }
+
+    #[test]
+    fn test_get_and_post_apply_the_same_auth_headers() {
+        let ctx = ApiContext {
+            base_url: "https://example.com".to_string(),
+            auth_token: Some("oauth-token".to_string()),
+            api_key: Some("api-key".to_string()),
+            author_identity: Some("Test User <test@example.com>".to_string()),
+            timeout_secs: Some(30),
+        };
+
+        let get = ctx.authenticated_get_request("https://example.com/get");
+        let post = ctx.authenticated_json_post_request("https://example.com/post");
+
+        for request in [get, post] {
+            assert_eq!(request.header("X-API-Key"), Some("api-key"));
+            assert_eq!(
+                request.header("X-Author-Identity"),
+                Some("Test User <test@example.com>")
+            );
+            assert_eq!(request.header("Authorization"), Some("Bearer oauth-token"));
+        }
+    }
+
+    #[test]
+    fn test_auth_headers_omit_identity_without_api_key() {
+        let ctx = ApiContext {
+            base_url: "https://example.com".to_string(),
+            auth_token: None,
+            api_key: None,
+            author_identity: Some("Test User <test@example.com>".to_string()),
+            timeout_secs: Some(30),
+        };
+
+        let request = ctx.apply_auth_headers(ureq::get("https://example.com"));
+
+        assert_eq!(request.header("X-API-Key"), None);
+        assert_eq!(request.header("X-Author-Identity"), None);
+        assert_eq!(request.header("Authorization"), None);
+    }
+
+    #[test]
+    fn test_request_error_preserves_legacy_display() {
+        assert_eq!(
+            ApiContext::request_error("connection refused".to_string()).to_string(),
+            "Generic error: HTTP request failed: connection refused"
+        );
     }
 
     // ============= ApiClient Tests =============

@@ -1,7 +1,24 @@
 use crate::clients::api::client::ApiClient;
-use crate::clients::api::error::http_status_error;
+use crate::clients::api::first_non_hex;
+use crate::clients::api::response::ResponseEnvelope;
 use crate::error::GitAiError;
 use crate::model::api_types::{CAPromptStoreReadResponse, CasUploadRequest, CasUploadResponse};
+
+fn decode_cas_read_response(
+    response: ResponseEnvelope<'_>,
+    requested_hashes: usize,
+) -> Result<CAPromptStoreReadResponse, GitAiError> {
+    match response.status_code() {
+        200 => response.parse_json(),
+        // All hashes not found — return empty response gracefully.
+        404 => Ok(CAPromptStoreReadResponse {
+            results: Vec::new(),
+            success_count: 0,
+            failure_count: requested_hashes,
+        }),
+        _ => Err(response.into_error("CAS read", "unexpected error")),
+    }
+}
 
 /// CAS API endpoints
 impl ApiClient {
@@ -15,19 +32,7 @@ impl ApiClient {
     /// * `Err(GitAiError)` - Error response
     pub fn upload_cas(&self, request: CasUploadRequest) -> Result<CasUploadResponse, GitAiError> {
         let response = self.context().post_json("/worker/cas/upload", &request)?;
-        let status_code = response.status_code;
-
-        let body = response
-            .as_str()
-            .map_err(|e| GitAiError::Generic(format!("Failed to read response body: {}", e)))?;
-
-        if status_code == 200 {
-            let cas_response: CasUploadResponse =
-                serde_json::from_str(body).map_err(GitAiError::JsonError)?;
-            return Ok(cas_response);
-        }
-
-        Err(http_status_error("CAS upload", status_code, body, "unexpected error").into())
+        ResponseEnvelope::read(&response)?.decode_json(200, "CAS upload", "unexpected error")
     }
 
     /// Read CAS objects by hash from the server
@@ -44,37 +49,53 @@ impl ApiClient {
     ) -> Result<CAPromptStoreReadResponse, GitAiError> {
         // Validate all hashes are hex-only before building the URL to prevent
         // injection via crafted hash values in the query string.
-        for hash in hashes {
-            if !hash.chars().all(|c| c.is_ascii_hexdigit()) {
-                return Err(GitAiError::Generic(format!(
-                    "CAS hash contains non-hex characters: {}",
-                    hash
-                )));
-            }
+        if let Some(hash) = first_non_hex(hashes) {
+            // Retain this legacy Generic variant because its exact display is
+            // part of the existing input-validation contract.
+            return Err(GitAiError::Generic(format!(
+                "CAS hash contains non-hex characters: {}",
+                hash
+            )));
         }
 
         let query = hashes.join(",");
         let endpoint = format!("/worker/cas/?hashes={}", query);
         let response = self.context().get(&endpoint)?;
-        let status_code = response.status_code;
+        let response = ResponseEnvelope::read(&response)?;
+        decode_cas_read_response(response, hashes.len())
+    }
+}
 
-        let body = response
-            .as_str()
-            .map_err(|e| GitAiError::Generic(format!("Failed to read response body: {}", e)))?;
+#[cfg(test)]
+mod tests {
+    use super::{ResponseEnvelope, decode_cas_read_response};
+    use crate::clients::api::{ApiClient, ApiContext};
 
-        match status_code {
-            200 => {
-                let cas_response: CAPromptStoreReadResponse =
-                    serde_json::from_str(body).map_err(GitAiError::JsonError)?;
-                Ok(cas_response)
-            }
-            // All hashes not found — return empty response gracefully
-            404 => Ok(CAPromptStoreReadResponse {
-                results: Vec::new(),
-                success_count: 0,
-                failure_count: hashes.len(),
-            }),
-            _ => Err(http_status_error("CAS read", status_code, body, "unexpected error").into()),
-        }
+    #[test]
+    fn read_cas_preserves_empty_404_response_contract() {
+        let response = ResponseEnvelope::from_utf8(404, Ok("")).expect("valid empty response body");
+        let result = decode_cas_read_response(response, 1)
+            .expect("404 remains a successful empty CAS response");
+
+        assert!(result.results.is_empty());
+        assert_eq!(result.success_count, 0);
+        assert_eq!(result.failure_count, 1);
+    }
+
+    #[test]
+    fn read_cas_preserves_invalid_hash_error_text() {
+        let client = ApiClient::new(ApiContext::without_auth(
+            Some("https://example.com".to_string()),
+            || None,
+        ));
+
+        let error = client
+            .read_ca_prompt_store(&["not-hex"])
+            .expect_err("invalid hash should fail before the request");
+
+        assert_eq!(
+            error.to_string(),
+            "Generic error: CAS hash contains non-hex characters: not-hex"
+        );
     }
 }

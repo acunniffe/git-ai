@@ -1,7 +1,7 @@
 //! Metrics API endpoints
 
 use crate::clients::api::client::ApiClient;
-use crate::clients::api::error::http_status_error;
+use crate::clients::api::response::ResponseEnvelope;
 use crate::error::GitAiError;
 use crate::metrics::MetricsBatch;
 use crate::model::repository::error::PersistenceError;
@@ -173,19 +173,7 @@ impl ApiClient {
     ) -> Result<MetricsUploadResponse, GitAiError> {
         wait_for_metrics_upload_rate_limit()?;
         let response = self.context().post_json("/worker/metrics/upload", batch)?;
-        let status_code = response.status_code;
-
-        let body = response
-            .as_str()
-            .map_err(|e| GitAiError::Generic(format!("Failed to read response body: {}", e)))?;
-
-        if status_code == 200 {
-            let metrics_response: MetricsUploadResponse =
-                serde_json::from_str(body).map_err(GitAiError::JsonError)?;
-            return Ok(metrics_response);
-        }
-
-        Err(http_status_error("metrics upload", status_code, body, "unexpected error").into())
+        ResponseEnvelope::read(&response)?.decode_json(200, "metrics upload", "unexpected error")
     }
 }
 
