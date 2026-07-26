@@ -1025,6 +1025,90 @@ fn test_cherry_pick_skip_failed_next_conflict_advances_pending_remote_tracking_s
     conflict_b.assert_committed_lines(crate::lines!["base".human(), "AI_REMOTE_VERSION".ai(),]);
 }
 
+/// Regression test for #982: a skip in the middle of a cherry-pick sequence must still
+/// be remembered when a later `--continue` completes the remaining commits.
+#[test]
+fn test_cherry_pick_skip_then_continue_applies_remaining_commits() {
+    let repo = TestRepo::new();
+    let conflict_a_path = repo.path().join("conflict_a.txt");
+    let conflict_b_path = repo.path().join("conflict_b.txt");
+    let clean_c_path = repo.path().join("clean_c.txt");
+
+    for path in [&conflict_a_path, &conflict_b_path, &clean_c_path] {
+        fs::write(path, "base\nshared\n").unwrap();
+    }
+    for path in ["conflict_a.txt", "conflict_b.txt", "clean_c.txt"] {
+        repo.git_ai(&["checkpoint", "mock_known_human", path])
+            .unwrap();
+    }
+    repo.stage_all_and_commit("initial").unwrap();
+    let mut conflict_a = repo.filename("conflict_a.txt");
+    let mut conflict_b = repo.filename("conflict_b.txt");
+    let mut clean_c = repo.filename("clean_c.txt");
+    conflict_a.assert_committed_lines(crate::lines!["base".human(), "shared".human(),]);
+    conflict_b.assert_committed_lines(crate::lines!["base".human(), "shared".human(),]);
+    clean_c.assert_committed_lines(crate::lines!["base".human(), "shared".human(),]);
+    let main_branch = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    fs::write(&conflict_a_path, "base\nFEATURE_A_HUMAN\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "conflict_a.txt"])
+        .unwrap();
+    let skipped_source = repo.stage_all_and_commit("human conflict A").unwrap();
+    conflict_a.assert_committed_lines(crate::lines!["base".human(), "FEATURE_A_HUMAN".human(),]);
+
+    fs::write(&conflict_b_path, "base\nAI_B_VERSION\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "conflict_b.txt"])
+        .unwrap();
+    let continued_source = repo.stage_all_and_commit("AI conflict B").unwrap();
+    conflict_b.assert_committed_lines(crate::lines!["base".human(), "AI_B_VERSION".ai(),]);
+
+    fs::write(&clean_c_path, "base\nAI_C_VERSION\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "clean_c.txt"])
+        .unwrap();
+    let auto_applied_source = repo.stage_all_and_commit("AI clean C").unwrap();
+    clean_c.assert_committed_lines(crate::lines!["base".human(), "AI_C_VERSION".ai(),]);
+
+    repo.git(&["checkout", &main_branch]).unwrap();
+    fs::write(&conflict_a_path, "base\nMAIN_A_HUMAN\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "conflict_a.txt"])
+        .unwrap();
+    fs::write(&conflict_b_path, "base\nMAIN_B_HUMAN\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "conflict_b.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("main conflicts").unwrap();
+    conflict_a.assert_committed_lines(crate::lines!["base".human(), "MAIN_A_HUMAN".human(),]);
+    conflict_b.assert_committed_lines(crate::lines!["base".human(), "MAIN_B_HUMAN".human(),]);
+    clean_c.assert_committed_lines(crate::lines!["base".human(), "shared".human(),]);
+
+    let cherry_pick_result = repo.git(&[
+        "cherry-pick",
+        &skipped_source.commit_sha,
+        &continued_source.commit_sha,
+        &auto_applied_source.commit_sha,
+    ]);
+    assert!(
+        cherry_pick_result.is_err(),
+        "first cherry-pick should conflict"
+    );
+    repo.sync_daemon();
+
+    let skip_result = repo.git(&["cherry-pick", "--skip"]);
+    assert!(
+        skip_result.is_err(),
+        "skip should advance to the second source and conflict"
+    );
+    repo.sync_daemon();
+
+    fs::write(&conflict_b_path, "base\nAI_B_VERSION\n").unwrap();
+    repo.git(&["add", "conflict_b.txt"]).unwrap();
+    repo.git(&["cherry-pick", "--continue"]).unwrap();
+
+    conflict_a.assert_committed_lines(crate::lines!["base".human(), "MAIN_A_HUMAN".human(),]);
+    conflict_b.assert_committed_lines(crate::lines!["base".human(), "AI_B_VERSION".ai(),]);
+    clean_c.assert_committed_lines(crate::lines!["base".human(), "AI_C_VERSION".ai(),]);
+}
+
 #[test]
 fn test_cherry_pick_skip_failed_next_conflict_does_not_double_skip_refcursor_sources() {
     let repo = TestRepo::new();
@@ -1223,5 +1307,6 @@ crate::reuse_tests_in_worktree!(
     test_cherry_pick_from_remote_continues_when_notes_import_fails,
     test_cherry_pick_no_commit_defers_to_final_commit_tree,
     test_cherry_pick_skip_failed_next_conflict_advances_pending_remote_tracking_source,
+    test_cherry_pick_skip_then_continue_applies_remaining_commits,
     test_cherry_pick_skip_failed_next_conflict_does_not_double_skip_refcursor_sources,
 );
