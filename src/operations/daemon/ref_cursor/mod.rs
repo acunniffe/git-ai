@@ -1,6 +1,7 @@
 use crate::error::GitAiError;
 use crate::model::domain::{Confidence, FamilyKey, FamilyState, NormalizedCommand, RefChange};
 use crate::operations::daemon::analyzers::{command_args, normalized_args};
+use crate::operations::daemon::parsed_invocation_for_normalized_command;
 use crate::operations::git::cli_parser::{
     explicit_rebase_branch_arg, parse_git_cli_args, summarize_rebase_args,
 };
@@ -9,7 +10,9 @@ use crate::operations::git::oid::{
     is_full_oid as is_valid_git_oid, is_non_zero_oid as valid_non_zero_oid,
 };
 use crate::operations::git::repo_state::{common_dir_for_worktree, git_dir_for_worktree};
-use crate::operations::git::sequencer_args::{cherry_pick_source_args, revert_source_args};
+use crate::operations::git::sequencer_args::{
+    cherry_pick_source_args_from_command_args, revert_source_args_from_command_args,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};

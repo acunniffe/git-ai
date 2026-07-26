@@ -4,7 +4,9 @@ use crate::model::checkpoint_request::{
 };
 use crate::model::working_log::CheckpointKind;
 use crate::operations::daemon::actor_coordinator_side_effects::commit_enrichment_unrecoverable_error;
-use crate::operations::daemon::cherry_pick_helpers::rebase_new_tip_from_command;
+use crate::operations::daemon::cherry_pick_helpers::{
+    rebase_new_tip_from_command, revert_source_args_for_side_effect,
+};
 use crate::operations::daemon::revert_rebase_helpers::strict_rebase_original_head_from_command;
 use serial_test::serial;
 use std::collections::HashMap;
@@ -212,6 +214,24 @@ fn ref_change(reference: &str, old: &str, new: &str) -> crate::model::domain::Re
         old: old.to_string(),
         new: new.to_string(),
     }
+}
+
+#[test]
+fn revert_side_effect_source_named_like_command_is_not_dropped() {
+    let mut command = test_rebase_command(&[], Vec::new());
+    command.raw_argv = vec![
+        "git".to_string(),
+        "revert".to_string(),
+        "revert".to_string(),
+    ];
+    command.primary_command = Some("revert".to_string());
+    command.invoked_command = Some("revert".to_string());
+    command.invoked_args = vec!["revert".to_string()];
+
+    assert_eq!(
+        revert_source_args_for_side_effect(&command),
+        vec!["revert".to_string()]
+    );
 }
 
 #[test]

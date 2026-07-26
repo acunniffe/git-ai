@@ -6,7 +6,7 @@ impl RefCursor {
         cmd: &mut NormalizedCommand,
         state: &FamilyState,
     ) -> Result<(), GitAiError> {
-        let args = command_args(cmd);
+        let args = parsed_invocation_for_normalized_command(cmd).command_args;
         if args
             .iter()
             .any(|arg| matches!(arg.as_str(), "--abort" | "--quit"))
@@ -26,7 +26,7 @@ impl RefCursor {
         let source_args = if is_continue || is_skip {
             Vec::new()
         } else {
-            cherry_pick_source_args(&args)
+            cherry_pick_source_args_from_command_args(&args)
         };
         let explicit_sources = if is_continue || is_skip {
             Some(Vec::new())
@@ -91,7 +91,7 @@ impl RefCursor {
         cmd: &mut NormalizedCommand,
         state: &FamilyState,
     ) -> Result<(), GitAiError> {
-        let args = command_args(cmd);
+        let args = parsed_invocation_for_normalized_command(cmd).command_args;
         if args
             .iter()
             .any(|arg| matches!(arg.as_str(), "--abort" | "--quit"))
@@ -113,7 +113,7 @@ impl RefCursor {
         let source_args = if is_continue || is_skip {
             Vec::new()
         } else {
-            revert_source_args(&args)
+            revert_source_args_from_command_args(&args)
         };
         let explicit_sources = if source_args.is_empty() {
             Some(Vec::new())

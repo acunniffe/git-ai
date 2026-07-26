@@ -6,7 +6,7 @@ use crate::error::GitAiError;
 use crate::operations::git::oid::is_non_zero_oid;
 use crate::operations::git::repository::Repository;
 use crate::operations::git::sequencer_args::{
-    cherry_pick_source_args_from_command_args, revert_source_args,
+    cherry_pick_source_args_from_command_args, revert_source_args_from_command_args,
 };
 
 use super::{
@@ -283,7 +283,7 @@ pub(crate) fn revert_source_args_for_side_effect(
         return Vec::new();
     }
 
-    revert_source_args(&parsed.command_args)
+    revert_source_args_from_command_args(&parsed.command_args)
         .into_iter()
         .map(ToOwned::to_owned)
         .collect()

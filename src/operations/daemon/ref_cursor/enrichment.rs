@@ -289,6 +289,7 @@ impl RefCursor {
                 expected: ExpectedTransition::default(),
             }),
             "cherry-pick" => {
+                let args = parsed_invocation_for_normalized_command(cmd).command_args;
                 if args
                     .iter()
                     .any(|arg| matches!(arg.as_str(), "--abort" | "--quit"))
@@ -296,7 +297,7 @@ impl RefCursor {
                 {
                     return None;
                 }
-                let source_args = cherry_pick_source_args(&args);
+                let source_args = cherry_pick_source_args_from_command_args(&args);
                 let limit = if source_args
                     .iter()
                     .any(|source| cherry_pick_source_is_range(source))

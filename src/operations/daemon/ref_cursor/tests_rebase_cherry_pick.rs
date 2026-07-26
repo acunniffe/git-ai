@@ -426,3 +426,31 @@ fn cherry_pick_span_starts_at_first_pick_when_expected_state_matches_second_pick
         ]
     );
 }
+
+#[test]
+fn cherry_pick_source_named_like_command_is_not_dropped() {
+    let family = FamilyKey::new("/repo/.git");
+    let mut state = family_state(&family);
+    state.refs.insert("cherry-pick".to_string(), B.to_string());
+    let mut cursor = RefCursor::new(family.clone());
+    let mut cmd = command(&family, &["cherry-pick", "cherry-pick"]);
+    cmd.invoked_args = vec!["cherry-pick".to_string()];
+
+    cursor.enrich_command(&mut cmd, &state).unwrap();
+
+    assert_eq!(cmd.cherry_pick_source_oids, vec![B.to_string()]);
+}
+
+#[test]
+fn revert_source_named_like_command_is_not_dropped() {
+    let family = FamilyKey::new("/repo/.git");
+    let mut state = family_state(&family);
+    state.refs.insert("revert".to_string(), C.to_string());
+    let mut cursor = RefCursor::new(family.clone());
+    let mut cmd = command(&family, &["revert", "revert"]);
+    cmd.invoked_args = vec!["revert".to_string()];
+
+    cursor.enrich_command(&mut cmd, &state).unwrap();
+
+    assert_eq!(cmd.revert_source_oids, vec![C.to_string()]);
+}
