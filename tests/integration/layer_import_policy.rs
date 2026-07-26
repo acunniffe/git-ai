@@ -170,6 +170,13 @@ const PURE_CORE_FORBIDDEN_IO_SUBSTRINGS: &[&str] = &[
     "File::open",
 ];
 
+/// The stream-adapter layer owns transcript parsing and discovery policy.
+///
+/// It must not reach upward into daemon orchestration: doing so makes the
+/// adapters impossible to reuse without the daemon and gives pure parsing
+/// helpers the wrong architectural owner.
+const STREAMS_FORBIDDEN_DEPENDENCIES: &[&str] = &["crate::operations::daemon"];
+
 fn rule_applies(rule: &Rule, rel: &str) -> bool {
     if !rel.starts_with(rule.applies_to) {
         return false;
@@ -409,6 +416,38 @@ fn daemon_pure_core_is_io_free() {
     assert!(
         violations.is_empty(),
         "daemon pure-core IO violations:\n  {}",
+        violations.join("\n  ")
+    );
+}
+
+#[test]
+fn stream_adapters_do_not_depend_on_daemon_orchestration() {
+    let root = repo_root();
+    let files = collect_src_files(&root);
+    let mut violations = Vec::new();
+
+    for (rel, content) in files
+        .iter()
+        .filter(|(rel, _)| rel.starts_with("src/operations/streams/"))
+    {
+        let production = content
+            .rfind("#[cfg(test)]\nmod ")
+            .map_or(content.as_str(), |offset| &content[..offset]);
+        for forbidden in STREAMS_FORBIDDEN_DEPENDENCIES {
+            for (lineno, line) in production.lines().enumerate() {
+                if line.contains(forbidden) {
+                    violations.push(format!(
+                        "{rel}:{}: stream adapters must not depend on `{forbidden}`",
+                        lineno + 1,
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "stream adapter dependency violations:\n  {}",
         violations.join("\n  ")
     );
 }

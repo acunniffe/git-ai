@@ -17,6 +17,7 @@ use crate::operations::daemon::telemetry_worker::DaemonTelemetryWorkerHandle;
 use crate::operations::daemon::transcript_redaction::redact_json_secrets;
 use crate::operations::streams::agent::{SHARED_STREAM_SESSION_ID, StreamDescriptor};
 use crate::operations::streams::sweep::StreamFormat;
+pub use crate::operations::streams::timestamp::parse_event_timestamp as extract_event_timestamp;
 use chrono::{TimeZone, Utc};
 use std::collections::{BinaryHeap, HashSet};
 use std::path::{Path, PathBuf};
@@ -32,9 +33,6 @@ mod checkpoint_notification_tests;
 
 const TRIGGERED_SWEEP_COOLDOWN: Duration = Duration::from_secs(30);
 
-/// Extract a Unix-epoch u32 timestamp from a raw JSON event's "timestamp" field.
-/// Handles both ISO 8601 strings (e.g. "2026-05-11T23:13:12.819Z") and numeric
-/// milliseconds (e.g. 1759845073835). Returns None if the field is missing or unparseable.
 /// Collection is opt-in per repository: a session's transcript may only be
 /// processed when its working directory resolves to a repository allowed by
 /// `allowed_repositories`. Sessions with no resolvable git repository are
@@ -46,17 +44,6 @@ pub(crate) fn transcript_collection_allowed(work_dir: Option<&Path>) -> bool {
     match crate::operations::git::repository::discover_repository_in_path_no_git_exec(work_dir) {
         Ok(repo) => repo.is_collection_allowed(&crate::config::Config::fresh()),
         Err(_) => false,
-    }
-}
-
-pub fn extract_event_timestamp(event: &serde_json::Value) -> Option<u32> {
-    let ts_val = event.get("timestamp")?;
-    if let Some(s) = ts_val.as_str() {
-        chrono::DateTime::parse_from_rfc3339(s)
-            .ok()
-            .map(|dt| dt.timestamp() as u32)
-    } else {
-        ts_val.as_u64().map(|ms| (ms / 1000) as u32)
     }
 }
 
@@ -1400,59 +1387,6 @@ pub fn spawn_stream_worker(
         sweep_tx,
         drain_tx,
         sweep_trigger_gate,
-    }
-}
-
-#[cfg(test)]
-mod extract_event_timestamp_tests {
-    use super::*;
-
-    #[test]
-    fn test_rfc3339() {
-        let event = serde_json::json!({"timestamp": "2026-05-11T23:13:12.819Z"});
-        assert_eq!(extract_event_timestamp(&event), Some(1778541192));
-    }
-
-    #[test]
-    fn test_rfc3339_without_millis() {
-        let event = serde_json::json!({"timestamp": "2026-05-12T00:21:05Z"});
-        assert_eq!(extract_event_timestamp(&event), Some(1778545265));
-    }
-
-    #[test]
-    fn test_rfc3339_subsecond_discarded() {
-        let event = serde_json::json!({"timestamp": "2026-05-11T23:13:12.999Z"});
-        assert_eq!(extract_event_timestamp(&event), Some(1778541192));
-    }
-
-    #[test]
-    fn test_numeric_millis() {
-        let event = serde_json::json!({"timestamp": 1759845073835u64});
-        assert_eq!(extract_event_timestamp(&event), Some(1759845073));
-    }
-
-    #[test]
-    fn test_missing_field() {
-        let event = serde_json::json!({"type": "user.message"});
-        assert_eq!(extract_event_timestamp(&event), None);
-    }
-
-    #[test]
-    fn test_null_value() {
-        let event = serde_json::json!({"timestamp": null});
-        assert_eq!(extract_event_timestamp(&event), None);
-    }
-
-    #[test]
-    fn test_invalid_string() {
-        let event = serde_json::json!({"timestamp": "not-a-date"});
-        assert_eq!(extract_event_timestamp(&event), None);
-    }
-
-    #[test]
-    fn test_empty_string() {
-        let event = serde_json::json!({"timestamp": ""});
-        assert_eq!(extract_event_timestamp(&event), None);
     }
 }
 

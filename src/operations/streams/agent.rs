@@ -357,19 +357,6 @@ pub(super) fn read_jsonl_byte_stream(
     })
 }
 
-/// Fallback timestamp from file metadata when an event lacks a per-event timestamp.
-/// Uses birthtime (creation time) for the first event, mtime for all others.
-pub fn file_time_fallback(meta: &std::fs::Metadata, is_first_event: bool) -> u32 {
-    let time = if is_first_event {
-        meta.created().or_else(|_| meta.modified()).ok()
-    } else {
-        meta.modified().ok()
-    };
-    time.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as u32)
-        .unwrap_or_else(|| crate::model::clock::now_secs() as u32)
-}
-
 const ALL_AGENT_TYPES: &[&str] = &[
     "claude",
     "cursor",

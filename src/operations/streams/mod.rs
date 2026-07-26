@@ -45,6 +45,7 @@ pub mod agent;
 pub mod agents;
 pub mod model_extraction;
 pub mod sweep;
+pub(crate) mod timestamp;
 
 // Re-export main types for convenient access. Watermark strategies are pure
 // value types owned by `model`; re-exported here for convenient stream access.

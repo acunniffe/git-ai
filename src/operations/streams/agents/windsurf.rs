@@ -6,6 +6,7 @@ use crate::operations::streams::agent::{
     Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
 };
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
+use crate::operations::streams::timestamp::file_time_fallback;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -94,7 +95,7 @@ impl Agent for WindsurfAgent {
         file_meta: &std::fs::Metadata,
         is_first_event: bool,
     ) -> u32 {
-        crate::operations::streams::agent::file_time_fallback(file_meta, is_first_event)
+        file_time_fallback(file_meta, is_first_event)
     }
 
     fn streams(&self) -> Vec<StreamDescriptor> {

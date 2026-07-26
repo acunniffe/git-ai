@@ -5,6 +5,7 @@ use crate::operations::streams::agent::{
     Agent, PathResolverKind, StreamDescriptor, read_jsonl_byte_stream,
 };
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
+use crate::operations::streams::timestamp::event_timestamp_or_file_time;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -148,9 +149,7 @@ impl Agent for CopilotCliAgent {
         file_meta: &std::fs::Metadata,
         is_first_event: bool,
     ) -> u32 {
-        crate::operations::daemon::stream_worker::extract_event_timestamp(event).unwrap_or_else(
-            || crate::operations::streams::agent::file_time_fallback(file_meta, is_first_event),
-        )
+        event_timestamp_or_file_time(event, file_meta, is_first_event)
     }
 
     fn infer_cwd(&self, stream_path: &Path) -> Option<PathBuf> {
