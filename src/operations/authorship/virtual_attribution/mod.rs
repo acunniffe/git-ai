@@ -14,6 +14,7 @@ mod merge;
 mod persisted_log_loader;
 mod types;
 mod working_log_loader;
+mod working_log_state;
 
 pub use carryover::{restore_virtual_attribution_carryover, restore_working_log_carryover};
 pub use carryover_snapshot::checkout_merge_final_state_snapshot;
