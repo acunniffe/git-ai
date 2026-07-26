@@ -1,0 +1,38 @@
+src/git/fast_reader.rs
+  s_59382cac373d67::t_e0354b34e16d6a 618
+  s_59382cac373d67::t_2ad98ae45639a1 619
+  s_59382cac373d67::t_19bb1c8317dce9 9,483
+  s_59382cac373d67::t_5fdcfe9cd398e8 205-211
+  s_59382cac373d67::t_b5166d0f30d571 621
+  s_59382cac373d67::t_815695ddb94e3e 639-648,650-664
+  s_59382cac373d67::t_7ede49c9870c66 6,10,12-13,22-36,66,99,119,131,182,187-195,197-204,216,227-228,238,245,300-301
+  s_59382cac373d67::t_79eabf646c02f3 649
+  s_59382cac373d67::t_7e133c7699c6a4 7-8,11,614
+  s_59382cac373d67::t_63eefad705841e 251-253
+  s_59382cac373d67::t_7f972e286db426 615-616
+  s_59382cac373d67::t_cc89f705794d83 426-428,431-436,448-450,452-453,455-462,478-482,484-490,610-613,617,620,638
+  s_59382cac373d67::t_647ba805000f5f 429-430,451,454
+  s_59382cac373d67::t_29614e0ca2a4b0 234-237
+tests/integration/daemon_repository_reader_memory.rs
+  s_59382cac373d67::t_cc89f705794d83 1-2,4,11-25,27-33,48-53,56-60,63-68,70-73
+  s_59382cac373d67::t_b0f53b6281e8ea 3,5-10,26,34-47,62,69
+  s_59382cac373d67::t_ab2abcb38a55a2 54-55,61
+tests/integration/main.rs
+  s_59382cac373d67::t_cc89f705794d83 57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "b311309e94042998edbdca307b2f98d082ed9b0f",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

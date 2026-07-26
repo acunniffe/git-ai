@@ -1,0 +1,23 @@
+src/authorship/virtual_attribution.rs
+  s_b3918a71142a3e::t_5b86c8d42e1a93 1308-1309,1312-1314
+  s_b3918a71142a3e::t_13f883735681e2 1443
+  s_b3918a71142a3e::t_0f9867c6d2284e 1531-1542
+  s_b3918a71142a3e::t_7cae6c4c4bf3b6 2767-2820
+  s_b3918a71142a3e::t_16234739777586 2821-2846
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "0c70f9484d90914937406e0174fb83014712820f",
+  "prompts": {},
+  "sessions": {
+    "s_b3918a71142a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de268d2e-4705-4c20-86ca-d1dc04eda164",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+src/mdm/utils.rs
+  192816f4f485acce 962-965
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "9d351046345b3f08ff45640ac16aff286a2f35cb",
+  "prompts": {
+    "192816f4f485acce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "706408c9-94e5-47e5-8743-a7be94c15ccc",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/02f2ea481f964235c69d8084b1dc6a16a21bf9f70774e730757eb8c34b8733f0"
+    },
+    "2d314bcd76485307": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "271a69e1-dafc-41bb-a389-cad03533e462",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

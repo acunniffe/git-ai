@@ -1,0 +1,37 @@
+Taskfile.yml
+  h_dac2ecdcedf37f 2-22,25-30,42-43,47-48,50-53,55-56,58-60,62-66,68-70,72-73,75-77,79-80
+.github/workflows/e2e-tests.yml
+  h_dac2ecdcedf37f 66
+scripts/ai
+  b30d97ce44893511 43
+tests/integration/simple_additions.rs
+  h_dac2ecdcedf37f 821-906
+AGENTS.md
+  h_dac2ecdcedf37f 4-12,14-23,26-27,45-48,50,90,93,102-191,198,222,224
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "fcc8e3f74beb1be8efa685f9b2248a651bd67cc6",
+  "prompts": {
+    "b30d97ce44893511": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5e804e7-3c90-446c-82e4-290f1a3300be",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 152,
+      "total_deletions": 1,
+      "accepted_lines": 152,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/563e6b4b0b0a1fcf47741421cedd89a1573922be35af35a32aa92f10e88a2eae"
+    }
+  },
+  "humans": {
+    "h_dac2ecdcedf37f": {
+      "author": "Sasha Varlamov"
+    }
+  }
+}

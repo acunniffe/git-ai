@@ -1,0 +1,24 @@
+tests/daemon_mode.rs
+  dbec0bfb1993ce92 4806,4811
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "48354c1ac4bdd528afbdce1fddd53a58f0674d45",
+  "prompts": {
+    "dbec0bfb1993ce92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cc8540b-3147-48dd-aac5-5978b60cb05d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 4,
+      "accepted_lines": 136,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/a77d0ed2349ae0d2958acf1c0535febb5387c2990bd56283cc83d1dc35ee2c42"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+tests/integration/windsurf.rs
+  acaacb0abd2332ed 135,142,144-145
+src/daemon.rs
+  acaacb0abd2332ed 3942-3944,5760-5773
+src/commands/git_ai_handlers.rs
+  acaacb0abd2332ed 1492-1495
+src/commands/checkpoint_agent/agent_presets.rs
+  acaacb0abd2332ed 807-809,813-814,912,937,940,949
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "b86b8a682d0f677224e3acc0a4bf40f0735ce66e",
+  "prompts": {
+    "acaacb0abd2332ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e8803e77-45ab-4067-a145-5b3f347826a4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 237,
+      "total_deletions": 269,
+      "accepted_lines": 38,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/3a2f1f6ca43ef433e73dc44f44c24a961bf9125fd25383498d860fc893cbcee6"
+    }
+  },
+  "humans": {
+    "h_dac2ecdcedf37f": {
+      "author": "Sasha Varlamov"
+    }
+  }
+}

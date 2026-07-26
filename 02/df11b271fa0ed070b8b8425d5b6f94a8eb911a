@@ -1,0 +1,22 @@
+src/authorship/virtual_attribution.rs
+  s_4cf754ff37d580::t_7673950380597f 2-3,904-908,917
+tests/integration/simple_additions.rs
+  s_4cf754ff37d580::t_4e0783d37492ca 1802-1803
+  s_4cf754ff37d580::t_b16dad5db1fc92 3,5,1791-1801,1804-1851
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "02df11b271fa0ed070b8b8425d5b6f94a8eb911a",
+  "prompts": {},
+  "sessions": {
+    "s_4cf754ff37d580": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eee8c-c05c-7fd1-8fc1-02e283255044",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

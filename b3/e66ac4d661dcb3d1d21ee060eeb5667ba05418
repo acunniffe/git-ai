@@ -1,0 +1,23 @@
+src/config.rs
+  374e6dafdb5e2955 785,794,860,869,871-876,1069-1079
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "b3e66ac4d661dcb3d1d21ee060eeb5667ba05418",
+  "prompts": {
+    "374e6dafdb5e2955": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e24042d6-2809-494a-97a0-27db3a7440f0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 37,
+      "accepted_lines": 25,
+      "overriden_lines": 0
+    }
+  }
+}

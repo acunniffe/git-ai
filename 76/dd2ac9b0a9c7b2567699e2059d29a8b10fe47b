@@ -1,0 +1,23 @@
+src/commands/checkpoint.rs
+  f032b7a 27-29,48,51-53,135,143-147,149,157-161,219,221-224,241,252-256,268,271-273,285,287-290,294-297,359,370,372-375,410-414,519-520,597,599-602,681,691-694,696-701
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.20",
+  "base_commit_sha": "76dd2ac9b0a9c7b2567699e2059d29a8b10fe47b",
+  "prompts": {
+    "f032b7a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3057a273-130e-45f1-8983-509e221297cd",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 32,
+      "total_deletions": 4,
+      "accepted_lines": 84,
+      "overriden_lines": 0
+    }
+  }
+}

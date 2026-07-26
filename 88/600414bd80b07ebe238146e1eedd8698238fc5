@@ -1,0 +1,38 @@
+src/daemon/control_api.rs
+  s_a5f4b12640a58f::t_500f705c11371b 1,75
+src/authorship/pre_commit.rs
+  s_a5f4b12640a58f::t_f2f5b826b35f89 2,19
+tests/daemon_mode.rs
+  s_a5f4b12640a58f::t_b9b672ee970589 11,587,589
+src/daemon.rs
+  s_a5f4b12640a58f::t_c9f1890c5545c6 35,1807-1808
+src/commands/checkpoint_agent/orchestrator.rs
+  s_a5f4b12640a58f::t_900ab55e372852 15,31,59,68,75,92,105,119,135,151,183
+src/commands/git_ai_handlers.rs
+  s_a5f4b12640a58f::t_03393fbe6d9566 9,406,766,956,1193,1277
+src/commands/checkpoint.rs
+  s_a5f4b12640a58f::t_3173608c07479d 17,92,187,317,337,359,397,601,781,1035,1145,1908,2311,2321-2322,2592,2615,2657,2673,2714,2730,2813,2822
+src/commands/checkpoint_agent/bash_tool.rs
+  s_a5f4b12640a58f::t_9833ff1d689745 12,304-305,377,1186,1293
+src/git/test_utils/mod.rs
+  s_a5f4b12640a58f::t_5526ce8104c6d5 6,354,374,376,527,559,581,1587-1588
+  s_a5f4b12640a58f::t_caf1a055ea2068 344-346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "88600414bd80b07ebe238146e1eedd8698238fc5",
+  "prompts": {},
+  "sessions": {
+    "s_a5f4b12640a58f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cede33a-f5a5-4d2d-8694-f7b2f0278d54",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/8f7727b9db6ca8e1047f8276fad0767ed21d1a75da7861e1d258fdf5b685f8ed"
+    }
+  }
+}
