@@ -1,5 +1,7 @@
 use super::*;
-use crate::model::checkpoint_request::{CheckpointRequest, PreparedPathRole};
+use crate::model::checkpoint_request::{
+    BaseCommit, CheckpointFile, CheckpointRequest, PreparedPathRole,
+};
 use crate::model::working_log::CheckpointKind;
 use crate::operations::daemon::actor_coordinator_side_effects::commit_enrichment_unrecoverable_error;
 use crate::operations::daemon::cherry_pick_helpers::{
@@ -62,7 +64,6 @@ impl Drop for EnvVarGuard {
 }
 
 fn sample_checkpoint_request() -> ControlRequest {
-    use crate::model::checkpoint_request::{BaseCommit, CheckpointFile};
     ControlRequest::CheckpointRun {
         request: Box::new(CheckpointRequest {
             trace_id: "test-trace".to_string(),
@@ -79,6 +80,49 @@ fn sample_checkpoint_request() -> ControlRequest {
             metadata: std::collections::HashMap::new(),
         }),
     }
+}
+
+#[tokio::test]
+async fn checkpoint_ingress_methods_apply_the_same_request_bounds() {
+    let repo_work_dir = std::env::temp_dir().join("git-ai-checkpoint-bounds");
+    let file = CheckpointFile {
+        path: repo_work_dir.join("file.rs"),
+        content: None,
+        repo_work_dir,
+        base_commit: BaseCommit::Initial,
+    };
+    let request = CheckpointRequest {
+        trace_id: "oversized-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::Human,
+        agent_id: None,
+        files: vec![file; crate::model::checkpoint_delivery::CHECKPOINT_DELIVERY_MAX_FILES + 1],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: HashMap::new(),
+    };
+    let delivery = crate::model::checkpoint_delivery::CheckpointDelivery::from_requests_at(
+        vec![request.clone()],
+        42,
+    )
+    .remove(0);
+    let coordinator = ActorDaemonCoordinator::new();
+
+    let legacy = coordinator
+        .handle_control_request(ControlRequest::CheckpointRun {
+            request: Box::new(request),
+        })
+        .await;
+    let durable = coordinator
+        .handle_control_request(ControlRequest::CheckpointDeliver {
+            delivery: Box::new(delivery),
+        })
+        .await;
+
+    let expected = "checkpoint delivery request.files exceeds limit 1000 (actual 1001)";
+    assert!(!legacy.ok);
+    assert!(!durable.ok);
+    assert_eq!(legacy.error.as_deref(), Some(expected));
+    assert_eq!(legacy.error, durable.error);
 }
 
 fn run_git_for_test(repo: &std::path::Path, args: &[&str]) -> String {

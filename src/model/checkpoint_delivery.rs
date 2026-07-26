@@ -129,48 +129,7 @@ impl CheckpointDelivery {
                 field: "producer_version",
             });
         }
-        validate_limit(
-            "request.files",
-            self.request.files.len(),
-            CHECKPOINT_DELIVERY_MAX_FILES,
-        )?;
-        for file in &self.request.files {
-            validate_path("file.path", &file.path)?;
-            validate_path("file.repo_work_dir", &file.repo_work_dir)?;
-        }
-        if let Some(stream_source) = &self.request.stream_source {
-            validate_path("stream_source.path", &stream_source.path)?;
-        }
-        validate_limit(
-            "request.metadata",
-            self.request.metadata.len(),
-            CHECKPOINT_DELIVERY_MAX_METADATA_ENTRIES,
-        )?;
-        let max_key_bytes = self
-            .request
-            .metadata
-            .keys()
-            .map(|key| key.len())
-            .max()
-            .unwrap_or(0);
-        validate_limit(
-            "metadata.key",
-            max_key_bytes,
-            CHECKPOINT_DELIVERY_MAX_METADATA_KEY_BYTES,
-        )?;
-        let max_value_bytes = self
-            .request
-            .metadata
-            .values()
-            .map(|value| value.len())
-            .max()
-            .unwrap_or(0);
-        validate_limit(
-            "metadata.value",
-            max_value_bytes,
-            CHECKPOINT_DELIVERY_MAX_METADATA_VALUE_BYTES,
-        )?;
-        Ok(())
+        validate_checkpoint_request(&self.request, true)
     }
 
     pub fn captured_at_unix_ns(&self) -> u128 {
@@ -178,6 +137,66 @@ impl CheckpointDelivery {
             .checked_mul(1_000_000)
             .expect("u64 milliseconds always fit in u128 nanoseconds")
     }
+}
+
+pub(crate) fn validate_checkpoint_request_bounds(
+    request: &CheckpointRequest,
+) -> Result<(), CheckpointDeliveryError> {
+    validate_checkpoint_request(request, false)
+}
+
+fn validate_checkpoint_request(
+    request: &CheckpointRequest,
+    require_absolute_paths: bool,
+) -> Result<(), CheckpointDeliveryError> {
+    validate_limit(
+        "request.files",
+        request.files.len(),
+        CHECKPOINT_DELIVERY_MAX_FILES,
+    )?;
+    for file in &request.files {
+        validate_path("file.path", &file.path, require_absolute_paths)?;
+        validate_path(
+            "file.repo_work_dir",
+            &file.repo_work_dir,
+            require_absolute_paths,
+        )?;
+    }
+    if let Some(stream_source) = &request.stream_source {
+        validate_path(
+            "stream_source.path",
+            &stream_source.path,
+            require_absolute_paths,
+        )?;
+    }
+    validate_limit(
+        "request.metadata",
+        request.metadata.len(),
+        CHECKPOINT_DELIVERY_MAX_METADATA_ENTRIES,
+    )?;
+    let max_key_bytes = request
+        .metadata
+        .keys()
+        .map(|key| key.len())
+        .max()
+        .unwrap_or(0);
+    validate_limit(
+        "metadata.key",
+        max_key_bytes,
+        CHECKPOINT_DELIVERY_MAX_METADATA_KEY_BYTES,
+    )?;
+    let max_value_bytes = request
+        .metadata
+        .values()
+        .map(|value| value.len())
+        .max()
+        .unwrap_or(0);
+    validate_limit(
+        "metadata.value",
+        max_value_bytes,
+        CHECKPOINT_DELIVERY_MAX_METADATA_VALUE_BYTES,
+    )?;
+    Ok(())
 }
 
 fn validate_identifier(field: &'static str, value: &str) -> Result<(), CheckpointDeliveryError> {
@@ -196,8 +215,9 @@ fn validate_identifier(field: &'static str, value: &str) -> Result<(), Checkpoin
 fn validate_path(
     field: &'static str,
     path: &std::path::Path,
+    require_absolute: bool,
 ) -> Result<(), CheckpointDeliveryError> {
-    if !path.is_absolute() {
+    if require_absolute && !path.is_absolute() {
         return Err(CheckpointDeliveryError::PathMustBeAbsolute { field });
     }
     if path.to_str().is_none() {
@@ -393,6 +413,23 @@ mod tests {
     }
 
     #[test]
+    fn request_bounds_preserve_legacy_relative_snapshot_paths() {
+        let mut value = request("trace-1");
+        value.files.push(CheckpointFile {
+            path: PathBuf::from("relative.rs"),
+            content: Some("content".to_string()),
+            repo_work_dir: PathBuf::from("/repo"),
+            base_commit: BaseCommit::Initial,
+        });
+
+        validate_checkpoint_request_bounds(&value).unwrap();
+        assert_eq!(
+            delivery(value).validate(),
+            Err(CheckpointDeliveryError::PathMustBeAbsolute { field: "file.path" })
+        );
+    }
+
+    #[test]
     fn file_count_is_accepted_at_limit_and_rejected_above_it() {
         let valid_file = checkpoint_file(absolute_path_with_len(8), absolute_path_with_len(8));
         let mut at_limit = request("trace-1");
@@ -401,12 +438,14 @@ mod tests {
 
         let mut above_limit = request("trace-1");
         above_limit.files = vec![valid_file; CHECKPOINT_DELIVERY_MAX_FILES + 1];
+        let request_error = validate_checkpoint_request_bounds(&above_limit).unwrap_err();
         let error = delivery(above_limit).validate().unwrap_err();
 
         assert_eq!(
             error.to_string(),
             "checkpoint delivery request.files exceeds limit 1000 (actual 1001)"
         );
+        assert_eq!(request_error, error);
         assert_eq!(
             format!("{error:?}"),
             "LimitExceeded { field: \"request.files\", limit: 1000, actual: 1001 }"

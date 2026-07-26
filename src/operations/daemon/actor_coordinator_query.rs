@@ -179,11 +179,21 @@ impl ActorDaemonCoordinator {
         delivery
             .validate()
             .map_err(|error| GitAiError::PresetError(error.to_string()))?;
-        self.ingest_checkpoint_control_payload(delivery.request)
+        self.ingest_validated_checkpoint_control_payload(delivery.request)
             .await
     }
 
     pub(crate) async fn ingest_checkpoint_control_payload(
+        &self,
+        request: CheckpointRequest,
+    ) -> Result<ControlResponse, GitAiError> {
+        crate::model::checkpoint_delivery::validate_checkpoint_request_bounds(&request)
+            .map_err(|error| GitAiError::PresetError(error.to_string()))?;
+        self.ingest_validated_checkpoint_control_payload(request)
+            .await
+    }
+
+    async fn ingest_validated_checkpoint_control_payload(
         &self,
         mut request: CheckpointRequest,
     ) -> Result<ControlResponse, GitAiError> {

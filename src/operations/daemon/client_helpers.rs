@@ -10,6 +10,8 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
+const DAEMON_CONTROL_MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
+
 #[cfg(not(windows))]
 use interprocess::local_socket::ConnectOptions;
 #[cfg(not(windows))]
@@ -432,7 +434,7 @@ pub fn handle_control_connection_actor_reader<R: Read + Write>(
     coordinator: Arc<ActorDaemonCoordinator>,
     runtime_handle: tokio::runtime::Handle,
 ) -> Result<(), GitAiError> {
-    while let Some(line) = read_json_line(reader)? {
+    while let Some(line) = read_json_line_bounded(reader, DAEMON_CONTROL_MAX_FRAME_BYTES)? {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;

@@ -2,7 +2,7 @@ use super::daemon_config::DaemonConfig;
 use crate::error::GitAiError;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
-use std::io::BufRead;
+use std::io::{self, BufRead};
 use std::path::{Path, PathBuf};
 
 #[cfg(windows)]
@@ -343,4 +343,60 @@ pub fn read_json_line<R: BufRead>(reader: &mut R) -> Result<Option<String>, GitA
         return Ok(None);
     }
     Ok(Some(line))
+}
+
+pub fn read_json_line_bounded<R: BufRead>(
+    reader: &mut R,
+    max_bytes: usize,
+) -> Result<Option<String>, GitAiError> {
+    let read_limit = u64::try_from(max_bytes)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let mut limited = std::io::Read::take(&mut *reader, read_limit);
+    let mut line = String::new();
+    let read = limited.read_line(&mut line)?;
+    if read == 0 {
+        return Ok(None);
+    }
+    if read > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("daemon control frame exceeds {max_bytes} bytes"),
+        )
+        .into());
+    }
+    Ok(Some(line))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn bounded_json_line_rejects_oversized_input_without_consuming_the_tail() {
+        let mut reader = Cursor::new(b"1234567890\nnext\n".to_vec());
+
+        let error = read_json_line_bounded(&mut reader, 8).unwrap_err();
+
+        assert_eq!(
+            error.to_string(),
+            "IO error: daemon control frame exceeds 8 bytes"
+        );
+        assert_eq!(reader.position(), 9);
+    }
+
+    #[test]
+    fn bounded_json_line_accepts_a_frame_at_the_limit() {
+        let mut reader = Cursor::new(b"1234567\nnext\n".to_vec());
+
+        assert_eq!(
+            read_json_line_bounded(&mut reader, 8).unwrap(),
+            Some("1234567\n".to_string())
+        );
+        assert_eq!(
+            read_json_line_bounded(&mut reader, 8).unwrap(),
+            Some("next\n".to_string())
+        );
+    }
 }
