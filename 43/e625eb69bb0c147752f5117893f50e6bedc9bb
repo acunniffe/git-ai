@@ -1,0 +1,24 @@
+README.fr.md
+  8356e69b6ce22dd6 1-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.2",
+  "base_commit_sha": "43e625eb69bb0c147752f5117893f50e6bedc9bb",
+  "prompts": {
+    "8356e69b6ce22dd6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a34435ff-3591-4e0b-9b6b-bb90e5175b3f",
+        "model": "<synthetic>"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 108,
+      "total_deletions": 0,
+      "accepted_lines": 108,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/57b43317c5ed0c4ea8f381619878d4a392351a58dd2c5abe02ccfb1e3be29b87"
+    }
+  }
+}

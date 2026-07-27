@@ -1,0 +1,8 @@
+tests/prompt_across_commit.rs
+  ed1c34c 30,32-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "f4fc29ec46c67f1e121292cfdf674bbd6c6faeae",
+  "prompts": {}
+}

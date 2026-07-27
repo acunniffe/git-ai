@@ -1,0 +1,25 @@
+tests/integration/rebase_realworld.rs
+  597fbcce80335bea 9577-9682,13682
+tests/integration/rebase_note_integrity.rs
+  597fbcce80335bea 1096-1170,1350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "7704b828fddd8ffa895b04af831cca4fd1698b0a",
+  "prompts": {
+    "597fbcce80335bea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5088777d-907a-414b-885d-c32df969c66d",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 184,
+      "total_deletions": 0,
+      "accepted_lines": 184,
+      "overriden_lines": 0
+    }
+  }
+}

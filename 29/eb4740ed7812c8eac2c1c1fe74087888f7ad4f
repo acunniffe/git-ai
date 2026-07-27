@@ -1,0 +1,30 @@
+src/commands/mod.rs
+  27a786a7a27425e0 9
+src/commands/debug.rs
+  27a786a7a27425e0 21-24
+src/commands/debug_notes.rs
+  27a786a7a27425e0 1-244
+src/commands/git_ai_handlers.rs
+  27a786a7a27425e0 295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "29eb4740ed7812c8eac2c1c1fe74087888f7ad4f",
+  "prompts": {
+    "27a786a7a27425e0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a0f8fb40-7d37-4068-abe3-96973ea79704",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 251,
+      "total_deletions": 1,
+      "accepted_lines": 250,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/30df68fb86744b2ae9ea6a3536bf80e2f0318a25131cb413de706da684a709f4"
+    }
+  }
+}

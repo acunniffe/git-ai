@@ -1,0 +1,24 @@
+tests/integration/simple_additions.rs
+  b8f8aac7de3cda16 1750-1843,1845-1912,1915-1970
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "f0038ce4810c8d230494a7598d88f0d11cdddb87",
+  "prompts": {
+    "b8f8aac7de3cda16": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "23f6824b-23b2-4af6-9209-d6e36a71c100",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 9,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5ec5fec726a01fa9ef3ee15d20b1655c811ff121e62aee7acc0654ad69d0771b"
+    }
+  }
+}

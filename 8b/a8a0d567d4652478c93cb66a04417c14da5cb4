@@ -1,0 +1,23 @@
+src/authorship/imara_diff_utils.rs
+  0d40066a9d4b8f4a 255-259,264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "8ba8a0d567d4652478c93cb66a04417c14da5cb4",
+  "prompts": {
+    "0d40066a9d4b8f4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fe4efa4d-088a-41e5-9766-309d37c158eb",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 1,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}

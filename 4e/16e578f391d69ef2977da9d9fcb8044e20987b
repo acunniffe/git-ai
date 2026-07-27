@@ -1,0 +1,19 @@
+src/commands/daemon.rs
+  s_58c6cd5d3bd33e::t_43f4038647e7bf 377,379-381
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "4e16e578f391d69ef2977da9d9fcb8044e20987b",
+  "prompts": {},
+  "sessions": {
+    "s_58c6cd5d3bd33e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce42e600-6abe-417b-876a-296f112b92fb",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Codex <codex@openai.com>"
+    }
+  }
+}

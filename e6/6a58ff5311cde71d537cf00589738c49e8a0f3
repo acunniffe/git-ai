@@ -1,0 +1,53 @@
+src/config.rs
+  bb3022d 61-65
+src/git/repository.rs
+  bb3022d 589-596,600-615
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "0bf7af32038271b41bd88276dc24cbe35f5d61d3",
+  "prompts": {
+    "bb3022d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5fdf5e3d-93a9-465d-928c-5f1f5a8dfa12",
+        "model": "gpt-5-codex"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "give me one that lists the tuples (name, url)"
+        },
+        {
+          "type": "assistant",
+          "text": "I need to see what you're working with to understand the context. Let me check the currently focused file around where your cursor is."
+        },
+        {
+          "type": "assistant",
+          "text": "I can see you have a `remotes()` function that returns just the remote names. Here's a function that returns tuples of (name, url):"
+        },
+        {
+          "type": "assistant",
+          "text": "I've added the `remotes_with_urls()` function that returns `Vec<(String, String)>` with tuples of (name, url). It uses `git remote -v` and deduplicates entries since git shows both fetch and push URLs for each remote."
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! The function is ready to use. The linter warnings are just about unused methods (including the new one), which is expected since you haven't used it yet. The function will return a vector of tuples like `vec![(\"origin\", \"git@github.com:user/repo.git\"), (\"upstream\", \"https://github.com/other/repo.git\")]`."
+        },
+        {
+          "type": "user",
+          "text": "and there was nothing better in that file for me to use?"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me search through the file to see if there's already something that does this:"
+        }
+      ],
+      "total_additions": 33,
+      "total_deletions": 3,
+      "accepted_lines": 29,
+      "overriden_lines": 4
+    }
+  }
+}
