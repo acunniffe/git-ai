@@ -1,0 +1,31 @@
+tests/integration/pull_rebase_ff.rs
+  s_f00ef7c0f45b07::t_8b1cac820ed90e 834-839,842-843,917,909
+  s_032cf4fb6d69d7::t_db19d77d204ac7 903-905,914-915
+  s_f00ef7c0f45b07::t_a777eefbc45469 918-919,2,858
+  s_f00ef7c0f45b07::t_1ce4aa9d237762 1,855-857,859-860,907-908,910-911
+  s_f00ef7c0f45b07::t_a2c185c0a76817 861,912
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "d406b26ebe164591c817874b3198c8f08a00ec19",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

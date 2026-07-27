@@ -1,0 +1,45 @@
+tests/integration/transcript_sqlite_memory.rs
+  s_59382cac373d67::t_4ce4efa5f10339 1-199
+src/streams/agents/copilot_otel.rs
+  s_59382cac373d67::t_0de3d5d2144929 54-57
+  s_59382cac373d67::t_953078533fe65b 53,248,278-279,318,350-351
+  s_59382cac373d67::t_8cdca4a1014ab7 675
+  s_59382cac373d67::t_3eceefc04ecc82 52,105-131,222-242,249,256-258,280-307,319,327-329,352-379
+  s_59382cac373d67::t_b7841a1399985c 657-674,676-681
+  s_59382cac373d67::t_d9d57afc15cacc 656
+src/streams/types.rs
+  s_59382cac373d67::t_2ad41e6a8978b5 21-32
+Cargo.toml
+  s_59382cac373d67::t_2ad41e6a8978b5 22
+tests/integration/main.rs
+  s_59382cac373d67::t_4ce4efa5f10339 174
+tests/integration/repos/test_file.rs
+  s_59382cac373d67::t_04d482c8560eb9 19
+src/streams/agents/opencode.rs
+  s_59382cac373d67::t_8faf305d4c78bb 602-613,663
+  s_59382cac373d67::t_b7841a1399985c 614,664-670,672-692
+  s_59382cac373d67::t_0de3d5d2144929 128,164-179,699-703
+  s_59382cac373d67::t_cbdb4ea1c56142 82,89-102,127,129-130,142,144-153,155-160,163,180-181,184-215,217-246,315-319
+  s_59382cac373d67::t_2f5624c85e4a66 216
+  s_59382cac373d67::t_2ad41e6a8978b5 36-40
+  s_59382cac373d67::t_226b926918ab4c 313-314
+  s_59382cac373d67::t_f8ea2d058c3ccf 704-705
+  s_59382cac373d67::t_8cdca4a1014ab7 671
+  s_59382cac373d67::t_7829417013177d 615
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "e46b6c30034e4663f56137369444f1bad6d5e36d",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

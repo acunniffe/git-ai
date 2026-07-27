@@ -1,0 +1,40 @@
+agent-support/visualstudio/src/GitAiVS/Listeners/DocumentSaveListener.cs
+  s_61bbcfe4478210::t_ee2d82ece857a5 4
+  s_61bbcfe4478210::t_d118d8ffc9f29c 99
+agent-support/visualstudio/src/GitAiVS/Listeners/TextBufferListener.cs
+  s_61bbcfe4478210::t_12a6b9d9835366 130
+  s_61bbcfe4478210::t_462e0e22bb01b2 188-190
+  s_61bbcfe4478210::t_1bc8f853d8c57f 164
+  s_61bbcfe4478210::t_e7de544e559cec 5
+agent-support/visualstudio/src/GitAiVS/source.extension.vsixmanifest
+  s_61bbcfe4478210::t_4d3afdeb231a58 16,19,22
+agent-support/visualstudio/src/GitAiVS/GitAiPackage.cs
+  s_61bbcfe4478210::t_f6df6d030f1d67 51
+  s_61bbcfe4478210::t_565821e0d68ca2 83
+  s_61bbcfe4478210::t_0f60817f114d57 87
+  s_61bbcfe4478210::t_396aa71d99f516 138
+  s_61bbcfe4478210::t_e8090602f8f40a 113
+  s_61bbcfe4478210::t_9291aae82435be 73
+  s_61bbcfe4478210::t_fc8829ec8dfd75 101
+  s_61bbcfe4478210::t_8e881d2d61facf 39
+  s_61bbcfe4478210::t_c34b27de4bca96 46
+  s_61bbcfe4478210::t_fbbe1021f39f66 58
+agent-support/visualstudio/src/GitAiVS/Services/CheckpointService.cs
+  s_61bbcfe4478210::t_83bd110f73642a 123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "687891263078edf845381746a1725b0be985db27",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

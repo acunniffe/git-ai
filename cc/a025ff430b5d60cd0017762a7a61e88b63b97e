@@ -1,0 +1,23 @@
+README.md
+  b2fb1b9be0e8b19d 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.30",
+  "base_commit_sha": "cca025ff430b5d60cd0017762a7a61e88b63b97e",
+  "prompts": {
+    "b2fb1b9be0e8b19d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "834af04f-fc91-4dca-9fb7-0d1fdf01db12",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

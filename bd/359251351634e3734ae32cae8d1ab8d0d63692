@@ -1,0 +1,25 @@
+tests/git-compat/whitelist.csv
+  d46277b929576d9f 18
+tests/daemon_mode.rs
+  d46277b929576d9f 4173-4179,4182-4189,4191-4193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "bd359251351634e3734ae32cae8d1ab8d0d63692",
+  "prompts": {
+    "d46277b929576d9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7d963b3-678f-4ed0-8566-d90a0d657703",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 32,
+      "total_deletions": 28,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    }
+  }
+}

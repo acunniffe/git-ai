@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-05-20-attr-fuzzer-design.md
+  s_af2d349a5e032c::t_612f8a84c84475 1-192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "292d0c6f6b4431555474743c7298e0ef9053d23a",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

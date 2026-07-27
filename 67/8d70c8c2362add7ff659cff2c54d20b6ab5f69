@@ -1,0 +1,19 @@
+.github/workflows/test.yml
+  s_59382cac373d67::t_050d6c9279dcf6 223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "678d70c8c2362add7ff659cff2c54d20b6ab5f69",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+tests/integration/rewrite_ops_attribution.rs
+  s_f00ef7c0f45b07::t_291b5255da6cdb 5,77-114,116,119-120,122,124-126,128-129,131-135,137-145,149,152-161,163-168,170-174,176-177
+  s_f00ef7c0f45b07::t_c303e0abd38f4f 115,117-118,123,127,136,146-148,150-151,162,175,179-180
+  s_f00ef7c0f45b07::t_33f45878ffde46 121,130,169,178
+src/daemon/ref_cursor.rs
+  s_f00ef7c0f45b07::t_6fe79ccf5dcf54 960-965
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "03ca3a81064d00ed5839b73da169c7357093ece1",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

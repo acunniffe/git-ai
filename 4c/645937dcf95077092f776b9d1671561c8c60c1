@@ -1,0 +1,44 @@
+src/mdm/agents/droid.rs
+  h_4d34d4bd6f48b4 4,9-11,12-14,15-42,119,285,373,962-1038,1067-1099
+src/mdm/utils.rs
+  s_0ba1e51f829972::t_ca7bddf72fef3c 1379-1395,1414-1431,1449-1465
+  s_0ba1e51f829972::t_79f837e7dc4b0f 450-460
+src/mdm/agents/gemini.rs
+  s_0ba1e51f829972::t_e7287e7c1e4f72 421,498-539
+  s_0ba1e51f829972::t_0a7a62150b9568 4,19,328
+  s_0ba1e51f829972::t_a623d9eea71783 378,389-420
+  s_362a9c73a1ff77::t_a51b1910dd7270 422,497
+src/streams/agents/gemini.rs
+  s_0ba1e51f829972::t_0136a9572bc7ca 240,251-279
+  s_0ba1e51f829972::t_022f4882106f42 4,15-16,33,37-38
+  s_0ba1e51f829972::t_154a8e9c09bd92 280-285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "4c645937dcf95077092f776b9d1671561c8c60c1",
+  "prompts": {},
+  "humans": {
+    "h_4d34d4bd6f48b4": {
+      "author": "Raj Jaiswal <rajaiswalx@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_0ba1e51f829972": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19fd-406e-78e3-a828-931bfd0e5914",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_362a9c73a1ff77": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19dd-d615-7bf1-86ee-d496ac6d02e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
