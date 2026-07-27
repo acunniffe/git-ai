@@ -1856,6 +1856,13 @@ impl TestRepo {
         self.daemon_completion_entries_for_family(&family_key)
     }
 
+    pub(crate) fn daemon_stderr_contents(&self) -> String {
+        let Some(daemon) = self.daemon_process.as_ref() else {
+            return String::new();
+        };
+        fs::read_to_string(&daemon.stderr_log_path).unwrap_or_default()
+    }
+
     fn daemon_completion_entries_for_family(
         &self,
         family_key: &str,
@@ -2310,7 +2317,20 @@ impl TestRepo {
                     repo_working_dir: repo_working_dir.clone(),
                 },
             ) {
-                Ok(response) if response.ok => return,
+                Ok(response) if response.ok => {
+                    if let Some(error) = response
+                        .data
+                        .as_ref()
+                        .and_then(|data| data.get("last_error"))
+                        .and_then(serde_json::Value::as_str)
+                    {
+                        panic!(
+                            "daemon completion log reported an error: {error}\ndaemon logs:\n{}",
+                            self.daemon_stderr_contents()
+                        );
+                    }
+                    return;
+                }
                 Ok(response) => {
                     panic!(
                         "daemon sync.family failed: {}",
@@ -2895,6 +2915,7 @@ impl TestRepo {
                             .unwrap_or_else(|poisoned| poisoned.into_inner());
                         registry.raise_expected_checkpoint_count(family_key, *per_family_count);
                     }
+                    self.sync_daemon_force();
                 }
             }
             let combined = if stdout.is_empty() {
@@ -2945,6 +2966,9 @@ impl TestRepo {
                 let count = parse_checkpoint_request_count(&stdout);
                 if count > 0 {
                     self.record_pending_checkpoint_completions(count);
+                    if sync_before_read {
+                        self.sync_daemon_force();
+                    }
                 }
             }
             // Combine stdout and stderr since git-ai often writes to stderr
@@ -3007,6 +3031,7 @@ impl TestRepo {
                 let count = parse_checkpoint_request_count(&stdout);
                 if count > 0 {
                     self.record_pending_checkpoint_completions(count);
+                    self.sync_daemon_force();
                 }
             }
             // Combine stdout and stderr since git-ai often writes to stderr

@@ -48,7 +48,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::{Mutex as AsyncMutex, Notify, mpsc, oneshot};
+use tokio::sync::{Mutex as AsyncMutex, Notify, mpsc};
 use tokio::time::Duration;
 
 pub mod analyzers;
@@ -144,6 +144,24 @@ struct CheckpointIngressReservation {
     body_bytes: usize,
 }
 
+#[derive(Debug)]
+struct AcceptedCheckpoint {
+    receipt_seq: u64,
+    received_at_ns: u128,
+    trace_ingest_target: u64,
+    body: Vec<u8>,
+    reservation: CheckpointIngressReservation,
+}
+
+#[derive(Debug)]
+struct PreparedCheckpointAdmission {
+    receipt_seq: u64,
+    received_at_ns: u128,
+    family: String,
+    request: CheckpointRequest,
+    reservation: CheckpointIngressReservation,
+}
+
 impl CheckpointIngressQuota {
     fn new(request_limit: usize, byte_limit: usize) -> Self {
         Self {
@@ -185,6 +203,14 @@ impl CheckpointIngressQuota {
             quota: Arc::clone(self),
             body_bytes,
         })
+    }
+
+    fn outstanding(&self) -> (usize, usize) {
+        let state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        (state.requests, state.bytes)
     }
 }
 
@@ -952,6 +978,31 @@ fn rfc3339_to_unix_nanos(value: &str) -> Option<u128> {
 }
 
 fn apply_checkpoint_side_effect(mut request: CheckpointRequest) -> Result<(), GitAiError> {
+    #[cfg(feature = "test-support")]
+    {
+        if let Ok(spec) = std::env::var("GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT") {
+            for entry in spec.split(',') {
+                let Some((trace_id, delay_ms)) = entry.split_once('=') else {
+                    continue;
+                };
+                if trace_id == request.trace_id
+                    && let Ok(delay_ms) = delay_ms.parse::<u64>()
+                    && delay_ms > 0
+                {
+                    std::thread::sleep(Duration::from_millis(delay_ms));
+                    break;
+                }
+            }
+        }
+        if std::env::var("GIT_AI_TEST_FAIL_CHECKPOINT_SIDE_EFFECT")
+            .is_ok_and(|trace_id| trace_id == request.trace_id)
+        {
+            return Err(GitAiError::Generic(
+                "synthetic checkpoint processing failure".to_string(),
+            ));
+        }
+    }
+
     if request.files.is_empty() {
         return Ok(());
     }
@@ -2539,7 +2590,8 @@ enum FamilySequencerEntry {
     ReadyCommand(Box<crate::daemon::domain::NormalizedCommand>),
     Checkpoint {
         request: Box<CheckpointRequest>,
-        respond_to: Option<oneshot::Sender<Result<u64, GitAiError>>>,
+        receipt_seq: u64,
+        reservation: CheckpointIngressReservation,
     },
     Canceled,
 }
@@ -2651,6 +2703,11 @@ pub struct ActorDaemonCoordinator {
     side_effect_errors_by_family: Mutex<HashMap<String, BTreeMap<u64, String>>>,
     side_effect_exec_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
     checkpoint_ingress_quota: Arc<CheckpointIngressQuota>,
+    checkpoint_ingress_tx: std::sync::OnceLock<mpsc::Sender<AcceptedCheckpoint>>,
+    next_checkpoint_receipt_seq: AtomicUsize,
+    processed_checkpoint_receipt_seq: AtomicUsize,
+    unadmitted_checkpoints: AtomicUsize,
+    checkpoint_progress_notify: Notify,
     bash_sessions: Mutex<crate::daemon::bash_sessions::BashSessionState>,
     test_completion_log_dir: Option<PathBuf>,
     test_completion_log_lock: Mutex<()>,
@@ -2739,6 +2796,11 @@ impl ActorDaemonCoordinator {
                 CHECKPOINT_INGRESS_REQUEST_LIMIT,
                 CHECKPOINT_INGRESS_BYTE_LIMIT,
             )),
+            checkpoint_ingress_tx: std::sync::OnceLock::new(),
+            next_checkpoint_receipt_seq: AtomicUsize::new(0),
+            processed_checkpoint_receipt_seq: AtomicUsize::new(0),
+            unadmitted_checkpoints: AtomicUsize::new(0),
+            checkpoint_progress_notify: Notify::new(),
             bash_sessions: Mutex::new(crate::daemon::bash_sessions::BashSessionState::new()),
             test_completion_log_dir: std::env::var("GIT_AI_TEST_DB_PATH")
                 .ok()
@@ -3863,6 +3925,262 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    fn start_checkpoint_ingress_worker(self: &Arc<Self>) -> Result<(), GitAiError> {
+        if self.checkpoint_ingress_tx.get().is_some() {
+            return Ok(());
+        }
+
+        let (tx, mut rx) = mpsc::channel::<AcceptedCheckpoint>(CHECKPOINT_INGRESS_REQUEST_LIMIT);
+        if self.checkpoint_ingress_tx.set(tx).is_err() {
+            return Ok(());
+        }
+
+        let coordinator = Arc::clone(self);
+        tokio::spawn(async move {
+            loop {
+                let accepted = tokio::select! {
+                    biased;
+                    maybe = rx.recv() => match maybe {
+                        Some(accepted) => accepted,
+                        None => {
+                            if !coordinator.is_shutting_down() {
+                                tracing::error!(
+                                    component = "daemon",
+                                    phase = "checkpoint_ingress_worker",
+                                    reason = "ingress_channel_closed",
+                                    "checkpoint ingress channel closed unexpectedly"
+                                );
+                                coordinator.request_shutdown();
+                            }
+                            break;
+                        }
+                    },
+                    _ = coordinator.wait_for_shutdown() => break,
+                };
+                let receipt_seq = accepted.receipt_seq;
+                let prepare = coordinator.prepare_checkpoint_admission(accepted);
+                let caught = std::panic::AssertUnwindSafe(prepare);
+                match futures::FutureExt::catch_unwind(caught).await {
+                    Ok(Ok(prepared)) => {
+                        if let Err(error) = coordinator.complete_checkpoint_admission(prepared) {
+                            tracing::error!(
+                                component = "daemon",
+                                phase = "checkpoint_admission",
+                                reason = "sequencer_admission_failed",
+                                receipt_seq,
+                                %error,
+                                "failed admitting checkpoint to family sequencer"
+                            );
+                            coordinator.request_shutdown();
+                            break;
+                        }
+                    }
+                    Ok(Err(error)) => {
+                        tracing::error!(
+                            component = "daemon",
+                            phase = "checkpoint_admission",
+                            reason = "checkpoint_prepare_failed",
+                            receipt_seq,
+                            %error,
+                            "failed preparing accepted checkpoint"
+                        );
+                        if let Err(accounting_error) =
+                            coordinator.complete_failed_checkpoint_admission(receipt_seq)
+                        {
+                            tracing::error!(
+                                component = "daemon",
+                                phase = "checkpoint_admission",
+                                reason = "failed_admission_accounting_error",
+                                receipt_seq,
+                                error = %accounting_error,
+                                "failed releasing checkpoint admission gate"
+                            );
+                            coordinator.request_shutdown();
+                            break;
+                        }
+                    }
+                    Err(panic_payload) => {
+                        let panic_msg =
+                            if let Some(message) = panic_payload.downcast_ref::<String>() {
+                                message.clone()
+                            } else if let Some(message) = panic_payload.downcast_ref::<&str>() {
+                                message.to_string()
+                            } else {
+                                "unknown panic".to_string()
+                            };
+                        tracing::error!(
+                            component = "daemon",
+                            phase = "checkpoint_ingress_worker",
+                            reason = "worker_panic",
+                            receipt_seq,
+                            panic_msg = %panic_msg,
+                            "checkpoint ingress worker panicked"
+                        );
+                        let _ = coordinator.complete_failed_checkpoint_admission(receipt_seq);
+                        coordinator.request_shutdown();
+                        break;
+                    }
+                }
+            }
+
+            let buffered_count = rx.len();
+            if buffered_count > 0 {
+                tracing::error!(
+                    component = "daemon",
+                    phase = "checkpoint_ingress_worker",
+                    reason = "buffered_receipts_on_exit",
+                    buffered_count,
+                    "checkpoint ingress worker exited with accepted receipts buffered"
+                );
+            }
+        });
+        Ok(())
+    }
+
+    async fn prepare_checkpoint_admission(
+        &self,
+        accepted: AcceptedCheckpoint,
+    ) -> Result<PreparedCheckpointAdmission, GitAiError> {
+        let request: CheckpointRequest =
+            serde_json::from_slice(&accepted.body).map_err(|error| {
+                GitAiError::Generic(format!("invalid accepted checkpoint body: {error}"))
+            })?;
+        let trace_id = request.trace_id.clone();
+        let file_count = request.files.len();
+        let Some(repo_work_dir) = request.files.first().map(|file| file.repo_work_dir.clone())
+        else {
+            return Err(GitAiError::Generic(
+                "accepted checkpoint contains no files".to_string(),
+            ));
+        };
+        let family = self.backend.resolve_family(&repo_work_dir)?.0;
+
+        self.notify_checkpoint_stream(&request);
+        self.wait_for_trace_ingest_seq(accepted.trace_ingest_target)
+            .await;
+
+        tracing::info!(
+            component = "daemon",
+            phase = "checkpoint_admission",
+            receipt_seq = accepted.receipt_seq,
+            %trace_id,
+            %family,
+            file_count,
+            retained_bytes = accepted.reservation.body_bytes(),
+            receipt_to_admission_ms =
+                now_unix_nanos().saturating_sub(accepted.received_at_ns) / 1_000_000,
+            "checkpoint prepared for family admission"
+        );
+
+        Ok(PreparedCheckpointAdmission {
+            receipt_seq: accepted.receipt_seq,
+            received_at_ns: accepted.received_at_ns,
+            family,
+            request,
+            reservation: accepted.reservation,
+        })
+    }
+
+    fn notify_checkpoint_stream(&self, request: &CheckpointRequest) {
+        if let Some(worker) = &self.stream_worker
+            && let Some(stream_source) = &request.stream_source
+        {
+            let tool = request
+                .agent_id
+                .as_ref()
+                .map(|agent| agent.tool.clone())
+                .unwrap_or_else(|| "unknown".to_string());
+            worker.notify_checkpoint(
+                stream_source.session_id.clone(),
+                tool,
+                request.trace_id.clone(),
+                request.metadata.get("tool_use_id").cloned(),
+                stream_source.path.clone(),
+                request.files.first().map(|file| file.repo_work_dir.clone()),
+                stream_source.external_session_id.clone(),
+                stream_source.external_parent_session_id.clone(),
+            );
+        }
+    }
+
+    fn complete_checkpoint_admission(
+        self: &Arc<Self>,
+        prepared: PreparedCheckpointAdmission,
+    ) -> Result<(), GitAiError> {
+        let remaining = {
+            let mut sequencers = self.family_sequencers_by_family.lock().map_err(|_| {
+                GitAiError::Generic("family sequencer map lock poisoned".to_string())
+            })?;
+            let state = sequencers
+                .entry(prepared.family.clone())
+                .or_insert_with(|| FamilySequencerState {
+                    next_ordinal: 1,
+                    entries: BTreeMap::new(),
+                });
+            let order = FamilySequencerOrder {
+                started_at_ns: prepared.received_at_ns,
+                ordinal: state.next_ordinal,
+            };
+            state.next_ordinal = state.next_ordinal.saturating_add(1);
+            state.entries.insert(
+                order,
+                FamilySequencerEntry::Checkpoint {
+                    request: Box::new(prepared.request),
+                    receipt_seq: prepared.receipt_seq,
+                    reservation: prepared.reservation,
+                },
+            );
+            self.unadmitted_checkpoints
+                .fetch_sub(1, Ordering::AcqRel)
+                .saturating_sub(1)
+        };
+        self.record_checkpoint_admission_processed(prepared.receipt_seq);
+        if remaining == 0 {
+            self.schedule_all_ready_family_drains();
+        }
+        Ok(())
+    }
+
+    fn complete_failed_checkpoint_admission(
+        self: &Arc<Self>,
+        receipt_seq: u64,
+    ) -> Result<(), GitAiError> {
+        let remaining = {
+            let _sequencers = self.family_sequencers_by_family.lock().map_err(|_| {
+                GitAiError::Generic("family sequencer map lock poisoned".to_string())
+            })?;
+            self.unadmitted_checkpoints
+                .fetch_sub(1, Ordering::AcqRel)
+                .saturating_sub(1)
+        };
+        self.record_checkpoint_admission_processed(receipt_seq);
+        if remaining == 0 {
+            self.schedule_all_ready_family_drains();
+        }
+        Ok(())
+    }
+
+    fn record_checkpoint_admission_processed(&self, receipt_seq: u64) {
+        self.processed_checkpoint_receipt_seq
+            .store(receipt_seq as usize, Ordering::Release);
+        self.checkpoint_progress_notify.notify_waiters();
+    }
+
+    fn schedule_all_ready_family_drains(self: &Arc<Self>) {
+        let coordinator = Arc::clone(self);
+        tokio::spawn(async move {
+            if let Err(error) = coordinator.drain_all_ready_family_sequencers().await {
+                tracing::error!(
+                    component = "daemon",
+                    phase = "checkpoint_processing",
+                    reason = "family_drain_failed",
+                    %error,
+                    "failed draining family sequencers after checkpoint admission"
+                );
+            }
+        });
+    }
+
     fn enqueue_trace_payload(&self, payload: Value) -> Result<(), GitAiError> {
         let tx =
             self.trace_ingest_tx.get().cloned().ok_or_else(|| {
@@ -3912,6 +4230,20 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    async fn wait_for_trace_ingest_seq(&self, target: u64) {
+        loop {
+            let processed = self.processed_trace_ingest_seq.load(Ordering::Acquire) as u64;
+            if processed >= target {
+                return;
+            }
+            let progress = self.trace_ingest_progress_notify.notified();
+            tokio::select! {
+                _ = progress => {}
+                _ = self.wait_for_shutdown() => return,
+            }
+        }
+    }
+
     /// Waits until all trace payloads enqueued up to now have been processed
     /// by the ingest worker, and any identified trace root that may mutate refs
     /// has closed. This is a causal drain fence: it guarantees that trace2 data
@@ -3931,17 +4263,7 @@ impl ActorDaemonCoordinator {
             // point has a seq <= this value. We need to wait until the ingest
             // worker has processed through at least this seq.
             let target = self.next_trace_ingest_seq.load(Ordering::Acquire) as u64;
-            loop {
-                let processed = self.processed_trace_ingest_seq.load(Ordering::Acquire) as u64;
-                if processed >= target {
-                    break;
-                }
-                let progress = self.trace_ingest_progress_notify.notified();
-                tokio::select! {
-                    _ = progress => {}
-                    _ = self.wait_for_shutdown() => return,
-                }
-            }
+            self.wait_for_trace_ingest_seq(target).await;
 
             if !self.has_open_trace_roots_that_may_mutate_refs() {
                 return;
@@ -4146,48 +4468,6 @@ impl ActorDaemonCoordinator {
             .clone())
     }
 
-    async fn append_checkpoint_to_family_sequencer(
-        &self,
-        family: &str,
-        request: CheckpointRequest,
-        respond_to: Option<oneshot::Sender<Result<u64, GitAiError>>>,
-    ) -> Result<(), GitAiError> {
-        // Causal drain fence: ensure already-visible trace2 work has reached
-        // the family sequencer before inserting this checkpoint.
-        self.wait_for_trace_ingest_processed_through().await;
-
-        let exec_lock = self.side_effect_exec_lock(family)?;
-        let _guard = exec_lock.lock().await;
-
-        {
-            let mut sequencers = self.family_sequencers_by_family.lock().map_err(|_| {
-                GitAiError::Generic("family sequencer map lock poisoned".to_string())
-            })?;
-            let state =
-                sequencers
-                    .entry(family.to_string())
-                    .or_insert_with(|| FamilySequencerState {
-                        next_ordinal: 1,
-                        entries: BTreeMap::new(),
-                    });
-            let order = FamilySequencerOrder {
-                started_at_ns: now_unix_nanos(),
-                ordinal: state.next_ordinal,
-            };
-            state.next_ordinal = state.next_ordinal.saturating_add(1);
-            state.entries.insert(
-                order,
-                FamilySequencerEntry::Checkpoint {
-                    request: Box::new(request),
-                    respond_to,
-                },
-            );
-        }
-
-        self.drain_ready_family_sequencer_entries_locked(family)
-            .await
-    }
-
     async fn drain_ready_family_sequencer_entries_locked(
         &self,
         family: &str,
@@ -4198,6 +4478,9 @@ impl ActorDaemonCoordinator {
             let mut map = self.family_sequencers_by_family.lock().map_err(|_| {
                 GitAiError::Generic("family sequencer map lock poisoned".to_string())
             })?;
+            if self.unadmitted_checkpoints.load(Ordering::Acquire) > 0 {
+                return Ok(());
+            }
             let state = map
                 .entry(family.to_string())
                 .or_insert_with(|| FamilySequencerState {
@@ -4324,7 +4607,8 @@ impl ActorDaemonCoordinator {
                 }
                 FamilySequencerEntry::Checkpoint {
                     mut request,
-                    respond_to,
+                    receipt_seq,
+                    reservation: _reservation,
                 } => {
                     let repo_wd = request
                         .files
@@ -4337,6 +4621,7 @@ impl ActorDaemonCoordinator {
                         .map(|f| f.path.to_string_lossy().to_string())
                         .collect();
                     let checkpoint_kind = request.checkpoint_kind;
+                    let checkpoint_trace_id = request.trace_id.clone();
                     let checkpoint_path_role = request.path_role;
                     let checkpoint_has_agent = request.agent_id.is_some();
                     let checkpoint_kind_str = format!("{:?}", checkpoint_kind);
@@ -4380,9 +4665,15 @@ impl ActorDaemonCoordinator {
                                     error: None,
                                 };
                                 let _ = self.maybe_append_test_completion_log(family, &log_entry);
-                                if let Some(respond_to) = respond_to {
-                                    let _ = respond_to.send(Ok(0));
-                                }
+                                tracing::info!(
+                                    component = "daemon",
+                                    phase = "checkpoint_processing",
+                                    receipt_seq,
+                                    trace_id = %checkpoint_trace_id,
+                                    %family,
+                                    status = "suppressed",
+                                    "checkpoint processing completed"
+                                );
                                 continue;
                             }
                         }
@@ -4406,9 +4697,10 @@ impl ActorDaemonCoordinator {
                                 let ack =
                                     self.coordinator.apply_checkpoint(Path::new(&repo_wd)).await;
                                 match ack {
-                                    Ok(ack) => {
-                                        apply_checkpoint_side_effect(*request).map(|_| ack.seq)
-                                    }
+                                    Ok(ack) => run_blocking_side_effect(|| {
+                                        apply_checkpoint_side_effect(*request)
+                                    })
+                                    .map(|_| ack.seq),
                                     Err(error) => Err(error),
                                 }
                             } else {
@@ -4484,8 +4776,8 @@ impl ActorDaemonCoordinator {
                         } else {
                             std::collections::HashMap::new()
                         };
-                        if !per_file.is_empty() || !per_worktree.is_empty() {
-                            let _ = self
+                        if (!per_file.is_empty() || !per_worktree.is_empty())
+                            && let Err(error) = self
                                 .coordinator
                                 .update_watermarks_family(
                                     Path::new(&repo_wd),
@@ -4494,13 +4786,30 @@ impl ActorDaemonCoordinator {
                                         per_worktree,
                                     },
                                 )
-                                .await;
+                                .await
+                        {
+                            let _ = self.record_side_effect_error(family, order, &error);
+                            tracing::error!(
+                                component = "daemon",
+                                phase = "checkpoint_processing",
+                                reason = "watermark_update_failed",
+                                receipt_seq,
+                                %family,
+                                order,
+                                %error,
+                                "checkpoint watermark update failed"
+                            );
                         }
                     }
                     // Removed captured_checkpoint_id cleanup - no more captured checkpoints
                     if let Err(error) = &result {
                         let _ = self.record_side_effect_error(family, order, error);
                         tracing::error!(
+                            component = "daemon",
+                            phase = "checkpoint_processing",
+                            reason = "side_effect_failed",
+                            receipt_seq,
+                            trace_id = %checkpoint_trace_id,
                             %error,
                             %family,
                             order,
@@ -4528,6 +4837,11 @@ impl ActorDaemonCoordinator {
                         {
                             let _ = self.record_side_effect_error(family, order, &error);
                             tracing::error!(
+                                component = "daemon",
+                                phase = "checkpoint_processing",
+                                reason = "completion_log_failed",
+                                receipt_seq,
+                                trace_id = %checkpoint_trace_id,
                                 %error,
                                 %family,
                                 order,
@@ -4535,9 +4849,16 @@ impl ActorDaemonCoordinator {
                             );
                         }
                     }
-                    if let Some(respond_to) = respond_to {
-                        let _ = respond_to.send(result);
-                    }
+                    tracing::info!(
+                        component = "daemon",
+                        phase = "checkpoint_processing",
+                        receipt_seq,
+                        trace_id = %checkpoint_trace_id,
+                        %family,
+                        status = if result.is_ok() { "ok" } else { "error" },
+                        duration_ms = checkpoint_duration_ms as u64,
+                        "checkpoint processing completed"
+                    );
                 }
                 FamilySequencerEntry::Canceled => {}
                 FamilySequencerEntry::PendingRoot => {}
@@ -6043,26 +6364,6 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
-    async fn ingest_checkpoint_payload(
-        &self,
-        request: CheckpointRequest,
-    ) -> Result<ControlResponse, GitAiError> {
-        if request.files.is_empty() {
-            return Ok(ControlResponse::ok(None, None));
-        }
-
-        let repo_work_dir = request.files[0].repo_work_dir.clone();
-        let family = self.backend.resolve_family(&repo_work_dir)?;
-
-        let (respond_to, response) = oneshot::channel();
-        self.append_checkpoint_to_family_sequencer(&family.0, request, Some(respond_to))
-            .await?;
-        response
-            .await
-            .map_err(|_| GitAiError::Generic("checkpoint response channel closed".to_string()))??;
-        Ok(ControlResponse::ok(None, None))
-    }
-
     async fn watermarks_for_family(
         &self,
         repo_working_dir: String,
@@ -6092,14 +6393,58 @@ impl ActorDaemonCoordinator {
         })
     }
 
+    async fn wait_for_checkpoint_admission_through(&self, target: u64) {
+        loop {
+            let processed = self
+                .processed_checkpoint_receipt_seq
+                .load(Ordering::Acquire) as u64;
+            if processed >= target {
+                return;
+            }
+            let progress = self.checkpoint_progress_notify.notified();
+            tokio::select! {
+                _ = progress => {}
+                _ = self.wait_for_shutdown() => return,
+            }
+        }
+    }
+
+    async fn wait_for_no_unadmitted_checkpoints(&self) {
+        loop {
+            if self.unadmitted_checkpoints.load(Ordering::Acquire) == 0 {
+                return;
+            }
+            let progress = self.checkpoint_progress_notify.notified();
+            if self.unadmitted_checkpoints.load(Ordering::Acquire) == 0 {
+                return;
+            }
+            tokio::select! {
+                _ = progress => {}
+                _ = self.wait_for_shutdown() => return,
+            }
+        }
+    }
+
     async fn sync_family(&self, repo_working_dir: String) -> Result<FamilyStatus, GitAiError> {
+        let checkpoint_target = self.next_checkpoint_receipt_seq.load(Ordering::Acquire) as u64;
+        self.wait_for_checkpoint_admission_through(checkpoint_target)
+            .await;
+        self.wait_for_no_unadmitted_checkpoints().await;
         let family = self.backend.resolve_family(Path::new(&repo_working_dir))?;
         self.wait_for_trace_ingest_processed_through().await;
 
         let exec_lock = self.side_effect_exec_lock(&family.0)?;
-        let _guard = exec_lock.lock().await;
-        self.drain_ready_family_sequencer_entries_locked(&family.0)
-            .await?;
+        loop {
+            self.wait_for_no_unadmitted_checkpoints().await;
+            let guard = exec_lock.lock().await;
+            self.drain_ready_family_sequencer_entries_locked(&family.0)
+                .await?;
+            if self.unadmitted_checkpoints.load(Ordering::Acquire) == 0 {
+                drop(guard);
+                break;
+            }
+            drop(guard);
+        }
 
         self.status_for_family(repo_working_dir).await
     }
@@ -6236,6 +6581,9 @@ impl ActorDaemonCoordinator {
     }
 
     fn has_pending_daemon_work(&self) -> bool {
+        if self.checkpoint_ingress_quota.outstanding().0 > 0 {
+            return true;
+        }
         if self.queued_trace_payloads.load(Ordering::Acquire) > 0 {
             return true;
         }
@@ -6262,36 +6610,8 @@ impl ActorDaemonCoordinator {
         false
     }
 
-    async fn handle_checkpoint_request(&self, request: CheckpointRequest) -> ControlResponse {
-        if let Some(worker) = &self.stream_worker
-            && let Some(stream_source) = &request.stream_source
-        {
-            let session_id = stream_source.session_id.clone();
-            let tool = request
-                .agent_id
-                .as_ref()
-                .map(|aid| aid.tool.clone())
-                .unwrap_or_else(|| "unknown".to_string());
-            let trace_id = request.trace_id.clone();
-            let tool_use_id = request.metadata.get("tool_use_id").cloned();
-            let repo_work_dir = request.files.first().map(|f| f.repo_work_dir.clone());
-
-            worker.notify_checkpoint(
-                session_id,
-                tool,
-                trace_id,
-                tool_use_id,
-                stream_source.path.clone(),
-                repo_work_dir,
-                stream_source.external_session_id.clone(),
-                stream_source.external_parent_session_id.clone(),
-            );
-        }
-
-        match self.ingest_checkpoint_payload(request).await {
-            Ok(response) => response,
-            Err(error) => ControlResponse::err(error.to_string()),
-        }
+    fn outstanding_checkpoint_state(&self) -> (usize, usize) {
+        self.checkpoint_ingress_quota.outstanding()
     }
 
     async fn handle_control_request(&self, request: ControlRequest) -> ControlResponse {
@@ -6623,7 +6943,13 @@ fn control_listener_loop_actor(
             if std::thread::Builder::new()
                 .spawn(move || {
                     if let Err(e) = handle_control_connection_actor(stream, coord, handle) {
-                        tracing::debug!(%e, "control connection error");
+                        tracing::error!(
+                            component = "daemon",
+                            phase = "control_receive",
+                            reason = "connection_error",
+                            error = %e,
+                            "daemon control connection failed"
+                        );
                     }
                 })
                 .is_err()
@@ -6789,7 +7115,13 @@ fn handle_windows_control_pipe_connection(
     let mut reader = BufReader::new(&mut server);
     if let Err(e) = handle_control_connection_actor_reader(&mut reader, coordinator, runtime_handle)
     {
-        tracing::debug!(%e, "control connection error");
+        tracing::error!(
+            component = "daemon",
+            phase = "control_receive",
+            reason = "connection_error",
+            error = %e,
+            "daemon control connection failed"
+        );
     }
 }
 
@@ -6896,21 +7228,92 @@ fn handle_control_connection_actor_reader<R: Read + Write>(
                         return Err(error);
                     }
                 };
-                match serde_json::from_slice::<CheckpointRequest>(&body) {
-                    Ok(request) => runtime_handle
-                        .block_on(async { coordinator.handle_checkpoint_request(request).await }),
-                    Err(error) => {
+                let Some(checkpoint_tx) = coordinator.checkpoint_ingress_tx.get().cloned() else {
+                    tracing::error!(
+                        component = "daemon",
+                        phase = "checkpoint_receive",
+                        reason = "ingress_worker_not_started",
+                        body_bytes,
+                        "checkpoint ingress worker is unavailable"
+                    );
+                    coordinator.request_shutdown();
+                    write_control_response(
+                        reader.get_mut(),
+                        &ControlResponse::err("checkpoint ingress worker is unavailable"),
+                    )?;
+                    continue;
+                };
+                let permit = match checkpoint_tx.try_reserve_owned() {
+                    Ok(permit) => permit,
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
                         tracing::error!(
                             component = "daemon",
                             phase = "checkpoint_receive",
-                            reason = "body_decode_failed",
+                            reason = "ingress_queue_full",
                             body_bytes,
-                            %error,
-                            "failed decoding checkpoint body"
+                            queue_limit = CHECKPOINT_INGRESS_REQUEST_LIMIT,
+                            "checkpoint ingress queue is full despite quota reservation"
                         );
-                        ControlResponse::err(format!("invalid checkpoint body: {error}"))
+                        write_control_response(
+                            reader.get_mut(),
+                            &ControlResponse::err("checkpoint ingress busy: queue_full"),
+                        )?;
+                        continue;
                     }
-                }
+                    Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                        tracing::error!(
+                            component = "daemon",
+                            phase = "checkpoint_receive",
+                            reason = "ingress_channel_closed",
+                            body_bytes,
+                            "checkpoint ingress channel is closed"
+                        );
+                        coordinator.request_shutdown();
+                        write_control_response(
+                            reader.get_mut(),
+                            &ControlResponse::err("checkpoint ingress worker is unavailable"),
+                        )?;
+                        continue;
+                    }
+                };
+                let receipt_seq = {
+                    let _sequencers =
+                        coordinator
+                            .family_sequencers_by_family
+                            .lock()
+                            .map_err(|_| {
+                                GitAiError::Generic(
+                                    "family sequencer map lock poisoned".to_string(),
+                                )
+                            })?;
+                    let receipt_seq = coordinator
+                        .next_checkpoint_receipt_seq
+                        .fetch_add(1, Ordering::Relaxed)
+                        as u64
+                        + 1;
+                    let received_at_ns = now_unix_nanos();
+                    let trace_ingest_target =
+                        coordinator.next_trace_ingest_seq.load(Ordering::Acquire) as u64;
+                    coordinator
+                        .unadmitted_checkpoints
+                        .fetch_add(1, Ordering::Release);
+                    permit.send(AcceptedCheckpoint {
+                        receipt_seq,
+                        received_at_ns,
+                        trace_ingest_target,
+                        body,
+                        reservation,
+                    });
+                    receipt_seq
+                };
+                tracing::info!(
+                    component = "daemon",
+                    phase = "checkpoint_receive",
+                    receipt_seq,
+                    retained_bytes = body_bytes,
+                    "checkpoint received into bounded ingress"
+                );
+                ControlResponse::ok(Some(receipt_seq), None)
             }
             Ok(req) => {
                 shutdown_after_response = matches!(req, ControlRequest::Shutdown);
@@ -6927,7 +7330,19 @@ fn handle_control_connection_actor_reader<R: Read + Write>(
                 ControlResponse::err(format!("invalid control request: {error}"))
             }
         };
-        write_control_response(reader.get_mut(), &response)?;
+        if let Err(error) = write_control_response(reader.get_mut(), &response) {
+            if let Some(receipt_seq) = response.seq {
+                tracing::error!(
+                    component = "daemon",
+                    phase = "checkpoint_receive",
+                    reason = "receipt_ack_write_failed",
+                    receipt_seq,
+                    %error,
+                    "failed writing checkpoint receipt acknowledgement"
+                );
+            }
+            return Err(error);
+        }
         if shutdown_after_response {
             coordinator.request_stop();
         }
@@ -7492,6 +7907,21 @@ fn daemon_socket_health_check_loop(
             local_socket_connects_with_timeout(&trace_socket_path, DAEMON_SOCKET_PROBE_TIMEOUT);
 
         if control_ok.is_err() || trace_ok.is_err() {
+            let (outstanding_checkpoints, retained_checkpoint_bytes) =
+                coordinator.outstanding_checkpoint_state();
+            if outstanding_checkpoints > 0 {
+                tracing::error!(
+                    component = "daemon",
+                    phase = "socket_health",
+                    reason = "restart_deferred_for_checkpoints",
+                    outstanding_checkpoints,
+                    retained_checkpoint_bytes,
+                    control = %control_ok.err().map(|e| e.to_string()).unwrap_or_else(|| "ok".into()),
+                    trace = %trace_ok.err().map(|e| e.to_string()).unwrap_or_else(|| "ok".into()),
+                    "socket health restart deferred while accepted checkpoints remain"
+                );
+                continue;
+            }
             let uptime = started.elapsed();
             let min_uptime = std::time::Duration::from_secs(daemon_min_uptime_for_self_restart());
 
@@ -7550,9 +7980,19 @@ fn daemon_update_check_loop(coordinator: Arc<ActorDaemonCoordinator>, started_at
 
         match check_for_update_available() {
             Ok(DaemonUpdateCheckResult::UpdateReady) => {
-                tracing::info!("update check: newer version available, requesting shutdown");
-                coordinator.request_restart_after_update();
-                return;
+                let (outstanding_checkpoints, retained_checkpoint_bytes) =
+                    coordinator.outstanding_checkpoint_state();
+                if outstanding_checkpoints > 0 {
+                    tracing::info!(
+                        outstanding_checkpoints,
+                        retained_checkpoint_bytes,
+                        "update restart deferred while accepted checkpoints remain"
+                    );
+                } else {
+                    tracing::info!("update check: newer version available, requesting shutdown");
+                    coordinator.request_restart_after_update();
+                    return;
+                }
             }
             Ok(DaemonUpdateCheckResult::NoUpdate) => {
                 tracing::info!("update check: no update needed");
@@ -7564,9 +8004,19 @@ fn daemon_update_check_loop(coordinator: Arc<ActorDaemonCoordinator>, started_at
 
         let uptime_ns = now_unix_nanos().saturating_sub(started_at_ns);
         if uptime_ns >= daemon_max_uptime_ns() {
-            tracing::info!("uptime exceeded max, requesting restart");
-            coordinator.request_restart();
-            return;
+            let (outstanding_checkpoints, retained_checkpoint_bytes) =
+                coordinator.outstanding_checkpoint_state();
+            if outstanding_checkpoints > 0 {
+                tracing::info!(
+                    outstanding_checkpoints,
+                    retained_checkpoint_bytes,
+                    "uptime restart deferred while accepted checkpoints remain"
+                );
+            } else {
+                tracing::info!("uptime exceeded max, requesting restart");
+                coordinator.request_restart();
+                return;
+            }
         }
     }
 }
@@ -7684,6 +8134,7 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
 
     let coordinator = Arc::new(coordinator_inner);
     coordinator.start_trace_ingest_worker()?;
+    coordinator.start_checkpoint_ingress_worker()?;
     let rt_handle = tokio::runtime::Handle::current();
     let control_socket_path = config.control_socket_path.clone();
     let trace_socket_path = config.trace_socket_path.clone();
@@ -9083,76 +9534,6 @@ mod tests {
         )
         .await
         .expect("checkpoint fence should pass once the mutating trace root closes");
-    }
-
-    #[tokio::test]
-    async fn checkpoint_control_request_waits_while_blocked_behind_pending_root() {
-        use crate::commands::checkpoint_agent::orchestrator::{BaseCommit, CheckpointFile};
-
-        let coord = Arc::new(ActorDaemonCoordinator::new());
-        let temp = tempfile::tempdir().unwrap();
-        let repo = temp.path().join("repo");
-        std::fs::create_dir_all(&repo).unwrap();
-        let init = std::process::Command::new("git")
-            .arg("-C")
-            .arg(&repo)
-            .arg("init")
-            .output()
-            .expect("git init should run");
-        assert!(
-            init.status.success(),
-            "git init failed: {}",
-            String::from_utf8_lossy(&init.stderr)
-        );
-        std::fs::write(repo.join("test.txt"), "checkpoint content\n").unwrap();
-
-        let family = coord.backend.resolve_family(&repo).unwrap().0;
-        let root_sid = "20260411T120000.000000-Psid-blocking-root";
-        coord
-            .append_pending_root_entry(&family, root_sid, 1)
-            .unwrap();
-
-        let request = CheckpointRequest {
-            trace_id: "blocked-checkpoint".to_string(),
-            checkpoint_kind: CheckpointKind::Human,
-            agent_id: None,
-            files: vec![CheckpointFile {
-                path: PathBuf::from("test.txt"),
-                content: Some("checkpoint content\n".to_string()),
-                repo_work_dir: repo.clone(),
-                base_commit: BaseCommit::Initial,
-            }],
-            path_role: PreparedPathRole::Edited,
-            stream_source: None,
-            metadata: HashMap::new(),
-        };
-
-        let mut checkpoint = {
-            let coord = coord.clone();
-            tokio::spawn(async move { coord.ingest_checkpoint_payload(request).await })
-        };
-
-        assert!(
-            tokio::time::timeout(Duration::from_millis(50), &mut checkpoint)
-                .await
-                .is_err(),
-            "checkpoint control request must not complete before its sequenced side effect runs"
-        );
-
-        coord
-            .replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)
-            .await
-            .unwrap();
-
-        let response = tokio::time::timeout(Duration::from_secs(1), checkpoint)
-            .await
-            .expect("checkpoint should finish once the prior root is released")
-            .expect("checkpoint task should not panic")
-            .expect("checkpoint request should succeed");
-        assert!(
-            response.ok,
-            "checkpoint response should be ok: {response:?}"
-        );
     }
 
     #[tokio::test]

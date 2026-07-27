@@ -1,4 +1,4 @@
-use crate::repos::test_repo::TestRepo;
+use crate::repos::test_repo::{DaemonTestScope, TestRepo};
 use git_ai::authorship::stats::CommitStats;
 use serde::Deserialize;
 use std::fs;
@@ -45,6 +45,22 @@ fn write_file(repo: &TestRepo, path: &str, contents: &str) {
         fs::create_dir_all(parent).expect("parent directory should be creatable");
     }
     fs::write(abs_path, contents).expect("file write should succeed");
+}
+
+#[test]
+fn test_status_remains_available_when_daemon_is_not_running() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    write_file(&repo, "offline-status.txt", "committed\n");
+    repo.git_og(&["add", "offline-status.txt"]).unwrap();
+    repo.git_og(&["commit", "-m", "initial"]).unwrap();
+
+    write_file(&repo, "offline-status.txt", "committed\nlocal edit\n");
+    let status = status_json(&repo);
+
+    assert!(
+        status.checkpoints.is_empty(),
+        "offline status should preserve the empty-checkpoint result"
+    );
 }
 
 /// Migrated from src/commands/status.rs test_get_working_dir_diff_stats_post_filter_equivalence

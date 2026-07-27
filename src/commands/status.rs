@@ -4,6 +4,7 @@ use crate::authorship::ignore::{
 use crate::authorship::stats::{CommitStats, stats_from_authorship_log, write_stats_to_terminal};
 use crate::authorship::virtual_attribution::VirtualAttributions;
 use crate::authorship::working_log::CheckpointKind;
+use crate::daemon::{ControlRequest, DaemonConfig, send_control_request};
 use crate::error::GitAiError;
 use crate::git::find_repository;
 use crate::git::repo_storage::InitialAttributions;
@@ -54,6 +55,8 @@ pub fn handle_status(args: &[String]) {
 
 fn run_status(json: bool, diff_only: bool) -> Result<(), GitAiError> {
     let repo = find_repository(&[])?;
+    let repo_working_dir = repo.workdir()?.to_string_lossy().to_string();
+    sync_pending_checkpoints(repo_working_dir)?;
     let ignore_patterns = effective_ignore_patterns(&repo, &[], &[]);
     let ignore_matcher = build_ignore_matcher(&ignore_patterns);
 
@@ -210,6 +213,27 @@ fn run_status(json: bool, diff_only: bool) -> Result<(), GitAiError> {
     }
 
     Ok(())
+}
+
+fn sync_pending_checkpoints(repo_working_dir: String) -> Result<(), GitAiError> {
+    let Ok(daemon_config) = DaemonConfig::from_env_or_default_paths() else {
+        return Ok(());
+    };
+    let Ok(sync) = send_control_request(
+        &daemon_config.control_socket_path,
+        &ControlRequest::SyncFamily { repo_working_dir },
+    ) else {
+        // Status historically remains available without the daemon. If it is
+        // reachable, synchronization prevents accepted checkpoints from
+        // racing the working-log read below.
+        return Ok(());
+    };
+    if sync.ok {
+        return Ok(());
+    }
+    Err(GitAiError::Generic(sync.error.unwrap_or_else(|| {
+        "daemon rejected status synchronization".to_string()
+    })))
 }
 
 fn format_time_ago(timestamp: u64) -> String {

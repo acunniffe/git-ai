@@ -564,6 +564,12 @@ fn handle_checkpoint(args: &[String]) {
         }
         match send_result {
             Ok(response) if response.ok => {
+                if response.seq.is_none() {
+                    eprintln!(
+                        "Failed to send checkpoint to background worker: daemon receipt acknowledgement omitted sequence"
+                    );
+                    std::process::exit(0);
+                }
                 sent_count += 1;
             }
             Ok(response) => {
