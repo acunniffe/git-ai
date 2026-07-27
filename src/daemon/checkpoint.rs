@@ -860,16 +860,15 @@ async fn get_checkpoint_entries(
     };
 
     // Get HEAD commit info for git operations
-    let head_commit = head_commit_override
-        .map(str::trim)
-        .filter(|sha| !sha.is_empty() && *sha != "initial")
-        .and_then(|sha| repo.find_commit(sha.to_string()).ok())
-        .or_else(|| {
-            repo.head()
-                .ok()
-                .and_then(|h| h.target().ok())
-                .and_then(|oid| repo.find_commit(oid).ok())
-        });
+    let head_commit = match head_commit_override.map(str::trim) {
+        Some("" | "initial") => None,
+        Some(sha) => repo.find_commit(sha.to_string()).ok(),
+        None => repo
+            .head()
+            .ok()
+            .and_then(|h| h.target().ok())
+            .and_then(|oid| repo.find_commit(oid).ok()),
+    };
     let head_tree_id = head_commit
         .as_ref()
         .and_then(|c| c.tree().ok())

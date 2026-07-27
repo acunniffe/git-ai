@@ -2,6 +2,8 @@
 #[path = "integration/repos/mod.rs"]
 mod repos;
 
+#[cfg(not(windows))]
+use git_ai::authorship::working_log::AgentId;
 use git_ai::authorship::working_log::CheckpointKind;
 #[cfg(not(windows))]
 use git_ai::commands::checkpoint_agent::orchestrator::{
@@ -15,6 +17,8 @@ use git_ai::daemon::{
     ControlRequest, DaemonConfig, DaemonLock, local_socket_connects_with_timeout,
     open_local_socket_stream_with_timeout, read_daemon_pid, send_control_request,
 };
+#[cfg(not(windows))]
+use git_ai::git::repository::find_repository_in_path;
 use git_ai::metrics::db::MetricsDatabase;
 use git_ai::metrics::{EventAttributes, MetricEvent, PosEncoded, SessionEventValues};
 use repos::test_file::ExpectedLineExt;
@@ -1707,6 +1711,80 @@ fn daemon_checkpoint_resolution_applies_total_content_budget() {
         "expected daemon resolver to apply aggregate content budget"
     );
     assert_eq!(checkpoint.entries[0].file, "a_kept.txt");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_initial_base_does_not_fall_back_to_processing_time_head() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let control_socket = daemon_control_socket_path(&repo);
+    let file_path = repo.path().join("captured-before-initial-commit.txt");
+
+    fs::write(&file_path, "existing after capture\n").unwrap();
+    repo.stage_all_and_commit("Create HEAD after checkpoint capture")
+        .unwrap();
+    let mut file = repo.filename("captured-before-initial-commit.txt");
+    file.assert_committed_lines(lines!["existing after capture".unattributed_human(),]);
+    let processing_time_working_log = repo.current_working_logs();
+    fs::remove_dir_all(&processing_time_working_log.dir).unwrap();
+
+    fs::write(
+        &file_path,
+        "existing after capture\nAI edit from captured initial state\n",
+    )
+    .unwrap();
+    let request = CheckpointRequest {
+        trace_id: "checkpoint-captured-with-initial-base".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "captured-initial-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("captured-before-initial-commit.txt"),
+            content: Some(
+                "existing after capture\nAI edit from captured initial state\n".to_string(),
+            ),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+
+    let response = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::CheckpointRun {
+            request: Box::new(request),
+        },
+        Duration::from_secs(5),
+    )
+    .expect("checkpoint control request should succeed");
+    assert!(response.ok, "checkpoint failed: {response:?}");
+
+    let repository = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let initial_working_log = repository
+        .storage
+        .working_log_for_base_commit("initial")
+        .unwrap();
+    let checkpoints = initial_working_log.read_all_checkpoints().unwrap();
+    assert_eq!(checkpoints.len(), 1);
+    assert_eq!(
+        checkpoints[0].entries[0].line_attributions,
+        vec![
+            git_ai::authorship::attribution_tracker::LineAttribution::new(
+                1,
+                2,
+                checkpoints[0].entries[0].line_attributions[0]
+                    .author_id
+                    .clone(),
+                None,
+            )
+        ],
+        "an explicitly captured initial base must not diff against processing-time HEAD"
+    );
 }
 
 #[test]
