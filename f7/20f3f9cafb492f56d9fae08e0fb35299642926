@@ -1,0 +1,29 @@
+src/commands/checkpoint_agent/presets/gemini.rs
+  s_9126b2b26f4a5e::t_895926d725e19c 10,31-33,74,86
+tests/integration/gemini.rs
+  s_72eef2af462ddd::t_49a6ad6bd99310 359-411,602
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "f720f3f9cafb492f56d9fae08e0fb35299642926",
+  "prompts": {},
+  "sessions": {
+    "s_72eef2af462ddd": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8b29-e6af-7143-85ab-d56dcc1d14ab",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_9126b2b26f4a5e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8541-8a7f-7a40-aba6-9be645ef17ef",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+src/commands/config.rs
+  63c5b15e15c45dd7 109,281-285,358,482-487,631-637,822-864
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "e74bf5634135bfa47e8deea1578f3f50295c5978",
+  "prompts": {
+    "63c5b15e15c45dd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b33232c0-faef-45e7-af59-c087f3101d85",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 63,
+      "total_deletions": 0,
+      "accepted_lines": 63,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,118 @@
+tests/integration/bash_tool_provenance.rs
+  s_cfb20a6a102d4d::t_1ae7aea0085a53 57-60,62-71,75-84
+src/authorship/post_commit.rs
+  s_cfb20a6a102d4d::t_71bc3bd15d4030 270-275,604-609
+  s_cfb20a6a102d4d::t_949f6af8f42452 596-603,610-612
+  s_cfb20a6a102d4d::t_7be8802cc29158 90,112,260-269,276-278
+  s_cfb20a6a102d4d::t_2fa0986901bedb 465-467
+  s_cfb20a6a102d4d::t_8ec2f4423c8285 498
+  s_cfb20a6a102d4d::t_ad31d43410820a 279,458-464,468-485
+src/commands/checkpoint_agent/presets/parse.rs
+  s_cfb20a6a102d4d::t_c22036cb84488c 89-112,255-286
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_cfb20a6a102d4d::t_3a227fe1396572 264-274,315,326
+docs/bash-attribution-recovery-plan.md
+  s_cfb20a6a102d4d::t_d32a199423181e 1-22,25-135,137-154,157-188,190-196,198-200,202-248,251-254,256-278,280-282
+  s_cfb20a6a102d4d::t_18fbc65d4b98e3 189,197,201,249-250,255,279
+  s_cfb20a6a102d4d::t_d68a143e53b7c8 24,136
+  s_cfb20a6a102d4d::t_4a316d816d85b0 23,155-156
+src/daemon.rs
+  s_cfb20a6a102d4d::t_730ee6be506c0c 49
+  s_cfb20a6a102d4d::t_7be8802cc29158 769
+  s_cfb20a6a102d4d::t_527971c5f46e1d 5097,5100,5103-5104,5107
+  s_cfb20a6a102d4d::t_b399f509a14e98 5074-5076,5078-5095,5105-5106,5111,5114-5118,5121-5160
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_cfb20a6a102d4d::t_58d329f9f2ab01 196,263,306
+src/commands/checkpoint_agent/presets/claude.rs
+  s_cfb20a6a102d4d::t_3f226023beda7a 101,106,117
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_cfb20a6a102d4d::t_4f284dcf085471 210-213,237
+  s_cfb20a6a102d4d::t_58d329f9f2ab01 88-89,94,99
+src/commands/checkpoint_agent/presets/mod.rs
+  s_cfb20a6a102d4d::t_ead5fb0fcf1e08 86-87,94-95
+src/daemon/control_api.rs
+  s_cfb20a6a102d4d::t_047776f26ca27b 37-39,43,46-50
+src/authorship/mod.rs
+  s_cfb20a6a102d4d::t_44d45adba58370 2
+src/commands/checkpoint_agent/presets/droid.rs
+  s_cfb20a6a102d4d::t_5e55d5f4bdd434 159-160,167,183
+src/metrics/events.rs
+  s_cfb20a6a102d4d::t_2354905135bb86 1227-1254
+  s_cfb20a6a102d4d::t_49228040ff3e54 455-456,476-477,489-490,596-617,665-674,690-694
+src/commands/checkpoint_agent/presets/pi.rs
+  s_cfb20a6a102d4d::t_51917d10d79277 33-36,100-101,141-144,203,208
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_cfb20a6a102d4d::t_5e55d5f4bdd434 144,149,154
+  s_cfb20a6a102d4d::t_4f284dcf085471 503,531
+tests/commit_hunks.rs
+  s_cfb20a6a102d4d::t_3476c9514b2d3a 360-363,366,373,393,396,400
+src/commands/checkpoint_agent/orchestrator.rs
+  s_cfb20a6a102d4d::t_7b910d6a5b9047 409-410,454-457
+src/commands/checkpoint_agent/presets/codex.rs
+  s_cfb20a6a102d4d::t_4f284dcf085471 222,234,248,264
+  s_cfb20a6a102d4d::t_3f226023beda7a 141,148,169
+src/authorship/attribution_recovery.rs
+  s_cfb20a6a102d4d::t_c9699f9d482fd0 311-366,427-433,463-483
+  s_cfb20a6a102d4d::t_e44b63185245ae 159,161,286,292,296-298
+  s_cfb20a6a102d4d::t_5b1d54e561c8e5 406-407
+  s_cfb20a6a102d4d::t_89f29089cef2e5 711-712
+  s_cfb20a6a102d4d::t_98abaa45052132 5,10,38,41-46,49-51,367-405,408-426,434-445,447-462
+  s_cfb20a6a102d4d::t_6a86ea10d59407 20-24,32,40,47-48
+  s_cfb20a6a102d4d::t_991d0fbf8cad0b 1-4,6-9,12-19,25-31,33-37,70-79,81-84,88-158,162-242,245,247-285,287-291,293-295,299-310,484-549,555-564,569-614,621,623-660,662-686,688-700,703-710,713-715
+  s_cfb20a6a102d4d::t_2fa0986901bedb 53-59,61-67,69,661
+  s_cfb20a6a102d4d::t_c9052ace44d46e 11,39,52,60,68,80,85-87
+  s_cfb20a6a102d4d::t_4f284dcf085471 160,615-620,622
+  s_cfb20a6a102d4d::t_757c13dc4012d1 446
+  s_cfb20a6a102d4d::t_e6395d28645fbb 687
+  s_cfb20a6a102d4d::t_44d45adba58370 550-554,565-568,701-702
+  s_cfb20a6a102d4d::t_b9ab9cf09a7017 243-244,246
+tests/integration/bash_attribution.rs
+  s_cfb20a6a102d4d::t_2fa0986901bedb 212-213,303-304
+  s_cfb20a6a102d4d::t_53562d21ab8c95 217-280,312
+  s_cfb20a6a102d4d::t_18dd6f2c2dbf25 284,291,295-299,301,309-311
+  s_cfb20a6a102d4d::t_20d97fb8c36cc3 4-8,164-211,214-216,281-283,285-290,292-294,300,302,305-308,313
+tests/integration/bash_tool_conformance.rs
+  s_cfb20a6a102d4d::t_1ae7aea0085a53 58-61,63-72,76-85
+tests/integration/bash_tool_timeouts.rs
+  s_cfb20a6a102d4d::t_ec0a6cea413038 38-41,92-93,116-117,125-133,156-165,170-178,202-211,215-224
+src/daemon/bash_history_db.rs
+  s_cfb20a6a102d4d::t_9252be93b14424 1-689
+src/daemon/bash_sessions.rs
+  s_cfb20a6a102d4d::t_be93139bcc4056 19-30,46,49,51-57
+  s_cfb20a6a102d4d::t_d7819160b20c76 13-15
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  s_cfb20a6a102d4d::t_3f226023beda7a 55,60,71
+tests/integration/bash_tool_benchmark.rs
+  s_cfb20a6a102d4d::t_98790d23f4bc88 341-342,353-362,635-636,671-679
+src/commands/checkpoint_agent/presets/firebender.rs
+  s_cfb20a6a102d4d::t_29809473489200 200-206,212,223
+src/commands/checkpoint_agent/presets/amp.rs
+  s_cfb20a6a102d4d::t_5e55d5f4bdd434 332-343,348,359
+src/commands/checkpoint_agent/presets/gemini.rs
+  s_cfb20a6a102d4d::t_3f226023beda7a 61,66,77
+src/authorship/rewrite.rs
+  s_cfb20a6a102d4d::t_7be8802cc29158 249
+src/commands/checkpoint_agent/presets/windsurf.rs
+  s_cfb20a6a102d4d::t_5e55d5f4bdd434 134-140,147,153
+src/commands/checkpoint_agent/bash_tool.rs
+  s_cfb20a6a102d4d::t_f4f0b15b911891 1086-1095,1104-1113
+  s_cfb20a6a102d4d::t_4f592fcf7134a0 886-896,904,907-911
+  s_cfb20a6a102d4d::t_7b6b6971e55221 933-934,936,972-974
+  s_cfb20a6a102d4d::t_716f8bc0819927 991-994,999,1001-1002,1021-1030
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "7b9d6e7e77aaeaa58fd91d79f47d35590f078891",
+  "prompts": {},
+  "sessions": {
+    "s_cfb20a6a102d4d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef69e-2f01-7191-829f-294bbd1e22bf",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

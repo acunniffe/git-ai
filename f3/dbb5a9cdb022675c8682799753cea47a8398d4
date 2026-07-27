@@ -1,0 +1,23 @@
+src/commands/install_hooks.rs
+  ba39693df25f4f2a 95-96,216-217,222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.37",
+  "base_commit_sha": "f3dbb5a9cdb022675c8682799753cea47a8398d4",
+  "prompts": {
+    "ba39693df25f4f2a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "afa9600e-5a42-4355-bcbb-849a893c7c9a",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 51,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

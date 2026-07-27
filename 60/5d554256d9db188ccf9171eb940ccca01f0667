@@ -1,0 +1,68 @@
+src/metrics/db.rs
+  s_c3aa905e9dfee2::t_b4e74ea3de6dd2 32,43
+  s_8d2579124116c6::t_079b26ec087a4c 38,60,62-63,265-270,272,370,429
+  s_86cae81fcd9c97::t_a65485a460d96a 41,46
+  s_8d2579124116c6::t_c6ea9bbd0bf71a 66-67
+  s_c3aa905e9dfee2::t_485118458d5bab 109-117
+  s_c3aa905e9dfee2::t_5f7a651532988c 219-220,264,273,435,398
+  s_1a35d9c51a69d7::t_fb83ea1aa33f06 275
+  s_c3aa905e9dfee2::t_9a52eaf0540d7b 291,299-302
+  s_86cae81fcd9c97::t_26e199f4acd43e 303,404-405
+  s_c3aa905e9dfee2::t_069cdc467610e3 308,316-318,321-322,485,504-505,412
+  s_1a35d9c51a69d7::t_cbe42ba3510ede 391,428,438,399
+  s_c3aa905e9dfee2::t_3a92c8e6b630ee 634-635,382-383,407,420-421,430-431,444-445,394
+  s_86cae81fcd9c97::t_dea1c72eb26629 64
+  s_86cae81fcd9c97::t_4857c585b53cc7 295,297
+  s_86cae81fcd9c97::t_114c5f4fee242b 324-325,327,329-331,381
+  s_c3aa905e9dfee2::t_b96c7a2dbb0d5c 413,416-417
+  s_27ed236e4270d9::t_63582f35bf5f4f 326
+  s_c3aa905e9dfee2::t_e6fb2155458dc1 364,402
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "605d554256d9db188ccf9171eb940ccca01f0667",
+  "prompts": {},
+  "sessions": {
+    "s_1a35d9c51a69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7df70395-9a7f-4c32-bf67-e29d2b57634a",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_86cae81fcd9c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5160589a-86c2-41a5-bdcd-5daee68d43ef",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_c3aa905e9dfee2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e953b-a3d6-78c1-ab12-b3623076acea",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

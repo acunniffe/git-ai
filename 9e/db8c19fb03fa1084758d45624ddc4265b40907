@@ -1,0 +1,30 @@
+README.md
+  a16ed14d165faa26 152,156-158
+  h_670eaf8bab379b 88,154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "9edb8c19fb03fa1084758d45624ddc4265b40907",
+  "prompts": {
+    "a16ed14d165faa26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e7eaf4d1-9251-42a2-99d2-dfe4d93f8458",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 7,
+      "accepted_lines": 5,
+      "overriden_lines": 1,
+      "messages_url": "https://usegitai.com/cas/2578c2888cca21451a6cf183571e96ed67f5ba1f82681f3ac97de424dee3389a"
+    }
+  },
+  "humans": {
+    "h_670eaf8bab379b": {
+      "author": "Aidan Cunniffe"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+tests/integration/post_commit_hook_subcommand.rs
+  s_f12a1b313624a4::t_9d0b79d993f6d3 22-23
+  s_f12a1b313624a4::t_19b32d64d80ee1 1-21,24-97
+tests/integration/main.rs
+  s_f12a1b313624a4::t_649a69fb7299c4 89
+src/commands/mod.rs
+  s_f12a1b313624a4::t_a6071517bff639 21
+src/commands/post_commit_hook.rs
+  s_f12a1b313624a4::t_405c62ad455d98 1-178
+src/authorship/post_commit.rs
+  s_f12a1b313624a4::t_f48e8a380e9aef 89-97,99-100
+  s_f12a1b313624a4::t_9771258365a0b1 98
+  s_f12a1b313624a4::t_f5cbe142d311db 648-649,651-660,663-664,684-689,694-696
+  s_f12a1b313624a4::t_23ae3489b4a53b 672-675,677-680,691-693
+  s_f12a1b313624a4::t_25f14b507ba2db 640-647,650,661-662,665-671,676,681-683,690
+src/daemon/control_api.rs
+  s_f12a1b313624a4::t_21f7037526b8f7 59-67,72-78
+src/daemon.rs
+  s_f12a1b313624a4::t_0e7d95a12ca0e5 3875-3878
+  s_f12a1b313624a4::t_9062906e349322 2794-2801,2808-2810
+  s_f12a1b313624a4::t_4975d1ae61106e 7449-7482,7484-7542,7554-7567
+  s_f12a1b313624a4::t_0f220fd9aa2a06 3971
+  s_f12a1b313624a4::t_efd207950e436e 8800-8808
+  s_f12a1b313624a4::t_b724a139128085 7543-7553
+  s_f12a1b313624a4::t_91cadbc16615c2 7483
+  s_f12a1b313624a4::t_f10816cead8471 7743-7750
+  s_f12a1b313624a4::t_d34802c059e5d1 86-87
+src/commands/git_ai_handlers.rs
+  s_f12a1b313624a4::t_c21e402ee3e701 56-59
+  s_f12a1b313624a4::t_3a48b3b91cae05 113-115
+  s_f12a1b313624a4::t_5887b0287eae08 343-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "da5793a571ad702af15b75c37fc08f3cf7f04bb8",
+  "prompts": {},
+  "sessions": {
+    "s_f12a1b313624a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9528a288-0fbc-49c1-af48-126ba90a1b9c",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}
