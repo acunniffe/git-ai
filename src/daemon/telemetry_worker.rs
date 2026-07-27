@@ -14,7 +14,10 @@ use crate::authorship::authorship_log_serialization::GIT_AI_VERSION;
 use crate::config::{Config, get_or_create_distinct_id};
 use crate::daemon::control_api::{CasSyncPayload, TelemetryEnvelope};
 use crate::error::GitAiError;
+use crate::metrics::attrs::attr_pos;
 use crate::metrics::db::{METADATA_BACKFILL_BATCH_SIZE, MetricRecord, MetricsDatabase};
+use crate::metrics::pos_encoded::sparse_get_string;
+use crate::metrics::types::MetricEventId;
 use crate::metrics::{MetricEvent, MetricsBatch};
 use crate::observability::MAX_METRICS_PER_ENVELOPE;
 use serde_json::{Value, json};
@@ -807,6 +810,7 @@ where
     UploadBatch: FnMut(&MetricsBatch) -> Result<MetricsUploadResponse, GitAiError>,
 {
     let mut result = PendingMetricsFlushResult::default();
+    let config = Config::fresh();
 
     while std::time::Instant::now() < deadline {
         let batch = dequeue_batch(max_batch_size)?;
@@ -817,13 +821,15 @@ where
         let mut events = Vec::new();
         let mut record_ids = Vec::new();
         let mut invalid_ids = Vec::new();
+        let mut skipped_ids = Vec::new();
 
         for record in &batch {
             match serde_json::from_str::<MetricEvent>(&record.event_json) {
-                Ok(event) => {
+                Ok(event) if should_deliver_metric_event(&config, &event) => {
                     events.push(event);
                     record_ids.push(record.id);
                 }
+                Ok(_) => skipped_ids.push(record.id),
                 Err(_) => {
                     invalid_ids.push(record.id);
                 }
@@ -836,6 +842,9 @@ where
         if !invalid_ids.is_empty() {
             result.invalid_records += invalid_ids.len();
             mark_delivered(&invalid_ids)?;
+        }
+        if !skipped_ids.is_empty() {
+            mark_delivered(&skipped_ids)?;
         }
 
         if events.is_empty() {
@@ -906,6 +915,17 @@ where
     }
 
     Ok(result)
+}
+
+fn should_deliver_metric_event(config: &Config, event: &MetricEvent) -> bool {
+    if event.event_id != MetricEventId::SessionEvent as u16 {
+        return true;
+    }
+
+    let remotes = sparse_get_string(&event.attrs, attr_pos::REPO_URL)
+        .flatten()
+        .map(|url| vec![(String::new(), url)]);
+    config.is_allowed_repository_with_remotes(remotes.as_ref())
 }
 
 fn current_unix_ts() -> u64 {
