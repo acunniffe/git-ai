@@ -229,8 +229,10 @@ fn test_path_is_in_workdir() {
         "File beneath an empty .git directory should return true"
     );
 
-    // Same for a non-existent path beneath it (normalized fallback branch)
-    let nonexistent_below_empty_marker = empty_marker_dir.join("not-yet").join("phantom.txt");
+    // Same for a non-existent file beneath it (canonical-parent fallback
+    // branch; the parent must exist so the check stays symlink-safe on macOS,
+    // where /tmp resolves to /private/tmp)
+    let nonexistent_below_empty_marker = empty_marker_dir.join("phantom.txt");
     assert!(
         repo.path_is_in_workdir(&nonexistent_below_empty_marker),
         "Non-existent file beneath an empty .git directory should return true (fallback path)"
