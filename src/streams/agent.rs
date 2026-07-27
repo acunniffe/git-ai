@@ -104,7 +104,7 @@ pub trait Agent: Send + Sync {
     ///
     /// * `path` - Path to the transcript file
     /// * `watermark` - Current watermark position to resume from
-    /// * `session_id` - Session ID for context (used in error messages)
+    /// * `session_id` - Source session ID. Readers use this to filter multiplexed sources.
     fn read_incremental(
         &self,
         path: &Path,
