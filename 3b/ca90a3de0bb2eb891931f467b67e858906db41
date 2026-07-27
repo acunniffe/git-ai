@@ -34,7 +34,7 @@ install.ps1
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "development:1.6.16",
-  "base_commit_sha": "d80fd02643cf7baf8eec68fca4a72c2d46c5b955",
+  "base_commit_sha": "3bca90a3de0bb2eb891931f467b67e858906db41",
   "prompts": {},
   "sessions": {
     "s_567dab71b64423": {
