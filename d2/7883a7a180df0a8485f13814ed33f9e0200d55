@@ -10,15 +10,23 @@ src/daemon.rs
   s_7d470640a960b2::t_47649553f37b45 8447-8480
   s_7d470640a960b2::t_4a8c534de1ffb6 2511-2534
 tests/daemon_mode.rs
-  s_7d470640a960b2::t_07a298d60c746b 1710-1727
+  s_7d470640a960b2::t_07a298d60c746b 1708-1724,1710-1727
   dacf127c97d5a34b 16
   s_7d470640a960b2::t_d23ef4d2d39284 1708-1709
   s_7d470640a960b2::t_9f0d834eb9c997 1636-1638,1684-1686,1769-1771,1861-1863
-  s_7d470640a960b2::t_16ce411a74c0ef 15
+  s_7d470640a960b2::t_16ce411a74c0ef 15,1637-1638,1862-1863
+  s_7d470640a960b2::t_e9074f46ef3139 1636,1725-1727,1728-1738,1742-1768,1769-1770,1772-1773,1861
+  s_1a2f15cbe36c46::t_d8a1ed923c9a11 1684-1686
+  s_7d470640a960b2::t_41d38a19ed2153 1739,1771,1774,1783-1792
+  s_7d470640a960b2::t_b4ec661c2a7600 23,1775-1782,1793-1794
+  s_7d470640a960b2::t_fdebdd7f62ffde 1740-1741
+  s_7d470640a960b2::t_88be3d5e775fe7 1795-1796
 src/daemon/control_api.rs
   s_7d470640a960b2::t_3f4fe2559d6b0d 14
 src/commands/git_ai_handlers.rs
   s_7d470640a960b2::t_a65cfd815a54a8 558,565-581
+src/daemon/checkpoint.rs
+  s_7d470640a960b2::t_ada1ec1767a7cd 863-871
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -39,6 +47,14 @@ src/commands/git_ai_handlers.rs
     }
   },
   "sessions": {
+    "s_1a2f15cbe36c46": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4321-34b7-78d1-964c-05919a68e527",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
     "s_7d470640a960b2": {
       "agent_id": {
         "tool": "codex",
