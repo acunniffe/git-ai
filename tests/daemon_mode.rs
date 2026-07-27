@@ -2571,10 +2571,7 @@ fn daemon_failed_cherry_pick_source_does_not_leak_into_later_range_conflict() {
 
 #[test]
 fn daemon_cherry_pick_quit_clears_pending_source() {
-    let mut repo = TestRepo::new_dedicated_daemon();
-    let trace_socket = daemon_trace_socket_path(&repo);
-    let worktree = repo_workdir_string(&repo);
-    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+    let repo = TestRepo::new_dedicated_daemon();
 
     let mut file = repo.filename("conflict.txt");
     file.set_contents(lines!["shared".human(), "base".human(), "tail".human(),]);
@@ -2586,11 +2583,20 @@ fn daemon_cherry_pick_quit_clears_pending_source() {
 
     repo.git(&["checkout", "-b", "stale-source"])
         .expect("checkout stale source should succeed");
+    let mut sequence_file = repo.filename("sequence.txt");
+    sequence_file.set_contents(lines!["first source".human()]);
+    let first_source = repo
+        .stage_all_and_commit("First sequence source")
+        .expect("first sequence source commit should succeed");
+    sequence_file.assert_lines_and_blame(lines!["first source".human()]);
+    file.assert_lines_and_blame(lines!["shared".human(), "base".human(), "tail".human(),]);
+
     file.replace_at(1, "source".ai());
     let stale_source = repo
         .stage_all_and_commit("AI stale source")
         .expect("stale source commit should succeed");
     file.assert_lines_and_blame(lines!["shared".human(), "source".ai(), "tail".human(),]);
+    sequence_file.assert_lines_and_blame(lines!["first source".human()]);
 
     repo.git(&["checkout", &default_branch])
         .expect("checkout default branch should succeed");
@@ -2610,139 +2616,38 @@ fn daemon_cherry_pick_quit_clears_pending_source() {
     file.assert_lines_and_blame(lines!["shared".human(), "main".human(), "tail".human(),]);
     drop(file);
 
-    repo.restart_dedicated_daemon_for_test();
     let stale_short_sha = &stale_source.commit_sha[..7];
-    let stale_cherry_pick = repo.git_og(&["cherry-pick", stale_short_sha]);
+    let stale_cherry_pick = repo.git(&["cherry-pick", &first_source.commit_sha, stale_short_sha]);
     assert!(stale_cherry_pick.is_err(), "cherry-pick should conflict");
+    repo.sync_daemon();
 
-    let stale_session = repos::test_repo::new_daemon_test_sync_session_id();
-    let stale_session_arg = format!("git-ai.testSyncSession={stale_session}");
-    send_trace_frames(
-        &trace_socket,
-        &[
-            json!({
-                "event": "start",
-                "sid": "stale-conflicted-cherry-pick",
-                "argv": ["git", "-c", stale_session_arg, "-C", worktree, "cherry-pick", stale_short_sha],
-                "time_ns": 1_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "stale-conflicted-cherry-pick",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 1_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "stale-conflicted-cherry-pick",
-                "code": 1,
-                "time_ns": 1_100u64,
-            }),
-            trace_atexit_frame("stale-conflicted-cherry-pick", 1, 1_101u64),
-        ],
-    );
-    repo.sync_daemon_external_completion_sessions(&[stale_session]);
-
-    repo.git_og(&["cherry-pick", "--quit"])
+    repo.git(&["cherry-pick", "--quit"])
         .expect("cherry-pick quit should succeed");
-    let quit_session = repos::test_repo::new_daemon_test_sync_session_id();
-    let quit_session_arg = format!("git-ai.testSyncSession={quit_session}");
-    send_trace_frames(
-        &trace_socket,
-        &[
-            json!({
-                "event": "start",
-                "sid": "cherry-pick-quit",
-                "argv": ["git", "-c", quit_session_arg, "-C", worktree, "cherry-pick", "--quit"],
-                "time_ns": 2_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "cherry-pick-quit",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 2_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "cherry-pick-quit",
-                "code": 0,
-                "time_ns": 2_100u64,
-            }),
-            trace_atexit_frame("cherry-pick-quit", 0, 2_101u64),
-        ],
-    );
-    repo.sync_daemon_external_completion_sessions(&[quit_session]);
+    repo.sync_daemon();
     repo.git_og(&["reset", "--hard", "HEAD"])
         .expect("discard abandoned conflict");
 
     let source_range = format!("{}..{}", base_commit.commit_sha, range_source.commit_sha);
-    let range_cherry_pick = repo.git_og(&["cherry-pick", &source_range]);
+    let range_cherry_pick = repo.git(&["cherry-pick", &source_range]);
     assert!(
         range_cherry_pick.is_err(),
         "range cherry-pick should conflict"
     );
+    repo.sync_daemon();
     fs::write(
         repo.path().join("conflict.txt"),
         "shared\nmain\nsource\ntail\n",
     )
     .expect("write conflict resolution");
-    repo.git_og(&["add", "conflict.txt"])
+    repo.git(&["add", "conflict.txt"])
         .expect("stage conflict resolution");
-    repo.git_og_with_env(&["cherry-pick", "--continue"], &[("GIT_EDITOR", "true")])
-        .expect("cherry-pick continue should succeed");
-
-    let range_session = repos::test_repo::new_daemon_test_sync_session_id();
-    let continue_session = repos::test_repo::new_daemon_test_sync_session_id();
-    let range_session_arg = format!("git-ai.testSyncSession={range_session}");
-    let continue_session_arg = format!("git-ai.testSyncSession={continue_session}");
-    send_trace_frames(
-        &trace_socket,
-        &[
-            json!({
-                "event": "start",
-                "sid": "range-cherry-pick-after-quit",
-                "argv": ["git", "-c", range_session_arg, "-C", worktree, "cherry-pick", source_range],
-                "time_ns": 3_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "range-cherry-pick-after-quit",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 3_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "range-cherry-pick-after-quit",
-                "code": 1,
-                "time_ns": 3_100u64,
-            }),
-            trace_atexit_frame("range-cherry-pick-after-quit", 1, 3_101u64),
-            json!({
-                "event": "start",
-                "sid": "range-cherry-pick-continue-after-quit",
-                "argv": ["git", "-c", continue_session_arg, "-C", worktree, "cherry-pick", "--continue"],
-                "time_ns": 4_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "range-cherry-pick-continue-after-quit",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 4_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "range-cherry-pick-continue-after-quit",
-                "code": 0,
-                "time_ns": 4_100u64,
-            }),
-            trace_atexit_frame("range-cherry-pick-continue-after-quit", 0, 4_101u64),
-        ],
-    );
-    repo.sync_daemon_external_completion_sessions(&[range_session, continue_session]);
+    repo.git_with_env(
+        &["cherry-pick", "--continue"],
+        &[("GIT_EDITOR", "true")],
+        None,
+    )
+    .expect("cherry-pick continue should succeed");
+    repo.sync_daemon();
 
     let mut file = repo.filename("conflict.txt");
     file.assert_lines_and_blame(lines![

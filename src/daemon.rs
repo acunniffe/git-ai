@@ -5171,6 +5171,19 @@ impl ActorDaemonCoordinator {
             self.detect_and_handle_non_ff_rewrites(cmd)?;
         }
 
+        let terminates_pending_cherry_pick = cmd.primary_command.as_deref() == Some("cherry-pick")
+            && cherry_pick_command_terminates_pending_sequence(cmd);
+        if terminates_pending_cherry_pick {
+            let worktree = cmd.worktree.as_ref().ok_or_else(|| {
+                GitAiError::Generic(format!(
+                    "cherry-pick side-effect state requires worktree sid={}",
+                    cmd.root_sid
+                ))
+            })?;
+            self.clear_pending_cherry_pick_sources_for_worktree(worktree)?;
+            self.clear_pending_cherry_pick_no_commit_for_worktree(worktree)?;
+        }
+
         if cmd.exit_code != 0 {
             let rebase_start = cmd
                 .ref_changes
@@ -5233,10 +5246,7 @@ impl ActorDaemonCoordinator {
                         cmd.root_sid
                     ))
                 })?;
-                if cherry_pick_command_terminates_pending_sequence(cmd) {
-                    self.clear_pending_cherry_pick_sources_for_worktree(worktree)?;
-                    self.clear_pending_cherry_pick_no_commit_for_worktree(worktree)?;
-                } else if cmd.exit_code != 0 {
+                if !terminates_pending_cherry_pick {
                     let new_commits = cherry_pick_destination_commits(cmd);
                     let is_continue = cherry_pick_command_has_flag(cmd, "--continue");
                     let is_skip = cherry_pick_command_has_flag(cmd, "--skip");
@@ -8253,6 +8263,69 @@ mod tests {
             1,
             Vec::new()
         )));
+    }
+
+    #[test]
+    fn successful_cherry_pick_quit_clears_coordinator_pending_state() {
+        const SOURCE: &str = "1111111111111111111111111111111111111111";
+        const HEAD: &str = "2222222222222222222222222222222222222222";
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let coordinator = ActorDaemonCoordinator::new();
+            let worktree = Path::new("/repo");
+            coordinator
+                .set_pending_cherry_pick_sources_for_worktree(
+                    worktree,
+                    vec![SOURCE.to_string()],
+                    false,
+                )
+                .unwrap();
+            coordinator
+                .set_pending_cherry_pick_no_commit_for_worktree(
+                    worktree,
+                    vec![SOURCE.to_string()],
+                    HEAD.to_string(),
+                )
+                .unwrap();
+            let applied = crate::daemon::domain::AppliedCommand {
+                seq: 1,
+                command: test_history_command("cherry-pick", &["--quit"], 0, Vec::new()),
+                analysis: crate::daemon::domain::AnalysisResult {
+                    class: crate::daemon::domain::CommandClass::HistoryRewrite,
+                    // Keep unrelated non-FF detection inert while exercising the
+                    // side-effect coordinator with a successful terminal control.
+                    events: vec![crate::daemon::domain::SemanticEvent::CherryPickComplete {
+                        original_head: String::new(),
+                        new_head: String::new(),
+                        source_commits: Vec::new(),
+                        new_commits: Vec::new(),
+                    }],
+                    confidence: crate::daemon::domain::Confidence::High,
+                },
+            };
+
+            coordinator
+                .maybe_apply_side_effects_for_applied_command(None, &applied, &mut HashMap::new())
+                .await
+                .unwrap();
+
+            assert!(
+                coordinator
+                    .pending_cherry_pick_sources_for_worktree(worktree)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                coordinator
+                    .take_pending_cherry_pick_no_commit_for_worktree(worktree)
+                    .unwrap()
+                    .is_none()
+            );
+        });
     }
 
     #[test]
