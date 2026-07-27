@@ -666,9 +666,17 @@ fn reconstruct_stash_applied_contents(
             &worktree_path,
             true,
         )?;
+        // `-f` (force) is required: on case-insensitive filesystems (macOS/Windows)
+        // a tree with case-colliding paths (e.g. `README.md` and `readme.md`) makes
+        // `checkout-index -a` fail with "already exists, no checkout" for the second
+        // entry. This is a throwaway scratch worktree, so last-casing-wins is harmless.
         run_isolated_git(
             repo,
-            vec!["checkout-index".to_string(), "-a".to_string()],
+            vec![
+                "checkout-index".to_string(),
+                "-a".to_string(),
+                "-f".to_string(),
+            ],
             &index_path,
             &worktree_path,
             true,

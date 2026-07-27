@@ -8,7 +8,7 @@ mod repos;
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::daemon::open_local_socket_stream_with_timeout;
 use git_ai::git::find_repository_in_path;
-use git_ai::git::refs::show_authorship_note;
+use git_ai::git::notes_api::read_note;
 use git_ai::git::repository::Repository as GitAiRepository;
 use repos::test_file::ExpectedLineExt;
 use repos::test_repo::{TestRepo, new_daemon_test_sync_session_id, real_git_executable};
@@ -1330,7 +1330,7 @@ fn test_commit_tree_update_ref_preserves_authorship_notes_on_reparent() {
 
     let git_ai_repo = open_repo(&repo);
     assert!(
-        show_authorship_note(&git_ai_repo, &feature_commit.commit_sha).is_some(),
+        read_note(&git_ai_repo, &feature_commit.commit_sha).is_some(),
         "expected initial feature commit to have an authorship note",
     );
 
@@ -1355,7 +1355,7 @@ fn test_commit_tree_update_ref_preserves_authorship_notes_on_reparent() {
 
     let git_ai_repo = open_repo(&repo);
     assert!(
-        show_authorship_note(&git_ai_repo, &new_head).is_some(),
+        read_note(&git_ai_repo, &new_head).is_some(),
         "expected rewritten commit {} to preserve authorship note from {}",
         new_head,
         old_head,
@@ -1453,7 +1453,7 @@ fn test_reset_keep_rewrite_preserves_authorship_notes_on_current_branch() {
 
     let git_ai_repo = open_repo(&repo);
     assert!(
-        show_authorship_note(&git_ai_repo, &feature_commit.commit_sha).is_some(),
+        read_note(&git_ai_repo, &feature_commit.commit_sha).is_some(),
         "expected initial feature commit to have an authorship note",
     );
 
@@ -1478,7 +1478,7 @@ fn test_reset_keep_rewrite_preserves_authorship_notes_on_current_branch() {
 
     let git_ai_repo = open_repo(&repo);
     assert!(
-        show_authorship_note(&git_ai_repo, &new_head).is_some(),
+        read_note(&git_ai_repo, &new_head).is_some(),
         "expected rewritten current-branch commit {} to preserve authorship note from {}",
         new_head,
         old_head,
@@ -1511,7 +1511,7 @@ fn test_update_ref_restack_after_parent_amend_preserves_child_attribution() {
 
     let git_ai_repo = open_repo(&repo);
     assert!(
-        show_authorship_note(&git_ai_repo, &child_commit.commit_sha).is_some(),
+        read_note(&git_ai_repo, &child_commit.commit_sha).is_some(),
         "expected initial child commit to have an authorship note",
     );
 
@@ -1541,7 +1541,7 @@ fn test_update_ref_restack_after_parent_amend_preserves_child_attribution() {
 
     let git_ai_repo = open_repo(&repo);
     assert!(
-        show_authorship_note(&git_ai_repo, &new_child_head).is_some(),
+        read_note(&git_ai_repo, &new_child_head).is_some(),
         "expected rewritten child commit {} to preserve authorship note from {}",
         new_child_head,
         child_commit.commit_sha,
@@ -1602,7 +1602,7 @@ fn test_graphite_style_multi_commit_single_update_ref() {
     let git_ai_repo = open_repo(&repo);
     for &sha in &feature_commits {
         assert!(
-            show_authorship_note(&git_ai_repo, sha).is_some(),
+            read_note(&git_ai_repo, sha).is_some(),
             "pre-rebase: commit {} should have authorship note",
             sha
         );
@@ -1693,7 +1693,7 @@ fn test_graphite_style_multi_commit_single_update_ref() {
     let git_ai_repo = open_repo(&repo);
     for (idx, &sha) in rebased_commits.iter().enumerate() {
         assert!(
-            show_authorship_note(&git_ai_repo, sha).is_some(),
+            read_note(&git_ai_repo, sha).is_some(),
             "post-rebase: rebased commit {} (index {}) should have authorship note",
             sha,
             idx

@@ -24,6 +24,10 @@ impl Spinner {
         // Spinner starts automatically when created
     }
 
+    pub fn finish_and_clear(&self) {
+        self.pb.finish_and_clear();
+    }
+
     #[allow(dead_code)]
     pub fn update_message(&self, message: &str) {
         self.pb.set_message(message.to_string());

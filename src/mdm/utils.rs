@@ -754,8 +754,7 @@ pub fn update_vscode_chat_hook_settings(
 
     let object = root.object_value_or_set();
     let mut changed = false;
-
-    match object.get("chat.useHooks") {
+    let mut enable_setting = |key: &str| match object.get(key) {
         Some(prop) => {
             let should_update = match prop.value() {
                 Some(node) => match node.as_boolean_lit() {
@@ -771,10 +770,13 @@ pub fn update_vscode_chat_hook_settings(
             }
         }
         None => {
-            object.append("chat.useHooks", jsonc_parser::json!(true));
+            object.append(key, jsonc_parser::json!(true));
             changed = true;
         }
-    }
+    };
+
+    enable_setting("chat.useHooks");
+    enable_setting("github.copilot.chat.otel.dbSpanExporter.enabled");
 
     if !changed {
         return Ok(None);
@@ -955,6 +957,7 @@ mod tests {
         let final_content = fs::read_to_string(&settings_path).unwrap();
         assert!(final_content.contains("// keep existing entries"));
         assert!(final_content.contains("\"chat.useHooks\": true"));
+        assert!(final_content.contains("otel.dbSpanExporter.enabled\": true"));
     }
 
     #[test]
@@ -962,7 +965,8 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let settings_path = temp_dir.path().join("settings.json");
         let initial = r#"{
-    "chat.useHooks": true
+    "chat.useHooks": true,
+    "github.copilot.chat.otel.dbSpanExporter.enabled": true
 }
 "#;
         fs::write(&settings_path, initial).unwrap();

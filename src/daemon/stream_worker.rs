@@ -105,6 +105,10 @@ struct SweepRequest {
     completion: Option<std::sync::mpsc::Sender<Result<(), String>>>,
 }
 
+struct DrainRequest {
+    completion: tokio::sync::oneshot::Sender<()>,
+}
+
 impl SweepRequest {
     fn normal(trigger: SweepTrigger) -> Self {
         Self {
@@ -182,6 +186,7 @@ impl SweepTriggerGate {
 pub struct StreamWorkerHandle {
     checkpoint_tx: tokio::sync::mpsc::UnboundedSender<CheckpointNotification>,
     sweep_tx: tokio::sync::mpsc::UnboundedSender<SweepRequest>,
+    drain_tx: tokio::sync::mpsc::UnboundedSender<DrainRequest>,
     sweep_trigger_gate: SweepTriggerGate,
 }
 
@@ -252,12 +257,30 @@ impl StreamWorkerHandle {
         })
     }
 
+    /// Request that the worker drain all immediate processing tasks.
+    ///
+    /// Returns after the worker has finished processing all currently-enqueued
+    /// immediate-priority tasks and any that are already in flight.
+    pub async fn drain(&self) -> Result<(), String> {
+        let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+        self.drain_tx
+            .send(DrainRequest {
+                completion: completion_tx,
+            })
+            .map_err(|_| "stream worker has stopped".to_string())?;
+        completion_rx
+            .await
+            .map_err(|_| "stream worker drain was cancelled".to_string())
+    }
+
     #[cfg(test)]
     fn for_test_sweep_triggers(sweep_tx: tokio::sync::mpsc::UnboundedSender<SweepRequest>) -> Self {
         let (checkpoint_tx, _checkpoint_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (drain_tx, _drain_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             checkpoint_tx,
             sweep_tx,
+            drain_tx,
             sweep_trigger_gate: SweepTriggerGate::new(),
         }
     }
@@ -287,11 +310,13 @@ struct StreamWorker {
     shutdown_flag: Arc<AtomicBool>,
     checkpoint_rx: tokio::sync::mpsc::UnboundedReceiver<CheckpointNotification>,
     sweep_rx: tokio::sync::mpsc::UnboundedReceiver<SweepRequest>,
+    drain_rx: tokio::sync::mpsc::UnboundedReceiver<DrainRequest>,
     sweep_trigger_gate: SweepTriggerGate,
 }
 
 impl StreamWorker {
     /// Create a new transcript worker.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         streams_db: Arc<StreamsDatabase>,
         telemetry_handle: DaemonTelemetryWorkerHandle,
@@ -299,6 +324,7 @@ impl StreamWorker {
         shutdown_flag: Arc<AtomicBool>,
         checkpoint_rx: tokio::sync::mpsc::UnboundedReceiver<CheckpointNotification>,
         sweep_rx: tokio::sync::mpsc::UnboundedReceiver<SweepRequest>,
+        drain_rx: tokio::sync::mpsc::UnboundedReceiver<DrainRequest>,
         sweep_trigger_gate: SweepTriggerGate,
     ) -> Self {
         let sweep_coordinator =
@@ -315,6 +341,7 @@ impl StreamWorker {
             shutdown_flag,
             checkpoint_rx,
             sweep_rx,
+            drain_rx,
             sweep_trigger_gate,
         }
     }
@@ -381,26 +408,10 @@ impl StreamWorker {
                     self.handle_checkpoint_notification(notification).await;
                 }
                 Some(request) = self.sweep_rx.recv() => {
-                    if sweep_enabled {
-                        tracing::info!(trigger = %request.trigger, "triggered transcript sweep requested");
-                        let result = self.run_sweep(request.priority).await;
-                        if let Err(e) = &result {
-                            tracing::error!(trigger = %request.trigger, error = %e, "triggered sweep failed");
-                        }
-                        if let Some(completion) = request.completion {
-                            let _ = completion.send(result.map(|_| ()));
-                        }
-                    } else {
-                        tracing::debug!(
-                            trigger = %request.trigger,
-                            "triggered transcript sweep skipped because transcript_sweep is disabled"
-                        );
-                        if let Some(completion) = request.completion {
-                            let _ = completion.send(Err(
-                                "transcript_sweep feature is disabled".to_string(),
-                            ));
-                        }
-                    }
+                    self.handle_sweep_request(request, sweep_enabled).await;
+                }
+                Some(request) = self.drain_rx.recv() => {
+                    self.handle_drain_request(request, sweep_enabled).await;
                 }
             }
         }
@@ -418,6 +429,50 @@ impl StreamWorker {
                 i += 1;
             }
         }
+    }
+
+    async fn handle_sweep_request(&mut self, request: SweepRequest, sweep_enabled: bool) {
+        if sweep_enabled {
+            tracing::info!(trigger = %request.trigger, "triggered transcript sweep requested");
+            let result = self.run_sweep(request.priority).await;
+            if let Err(e) = &result {
+                tracing::error!(trigger = %request.trigger, error = %e, "triggered sweep failed");
+            }
+            if let Some(completion) = request.completion {
+                let _ = completion.send(result.map(|_| ()));
+            }
+        } else {
+            tracing::debug!(
+                trigger = %request.trigger,
+                "triggered transcript sweep skipped because transcript_sweep is disabled"
+            );
+            if let Some(completion) = request.completion {
+                let _ = completion.send(Err("transcript_sweep feature is disabled".to_string()));
+            }
+        }
+    }
+
+    async fn handle_drain_request(&mut self, request: DrainRequest, sweep_enabled: bool) {
+        // Checkpoint and sweep requests use separate channels from the drain
+        // barrier, so consume ingress that was already queued before the barrier.
+        while let Ok(notification) = self.checkpoint_rx.try_recv() {
+            self.handle_checkpoint_notification(notification).await;
+        }
+        while let Ok(sweep_request) = self.sweep_rx.try_recv() {
+            self.handle_sweep_request(sweep_request, sweep_enabled)
+                .await;
+        }
+
+        // Process immediate priority tasks that are already queued.
+        self.drain_immediate_tasks().await;
+
+        // Continue processing newly promoted tasks until there is no ready
+        // work and no in-flight processing.
+        while !self.priority_queue.is_empty() || !self.in_flight.is_empty() {
+            self.process_next_task().await;
+        }
+
+        let _ = request.completion.send(());
     }
 
     fn next_delayed_task_at(&self) -> Option<std::time::Instant> {
@@ -1047,7 +1102,12 @@ impl StreamWorker {
                 break;
             }
 
-            let batch = agent.read_incremental(&path, current_watermark, &stream.session_id)?;
+            let source_session_id = if stream.external_session_id.is_empty() {
+                stream.session_id.as_str()
+            } else {
+                stream.external_session_id.as_str()
+            };
+            let batch = agent.read_incremental(&path, current_watermark, source_session_id)?;
 
             if batch.events.is_empty() {
                 db.update_watermark(
@@ -1254,22 +1314,7 @@ impl StreamWorker {
 
     /// Drain immediate priority tasks before shutdown.
     async fn drain_immediate_tasks(&mut self) {
-        let mut immediate_tasks = Vec::new();
-
-        // Collect all immediate tasks from priority queue and delayed tasks
-        while let Some(task) = self.priority_queue.pop() {
-            if task.priority == Priority::Immediate {
-                immediate_tasks.push(task);
-            }
-        }
-        let mut i = 0;
-        while i < self.delayed_tasks.len() {
-            if self.delayed_tasks[i].priority == Priority::Immediate {
-                immediate_tasks.push(self.delayed_tasks.swap_remove(i));
-            } else {
-                i += 1;
-            }
-        }
+        let immediate_tasks = self.take_immediate_tasks();
 
         tracing::info!(tasks = immediate_tasks.len(), "draining immediate tasks");
 
@@ -1301,6 +1346,32 @@ impl StreamWorker {
             }
         }
     }
+
+    /// Removes immediate tasks while preserving lower-priority work.
+    fn take_immediate_tasks(&mut self) -> Vec<ProcessingTask> {
+        let mut immediate_tasks = Vec::new();
+        let mut retained_tasks = Vec::new();
+
+        while let Some(task) = self.priority_queue.pop() {
+            if task.priority == Priority::Immediate {
+                immediate_tasks.push(task);
+            } else {
+                retained_tasks.push(task);
+            }
+        }
+        self.priority_queue.extend(retained_tasks);
+
+        let mut i = 0;
+        while i < self.delayed_tasks.len() {
+            if self.delayed_tasks[i].priority == Priority::Immediate {
+                immediate_tasks.push(self.delayed_tasks.swap_remove(i));
+            } else {
+                i += 1;
+            }
+        }
+
+        immediate_tasks
+    }
 }
 
 /// Spawn the transcript worker.
@@ -1311,6 +1382,7 @@ pub fn spawn_stream_worker(
 ) -> StreamWorkerHandle {
     let (checkpoint_tx, checkpoint_rx) = tokio::sync::mpsc::unbounded_channel();
     let (sweep_tx, sweep_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
     let shutdown_flag = Arc::new(AtomicBool::new(false));
     let sweep_trigger_gate = SweepTriggerGate::new();
 
@@ -1321,6 +1393,7 @@ pub fn spawn_stream_worker(
         shutdown_flag,
         checkpoint_rx,
         sweep_rx,
+        drain_rx,
         sweep_trigger_gate.clone(),
     );
 
@@ -1331,6 +1404,7 @@ pub fn spawn_stream_worker(
     StreamWorkerHandle {
         checkpoint_tx,
         sweep_tx,
+        drain_tx,
         sweep_trigger_gate,
     }
 }
@@ -1393,11 +1467,17 @@ mod scheduling_tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn make_worker() -> (TempDir, StreamWorker, Arc<Notify>) {
+    fn make_worker() -> (
+        TempDir,
+        StreamWorker,
+        Arc<Notify>,
+        tokio::sync::mpsc::UnboundedSender<CheckpointNotification>,
+    ) {
         let temp = TempDir::new().unwrap();
         let db = Arc::new(StreamsDatabase::open(temp.path().join("streams.db")).unwrap());
-        let (_checkpoint_tx, checkpoint_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (checkpoint_tx, checkpoint_rx) = tokio::sync::mpsc::unbounded_channel();
         let (_sweep_tx, sweep_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
         let shutdown = Arc::new(Notify::new());
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let telemetry = DaemonTelemetryWorkerHandle::new_noop();
@@ -1410,9 +1490,10 @@ mod scheduling_tests {
             shutdown_flag,
             checkpoint_rx,
             sweep_rx,
+            drain_rx,
             sweep_trigger_gate,
         );
-        (temp, worker, shutdown)
+        (temp, worker, shutdown, checkpoint_tx)
     }
 
     fn task(session_id: &str, next_retry_at: Option<std::time::Instant>) -> ProcessingTask {
@@ -1432,7 +1513,7 @@ mod scheduling_tests {
 
     #[test]
     fn promotes_only_ready_delayed_tasks() {
-        let (_temp, mut worker, _shutdown) = make_worker();
+        let (_temp, mut worker, _shutdown, _checkpoint_tx) = make_worker();
         let now = std::time::Instant::now();
         worker.delayed_tasks.push(task("ready", Some(now)));
         worker
@@ -1449,7 +1530,7 @@ mod scheduling_tests {
 
     #[test]
     fn next_delayed_task_at_returns_earliest_retry_deadline() {
-        let (_temp, mut worker, _shutdown) = make_worker();
+        let (_temp, mut worker, _shutdown, _checkpoint_tx) = make_worker();
         let now = std::time::Instant::now();
         let later = now + Duration::from_secs(30);
         let earlier = now + Duration::from_secs(5);
@@ -1459,9 +1540,27 @@ mod scheduling_tests {
         assert_eq!(worker.next_delayed_task_at(), Some(earlier));
     }
 
+    #[test]
+    fn take_immediate_tasks_preserves_low_priority_tasks() {
+        let (_temp, mut worker, _shutdown, _checkpoint_tx) = make_worker();
+        let immediate = task("immediate", None);
+        let mut queued_low = task("queued-low", None);
+        queued_low.priority = Priority::Low;
+        let mut delayed_low = task("delayed-low", None);
+        delayed_low.priority = Priority::Low;
+
+        worker.priority_queue.push(immediate.clone());
+        worker.priority_queue.push(queued_low.clone());
+        worker.delayed_tasks.push(delayed_low.clone());
+
+        assert_eq!(worker.take_immediate_tasks(), vec![immediate]);
+        assert_eq!(worker.priority_queue.into_vec(), vec![queued_low]);
+        assert_eq!(worker.delayed_tasks, vec![delayed_low]);
+    }
+
     #[tokio::test]
     async fn transient_errors_are_stored_as_delayed_retries_not_ready_work() {
-        let (_temp, mut worker, _shutdown) = make_worker();
+        let (_temp, mut worker, _shutdown, _checkpoint_tx) = make_worker();
 
         worker
             .handle_processing_error(
@@ -1482,7 +1581,7 @@ mod scheduling_tests {
 
     #[tokio::test]
     async fn shutdown_wakes_idle_worker() {
-        let (_temp, worker, shutdown) = make_worker();
+        let (_temp, worker, shutdown, _checkpoint_tx) = make_worker();
         let handle = tokio::spawn(worker.run());
         tokio::task::yield_now().await;
 
@@ -1496,7 +1595,7 @@ mod scheduling_tests {
 
     #[tokio::test]
     async fn shutdown_wakes_worker_sleeping_until_future_retry() {
-        let (_temp, mut worker, shutdown) = make_worker();
+        let (_temp, mut worker, shutdown, _checkpoint_tx) = make_worker();
         worker.delayed_tasks.push(task(
             "future-retry",
             Some(std::time::Instant::now() + Duration::from_secs(60 * 60)),
@@ -1511,6 +1610,39 @@ mod scheduling_tests {
             .expect("retry-sleeping worker should exit promptly after shutdown notification")
             .expect("worker task should not panic");
     }
+
+    #[tokio::test]
+    async fn drain_processes_queued_checkpoint_notifications_before_completing() {
+        let (temp, mut worker, _shutdown, checkpoint_tx) = make_worker();
+        checkpoint_tx
+            .send(CheckpointNotification {
+                session_id: "session".to_string(),
+                tool: "unknown".to_string(),
+                trace_id: "trace".to_string(),
+                tool_use_id: None,
+                stream_path: temp.path().join("transcript.jsonl"),
+                repo_work_dir: Some(temp.path().to_path_buf()),
+                external_session_id: "external".to_string(),
+                external_parent_session_id: None,
+            })
+            .unwrap();
+        let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+
+        worker
+            .handle_drain_request(
+                DrainRequest {
+                    completion: completion_tx,
+                },
+                false,
+            )
+            .await;
+
+        completion_rx.await.unwrap();
+        assert!(
+            worker.checkpoint_rx.is_empty(),
+            "drain must process checkpoint notifications queued before the barrier"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1524,6 +1656,7 @@ mod subagent_sweep_tests {
     fn make_worker(db: Arc<StreamsDatabase>) -> StreamWorker {
         let (_checkpoint_tx, checkpoint_rx) = tokio::sync::mpsc::unbounded_channel();
         let (_sweep_tx, sweep_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
         let shutdown = Arc::new(Notify::new());
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let telemetry = DaemonTelemetryWorkerHandle::new_noop();
@@ -1534,6 +1667,7 @@ mod subagent_sweep_tests {
             shutdown_flag,
             checkpoint_rx,
             sweep_rx,
+            drain_rx,
             SweepTriggerGate::new(),
         )
     }

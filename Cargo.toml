@@ -1,6 +1,6 @@
 [package]
 name = "git-ai"
-version = "1.6.14"
+version = "1.6.17"
 edition = "2024"
 default-run = "git-ai"
 
@@ -22,8 +22,7 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 libc = "0.2"
 jsonc-parser = { version = "0.32", features = ["cst"] }
 dirs = "5.0"
-ureq = { version = "2.12", default-features = false, features = ["native-tls"] }
-native-tls = "0.2"
+ureq = { version = "3.3", default-features = false, features = ["native-tls"] }
 url = "2.5"
 glob = "0.3"
 ignore = "0.4"
@@ -33,8 +32,8 @@ flate2 = "1.1"
 crossterm = "0.29"
 keyring = { version = "3", features = ["sync-secret-service", "apple-native", "windows-native"], optional = true }
 once_cell = "1.21"
-gix-config = "0.53.0"
-gix-index = "0.48.0"
+gix-config = { version = "0.56.0", features = ["sha1"] }
+gix-index = { version = "0.51.0", features = ["sha1"] }
 rand = "0.10"
 regex = "1.12"
 toml = "0.9"

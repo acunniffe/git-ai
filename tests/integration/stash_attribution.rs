@@ -1283,6 +1283,69 @@ fn test_stash_apply_shift_uses_final_commit_tree_after_later_edit() {
     ]);
 }
 
+/// Regression: on case-insensitive filesystems (macOS/Windows), the shift-path
+/// reconstruction (`reconstruct_stash_applied_contents`) checked out the target
+/// tree with `checkout-index -a` (no `-f`). If that tree contained a case-colliding
+/// pair (e.g. `README.md` and `readme.md`), git aborted the second checkout with
+/// "already exists, no checkout" (exit 1), and `require_success` zeroed out the
+/// entire stash attribution restore -- silently dropping the AI note.
+#[test]
+fn test_stash_apply_shift_survives_case_colliding_target_tree() {
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("example.txt");
+
+    fs::write(&file_path, "root\nanchor\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    // Stash an AI change against the current base.
+    fs::write(&file_path, "root\nAI stashed\nanchor\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "example.txt"])
+        .unwrap();
+    repo.git(&["stash", "push", "-m", "ai stash"])
+        .expect("stash should succeed");
+
+    // Advance HEAD (so base_commit != current_head => shift path) and give the
+    // target tree a case-colliding pair via plumbing. The working tree can't hold
+    // both casings on a case-insensitive FS, so build the extra index entry from
+    // the existing README blob and commit it.
+    let mut readme = repo.filename("README.md");
+    readme.set_contents(vec!["# Test Repo".to_string()]);
+    repo.stage_all_and_commit("add README").unwrap();
+
+    let readme_blob = repo
+        .git_og(&["rev-parse", "HEAD:README.md"])
+        .unwrap()
+        .trim()
+        .to_string();
+    repo.git_og(&[
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        &format!("100644,{readme_blob},readme.md"),
+    ])
+    .unwrap();
+    repo.git_og(&["commit", "-m", "add case-colliding readme.md"])
+        .unwrap();
+
+    // Apply the stash onto the new HEAD and commit.
+    repo.git(&["stash", "apply"])
+        .expect("stash apply should succeed");
+    repo.git(&["add", "example.txt"]).unwrap();
+    let commit = repo.commit("apply stash onto case-colliding tree").unwrap();
+
+    // The AI attribution must survive despite the case-colliding target tree.
+    let mut file = repo.filename("example.txt");
+    file.assert_committed_lines(crate::lines![
+        "root".unattributed_human(),
+        "AI stashed".ai(),
+        "anchor".unattributed_human(),
+    ]);
+    assert!(
+        !commit.authorship_log.metadata.sessions.is_empty(),
+        "Expected sessions in authorship log - stash attribution lost on case-colliding target tree"
+    );
+}
+
 #[test]
 fn test_repeated_stash_pop_does_not_duplicate_checkpoints() {
     let repo = TestRepo::new();

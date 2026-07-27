@@ -258,10 +258,41 @@ pub fn compute_line_changes<'a>(old: &'a str, new: &'a str) -> Vec<LineChange<'a
 /// index alignment between normalized diff hunks and original line arrays in
 /// `compute_line_changes`.
 pub(crate) fn normalize_line_endings(s: &str) -> std::borrow::Cow<'_, str> {
-    if !s.contains('\r') {
+    if !s.contains("\r\n") {
         return std::borrow::Cow::Borrowed(s);
     }
     std::borrow::Cow::Owned(s.replace("\r\n", "\n"))
+}
+
+/// Compare two strings while treating CRLF and LF line endings as equivalent.
+pub(crate) fn content_eq_ignoring_line_endings(a: &str, b: &str) -> bool {
+    if a == b {
+        return true;
+    }
+
+    fn next_normalized_byte(bytes: &[u8], index: &mut usize) -> Option<u8> {
+        let byte = *bytes.get(*index)?;
+        *index += 1;
+        if byte == b'\r' && bytes.get(*index) == Some(&b'\n') {
+            *index += 1;
+            Some(b'\n')
+        } else {
+            Some(byte)
+        }
+    }
+
+    let mut a_index = 0;
+    let mut b_index = 0;
+    loop {
+        match (
+            next_normalized_byte(a.as_bytes(), &mut a_index),
+            next_normalized_byte(b.as_bytes(), &mut b_index),
+        ) {
+            (Some(a_byte), Some(b_byte)) if a_byte == b_byte => {}
+            (None, None) => return true,
+            _ => return false,
+        }
+    }
 }
 
 /// Splits a string into lines, preserving line terminators.
@@ -509,6 +540,23 @@ mod tests {
     // ====================================================================
     // CRLF / LF normalization tests
     // ====================================================================
+
+    #[test]
+    fn test_normalize_line_endings_does_not_allocate_for_bare_carriage_returns() {
+        let normalized = normalize_line_endings("one\rtwo");
+
+        assert!(matches!(normalized, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn test_content_eq_ignoring_line_endings() {
+        assert!(content_eq_ignoring_line_endings(
+            "one\r\ntwo\nthree\r\n",
+            "one\ntwo\r\nthree\n"
+        ));
+        assert!(!content_eq_ignoring_line_endings("one\rtwo", "one\ntwo"));
+        assert!(!content_eq_ignoring_line_endings("one\n", "two\n"));
+    }
 
     #[test]
     fn test_compute_line_changes_crlf_to_lf_identical_content() {

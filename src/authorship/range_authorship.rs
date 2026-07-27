@@ -8,9 +8,7 @@ use crate::authorship::diff_ai_accepted::diff_ai_accepted_stats;
 use crate::authorship::ignore::{build_ignore_matcher, should_ignore_file_with_matcher};
 use crate::authorship::stats::{CommitStats, stats_for_commit_stats, stats_from_authorship_log};
 use crate::error::GitAiError;
-use crate::git::notes_api::{
-    CommitAuthorship, filter_commits_with_notes as get_commits_with_notes_from_list,
-};
+use crate::git::notes_api::{CommitAuthorship, filter_commits_with_notes};
 use crate::git::repository::{CommitRange, InternalGitProfile, Repository, exec_git_with_profile};
 use std::io::IsTerminal;
 
@@ -116,7 +114,7 @@ pub fn range_authorship(
             .map(|c| c.id().to_string())
             .collect(),
     };
-    let commit_authorship = get_commits_with_notes_from_list(repository, &commit_shas)?;
+    let commit_authorship = filter_commits_with_notes(repository, &commit_shas)?;
 
     // Calculate range stats - pass commit_shas directly to avoid re-fetching
     let range_stats = calculate_range_stats_direct(

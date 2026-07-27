@@ -4,6 +4,7 @@ mod agent_v1;
 mod ai_tab;
 mod amp;
 mod claude;
+mod cline;
 mod codex;
 mod continue_cli;
 mod cursor;
@@ -152,6 +153,7 @@ pub trait AgentPreset {
 pub fn resolve_preset(name: &str) -> Result<Box<dyn AgentPreset>, GitAiError> {
     match name {
         "claude" => Ok(Box::new(claude::ClaudePreset)),
+        "cline" => Ok(Box::new(cline::ClinePreset)),
         "codex" => Ok(Box::new(codex::CodexPreset)),
         "gemini" => Ok(Box::new(gemini::GeminiPreset)),
         "windsurf" => Ok(Box::new(windsurf::WindsurfPreset)),

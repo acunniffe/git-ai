@@ -84,6 +84,9 @@ pub enum ControlRequest {
         ended_at_ns: u128,
         command: Option<String>,
     },
+    /// Wait for the daemon to finish all in-flight work and flush telemetry.
+    #[serde(rename = "await")]
+    Await { timeout_secs: u64 },
     #[serde(rename = "shutdown")]
     Shutdown,
 }

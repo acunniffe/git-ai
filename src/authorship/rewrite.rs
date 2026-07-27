@@ -6,7 +6,9 @@ use crate::config::Config;
 use crate::error::GitAiError;
 use crate::git::notes_api;
 use crate::git::repo_state::is_valid_git_oid;
-use crate::git::repository::{Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin};
+use crate::git::repository::{
+    Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin_streaming,
+};
 
 const EMPTY_TREE_SHA: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
@@ -28,7 +30,7 @@ pub enum RewriteEvent {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct DiffTreeResult {
     pub hunks_by_file: HashMap<String, Vec<DiffHunk>>,
     pub added_lines_by_file: HashMap<String, Vec<u32>>,
@@ -325,9 +327,8 @@ fn tree_for_commit<'a>(
 fn build_diff_tree_stdin(
     pairs: &[(String, String)],
     sha_to_tree: &HashMap<String, String>,
-) -> Result<(String, Vec<(String, String)>), GitAiError> {
+) -> Result<String, GitAiError> {
     let mut stdin_data = String::new();
-    let mut tree_pair_keys: Vec<(String, String)> = Vec::with_capacity(pairs.len());
     for (src, dst) in pairs {
         let src_tree = tree_for_commit(sha_to_tree, src)?;
         let dst_tree = tree_for_commit(sha_to_tree, dst)?;
@@ -335,37 +336,23 @@ fn build_diff_tree_stdin(
         stdin_data.push(' ');
         stdin_data.push_str(dst_tree);
         stdin_data.push('\n');
-        tree_pair_keys.push((src_tree.to_string(), dst_tree.to_string()));
     }
-    Ok((stdin_data, tree_pair_keys))
+    Ok(stdin_data)
 }
 
-fn parse_batched_diff_tree_output_for_owned_keys(
-    output: &str,
-    tree_pair_keys: &[(String, String)],
-) -> Result<Vec<DiffTreeResult>, GitAiError> {
-    let key_refs: Vec<(&str, &str)> = tree_pair_keys
-        .iter()
-        .map(|(src, dst)| (src.as_str(), dst.as_str()))
-        .collect();
-    parse_batched_diff_tree_output(output, &key_refs)
-}
-
-fn compute_diff_tree_stdin(
-    repo: &Repository,
-    stdin_data: String,
-    tree_pair_keys: Vec<(String, String)>,
-) -> Result<Vec<DiffTreeResult>, GitAiError> {
-    // Single git diff-tree --stdin call.
-    //
-    // We intentionally use the General profile (no PatchParse prefix forcing)
-    // here: `diff-tree` is plumbing and -- unlike the `git diff` porcelain --
-    // ignores the user's diff.{noprefix,mnemonicPrefix,srcPrefix,dstPrefix},
-    // diff.external, and per-path textconv attributes. It always emits raw
-    // content with default `a/`..`b/` prefixes, which is exactly what
-    // extract_b_path / parse_diff_tree_output expect. (Contrast diff_added_lines
-    // in repository.rs, which DOES run `git diff` and therefore must force
-    // InternalGitProfile::PatchParse.)
+/// Build the arg list for `git diff-tree --stdin -p -U0 -M --no-color -r`.
+/// Shared by the chunked streaming path and the non-chunked
+/// `compute_diff_tree_stdin` path.
+///
+/// We intentionally use the General profile (no PatchParse prefix forcing)
+/// here: `diff-tree` is plumbing and -- unlike the `git diff` porcelain --
+/// ignores the user's diff.{noprefix,mnemonicPrefix,srcPrefix,dstPrefix},
+/// diff.external, and per-path textconv attributes. It always emits raw
+/// content with default `a/`..`b/` prefixes, which is exactly what
+/// extract_b_path / parse_diff_tree_output expect. (Contrast diff_added_lines
+/// in repository.rs, which DOES run `git diff` and therefore must force
+/// InternalGitProfile::PatchParse.)
+fn build_diff_tree_stdin_args(repo: &Repository) -> Vec<String> {
     let mut args = repo.global_args_for_exec();
     args.extend([
         "diff-tree".to_string(),
@@ -376,12 +363,24 @@ fn compute_diff_tree_stdin(
         "--no-color".to_string(),
         "-r".to_string(),
     ]);
+    args
+}
 
-    let output = exec_git_stdin(&args, stdin_data.as_bytes())?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
-    // Parse output: each pair's result starts with a "tree1 tree2\n" separator line
-    parse_batched_diff_tree_output_for_owned_keys(&stdout, &tree_pair_keys)
+fn compute_diff_tree_stdin(
+    repo: &Repository,
+    stdin_data: String,
+    pair_count: usize,
+) -> Result<Vec<DiffTreeResult>, GitAiError> {
+    // Stream the output line-by-line into the parser instead of buffering it:
+    // after a rebase across a large trunk delta, every pair's root-tree diff
+    // contains that whole delta, so the batched output is
+    // (trunk delta bytes) x (pair count) and buffering it has driven the
+    // daemon to multi-GB RSS. The parsed hunk/line structures are a small
+    // fraction of the raw patch text.
+    let args = build_diff_tree_stdin_args(repo);
+    let mut parser = BatchedDiffTreeParser::new(pair_count);
+    exec_git_stdin_streaming(&args, stdin_data.as_bytes(), |line| parser.feed_line(line))?;
+    Ok(parser.finish())
 }
 
 pub fn handle_rewrite_event(repo: &Repository, event: RewriteEvent) -> Result<(), GitAiError> {
@@ -417,8 +416,11 @@ pub(crate) fn handle_rewrite_event_with_metrics(
             if mappings.is_empty() {
                 return Ok(RewriteOutcome::empty());
             }
-            let source_shas: Vec<String> = mappings.iter().map(|(src, _)| src.clone()).collect();
-            crate::git::sync_authorship::fetch_missing_notes_for_commits(repo, &source_shas)?;
+            let mapped_shas = unique_pair_shas(&mappings);
+            crate::git::sync_authorship::fetch_missing_notes_for_commits_best_effort(
+                repo,
+                &mapped_shas,
+            );
             let shifted_notes =
                 shift_authorship_notes_merging_existing_with_notes(repo, &mappings)?;
             if !rewrite_metrics_enabled() {
@@ -460,8 +462,10 @@ pub(crate) fn handle_non_fast_forward_rewrite_with_operation(
     if mappings.is_empty() {
         return Ok(RewriteOutcome::empty());
     }
-    let source_shas: Vec<String> = mappings.iter().map(|(src, _)| src.clone()).collect();
-    crate::git::sync_authorship::fetch_missing_notes_for_commits(repo, &source_shas)?;
+    // A force-pushed target can already have an authoritative remote note that
+    // must be present before we merge the shifted source note into it.
+    let mapped_shas = unique_pair_shas(&mappings);
+    crate::git::sync_authorship::fetch_missing_notes_for_commits_best_effort(repo, &mapped_shas);
     let shifted_notes = shift_authorship_notes_merging_existing_with_notes(repo, &mappings)?;
     if !rewrite_metrics_enabled() {
         return Ok(RewriteOutcome::empty());
@@ -494,7 +498,7 @@ fn handle_squash_merge(
         source_commits
     };
 
-    crate::git::sync_authorship::fetch_missing_notes_for_commits(repo, &sources)?;
+    crate::git::sync_authorship::fetch_missing_notes_for_commits_best_effort(repo, &sources);
 
     // Batch-read all source notes in O(1) git calls
     let source_notes_map = notes_api::read_notes_batch(repo, &sources)?;
@@ -724,13 +728,26 @@ pub(crate) fn shift_authorship_notes_merging_existing_with_notes(
     shift_authorship_notes_with_existing_mode(repo, mappings, true)
 }
 
+/// Maximum number of diff-tree results to hold in memory at once before
+/// pausing stdout reads (which blocks git's pipe) to apply shifts and
+/// drop the parsed structures. Bounds peak RSS to `CHUNK_SIZE` pairs worth
+/// of `Vec<u32>` added-line lists + `Vec<DiffHunk>` hunks, without the cost
+/// of extra git spawns.
+const DIFF_TREE_STREAM_CHUNK_SIZE: usize = 50;
+
+/// A pending authorship-log shift awaiting its diff-tree result. Built 1:1
+/// with (and in the same order as) the `diff_pairs` sent to git, so results
+/// are zipped with shifts positionally.
+struct PendingShift {
+    new_sha: String,
+    log: AuthorshipLog,
+}
+
 fn shift_authorship_notes_with_existing_mode(
     repo: &Repository,
     mappings: &[(String, String)],
     merge_existing_targets: bool,
 ) -> Result<Vec<(String, String)>, GitAiError> {
-    use crate::authorship::hunk_shift::apply_hunk_shifts_to_file_attestation;
-
     tracing::debug!("shift_authorship_notes: {} mappings", mappings.len());
 
     if mappings.is_empty() {
@@ -745,12 +762,6 @@ fn shift_authorship_notes_with_existing_mode(
     let notes_map = notes_api::read_notes_batch(repo, &all_shas)?;
 
     // Determine which mappings need processing
-    struct PendingShift {
-        new_sha: String,
-        log: AuthorshipLog,
-        diff_pair_idx: usize,
-    }
-
     let mut pending: Vec<PendingShift> = Vec::new();
     let mut verbatim_writes: Vec<(String, String)> = Vec::new();
     let mut diff_pairs: Vec<(String, String)> = Vec::new();
@@ -784,12 +795,10 @@ fn shift_authorship_notes_with_existing_mode(
             continue;
         };
 
-        let diff_pair_idx = diff_pairs.len();
         diff_pairs.push((source_sha.clone(), new_sha.clone()));
         pending.push(PendingShift {
             new_sha: new_sha.clone(),
             log,
-            diff_pair_idx,
         });
     }
 
@@ -797,47 +806,46 @@ fn shift_authorship_notes_with_existing_mode(
         return Ok(Vec::new());
     }
 
-    // Single batched diff-tree call for all pairs
-    let diff_results = if !diff_pairs.is_empty() {
-        compute_diff_trees_batch(repo, &diff_pairs)?
-    } else {
-        Vec::new()
-    };
-
-    // Apply shifts and merge logs that share a target commit
+    // Stream diff-tree output in bounded chunks from a single git spawn.
+    //
+    // One `git diff-tree --stdin` is fired with all pairs. The
+    // `BatchedDiffTreeParser` accumulates results as lines arrive; every
+    // `DIFF_TREE_STREAM_CHUNK_SIZE` completed pairs, the callback drains them,
+    // applies shifts, and drops the parsed structures — all inline inside the
+    // stdout read loop. While we process, we stop reading stdout, the OS pipe
+    // buffer fills, and git blocks on write() until we resume. That
+    // back-pressure bounds peak RSS without spawning one git process per
+    // chunk. Materializing all pairs at once has driven the daemon to
+    // multi-GB RSS when a bad mapping set turns every pair into a
+    // full-root-tree diff.
     let mut merged_by_target = existing_by_target;
 
-    for shift in pending {
-        let diff_result = &diff_results[shift.diff_pair_idx];
-        let mut log = shift.log;
+    // `pending` is 1:1 with `diff_pairs`, so results are zipped with shifts
+    // positionally as the chunks advance.
+    let mut pending_iter = pending.into_iter();
 
-        for (old_path, new_path) in &diff_result.renames {
-            for attestation in &mut log.attestations {
-                if attestation.file_path == *old_path {
-                    attestation.file_path = new_path.clone();
-                }
+    if !diff_pairs.is_empty() {
+        let unique_shas = unique_pair_shas(&diff_pairs);
+        let sha_to_tree = resolve_tree_shas(repo, &unique_shas)?;
+        let stdin_data = build_diff_tree_stdin(&diff_pairs, &sha_to_tree)?;
+        let diff_args = build_diff_tree_stdin_args(repo);
+        let mut parser = BatchedDiffTreeParser::new(diff_pairs.len());
+
+        exec_git_stdin_streaming(&diff_args, stdin_data.as_bytes(), |line| {
+            parser.feed_line(line);
+
+            // Drain completed results inline while we hold the pipe —
+            // this is the back-pressure: git blocks while we process.
+            if parser.completed_count() >= DIFF_TREE_STREAM_CHUNK_SIZE {
+                let chunk = parser.take_completed();
+                apply_chunk_shifts(&mut merged_by_target, chunk, &mut pending_iter);
             }
-        }
+        })?;
 
-        if !diff_result.hunks_by_file.is_empty() {
-            log.attestations = log
-                .attestations
-                .iter()
-                .filter_map(|fa| match diff_result.hunks_by_file.get(&fa.file_path) {
-                    Some(hunks) => apply_hunk_shifts_to_file_attestation(fa, hunks),
-                    None => Some(fa.clone()),
-                })
-                .collect();
-        }
-
-        log.metadata.base_commit_sha = shift.new_sha.clone();
-
-        match merged_by_target.get_mut(&shift.new_sha) {
-            Some(existing) => merge_authorship_logs(existing, &log),
-            None => {
-                merged_by_target.insert(shift.new_sha, log);
-            }
-        }
+        // Drain the tail: the in-progress result plus any padding needed if
+        // git produced fewer result separators than expected.
+        let final_chunk = parser.take_all();
+        apply_chunk_shifts(&mut merged_by_target, final_chunk, &mut pending_iter);
     }
 
     let mut all_writes = verbatim_writes;
@@ -902,6 +910,54 @@ fn merge_authorship_logs(target: &mut AuthorshipLog, source: &AuthorshipLog) {
             .humans
             .entry(key.clone())
             .or_insert_with(|| record.clone());
+    }
+}
+
+/// Apply hunk/rename shifts from a chunk of `DiffTreeResult`s to the
+/// corresponding `PendingShift`s, merging shifted logs into
+/// `merged_by_target`. Called inline inside the stdout read loop so the
+/// pipe blocks git while we process.
+///
+/// `pending_iter` yields shifts in the same order as `diff_pairs`, so the
+/// Nth diff result always corresponds to the Nth pending shift — the two
+/// sequences are zipped positionally.
+fn apply_chunk_shifts(
+    merged_by_target: &mut HashMap<String, AuthorshipLog>,
+    chunk: Vec<DiffTreeResult>,
+    pending_iter: &mut impl Iterator<Item = PendingShift>,
+) {
+    use crate::authorship::hunk_shift::apply_hunk_shifts_to_file_attestation;
+
+    for (diff_result, shift) in chunk.iter().zip(pending_iter) {
+        let mut log = shift.log;
+
+        for (old_path, new_path) in &diff_result.renames {
+            for attestation in &mut log.attestations {
+                if attestation.file_path == *old_path {
+                    attestation.file_path = new_path.clone();
+                }
+            }
+        }
+
+        if !diff_result.hunks_by_file.is_empty() {
+            log.attestations = log
+                .attestations
+                .iter()
+                .filter_map(|fa| match diff_result.hunks_by_file.get(&fa.file_path) {
+                    Some(hunks) => apply_hunk_shifts_to_file_attestation(fa, hunks),
+                    None => Some(fa.clone()),
+                })
+                .collect();
+        }
+
+        log.metadata.base_commit_sha = shift.new_sha.clone();
+
+        match merged_by_target.get_mut(&shift.new_sha) {
+            Some(existing) => merge_authorship_logs(existing, &log),
+            None => {
+                merged_by_target.insert(shift.new_sha, log);
+            }
+        }
     }
 }
 
@@ -1012,9 +1068,22 @@ fn run_range_diff(
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Maximum number of unmatched old-range (`<`) commits buffered ahead of the
+/// first matched pair. A genuine rebase squash absorbs a handful of commits
+/// into the first surviving one, so small queues are drained into that match
+/// as before. But when the count exceeds this bound the history is divergent
+/// — e.g. a restack undo (`git reset --keep <pre-rebase-tip>`), where the old
+/// range spans every trunk commit landed since the branch forked — and the
+/// whole queue is discarded, permanently. Without this, each bogus mapping
+/// whose source commit has an authorship note becomes a full-root-tree diff
+/// pair, and daemon memory scales as
+/// (trunk commits since fork) × (lines modified on trunk).
+const MAX_PENDING_DROPPED_COMMITS: usize = 64;
+
 fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
     let mut mappings = Vec::new();
     let mut pending_dropped: Vec<String> = Vec::new();
+    let mut pending_overflowed = false;
     let mut previous_new_sha: Option<String> = None;
 
     for line in output.lines() {
@@ -1040,8 +1109,16 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
                 if !old_sha.chars().all(|c| c == '0') {
                     if let Some(new_sha) = previous_new_sha.as_ref() {
                         mappings.push((old_sha, new_sha.clone()));
-                    } else {
+                    } else if !pending_overflowed {
                         pending_dropped.push(old_sha);
+                        if pending_dropped.len() > MAX_PENDING_DROPPED_COMMITS {
+                            // Divergent history (e.g. restack undo), not a
+                            // squash: discard the queue and stop collecting so
+                            // the mapping count stays bounded.
+                            pending_dropped.clear();
+                            pending_dropped.shrink_to_fit();
+                            pending_overflowed = true;
+                        }
                     }
                 }
             }
@@ -1245,50 +1322,100 @@ pub(crate) fn compute_diff_trees_batch(
 
     let unique_shas = unique_pair_shas(pairs);
     let sha_to_tree = resolve_tree_shas(repo, &unique_shas)?;
-    let (stdin_data, tree_pair_keys) = build_diff_tree_stdin(pairs, &sha_to_tree)?;
-    compute_diff_tree_stdin(repo, stdin_data, tree_pair_keys)
+    let stdin_data = build_diff_tree_stdin(pairs, &sha_to_tree)?;
+    compute_diff_tree_stdin(repo, stdin_data, pairs.len())
 }
 
-/// Parse the output of `git diff-tree --stdin` which produces multiple results
-/// separated by "tree1 tree2" header lines.
-fn parse_batched_diff_tree_output(
-    output: &str,
-    tree_pair_keys: &[(&str, &str)],
-) -> Result<Vec<DiffTreeResult>, GitAiError> {
-    let mut results: Vec<DiffTreeResult> = Vec::with_capacity(tree_pair_keys.len());
-    let mut current_chunk = String::new();
-    let mut seen_first_header = false;
+/// Incremental parser for the output of `git diff-tree --stdin`, which
+/// produces one patch per tree pair, each preceded by a "tree1 tree2"
+/// separator line. Results are positional: the Nth separator starts the Nth
+/// pair's patch. Fed one line at a time so callers can stream arbitrarily
+/// large diff output without holding the raw patch text in memory.
+struct BatchedDiffTreeParser {
+    expected_pairs: usize,
+    results: Vec<DiffTreeResult>,
+    current: DiffTreeChunkParser,
+    seen_first_header: bool,
+}
 
-    for line in output.lines() {
-        // Separator lines are exactly "tree_sha1 tree_sha2" (two 40-char hex SHAs separated by space)
-        if is_tree_pair_separator(line) {
-            if seen_first_header {
-                results.push(parse_diff_tree_output(&current_chunk));
-                current_chunk.clear();
-            }
-            seen_first_header = true;
-        } else if seen_first_header {
-            current_chunk.push_str(line);
-            current_chunk.push('\n');
+impl BatchedDiffTreeParser {
+    fn new(expected_pairs: usize) -> Self {
+        Self {
+            expected_pairs,
+            results: Vec::with_capacity(expected_pairs.min(DIFF_TREE_STREAM_CHUNK_SIZE)),
+            current: DiffTreeChunkParser::default(),
+            seen_first_header: false,
         }
     }
 
-    // Push final chunk
-    if seen_first_header {
-        results.push(parse_diff_tree_output(&current_chunk));
+    fn feed_line(&mut self, line: &str) {
+        // Separator lines are exactly "tree_sha1 tree_sha2" (two OIDs separated by a space)
+        if is_tree_pair_separator(line) {
+            if self.seen_first_header {
+                let chunk = std::mem::take(&mut self.current);
+                self.results.push(chunk.finish());
+            }
+            self.seen_first_header = true;
+        } else if self.seen_first_header {
+            self.current.feed_line(line);
+        }
     }
 
-    // If git produced fewer results than pairs, pad with empty results
-    // (happens when trees are identical — no separator line emitted)
-    while results.len() < tree_pair_keys.len() {
-        results.push(DiffTreeResult {
-            hunks_by_file: HashMap::new(),
-            added_lines_by_file: HashMap::new(),
-            renames: Vec::new(),
-        });
+    fn completed_count(&self) -> usize {
+        self.results.len()
     }
 
-    Ok(results)
+    /// Drain and return all completed results, leaving the parser ready to
+    /// accumulate more. The `expected_pairs` count is adjusted so final
+    /// padding still accounts for already-drained results.
+    fn take_completed(&mut self) -> Vec<DiffTreeResult> {
+        let drained = std::mem::take(&mut self.results);
+        self.expected_pairs = self.expected_pairs.saturating_sub(drained.len());
+        // Re-allocate at chunk capacity so subsequent push() calls don't
+        // re-allocate incrementally.
+        self.results = Vec::with_capacity(self.expected_pairs.min(DIFF_TREE_STREAM_CHUNK_SIZE));
+        drained
+    }
+
+    /// Drain remaining completed results (including the in-progress chunk) and
+    /// pad with empty entries if git produced fewer result separators than
+    /// expected.
+    fn take_all(&mut self) -> Vec<DiffTreeResult> {
+        // Push the in-progress chunk if any
+        if self.seen_first_header {
+            let chunk = std::mem::take(&mut self.current);
+            self.results.push(chunk.finish());
+            self.seen_first_header = false;
+        }
+
+        let mut drained = std::mem::take(&mut self.results);
+
+        // Pad to expected count for identical trees
+        while drained.len() < self.expected_pairs {
+            drained.push(DiffTreeResult::default());
+        }
+
+        self.expected_pairs = 0;
+        drained
+    }
+
+    /// Consume self and return all results (padded to expected_pairs).
+    fn finish(self) -> Vec<DiffTreeResult> {
+        let mut parser = self;
+        parser.take_all()
+    }
+}
+
+/// Parse the output of `git diff-tree --stdin` provided as a single string.
+/// Thin wrapper over `BatchedDiffTreeParser` (which the streaming path feeds
+/// directly).
+#[cfg(test)]
+fn parse_batched_diff_tree_output(output: &str, expected_pairs: usize) -> Vec<DiffTreeResult> {
+    let mut parser = BatchedDiffTreeParser::new(expected_pairs);
+    for line in output.lines() {
+        parser.feed_line(line);
+    }
+    parser.finish()
 }
 
 fn is_tree_pair_separator(line: &str) -> bool {
@@ -1302,37 +1429,44 @@ fn is_tree_pair_separator(line: &str) -> bool {
     is_valid_git_oid(old) && is_valid_git_oid(new)
 }
 
-fn parse_diff_tree_output(output: &str) -> DiffTreeResult {
-    let mut hunks_by_file: HashMap<String, Vec<DiffHunk>> = HashMap::new();
-    let mut added_lines_by_file: HashMap<String, Vec<u32>> = HashMap::new();
-    let mut renames: Vec<(String, String)> = Vec::new();
-    let mut current_file: Option<String> = None;
-    let mut current_rename_from: Option<String> = None;
-    let mut active_hunk_new_line: Option<u32> = None;
+/// Incremental parser for a single tree pair's diff-tree patch.
+#[derive(Default)]
+struct DiffTreeChunkParser {
+    hunks_by_file: HashMap<String, Vec<DiffHunk>>,
+    added_lines_by_file: HashMap<String, Vec<u32>>,
+    renames: Vec<(String, String)>,
+    current_file: Option<String>,
+    current_rename_from: Option<String>,
+    active_hunk_new_line: Option<u32>,
+}
 
-    for line in output.lines() {
+impl DiffTreeChunkParser {
+    fn feed_line(&mut self, line: &str) {
         if let Some(rest) = line.strip_prefix("diff --git ") {
             // Extract the b/ path from "a/old b/new"
-            current_file = extract_b_path(rest);
-            current_rename_from = None;
-            active_hunk_new_line = None;
+            self.current_file = extract_b_path(rest);
+            self.current_rename_from = None;
+            self.active_hunk_new_line = None;
         } else if let Some(from_path) = line.strip_prefix("rename from ") {
-            current_rename_from = Some(from_path.to_string());
-            active_hunk_new_line = None;
+            self.current_rename_from = Some(from_path.to_string());
+            self.active_hunk_new_line = None;
         } else if let Some(to_path) = line.strip_prefix("rename to ") {
-            if let Some(from_path) = current_rename_from.take() {
-                renames.push((from_path, to_path.to_string()));
+            if let Some(from_path) = self.current_rename_from.take() {
+                self.renames.push((from_path, to_path.to_string()));
             }
         } else if line.starts_with("@@")
-            && let Some(ref file) = current_file
+            && let Some(ref file) = self.current_file
             && let Some(hunk) = parse_hunk_header(line)
         {
-            active_hunk_new_line = Some(hunk.new_start);
-            hunks_by_file.entry(file.clone()).or_default().push(hunk);
-        } else if let Some(new_line) = active_hunk_new_line.as_mut() {
+            self.active_hunk_new_line = Some(hunk.new_start);
+            self.hunks_by_file
+                .entry(file.clone())
+                .or_default()
+                .push(hunk);
+        } else if let Some(new_line) = self.active_hunk_new_line.as_mut() {
             if line.starts_with('+') {
-                if let Some(ref file) = current_file {
-                    added_lines_by_file
+                if let Some(ref file) = self.current_file {
+                    self.added_lines_by_file
                         .entry(file.clone())
                         .or_default()
                         .push(*new_line);
@@ -1347,16 +1481,27 @@ fn parse_diff_tree_output(output: &str) -> DiffTreeResult {
         }
     }
 
-    for lines in added_lines_by_file.values_mut() {
-        lines.sort_unstable();
-        lines.dedup();
-    }
+    fn finish(mut self) -> DiffTreeResult {
+        for lines in self.added_lines_by_file.values_mut() {
+            lines.sort_unstable();
+            lines.dedup();
+        }
 
-    DiffTreeResult {
-        hunks_by_file,
-        added_lines_by_file,
-        renames,
+        DiffTreeResult {
+            hunks_by_file: self.hunks_by_file,
+            added_lines_by_file: self.added_lines_by_file,
+            renames: self.renames,
+        }
     }
+}
+
+#[cfg(test)]
+fn parse_diff_tree_output(output: &str) -> DiffTreeResult {
+    let mut parser = DiffTreeChunkParser::default();
+    for line in output.lines() {
+        parser.feed_line(line);
+    }
+    parser.finish()
 }
 
 fn extract_b_path(diff_header: &str) -> Option<String> {
@@ -1604,33 +1749,6 @@ Binary files a/image.png and b/image.png differ
     }
 
     #[test]
-    fn test_parse_range_diff_output_matched_then_dropped_maps_all_to_destination() {
-        let output = "\
-1:  1111111111111111111111111111111111111111 ! 1:  4444444444444444444444444444444444444444 AI commit 1
-2:  2222222222222222222222222222222222222222 < -:  ---------------------------------------- AI commit 2
-3:  3333333333333333333333333333333333333333 < -:  ---------------------------------------- AI commit 3
-";
-        let mappings = parse_range_diff_output(output);
-        assert_eq!(
-            mappings,
-            vec![
-                (
-                    "1111111111111111111111111111111111111111".to_string(),
-                    "4444444444444444444444444444444444444444".to_string()
-                ),
-                (
-                    "2222222222222222222222222222222222222222".to_string(),
-                    "4444444444444444444444444444444444444444".to_string()
-                ),
-                (
-                    "3333333333333333333333333333333333333333".to_string(),
-                    "4444444444444444444444444444444444444444".to_string()
-                ),
-            ]
-        );
-    }
-
-    #[test]
     fn test_parse_range_diff_output_null_shas_skipped() {
         let output = " 1:  0000000000000000000000000000000000000000 = 1:  bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb Subject\n";
         let mappings = parse_range_diff_output(output);
@@ -1673,6 +1791,177 @@ Binary files a/image.png and b/image.png differ
     fn test_parse_range_diff_output_empty() {
         let mappings = parse_range_diff_output("");
         assert!(mappings.is_empty());
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_matched_then_dropped_maps_all_to_destination() {
+        // Matches AFTER the first `!` match are still mapped — this is the
+        // genuine squash path (drops between matched pairs).
+        let output = "\
+1:  1111111111111111111111111111111111111111 ! 1:  4444444444444444444444444444444444444444 AI commit 1
+2:  2222222222222222222222222222222222222222 < -:  ---------------------------------------- AI commit 2
+3:  3333333333333333333333333333333333333333 < -:  ---------------------------------------- AI commit 3
+";
+        let mappings = parse_range_diff_output(output);
+        assert_eq!(
+            mappings,
+            vec![
+                (
+                    "1111111111111111111111111111111111111111".to_string(),
+                    "4444444444444444444444444444444444444444".to_string()
+                ),
+                (
+                    "2222222222222222222222222222222222222222".to_string(),
+                    "4444444444444444444444444444444444444444".to_string()
+                ),
+                (
+                    "3333333333333333333333333333333333333333".to_string(),
+                    "4444444444444444444444444444444444444444".to_string()
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_divergent_history_discards_pending() {
+        // Regression: restack-undo (moving a branch tip backward to undo a
+        // rebase) produces a range-diff where the old range spans every trunk
+        // commit since the fork point. All those trunk commits appear as `<`
+        // before the first stack-commit match. They must be discarded — they
+        // were never part of a squash.
+        let sha_a = "1".repeat(40);
+        let sha_b = "2".repeat(40);
+        let mut output = String::new();
+        // 200 divergent trunk commits before the first real match
+        for i in 0..200 {
+            let sha = format!("{:040}", i);
+            output.push_str(&format!(
+                "{}:  {} < -:  ---------------------------------------- trunk commit {}\n",
+                i + 1,
+                sha,
+                i
+            ));
+        }
+        // One real matched pair
+        output.push_str(&format!(
+            "201:  {} = 1:  {} AI feature commit\n",
+            sha_a, sha_b
+        ));
+        let mappings = parse_range_diff_output(&output);
+        // Only the matched pair, not 200 bogus mappings
+        assert_eq!(mappings.len(), 1);
+        assert_eq!(mappings[0], (sha_a, sha_b));
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_small_pending_dropped_still_mapped() {
+        // A bounded number of `<` commits ahead of the first match is a
+        // genuine squash and must still be drained into it — the overflow
+        // guard only fires past MAX_PENDING_DROPPED_COMMITS.
+        let dropped = "1".repeat(40);
+        let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let output = format!(
+            "\
+1:  {} < -:  ---------------------------------------- dropped
+2:  {} = 1:  {} matched\n",
+            dropped, old_matched, new_matched,
+        );
+        let mappings = parse_range_diff_output(&output);
+        assert_eq!(
+            mappings,
+            vec![(dropped, new_matched.clone()), (old_matched, new_matched),]
+        );
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_pending_after_first_match_still_mapped() {
+        // After the first match, `<` commits between matches are genuine
+        // squashes and must still be mapped to the most recently seen new sha.
+        let old_1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_1 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let old_dropped = "cccccccccccccccccccccccccccccccccccccccc".to_string();
+        let old_2 = "dddddddddddddddddddddddddddddddddddddddd".to_string();
+        let new_2 = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_string();
+        let output = format!(
+            "\
+1:  {} ! 1:  {} commit a
+2:  {} < -:  ---------------------------------------- squashed into previous
+3:  {} ! 2:  {} commit c\n",
+            old_1, new_1, old_dropped, old_2, new_2,
+        );
+        let mappings = parse_range_diff_output(&output);
+        // old_1→new_1 (first match, seen_first_match set to true),
+        // old_dropped→new_1 (maps to previous_new_sha, which is still new_1),
+        // old_2→new_2 (second match, updates previous_new_sha)
+        assert_eq!(mappings.len(), 3);
+        assert_eq!(mappings[0], (old_1, new_1.clone()));
+        assert_eq!(mappings[1], (old_dropped, new_1));
+        assert_eq!(mappings[2], (old_2, new_2));
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_exactly_64_leading_drops_still_mapped() {
+        // Exactly MAX_PENDING_DROPPED_COMMITS (64) leading `<` commits should
+        // all be mapped to the first matched new SHA, plus the match's own old
+        // SHA — total of 65 mappings. Start at 1 so the first SHA is not all
+        // zeros and is therefore not skipped.
+        const MAX_DROPPED: usize = 64;
+        let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let mut output = String::new();
+        for i in 1..=MAX_DROPPED {
+            let sha = format!("{:040}", i);
+            output.push_str(&format!(
+                "{}:  {} < -:  ---------------------------------------- dropped {}\n",
+                i, sha, i
+            ));
+        }
+        output.push_str(&format!(
+            "{}:  {} = 1:  {} matched\n",
+            MAX_DROPPED + 1,
+            old_matched,
+            new_matched,
+        ));
+        let mappings = parse_range_diff_output(&output);
+        // 64 dropped + 1 matched
+        assert_eq!(mappings.len(), MAX_DROPPED + 1);
+        // All dropped commits map to new_matched
+        for i in 1..=MAX_DROPPED {
+            let sha = format!("{:040}", i);
+            assert_eq!(mappings[i - 1], (sha, new_matched.clone()));
+        }
+        // The matched pair is last
+        assert_eq!(mappings[MAX_DROPPED], (old_matched, new_matched));
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_exactly_65_leading_drops_discards_all() {
+        // Exactly MAX_PENDING_DROPPED_COMMITS + 1 (65) leading `<` commits
+        // exceeds the limit, so ALL of them are discarded — only the matched
+        // pair's own mapping survives. Start at 1 so the first SHA is not all
+        // zeros and is therefore not skipped.
+        const MAX_DROPPED_PLUS_1: usize = 65;
+        let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let mut output = String::new();
+        for i in 1..=MAX_DROPPED_PLUS_1 {
+            let sha = format!("{:040}", i);
+            output.push_str(&format!(
+                "{}:  {} < -:  ---------------------------------------- dropped {}\n",
+                i, sha, i
+            ));
+        }
+        output.push_str(&format!(
+            "{}:  {} = 1:  {} matched\n",
+            MAX_DROPPED_PLUS_1 + 1,
+            old_matched,
+            new_matched,
+        ));
+        let mappings = parse_range_diff_output(&output);
+        // Only the matched pair survived
+        assert_eq!(mappings.len(), 1);
+        assert_eq!(mappings[0], (old_matched, new_matched));
     }
 
     #[test]
@@ -1755,11 +2044,7 @@ index a29bdeb..c0d0fb4 100644
 @@ -1,0 +2 @@ line1
 +line2
 ";
-        let keys = [(
-            "1778ed95466977076f4e5908e6500789be732d2e",
-            "471b7bbf5998ffa15a81b17ee9f6854a357a2a6a",
-        )];
-        let results = parse_batched_diff_tree_output(output, &keys).unwrap();
+        let results = parse_batched_diff_tree_output(output, 1);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].hunks_by_file.len(), 1);
         assert_eq!(results[0].hunks_by_file["f.txt"][0].new_count, 1);
@@ -1783,17 +2068,7 @@ index eee..fff 100644
 @@ -5,2 +5,3 @@
 +new line
 ";
-        let keys = [
-            (
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            ),
-            (
-                "cccccccccccccccccccccccccccccccccccccccc",
-                "dddddddddddddddddddddddddddddddddddddddd",
-            ),
-        ];
-        let results = parse_batched_diff_tree_output(output, &keys).unwrap();
+        let results = parse_batched_diff_tree_output(output, 2);
         assert_eq!(results.len(), 2);
         assert_eq!(results[0].hunks_by_file.len(), 1);
         assert!(results[0].hunks_by_file.contains_key("f.txt"));
@@ -1806,11 +2081,7 @@ index eee..fff 100644
         let output = "\
 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ";
-        let keys = [(
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        )];
-        let results = parse_batched_diff_tree_output(output, &keys).unwrap();
+        let results = parse_batched_diff_tree_output(output, 1);
         assert_eq!(results.len(), 1);
         assert!(results[0].hunks_by_file.is_empty());
         assert!(results[0].renames.is_empty());
@@ -1829,21 +2100,7 @@ diff --git a/g.txt b/g.txt
 @@ -3,1 +3,2 @@
 +y
 ";
-        let keys = [
-            (
-                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-            ),
-            (
-                "cccccccccccccccccccccccccccccccccccccccc",
-                "cccccccccccccccccccccccccccccccccccccccc",
-            ),
-            (
-                "dddddddddddddddddddddddddddddddddddddddd",
-                "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-            ),
-        ];
-        let results = parse_batched_diff_tree_output(output, &keys).unwrap();
+        let results = parse_batched_diff_tree_output(output, 3);
         assert_eq!(results.len(), 3);
         assert_eq!(results[0].hunks_by_file.len(), 1);
         assert!(results[1].hunks_by_file.is_empty());
@@ -1852,7 +2109,272 @@ diff --git a/g.txt b/g.txt
 
     #[test]
     fn test_parse_batched_diff_tree_output_empty() {
-        let results = parse_batched_diff_tree_output("", &[]).unwrap();
+        let results = parse_batched_diff_tree_output("", 0);
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_batched_diff_tree_parser_streams_line_by_line() {
+        // The streaming exec path feeds the parser one line at a time (without
+        // trailing newlines); the result must match parsing the whole output.
+        let output = "\
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+diff --git a/src/old.rs b/src/new.rs
+similarity index 90%
+rename from src/old.rs
+rename to src/new.rs
+index abc123..def456 100644
+--- a/src/old.rs
++++ b/src/new.rs
+@@ -5,2 +5,3 @@ fn bar()
++new line
+cccccccccccccccccccccccccccccccccccccccc dddddddddddddddddddddddddddddddddddddddd
+diff --git a/g.txt b/g.txt
+index eee..fff 100644
+--- a/g.txt
++++ b/g.txt
+@@ -10,0 +11,2 @@
++line1
++line2
+";
+        // Pad expected_pairs beyond what git emitted (identical trees case).
+        let mut parser = BatchedDiffTreeParser::new(3);
+        for line in output.lines() {
+            parser.feed_line(line);
+        }
+        let streamed = parser.finish();
+
+        assert_eq!(streamed, parse_batched_diff_tree_output(output, 3));
+        assert_eq!(streamed.len(), 3);
+        assert_eq!(
+            streamed[0].renames,
+            vec![("src/old.rs".to_string(), "src/new.rs".to_string())]
+        );
+        assert_eq!(streamed[0].added_lines_by_file["src/new.rs"], vec![5]);
+        assert_eq!(streamed[1].added_lines_by_file["g.txt"], vec![11, 12]);
+        assert_eq!(streamed[2], DiffTreeResult::default());
+    }
+
+    #[test]
+    fn test_batched_diff_tree_parser_can_drain_completed_chunks() {
+        let output = "\
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+diff --git a/a.txt b/a.txt
+@@ -1,0 +1 @@
++a
+cccccccccccccccccccccccccccccccccccccccc dddddddddddddddddddddddddddddddddddddddd
+diff --git a/b.txt b/b.txt
+@@ -1,0 +1 @@
++b
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee ffffffffffffffffffffffffffffffffffffffff
+diff --git a/c.txt b/c.txt
+@@ -1,0 +1 @@
++c
+";
+
+        let mut parser = BatchedDiffTreeParser::new(3);
+        let mut chunks = Vec::new();
+        for line in output.lines() {
+            parser.feed_line(line);
+            if parser.completed_count() >= 2 {
+                chunks.push(parser.take_completed());
+            }
+        }
+        chunks.push(parser.take_all());
+
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].len(), 2);
+        assert_eq!(chunks[1].len(), 1);
+        assert!(chunks[0][0].hunks_by_file.contains_key("a.txt"));
+        assert!(chunks[0][1].hunks_by_file.contains_key("b.txt"));
+        assert!(chunks[1][0].hunks_by_file.contains_key("c.txt"));
+    }
+
+    fn diff_tree_stream_with_identical_pairs(
+        pair_count: usize,
+        identical_pair_numbers: &[usize],
+    ) -> String {
+        let mut output = String::new();
+        for pair_number in 1..=pair_count {
+            let old_oid = format!("{:040x}", pair_number);
+            let new_oid = if identical_pair_numbers.contains(&pair_number) {
+                old_oid.clone()
+            } else {
+                format!("{:040x}", pair_number + 10_000)
+            };
+            output.push_str(&format!("{old_oid} {new_oid}\n"));
+            if !identical_pair_numbers.contains(&pair_number) {
+                output.push_str(&format!(
+                    "diff --git a/file_{pair_number}.txt b/file_{pair_number}.txt\n\
+                     @@ -1,0 +1 @@\n\
+                     +line {pair_number}\n"
+                ));
+            }
+        }
+        output
+    }
+
+    #[test]
+    fn test_batched_diff_tree_parser_preserves_identical_pairs_across_drain_boundary() {
+        let output = diff_tree_stream_with_identical_pairs(
+            DIFF_TREE_STREAM_CHUNK_SIZE + 2,
+            &[
+                DIFF_TREE_STREAM_CHUNK_SIZE - 1,
+                DIFF_TREE_STREAM_CHUNK_SIZE,
+                DIFF_TREE_STREAM_CHUNK_SIZE + 1,
+            ],
+        );
+
+        let mut parser = BatchedDiffTreeParser::new(DIFF_TREE_STREAM_CHUNK_SIZE + 2);
+        let mut chunks = Vec::new();
+        for line in output.lines() {
+            parser.feed_line(line);
+            if parser.completed_count() >= DIFF_TREE_STREAM_CHUNK_SIZE {
+                chunks.push(parser.take_completed());
+            }
+        }
+        chunks.push(parser.take_all());
+
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].len(), DIFF_TREE_STREAM_CHUNK_SIZE);
+        assert_eq!(chunks[1].len(), 2);
+
+        let results: Vec<_> = chunks.into_iter().flatten().collect();
+        assert_eq!(results.len(), DIFF_TREE_STREAM_CHUNK_SIZE + 2);
+        assert!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE - 3]
+                .hunks_by_file
+                .contains_key("file_48.txt")
+        );
+        assert_eq!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE - 2],
+            DiffTreeResult::default()
+        );
+        assert_eq!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE - 1],
+            DiffTreeResult::default()
+        );
+        assert_eq!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE],
+            DiffTreeResult::default()
+        );
+        assert!(
+            results[DIFF_TREE_STREAM_CHUNK_SIZE + 1]
+                .hunks_by_file
+                .contains_key("file_52.txt")
+        );
+    }
+
+    fn authorship_log_for_streaming_merge_test(index: usize) -> AuthorshipLog {
+        use crate::authorship::authorship_log::{
+            HumanRecord, LineRange, PromptRecord, SessionRecord,
+        };
+        use crate::authorship::authorship_log_serialization::AttestationEntry;
+        use crate::authorship::working_log::AgentId;
+
+        let hash = format!("{index:016x}");
+        let mut log = AuthorshipLog::new();
+        log.get_or_create_file(&format!("file_{index}.txt"))
+            .add_entry(AttestationEntry::new(
+                hash.clone(),
+                vec![LineRange::Single(1)],
+            ));
+
+        let agent_id = AgentId {
+            tool: "test".to_string(),
+            id: format!("agent-{index}"),
+            model: "model".to_string(),
+        };
+        log.metadata.prompts.insert(
+            hash.clone(),
+            PromptRecord {
+                agent_id: agent_id.clone(),
+                human_author: None,
+                messages_url: Some(format!("https://example.com/{index}")),
+                total_additions: 1,
+                total_deletions: 0,
+                accepted_lines: 1,
+                overriden_lines: 0,
+                custom_attributes: None,
+            },
+        );
+        log.metadata.sessions.insert(
+            format!("s_{index}"),
+            SessionRecord {
+                agent_id,
+                human_author: None,
+                custom_attributes: None,
+            },
+        );
+        log.metadata.humans.insert(
+            format!("h_{index}"),
+            HumanRecord {
+                author: format!("Human {index} <human-{index}@example.com>"),
+            },
+        );
+        log
+    }
+
+    #[test]
+    fn test_apply_chunk_shifts_merges_same_target_across_streaming_chunks() {
+        const SOURCE_COUNT: usize = DIFF_TREE_STREAM_CHUNK_SIZE + 5;
+        let target_sha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let pending: Vec<PendingShift> = (1..=SOURCE_COUNT)
+            .map(|index| PendingShift {
+                new_sha: target_sha.clone(),
+                log: authorship_log_for_streaming_merge_test(index),
+            })
+            .collect();
+
+        let output = diff_tree_stream_with_identical_pairs(
+            SOURCE_COUNT,
+            &(1..=SOURCE_COUNT).collect::<Vec<_>>(),
+        );
+        let mut parser = BatchedDiffTreeParser::new(SOURCE_COUNT);
+        let mut pending_iter = pending.into_iter();
+        let mut merged_by_target = HashMap::new();
+        let mut chunk_lengths = Vec::new();
+
+        for line in output.lines() {
+            parser.feed_line(line);
+            if parser.completed_count() >= DIFF_TREE_STREAM_CHUNK_SIZE {
+                let chunk = parser.take_completed();
+                chunk_lengths.push(chunk.len());
+                apply_chunk_shifts(&mut merged_by_target, chunk, &mut pending_iter);
+            }
+        }
+
+        let final_chunk = parser.take_all();
+        chunk_lengths.push(final_chunk.len());
+        apply_chunk_shifts(&mut merged_by_target, final_chunk, &mut pending_iter);
+
+        assert_eq!(chunk_lengths, vec![DIFF_TREE_STREAM_CHUNK_SIZE, 5]);
+        assert_eq!(pending_iter.count(), 0);
+        let merged = merged_by_target
+            .get(&target_sha)
+            .expect("all source logs should merge into the shared target SHA");
+        assert_eq!(merged.attestations.len(), SOURCE_COUNT);
+        assert_eq!(merged.metadata.prompts.len(), SOURCE_COUNT);
+        assert_eq!(merged.metadata.sessions.len(), SOURCE_COUNT);
+        assert_eq!(merged.metadata.humans.len(), SOURCE_COUNT);
+        assert_eq!(merged.metadata.base_commit_sha, target_sha);
+
+        for index in 1..=SOURCE_COUNT {
+            assert!(
+                merged
+                    .attestations
+                    .iter()
+                    .any(|attestation| attestation.file_path == format!("file_{index}.txt")),
+                "merged target should include file_{index}.txt from source commit {index}"
+            );
+            assert!(
+                merged
+                    .metadata
+                    .prompts
+                    .contains_key(&format!("{index:016x}"))
+            );
+            assert!(merged.metadata.sessions.contains_key(&format!("s_{index}")));
+            assert!(merged.metadata.humans.contains_key(&format!("h_{index}")));
+        }
     }
 }

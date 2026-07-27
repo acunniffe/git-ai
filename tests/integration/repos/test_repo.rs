@@ -491,6 +491,15 @@ impl DaemonProcess {
 
 fn configure_test_home_env(command: &mut Command, test_home: &Path) {
     command.env("HOME", test_home);
+    if !command
+        .get_envs()
+        .any(|(key, _)| key == std::ffi::OsStr::new("GIT_AI_TEST_NOTES_DB_PATH"))
+    {
+        command.env(
+            "GIT_AI_TEST_NOTES_DB_PATH",
+            test_home.join(".git-ai").join("internal").join("notes-db"),
+        );
+    }
     command.env("GIT_CONFIG_GLOBAL", test_home.join(".gitconfig"));
     // Redirect XDG_CONFIG_HOME so git does not read the real user's
     // $XDG_CONFIG_HOME/git/config (which may contain filter drivers,
@@ -2496,6 +2505,31 @@ impl TestRepo {
         self.git_ai_with_env_inner(args, envs, false)
     }
 
+    pub fn git_ai_command_without_pre_sync_for_test(
+        &self,
+        args: &[&str],
+        envs: &[(&str, &str)],
+    ) -> Command {
+        let binary_path = get_binary_path();
+        let normalized_args = normalize_test_git_ai_checkpoint_args(args);
+
+        let mut command = Command::new(binary_path);
+        command.args(&normalized_args).current_dir(&self.path);
+        self.configure_git_ai_env(&mut command);
+
+        if let Some(patch) = &self.config_patch
+            && let Ok(patch_json) = serde_json::to_string(patch)
+        {
+            command.env("GIT_AI_TEST_CONFIG_PATCH", patch_json);
+        }
+
+        for (key, value) in envs {
+            command.env(key, value);
+        }
+
+        command
+    }
+
     pub fn git(&self, args: &[&str]) -> Result<String, String> {
         self.git_with_env(args, &[], None)
     }
@@ -2899,28 +2933,7 @@ impl TestRepo {
 
         let is_checkpoint = git_ai_primary_command(args) == Some("checkpoint");
 
-        let binary_path = get_binary_path();
-        let normalized_args = normalize_test_git_ai_checkpoint_args(args);
-
-        let mut command = Command::new(binary_path);
-        command.args(&normalized_args).current_dir(&self.path);
-        self.configure_git_ai_env(&mut command);
-
-        // Add config patch as environment variable if present
-        if let Some(patch) = &self.config_patch
-            && let Ok(patch_json) = serde_json::to_string(patch)
-        {
-            command.env("GIT_AI_TEST_CONFIG_PATCH", patch_json);
-        }
-
-        // Add test database path for isolation
-        command.env("GIT_AI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
-        command.env("GITAI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
-
-        // Add custom environment variables
-        for (key, value) in envs {
-            command.env(key, value);
-        }
+        let mut command = self.git_ai_command_without_pre_sync_for_test(args, envs);
 
         let output = run_command_output(&mut command, &format!("git-ai {:?}", args))?;
 
@@ -3143,11 +3156,11 @@ impl TestRepo {
                 // In daemon mode, the authorship note may not be immediately
                 // visible after the session completes due to filesystem flush
                 // timing. Retry briefly before failing.
-                let mut content = git_ai::git::refs::show_authorship_note(&repo, &head_commit);
+                let mut content = git_ai::git::notes_api::read_note(&repo, &head_commit);
                 if content.is_none() {
                     for _ in 0..10 {
                         thread::sleep(Duration::from_millis(50));
-                        content = git_ai::git::refs::show_authorship_note(&repo, &head_commit);
+                        content = git_ai::git::notes_api::read_note(&repo, &head_commit);
                         if content.is_some() {
                             break;
                         }
@@ -3634,6 +3647,41 @@ pub fn get_binary_path() -> &'static PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_configure_test_home_env_isolates_notes_database() {
+        let test_home = PathBuf::from("isolated-test-home");
+        let mut command = Command::new("git");
+
+        configure_test_home_env(&mut command, &test_home);
+
+        let notes_db_path = command
+            .get_envs()
+            .find(|(key, _)| *key == std::ffi::OsStr::new("GIT_AI_TEST_NOTES_DB_PATH"))
+            .and_then(|(_, value)| value)
+            .map(PathBuf::from);
+        assert_eq!(
+            notes_db_path,
+            Some(test_home.join(".git-ai").join("internal").join("notes-db"))
+        );
+    }
+
+    #[test]
+    fn test_configure_test_home_env_preserves_explicit_notes_database() {
+        let test_home = PathBuf::from("isolated-test-home");
+        let explicit_notes_db = PathBuf::from("explicit-notes-db");
+        let mut command = Command::new("git");
+        command.env("GIT_AI_TEST_NOTES_DB_PATH", &explicit_notes_db);
+
+        configure_test_home_env(&mut command, &test_home);
+
+        let notes_db_path = command
+            .get_envs()
+            .find(|(key, _)| *key == std::ffi::OsStr::new("GIT_AI_TEST_NOTES_DB_PATH"))
+            .and_then(|(_, value)| value)
+            .map(PathBuf::from);
+        assert_eq!(notes_db_path, Some(explicit_notes_db));
+    }
 
     #[test]
     fn test_normalize_test_git_ai_checkpoint_args_inserts_separator_for_direct_file() {

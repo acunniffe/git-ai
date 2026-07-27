@@ -2,10 +2,7 @@ use std::collections::HashSet;
 
 use crate::authorship::authorship_log_serialization::AuthorshipLog;
 use crate::error::GitAiError;
-use crate::git::notes_api::{
-    commits_with_notes as commits_with_authorship_notes,
-    read_note_blob_oids as note_blob_oids_for_commits,
-};
+use crate::git::notes_api::{commits_with_notes, read_note_blob_oids};
 #[cfg(test)]
 use crate::git::repository::exec_git;
 use crate::git::repository::{Repository, exec_git_stdin};
@@ -21,7 +18,7 @@ pub async fn load_ai_touched_files_for_commits(
             return Ok(HashSet::new());
         }
 
-        let note_blob_map = note_blob_oids_for_commits(&repo, &commit_shas)?;
+        let note_blob_map = read_note_blob_oids(&repo, &commit_shas)?;
         if note_blob_map.is_empty() {
             return Ok(HashSet::new());
         }
@@ -56,7 +53,7 @@ pub fn commits_have_authorship_notes(
         return Ok(false);
     }
 
-    Ok(!commits_with_authorship_notes(repo, commit_shas)?.is_empty())
+    Ok(!commits_with_notes(repo, commit_shas)?.is_empty())
 }
 
 /// Get all notes as (note_blob_sha, commit_sha) pairs

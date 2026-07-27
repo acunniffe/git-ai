@@ -101,6 +101,9 @@ impl<S: Subscriber> Layer<S> for DaemonLogUploadLayer {
         let metadata = event.metadata();
         let mut visitor = DaemonLogVisitor::new();
         event.record(&mut visitor);
+        if !daemon_log_target_is_captureable(metadata.target(), &visitor.fields) {
+            return;
+        }
 
         if let Some(file) = metadata.file() {
             visitor.record_named_field_value("file", DaemonLogFieldValue::from(file));
@@ -126,6 +129,19 @@ impl<S: Subscriber> Layer<S> for DaemonLogUploadLayer {
 
         crate::daemon::telemetry_worker::submit_daemon_internal_daemon_logs(vec![log_event]);
     }
+}
+
+fn daemon_log_target_is_captureable(
+    metadata_target: &str,
+    fields: &BTreeMap<String, DaemonLogFieldValue>,
+) -> bool {
+    // tracing-log bridges log records under the `log` metadata target and keeps
+    // the originating crate target in this field.
+    let target = match fields.get("log.target") {
+        Some(DaemonLogFieldValue::String(target)) => target.as_str(),
+        _ => metadata_target,
+    };
+    target != "ureq" && !target.starts_with("ureq::")
 }
 
 fn daemon_log_capture_enabled() -> bool {
@@ -407,5 +423,20 @@ mod tests {
             false,
             false,
         ));
+    }
+
+    #[test]
+    fn daemon_log_capture_skips_ureq_targets() {
+        let fields = BTreeMap::new();
+        assert!(!daemon_log_target_is_captureable("ureq", &fields));
+        assert!(!daemon_log_target_is_captureable("ureq::unit", &fields));
+        assert!(daemon_log_target_is_captureable("git_ai::daemon", &fields));
+        assert!(daemon_log_target_is_captureable("urequest", &fields));
+
+        let fields = BTreeMap::from([(
+            "log.target".to_string(),
+            DaemonLogFieldValue::from("ureq::unit"),
+        )]);
+        assert!(!daemon_log_target_is_captureable("log", &fields));
     }
 }

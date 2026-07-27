@@ -60,7 +60,7 @@ impl OAuthClient {
         let url = format!("{}/worker/oauth/token", self.base_url);
 
         let (_agent, request) = ApiContext::http_post(&url, Some(30));
-        let request = request.set("Content-Type", "application/json");
+        let request = request.header("Content-Type", "application/json");
         let response = http::send_with_body(request, &body.to_string())
             .map_err(|e| format!("Failed to connect to server: {}", e))?;
 
@@ -98,7 +98,7 @@ impl OAuthClient {
         let url = format!("{}/worker/oauth/device/code", self.base_url);
 
         let (_agent, request) = ApiContext::http_post(&url, Some(30));
-        let request = request.set("Content-Type", "application/json");
+        let request = request.header("Content-Type", "application/json");
         let response = http::send_with_body(request, "{}")
             .map_err(|e| format!("Failed to connect to server: {}", e))?;
 
@@ -142,7 +142,7 @@ impl OAuthClient {
             });
 
             let (_agent, request) = ApiContext::http_post(&url, Some(30));
-            let request = request.set("Content-Type", "application/json");
+            let request = request.header("Content-Type", "application/json");
             let response = http::send_with_body(request, &body.to_string())
                 .map_err(|e| format!("Failed to connect to server: {}", e))?;
 

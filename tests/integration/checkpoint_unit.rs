@@ -1131,7 +1131,7 @@ fn test_checkpoint_crlf_blob_vs_lf_working_tree_stats_not_inflated() {
 #[test]
 fn test_checkpoint_crlf_blob_vs_lf_working_tree_no_changes_skipped() {
     // When the only difference is CRLF→LF (no actual content change),
-    // the checkpoint should skip the file entirely — content_eq_normalized
+    // the checkpoint should skip the file entirely — normalized comparison
     // detects they're equal and returns None.
     let repo = TestRepo::new();
     let crlf_content = "line1\r\nline2\r\nline3\r\n";
@@ -1161,7 +1161,7 @@ fn test_checkpoint_crlf_blob_vs_lf_working_tree_no_changes_skipped() {
     let checkpoints = working_log.read_all_checkpoints().unwrap();
 
     // The checkpoint may be empty (no entries) or absent entirely,
-    // because content_eq_normalized correctly detected no real change.
+    // because normalized comparison correctly detected no real change.
     if let Some(latest) = checkpoints.last() {
         let test_entry = latest.entries.iter().find(|e| e.file == "test.txt");
         assert!(

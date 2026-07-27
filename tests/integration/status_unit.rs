@@ -258,6 +258,45 @@ fn test_ai_accepted_respects_ignore_patterns() {
     );
 }
 
+#[test]
+fn test_status_preserves_lowercase_agent_identifier() {
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("status-agent.txt");
+    fs::write(&file_path, "base\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    let repo_dir = repo.path().to_string_lossy().to_string();
+    let pre_payload = serde_json::json!({
+        "type": "human",
+        "repo_working_dir": repo_dir,
+        "will_edit_filepaths": ["status-agent.txt"]
+    })
+    .to_string();
+    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &pre_payload])
+        .unwrap();
+
+    fs::write(&file_path, "base\nAI line\n").unwrap();
+    let post_payload = serde_json::json!({
+        "type": "ai_agent",
+        "repo_working_dir": repo_dir,
+        "edited_filepaths": ["status-agent.txt"],
+        "agent_name": "cline",
+        "model": "test-model",
+        "conversation_id": "cline-status-test"
+    })
+    .to_string();
+    repo.git_ai(&["checkpoint", "agent-v1", "--hook-input", &post_payload])
+        .unwrap();
+
+    let status = status_json(&repo);
+    assert!(
+        status
+            .checkpoints
+            .iter()
+            .any(|checkpoint| { checkpoint["tool_model"].as_str() == Some("cline test-model") })
+    );
+}
+
 /// `--diff-only` must keep the same diff-scoped `stats` as a plain `--json`
 /// run, while omitting the per-checkpoint breakdown.
 #[test]
@@ -324,6 +363,7 @@ crate::reuse_tests_in_worktree!(
     test_working_dir_diff_stats_with_rename,
     test_working_dir_diff_stats_respects_ignore_patterns,
     test_ai_accepted_respects_ignore_patterns,
+    test_status_preserves_lowercase_agent_identifier,
     test_diff_only_omits_checkpoints_but_keeps_stats,
     test_diff_only_no_changes_omits_checkpoints,
 );

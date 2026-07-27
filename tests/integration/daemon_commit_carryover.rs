@@ -114,3 +114,49 @@ fn test_checkpointed_carryover_survives_uncheckpointed_append() {
     expected.extend((19..=20).map(|line| format!("line {line}").human()));
     file.assert_lines_and_blame(expected);
 }
+
+#[test]
+fn test_autocrlf_worktree_preserves_ai_attribution_after_commit() {
+    let repo = TestRepo::new();
+    repo.git_og(&["config", "core.autocrlf", "true"]).unwrap();
+
+    let file_path = repo.path().join("s.dart");
+    let mut file = repo.filename("s.dart");
+    fs::write(
+        &file_path,
+        "class A {\n  void a() {}\n  void b() {}\n  void c() {}\n}\n",
+    )
+    .unwrap();
+    repo.stage_all_and_commit("baseline").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "class A {".unattributed_human(),
+        "  void a() {}".unattributed_human(),
+        "  void b() {}".unattributed_human(),
+        "  void c() {}".unattributed_human(),
+        "}".unattributed_human(),
+    ]);
+
+    fs::write(
+        &file_path,
+        "class A {\r\n  void a() {}\r\n  void b() {}\r\n  void c() {}\r\n  void ai1() {}\r\n  void ai2() {}\r\n  void ai3() {}\r\n}\r\n",
+    )
+    .unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "s.dart"]).unwrap();
+    repo.stage_all_and_commit("ai adds three methods").unwrap();
+
+    file.assert_committed_lines(crate::lines![
+        "class A {".unattributed_human(),
+        "  void a() {}".unattributed_human(),
+        "  void b() {}".unattributed_human(),
+        "  void c() {}".unattributed_human(),
+        "  void ai1() {}".ai(),
+        "  void ai2() {}".ai(),
+        "  void ai3() {}".ai(),
+        "}".unattributed_human(),
+    ]);
+
+    let stats = repo.stats().unwrap();
+    assert_eq!(stats.ai_additions, 3);
+    assert_eq!(stats.ai_accepted, 3);
+    assert_eq!(stats.unknown_additions, 0);
+}

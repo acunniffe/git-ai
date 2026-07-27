@@ -5,7 +5,7 @@ use crate::authorship::ignore::{
 };
 use crate::commands::blame::GitAiBlameOptions;
 use crate::error::GitAiError;
-use crate::git::notes_api::{read_authorship as get_authorship, read_note as show_authorship_note};
+use crate::git::notes_api::{read_authorship, read_note};
 use crate::git::repository::{InternalGitProfile, Repository, exec_git_with_profile};
 use serde::{Deserialize, Serialize, Serializer};
 use sha2::{Digest, Sha256};
@@ -1611,7 +1611,7 @@ fn load_commit_metadata(
     let msg = parts.next().unwrap_or("").trim().to_string();
     let full_msg = parts.next().unwrap_or("").trim_end().to_string();
     let author = format_git_ident(author_name, author_email);
-    let authorship_note = show_authorship_note(repo, commit_sha);
+    let authorship_note = read_note(repo, commit_sha);
 
     Ok(DiffCommitMetadata {
         authored_time,
@@ -1640,7 +1640,7 @@ fn merge_missing_prompts_and_sessions_from_authorship_note(
     prompts: &mut BTreeMap<String, PromptRecord>,
     sessions: &mut BTreeMap<String, SessionRecord>,
 ) {
-    if let Some(authorship_log) = get_authorship(repo, commit_sha) {
+    if let Some(authorship_log) = read_authorship(repo, commit_sha) {
         for (prompt_id, prompt_record) in &authorship_log.metadata.prompts {
             prompts
                 .entry(prompt_id.clone())

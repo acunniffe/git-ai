@@ -14,7 +14,10 @@ use crate::authorship::authorship_log_serialization::GIT_AI_VERSION;
 use crate::config::{Config, get_or_create_distinct_id};
 use crate::daemon::control_api::{CasSyncPayload, TelemetryEnvelope};
 use crate::error::GitAiError;
+use crate::metrics::attrs::attr_pos;
 use crate::metrics::db::{METADATA_BACKFILL_BATCH_SIZE, MetricRecord, MetricsDatabase};
+use crate::metrics::pos_encoded::sparse_get_string;
+use crate::metrics::types::MetricEventId;
 use crate::metrics::{MetricEvent, MetricsBatch};
 use crate::observability::MAX_METRICS_PER_ENVELOPE;
 use serde_json::{Value, json};
@@ -35,6 +38,25 @@ static METRICS_UPLOAD_AVAILABLE: AtomicBool = AtomicBool::new(false);
 static METRICS_METADATA_BACKFILL_STARTED: AtomicBool = AtomicBool::new(false);
 static DAEMON_LOG_UPLOAD_IN_FLIGHT: std::sync::OnceLock<Arc<AtomicBool>> =
     std::sync::OnceLock::new();
+
+/// Result of a telemetry flush cycle.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct FlushStatus {
+    /// Approximate buffered + pending metrics still awaiting upload.
+    pub metrics_remaining: usize,
+    /// Approximate number of notes still eligible for upload.
+    pub notes_remaining: usize,
+}
+
+struct FlushRequest {
+    completion: tokio::sync::oneshot::Sender<FlushStatus>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FlushMode {
+    Periodic,
+    Await,
+}
 
 /// Accumulated telemetry events waiting to be flushed.
 struct TelemetryBuffer {
@@ -178,13 +200,16 @@ impl TelemetryBuffer {
 #[derive(Clone)]
 pub struct DaemonTelemetryWorkerHandle {
     buffer: Arc<Mutex<TelemetryBuffer>>,
+    flush_tx: tokio::sync::mpsc::UnboundedSender<FlushRequest>,
 }
 
 impl DaemonTelemetryWorkerHandle {
     #[cfg(test)]
     pub fn new_noop() -> Self {
+        let (flush_tx, _flush_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
             buffer: Arc::new(Mutex::new(TelemetryBuffer::new())),
+            flush_tx,
         }
     }
 
@@ -218,6 +243,19 @@ impl DaemonTelemetryWorkerHandle {
             return;
         }
         self.buffer.lock().await.ingest_daemon_logs(events);
+    }
+
+    /// Request an immediate telemetry flush and wait for the worker to complete.
+    pub async fn flush_and_wait(&self) -> Result<FlushStatus, GitAiError> {
+        let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+        self.flush_tx
+            .send(FlushRequest {
+                completion: completion_tx,
+            })
+            .map_err(|_| GitAiError::Generic("telemetry worker has stopped".to_string()))?;
+        completion_rx
+            .await
+            .map_err(|_| GitAiError::Generic("telemetry flush was cancelled".to_string()))
     }
 
     /// Returns the current number of metrics waiting for upload.
@@ -398,15 +436,17 @@ pub fn submit_daemon_internal_daemon_logs(events: Vec<DaemonLogEvent>) -> bool {
 /// to their respective destinations (Sentry, PostHog, metrics API, CAS API).
 pub fn spawn_telemetry_worker() -> DaemonTelemetryWorkerHandle {
     let buffer = Arc::new(Mutex::new(TelemetryBuffer::new()));
+    let (flush_tx, flush_rx) = tokio::sync::mpsc::unbounded_channel();
     let handle = DaemonTelemetryWorkerHandle {
         buffer: buffer.clone(),
+        flush_tx,
     };
     let daemon_id = crate::uuid::generate_v4();
 
     spawn_metrics_metadata_backfill();
 
     tokio::spawn(async move {
-        telemetry_flush_loop(buffer, daemon_id).await;
+        telemetry_flush_loop(buffer, daemon_id, flush_rx).await;
     });
 
     handle
@@ -449,14 +489,24 @@ fn backfill_metrics_event_metadata() -> Result<(), GitAiError> {
     Ok(())
 }
 
-async fn telemetry_flush_loop(buffer: Arc<Mutex<TelemetryBuffer>>, daemon_id: String) {
+async fn telemetry_flush_loop(
+    buffer: Arc<Mutex<TelemetryBuffer>>,
+    daemon_id: String,
+    mut flush_rx: tokio::sync::mpsc::UnboundedReceiver<FlushRequest>,
+) {
     let started_at = std::time::Instant::now();
     let mut next_heartbeat_at = started_at + DAEMON_LOG_HEARTBEAT_INTERVAL;
     let mut next_resource_sample_at = started_at + RESOURCE_SAMPLE_INTERVAL;
     let mut resource_sampler = crate::daemon::resource_sampler::ResourceSampler::new();
+    let mut flush_requests: Vec<FlushRequest> = Vec::new();
 
     loop {
-        sleep_until(next_telemetry_flush_at(Instant::now())).await;
+        tokio::select! {
+            _ = sleep_until(next_telemetry_flush_at(Instant::now())) => {}
+            Some(request) = flush_rx.recv() => {
+                flush_requests.push(request);
+            }
+        }
 
         let now = std::time::Instant::now();
         if now >= next_resource_sample_at {
@@ -483,33 +533,36 @@ async fn telemetry_flush_loop(buffer: Arc<Mutex<TelemetryBuffer>>, daemon_id: St
             None
         };
 
+        let flush_mode = if flush_requests.is_empty() {
+            FlushMode::Periodic
+        } else {
+            FlushMode::Await
+        };
         let snapshot = {
             let mut buf = buffer.lock().await;
             if let Some(event) = heartbeat {
                 buf.ingest_daemon_logs(vec![event]);
             }
-            if buf.is_empty() {
-                None
-            } else {
-                Some(buf.take())
-            }
+            take_telemetry_flush_snapshot(&mut buf, flush_mode)
         };
 
         // Flush in a blocking task since the underlying HTTP clients are synchronous.
         let daemon_id_for_flush = daemon_id.clone();
         let flush_started_at = std::time::Instant::now();
-        let requeue_daemon_logs = tokio::task::spawn_blocking(move || {
-            if let Some(snapshot) = snapshot {
+        let flush_result = tokio::task::spawn_blocking(move || {
+            let requeue_daemon_logs = if let Some(snapshot) = snapshot {
                 flush_telemetry_batch(snapshot, &daemon_id_for_flush)
             } else {
                 flush_pending_metrics();
                 Vec::new()
-            }
+            };
+            let await_status = collect_await_flush_status(flush_mode);
+            (requeue_daemon_logs, await_status)
         })
         .await
         .unwrap_or_else(|e| {
             tracing::error!(%e, "telemetry flush task panicked");
-            Vec::new()
+            (Vec::new(), None)
         });
         let flush_elapsed = flush_started_at.elapsed();
         if flush_elapsed > FLUSH_INTERVAL {
@@ -520,12 +573,29 @@ async fn telemetry_flush_loop(buffer: Arc<Mutex<TelemetryBuffer>>, daemon_id: St
             );
         }
 
+        let (requeue_daemon_logs, await_status) = flush_result;
+
+        for request in flush_requests.drain(..) {
+            let _ = request.completion.send(await_status.unwrap_or_default());
+        }
+
         if !requeue_daemon_logs.is_empty() {
             buffer
                 .lock()
                 .await
                 .requeue_failed_daemon_logs(requeue_daemon_logs);
         }
+    }
+}
+
+fn take_telemetry_flush_snapshot(
+    buffer: &mut TelemetryBuffer,
+    flush_mode: FlushMode,
+) -> Option<TelemetryBuffer> {
+    if flush_mode == FlushMode::Periodic && buffer.is_empty() {
+        None
+    } else {
+        Some(buffer.take())
     }
 }
 
@@ -571,6 +641,47 @@ fn flush_telemetry_batch(batch: TelemetryBuffer, daemon_id: &str) -> Vec<DaemonL
     } else {
         dispatch_daemon_log_upload(batch.daemon_logs, daemon_id, &distinct_id)
     }
+}
+
+fn collect_await_flush_status(flush_mode: FlushMode) -> Option<FlushStatus> {
+    collect_await_flush_status_with(
+        flush_mode,
+        flush_notes_for_await,
+        count_pending_metrics_for_await,
+    )
+}
+
+fn collect_await_flush_status_with<Notes, Metrics>(
+    flush_mode: FlushMode,
+    flush_notes: Notes,
+    count_metrics: Metrics,
+) -> Option<FlushStatus>
+where
+    Notes: FnOnce() -> usize,
+    Metrics: FnOnce() -> usize,
+{
+    if flush_mode == FlushMode::Periodic {
+        return None;
+    }
+
+    Some(FlushStatus {
+        metrics_remaining: count_metrics(),
+        notes_remaining: flush_notes(),
+    })
+}
+
+fn count_pending_metrics_for_await() -> usize {
+    if !METRICS_UPLOAD_AVAILABLE.load(Ordering::Relaxed) {
+        return 0;
+    }
+
+    MetricsDatabase::global()
+        .and_then(|db| {
+            db.lock()
+                .map_err(|_| GitAiError::Generic("metrics DB lock poisoned".to_string()))
+        })
+        .and_then(|db| db.count_retryable())
+        .unwrap_or(0)
 }
 
 fn flush_metrics(events: &[MetricEvent]) {
@@ -718,6 +829,7 @@ where
     UploadBatch: FnMut(&MetricsBatch) -> Result<MetricsUploadResponse, GitAiError>,
 {
     let mut result = PendingMetricsFlushResult::default();
+    let config = Config::fresh();
 
     while std::time::Instant::now() < deadline {
         let batch = dequeue_batch(max_batch_size)?;
@@ -728,13 +840,15 @@ where
         let mut events = Vec::new();
         let mut record_ids = Vec::new();
         let mut invalid_ids = Vec::new();
+        let mut skipped_ids = Vec::new();
 
         for record in &batch {
             match serde_json::from_str::<MetricEvent>(&record.event_json) {
-                Ok(event) => {
+                Ok(event) if should_deliver_metric_event(&config, &event) => {
                     events.push(event);
                     record_ids.push(record.id);
                 }
+                Ok(_) => skipped_ids.push(record.id),
                 Err(_) => {
                     invalid_ids.push(record.id);
                 }
@@ -747,6 +861,9 @@ where
         if !invalid_ids.is_empty() {
             result.invalid_records += invalid_ids.len();
             mark_delivered(&invalid_ids)?;
+        }
+        if !skipped_ids.is_empty() {
+            mark_delivered(&skipped_ids)?;
         }
 
         if events.is_empty() {
@@ -817,6 +934,17 @@ where
     }
 
     Ok(result)
+}
+
+fn should_deliver_metric_event(config: &Config, event: &MetricEvent) -> bool {
+    if event.event_id != MetricEventId::SessionEvent as u16 {
+        return true;
+    }
+
+    let remotes = sparse_get_string(&event.attrs, attr_pos::REPO_URL)
+        .flatten()
+        .map(|url| vec![(String::new(), url)]);
+    config.is_allowed_repository_with_remotes(remotes.as_ref())
 }
 
 fn current_unix_ts() -> u64 {
@@ -1224,7 +1352,7 @@ fn flush_sentry_and_posthog(
             let agent = crate::http::build_agent(Some(30));
             let request = agent
                 .post(&endpoint)
-                .set("Content-Type", "application/json");
+                .header("Content-Type", "application/json");
             let _ = crate::http::send_with_body(
                 request,
                 &serde_json::to_string(&ph_event).unwrap_or_default(),
@@ -1350,6 +1478,40 @@ pub fn flush_notes() {
     }
 }
 
+fn flush_notes_for_await() -> usize {
+    use crate::config::NotesBackendKind;
+
+    let cfg = Config::fresh();
+    if cfg.notes_backend_kind() != NotesBackendKind::Http || cfg.notes_backend_url().is_none() {
+        return 0;
+    }
+
+    let client = ApiClient::new(ApiContext::new(cfg.notes_backend_url().map(str::to_string)));
+    if !client.is_logged_in() && !client.has_api_key() {
+        return 0;
+    }
+
+    for _ in 0..1_000 {
+        let remaining = count_pending_notes_for_await();
+        if remaining == 0 {
+            return 0;
+        }
+        flush_notes();
+    }
+
+    count_pending_notes_for_await()
+}
+
+fn count_pending_notes_for_await() -> usize {
+    match crate::notes::db::NotesDatabase::global() {
+        Ok(db) => match db.lock() {
+            Ok(lock) => lock.count_pending_uploadable().unwrap_or(0),
+            Err(_) => 0,
+        },
+        Err(_) => 0,
+    }
+}
+
 fn flush_cas(records: Vec<CasSyncPayload>) {
     let context = ApiContext::new(None);
     let api_base_url = context.base_url.clone();
@@ -1442,8 +1604,8 @@ impl SentryClient {
         let agent = crate::http::build_agent(Some(30));
         let request = agent
             .post(&self.endpoint)
-            .set("X-Sentry-Auth", &auth_header)
-            .set("Content-Type", "application/json");
+            .header("X-Sentry-Auth", &auth_header)
+            .header("Content-Type", "application/json");
         let response = crate::http::send_with_body(request, &body)?;
 
         let status = response.status_code;
@@ -1481,6 +1643,44 @@ mod tests {
         assert_eq!(
             next_telemetry_flush_at(completed_at),
             completed_at + FLUSH_INTERVAL
+        );
+    }
+
+    #[test]
+    fn empty_periodic_flush_preserves_pending_metrics_only_fast_path() {
+        let mut buffer = TelemetryBuffer::new();
+
+        assert!(take_telemetry_flush_snapshot(&mut buffer, FlushMode::Periodic).is_none());
+    }
+
+    #[test]
+    fn await_flush_forces_a_snapshot_even_when_the_buffer_is_empty() {
+        let mut buffer = TelemetryBuffer::new();
+
+        assert!(take_telemetry_flush_snapshot(&mut buffer, FlushMode::Await).is_some());
+    }
+
+    #[test]
+    fn periodic_flush_skips_await_only_notes_and_metrics_status_work() {
+        let status = collect_await_flush_status_with(
+            FlushMode::Periodic,
+            || panic!("periodic flush must not fully flush or count notes"),
+            || panic!("periodic flush must not count metrics"),
+        );
+
+        assert!(status.is_none());
+    }
+
+    #[test]
+    fn await_flush_collects_notes_and_metrics_status() {
+        let status = collect_await_flush_status_with(FlushMode::Await, || 7, || 11);
+
+        assert_eq!(
+            status,
+            Some(FlushStatus {
+                metrics_remaining: 11,
+                notes_remaining: 7,
+            })
         );
     }
 

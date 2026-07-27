@@ -2,7 +2,7 @@ use crate::repos::test_repo::TestRepo;
 use git_ai::authorship::prompt_utils::{
     find_prompt, find_prompt_in_commit, find_prompt_in_history,
 };
-use git_ai::git::refs::get_authorship;
+use git_ai::git::notes_api::read_authorship;
 use git_ai::git::repository::find_repository_in_path;
 
 // mock_ai preset does not produce transcript/prompt records — these tests
@@ -27,7 +27,7 @@ fn test_find_prompt_in_commit_integration() {
     let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
 
     // Get authorship log from the commit
-    let authorship = get_authorship(&gitai_repo, &head_sha).unwrap();
+    let authorship = read_authorship(&gitai_repo, &head_sha).unwrap();
     let prompt_id = authorship.metadata.prompts.keys().next().unwrap().clone();
 
     // Test finding the prompt
@@ -98,7 +98,7 @@ fn test_find_prompt_in_history_basic() {
     let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
 
     // Get authorship log from the commit
-    let authorship = get_authorship(&gitai_repo, &head_sha).unwrap();
+    let authorship = read_authorship(&gitai_repo, &head_sha).unwrap();
     let prompt_id = authorship
         .metadata
         .prompts
@@ -135,7 +135,7 @@ fn test_find_prompt_in_history_with_offset() {
         .trim()
         .to_string();
     let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
-    let authorship = get_authorship(&gitai_repo, &head_sha).unwrap();
+    let authorship = read_authorship(&gitai_repo, &head_sha).unwrap();
     let prompt_id = authorship
         .metadata
         .prompts
@@ -197,7 +197,7 @@ fn test_find_prompt_delegates_to_commit() {
         .trim()
         .to_string();
     let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
-    let authorship = get_authorship(&gitai_repo, &head_sha).unwrap();
+    let authorship = read_authorship(&gitai_repo, &head_sha).unwrap();
     let prompt_id = authorship
         .metadata
         .prompts
@@ -231,7 +231,7 @@ fn test_find_prompt_delegates_to_history() {
         .trim()
         .to_string();
     let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
-    let authorship = get_authorship(&gitai_repo, &head_sha).unwrap();
+    let authorship = read_authorship(&gitai_repo, &head_sha).unwrap();
     let prompt_id = authorship
         .metadata
         .prompts

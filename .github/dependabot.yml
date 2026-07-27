@@ -37,5 +37,9 @@ updates:
     target-branch: "main"
     schedule:
       interval: "weekly"
+    groups:
+      codeql:
+        patterns:
+          - "github/codeql-action/*"
     commit-message:
       prefix: "chore(ci)"

@@ -357,6 +357,59 @@ fn test_gemini_e2e_human_checkpoint() {
 }
 
 #[test]
+fn test_issue_1951_gemini_ignores_internal_files() {
+    let repo = TestRepo::new();
+    let tracked_path = repo.path().join("tracked.txt");
+    fs::write(&tracked_path, "tracked\n").unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+
+    let mut tracked_file = repo.filename("tracked.txt");
+    tracked_file.assert_committed_lines(crate::lines!["tracked".unattributed_human()]);
+
+    let gemini_home = tempfile::tempdir().unwrap();
+    let internal_path = gemini_home
+        .path()
+        .join(".gemini/tmp/project/memory/skills/example/SKILL.md");
+    fs::create_dir_all(internal_path.parent().unwrap()).unwrap();
+    fs::write(&internal_path, "internal memory\n").unwrap();
+
+    for hook_event_name in ["BeforeTool", "AfterTool"] {
+        let hook_input = json!({
+            "session_id": "gemini-internal-file-session",
+            "cwd": repo.canonical_path().to_string_lossy().to_string(),
+            "hook_event_name": hook_event_name,
+            "tool_name": "write_file",
+            "tool_input": {
+                "file_path": internal_path.to_string_lossy().to_string()
+            },
+            "transcript_path": fixture_path("gemini-session-simple.jsonl")
+                .to_string_lossy()
+                .to_string(),
+        })
+        .to_string();
+
+        let output = repo
+            .git_ai_with_env(
+                &["checkpoint", "gemini", "--hook-input", &hook_input],
+                &[("GEMINI_CLI_HOME", gemini_home.path().to_str().unwrap())],
+            )
+            .unwrap();
+        assert!(
+            output.is_empty(),
+            "Gemini internal file hooks should be ignored silently, got: {output}"
+        );
+    }
+
+    assert!(
+        repo.current_working_logs()
+            .all_ai_touched_files()
+            .unwrap_or_default()
+            .is_empty(),
+        "Gemini internal files should not create repository checkpoints"
+    );
+}
+
+#[test]
 fn test_gemini_e2e_multiple_tool_calls() {
     let repo = TestRepo::new();
     let fixture_path_str = fixture_path("gemini-session-simple.jsonl")
@@ -546,6 +599,7 @@ crate::reuse_tests_in_worktree!(
     test_gemini_preset_handles_missing_file,
     test_gemini_e2e_with_attribution,
     test_gemini_e2e_human_checkpoint,
+    test_issue_1951_gemini_ignores_internal_files,
     test_gemini_e2e_multiple_tool_calls,
     test_gemini_e2e_with_resync,
     test_gemini_e2e_partial_staging,

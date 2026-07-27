@@ -2,8 +2,8 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::ci::ci_context::{CiContext, CiEvent, CiRunResult};
-use git_ai::git::notes_api::read_authorship_v3 as get_reference_as_authorship_log_v3;
-use git_ai::git::refs::{notes_add, show_authorship_note};
+use git_ai::git::notes_api::read_authorship_v3;
+use git_ai::git::notes_api::{read_note, write_note};
 use git_ai::git::repository as GitAiRepository;
 use std::fs;
 
@@ -66,7 +66,7 @@ fn test_ci_fork_squash_merge() {
     let fork_repo = GitAiRepository::find_repository_in_path(fork.path().to_str().unwrap())
         .expect("Failed to find fork repository");
     assert!(
-        get_reference_as_authorship_log_v3(&fork_repo, &fork_head_sha).is_ok(),
+        read_authorship_v3(&fork_repo, &fork_head_sha).is_ok(),
         "Fork commit should have authorship notes"
     );
 
@@ -178,7 +178,7 @@ fn test_ci_fork_merge_commit() {
     let fork_repo = GitAiRepository::find_repository_in_path(fork.path().to_str().unwrap())
         .expect("Failed to find fork repository");
     assert!(
-        get_reference_as_authorship_log_v3(&fork_repo, &fork_head_sha).is_ok(),
+        read_authorship_v3(&fork_repo, &fork_head_sha).is_ok(),
         "Fork commit should have authorship notes"
     );
 
@@ -237,7 +237,7 @@ fn test_ci_fork_merge_commit() {
     let upstream_repo2 =
         GitAiRepository::find_repository_in_path(upstream.path().to_str().unwrap())
             .expect("Failed to find upstream repository");
-    let authorship_log = get_reference_as_authorship_log_v3(&upstream_repo2, &fork_head_sha);
+    let authorship_log = read_authorship_v3(&upstream_repo2, &fork_head_sha);
     assert!(
         authorship_log.is_ok(),
         "Fork commit's authorship should be accessible in upstream after CI run"
@@ -299,11 +299,11 @@ function forkFeature() {
     let fork_repo = GitAiRepository::find_repository_in_path(fork.path().to_str().unwrap())
         .expect("Failed to find fork repository");
     assert!(
-        get_reference_as_authorship_log_v3(&fork_repo, &ai_commit_sha).is_ok(),
+        read_authorship_v3(&fork_repo, &ai_commit_sha).is_ok(),
         "first fork commit should have authorship notes"
     );
     assert!(
-        show_authorship_note(&fork_repo, &fork_head_sha).is_none(),
+        read_note(&fork_repo, &fork_head_sha).is_none(),
         "raw git head commit should not have an authorship note"
     );
 
@@ -355,11 +355,11 @@ function forkFeature() {
         GitAiRepository::find_repository_in_path(upstream.path().to_str().unwrap())
             .expect("Failed to find upstream repository");
     assert!(
-        get_reference_as_authorship_log_v3(&upstream_repo_after, &ai_commit_sha).is_ok(),
+        read_authorship_v3(&upstream_repo_after, &ai_commit_sha).is_ok(),
         "non-head PR commit authorship should be preserved"
     );
     assert!(
-        show_authorship_note(&upstream_repo_after, &fork_head_sha).is_none(),
+        read_note(&upstream_repo_after, &fork_head_sha).is_none(),
         "head commit should remain without a note"
     );
 }
@@ -477,7 +477,7 @@ fn test_ci_fork_notes_ignores_notes_outside_pr_commit_range() {
 
     let fork_repo = GitAiRepository::find_repository_in_path(fork.path().to_str().unwrap())
         .expect("Failed to find fork repository");
-    notes_add(&fork_repo, &base_sha, "malicious note for upstream base")
+    write_note(&fork_repo, &base_sha, "malicious note for upstream base")
         .expect("add malicious fork note");
 
     let mut fork_file = fork.filename("feature.js");
@@ -537,11 +537,11 @@ fn test_ci_fork_notes_ignores_notes_outside_pr_commit_range() {
         GitAiRepository::find_repository_in_path(upstream.path().to_str().unwrap())
             .expect("Failed to find upstream repository");
     assert!(
-        show_authorship_note(&upstream_repo_after, &base_sha).is_none(),
+        read_note(&upstream_repo_after, &base_sha).is_none(),
         "malicious fork note for base commit must not be imported"
     );
     assert!(
-        get_reference_as_authorship_log_v3(&upstream_repo_after, &merge_sha).is_ok(),
+        read_authorship_v3(&upstream_repo_after, &merge_sha).is_ok(),
         "squash commit should still receive rewritten authorship from PR commit notes"
     );
 }
@@ -795,7 +795,7 @@ fn test_ci_fork_squash_merge_multiple_commits() {
     let upstream_repo2 =
         GitAiRepository::find_repository_in_path(upstream.path().to_str().unwrap())
             .expect("Failed to find upstream repository");
-    let authorship_log = get_reference_as_authorship_log_v3(&upstream_repo2, &merge_sha);
+    let authorship_log = read_authorship_v3(&upstream_repo2, &merge_sha);
     assert!(
         authorship_log.is_ok(),
         "Squash commit should have authorship log from fork notes"
@@ -834,7 +834,7 @@ fn test_ci_local_merge_can_use_preloaded_fork_notes_ref() {
 
     let fork_repo = GitAiRepository::find_repository_in_path(fork.path().to_str().unwrap())
         .expect("Failed to find fork repository");
-    notes_add(
+    write_note(
         &fork_repo,
         &base_sha,
         "malicious note outside the PR commit set",
@@ -912,11 +912,11 @@ fn test_ci_local_merge_can_use_preloaded_fork_notes_ref() {
     let upstream_repo = GitAiRepository::find_repository_in_path(upstream.path().to_str().unwrap())
         .expect("Failed to find upstream repository");
     assert!(
-        show_authorship_note(&upstream_repo, &base_sha).is_none(),
+        read_note(&upstream_repo, &base_sha).is_none(),
         "local CI must not import unrelated notes from the preloaded fork ref"
     );
     assert!(
-        get_reference_as_authorship_log_v3(&upstream_repo, &merge_sha).is_ok(),
+        read_authorship_v3(&upstream_repo, &merge_sha).is_ok(),
         "local CI should rewrite authorship from preloaded fork notes"
     );
 }

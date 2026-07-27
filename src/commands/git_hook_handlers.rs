@@ -324,7 +324,7 @@ fn set_hooks_path_in_config(
     }
 
     if !dry_run {
-        cfg.set_raw_value(&CONFIG_KEY_CORE_HOOKS_PATH, value)
+        cfg.set_raw_value(CONFIG_KEY_CORE_HOOKS_PATH, value)
             .map_err(|e| GitAiError::GixError(e.to_string()))?;
         write_config(path, &cfg)?;
     }

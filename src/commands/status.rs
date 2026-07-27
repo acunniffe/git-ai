@@ -107,7 +107,7 @@ fn run_status(json: bool, diff_only: bool) -> Result<(), GitAiError> {
             let tool_model = checkpoint
                 .agent_id
                 .as_ref()
-                .map(|a| format!("{} {}", capitalize(&a.tool), &a.model))
+                .map(|a| format!("{} {}", &a.tool, &a.model))
                 .unwrap_or_else(|| default_user_name.clone());
 
             let is_human = checkpoint.kind == CheckpointKind::Human;
@@ -227,14 +227,6 @@ fn format_time_ago(timestamp: u64) -> String {
         format!("{} hours ago", diff / 3600)
     } else {
         format!("{} days ago", diff / 86400)
-    }
-}
-
-fn capitalize(s: &str) -> String {
-    let mut c = s.chars();
-    match c.next() {
-        None => String::new(),
-        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
     }
 }
 

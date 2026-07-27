@@ -3,10 +3,13 @@
 //! This module tests the git-ai install-hooks and uninstall-hooks commands,
 //! which handle installation of git hooks for various IDEs and coding agents.
 
+use crate::repos::test_repo::{DaemonTestScope, TestRepo, get_binary_path};
 use git_ai::commands::install_hooks::{
     InstallResult, InstallStatus, run, run_uninstall, to_hashmap,
 };
 use std::collections::HashMap;
+use std::fs;
+use std::process::Command;
 
 // ==============================================================================
 // InstallStatus Tests
@@ -217,6 +220,101 @@ fn test_to_hashmap_all_statuses() {
 // ==============================================================================
 // Argument Parsing Tests
 // ==============================================================================
+
+#[test]
+fn plain_install_hooks_preserves_the_invoking_user_home() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let invoking_home = repo.test_home_path();
+    let installed_home = repo.path().join("installed-user");
+    let installed_bin_dir = installed_home.join(".git-ai").join("bin");
+    fs::create_dir_all(&installed_bin_dir).unwrap();
+
+    #[cfg(windows)]
+    let installed_binary = installed_bin_dir.join("git-ai.exe");
+    #[cfg(not(windows))]
+    let installed_binary = installed_bin_dir.join("git-ai");
+    fs::copy(get_binary_path(), &installed_binary).unwrap();
+
+    let test_db = repo.path().join("install-hooks.db");
+    let mut command = Command::new(&installed_binary);
+    command
+        .arg("install-hooks")
+        .current_dir(repo.path())
+        .env("HOME", invoking_home)
+        .env("API_KEY", "package-test-key")
+        .env("GIT_AI_TEST_DB_PATH", &test_db)
+        .env("GITAI_TEST_DB_PATH", &test_db)
+        .env("GIT_CONFIG_GLOBAL", invoking_home.join(".gitconfig"))
+        .env("GIT_AI_ALLOW_SUPERUSER", "1")
+        .env("GIT_AI_DEBUG", "0");
+    #[cfg(windows)]
+    command
+        .env("USERPROFILE", invoking_home)
+        .env("APPDATA", invoking_home.join("AppData").join("Roaming"))
+        .env("LOCALAPPDATA", invoking_home.join("AppData").join("Local"));
+
+    let output = command.output().expect("run copied git-ai binary");
+    assert!(
+        output.status.success(),
+        "plain install-hooks failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let invoking_config = fs::read_to_string(invoking_home.join(".git-ai/config.json"))
+        .expect("install-hooks should update the invoking user's config");
+    let invoking_config: serde_json::Value = serde_json::from_str(&invoking_config).unwrap();
+    assert_eq!(
+        invoking_config["api_key"],
+        serde_json::Value::String("package-test-key".to_string())
+    );
+    assert!(
+        !installed_home.join(".git-ai/config.json").exists(),
+        "plain install-hooks must not retarget config to the binary owner's home"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn install_hooks_detects_cline_from_vscode_server_extension_manifest() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let home = repo.test_home_path();
+    let manifest_path = home.join(".vscode-server/extensions/extensions.json");
+    fs::create_dir_all(manifest_path.parent().unwrap()).unwrap();
+    fs::create_dir_all(home.join("Documents")).unwrap();
+    fs::write(
+        manifest_path,
+        r#"[
+  {
+    "identifier": {
+      "id": "saoudrizwan.claude-dev"
+    },
+    "version": "4.0.11"
+  }
+]"#,
+    )
+    .unwrap();
+
+    let output = repo
+        .git_ai_command_without_pre_sync_for_test(&["install-hooks", "--dry-run"], &[])
+        .output()
+        .expect("run git-ai install-hooks --dry-run");
+    assert!(
+        output.status.success(),
+        "install-hooks failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Cline: Pending updates"),
+        "Cline was not detected from the VS Code server extension manifest:\n{stdout}"
+    );
+    assert!(
+        !home.join("Documents/Cline/Hooks").exists(),
+        "dry-run must not create the Cline hooks directory"
+    );
+}
 
 #[test]
 fn test_run_install_hooks_no_args() {

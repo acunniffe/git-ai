@@ -44,7 +44,7 @@
           "default": "line",
           "scope": "application",
           "enumDescriptions": [
-            "Disable gutter decorations (status bar still shows current line info)",
+            "Disable gutter decorations",
             "Show gutter decorations for the current line's prompt only",
             "Show gutter decorations for all AI-authored lines in the file"
           ],
@@ -83,7 +83,7 @@
     "@types/mocha": "^10.0.10",
     "@types/node": "26.x",
     "@types/vscode": "1.99.0",
-    "@typescript-eslint/eslint-plugin": "^8.63.0",
+    "@typescript-eslint/eslint-plugin": "^8.65.0",
     "@typescript-eslint/parser": "^8.59.4",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^2.5.2",
@@ -98,6 +98,6 @@
     "test-exclude": ">=7.0.0"
   },
   "dependencies": {
-    "posthog-node": "^5.39.4"
+    "posthog-node": "^5.46.0"
   }
 }

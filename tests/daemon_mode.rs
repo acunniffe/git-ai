@@ -7,14 +7,16 @@ use git_ai::authorship::working_log::CheckpointKind;
 use git_ai::commands::checkpoint_agent::orchestrator::{
     BaseCommit, CheckpointFile, CheckpointRequest,
 };
+use git_ai::config::{NotesBackendConfig, NotesBackendKind};
 #[cfg(not(windows))]
 use git_ai::daemon::checkpoint::PreparedPathRole;
-#[cfg(not(windows))]
 use git_ai::daemon::send_control_request_with_timeout;
 use git_ai::daemon::{
     ControlRequest, DaemonConfig, DaemonLock, local_socket_connects_with_timeout,
     open_local_socket_stream_with_timeout, read_daemon_pid, send_control_request,
 };
+use git_ai::metrics::db::MetricsDatabase;
+use git_ai::metrics::{EventAttributes, MetricEvent, PosEncoded, SessionEventValues};
 use repos::test_file::ExpectedLineExt;
 use repos::test_repo::{
     DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS, DaemonTestCompletionLogEntry, DaemonTestScope, TestRepo,
@@ -183,6 +185,7 @@ impl Drop for ScopedEnvVar {
 struct MockApiServer {
     base_url: String,
     stop: Arc<AtomicBool>,
+    rx: mpsc::Receiver<Value>,
     thread: Option<thread::JoinHandle<()>>,
 }
 
@@ -193,7 +196,7 @@ impl MockApiServer {
             .set_nonblocking(true)
             .expect("failed to set nonblocking listener");
         let addr = listener.local_addr().expect("failed to read listener addr");
-        let (tx, _rx) = mpsc::channel();
+        let (tx, rx) = mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_thread = Arc::clone(&stop);
 
@@ -214,12 +217,22 @@ impl MockApiServer {
         Self {
             base_url: format!("http://{}", addr),
             stop,
+            rx,
             thread: Some(thread),
         }
     }
 
     fn base_url(&self) -> &str {
         &self.base_url
+    }
+
+    /// Collect all requests captured by the mock so far.
+    fn collect_requests(&mut self) -> Vec<Value> {
+        let mut requests = Vec::new();
+        while let Ok(request) = self.rx.try_recv() {
+            requests.push(request);
+        }
+        requests
     }
 }
 
@@ -238,11 +251,11 @@ fn handle_http_connection(mut stream: TcpStream, tx: &mpsc::Sender<Value>) {
         return;
     };
 
+    let request_json: Value = serde_json::from_slice(&body).unwrap_or_else(|_| json!({}));
+
     let response_body = match path.as_str() {
         "/worker/cas/upload" => {
-            let request_json: Value =
-                serde_json::from_slice(&body).expect("CAS upload should contain JSON");
-            let _ = tx.send(request_json.clone());
+            let _ = tx.send(json!({ "path": path, "body": request_json }));
             let hashes = request_json["objects"]
                 .as_array()
                 .cloned()
@@ -262,7 +275,33 @@ fn handle_http_connection(mut stream: TcpStream, tx: &mpsc::Sender<Value>) {
             })
             .to_string()
         }
-        "/worker/metrics/upload" => json!({ "errors": [] }).to_string(),
+        "/worker/metrics/upload" => {
+            let _ = tx.send(json!({ "path": path, "body": request_json }));
+            json!({ "errors": [] }).to_string()
+        }
+        "/worker/logs/upload" => {
+            let accepted = request_json["events"].as_array().map_or(0, Vec::len);
+            let _ = tx.send(json!({ "path": path, "body": request_json }));
+            json!({
+                "accepted": accepted,
+                "dropped": 0,
+                "enqueued": true,
+                "errors": []
+            })
+            .to_string()
+        }
+        "/worker/notes/upload" => {
+            let _ = tx.send(json!({ "path": path, "body": request_json }));
+            let success_count = request_json["entries"]
+                .as_array()
+                .map(|entries| entries.len())
+                .unwrap_or(0);
+            json!({
+                "success_count": success_count,
+                "failure_count": 0
+            })
+            .to_string()
+        }
         _ => "{}".to_string(),
     };
 
@@ -887,6 +926,57 @@ fn daemon_start_spawns_detached_run_process() {
         &daemon_control_socket_path(&repo),
         &ControlRequest::Shutdown,
     );
+}
+
+#[test]
+#[serial]
+fn daemon_refuses_to_start_in_sandbox() {
+    for (env_var, sandbox) in [
+        ("CURSOR_SANDBOX", "Cursor"),
+        ("SANDBOX_RUNTIME", "Claude Code"),
+        ("CODEX_SANDBOX", "Codex"),
+        ("CODEX_SANDBOX_NETWORK_DISABLED", "Codex"),
+    ] {
+        let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+        for subcommand in ["start", "run"] {
+            let output = bg_command_with_env(&repo, subcommand, &[], &[(env_var, "1")]);
+            if output.status.success() {
+                let _ = send_control_request(
+                    &daemon_control_socket_path(&repo),
+                    &ControlRequest::Shutdown,
+                );
+            }
+
+            assert!(
+                !output.status.success(),
+                "daemon {subcommand} should fail in the {sandbox} sandbox"
+            );
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                stderr.contains(&format!("{sandbox} sandbox")) && stderr.contains(env_var),
+                "daemon {subcommand} should explain the sandbox refusal: {stderr}"
+            );
+        }
+
+        assert!(
+            send_control_request_with_timeout(
+                &daemon_control_socket_path(&repo),
+                &ControlRequest::Ping,
+                DAEMON_TEST_PROBE_TIMEOUT,
+            )
+            .is_err(),
+            "daemon control socket should not be available"
+        );
+        assert!(
+            local_socket_connects_with_timeout(
+                &daemon_trace_socket_path(&repo),
+                DAEMON_TEST_PROBE_TIMEOUT,
+            )
+            .is_err(),
+            "daemon trace socket should not be available"
+        );
+    }
 }
 
 #[test]
@@ -4495,6 +4585,15 @@ fn daemon_memory_does_not_grow_unbounded_under_trace_load() {
 }
 
 fn bg_command(repo: &TestRepo, subcommand: &str, extra_args: &[&str]) -> Output {
+    bg_command_with_env(repo, subcommand, extra_args, &[])
+}
+
+fn bg_command_with_env(
+    repo: &TestRepo,
+    subcommand: &str,
+    extra_args: &[&str],
+    env: &[(&str, &str)],
+) -> Output {
     let daemon_home = repo.daemon_home_path();
     let control_socket_path = daemon_control_socket_path(repo);
     let trace_socket_path = daemon_trace_socket_path(repo);
@@ -4507,6 +4606,9 @@ fn bg_command(repo: &TestRepo, subcommand: &str, extra_args: &[&str]) -> Output 
         .current_dir(repo.path())
         .env("GIT_AI_TEST_DB_PATH", repo.test_db_path())
         .env("GITAI_TEST_DB_PATH", repo.test_db_path());
+    for (key, value) in env {
+        command.env(key, value);
+    }
     configure_test_home_env(&mut command, repo.test_home_path());
     configure_test_daemon_env(
         &mut command,
@@ -5017,4 +5119,245 @@ fn daemon_self_heals_after_socket_deletion() {
         }
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+#[test]
+fn await_waits_for_metrics_and_notes_flush() {
+    let mut mock_api = MockApiServer::start();
+
+    // Metrics recording is gated in test builds; point it at an isolated DB so
+    // post-commit metric events actually get stored and flushed.
+    let metrics_db_path =
+        std::env::temp_dir().join(format!("git-ai-test-metrics-{}.db", std::process::id()));
+    let mut repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+        ("GIT_AI_NOTES_BACKEND_KIND", "http"),
+        ("GIT_AI_NOTES_BACKEND_URL", mock_api.base_url()),
+        (
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            metrics_db_path.to_str().unwrap(),
+        ),
+    ]);
+    repo.patch_git_ai_config(|patch| {
+        patch.exclude_prompts_in_repositories = Some(vec![]);
+        patch.prompt_storage = Some("default".to_string());
+        patch.telemetry_oss_disabled = Some(true);
+        patch.notes_backend = Some(NotesBackendConfig {
+            kind: NotesBackendKind::Http,
+            backend_url: Some(mock_api.base_url().to_string()),
+        });
+    });
+
+    let repo_root = repo.canonical_path();
+    let file_path = repo_root.join("test.ts");
+
+    // First commit: known-human baseline, then an AI-style edit to produce metrics.
+    fs::write(&file_path, "const x = 1;\n").expect("failed to write initial file");
+    repo.git_ai(&["checkpoint", "mock_known_human", "test.ts"])
+        .expect("known-human checkpoint should succeed");
+    fs::write(&file_path, "const x = 2;\n").expect("failed to write update");
+    repo.git_ai(&["checkpoint", "mock_ai", "test.ts"])
+        .expect("ai checkpoint should succeed");
+    repo.git(&["add", "-A"])
+        .expect("initial add should succeed");
+    repo.git(&["commit", "-m", "Initial commit"])
+        .expect("initial commit should succeed");
+
+    // Second commit: repeat the same pattern to queue more metrics and notes.
+    fs::write(&file_path, "const x = 3;\n").expect("failed to write update");
+    repo.git_ai(&["checkpoint", "mock_known_human", "test.ts"])
+        .expect("known-human checkpoint should succeed");
+    fs::write(&file_path, "const x = 4;\n").expect("failed to write update");
+    repo.git_ai(&["checkpoint", "mock_ai", "test.ts"])
+        .expect("ai checkpoint should succeed");
+    repo.git(&["add", "-A"]).expect("second add should succeed");
+    repo.git(&["commit", "-m", "Second commit"])
+        .expect("second commit should succeed");
+
+    // Wait for the daemon to finish and flush telemetry.
+    let output = repo
+        .git_ai(&["await", "--timeout", "30"])
+        .expect("await should succeed");
+    assert!(
+        output.contains("finished"),
+        "await should report finished: {}",
+        output
+    );
+
+    let requests = mock_api.collect_requests();
+    let metrics_requests = requests
+        .iter()
+        .filter(|r| r["path"].as_str() == Some("/worker/metrics/upload"))
+        .count();
+    let notes_requests = requests
+        .iter()
+        .filter(|r| r["path"].as_str() == Some("/worker/notes/upload"))
+        .count();
+    assert!(
+        metrics_requests > 0,
+        "expected at least one metrics upload, got {}",
+        metrics_requests
+    );
+    assert!(
+        notes_requests > 0,
+        "expected at least one notes upload, got {}",
+        notes_requests
+    );
+}
+
+#[test]
+fn daemon_debug_logging_does_not_reupload_ureq_logs() {
+    let mut mock_api = MockApiServer::start();
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("RUST_LOG", "debug"),
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+    ]);
+
+    repo.git_ai(&["await", "--timeout", "10"])
+        .expect("initial daemon log flush should succeed");
+
+    let first_upload_deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let mut requests = Vec::new();
+    while std::time::Instant::now() < first_upload_deadline {
+        requests.extend(mock_api.collect_requests());
+        if requests
+            .iter()
+            .any(|request| request["path"] == "/worker/logs/upload")
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+
+    thread::sleep(Duration::from_millis(250));
+    repo.git_ai(&["await", "--timeout", "10"])
+        .expect("follow-up daemon log flush should succeed");
+    thread::sleep(Duration::from_millis(250));
+    requests.extend(mock_api.collect_requests());
+
+    let uploaded_targets = requests
+        .iter()
+        .filter(|request| request["path"] == "/worker/logs/upload")
+        .flat_map(|request| request["body"]["events"].as_array().into_iter().flatten())
+        .filter_map(|event| {
+            event["fields"]["log.target"]
+                .as_str()
+                .or_else(|| event["target"].as_str())
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        !uploaded_targets.is_empty(),
+        "expected the daemon to upload its startup logs"
+    );
+    assert!(
+        uploaded_targets
+            .iter()
+            .all(|target| *target != "ureq" && !target.starts_with("ureq::")),
+        "ureq logs generated by daemon log delivery must not be uploaded: {uploaded_targets:?}"
+    );
+}
+
+#[test]
+fn daemon_marks_repository_filtered_session_events_delivered_without_uploading_them() {
+    let mut mock_api = MockApiServer::start();
+    let metrics_db_path = std::env::temp_dir().join(format!(
+        "git-ai-filtered-session-events-{}.db",
+        git_ai::uuid::generate_v4()
+    ));
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+        (
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            metrics_db_path.to_str().unwrap(),
+        ),
+    ]);
+    fs::write(
+        repo.test_home_path().join(".git-ai/config.json"),
+        r#"{"allow_repositories":["https://github.com/acme/*"],"exclude_repositories":["git@github.com:acme/private"]}"#,
+    )
+    .unwrap();
+
+    let session_event = |trace_id: &str, repo_url: &str| {
+        MetricEvent::from_values(
+            SessionEventValues::new(json!({ "marker": trace_id })),
+            EventAttributes::with_version("test")
+                .session_id(trace_id)
+                .trace_id(trace_id)
+                .repo_url(repo_url)
+                .to_sparse(),
+        )
+    };
+    let events = [
+        session_event("allowed-session", "https://github.com/acme/public"),
+        session_event("excluded-session", "https://github.com/acme/private"),
+    ];
+    let serialized_events = events
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    MetricsDatabase::open_at_path(&metrics_db_path)
+        .unwrap()
+        .insert_events(&serialized_events)
+        .unwrap();
+
+    repo.git_ai(&["await", "--timeout", "30"])
+        .expect("await should flush metrics");
+
+    let uploaded_requests = serde_json::to_string(&mock_api.collect_requests()).unwrap();
+    assert!(uploaded_requests.contains("allowed-session"));
+    assert!(!uploaded_requests.contains("excluded-session"));
+
+    let metrics_db = MetricsDatabase::open_at_path(&metrics_db_path).unwrap();
+    let status = metrics_db.status().unwrap();
+    assert_eq!(status.delivered, 2);
+}
+
+#[test]
+fn await_is_marked_beta_and_returns_promptly_when_idle() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::Dedicated);
+
+    let top_level_help = repo
+        .git_ai(&["--help"])
+        .expect("top-level help should succeed");
+    assert!(
+        top_level_help.contains("await [beta]"),
+        "top-level help should mark await as beta: {}",
+        top_level_help
+    );
+
+    let await_help = repo
+        .git_ai(&["await", "--help"])
+        .expect("await help should succeed");
+    assert!(
+        await_help.contains("beta"),
+        "await help should mark the command as beta: {}",
+        await_help
+    );
+
+    let started_at = std::time::Instant::now();
+    repo.git_ai(&["await", "--timeout", "10"])
+        .expect("await should succeed when the daemon is idle");
+    assert!(
+        started_at.elapsed() < Duration::from_secs(4),
+        "await should return promptly instead of waiting for the progress interval"
+    );
+}
+
+#[test]
+fn await_rejects_zero_timeout() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::Dedicated);
+
+    let error = repo
+        .git_ai(&["await", "--timeout", "0"])
+        .expect_err("zero timeout should be rejected");
+
+    assert!(
+        error.contains("--timeout must be a positive integer"),
+        "await should report an input validation error: {error}"
+    );
 }

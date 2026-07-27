@@ -1,7 +1,7 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
-use git_ai::git::refs::notes_add;
+use git_ai::git::notes_api::write_note;
 use git_ai::git::repository as GitAiRepository;
 
 fn direct_test_repo() -> TestRepo {
@@ -306,7 +306,7 @@ fn test_ci_local_sync_skips_when_current_rebased_commit_already_has_note() {
         GitAiRepository::find_repository_in_path(repo.path().to_str().expect("repo path"))
             .expect("git-ai repo");
     let existing_note = "client-side-note-that-ci-must-not-overwrite";
-    notes_add(&gitai_repo, &current_head_sha, existing_note).expect("add existing current note");
+    write_note(&gitai_repo, &current_head_sha, existing_note).expect("add existing current note");
 
     let output = repo
         .git_ai(&[

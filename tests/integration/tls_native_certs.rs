@@ -23,7 +23,7 @@ fn test_https_request_uses_system_certs() {
     for url in URLS {
         for attempt in 1..=ATTEMPTS_PER_URL {
             let agent = git_ai::http::build_agent(Some(10));
-            match git_ai::http::send(agent.get(url)) {
+            match git_ai::http::send(agent.get(*url)) {
                 Ok(response) if (200..400).contains(&response.status_code) => return,
                 Ok(response) => failures.push(format!(
                     "{} attempt {} returned status {}",

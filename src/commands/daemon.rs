@@ -3,6 +3,7 @@ use crate::daemon::{
     ControlRequest, DaemonConfig, local_socket_connects_with_timeout, read_daemon_pid,
     remove_stale_daemon_files, send_control_request, send_control_request_with_timeout,
 };
+use crate::sandbox::ensure_daemon_start_allowed;
 use crate::utils::LockFile;
 #[cfg(windows)]
 use crate::utils::{CREATE_BREAKAWAY_FROM_JOB, CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW};
@@ -106,6 +107,8 @@ fn ensure_daemon_running_attached(timeout: Duration) -> Result<DaemonConfig, Str
         return Ok(config);
     }
 
+    ensure_daemon_start_allowed()?;
+
     remove_stale_daemon_files(&config);
 
     if daemon_startup_is_blocked(&config) {
@@ -177,6 +180,7 @@ fn handle_run(args: &[String]) -> Result<(), String> {
     if has_flag(args, "--mode") {
         return Err("--mode is no longer supported; daemon always runs in write mode".to_string());
     }
+    ensure_daemon_start_allowed()?;
     let config = daemon_config_from_env_or_default_paths()?;
     let runtime_dir = daemon_runtime_dir(&config)?;
     std::env::set_current_dir(&runtime_dir).map_err(|e| {
@@ -309,6 +313,8 @@ fn start_daemon_detached_with_config(
     if daemon_is_up(&config) {
         return Ok(config);
     }
+
+    ensure_daemon_start_allowed()?;
 
     remove_stale_daemon_files(&config);
 

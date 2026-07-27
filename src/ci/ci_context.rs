@@ -1,12 +1,9 @@
 use crate::authorship::authorship_log_serialization::AuthorshipLog;
 use crate::authorship::rewrite::{RewriteEvent, handle_rewrite_event};
 use crate::error::GitAiError;
-use crate::git::notes_api::{
-    read_authorship_v3 as get_reference_as_authorship_log_v3, read_note as show_authorship_note,
-};
+use crate::git::notes_api::{read_authorship_v3, read_note};
 use crate::git::refs::{
-    AI_AUTHORSHIP_FORK_TRACKING_REF, copy_missing_notes_for_commits_from_ref,
-    note_blob_oids_for_commits, ref_exists,
+    AI_AUTHORSHIP_FORK_TRACKING_REF, copy_missing_notes_for_commits_from_ref, ref_exists,
 };
 use crate::git::repository::{
     CommitRange, Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin,
@@ -127,7 +124,7 @@ impl CiContext {
                 }
 
                 // Check if authorship already exists for this commit
-                match get_reference_as_authorship_log_v3(&self.repo, merge_commit_sha) {
+                match read_authorship_v3(&self.repo, merge_commit_sha) {
                     Ok(existing_log) => {
                         println!("{} already has authorship", merge_commit_sha);
                         return Ok(CiRunResult::AlreadyExists {
@@ -135,7 +132,7 @@ impl CiContext {
                         });
                     }
                     Err(e) => {
-                        if show_authorship_note(&self.repo, merge_commit_sha).is_some() {
+                        if read_note(&self.repo, merge_commit_sha).is_some() {
                             return Err(e);
                         }
                     }
@@ -361,7 +358,7 @@ impl CiContext {
                 println!("Rewrote authorship.");
 
                 // Check if authorship was created for THIS specific commit
-                match get_reference_as_authorship_log_v3(&self.repo, merge_commit_sha) {
+                match read_authorship_v3(&self.repo, merge_commit_sha) {
                     Ok(authorship_log) => {
                         // A note may be reconstructed with only human attestations
                         // (e.g. a PR whose contributor never used git-ai, so there
@@ -385,7 +382,7 @@ impl CiContext {
                         Ok(CiRunResult::AuthorshipRewritten { authorship_log })
                     }
                     Err(e) => {
-                        if show_authorship_note(&self.repo, merge_commit_sha).is_some() {
+                        if read_note(&self.repo, merge_commit_sha).is_some() {
                             return Err(e);
                         }
                         println!(
@@ -683,7 +680,9 @@ impl CiContext {
     }
 
     fn has_notes_for_any_commit(&self, commit_shas: &[String]) -> Result<bool, GitAiError> {
-        Ok(!note_blob_oids_for_commits(&self.repo, commit_shas)?.is_empty())
+        // Backend-aware: on the HTTP backend notes live in the notes-db cache,
+        // so a refs/notes/ai-only check would always report "no notes".
+        Ok(!crate::git::notes_api::commits_with_notes(&self.repo, commit_shas)?.is_empty())
     }
 
     fn original_pr_commits(
@@ -831,7 +830,7 @@ fn commits_in_range_oldest_first(
 fn count_commits_with_authorship_notes(repo: &Repository, commits: &[String]) -> usize {
     commits
         .iter()
-        .filter(|sha| show_authorship_note(repo, sha).is_some())
+        .filter(|sha| read_note(repo, sha).is_some())
         .count()
 }
 

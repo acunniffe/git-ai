@@ -1,6 +1,6 @@
 use crate::authorship::authorship_log::PromptRecord;
 use crate::error::GitAiError;
-use crate::git::notes_api::{read_authorship as get_authorship, search_notes as grep_ai_notes};
+use crate::git::notes_api::{read_authorship, search_notes};
 use crate::git::repository::Repository;
 
 /// Find a prompt in the repository history
@@ -33,7 +33,7 @@ pub fn find_prompt_in_commit(
     let commit_sha = commit.id();
 
     // Get the authorship log for this commit
-    let authorship_log = get_authorship(repo, &commit_sha).ok_or_else(|| {
+    let authorship_log = read_authorship(repo, &commit_sha).ok_or_else(|| {
         GitAiError::Generic(format!(
             "No authorship data found for commit: {}",
             commit_rev
@@ -78,8 +78,8 @@ pub fn find_prompt_in_history(
     };
 
     // Use git grep to search for the prompt ID in authorship notes
-    // grep_ai_notes returns commits sorted by date (newest first)
-    let shas = grep_ai_notes(repo, &format!("\"{}\"", session_key)).unwrap_or_default();
+    // search_notes returns commits sorted by date (newest first)
+    let shas = search_notes(repo, &format!("\"{}\"", session_key)).unwrap_or_default();
 
     if shas.is_empty() {
         return Err(GitAiError::Generic(format!(
@@ -91,7 +91,7 @@ pub fn find_prompt_in_history(
     // Iterate through commits, looking for the prompt and counting occurrences
     let mut found_count = 0;
     for sha in &shas {
-        if let Some(authorship_log) = get_authorship(repo, sha) {
+        if let Some(authorship_log) = read_authorship(repo, sha) {
             // Check prompts map first
             if let Some(prompt) = authorship_log.metadata.prompts.get(prompt_id) {
                 if found_count == offset {

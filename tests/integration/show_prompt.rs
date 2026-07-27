@@ -1,6 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use git_ai::git::refs::notes_add;
+use git_ai::git::notes_api::write_note;
 use serde_json::Value;
 
 // Local helper mirroring the CLI arg vector used by main
@@ -218,13 +218,13 @@ fn show_prompt_commit_flag_scopes_to_requested_commit() {
 
     let git_ai_repo = git_ai::git::find_repository_in_path(repo.path().to_str().unwrap())
         .expect("find repository");
-    notes_add(
+    write_note(
         &git_ai_repo,
         &first_commit.commit_sha,
         &note(&first_commit.commit_sha, 5),
     )
     .expect("attach note to first commit");
-    notes_add(
+    write_note(
         &git_ai_repo,
         &second_commit.commit_sha,
         &note(&second_commit.commit_sha, 99),

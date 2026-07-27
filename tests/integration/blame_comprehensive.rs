@@ -24,7 +24,7 @@ use git_ai::authorship::authorship_log_serialization::{
 };
 use git_ai::authorship::working_log::AgentId;
 use git_ai::commands::blame::GitAiBlameOptions;
-use git_ai::git::refs::notes_add;
+use git_ai::git::notes_api::write_note;
 use git_ai::git::repository as GitAiRepository;
 
 // =============================================================================
@@ -692,7 +692,7 @@ fn test_blame_ai_authorship_hunk_splitting() {
     let note_content = authorship_log.serialize_to_string().unwrap();
     let gitai_repo = GitAiRepository::find_repository_in_path(repo.path().to_str().unwrap())
         .expect("Failed to find repository");
-    notes_add(&gitai_repo, &commit_sha, &note_content).unwrap();
+    write_note(&gitai_repo, &commit_sha, &note_content).unwrap();
 
     // Get hunks with split_hunks_by_ai_author enabled
     let options = GitAiBlameOptions {
@@ -750,7 +750,7 @@ fn test_blame_ai_authorship_no_splitting() {
     let note_content = authorship_log.serialize_to_string().unwrap();
     let gitai_repo = GitAiRepository::find_repository_in_path(repo.path().to_str().unwrap())
         .expect("Failed to find repository");
-    notes_add(&gitai_repo, &commit_sha, &note_content).unwrap();
+    write_note(&gitai_repo, &commit_sha, &note_content).unwrap();
 
     let options = GitAiBlameOptions {
         split_hunks_by_ai_author: false,

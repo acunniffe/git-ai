@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.changelog) // Gradle Changelog Plugin
     alias(libs.plugins.qodana) // Gradle Qodana Plugin
     alias(libs.plugins.kover) // Gradle Kover Plugin
-    id("io.sentry.jvm.gradle") version "6.14.0" // Sentry for error reporting
+    id("io.sentry.jvm.gradle") version "6.15.0" // Sentry for error reporting
 }
 
 group = providers.gradleProperty("pluginGroup").get()

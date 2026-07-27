@@ -1,8 +1,6 @@
 use crate::error::GitAiError;
 use crate::git::find_repository;
-use crate::git::notes_api::{
-    CommitAuthorship, filter_commits_with_notes as get_commits_with_notes_from_list,
-};
+use crate::git::notes_api::{CommitAuthorship, filter_commits_with_notes};
 use crate::git::repository::{CommitRange, Repository};
 
 const NO_AUTHORSHIP_DATA_MESSAGE: &str = "No authorship data found for this revision";
@@ -39,7 +37,7 @@ fn show_authorship(repo: &Repository, spec: &str) -> Result<(), GitAiError> {
         return Ok(());
     }
 
-    let entries = get_commits_with_notes_from_list(repo, &commits)?;
+    let entries = filter_commits_with_notes(repo, &commits)?;
 
     let multiple_commits = entries.len() > 1;
     for (index, entry) in entries.iter().enumerate() {

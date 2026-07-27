@@ -374,6 +374,17 @@ pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
             "Shell" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
+        Agent::Cline => {
+            let tool_name = normalize_tool_name(tool_name);
+            match tool_name {
+                "replace_in_file" | "write_to_file" | "apply_patch" | "editor" | "edit"
+                | "write" => ToolClass::FileEdit,
+                "execute_command" | "bash" | "shell" | "run_commands" | "run_command" => {
+                    ToolClass::Bash
+                }
+                _ => ToolClass::Skip,
+            }
+        }
     }
 }
 
@@ -391,6 +402,7 @@ pub enum Agent {
     Pi,
     Windsurf,
     Cursor,
+    Cline,
 }
 
 // ---------------------------------------------------------------------------
