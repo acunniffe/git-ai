@@ -1,0 +1,25 @@
+src/commands/checkpoint.rs
+  7458d4a825cdcdd4 571
+src/commands/git_ai_handlers.rs
+  7458d4a825cdcdd4 969
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "cefe53ec85ad7e58ffca40a4471c7c05c68c5ae0",
+  "prompts": {
+    "7458d4a825cdcdd4": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1772763784976016000",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 4,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

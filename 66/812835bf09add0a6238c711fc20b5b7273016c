@@ -1,0 +1,24 @@
+src/ci/gitlab.rs
+  s_706ace95c05718::t_1e5580fe2de3aa 11,24-37,57-68,71-79
+  s_706ace95c05718::t_58122f347365ab 467-530,532-591,593-594,596-601
+  s_706ace95c05718::t_376c9536b26d2e 316-320,325,330,332-341,351
+  s_706ace95c05718::t_491b3a8cc5cf1a 38-56,70
+  s_706ace95c05718::t_a42a72e2aa6590 69,321-324,326-329,531,592,595
+  s_706ace95c05718::t_67c0605fcd39d6 139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "66812835bf09add0a6238c711fc20b5b7273016c",
+  "prompts": {},
+  "sessions": {
+    "s_706ace95c05718": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4787c04c-33ba-4e48-a627-5bae746356f2",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": null
+    }
+  }
+}

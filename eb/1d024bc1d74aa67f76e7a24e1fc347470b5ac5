@@ -1,0 +1,21 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/TelemetryService.kt
+  s_edec1fe48ce502::t_4c2a3579a73d52 3,246-247
+agent-support/intellij/build.gradle.kts
+  s_edec1fe48ce502::t_4c2a3579a73d52 4,120-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "eb1d024bc1d74aa67f76e7a24e1fc347470b5ac5",
+  "prompts": {},
+  "sessions": {
+    "s_edec1fe48ce502": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-e1696047b2f248f0b5ed92e1dcb8e8ee",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

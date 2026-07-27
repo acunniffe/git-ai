@@ -1,0 +1,24 @@
+tests/integration/range_authorship_unit.rs
+  f4f2b364dfcacebb 1,3-11,14,20-21,27-29,35-70,76-78,84-117,120-126,132-161,164,170-177,183,186-188,194-196,202-238,241,247-249,252-271,283-315,318,324-325,336,346-380,383,389-390,396,399-401,423-459,462,468-469,478,490,496-530,533,539-540,551,557-970,973,979-980,1003,1009-1030
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "7496e730e48f27d30c0ab132a8f28d546ae692b1",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 5,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/61e85ffa1f915f22d7efee1ef0896c85fdceaebe670ea6ab8909979dd715f601"
+    }
+  }
+}

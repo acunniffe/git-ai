@@ -1,0 +1,190 @@
+agent-support/vscode/src/blame-lens-manager.ts
+  d12bb7f562bfb806 142-148,282-290,479,505-524,526-531,534-539,543-549,551-553,555,560-562,564-575,607-608,621-629,631,635,638-642,644-646,654
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "18ebb07589cf737e274ee217c7e6d4978229b38f",
+  "prompts": {
+    "d12bb7f562bfb806": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "83d99c18-259c-40b3-bbe5-706dc0a780d0",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/blame-lens-manager.ts:1-960 is there any way to ensure that only one Heading (the above line decoration) shows up per-prompt? \n\nI'm thinking we keep the FIRST visible one in the editor so we'll have to know the start / end line in the visbile range and adjust on scroll",
+          "timestamp": "2025-12-27T15:27:50.271Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Looking at your code, I can see the issue. Currently, `provideCodeLenses` creates a CodeLens for every AI hunk, but the same prompt (identified by `commitHash`) can appear in multiple hunks if they're non-contiguous. You want to deduplicate by prompt and only show the first visible one.\n\nHere's the approach:\n1. Add a scroll listener (`onDidChangeTextEditorVisibleRanges`) to refresh CodeLens when scrolling\n2. Modify `provideCodeLenses` to deduplicate by `commitHash` and only show the first one visible in the viewport\n\nLet me implement this:",
+          "timestamp": "2025-12-27T15:28:02.099Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me update `provideCodeLenses` to deduplicate by `commitHash` and only show the first visible one:",
+          "timestamp": "2025-12-27T15:28:21.775Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Done! Here's what I changed:\n\n1. **Added scroll listener** - Listens for `onDidChangeTextEditorVisibleRanges` to refresh CodeLens when you scroll\n\n2. **Modified `provideCodeLenses`** to deduplicate by `commitHash`:\n   - Groups all AI hunks by their `commitHash` (the unique prompt identifier)\n   - For each unique prompt, finds the **first hunk that's visible** in the viewport\n   - If no hunk is visible (all scrolled out), falls back to showing at the first hunk\n   - The `+N` line count now reflects the **total lines across all hunks** for that prompt\n\nThis means:\n- **One heading per prompt** - no duplicates even if the same prompt created non-contiguous hunks\n- **Sticky behavior on scroll** - as you scroll, the heading appears at the first visible hunk of each prompt\n- **Accurate line counts** - the `+N` suffix shows total lines from that prompt in the selection",
+          "timestamp": "2025-12-27T15:29:01.746Z"
+        },
+        {
+          "type": "user",
+          "text": "Ok now remove the +11 lines from the above line header. We don't need that anymore since we only show one header at a time\n\nShow (n lines n% of file)",
+          "timestamp": "2025-12-27T15:32:41.194Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Done! The CodeLens title now shows:\n\n```\n🤖 cursor|claude-3-opus <Aidan> (15 lines 3% of file)\n```\n\nInstead of the old `+15` suffix. It also handles singular/plural correctly (\"1 line\" vs \"15 lines\").",
+          "timestamp": "2025-12-27T15:33:06.177Z"
+        },
+        {
+          "type": "user",
+          "text": "I want total lines for all hunks, not just current please. \n\nyou might even be able to ditch some of the hunk logic now that the requirments have changed and we want one ABOVE header that depends on the visible range",
+          "timestamp": "2025-12-27T15:34:27.444Z"
+        },
+        {
+          "type": "assistant",
+          "text": "You're right - let me simplify this. Instead of grouping into contiguous hunks, I'll just track all lines per prompt and find the first visible one:",
+          "timestamp": "2025-12-27T15:34:36.694Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check if `identifyAiHunks` is still needed elsewhere:",
+          "timestamp": "2025-12-27T15:35:05.910Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts",
+            "pattern": "identifyAiHunks"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "It's still used for `applyColoredBorders` (the colored left borders), so we need to keep it. Let me check for linting errors:",
+          "timestamp": "2025-12-27T15:35:11.036Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Done! The logic is now much simpler:\n\n1. **Iterate through all lines** in the selection and group them by `commitHash`\n2. **Track all line numbers** per prompt (no need for contiguous hunk detection for CodeLens)\n3. **Find the first visible line** for each prompt to place the header\n4. **Total line count** is simply `lines.length` for that prompt\n\nThe `identifyAiHunks` method is kept since it's still used for the colored border decorations (which need contiguous groups for visual styling).",
+          "timestamp": "2025-12-27T15:35:16.785Z"
+        },
+        {
+          "type": "user",
+          "text": "Hmm still seeing 7 lines 4% of file when I select a few lines\nWhen I select all I see 78 lines 45% of file",
+          "timestamp": "2025-12-27T15:37:48.771Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Ah, I understand now! You want the total lines from that prompt **across the entire file**, not just within the selection. Let me fix that:",
+          "timestamp": "2025-12-27T15:37:53.705Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Done! Now it:\n\n1. **First scans the entire file** to count total lines per prompt\n2. **Then scans the selection** to find which prompts are present and their positions\n3. **Uses the file-wide total** when displaying the count\n\nSo now even if you only select a few lines from a prompt, it will show the full \"78 lines 45% of file\" for that prompt's contribution to the entire file.",
+          "timestamp": "2025-12-27T15:38:18.515Z"
+        },
+        {
+          "type": "user",
+          "text": "Hmm I also want to change the behavior\nRight now we only show the colored borders that indicate AI Authorship when we have a line selected\n\nWe still only want to show prompts that we've selected, but you can show their lines outside the selection range\n\nSo if I select 10 lines with prompts\nA, B and C within them\n\nI want A, B and C's borders visible everywhere in the file\n\nBut not D, E, F...unless I explicitly select a line where that prompt was used",
+          "timestamp": "2025-12-27T15:40:12.001Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I understand - you want the colored borders to show **all lines from the selected prompts across the entire file**, not just within the selection. Let me update `applyColoredBorders`:",
+          "timestamp": "2025-12-27T15:40:17.927Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 70,
+            "offset": 595,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check if `identifyAiHunks` is still used anywhere:",
+          "timestamp": "2025-12-27T15:40:52.977Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts",
+            "pattern": "identifyAiHunks"
+          }
+        }
+      ],
+      "total_additions": 142,
+      "total_deletions": 132,
+      "accepted_lines": 104,
+      "overriden_lines": 1
+    }
+  }
+}

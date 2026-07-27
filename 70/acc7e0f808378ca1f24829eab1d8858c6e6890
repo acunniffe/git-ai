@@ -1,0 +1,52 @@
+src/daemon/analyzers/history.rs
+  s_af2d349a5e032c::t_a9fb6c7541e2f0 95
+  s_af2d349a5e032c::t_17334ad75887c3 101
+  s_af2d349a5e032c::t_6e1e54eb2dcf67 108,52
+  s_f00ef7c0f45b07::t_3677b12632ccec 167-168,189-190,193-194,240-241,256-257,195-196,200-202,205,211-212,216-217,219,224-225,231
+  s_f00ef7c0f45b07::t_a6b80a341e70e4 173-174,180-182,546
+  s_f00ef7c0f45b07::t_d02b9457ff9096 270,197,203,206,213,237
+  s_f00ef7c0f45b07::t_a7d9aab9e4217d 358-359,209-210
+  s_f00ef7c0f45b07::t_bf0e24e53aecd8 631-632
+  s_f00ef7c0f45b07::t_2f68c278f8becf 698-700,550,198,204,207,214,226-227,232-233,238,701-704,715-753,759-788
+  s_af2d349a5e032c::t_62b4472db5d050 28
+  s_f00ef7c0f45b07::t_a91d2810b7dfe5 32,34,48
+  s_f00ef7c0f45b07::t_0a3715c9325a4a 49-51,199,208
+tests/commit_tree_update_ref.rs
+  s_f00ef7c0f45b07::t_a26ffb0bc0289e 14
+  s_f00ef7c0f45b07::t_e44e21ff66e77f 169-170
+  s_f00ef7c0f45b07::t_3e6de83730cc6b 207
+  s_af2d349a5e032c::t_a16f36e49cdd51 596-615,617,626-628,630-632
+  s_af2d349a5e032c::t_39ef88dde71440 616,618-625
+  s_f00ef7c0f45b07::t_e8118aaaeaae9f 633,41,49,53-54,66,74-75,171,173-175,182,190,194-197,202,205-206
+  s_f00ef7c0f45b07::t_e94a0f45e3b06a 34,172,178,185,204
+  s_f00ef7c0f45b07::t_9f6b4649f9d636 35-40,42-44,50-52,56,65,67-72
+  s_f00ef7c0f45b07::t_cf0ad35e71b5fd 45-48,55,57
+  s_f00ef7c0f45b07::t_a9242165dc8034 58-59,61-64
+  s_f00ef7c0f45b07::t_bff56bf496e983 60
+  s_f00ef7c0f45b07::t_2027db0a93e6b6 73
+  s_f00ef7c0f45b07::t_e42edd453d9a92 176-177,179-181,183-184,186-189,191-193,203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "70acc7e0f808378ca1f24829eab1d8858c6e6890",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

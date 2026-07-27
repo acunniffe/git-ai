@@ -1,0 +1,63 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  a77c2c8a641bd8a3 21-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "1a9628eeacea2019953fee225072ba66b928bb69",
+  "prompts": {
+    "a77c2c8a641bd8a3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a7ecc11b-0411-4fbc-80d2-79fb2cb13f1c",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "add a comment above the AgentRunResult struct",
+          "timestamp": "2025-12-03T21:01:24.410Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Locating `AgentRunResult` to add a comment above it.",
+          "timestamp": "2025-12-03T21:01:25.566Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a comment above `AgentRunResult`.",
+          "timestamp": "2025-12-03T21:01:26.893Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linter errors:",
+          "timestamp": "2025-12-03T21:01:28.443Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Added a comment above the `AgentRunResult` struct describing its purpose. No linter errors.",
+          "timestamp": "2025-12-03T21:01:31.477Z"
+        }
+      ],
+      "total_additions": 2,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

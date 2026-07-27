@@ -1,0 +1,58 @@
+tests/integration/ci_squash_rebase.rs
+  s_50c8cc07abd384::t_a971a5c131c0be 1509-1511
+  s_50c8cc07abd384::t_a64ae0aaaccbca 1517-1519
+  s_50c8cc07abd384::t_0742f97f4f2fc5 1577-1581,1586-1588
+  s_50c8cc07abd384::t_b5e4de1a3922d6 1584
+  s_50c8cc07abd384::t_48df92a705408f 1255-1257
+  s_50c8cc07abd384::t_55bee906db4540 1360-1362
+tests/integration/ci_fork_notes.rs
+  s_50c8cc07abd384::t_4ac51d94e7af05 124-126
+tests/integration/recovery.rs
+  s_50c8cc07abd384::t_5df9dc8b6ec787 58-59
+tests/integration/stash_attribution.rs
+  s_50c8cc07abd384::t_2ca81df9531a23 832-834,838
+  s_50c8cc07abd384::t_c8f0953d2f8d89 936-938,942
+  s_50c8cc07abd384::t_25d9aac4f759a4 290-293
+tests/integration/subdirs.rs
+  s_50c8cc07abd384::t_d5188574d2c79c 838-841,843,846
+tests/integration/reset.rs
+  s_50c8cc07abd384::t_606956c6c48239 327-330,332,335
+tests/integration/graphite.rs
+  s_50c8cc07abd384::t_bc16e40f0c9721 638-641
+  s_50c8cc07abd384::t_163cbc2b9d7238 798-801
+tests/integration/prompt_across_commit.rs
+  s_50c8cc07abd384::t_7d75392278fb56 105-111,122-127,129-136
+src/authorship/post_commit.rs
+  s_50c8cc07abd384::t_d83f1b5630e785 216-222,251-265,271-301
+tests/integration/rebase_realworld.rs
+  s_50c8cc07abd384::t_18f46c5d10a810 12938-12939,12942
+  s_50c8cc07abd384::t_ee83d335aa982f 12545-12547
+  s_50c8cc07abd384::t_4537d15c93754a 12366-12367,12378
+  s_50c8cc07abd384::t_c74d64bb0ebcf8 10464-10466
+  s_50c8cc07abd384::t_8316c48d73d6d5 12742-12743,12746
+  s_50c8cc07abd384::t_00992be9602cea 13308-13309,13320
+  s_50c8cc07abd384::t_89495f37f8f3a0 10271-10272,10283
+  s_50c8cc07abd384::t_2776ea42d43e06 10675-10676,10679
+  s_50c8cc07abd384::t_6d9c43e458624e 10885-10886,10889
+  s_50c8cc07abd384::t_5b7de236d1e053 11283-11284,11295
+  s_50c8cc07abd384::t_3ee2c00544110c 11867-11870,11878
+  s_50c8cc07abd384::t_7e1707d2e0dece 11976-11978,11980
+tests/integration/sessions_cutover.rs
+  s_50c8cc07abd384::t_67ce8f2dd1cc73 1354-1359,1361
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "8d35c3569789600f4706747d85346b35e8632731",
+  "prompts": {},
+  "sessions": {
+    "s_50c8cc07abd384": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1e4e321-1caf-47bf-b232-0be284c09477",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

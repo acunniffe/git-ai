@@ -1,0 +1,21 @@
+src/git/repository.rs
+  s_c3aa905e9dfee2::t_1ef86329680d1e 2328-2333
+  s_c3aa905e9dfee2::t_7ac6dec96e7efb 2285-2286,3112-3114
+  s_c3aa905e9dfee2::t_69550f25201b9a 3110-3111,3115-3131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "731dfb99201c2e818a7afcc0814b577d10f3ec2e",
+  "prompts": {},
+  "sessions": {
+    "s_c3aa905e9dfee2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e953b-a3d6-78c1-ab12-b3623076acea",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

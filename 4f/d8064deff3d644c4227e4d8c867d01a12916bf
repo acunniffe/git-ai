@@ -1,0 +1,27 @@
+tests/integration/main.rs
+  s_f00ef7c0f45b07::t_ba8a56a7278916 44
+tests/integration/repos/test_repo.rs
+  s_f00ef7c0f45b07::t_7681b69440aaa1 1672-1680
+src/daemon.rs
+  s_f00ef7c0f45b07::t_d899fbb28c034d 4175-4176,4183-4188
+  s_f00ef7c0f45b07::t_4fe5f5a10954d6 4177-4182
+tests/integration/cold_trace2_repo.rs
+  s_f00ef7c0f45b07::t_ba8a56a7278916 223-226
+  s_f00ef7c0f45b07::t_e95f0b3165145e 1-222,227-269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "4fd8064deff3d644c4227e4d8c867d01a12916bf",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

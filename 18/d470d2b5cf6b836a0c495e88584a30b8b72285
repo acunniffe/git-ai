@@ -1,0 +1,23 @@
+tests/gix_config_tests.rs
+  e299cbd1d65bfeef 227-229,231-233,235-236,240-243,245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.39",
+  "base_commit_sha": "18d470d2b5cf6b836a0c495e88584a30b8b72285",
+  "prompts": {
+    "e299cbd1d65bfeef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62d6db87-e020-4f07-b25e-7cb58ccd3084",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 16,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}

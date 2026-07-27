@@ -1,0 +1,39 @@
+tests/integration/performance.rs
+  s_69a54df0345dbf::t_86b209952d6b5e 12
+  s_69a54df0345dbf::t_17d3a58eb4a7d1 33
+src/commands/git_ai_handlers.rs
+  s_69a54df0345dbf::t_2402d3719437ad 20
+src/commands/git_handlers.rs
+  s_69a54df0345dbf::t_8f28b1651aab14 4,6,153-155,532-537
+  s_69a54df0345dbf::t_78da16e5eed9ef 160,166
+  s_69a54df0345dbf::t_b16302034b42a2 514,520,527
+src/git/test_utils/mod.rs
+  s_69a54df0345dbf::t_aa1bfa8376b101 1385-1386
+tests/integration/repos/test_repo.rs
+  s_69a54df0345dbf::t_1e6cc5567b1451 14
+src/commands/hooks/stash_hooks.rs
+  s_69a54df0345dbf::t_105b6e4a0b8a13 360-379
+src/commands/hooks/push_hooks.rs
+  s_69a54df0345dbf::t_481c72aa1c9d04 3
+src/observability/mod.rs
+  s_69a54df0345dbf::t_f3462073dfd834 97-146
+  s_69a54df0345dbf::t_51d2a9187e7f05 6-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "762e3e6257f983051b2bd832ee885cbdfcdd2d2b",
+  "prompts": {},
+  "sessions": {
+    "s_69a54df0345dbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a46a182e-c0bb-4405-9496-ba072ce77795",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/992e557d6fccd962f76d936573db56d4cfe00bb7938718563290440cfe9f7d92"
+    }
+  }
+}

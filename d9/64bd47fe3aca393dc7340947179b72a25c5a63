@@ -1,0 +1,19 @@
+src/feature_flags.rs
+  s_1946ff3ec655a6::t_dda1f802bcfe9b 87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.4",
+  "base_commit_sha": "d964bd47fe3aca393dc7340947179b72a25c5a63",
+  "prompts": {},
+  "sessions": {
+    "s_1946ff3ec655a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c7c4393-fb5b-4f09-b279-1a660e430da3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
