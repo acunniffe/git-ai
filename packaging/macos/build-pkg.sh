@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'USAGE'
-usage: build-pkg.sh --binary <path> --arch <x64|arm64> --version <version> --output <path>
+usage: build-pkg.sh --binary <path> --arch <x64|arm64|universal> --version <version> --output <path>
 USAGE
 }
 
@@ -26,7 +26,7 @@ done
 [ -f "$BINARY" ] || { echo "binary not found: $BINARY" >&2; exit 1; }
 
 case "$ARCH" in
-  x64|arm64) ;;
+  x64|arm64|universal) ;;
   *) echo "unsupported arch: $ARCH" >&2; exit 2 ;;
 esac
 

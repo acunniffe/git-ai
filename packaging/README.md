@@ -9,7 +9,8 @@ responsibility of `git-ai install-hooks`.
 
 The release workflow builds signed/notarized production packages when the
 required Apple and Azure signing secrets are configured. Dry-run releases can
-build unsigned packages for validation.
+build unsigned packages for validation. macOS releases include Intel, Apple
+Silicon, and universal PKGs.
 
 The Windows MSI is per-user: it installs under
 `%USERPROFILE%\\.git-ai\\bin` and changes only that user's `PATH`. It has no
