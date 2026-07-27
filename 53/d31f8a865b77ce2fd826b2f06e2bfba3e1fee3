@@ -1,0 +1,37 @@
+src/metrics/db.rs
+  s_c3aa905e9dfee2::t_5f7a651532988c 232-242,244,248,256-261,266,269,271-275,292-293,295-296,298,306,309-310,318-323
+  s_c3aa905e9dfee2::t_e6fb2155458dc1 328,333,337-352,354-372
+  s_c3aa905e9dfee2::t_7cb175b8b46d4a 1,3-5
+  s_c3aa905e9dfee2::t_5fb29731c8af28 609-636
+  s_c3aa905e9dfee2::t_53baa8ae943984 42
+  s_c3aa905e9dfee2::t_28b09495439075 252-253
+  s_c3aa905e9dfee2::t_b4e74ea3de6dd2 8-10,16,34,36-41,46,48,50,64,66,70
+  s_c3aa905e9dfee2::t_b96c7a2dbb0d5c 460-471,509,521,525,551,562,566,568,572,576-605,650-651
+src/observability/mod.rs
+  s_c3aa905e9dfee2::t_6c0152fc825db6 20-53
+src/metrics/local_stats.rs
+  s_c3aa905e9dfee2::t_c7d2c516721c58 298-300
+  s_c3aa905e9dfee2::t_cc1b6dc1261c9a 232,264,272,283,288
+  s_c3aa905e9dfee2::t_5ae6fef8e0ddad 1,9,140-148,151,156,159,169-170,174,179,226,1054,1059-1060,1095-1096,1112
+src/daemon/telemetry_worker.rs
+  s_c3aa905e9dfee2::t_39d49d53964de2 330,335,343,345,354-367,371-375,379
+src/commands/flush_metrics_db.rs
+  s_c3aa905e9dfee2::t_be601796b14c69 3,72-73,75,96-97,99,125-130
+  s_c3aa905e9dfee2::t_e0ec45875ded62 115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "53d31f8a865b77ce2fd826b2f06e2bfba3e1fee3",
+  "prompts": {},
+  "sessions": {
+    "s_c3aa905e9dfee2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e953b-a3d6-78c1-ab12-b3623076acea",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

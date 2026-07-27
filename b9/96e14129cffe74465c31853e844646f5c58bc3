@@ -1,0 +1,25 @@
+RELEASE.md
+  63c42de935b6604b 33
+.env.example
+  63c42de935b6604b 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.24",
+  "base_commit_sha": "b996e14129cffe74465c31853e844646f5c58bc3",
+  "prompts": {
+    "63c42de935b6604b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "575ef473-9abd-4c53-84cc-584e06d05182",
+        "model": "unknown"
+      },
+      "human_author": "shawn.tian <shawn.tian@bkyo.io>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 3,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}

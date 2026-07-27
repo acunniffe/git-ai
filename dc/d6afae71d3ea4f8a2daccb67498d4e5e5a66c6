@@ -1,0 +1,72 @@
+src/git/repository.rs
+  4b579b4 1369-1370
+src/git/sync_authorship.rs
+  4b579b4 12-20,54-56,60,92,104-105,141,177
+src/commands/hooks/push_hooks.rs
+  human 72
+  5a6db38 67-69
+  4b579b4 48-50,52-56,60,63,65,70-71,86,91,93-99,114,117,175,184,188,262,273,284,295,310,325,336,352,368,384,400,417,434,442,450,458,466,474,482,490,506,519,528,538-593
+  380373c 115-116,118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "dcd6afae71d3ea4f8a2daccb67498d4e5e5a66c6",
+  "prompts": {
+    "4b579b4": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d3a6ac94-d534-45d6-aa87-f1c972829487",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/hooks/push_hooks.rs:74-227 this won't work if there's no ref/notes/ai in the remote yet (first time) \n\nWe should have @src/commands/hooks/push_hooks.rs:48-49  return a status re: did it find any notes when it fetched \n\n\n\nAnd if it didn't we should inject a force + before the refspec",
+          "timestamp": "2025-11-22T18:40:40.568Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I need to understand the full context of this issue. Let me read the relevant parts of the file to see how `fetch_authorship_notes` is implemented and how the refspec injection works.",
+          "timestamp": "2025-11-22T18:40:47.235Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/push_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Find the implementation of fetch_authorship_notes to understand its current return type",
+            "query": "fetch_authorship_notes function implementation",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I understand the issue. Let me create a plan to fix this problem.",
+          "timestamp": "2025-11-22T18:40:59.573Z"
+        },
+        {
+          "type": "user",
+          "text": "Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.\n\nTo-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.",
+          "timestamp": "2025-11-22T18:41:30.613Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll implement the plan step",
+          "timestamp": "2025-11-22T18:41:36.540Z"
+        }
+      ],
+      "total_additions": 142,
+      "total_deletions": 64,
+      "accepted_lines": 129,
+      "overriden_lines": 0
+    }
+  }
+}

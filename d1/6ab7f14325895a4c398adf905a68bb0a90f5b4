@@ -1,0 +1,20 @@
+src/commands/daemon.rs
+  s_d46277b929576d::t_95dbe22d3712a5 13-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "d16ab7f14325895a4c398adf905a68bb0a90f5b4",
+  "prompts": {},
+  "sessions": {
+    "s_d46277b929576d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7d963b3-678f-4ed0-8566-d90a0d657703",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": []
+    }
+  }
+}

@@ -1,0 +1,79 @@
+src/commands/checkpoint.rs
+  fc7cfc1 1-3,8,14,19,40-42,61,64-68,102,163-166,168,176-180,182,190-194,252,254-258,261,271-274,280,291-295,299,318-321,324,326-329,383-386,407,409-412,463,471-474,476,491-494,504,510-513,537,539-549,551-556,558-560,562-577,579-589,591-593,595-597,599-604,606-607,625-627,701-724,726-734,737,739-743,804-808,822-823,825,828-831,876,920-924,927,929-933,936-937,950-958,973-974,981-987,995-1000,1003-1004,1010-1014,1017,1019-1023
+src/config.rs
+  6f3a31b 12,83,179-181,190,192,202,213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "7ac38dfcfd6ccb40d6c21bf80c0a4ede1f265643",
+  "prompts": {
+    "6f3a31b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8cdd19df-27e4-4325-8042-9704691cedd9",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/config.rs:23-24 in cfg test mode give me a way to override the  feature flags in the config singleton. Very important for testing",
+          "timestamp": "2025-11-30T13:57:33.243Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you add a way to override feature flags in the config singleton for testing. Let me first examine the full config file to understand the current implementation.",
+          "timestamp": "2025-11-30T13:57:38.437Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I understand the structure. I'll add a test-only mechanism to override feature flags in the config singleton. The best approach is to use a test-only static variable that can store feature flag overrides, which will be checked before returning the actual config's feature flags.",
+          "timestamp": "2025-11-30T13:57:48.007Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Now let me add a test example at the end of the test module to show how to use this new functionality:",
+          "timestamp": "2025-11-30T13:58:03.125Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's verify that the implementation works correctly by running the test:",
+          "timestamp": "2025-11-30T13:58:13.201Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Excellent! The test passes. Let me also run all the config tests to make sure nothing else broke:",
+          "timestamp": "2025-11-30T13:58:23.847Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! All tests pass. Let me check if there are any existing tests that might benefit from this new functionality:",
+          "timestamp": "2025-11-30T13:58:29.901Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've successfully implemented a test-only feature flag override system for the Config singleton. Here's what I added:\n\n## Summary of Changes\n\nI've added three new test-only methods to the `Config` struct:\n\n1. **`Config::set_test_feature_flags(flags: FeatureFlags)`** - Override feature flags for testing\n2. **`Config::clear_test_feature_flags()`** - Clear any overrides and return to defaults\n3. **`Config::get_feature_flags()`** - Get feature flags (checks for overrides in test mode)\n\n## How to Use in Your Tests\n\n```rust\nuse crate::config::Config;\nuse crate::feature_flags::FeatureFlags;\n\n#[test]\nfn test_with_custom_feature_flags() {\n    // Clear any existing overrides from other tests\n    Config::clear_test_feature_flags();\n    \n    // Set up custom feature flags for this test\n    let test_flags = FeatureFlags {\n        rewrite_stash: true,\n        inter_commit_move: false,\n    };\n    \n    Config::set_test_feature_flags(test_flags);\n    \n    // Now any code that calls Config::get().get_feature_flags() \n    // will get your test flags\n    let config = Config::get();\n    let flags = config.get_feature_flags();\n    \n    // Your test logic here...\n    \n    // Clean up - reset to defaults\n    Config::clear_test_feature_flags();\n}\n```\n\n## Key Features\n\n- **Test-only**: All override functionality is gated behind `#[cfg(test)]`, so it has zero impact on production code\n- **Thread-safe**: Uses `RwLock` to ensure safe concurrent access across tests\n- **Non-invasive**: The existing `feature_flags()` method remains unchanged; use the new `get_feature_flags()` method to get override-aware flags\n- **Backward compatible**: Existing code continues to work as-is\n\nThe implementation uses a static `RwLock<Option<FeatureFlags>>` that's only compiled in test mode, allowing you to temporarily override the singleton's feature flags without needing to rebuild the entire config.",
+          "timestamp": "2025-11-30T13:58:40.082Z"
+        }
+      ],
+      "total_additions": 10,
+      "total_deletions": 8,
+      "accepted_lines": 80,
+      "overriden_lines": 0
+    },
+    "fc7cfc1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a051b857-a3fa-41a6-b41f-518327f3973a",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 279,
+      "total_deletions": 52,
+      "accepted_lines": 1485,
+      "overriden_lines": 0
+    }
+  }
+}

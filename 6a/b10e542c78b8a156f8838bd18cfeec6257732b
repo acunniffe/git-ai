@@ -1,0 +1,47 @@
+src/streams/agents/claude.rs
+  s_395f5898107085::t_1c13139f3dd95c 129,280,284
+src/daemon/transcript_worker.rs
+  s_395f5898107085::t_b45aa3e23abda8 99,109,124,350-351,382,384-385,397,1168,1225,1256,1301
+src/streams/sweep.rs
+  s_395f5898107085::t_0293b904a6c1e7 24
+src/streams/agents/continue_cli.rs
+  s_395f5898107085::t_1c13139f3dd95c 86
+src/streams/agents/copilot_cli.rs
+  s_395f5898107085::t_1c13139f3dd95c 86,126,129
+src/streams/agents/droid.rs
+  s_395f5898107085::t_1c13139f3dd95c 104
+src/streams/model_extraction.rs
+  s_395f5898107085::t_2f3a9d4854c29b 132,134,144
+src/streams/agents/codex.rs
+  s_395f5898107085::t_1c13139f3dd95c 185,303,307
+src/streams/agents/amp.rs
+  s_395f5898107085::t_1c13139f3dd95c 122
+src/streams/agents/cursor.rs
+  s_395f5898107085::t_1c13139f3dd95c 101
+src/streams/agent.rs
+  s_395f5898107085::t_54e79f57a07d64 18
+  s_395f5898107085::t_40ff89092114cb 50,52,54,56,153
+  s_395f5898107085::t_dbe06d626cf097 10
+src/streams/agents/gemini.rs
+  s_395f5898107085::t_1c13139f3dd95c 102
+src/streams/agents/copilot.rs
+  s_395f5898107085::t_1c13139f3dd95c 125,128,162,172,246,361,363,368
+src/daemon/sweep_coordinator.rs
+  s_395f5898107085::t_b45aa3e23abda8 72,88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "6ab10e542c78b8a156f8838bd18cfeec6257732b",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+src/daemon.rs
+  e3256c1bc244f994 6450-6468,6470
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "fbf9d1f6783795cab1a030be57dd4bb43550b1a8",
+  "prompts": {
+    "1e9c333a25b3d95f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bba54458-9c9c-4f70-9b68-f3922d7e7f40",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "e3256c1bc244f994": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f13bcceb-b0cc-4ed9-994f-8940572d2785",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 20,
+      "total_deletions": 3,
+      "accepted_lines": 20,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/dcb6e5672ae45945e8c3fb16e25762142dc4e9caf76be8a1144d544b2f140353"
+    }
+  }
+}
