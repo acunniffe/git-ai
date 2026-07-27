@@ -1,0 +1,589 @@
+src/git/repository.rs
+  66392557c1f4b03f 1032-1061
+src/commands/git_handlers.rs
+  66392557c1f4b03f 1,82-84,132,203,253-259
+src/commands/hooks/fetch_hooks.rs
+  66392557c1f4b03f 1,3,5,54-80,82-115,131-140,143-160,166-261,265-269,271-284,286-292,294-300,302-306,308-316,318-325,327-331,333-338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "64b9abd6b09156c9f89cb82ce40e33e51d52d1bb",
+  "prompts": {
+    "66392557c1f4b03f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a48660d5-a9c6-43b6-856c-058424e5516a",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "WE need to fix https://github.com/acunniffe/git-ai/issues/300 \n\nI think the most reasonable way to do this is to check `git config --get pull` \n\nThen join those config options (if any) with --rebase and --autostash flags (if passed in). People often configure these to their liking so we really don't know the mode we're in unless we look at args and config \n\nIf we detect --rebase && --autostash in the pre-pull\n\nCreate a virtual attribution from base commit and working log @src/authorship/virtual_attribution.rs \n\nreutrn it from the pre_command handler (normally we'd save something like this or the final authorship when in the git db like a stash, but since we control the process keep it in memory) \n\nthen post rebase (if exits 0 and if head has changed sha) build a VA for the new branch and merge favoring my original VA (the effective stash authorship). The result should be set as INITIAL contributions for the new HEAD sha\n\n@src/commands/git_handlers.rs:257-262",
+          "timestamp": "2025-12-22T14:56:50.955Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll analyze the codebase to understand the current implementation and create a comprehensive plan for this fix.",
+          "timestamp": "2025-12-22T14:57:04.642Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_handlers.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/stash_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me also check how git config is read and how the working log/initial attributions are stored:",
+          "timestamp": "2025-12-22T14:57:33.166Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "git.*config.*--get"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 150,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "write_initial_attributions"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "exec_git.*config"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Looking for patterns of reading git configuration values",
+            "query": "How do we read git config settings?",
+            "target_directories": [
+              "/Users/aidancunniffe/Desktop/git-ai/src"
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 460,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check how flags are parsed and look at how the rebase hooks handle HEAD tracking:",
+          "timestamp": "2025-12-22T14:58:13.063Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/git",
+            "pattern": "has_flag|contains_flag|--rebase|--autostash"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 150,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/cli_parser.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "require_pre_command_head|pre_command_base_commit"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me understand the relationship between `VirtualAttributions` and Initial attributions better, and check the rebase hooks to see how they handle similar patterns:",
+          "timestamp": "2025-12-22T14:58:20.999Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/rebase_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "merge_attributions_favoring_first"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me look at the stash tests and check one more example of how the rebase authorship handles similar scenarios:",
+          "timestamp": "2025-12-22T14:58:27.877Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/stash_attribution.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 150,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/rebase_authorship.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I now have a complete understanding of the codebase and the issue. Let me create the plan.",
+          "timestamp": "2025-12-22T14:59:09.822Z"
+        },
+        {
+          "type": "user",
+          "text": "You can skip adding a test. we can't really do tests until we figure out deterministic remotes. seperate project",
+          "timestamp": "2025-12-22T15:01:15.926Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/.cursor/plans/pull_8d98eca6.plan.md"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/.cursor/plans/pull_rebase_autostash_fix_8d98eca6.plan.md"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/.cursor/plans/pull_rebase_autostash_fix_8d98eca6.plan.md"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Got it - I've removed the test from the plan. \n\nThe updated plan has 4 implementation tasks:\n1. Add `stashed_va` field to `CommandHooksContext`\n2. Create helper to detect rebase+autostash mode from config and flags\n3. Modify pre-pull hook to capture VirtualAttribution\n4. Modify post-pull hook to merge and restore attributions",
+          "timestamp": "2025-12-22T15:02:50.585Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me implement the fix. I'll start by reading the current state of the files and then make the changes.",
+          "timestamp": "2025-12-22T15:03:15.204Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": false,
+            "todos": [
+              {
+                "content": "Add stashed_va: Option<VirtualAttributions> to CommandHooksContext",
+                "id": "add-stashed-va-field",
+                "status": "in_progress"
+              },
+              {
+                "content": "Create helper function to detect rebase+autostash mode from config and flags",
+                "id": "detect-rebase-autostash",
+                "status": "pending"
+              },
+              {
+                "content": "Modify pre-pull hook to build and store VirtualAttribution",
+                "id": "pre-pull-capture",
+                "status": "pending"
+              },
+              {
+                "content": "Modify post-pull hook to merge stashed VA and write INITIAL attributions",
+                "id": "post-pull-restore",
+                "status": "pending"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_handlers.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I see the code structure has been simplified since I first looked at it. Let me implement the changes step by step.\n\n**Step 1:** Add `stashed_va` field to `CommandHooksContext`:",
+          "timestamp": "2025-12-22T15:03:28.522Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_handlers.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_handlers.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_handlers.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I need to separate `pull` from `fetch` in the pre-command hooks to add the special handling:",
+          "timestamp": "2025-12-22T15:04:04.637Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_handlers.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_handlers.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Add stashed_va: Option<VirtualAttributions> to CommandHooksContext",
+                "id": "add-stashed-va-field",
+                "status": "completed"
+              },
+              {
+                "content": "Create helper function to detect rebase+autostash mode from config and flags",
+                "id": "detect-rebase-autostash",
+                "status": "in_progress"
+              }
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me implement the main logic in `fetch_hooks.rs`:",
+          "timestamp": "2025-12-22T15:04:25.665Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "fn has_changes|fn rename_working_log"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "status.*--porcelain|is_working_tree_clean"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/git",
+            "pattern": "fn.*status|get_staged|git.*status"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/status.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/git/repo_storage.rs",
+            "pattern": "rename_working_log"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 60,
+            "offset": 80,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me fix the two issues - replace `has_changes()` with the available method and remove the non-existent `rename_working_log` call:",
+          "timestamp": "2025-12-22T15:06:23.665Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me now build the project to ensure everything compiles:",
+          "timestamp": "2025-12-22T15:07:00.490Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo check 2>&1",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The code compiles successfully. Let me update the progress:",
+          "timestamp": "2025-12-22T15:07:07.920Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Create helper function to detect rebase+autostash mode from config and flags",
+                "id": "detect-rebase-autostash",
+                "status": "completed"
+              },
+              {
+                "content": "Modify pre-pull hook to build and store VirtualAttribution",
+                "id": "pre-pull-capture",
+                "status": "completed"
+              },
+              {
+                "content": "Modify post-pull hook to merge stashed VA and write INITIAL attributions",
+                "id": "post-pull-restore",
+                "status": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "All tasks are complete. Here's a summary of the implementation:\n\n## Changes Made\n\n### 1. `src/commands/git_handlers.rs`\n- Added import for `VirtualAttributions`\n- Added `stashed_va: Option<VirtualAttributions>` field to `CommandHooksContext`\n- Separated `pull` from `fetch` in both pre-command and post-command hooks to allow special handling\n\n### 2. `src/commands/hooks/fetch_hooks.rs`\nAdded the following new functions:\n\n- **`is_pull_with_rebase()`** - Detects if rebase mode is active by checking:\n  - CLI flags: `--rebase`, `-r`, `--no-rebase`\n  - Git config: `pull.rebase`\n\n- **`is_pull_with_autostash()`** - Detects if autostash is active by checking:\n  - CLI flags: `--autostash`, `--no-autostash`\n  - Git config: `rebase.autoStash`\n\n- **`has_uncommitted_changes()`** - Checks if working directory has changes that would trigger autostash\n\n- **`pull_pre_command_hook()`** - When rebase+autostash+changes detected:\n  1. Captures HEAD before pull\n  2. Builds `VirtualAttributions::from_just_working_log()`\n  3. Stores VA in `command_hooks_context.stashed_va`\n\n- **`pull_post_command_hook()`** - After successful pull with HEAD change:\n  1. Takes the stashed VA from context\n  2. Reads working directory file contents (final state after autostash apply)\n  3. Merges stashed VA with new VA using `merge_attributions_favoring_first()`\n  4. Writes result as INITIAL attributions for the new HEAD\n\nThe implementation ensures that when a user runs `git pull --rebase --autostash` (or has these configured), their uncommitted AI-attributed code is preserved through git's internal stash operations.",
+          "timestamp": "2025-12-22T15:07:17.155Z"
+        },
+        {
+          "type": "user",
+          "text": "@src/commands/hooks/fetch_hooks.rs:12-55 combine these to save a call to git config\n\n`--get pull` and then parse each line.",
+          "timestamp": "2025-12-22T15:08:47.324Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll combine both config checks into a single git config call using `--get-regexp`:",
+          "timestamp": "2025-12-22T15:09:38.808Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 70,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/git/repository.rs",
+            "pattern": "fn config_get|get-regexp"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I'll refactor to use a single git config call with `--get-regexp`. First, let me add a helper method to Repository if needed, then refactor the fetch_hooks:",
+          "timestamp": "2025-12-22T15:11:10.885Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 30,
+            "offset": 1015,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/repository.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/git/repository.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me refactor fetch_hooks.rs to combine the two separate functions into one that uses a single git config call:",
+          "timestamp": "2025-12-22T15:11:31.659Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me update the call site in `pull_pre_command_hook` to use the new combined function:",
+          "timestamp": "2025-12-22T15:11:56.338Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 115,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo check 2>&1 | head -50",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo check 2>&1 | tail -50",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The code compiles successfully. Let me show you the final optimized implementation:",
+          "timestamp": "2025-12-22T15:13:57.760Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 80,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Done! The optimization combines both config checks into a single git call:\n\n**Changes:**\n\n1. **Added `config_get_regexp()` to `Repository`** (`src/git/repository.rs`) - A reusable method that uses `git config --get-regexp` to fetch multiple config values matching a regex pattern in one call.\n\n2. **Combined `is_pull_with_rebase` and `is_pull_with_autostash` into `get_pull_rebase_autostash_config()`** - This new function:\n   - First checks CLI flags (no git call needed)\n   - If both settings are determined by CLI flags, returns immediately without any git call\n   - Otherwise makes a single `git config --get-regexp \"^(pull\\.rebase|rebase\\.autoStash)$\"` call to fetch both config values at once\n\nThis reduces the overhead from potentially 2 git config calls down to 0 or 1, depending on whether CLI flags are present.",
+          "timestamp": "2025-12-22T15:14:06.452Z"
+        }
+      ],
+      "total_additions": 375,
+      "total_deletions": 52,
+      "accepted_lines": 304,
+      "overriden_lines": 3
+    }
+  }
+}

@@ -1,0 +1,25 @@
+src/mdm/git_clients/fork_app.rs
+  d7b48336ff51a24d 117,149,231,291-294
+src/mdm/git_clients/sublime_merge.rs
+  d7b48336ff51a24d 3,5,7,122,221-224,274-280,284-287
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.38",
+  "base_commit_sha": "9863bf96c8278bab773322028c31fb77e1671af0",
+  "prompts": {
+    "d7b48336ff51a24d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a5165c6d-909b-4ed3-8466-febf119dae76",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 46,
+      "total_deletions": 202,
+      "accepted_lines": 26,
+      "overriden_lines": 0
+    }
+  }
+}

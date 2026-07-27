@@ -1,0 +1,90 @@
+src/commands/usage.rs
+  s_1a35d9c51a69d7::t_d4995165a6108e 1-3,5-8,10-62,64-67,79-88,94-101,106-110,112-127,129-137,141-144,146-147,153-187,192-230,236-272,274-299,303-314,322-429,435-473,476-552,554-573,579,585-615,73,75-77,104-105,140,191,233,235,316-318,320-321,434,576
+  s_1a35d9c51a69d7::t_db0ac420c01337 9
+  h_5e32efc4aad69a 273
+  s_31b447d16e21cf::t_bf15e3468521f1 63,68-72,74,89-93,102-103,128,138-139,148-152,188-190,231-232,234,300-302,315,319,430-433,474-475,553,574,577-578,580-584
+src/metrics/db.rs
+  s_c3aa905e9dfee2::t_b4e74ea3de6dd2 35,49,8-10,38,41,64,66,70
+  s_8d2579124116c6::t_079b26ec087a4c 45,65,67-68,362,322
+  s_86cae81fcd9c97::t_a65485a460d96a 47,51,36,39
+  s_8d2579124116c6::t_c6ea9bbd0bf71a 71-72
+  s_c3aa905e9dfee2::t_485118458d5bab 119-127
+  s_c3aa905e9dfee2::t_5f7a651532988c 235-236,237-239,242-243,245-247,249,253,261-266,275,277,279-280,298-299,301-302,304,315-316,365-370
+  s_c3aa905e9dfee2::t_9a52eaf0540d7b 305-308,81-82,329,332,334,337,341-342,344-345,347,350-354,356,360,639,666
+  s_86cae81fcd9c97::t_26e199f4acd43e 309
+  s_c3aa905e9dfee2::t_069cdc467610e3 314,317-319,373-374,462,481-482,272,387,511,517,625-628,632,634,644,647-648,652-655,659,661,677,682,690,330-331,335,346,637-638,664-665,694,696,699-701,705,708-710,716-719
+  s_c3aa905e9dfee2::t_3a92c8e6b630ee 692-693,421-422,363-364,240-241,390,397,401,411,419,508,623,630-631,635,642,645-646,650-651,657-658,662,675,678-679,688,83,323-324,333,343,349,361,697,706-707,712,714-715,720-723
+  s_86cae81fcd9c97::t_dea1c72eb26629 69
+  s_86cae81fcd9c97::t_4857c585b53cc7 300,303,244
+  s_86cae81fcd9c97::t_114c5f4fee242b 376-377,379,381-383,420,326
+  s_27ed236e4270d9::t_63582f35bf5f4f 378
+  s_c3aa905e9dfee2::t_e6fb2155458dc1 400,229,231,375,380,384-386,388-389,391-396,398-399,402-410,412-418,348
+  s_1a35d9c51a69d7::t_cbe42ba3510ede 371,281,355,359
+  s_31b447d16e21cf::t_5da90b21425ff6 225-228,230
+  s_c3aa905e9dfee2::t_7cb175b8b46d4a 1,3-5
+  s_c3aa905e9dfee2::t_28b09495439075 257-258
+  s_c3aa905e9dfee2::t_b96c7a2dbb0d5c 512,514-516,568,572,598,609,615,619,624,629,633,656,735-736,336,338-340
+  s_c3aa905e9dfee2::t_5fb29731c8af28 660,669-670,674,680-681,683-684,686,689,691
+  s_c3aa905e9dfee2::t_e9b8c26c910766 643,676
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "0df90e8f506ac13f5bc0d878d14f9891b3c31154",
+  "prompts": {},
+  "humans": {
+    "h_5e32efc4aad69a": {
+      "author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  },
+  "sessions": {
+    "s_1a35d9c51a69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7df70395-9a7f-4c32-bf67-e29d2b57634a",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_31b447d16e21cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66093f0b-52af-4448-b87a-0255bfb1a244",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_86cae81fcd9c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5160589a-86c2-41a5-bdcd-5daee68d43ef",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_c3aa905e9dfee2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e953b-a3d6-78c1-ab12-b3623076acea",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

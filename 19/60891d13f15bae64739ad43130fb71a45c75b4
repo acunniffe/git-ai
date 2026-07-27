@@ -1,0 +1,13 @@
+tests/repos/snapshots/blame_flags__repos__test_file__assert_blame_snapshot.snap
+  72ad903 5
+tests/repos/snapshots/reset__repos__test_file__assert_blame_snapshot.snap
+  72ad903 5
+tests/repos/test_file.rs
+  1b6c8e3 524
+  f9a223b 192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "eae5df3fdb9e358ba9e376768725895cb45adb25",
+  "prompts": {}
+}

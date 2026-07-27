@@ -1,0 +1,26 @@
+tests/commit_post_stats_benchmark.rs
+  b2dc6dd2bcad74f1 12,34-57,59,75-76,90-91,101-175,320-328,380-398,585-673
+.github/workflows/performance-benchmarks.yml
+  b2dc6dd2bcad74f1 42-50,105-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.6",
+  "base_commit_sha": "180d4cf0e9c758769d9beae4a53795092f954b6d",
+  "prompts": {
+    "b2dc6dd2bcad74f1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c8e1b-b90c-7813-9910-66395a50600a",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 305,
+      "total_deletions": 43,
+      "accepted_lines": 263,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/0dcb31309fba285bb05d5c96400909f5584ec8efb23c18fd40e644a23093fca9"
+    }
+  }
+}

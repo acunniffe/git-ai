@@ -1,0 +1,19 @@
+src/daemon/telemetry_worker.rs
+  s_5eb94f907c8c65::t_81eb74ea97cf8a 332-343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "2f1d0f9f05be91211f5f2885c04854ae8052ce0b",
+  "prompts": {},
+  "sessions": {
+    "s_5eb94f907c8c65": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e4091f27-aeae-4447-a476-f6373a127419",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Jason Lowe <jlowe@knowbe4.com>"
+    }
+  }
+}

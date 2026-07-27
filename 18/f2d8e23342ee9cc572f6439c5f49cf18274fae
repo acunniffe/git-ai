@@ -1,0 +1,36 @@
+src/git/notes_api.rs
+  s_0ca8b5afd9749b::t_f949a4dff07c15 440-441,443-445
+  s_0ca8b5afd9749b::t_29afe00445dcf7 442
+src/git/sync_authorship.rs
+  s_0ca8b5afd9749b::t_f949a4dff07c15 202-203,205-207
+  s_0ca8b5afd9749b::t_29afe00445dcf7 204
+tests/notes_sync_regression.rs
+  s_0ca8b5afd9749b::t_f949a4dff07c15 1272-1294
+  s_0ca8b5afd9749b::t_92e2f41208befb 1228-1233
+  s_0ca8b5afd9749b::t_8c266c98edd50d 1263
+  s_0ca8b5afd9749b::t_f0e19f16787afb 1295-1296
+  s_0ca8b5afd9749b::t_232cb76c1a2f40 5-7,1169-1178,1184-1227,1234-1262,1264-1271
+  s_0ca8b5afd9749b::t_4775f103fb8551 1179-1183
+  s_0ca8b5afd9749b::t_6b469020a80c81 466-554
+src/daemon.rs
+  s_0ca8b5afd9749b::t_3b0dbcf0801fbc 1080-1081,1083-1098
+  s_0ca8b5afd9749b::t_d30fef0d4678b0 1056-1057,1062,1072-1074
+  s_0ca8b5afd9749b::t_f949a4dff07c15 1061,1063-1071
+  s_0ca8b5afd9749b::t_a53dab37866653 6255-6256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.1",
+  "base_commit_sha": "18f2d8e23342ee9cc572f6439c5f49cf18274fae",
+  "prompts": {},
+  "sessions": {
+    "s_0ca8b5afd9749b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efb8d-b857-78a3-a254-fd6c514f1864",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}
