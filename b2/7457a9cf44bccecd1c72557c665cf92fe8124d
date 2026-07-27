@@ -1,0 +1,65 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  a45170c54620ec7f 535,539
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "b27457a9cf44bccecd1c72557c665cf92fe8124d",
+  "prompts": {
+    "a45170c54620ec7f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5ea776bf-3e40-46ba-9f13-b928d9cea90c",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/checkpoint_agent/agent_presets.rs:534-548 Update to fallback to after_edit if not set at all. Add a note that this is for older version of the vs code extension",
+          "timestamp": "2025-12-04T05:15:16.058Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the file to understand the context before updating the code.",
+          "timestamp": "2025-12-04T05:15:17.527Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 520,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating the code to fallback to \"after_edit\" when `hook_event_name` is missing, with a comment noting this is for older VS Code extension versions.",
+          "timestamp": "2025-12-04T05:15:18.484Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linter errors:",
+          "timestamp": "2025-12-04T05:15:21.162Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updated the code to fallback to \"after_edit\" when `hook_event_name` is missing, instead of returning an error. Added a comment noting this fallback is for older VS Code extension versions.\n\nThe code now:\n- Uses `unwrap_or(\"after_edit\")` to default to \"after_edit\" when `hook_event_name` is not present\n- Still validates that if `hook_event_name` is set, it must be either \"before_edit\" or \"after_edit\"\n- Includes a comment explaining the fallback behavior\n\nNo linter errors. The change maintains backward compatibility with older VS Code extension versions while still validating the value when present.",
+          "timestamp": "2025-12-04T05:15:24.415Z"
+        }
+      ],
+      "total_additions": 2,
+      "total_deletions": 3,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

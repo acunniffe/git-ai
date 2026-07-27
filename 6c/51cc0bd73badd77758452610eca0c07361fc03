@@ -1,0 +1,28 @@
+Cargo.toml
+  1869dfcc0dd7127e 27-28,44-46
+tests/integration/tls_native_certs.rs
+  1869dfcc0dd7127e 4-7,10-24
+src/http.rs
+  1869dfcc0dd7127e 3-4,11,15-16,19,22-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "6c51cc0bd73badd77758452610eca0c07361fc03",
+  "prompts": {
+    "1869dfcc0dd7127e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa1bc3bc-c768-48d8-a4ed-35be4c4cc996",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 32,
+      "total_deletions": 31,
+      "accepted_lines": 31,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e60e70c30ad4effdaa6d565d62263f4640fb36def6a314de3239344eec8c4c69"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+hello.txt
+  s_fa82d1dd3b90c7 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:2.0.0-alpha.1",
+  "base_commit_sha": "7381fbddfe43e5f50cbcf7c49b423799a8cd78fa",
+  "prompts": {},
+  "sessions": {
+    "s_fa82d1dd3b90c7": {
+      "agent_id": {
+        "tool": "test-agent",
+        "id": "session-ctrl-1",
+        "model": "test-model"
+      },
+      "human_author": "Test <t@t.com>"
+    }
+  }
+}

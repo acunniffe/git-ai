@@ -1,0 +1,26 @@
+src/api/client.rs
+  7470934e02e84b8e 172,197
+src/commands/whoami.rs
+  7470934e02e84b8e 35,37,44,46,50,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.11",
+  "base_commit_sha": "44159888bd768ce4a918d5d50fcacd4071c81f03",
+  "prompts": {
+    "7470934e02e84b8e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f6ab06c-7f2a-4e91-8017-d539d75aadb7",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 9,
+      "accepted_lines": 8,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/d22504f2a6f508cf143015507b83adb19e9f5aa2d68ec0e3f650df1e830d1d67"
+    }
+  }
+}

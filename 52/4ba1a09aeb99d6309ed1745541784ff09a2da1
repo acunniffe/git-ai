@@ -1,0 +1,67 @@
+src/feature_flags.rs
+  s_4d604bdd40c765::t_13fd880e243b21 165-175,181,187-190,198,210-228
+  s_4d604bdd40c765::t_330bf27ec5f93b 86,141,150,238,247,258,266
+  s_1a85c38b16fa1d::t_c533e14c981aa0 229
+src/authorship/post_commit.rs
+  s_4d604bdd40c765::t_9c8d9871872f24 982-1021
+  s_4d604bdd40c765::t_3db4b10f5d664b 1110-1164
+  s_4d604bdd40c765::t_9e6d9e733215fa 878-883,885-889,896,921-926,928-933,935-939,941-947,966-968,973-976,978
+  s_1a85c38b16fa1d::t_c533e14c981aa0 969-972,977,979-981
+src/authorship/rewrite_revert.rs
+  s_4d604bdd40c765::t_ba116f1f3e2f7d 27
+  s_4d604bdd40c765::t_8090970af6cbdd 9,28-30,32,43,92,102,115-117,124,161,213-217,223
+src/authorship/rewrite.rs
+  s_4d604bdd40c765::t_5ec1624e7876c4 215-219,258-259,261-262,306,346,349
+  s_4d604bdd40c765::t_c4e4e950c6a89e 1133-1170
+  s_4d604bdd40c765::t_3b1326d4b989ff 181,199
+  s_4d604bdd40c765::t_90062c0dc6f2e3 34-130,148,152-155,165-180,184,189-191
+src/metrics/mod.rs
+  s_4d604bdd40c765::t_84ca5b832372ab 19
+src/metrics/types.rs
+  s_4d604bdd40c765::t_492a7a62891734 25,201
+src/metrics/events.rs
+  s_4d604bdd40c765::t_6f4fa56c37588f 555-556,1124
+  s_4d604bdd40c765::t_d13cb3595bccc6 1084-1123,1125-1130
+  s_4d604bdd40c765::t_26ab35a3a6efa9 308-554,557-585
+src/daemon.rs
+  s_4d604bdd40c765::t_2a0eb87dcaa04d 1791-1793
+  s_4d604bdd40c765::t_f9eeef680f3753 65
+  s_4d604bdd40c765::t_f223b8f073ee2f 4662-4663,4677-4680,4700-4715,4721-4724
+  s_4d604bdd40c765::t_374e26addbdd28 1807,1810,1817,1867-1868,1885-1894
+  s_4d604bdd40c765::t_9c2ee56d4b39c1 5582-5583,5585-5588,5590-5593
+  s_4d604bdd40c765::t_6f4fa56c37588f 4664-4669
+  s_4d604bdd40c765::t_e89ec41e485d69 5458-5465
+  s_4d604bdd40c765::t_45bb73b3f52fb1 5321,5329-5332,5485-5486,5494-5497
+  s_1a85c38b16fa1d::t_c533e14c981aa0 5472-5484,5487-5493,5498
+tests/integration/performance.rs
+  s_4d604bdd40c765::t_fd0550acb40427 23
+src/daemon/rewrite_metrics.rs
+  s_4d604bdd40c765::t_1071b2fa13f070 11,193-194
+  s_4d604bdd40c765::t_e2e5cf35cd8886 1-10,12-18,20-30,35-126,132-192,195-211,217-255
+  s_4d604bdd40c765::t_5e6959f37c2985 19
+  s_4d604bdd40c765::t_6f4fa56c37588f 31-34,127-131,212-216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "524ba1a09aeb99d6309ed1745541784ff09a2da1",
+  "prompts": {},
+  "sessions": {
+    "s_1a85c38b16fa1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1368-2fba-70e1-bd6d-bd045e4ef3c6",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_4d604bdd40c765": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee61a-3160-7480-af4b-dd94e5be48f4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

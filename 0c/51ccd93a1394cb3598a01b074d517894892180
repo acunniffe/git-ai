@@ -1,0 +1,28 @@
+tests/integration/checkpoint_unit.rs
+  f4f2b364dfcacebb 1-1361
+src/commands/checkpoint.rs
+  f4f2b364dfcacebb 34-38,109,258,366,1577,2145
+tests/integration/main.rs
+  f4f2b364dfcacebb 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.1",
+  "base_commit_sha": "0c51ccd93a1394cb3598a01b074d517894892180",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1391,
+      "total_deletions": 1296,
+      "accepted_lines": 1372,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/41bc3fbc96a0c6bcd5d8e0696799b482c23949553d1c2f5de175f3dfa1d03359"
+    }
+  }
+}

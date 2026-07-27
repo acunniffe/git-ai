@@ -1,0 +1,19 @@
+src/git/repository.rs
+  s_4a97eb85511a52::t_b7e999736c8576 23,25,1096-1100,1463-1464,1469-1487
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "27efd36289b0c6616c1d3721904ffea195996973",
+  "prompts": {},
+  "sessions": {
+    "s_4a97eb85511a52": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-8ed48033fe8843b88b2bcba98eb7034d",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    }
+  }
+}
