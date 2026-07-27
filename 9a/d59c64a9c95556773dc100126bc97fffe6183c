@@ -1,0 +1,112 @@
+src/process_timeout.rs
+  s_59382cac373d67::t_521daa65d6f180 9,43-44,53-54,63-96,258-259,264-286,329-330,345-346
+  s_59382cac373d67::t_dd68495925ccc1 373-393
+  s_59382cac373d67::t_66016425999f18 350-372,425
+  s_59382cac373d67::t_171143111f6ebb 135,145-153,155,394,404-423
+  s_59382cac373d67::t_9f2666ff9fa4ce 424
+  s_59382cac373d67::t_044571359abd2d 403
+src/diagnostics.rs
+  s_59382cac373d67::t_81090ffc7d96e1 516
+  s_59382cac373d67::t_341b4b57d691b6 22,511-515,955-960
+tests/integration/auxiliary_input_memory.rs
+  s_59382cac373d67::t_29b0ffa95cd599 1-39
+src/ci/github.rs
+  s_59382cac373d67::t_341b4b57d691b6 10,54,228-236,325-334
+  s_59382cac373d67::t_74dab014b9eaba 335
+src/commands/install_hooks.rs
+  s_59382cac373d67::t_81090ffc7d96e1 416-423
+  s_59382cac373d67::t_97df6b375931f5 8,135-137,141-143,156,746,749,751
+  s_59382cac373d67::t_b0fd11ced7a9c1 150-152
+src/daemon.rs
+  s_59382cac373d67::t_341b4b57d691b6 2236-2239
+src/commands/daemon.rs
+  s_59382cac373d67::t_1367555991e1ca 9-10,99-116,148-152,819-831
+  s_59382cac373d67::t_b501535f67edcd 832
+  s_59382cac373d67::t_4691a92aa1b605 669-683,685,687,689-690
+src/api/client.rs
+  s_59382cac373d67::t_341b4b57d691b6 120-130,132
+tests/integration/main.rs
+  s_59382cac373d67::t_29b0ffa95cd599 17
+  s_59382cac373d67::t_ae6f0c6176c85a 97
+  s_59382cac373d67::t_4ccb9651898277 98
+src/commands/upgrade.rs
+  s_59382cac373d67::t_341b4b57d691b6 139
+src/mdm/jetbrains/download.rs
+  s_59382cac373d67::t_a8f652241dddde 140-145
+  s_59382cac373d67::t_2ae7a8ad9d6bff 2,5-23,81-87,93-101,139,146,152,169,175-177,180-181,185,195-210
+src/mdm/agents/pi.rs
+  s_59382cac373d67::t_67bd8108f0367e 85,118
+  s_59382cac373d67::t_6aaf022f1a1c32 60-61
+src/mdm/agents/codex.rs
+  s_59382cac373d67::t_f399d859622ee4 694,700,752,760,883,898
+tests/integration/installer_config_memory.rs
+  s_59382cac373d67::t_b328e812210caf 21
+  s_59382cac373d67::t_633ce6cfc53023 9,26,28-33
+  s_59382cac373d67::t_ae6f0c6176c85a 11,19
+  s_59382cac373d67::t_abe069d73746fd 1-2
+  s_59382cac373d67::t_095b8ff01ef218 3-8,10,12-18,20,22-25,27,34
+src/mdm/agents/windsurf.rs
+  s_59382cac373d67::t_97c09258513792 12,42
+  s_59382cac373d67::t_67bd8108f0367e 51,150,231
+  s_59382cac373d67::t_5b6eaee4d4bac8 145
+src/mdm/agents/claude_code.rs
+  s_59382cac373d67::t_980e1a61f0671a 81,248,345
+  s_59382cac373d67::t_9d8d0fa58e78b8 324-333
+src/mdm/agents/visual_studio.rs
+  s_59382cac373d67::t_36b67eda44fc35 322-323
+  s_59382cac373d67::t_97df6b375931f5 5,229-242,249
+src/mdm/agents/amp.rs
+  s_59382cac373d67::t_67bd8108f0367e 93,126
+  s_59382cac373d67::t_6aaf022f1a1c32 67-68
+src/mdm/agents/cursor.rs
+  s_59382cac373d67::t_67bd8108f0367e 84,126,275
+  s_59382cac373d67::t_9d8d0fa58e78b8 62-71
+src/mdm/agents/github_copilot.rs
+  s_59382cac373d67::t_980e1a61f0671a 108,197,357
+  s_59382cac373d67::t_9d8d0fa58e78b8 78-87
+src/mdm/agents/droid.rs
+  s_59382cac373d67::t_980e1a61f0671a 113,286,375
+src/mdm/jetbrains/detection.rs
+  s_59382cac373d67::t_36b67eda44fc35 163,317,453
+  s_59382cac373d67::t_97df6b375931f5 89-91,93,97,176-182,185,187
+  s_59382cac373d67::t_e284b304485ed0 3-4
+src/mdm/utils.rs
+  s_59382cac373d67::t_9f185d251b65eb 850-860
+  s_59382cac373d67::t_67bd8108f0367e 16,19-26,779
+  s_59382cac373d67::t_bf7a329827b6d5 849
+  s_59382cac373d67::t_171143111f6ebb 9,17-18,28-59,62-64,66,68,73,78-81,83,85,90,662-665,669-670,672
+src/mdm/agents/gemini.rs
+  s_59382cac373d67::t_980e1a61f0671a 79,258,347
+src/mdm/agents/firebender.rs
+  s_59382cac373d67::t_980e1a61f0671a 53,104,226
+src/mdm/agents/opencode.rs
+  s_59382cac373d67::t_6aaf022f1a1c32 69-70
+  s_59382cac373d67::t_980e1a61f0671a 107,155
+src/config.rs
+  s_59382cac373d67::t_4dcd66143ea889 1416-1422,1424-1426,1428
+  s_59382cac373d67::t_316b4da5906e61 1423
+tests/integration/installer_process_memory.rs
+  s_59382cac373d67::t_316b4da5906e61 14
+  s_59382cac373d67::t_4ccb9651898277 1-13,15-46
+src/mdm/agents/vscode.rs
+  s_59382cac373d67::t_9d8d0fa58e78b8 47-56
+src/auth/credential_backend.rs
+  s_59382cac373d67::t_acfb9f3fbede9e 109-111,113-124,126-128,132-139
+  s_59382cac373d67::t_316b4da5906e61 112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "9ad59c64a9c95556773dc100126bc97fffe6183c",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

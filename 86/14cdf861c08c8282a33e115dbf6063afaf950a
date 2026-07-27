@@ -1,0 +1,23 @@
+scripts/dev.sh
+  s_122f961aa46a22::t_be2dfb5e1f05f9 75-81
+scripts/pre-commit
+  s_122f961aa46a22::t_d6a49781e25ad1 1-63
+scripts/dev.ps1
+  s_122f961aa46a22::t_c2cd9169639499 141-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "8614cdf861c08c8282a33e115dbf6063afaf950a",
+  "prompts": {},
+  "sessions": {
+    "s_122f961aa46a22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c99dd480-07a1-4da6-8ad5-4bc2483187aa",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

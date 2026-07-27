@@ -1,0 +1,20 @@
+BENCHMARKS.md
+  s_a73b2a35c101af::t_bf62b81c50a8a7 57-58,62
+  s_a73b2a35c101af::t_9aa93bfd2241c1 28-29,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "3eb795ed632e23a02dda0d8c31874b206ba42f2c",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+src/mdm/agents/windsurf.rs
+  81bb0088dc47efa4 215,242-244,251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.13",
+  "base_commit_sha": "9c9b5b25b5eaddb27629f595fa754863f3032191",
+  "prompts": {
+    "81bb0088dc47efa4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61ffc8f0-0c36-4685-8b99-76aaa32ed9f6",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 3,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

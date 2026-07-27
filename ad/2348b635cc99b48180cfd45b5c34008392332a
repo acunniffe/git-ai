@@ -1,0 +1,19 @@
+src/daemon/trace_normalizer.rs
+  s_ea99f27079798b::t_38a1eed6e629d7 606-616
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "ad2348b635cc99b48180cfd45b5c34008392332a",
+  "prompts": {},
+  "sessions": {
+    "s_ea99f27079798b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17d0f6d4-d727-4e33-8c95-d2052548fcd0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

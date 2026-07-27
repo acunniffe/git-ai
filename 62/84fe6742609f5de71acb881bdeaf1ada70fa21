@@ -1,0 +1,36 @@
+src/commands/ci_handlers.rs
+  s_1eeb4f6def9ecf::t_5a7ddc5bfa27ba 37
+src/authorship/attribution_recovery.rs
+  s_1eeb4f6def9ecf::t_77157982e47b6e 15,217,240-242,246-268,276
+  s_1eeb4f6def9ecf::t_bdd8ad1536c8cd 664,668,731-780
+  s_1eeb4f6def9ecf::t_5c7b461fb9a223 781,784,1785,1791,1794-1797,1809-1820,1822-1838,1842-1846
+  s_1eeb4f6def9ecf::t_12ad0293b888ee 782-783
+  s_1eeb4f6def9ecf::t_f8e502346c17b9 785
+tests/integration/session_event_attribution.rs
+  s_1eeb4f6def9ecf::t_ca8bfe4d69c84d 797-799,802-804,807,818-822,824-828
+  s_1eeb4f6def9ecf::t_6d8da1483e5252 808-812,823
+  s_1eeb4f6def9ecf::t_36bce8346c7042 685,706-708,750,780-796,800-801,805-806,813-817
+src/ci/ci_context.rs
+  s_1eeb4f6def9ecf::t_7cb1adcd630155 73,363-365,381,496,500,533,535,817,820
+tests/integration/ci_local_skip_fetch.rs
+  s_1eeb4f6def9ecf::t_8c65d4b4b5cd00 98
+tests/integration/ci_squash_rebase.rs
+  s_1eeb4f6def9ecf::t_b59311af2aea01 221,366,429-430,433-434
+  s_1eeb4f6def9ecf::t_8c9eddec9fd1b4 1853
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.9",
+  "base_commit_sha": "6284fe6742609f5de71acb881bdeaf1ada70fa21",
+  "prompts": {},
+  "sessions": {
+    "s_1eeb4f6def9ecf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24a5-539f-7dd3-9793-1f096a58ff70",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

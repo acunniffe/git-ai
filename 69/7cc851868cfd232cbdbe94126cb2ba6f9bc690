@@ -1,0 +1,116 @@
+tests/cursor.rs
+  92ff52d 1-2,5-6,259-358
+tests/repos/test_repo.rs
+  92ff52d 156-188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.19",
+  "base_commit_sha": "697cc851868cfd232cbdbe94126cb2ba6f9bc690",
+  "prompts": {
+    "92ff52d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "fc1cf9e4-1533-4e12-b776-2bc6e8aa89ad",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Reference the other end to end tests that use testrepo and git_ai calls to create an end-to-end test for cursor that will set the GIT_AI_CURSOR_GLOBAL_DB_PATH env var to the cursor sqlite db fixture.\n\n\n\nVerify correct attribution and that the final authorship log contains the expected transcript+messages.",
+          "timestamp": "2025-11-12T22:04:59.306Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you create an end-to-end test for cursor. Let me first examine the existing test structure and other end-to-end tests to understand the pattern.",
+          "timestamp": "2025-11-12T22:05:07.173Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/cursor.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "glob_file_search",
+          "input": {
+            "glob_pattern": "tests/*.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/github_copilot.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/claude_code.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/test_utils.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/simple_additions.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/ai_tab.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I have a good understanding of the test patterns. Let me examine the repos test utilities to understand how to create a proper end-to-end test:",
+          "timestamp": "2025-11-12T22:05:24.105Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 150,
+            "offset": 1,
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/repos/test_repo.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/svarlamov/projects/git-ai/tests/repos/test_repo.rs",
+            "pattern": "git_ai_with_env|with_env"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 150,
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/repos/test_repo.rs"
+          }
+        }
+      ],
+      "total_additions": 179,
+      "total_deletions": 42,
+      "accepted_lines": 139,
+      "overriden_lines": 0
+    }
+  }
+}

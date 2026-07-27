@@ -1,0 +1,50 @@
+src/commands/checkpoint_agent/transcript_readers.rs
+  s_74a31c9b27ce26::t_641eb4a9084236 2176
+tests/integration/amp.rs
+  s_74a31c9b27ce26::t_01acd5727b33e7 3
+src/commands/blame.rs
+  s_74a31c9b27ce26::t_641eb4a9084236 1239-1240
+tests/integration/main.rs
+  s_74a31c9b27ce26::t_a7be986afacb79 121
+src/commands/checkpoint_agent/presets/pi.rs
+  s_74a31c9b27ce26::t_cac7426f018852 164-166
+CHANGELOG.md
+  s_74a31c9b27ce26::t_cda2fd9ee1f229 9-49
+src/authorship/post_commit.rs
+  s_74a31c9b27ce26::t_b8f5249b0f2854 519-520
+  s_74a31c9b27ce26::t_da0ce2bf844ae1 518,521-525,527-532
+  s_74a31c9b27ce26::t_cac7426f018852 526
+src/daemon/transcript_worker.rs
+  s_74a31c9b27ce26::t_cac7426f018852 8-9,14,202-207,393-395,397,410,422,519-522
+src/commands/install_hooks.rs
+  s_74a31c9b27ce26::t_9d6161d10e2fd1 749-750
+src/commands/checkpoint_agent/presets/github_copilot.rs
+  s_74a31c9b27ce26::t_cac7426f018852 143-145,249-251
+src/commands/checkpoint.rs
+  s_74a31c9b27ce26::t_641eb4a9084236 1015-1016
+  s_74a31c9b27ce26::t_dd79604121febe 1011-1013
+  s_74a31c9b27ce26::t_78584e7042125b 892-893
+  s_74a31c9b27ce26::t_3100bfcb3b40c3 978,983-985
+src/authorship/internal_db.rs
+  s_74a31c9b27ce26::t_81c730220e35b7 1-11
+src/commands/git_ai_handlers.rs
+  s_74a31c9b27ce26::t_a273d1371d7288 410-411,419
+  s_74a31c9b27ce26::t_b60db5da8d4466 420-423,425
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "cb877229bf2995e6e8add596c8ba9c01e27ff4db",
+  "prompts": {},
+  "sessions": {
+    "s_74a31c9b27ce26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f769e90b-24f1-4f4b-92c3-236cbea1cee2",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>",
+      "messages": []
+    }
+  }
+}
