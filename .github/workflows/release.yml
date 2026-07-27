@@ -472,7 +472,7 @@ jobs:
           mkdir -p release
           chmod +x artifacts/git-ai-macos-arm64 artifacts/git-ai-macos-x64
           lipo -create artifacts/git-ai-macos-arm64 artifacts/git-ai-macos-x64 -output artifacts/git-ai-macos-universal
-          lipo -verify_arch x86_64 arm64 artifacts/git-ai-macos-universal
+          lipo artifacts/git-ai-macos-universal -verify_arch x86_64 arm64
           if [[ "${{ inputs.dry_run }}" != "true" ]]; then
             codesign --verify --strict --verbose=2 --all-architectures artifacts/git-ai-macos-universal
           fi
@@ -578,7 +578,7 @@ jobs:
 
           PKG=release/git-ai-macos-universal.pkg
           sudo installer -pkg "$PKG" -target /
-          lipo -verify_arch x86_64 arm64 "$git_ai"
+          lipo "$git_ai" -verify_arch x86_64 arm64
           "$git_ai" --version
 
           binary_owner="$(/usr/bin/stat -f%Su "$git_ai")"
