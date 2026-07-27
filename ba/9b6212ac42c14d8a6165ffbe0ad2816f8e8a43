@@ -1,0 +1,25 @@
+src/daemon/ref_cursor.rs
+  s_59382cac373d67::t_b36996ac40fae3 3923-3939
+  s_59382cac373d67::t_82fe908ce37644 8,26-27,3578,3585-3586,3590-3593
+  s_59382cac373d67::t_e5f9bb01dd838b 3584
+  s_59382cac373d67::t_b9a1d8c70f1f3a 3922
+tests/integration/daemon_reflog_memory.rs
+  s_59382cac373d67::t_1c3bf93d57eae3 78-86,88-99,101-102
+  s_59382cac373d67::t_560df9ca26e0cb 87,100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "ba9b6212ac42c14d8a6165ffbe0ad2816f8e8a43",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

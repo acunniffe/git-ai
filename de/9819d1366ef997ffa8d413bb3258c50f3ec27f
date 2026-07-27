@@ -1,0 +1,9 @@
+src/authorship/virtual_attribution.rs
+  b8f8aac7de3cda16 1196,1348-1354
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.1",
+  "base_commit_sha": "de9819d1366ef997ffa8d413bb3258c50f3ec27f",
+  "prompts": {}
+}

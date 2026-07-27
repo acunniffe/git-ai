@@ -1,0 +1,20 @@
+src/authorship/attribution_recovery.rs
+  s_113f78f7410d31::t_2796dd3e3eeceb 373
+  s_113f78f7410d31::t_782049d7a0ba19 830-832
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "0888bd0ce5146ae8671d919aaa08ed28b245a542",
+  "prompts": {},
+  "sessions": {
+    "s_113f78f7410d31": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f2a85852-498c-4e0f-ad64-0f378920778b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Siddhant Khare <Siddhant-K-code@users.noreply.github.com>"
+    }
+  }
+}

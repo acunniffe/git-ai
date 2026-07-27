@@ -1,0 +1,19 @@
+bench/generated/file_4.txt
+  s_9e1a53f8b54df5::t_92228b3bf5d789 1-1000
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.5",
+  "base_commit_sha": "a837a1b883f6581e10ce504d49f2f683560b3319",
+  "prompts": {},
+  "sessions": {
+    "s_9e1a53f8b54df5": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1778422868329605350",
+        "model": "unknown"
+      },
+      "human_author": "git-ai bench <bench@git-ai.local>"
+    }
+  }
+}

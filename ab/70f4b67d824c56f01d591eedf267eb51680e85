@@ -1,0 +1,25 @@
+installer/linux/README.md
+  s_c07cec28a64ec3::t_c32c98379d1387 1-50
+.github/workflows/release.yml
+  s_c07cec28a64ec3::t_52eab09d114325 564
+  s_c07cec28a64ec3::t_c45ce321544ac9 628
+  s_c07cec28a64ec3::t_9ebcb67b0f227f 504-505
+  s_c07cec28a64ec3::t_cb997f6782cd0b 361-451,454
+  s_c07cec28a64ec3::t_10ef6b1456e6dd 603-606
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "ab70f4b67d824c56f01d591eedf267eb51680e85",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

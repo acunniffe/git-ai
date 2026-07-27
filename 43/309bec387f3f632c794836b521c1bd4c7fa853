@@ -1,0 +1,23 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/GitAiService.kt
+  8e3bb46cc8f3213c 61-79,101,163,165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "43309bec387f3f632c794836b521c1bd4c7fa853",
+  "prompts": {
+    "8e3bb46cc8f3213c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "648d569b-ac18-486c-9cee-69915bd48133",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 24,
+      "total_deletions": 8,
+      "accepted_lines": 23,
+      "overriden_lines": 0
+    }
+  }
+}

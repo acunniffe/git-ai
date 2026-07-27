@@ -1,0 +1,21 @@
+tests/integration/cold_trace2_repo.rs
+  s_f00ef7c0f45b07::t_1c1c081d1dfa3b 79
+  s_f00ef7c0f45b07::t_54f539e5bea621 67-72,450,524,527
+  s_f00ef7c0f45b07::t_7654794b06fe17 78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "ec5950c2a7b4a885741513464245ff29e53a0704",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
