@@ -1,0 +1,117 @@
+tests/integration/rebase_attribution_remaining.rs
+  s_cfb20a6a102d4d::t_36195d26ffa555 16-21
+tests/integration/bash_attribution.rs
+  s_cfb20a6a102d4d::t_d2eecce252013e 246-248
+  s_cfb20a6a102d4d::t_1498ed343ea0b2 12-17,115,179,235-238,298,361
+  s_cfb20a6a102d4d::t_496bda3fa768e0 110-112,114
+  s_cfb20a6a102d4d::t_44c0564a80a7d3 116-117,180-181,299-300,362-363
+  s_cfb20a6a102d4d::t_f541ae7159c2d9 297,348-349,360,411
+  s_cfb20a6a102d4d::t_ead6aab493eec4 329,392
+  s_cfb20a6a102d4d::t_c4859d79ee91d4 453-497,499-512
+  s_cfb20a6a102d4d::t_9fe6273d02e752 19,30-31,35,43,89,94,102,127-128,149-153,172,308,310,354,371,373,418
+  s_cfb20a6a102d4d::t_16230566bc4171 234,239-245,249-296
+  s_cfb20a6a102d4d::t_0c02499d3d2c55 498
+src/git/repository.rs
+  s_cfb20a6a102d4d::t_1a0b731beb3df4 3101,3145
+  s_cfb20a6a102d4d::t_86e32e843fed8c 2986-3001,3003,3005,3011,3014,3018-3024,3026-3032,3034-3039,3049-3052,3054-3058,3070-3071
+src/authorship/rewrite.rs
+  s_cfb20a6a102d4d::t_68bd36bfaa6bfd 30,919,940,944,951,954,963,965-979,983-987,990
+tests/integration/stash_attribution.rs
+  s_cfb20a6a102d4d::t_6afcb9f6ef4e9b 261-264
+  s_cfb20a6a102d4d::t_057a6732149982 790-793,867-870
+tests/integration/repository_unit.rs
+  s_cfb20a6a102d4d::t_57e95788bc1a07 202-218
+tests/integration/graphite.rs
+  s_cfb20a6a102d4d::t_da9df447365e61 615-618,621,777-780,783
+src/authorship/virtual_attribution.rs
+  s_cfb20a6a102d4d::t_36fbb760f71fe6 1195,1201-1205
+tests/integration/rebase_realworld.rs
+  s_cfb20a6a102d4d::t_0b385e87c63aca 11227-11233,11289-11296,13306-13312,13368-13375
+  s_cfb20a6a102d4d::t_b136ab301c6df5 10638-10644,10662-10669,12759-12765,12783-12790
+  s_cfb20a6a102d4d::t_088eb62a8cbb58 10191-10197,10254-10261,12340-12346,12403-12410
+  s_cfb20a6a102d4d::t_d1f4a247c06daf 11868,11897
+  s_cfb20a6a102d4d::t_e9ee2e3c045416 11869-11870,11898-11900,11980-11986,12011-12018
+tests/integration/fuzzer/model.rs
+  s_cfb20a6a102d4d::t_1581faf258e3c2 36-57,64-65,72,77-81,85-88,92-98,113,123,140,149-155,161,164-167,170,173-180,183-187,190,192-195,197,199-207,209-213,216-232,234-240,242-261,264-265,267-268,367-370
+  s_cfb20a6a102d4d::t_fc50a663fb72f5 241
+  s_cfb20a6a102d4d::t_a8436a0fb39b40 191,198
+  s_cfb20a6a102d4d::t_5dc451b8c2912c 114,124,196,214-215,269-281
+  s_cfb20a6a102d4d::t_327ca04853a862 181-182,188-189,208,233,262-263,266
+tests/integration/fuzzer/engine.rs
+  s_cfb20a6a102d4d::t_140f6af4386ff2 66,90,109,128,145
+tests/integration/codex.rs
+  s_cfb20a6a102d4d::t_d6c184f9640b1f 282-285
+tests/integration/worktrees.rs
+  s_cfb20a6a102d4d::t_08bb82e683fb2a 225-228,244-247,265-268,292-295
+tests/integration/subdirs.rs
+  s_cfb20a6a102d4d::t_9909550690c777 813-814,818
+tests/integration/github_copilot_integration.rs
+  s_cfb20a6a102d4d::t_579ccffa9529db 102-105,107
+tests/integration/ci_squash_rebase.rs
+  s_cfb20a6a102d4d::t_a7a1c2145e825c 1465,1485,1490,1505,1510
+  s_cfb20a6a102d4d::t_1a04bf036e2e3c 1227,1229-1238,1249-1250,1254,1504,1534
+  s_cfb20a6a102d4d::t_580b1f9c9a4981 1570-1571,1574
+  s_cfb20a6a102d4d::t_4ea446adadb1ac 1548
+tests/integration/diff.rs
+  s_cfb20a6a102d4d::t_9312e86c694c14 1991-1994
+tests/integration/ci_fork_notes.rs
+  s_cfb20a6a102d4d::t_6aa2b3bb005a0d 29,35-38,55-56
+  s_cfb20a6a102d4d::t_d1f4a247c06daf 30-34
+tests/integration/simple_additions.rs
+  s_cfb20a6a102d4d::t_c8862e38198384 1124-1125
+  s_cfb20a6a102d4d::t_6a02c88d5515b0 899-903
+docs/bash-attribution-recovery-plan.md
+  s_cfb20a6a102d4d::t_8087db4d717508 200-201,255,260
+  s_cfb20a6a102d4d::t_53879350a4497d 202-205
+  s_cfb20a6a102d4d::t_79fb1dfb323003 23,65-67,78,156,158,169-170,172
+tests/commit_tree_update_ref.rs
+  s_cfb20a6a102d4d::t_2099a273b4c817 1060,1194
+  s_cfb20a6a102d4d::t_3f90b5256de07d 855
+tests/integration/sessions_cutover.rs
+  s_cfb20a6a102d4d::t_9f87ecd699bf42 547,550,567-571,574,670,673,690-694,697,1686,1689,1706-1710,1713,1801,1804,1821-1825,1828,1915,1918,1935-1939,1942,2137,2140,2157-2161,2164
+  s_cfb20a6a102d4d::t_d1f4a247c06daf 542
+  s_cfb20a6a102d4d::t_aeb94368fa2666 532,535-537,541,600,658-661,1674-1677,1789-1792,1903-1906,2125-2128
+src/daemon/bash_history_db.rs
+  s_cfb20a6a102d4d::t_e077c8aaea7872 37
+  s_cfb20a6a102d4d::t_274ff2b9f94e2f 88,103-117,133-136,157-160,166-170,269-272,317-320,403-406,452-455,475-478,500-503
+  s_cfb20a6a102d4d::t_cd33c8c877bba2 38-39
+  s_cfb20a6a102d4d::t_0d51301a058a7f 431-432,436,676-679,682,693,707
+tests/integration/daemon_commit_carryover.rs
+  s_cfb20a6a102d4d::t_829857a8394664 113-114
+tests/integration/prompt_across_commit.rs
+  s_cfb20a6a102d4d::t_2d5a5b0942cb03 68-69,104,106-118
+src/authorship/attribution_recovery.rs
+  s_cfb20a6a102d4d::t_78ef2ca1d8a1f8 401,405
+  s_cfb20a6a102d4d::t_280790ad54186e 418
+  s_cfb20a6a102d4d::t_9dd473f3503d2b 180,191-192,208
+  s_cfb20a6a102d4d::t_9e6d1158506d97 18,165,169-170,173,178,181-186,366-370,388-399,402,404,406-413,419-424
+  s_cfb20a6a102d4d::t_4d9e7fecb376f1 5,10,32,64,86,160
+  s_cfb20a6a102d4d::t_4e056e643ce6d7 561-562,581-582
+  s_cfb20a6a102d4d::t_0c02499d3d2c55 371,374,403
+  s_cfb20a6a102d4d::t_fc5cfcd94895df 552
+  s_cfb20a6a102d4d::t_cb41ff115f35fc 557,565-580,583,588,591-592,596,601,603
+  s_cfb20a6a102d4d::t_a340705eb9034a 117,120
+tests/integration/reset.rs
+  s_cfb20a6a102d4d::t_4f0986cffd3cb5 302-303,307
+tests/integration/fuzzer/operations.rs
+  s_cfb20a6a102d4d::t_61314ca2ad950d 5,46,58,68,73,80,89-91,103,125,134,159,175,182,187,196,202-206,212,237,255,257,308,311,419-471,473-474
+  s_cfb20a6a102d4d::t_41a21f267977c9 472
+  s_cfb20a6a102d4d::t_6b71297c6b08e1 411-418
+  s_cfb20a6a102d4d::t_a5706bed92ff57 127-129,152-154,190,215,258,312
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "f662743d73f11d535ca925ac08db6ed096412d94",
+  "prompts": {},
+  "sessions": {
+    "s_cfb20a6a102d4d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef69e-2f01-7191-829f-294bbd1e22bf",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

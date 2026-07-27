@@ -1,0 +1,24 @@
+.github/workflows/release.yml
+  cb2b6dbb554809e0 425-432,437
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ee1f37a2047f8b6686e26cae419fb0c9ee5ac3f9",
+  "prompts": {
+    "cb2b6dbb554809e0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "639d7bfe-bc78-4683-a37b-4c2eac338a51",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 3,
+      "accepted_lines": 9,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/f2d3081372b3cc4be3885e442bf55b487893a96dcff849b1fe4282492e7f7232"
+    }
+  }
+}
