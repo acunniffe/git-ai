@@ -1,0 +1,24 @@
+scripts/generate_badges.sh
+  77b7f4a6bcb21539 39,44-46,74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "89542da843b699e690e9f0f4c2904da675c8a358",
+  "prompts": {
+    "77b7f4a6bcb21539": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0c929701-b789-42c9-b7cc-d2be306f8d7f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 1,
+      "accepted_lines": 5,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/77008b302a2cf9ceaebd6638c83f9c06d3ea7c43e6855474f03282b19354decf"
+    }
+  }
+}

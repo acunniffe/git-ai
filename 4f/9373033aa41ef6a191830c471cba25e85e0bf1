@@ -1,0 +1,60 @@
+scripts/QUICK_REFERENCE.md
+  a55085fe53b81a6f 1-215
+scripts/release-to-jfrog.sh
+  a55085fe53b81a6f 1-362
+scripts/build-cross-platform.sh
+  a55085fe53b81a6f 1-179
+scripts/install-example.sh
+  a55085fe53b81a6f 1-63
+scripts/README.md
+  a55085fe53b81a6f 1-172
+scripts/DOWNLOAD_GUIDE.md
+  a55085fe53b81a6f 1-499
+.gitignore
+  a55085fe53b81a6f 6-14
+scripts/build-macos.sh
+  a55085fe53b81a6f 1-182
+scripts/install-from-jfrog.sh
+  a55085fe53b81a6f 1-265
+scripts/jfrog.env.example
+  a55085fe53b81a6f 1-24
+scripts/JFROG_RELEASE.md
+  a55085fe53b81a6f 1-367
+scripts/CROSS_COMPILE_GUIDE.md
+  a55085fe53b81a6f 1-449
+scripts/SENTRY_OPTIONS.md
+  a55085fe53b81a6f 1-271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.24",
+  "base_commit_sha": "4f9373033aa41ef6a191830c471cba25e85e0bf1",
+  "prompts": {
+    "63c42de935b6604b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "575ef473-9abd-4c53-84cc-584e06d05182",
+        "model": "unknown"
+      },
+      "human_author": "shawn.tian <shawn.tian@bkyo.io>",
+      "messages": [],
+      "total_additions": 6401,
+      "total_deletions": 35,
+      "accepted_lines": 6046,
+      "overriden_lines": 180
+    },
+    "a55085fe53b81a6f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2881c45b-d5f6-474a-b5cd-a1880e9e31cf",
+        "model": "unknown"
+      },
+      "human_author": "shawn.tian <shawn.tian@bkyo.io>",
+      "messages": [],
+      "total_additions": 3791,
+      "total_deletions": 27,
+      "accepted_lines": 3764,
+      "overriden_lines": 0
+    }
+  }
+}

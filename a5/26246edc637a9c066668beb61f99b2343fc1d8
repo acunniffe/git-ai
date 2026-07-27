@@ -1,0 +1,23 @@
+src/lib.rs
+  s_a73b2a35c101af::t_c6e8e9b93a97a9 1
+  s_a73b2a35c101af::t_8256f5d945b9b1 5
+src/observability/mod.rs
+  s_a73b2a35c101af::t_3d897ffc847b64 1-270,272-283
+  s_a73b2a35c101af::t_befde3fe2bf773 271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "a526246edc637a9c066668beb61f99b2343fc1d8",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

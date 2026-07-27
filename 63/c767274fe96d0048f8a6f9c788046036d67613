@@ -1,0 +1,20 @@
+src/daemon/test_sync.rs
+  s_af2d349a5e032c::t_2f499acf66e57e 255-257
+  s_af2d349a5e032c::t_d39204e5d1f471 242-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "63c767274fe96d0048f8a6f9c788046036d67613",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

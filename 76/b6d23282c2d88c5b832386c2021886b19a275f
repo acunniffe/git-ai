@@ -1,0 +1,26 @@
+tests/integration/metrics_retry_idle.rs
+  s_783b6672370794::t_292303af1a243e 1-63,65-143
+  s_783b6672370794::t_e003fa3df7a109 64
+tests/integration/main.rs
+  s_783b6672370794::t_292303af1a243e 88
+src/daemon/telemetry_worker.rs
+  s_783b6672370794::t_d2d774728a2862 1392-1401
+  s_783b6672370794::t_f90ab6b08e3402 25,455,481,495-502,513-514
+  s_783b6672370794::t_bf9e280049323a 515-516
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "76b6d23282c2d88c5b832386c2021886b19a275f",
+  "prompts": {},
+  "sessions": {
+    "s_783b6672370794": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f576d-cb44-71d2-8079-83ae270208d1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
