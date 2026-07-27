@@ -1,0 +1,48 @@
+src/authorship/rebase_authorship.rs
+  0fdac024afade5f0 3383,3572,3590,3697,3837,3960,4128,4146
+src/commands/status.rs
+  0fdac024afade5f0 516
+src/authorship/stats.rs
+  0fdac024afade5f0 1313,1359,1407,1776
+src/authorship/virtual_attribution.rs
+  0fdac024afade5f0 365
+src/config.rs
+  0fdac024afade5f0 1,84,152-153,394-398,628-656,676,700
+src/authorship/authorship_log.rs
+  0fdac024afade5f0 4,207-208,255
+src/authorship/internal_db.rs
+  0fdac024afade5f0 164
+src/authorship/authorship_log_serialization.rs
+  0fdac024afade5f0 778,846,896,1076,1248,1273
+src/authorship/agent_detection.rs
+  0fdac024afade5f0 126
+src/authorship/prompt_utils.rs
+  0fdac024afade5f0 717
+src/commands/search.rs
+  0fdac024afade5f0 1443
+src/commands/continue_session.rs
+  0fdac024afade5f0 1389
+src/authorship/post_commit.rs
+  0fdac024afade5f0 137-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "8ac440ae1bb831de45ca36ca071fafa46fc76b52",
+  "prompts": {
+    "0fdac024afade5f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8257be5-3885-4694-95b2-65e64f051327",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 77,
+      "total_deletions": 0,
+      "accepted_lines": 77,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/eaef904fbaa62fbcfc0c99c1c76ec30c4229bc6111314ed7835fb180930aa54b"
+    }
+  }
+}

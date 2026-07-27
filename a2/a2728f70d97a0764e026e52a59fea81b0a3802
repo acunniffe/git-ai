@@ -1,0 +1,19 @@
+src/daemon.rs
+  s_a2f58177a1dd18::t_d48471d41ab943 5860,5862-5870
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "a2a2728f70d97a0764e026e52a59fea81b0a3802",
+  "prompts": {},
+  "sessions": {
+    "s_a2f58177a1dd18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a46d3fd3-40c3-4c7b-b507-ba58eb2fab83",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ubuntu <ubuntu@ip-172-31-38-209.ap-south-1.compute.internal>"
+    }
+  }
+}

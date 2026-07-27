@@ -1,0 +1,57 @@
+src/observability/wrapper_performance_targets.rs
+  6149814d0ebd3e9a 102-118
+tests/performance.rs
+  6149814d0ebd3e9a 33,313-345,347-436,498,504-509,512-520,530-544,599,603,607,614
+tests/repos/test_repo.rs
+  6149814d0ebd3e9a 145-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "3f1f1abdf2ad0d68979bdf85ead0421de6e5d3c7",
+  "prompts": {
+    "6149814d0ebd3e9a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6d1d271b-a76e-4884-883e-1097bf16e88b",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/performance.rs:1-766 ok now make a test called\n\n\"test_large_checkpoints\" \n\n\n\nit will find_random_files, but 1000 of them (maybe make this pluggable so we can control how many are returned). \n\n\n\nedit all 1000 \n\n\n\nthen do a git-ai checkpoint mock_ai -- <pathspecs>\n\n\n\nthen edit a random 100 of them and do a git-ai checkpoint -- <pathspecs>\n\n\n\nwe want to do the benchmark on the last one ^ random 100\n\n\n\nyou'll need to add repo.benchmark_git_ai",
+          "timestamp": "2025-12-05T16:17:54.896Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me first look at the `TestRepo` implementation to understand how `git_ai` and `benchmark_git` work, so I can add `benchmark_git_ai`.",
+          "timestamp": "2025-12-05T16:18:01.316Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "glob_file_search",
+          "input": {
+            "globPattern": "**/test_repo.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "glob_file_search",
+          "input": {
+            "globPattern": "**/repos/*.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I understand the structure. Let me implement the changes:\n\n1. Add `benchmark_git_ai` to `TestRepo`\n2. Make",
+          "timestamp": "2025-12-05T16:18:11.015Z"
+        }
+      ],
+      "total_additions": 198,
+      "total_deletions": 13,
+      "accepted_lines": 189,
+      "overriden_lines": 1
+    }
+  }
+}

@@ -1,0 +1,57 @@
+src/presets/tool_classification.rs
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 234,274,292-293
+  s_3f33d55bdbf0ae::t_eddcbba7f5bf09 204-233,235-273,275-291,294-396
+src/transcripts/metadata.rs
+  s_3f33d55bdbf0ae::t_7b43bc0155b50b 196-216,218-223
+  s_3f33d55bdbf0ae::t_d7539ff03ff41f 217
+src/commands/blame.rs
+  s_3f33d55bdbf0ae::t_0bd42770290a4e 522-537,542-550,555-559,568-572,577-897
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 538-541,551-554,560-567,573-576
+src/daemon/commit_detector.rs
+  s_3f33d55bdbf0ae::t_c3359de75acb7f 681-743,749-784,788-836,838-941,943-990,994-999
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 744-748,785-787,837,942,991-993
+src/core/merge.rs
+  s_3f33d55bdbf0ae::t_385ef40ab4cb9d 591-705,707-844
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 706
+src/commands/diff.rs
+  s_3f33d55bdbf0ae::t_9b5820f70472c4 787-806,811-897,899-902,905-906,911-936,941-1044,1047-1060
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 807-810,898,903-904,907-910,937-940,1045-1046
+src/core/attribution.rs
+  s_3f33d55bdbf0ae::t_8f8980ab359674 1586-1597,1600-1614,1617-1632,1635-1694,1699-1707,1712-1756,1766-1769,1774,1777-1828,1831-1847,1851-1941,1943-1955,1957-1983,1985-1992,1994-2018,2022-2031,2035-2044,2048-2057,2061-2070,2074-2132,2137-2140,2155-2204
+  s_3f33d55bdbf0ae::t_587b98d52f6f1c 1757-1765,1770-1773,1775-1776
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 1598-1599,1615-1616,1633-1634,1695-1698,1708-1711,1829-1830,1848-1850,1942,1956,1984,1993,2019-2021,2032-2034,2045-2047,2058-2060,2071-2073,2150-2154
+  s_3f33d55bdbf0ae::t_8ec90c8ba780ca 2133-2136,2141-2149
+src/transcripts/sweep.rs
+  s_3f33d55bdbf0ae::t_e16ebd57974d64 452-454
+  s_3f33d55bdbf0ae::t_258d48cd5d2c48 335
+  s_3f33d55bdbf0ae::t_3d78a143c66a92 308-334,336-451,455-476,480-490
+  s_3f33d55bdbf0ae::t_6aeec4c9d1962f 477-479
+src/core/post_commit.rs
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 1421,1535-1542,1567-1570
+  s_3f33d55bdbf0ae::t_8307f627947bcc 1378-1420,1422-1534,1543-1566,1571-1675
+src/daemon/post_commit_worker.rs
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 195-198,245-249
+  s_3f33d55bdbf0ae::t_f8795c938030b0 176-194,199-244,250
+src/daemon/repo_resolver.rs
+  s_3f33d55bdbf0ae::t_918312d4db4e95 175-239,245-293
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 240-244
+src/transcripts/reader.rs
+  s_3f33d55bdbf0ae::t_600d2d7239fd00 436-440,463-467
+  s_3f33d55bdbf0ae::t_4df28643f52ea5 310-435,441-462,468-494
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "d48721c76ade1738c3c910103a9bb13724af7211",
+  "prompts": {},
+  "sessions": {
+    "s_3f33d55bdbf0ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a77b3e72-ee92-44bd-9730-40db29a11f77",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

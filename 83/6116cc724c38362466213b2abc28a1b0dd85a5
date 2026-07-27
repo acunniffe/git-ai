@@ -1,0 +1,24 @@
+src/commands/flush_metrics_db.rs
+  5ad50144a11f357c 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.1",
+  "base_commit_sha": "836116cc724c38362466213b2abc28a1b0dd85a5",
+  "prompts": {
+    "5ad50144a11f357c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff15bca0-c228-4079-8f35-927d2eb77229",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/64541de00a9b158b3b85e04c83a6021ab6290688d3dd447d48104ee54b6c6cc2"
+    }
+  }
+}

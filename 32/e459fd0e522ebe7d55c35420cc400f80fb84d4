@@ -1,0 +1,27 @@
+Cargo.toml
+  7ee5d6109d6ee4e8 66
+src/git/notes_api.rs
+  7ee5d6109d6ee4e8 299-430,760-1050
+src/commands/hooks/fetch_hooks.rs
+  7ee5d6109d6ee4e8 6,35-41,44-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "32e459fd0e522ebe7d55c35420cc400f80fb84d4",
+  "prompts": {
+    "7ee5d6109d6ee4e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfb718b9-3e94-482a-bffa-deaa4d9e5fcc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 859,
+      "total_deletions": 329,
+      "accepted_lines": 538,
+      "overriden_lines": 0
+    }
+  }
+}
