@@ -1,0 +1,25 @@
+AGENTS.md
+  1cc073e530bdbade 78,137
+src/feature_flags.rs
+  1cc073e530bdbade 55,139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "402ec9871e963ac06de2452de030ef379037868a",
+  "prompts": {
+    "1cc073e530bdbade": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "abf09622-1597-40e2-8825-8b7ceaa5d16b",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 4,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}

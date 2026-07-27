@@ -1,0 +1,31 @@
+tests/integration/cross_repo_cwd_attribution.rs
+  s_59382cac373d67::t_58cbe81e675c47 913,920,953-955,963-965
+src/daemon.rs
+  s_59382cac373d67::t_6bc8a32922f4dd 2750,3836,4329-4336,4408,9475,9479-9485
+  s_59382cac373d67::t_582b162b904ca8 4337
+  s_59382cac373d67::t_d1dc10c55fde5b 9449,9473,9478
+  s_59382cac373d67::t_b004c7d1c8ce0a 9450-9472,9474,9476-9477,9486-9496
+  s_59382cac373d67::t_2a8161c1508225 9448
+src/daemon/trace_normalizer.rs
+  s_59382cac373d67::t_a914e8ba2a8366 354,387
+  s_59382cac373d67::t_dae7e9a34cc09d 2022-2044,2046,2048,2055-2059,2061-2062,2064-2068,2076-2088
+  s_59382cac373d67::t_d1dc10c55fde5b 2021,2045,2069
+  s_59382cac373d67::t_6bc8a32922f4dd 377-386,2047,2049-2054,2060,2063,2070-2075
+  s_59382cac373d67::t_2e567d54e39e5a 2020
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "7af6bc7cc92dcef4aaee723c5f8edd6eeba8177b",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

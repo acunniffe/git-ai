@@ -1,0 +1,24 @@
+src/commands/prompts_db.rs
+  7d2a017e2a499f55 740-746,869-875
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.18",
+  "base_commit_sha": "21caf278d275b2ca89802d575f2da09a31684b6a",
+  "prompts": {
+    "7d2a017e2a499f55": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3cdb8e8e-d0bf-4280-ab0e-c3b8288e2b9f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 2,
+      "accepted_lines": 14,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/c3e4513c9c60aff1bfb5002de54518ea124021e810935d70ffed6586e3e5bb10"
+    }
+  }
+}

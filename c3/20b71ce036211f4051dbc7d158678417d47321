@@ -1,0 +1,9 @@
+src/commands/blame.rs
+  1b6c8e3 165-172,199,216,225,234
+  2f0f32c 205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "071d518dc444aa01cd587bed6540bb3e90157e53",
+  "prompts": {}
+}

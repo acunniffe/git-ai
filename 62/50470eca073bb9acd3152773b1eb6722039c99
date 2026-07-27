@@ -1,0 +1,101 @@
+src/commands/daemon.rs
+  s_59382cac373d67::t_b501535f67edcd 843
+  s_59382cac373d67::t_ed87f163ec9db1 230-231
+  s_59382cac373d67::t_fe17d63ecd64da 196
+  s_59382cac373d67::t_1367555991e1ca 802-805,802-806,840,842
+  s_59382cac373d67::t_33c54563eac999 235-236
+  s_59382cac373d67::t_1620f344ada4be 22-24
+  s_59382cac373d67::t_d065adbbee50e6 195,228-229,232-234
+  s_59382cac373d67::t_beaa57f2f321ce 19-21
+  s_59382cac373d67::t_c5cf20c49ebdb4 815-842,815-839,841
+  s_59382cac373d67::t_dbddaeb18299d4 806-814
+src/daemon/trace_normalizer.rs
+  s_59382cac373d67::t_b4d6776ba917b6 2015-2021
+  s_59382cac373d67::t_eb08f65154e024 351,374-384,1952-2014,2022-2024
+src/tokio_runtime.rs
+  s_59382cac373d67::t_ada508924b80ad 22,54-59,61-68,91,109,112-113
+  s_59382cac373d67::t_fe17d63ecd64da 17,24-25
+  s_59382cac373d67::t_9d776a24fb264b 75,77-84
+  s_59382cac373d67::t_b5d27a3d791b40 2,6,11-16,18-21
+  s_59382cac373d67::t_b1315ed0493700 60,74
+  s_59382cac373d67::t_211fdfcb4b76a9 9-10
+  s_59382cac373d67::t_aac3bd5eb11910 7-8,69-73,76,85-90,92-108,110-111
+  s_59382cac373d67::t_1a59b8afd8008e 23
+tests/integration/checkpoint_size.rs
+  s_59382cac373d67::t_3166616eca0afb 333
+  s_59382cac373d67::t_9f65f3a301f098 9,11-15,17-19,21-22,291,295,322-324,327,330-332,330-331,332
+  s_59382cac373d67::t_b4988affb45173 9-22,10,16,20,288,290,291-299,292-294,296-299,301-310,321,321-324,327,330-332
+  s_59382cac373d67::t_74ef1ccd3a090f 288,290
+  s_59382cac373d67::t_e56291937e64ce 289,300,311-320,325-326,328-329
+  s_59382cac373d67::t_5f3dda01713218 1
+  s_59382cac373d67::t_733ce325c503db 333
+src/daemon.rs
+  s_59382cac373d67::t_3fa0a5a8460180 2495,3411,3904-3912,3976,8616-8664
+  s_59382cac373d67::t_464614ad03bddd 1684
+  s_8325116c39d6d7::t_86d048d4e4957b 1685
+  s_59382cac373d67::t_805506c2b1680c 1662-1663,1678
+  s_59382cac373d67::t_341b4b57d691b6 2173-2174
+  s_59382cac373d67::t_932a25d951d781 3221
+tests/integration/repos/test_repo.rs
+  s_59382cac373d67::t_cfef508de7297b 1750-1753
+tests/integration/stash_attribution.rs
+  s_59382cac373d67::t_50973d760505f7 1422-1424,1441,1444,1452
+tests/integration/cross_repo_cwd_attribution.rs
+  s_59382cac373d67::t_84f03677ad37d2 913,920,953-955,963-965
+src/daemon/telemetry_worker.rs
+  s_59382cac373d67::t_cc17e3acd4f206 720,723-724
+  s_59382cac373d67::t_867598066f986f 190-193
+  s_59382cac373d67::t_faf80fb04b5522 1614
+  s_59382cac373d67::t_2bb79f731b3b84 1607
+src/streams/agents/codex.rs
+  s_59382cac373d67::t_7518fe059431db 82
+src/commands/checkpoint_agent/orchestrator.rs
+  s_59382cac373d67::t_022c3c87a5bf35 60
+src/process_timeout.rs
+  s_59382cac373d67::t_171143111f6ebb 94
+src/mdm/utils.rs
+  s_59382cac373d67::t_171143111f6ebb 15,15
+src/daemon/git_backend.rs
+  s_59382cac373d67::t_d8f1b1dccf7ff6 569
+src/authorship/git_ai_hooks.rs
+  s_59382cac373d67::t_446bcdd674310d 89,92-93,138
+  s_59382cac373d67::t_0e0bfebec42657 180
+  s_59382cac373d67::t_ccd26216622208 139,140
+  s_59382cac373d67::t_b348adc643d5f1 176
+  s_59382cac373d67::t_0a1fbea20b6af1 112,175,175,176
+  s_59382cac373d67::t_41f095073147d5 181
+src/streams/agents/opencode.rs
+  s_59382cac373d67::t_cbdb4ea1c56142 154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "6250470eca073bb9acd3152773b1eb6722039c99",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_8325116c39d6d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef832-10b4-7680-b77e-07b50ccd804f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_c87438fbf34620": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb3df-8090-7e81-b4ab-7800a7c25b88",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

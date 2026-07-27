@@ -1,0 +1,31 @@
+src/config.rs
+  0fdac024afade5f0 667-691
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "b234cddb0faa8cb613c076c7a10b77e6fb11bfbd",
+  "prompts": {
+    "0fdac024afade5f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8257be5-3885-4694-95b2-65e64f051327",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 25,
+      "total_deletions": 3,
+      "accepted_lines": 25,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/814da23702f9af5bbb8582eaadbb11188b43ae6fd77ac7318cb64ba1acaa302b",
+      "custom_attributes": {
+        "employee_id": "E123",
+        "active": true,
+        "device_id": "MAC-001",
+        "count": 42,
+        "team": "platform"
+      }
+    }
+  }
+}

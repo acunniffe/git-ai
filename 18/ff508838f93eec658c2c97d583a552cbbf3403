@@ -1,0 +1,39 @@
+src/commands/install_hooks.rs
+  cad771d35272a2a6 23-26,329-368,534-546,833-1032,1251-1254,2760-3228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "18ff508838f93eec658c2c97d583a552cbbf3403",
+  "prompts": {
+    "cad771d35272a2a6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "97b1bb12-f049-4e83-931f-dd8e4ee9068d",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Update @src/commands/install_hooks.rs with support for gemini. It's basically the same pattern as with Claude, except the name of the cli binary is `gemini`, the settings path is ~/.gemini/settings.json, and the hooks we need to add look like this:\n\n\n\n  \"hooks\": {\n\n\n\n    \"BeforeTool\": [\n\n      {\n\n        \"matcher\": \"write_file|replace\",\n\n        \"hooks\": [\n\n          {\n\n            \"type\": \"command\",\n\n            \"command\": \"git-ai checkpoint gemini --hook-input stdin\"\n\n          }\n\n        ]\n\n      }\n\n    ],\n\n    \"AfterTool\": [\n\n      {\n\n        \"matcher\": \"write_file|replace\",\n\n        \"hooks\": [\n\n          {\n\n            \"type\": \"command\",\n\n            \"command\": \"git-ai checkpoint gemini --hook-input stdin\"\n\n          }\n\n        ]\n\n      }\n\n    ]\n\n  },\n\n\n\nIn the settings file, we will also need to enable hooks like so:\n\n\n\n  \"tools\": {\n\n    \"enableHooks\": true\n\n  },",
+          "timestamp": "2025-12-10T16:29:24.367Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Adding Gemini support following the Claude Code pattern. Reviewing the Claude implementation, then adding Gemini equivalents.",
+          "timestamp": "2025-12-10T16:29:30.221Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {}
+        }
+      ],
+      "total_additions": 1264,
+      "total_deletions": 1,
+      "accepted_lines": 739,
+      "overriden_lines": 0
+    }
+  }
+}
