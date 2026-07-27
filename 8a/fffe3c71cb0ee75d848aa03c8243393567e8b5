@@ -7,6 +7,7 @@ tests/daemon_mode.rs
   s_7d470640a960b2::t_9f0d834eb9c997 1636-1638,1684-1686,1769-1771,1861-1863
   s_7d470640a960b2::t_07a298d60c746b 1710-1727
   s_7d470640a960b2::t_d23ef4d2d39284 1708-1709
+  s_7d470640a960b2::t_f689abb13b5d33 20-22
 src/daemon/checkpoint.rs
   s_7d470640a960b2::t_ada1ec1767a7cd 863-871
 src/commands/git_ai_handlers.rs
