@@ -1,0 +1,53 @@
+src/commands/hooks/clone_hooks.rs
+  434bc14 6,16,18,42
+  human 17
+  004794a 1
+src/git/cli_parser.rs
+  5166310 101
+  004794a 468-557,629-706
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "796b01468ca6ddc4e54d2f5357ae93b764ad86d7",
+  "prompts": {
+    "004794a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "780506b1-c860-4722-a5c7-61f3bf3061da",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "this @src/commands/hooks/clone_hooks.rs:59-60  should be in @src/git/cli_parser.rs",
+          "timestamp": "2025-11-23T16:18:50.413Z"
+        }
+      ],
+      "total_additions": 375,
+      "total_deletions": 391,
+      "accepted_lines": 169,
+      "overriden_lines": 0
+    },
+    "5166310": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8c6ca15c-a246-4ca3-8838-32a44842ce5b",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/hooks/clone_hooks.rs:76 this is a duplicate of is_flag_with_value in @src/git/cli_parser.rs . use that instead",
+          "timestamp": "2025-11-23T16:18:19.804Z"
+        }
+      ],
+      "total_additions": 358,
+      "total_deletions": 294,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

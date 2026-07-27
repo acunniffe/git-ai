@@ -1,0 +1,80 @@
+src/utils.rs
+  4db65a5 4-5,87-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "5df6ec661245469f83783c67978e7d8144e43765",
+  "prompts": {
+    "4db65a5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3b5744ab-cf2b-4575-a657-80bf3222b073",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Write a utility function to check if we're running in WSL on a windows machine.\n\nUse compiler macros ie #[not(windows)] to set it to false automatically and save the check.\n\nThis should run once, lazzily if its value is checked. Place your code below the normalize_to_posix fn",
+          "timestamp": "2025-11-19T19:18:02.172Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing `utils.rs` to locate `normalize_to_posix` and understand the structure.",
+          "timestamp": "2025-11-19T19:18:04.023Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a lazy WSL detection function below `normalize_to_posix`, using compiler macros to return false on non-Windows platforms.",
+          "timestamp": "2025-11-19T19:18:05.447Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linter errors:",
+          "timestamp": "2025-11-19T19:18:09.228Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Making the static conditional to fix the linter warning:",
+          "timestamp": "2025-11-19T19:18:11.571Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Rechecking lints:",
+          "timestamp": "2025-11-19T19:18:14.535Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Added a utility function to detect WSL on Windows.\n\n1. **Lazy evaluation**: Uses `std::sync::OnceLock` to check once when first accessed\n2. **Compiler macros**: `#[cfg(not(windows))]` returns `false` on non-Windows; `#[cfg(windows)]` performs the check\n3. **WSL detection**: On Windows, checks `/proc/version` for \"microsoft\" or \"wsl\"\n4. **Placement**: Located below `normalize_to_posix` as requested\n\nThe function is `pub fn is_wsl() -> bool` and can be called from anywhere in the codebase. On non-Windows platforms, it compiles to a simple `false` return, avoiding any runtime overhead.",
+          "timestamp": "2025-11-19T19:18:17.517Z"
+        }
+      ],
+      "total_additions": 66,
+      "total_deletions": 21,
+      "accepted_lines": 45,
+      "overriden_lines": 0
+    }
+  }
+}

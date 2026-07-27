@@ -1,0 +1,23 @@
+src/daemon/stream_worker.rs
+  s_3ee5d562502033::t_c98c54a2c1cb9c 1331
+  s_3ee5d562502033::t_685de3e728a473 288-302,310,313,346-364,831,1150
+  s_3ee5d562502033::t_ece0dc895d444c 1404
+  s_3ee5d562502033::t_585b44cfd1fe53 1325-1328,1330,1332-1336,1339-1341,1343-1345,1347,1349-1367,1369-1384,1386-1396,1398-1403,1405-1413,1446-1448
+  s_3ee5d562502033::t_e1a3db5f03e700 1329,1337-1338,1342,1346,1348,1368,1385,1397,1414-1445
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "0f29aaa0ccbf76c6c3d248894ff9b53b3b34a918",
+  "prompts": {},
+  "sessions": {
+    "s_3ee5d562502033": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edcbd-2231-74b0-a8d9-53959e4f692e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

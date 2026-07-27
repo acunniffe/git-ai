@@ -1,0 +1,39 @@
+src/git/rewrite_log.rs
+  1dbc0609c31414ab 2,588
+src/daemon.rs
+  1dbc0609c31414ab 8550,8595-8600,8603
+  a065c2579295dcd3 8551-8556,8558-8560,8601-8602
+src/daemon/family_actor.rs
+  1dbc0609c31414ab 150-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "4fec0276bdb3ecb467f7917435a8d33865e2f2ce",
+  "prompts": {
+    "1dbc0609c31414ab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "91103abc-b70b-4829-9a7d-4ae7092cb8f7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>",
+      "total_additions": 25,
+      "total_deletions": 28,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "a065c2579295dcd3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9de4835-cf67-48a6-b7e6-220de1a704b0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>",
+      "total_additions": 11,
+      "total_deletions": 11,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}

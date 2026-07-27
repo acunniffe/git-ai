@@ -1,0 +1,24 @@
+tests/integration/install_hooks_comprehensive.rs
+  s_9e6eba0ab9069d::t_e4e73d3e627b6d 277-318
+  s_9e6eba0ab9069d::t_86b6862b9c9b51 276
+src/mdm/agents/cline.rs
+  s_9e6eba0ab9069d::t_a8217ae7c6d9cc 20-25,89-102,104-115,290-293
+  s_9e6eba0ab9069d::t_aa06cf20e832c6 440-521
+  s_9e6eba0ab9069d::t_19321f095b72e7 19,46,60,78,103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "0467308975ce248a173a9eb639c03c91c0e53e99",
+  "prompts": {},
+  "sessions": {
+    "s_9e6eba0ab9069d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa095-4e77-7681-8122-dfe0980a0638",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

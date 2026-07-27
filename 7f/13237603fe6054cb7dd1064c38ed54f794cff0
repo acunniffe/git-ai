@@ -1,0 +1,45 @@
+src/synopsis/mod.rs
+  3800fef055e223b0 1-7
+src/synopsis/storage.rs
+  3800fef055e223b0 1-88
+src/synopsis/collector.rs
+  3800fef055e223b0 1-250
+src/synopsis/commands.rs
+  3800fef055e223b0 1-2,4-139,143-181,186-364,366-377
+src/synopsis/config.rs
+  3800fef055e223b0 1-61,63-77,79-81
+src/commands/synopsis.rs
+  3800fef055e223b0 1-2
+src/synopsis/conversation.rs
+  3800fef055e223b0 1-8,13-14,16,18,23-59,61-212,218-244,246-274,276-293,295-299,301-355
+src/synopsis/generator.rs
+  3800fef055e223b0 1,3-5,8-13,15-17,20-28,30-37,39-86,88-171,173-240
+src/synopsis/types.rs
+  3800fef055e223b0 1-71
+src/commands/git_ai_handlers.rs
+  3800fef055e223b0 245-247,361-364,1248-1267,1269-1271,1276-1283,1285-1289,1291-1292,1307-1314,2126-2146
+src/lib.rs
+  3800fef055e223b0 16
+src/main.rs
+  3800fef055e223b0 2-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "7f13237603fe6054cb7dd1064c38ed54f794cff0",
+  "prompts": {
+    "3800fef055e223b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6eb5fa7d-e90c-414f-96d0-923f058e7998",
+        "model": "<synthetic>"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>",
+      "messages": [],
+      "total_additions": 188,
+      "total_deletions": 17,
+      "accepted_lines": 1438,
+      "overriden_lines": 0
+    }
+  }
+}

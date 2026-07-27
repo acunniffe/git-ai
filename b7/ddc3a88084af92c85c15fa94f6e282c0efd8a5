@@ -1,0 +1,23 @@
+src/authorship/authorship_log_serialization.rs
+  9b48e215124b4ff7 1548-1607
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "b7ddc3a88084af92c85c15fa94f6e282c0efd8a5",
+  "prompts": {
+    "9b48e215124b4ff7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90d1e348-0492-449f-9757-84fc31d6fa2c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 60,
+      "total_deletions": 25,
+      "accepted_lines": 60,
+      "overriden_lines": 0
+    }
+  }
+}

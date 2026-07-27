@@ -1,0 +1,141 @@
+src/commands/hooks/clone_hooks.rs
+  434bc14 1-261
+src/commands/hooks/mod.rs
+  434bc14 2
+src/commands/git_handlers.rs
+  434bc14 2,109-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "f937ddc3426b1b52e54ab06d4056efbaf606a033",
+  "prompts": {
+    "434bc14": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a4fa0d1e-d7c9-48d9-a7e8-20e1611c04bf",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/git_handlers.rs:1-412 Build a post-clone hook that calls fetch_authorship_notes with origin (defualt when cloned)",
+          "timestamp": "2025-11-22T13:21:33.094Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I need to understand the current implementation before creating a plan. Let me search for `fetch_authorship_notes` to see how it's currently used and what it expects.",
+          "timestamp": "2025-11-22T13:21:43.452Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "pattern": "fetch_authorship_notes"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-i": true,
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/commands",
+            "pattern": "\\bclone\\b"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 30,
+            "offset": 40,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/sync_authorship.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I can see that `fetch_authorship_notes` is already designed for this use case (the comment at line 44 mentions \"post-clone hooks\"). Now let me check how to extract the target directory from clone command arguments:",
+          "timestamp": "2025-11-22T13:22:05.218Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Understanding how to extract the cloned repository path from git clone arguments",
+            "query": "How to parse git clone command arguments to get the target directory?",
+            "target_directories": [
+              "src/git"
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I have enough information to create a plan. Let me present it:",
+          "timestamp": "2025-11-22T13:22:17.233Z"
+        },
+        {
+          "type": "user",
+          "text": "Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.\n\nTo-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.",
+          "timestamp": "2025-11-22T13:37:08.571Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll implement the plan step by step. Let me start by marking the first todo as in_progress and then create the clone_hooks.rs file.",
+          "timestamp": "2025-11-22T13:37:13.902Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Create clone_hooks.rs with post_clone_hook function",
+                "id": "create-clone-hooks",
+                "status": "in_progress"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/mod.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/hooks/fetch_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll create the clone_hooks.rs file:",
+          "timestamp": "2025-11-22T13:37:20.724Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "write",
+          "input": {
+            "file_path": ""
+          }
+        }
+      ],
+      "total_additions": 271,
+      "total_deletions": 1,
+      "accepted_lines": 273,
+      "overriden_lines": 0
+    }
+  }
+}

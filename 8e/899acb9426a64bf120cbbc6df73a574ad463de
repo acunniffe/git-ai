@@ -1,0 +1,29 @@
+src/mdm/skills_installer.rs
+  5f4ad1a4e8537eb7 1-56,58-61,63-212
+src/mdm/mod.rs
+  5f4ad1a4e8537eb7 3,9
+src/commands/install_hooks.rs
+  5f4ad1a4e8537eb7 4,94-111,226-244
+src/config.rs
+  5f4ad1a4e8537eb7 531-532,536,541,545-554
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.37",
+  "base_commit_sha": "8e899acb9426a64bf120cbbc6df73a574ad463de",
+  "prompts": {
+    "5f4ad1a4e8537eb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73dc2433-1436-4e3a-8c4a-5d0a57540f45",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 476,
+      "total_deletions": 213,
+      "accepted_lines": 266,
+      "overriden_lines": 2
+    }
+  }
+}
