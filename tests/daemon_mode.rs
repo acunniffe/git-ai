@@ -1100,6 +1100,7 @@ fn daemon_restart_refuses_sandbox_before_shutdown() {
 #[test]
 #[serial]
 fn daemon_run_allows_sandbox_marker_for_foreground_process() {
+    // ENG-211: Explicit foreground startup remains available inside a sandbox.
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
     let _daemon = DaemonGuard::start_with_env(&repo, &[("SANDBOX_RUNTIME", "seatbelt")]);
 
