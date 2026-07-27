@@ -1004,6 +1004,100 @@ fn daemon_start_spawns_detached_run_process() {
 }
 
 #[test]
+#[serial]
+fn daemon_start_refuses_sandbox_inherited_autostart() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let mut command = Command::new(get_binary_path());
+    command
+        .arg("bg")
+        .arg("start")
+        .current_dir(repo.path())
+        .env("GIT_AI_TEST_DB_PATH", repo.test_db_path())
+        .env("GITAI_TEST_DB_PATH", repo.test_db_path())
+        .env("SANDBOX_RUNTIME", "seatbelt");
+    configure_test_home_env(&mut command, repo.test_home_path());
+    configure_test_daemon_env(
+        &mut command,
+        &repo.daemon_home_path(),
+        &daemon_control_socket_path(&repo),
+        &daemon_trace_socket_path(&repo),
+    );
+
+    let output = command
+        .output()
+        .expect("failed to invoke daemon start inside a sandbox");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if daemon_control_socket_path(&repo).exists() {
+        let _ = send_control_request(
+            &daemon_control_socket_path(&repo),
+            &ControlRequest::Shutdown,
+        );
+    }
+    assert!(
+        !output.status.success(),
+        "daemon start must refuse a sandbox-inherited detached daemon: stdout={} stderr={stderr}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        stderr.to_ascii_lowercase().contains("sandbox"),
+        "daemon start should explain the sandbox refusal: stderr={stderr}"
+    );
+    assert!(
+        !daemon_control_socket_path(&repo).exists(),
+        "sandbox refusal must not leave a daemon control socket"
+    );
+}
+
+#[test]
+#[serial]
+fn daemon_restart_refuses_sandbox_before_shutdown() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    start_daemon_for_repo(&repo);
+
+    let mut command = Command::new(get_binary_path());
+    command
+        .arg("bg")
+        .arg("restart")
+        .current_dir(repo.path())
+        .env("GIT_AI_TEST_DB_PATH", repo.test_db_path())
+        .env("GITAI_TEST_DB_PATH", repo.test_db_path())
+        .env("SANDBOX_RUNTIME", "seatbelt");
+    configure_test_home_env(&mut command, repo.test_home_path());
+    configure_test_daemon_env(
+        &mut command,
+        &repo.daemon_home_path(),
+        &daemon_control_socket_path(&repo),
+        &daemon_trace_socket_path(&repo),
+    );
+
+    let output = command
+        .output()
+        .expect("failed to invoke daemon restart inside a sandbox");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        !output.status.success(),
+        "daemon restart must refuse before shutting down a healthy daemon: stdout={} stderr={stderr}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        send_control_request(
+            &daemon_control_socket_path(&repo),
+            &ControlRequest::StatusFamily {
+                repo_working_dir: repo_workdir_string(&repo),
+            },
+        )
+        .is_ok(),
+        "sandbox restart refusal must leave the existing daemon running"
+    );
+
+    let _ = send_control_request(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::Shutdown,
+    );
+}
+
+#[test]
 #[should_panic(expected = "pending daemon sync work")]
 fn dedicated_daemon_restart_rejects_pending_traced_command_for_test() {
     let mut repo = TestRepo::new_dedicated_daemon();
@@ -1476,6 +1570,53 @@ fn checkpoint_transport_failure_publishes_exact_outbox_record() {
         BaseCommit::Sha(sha) => assert_eq!(sha, &base_commit),
         BaseCommit::Initial => panic!("committed fixture should capture its base commit SHA"),
     }
+}
+
+#[test]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn sandbox_checkpoint_autostart_publishes_outbox_without_starting_daemon() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let file_path = repo.path().join("sandbox-checkpoint.txt");
+    fs::write(&file_path, "base\n").expect("failed to write base checkpoint fixture");
+    repo.git_og(&["add", "sandbox-checkpoint.txt"])
+        .expect("failed to stage base checkpoint fixture");
+    repo.git_og(&["commit", "-m", "base commit"])
+        .expect("failed to create base checkpoint commit");
+    fs::write(&file_path, "base\ncaptured in sandbox\n")
+        .expect("failed to write sandbox checkpoint fixture");
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["checkpoint", "mock_ai", "sandbox-checkpoint.txt"],
+        &[],
+    );
+    let output = command
+        .env("GIT_AI_TEST_ALLOW_DAEMON_AUTOSPAWN", "1")
+        .env("SANDBOX_RUNTIME", "seatbelt")
+        .output()
+        .expect("failed to invoke sandbox checkpoint");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    if daemon_control_socket_path(&repo).exists() {
+        let _ = send_control_request(
+            &daemon_control_socket_path(&repo),
+            &ControlRequest::Shutdown,
+        );
+    }
+
+    assert!(
+        output.status.success(),
+        "sandbox checkpoints must preserve their exit-zero contract: stdout={} stderr={stderr}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert_eq!(
+        ready_checkpoint_outbox_records(&repo).len(),
+        1,
+        "sandbox checkpoint should publish exactly one durable outbox record; stderr={stderr}"
+    );
+    assert!(
+        !daemon_control_socket_path(&repo).exists(),
+        "sandbox checkpoint must not start a daemon"
+    );
 }
 
 #[test]

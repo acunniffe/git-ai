@@ -57,6 +57,29 @@ pub fn sanitize_git_env_for_daemon() {
     }
 }
 
+/// Remove sandbox markers from the long-lived daemon process. Startup policy
+/// is evaluated by the parent before a detached daemon is spawned; once a
+/// daemon is explicitly running, its own restart must not inherit the marker
+/// that caused detached auto-start to be blocked.
+pub fn sanitize_sandbox_env_for_daemon() {
+    for var in crate::operations::commands::daemon_start_policy::SandboxMarkers::ENV_VARS {
+        // SAFETY: daemon startup is single-threaded at this point -- the tokio
+        // runtime is not yet running and no other threads exist.
+        unsafe {
+            std::env::remove_var(var);
+        }
+    }
+}
+
+pub fn sanitize_daemon_child_environment(command: &mut std::process::Command) {
+    for var in GIT_ENV_VARS_TO_SANITIZE {
+        command.env_remove(var);
+    }
+    for var in crate::operations::commands::daemon_start_policy::SandboxMarkers::ENV_VARS {
+        command.env_remove(var);
+    }
+}
+
 pub fn disable_trace2_for_daemon_process() {
     // The daemon executes internal git commands while processing events and control requests.
     // If trace2.eventTarget points at this daemon socket globally, those internal git
@@ -300,6 +323,7 @@ pub fn daemon_run_pending_self_update() -> DaemonSelfUpdateOutcome {
 
 pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction, GitAiError> {
     sanitize_git_env_for_daemon();
+    sanitize_sandbox_env_for_daemon();
     disable_trace2_for_daemon_process();
     config.ensure_parent_dirs()?;
     remove_stale_daemon_files(&config);

@@ -1,4 +1,7 @@
 use crate::model::repository::lock_file::LockFile;
+use crate::operations::commands::daemon_start_policy::{
+    SandboxMarkers, require_detached_start_allowed,
+};
 use crate::operations::daemon::daemon_log_file_path;
 use crate::operations::daemon::{
     ControlRequest, DaemonConfig, local_socket_connects_with_timeout, read_daemon_pid,
@@ -106,6 +109,9 @@ fn ensure_daemon_running_attached(timeout: Duration) -> Result<DaemonConfig, Str
         return Ok(config);
     }
 
+    let markers = SandboxMarkers::from_env();
+    require_detached_start_allowed(&markers)?;
+
     remove_stale_daemon_files(&config);
 
     if daemon_startup_is_blocked(&config) {
@@ -178,6 +184,12 @@ fn handle_run(args: &[String]) -> Result<(), String> {
         return Err("--mode is no longer supported; daemon always runs in write mode".to_string());
     }
     let config = daemon_config_from_env_or_default_paths()?;
+    let markers = SandboxMarkers::from_env();
+    if let Some(marker) = markers.strong_marker_name() {
+        eprintln!(
+            "warning: running a foreground daemon with sandbox marker {marker}; detached auto-start remains blocked"
+        );
+    }
     let runtime_dir = daemon_runtime_dir(&config)?;
     std::env::set_current_dir(&runtime_dir).map_err(|e| {
         format!(
@@ -241,16 +253,15 @@ pub(crate) fn ensure_daemon_running(
 
     #[cfg(not(any(test, feature = "test-support")))]
     {
-        if std::env::var("_GITAI_INTERNAL_DISABLE_WRAPPER_DAEMON_AUTOSPAWN")
-            .is_ok_and(|v| v == "1" || v == "true")
-        {
-            return Err(
-                "daemon auto-spawn disabled (_GITAI_INTERNAL_DISABLE_WRAPPER_DAEMON_AUTOSPAWN)"
-                    .to_string(),
-            );
+        use crate::operations::commands::daemon_start_policy::should_auto_start_detached;
+        let auto_start_disabled = std::env::var("_GITAI_INTERNAL_DISABLE_WRAPPER_DAEMON_AUTOSPAWN")
+            .is_ok_and(|v| v == "1" || v == "true");
+        let markers = SandboxMarkers::from_env();
+        if should_auto_start_detached(auto_start_disabled, &markers)? {
+            start_daemon_detached_with_config(config, timeout)
+        } else {
+            Ok(config)
         }
-
-        start_daemon_detached_with_config(config, timeout)
     }
 }
 
@@ -374,12 +385,8 @@ fn spawn_daemon_run_detached(config: &DaemonConfig) -> Result<(), String> {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        // Remove git environment variables that must not leak into the daemon.
-        for var in crate::operations::daemon::GIT_ENV_VARS_TO_SANITIZE {
-            child.env_remove(var);
-        }
+        crate::operations::daemon::sanitize_daemon_child_environment(&mut child);
         child.env_remove("GIT_AI");
-
         let preferred_flags =
             CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | CREATE_BREAKAWAY_FROM_JOB;
         child.creation_flags(preferred_flags);
@@ -411,15 +418,7 @@ fn spawn_daemon_run_detached(config: &DaemonConfig) -> Result<(), String> {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null());
-        // Remove git environment variables that must not leak into the daemon.
-        // The daemon is repository-agnostic; variables like GIT_DIR override
-        // the -C flag and cause repository resolution failures.
-        for var in crate::operations::daemon::GIT_ENV_VARS_TO_SANITIZE {
-            child.env_remove(var);
-        }
-        // GIT_AI controls debug routing in the binary (GIT_AI=git → handle_git).
-        // A daemon that inherits this would route "bg run" to the git proxy instead
-        // of starting as a daemon.
+        crate::operations::daemon::sanitize_daemon_child_environment(&mut child);
         child.env_remove("GIT_AI");
         child.spawn().map(|_| ()).map_err(|e| e.to_string())
     }
@@ -439,9 +438,7 @@ fn spawn_daemon_run_with_piped_stderr(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
-    for var in crate::operations::daemon::GIT_ENV_VARS_TO_SANITIZE {
-        child.env_remove(var);
-    }
+    crate::operations::daemon::sanitize_daemon_child_environment(&mut child);
     child.env_remove("GIT_AI");
     child.spawn().map_err(|e| e.to_string())
 }
@@ -588,6 +585,9 @@ fn handle_shutdown(args: &[String]) -> Result<(), String> {
 fn handle_restart(args: &[String]) -> Result<(), String> {
     let config = daemon_config_from_env_or_default_paths()?;
     let hard = has_flag(args, "--hard");
+
+    // Check post-restart policy before shutting down a healthy daemon.
+    require_detached_start_allowed(&SandboxMarkers::from_env())?;
 
     // Only attempt shutdown if daemon appears to be running.
     let was_running = daemon_is_up(&config) || daemon_startup_is_blocked(&config);
@@ -742,6 +742,7 @@ pub(crate) fn stop_daemon(config: &DaemonConfig, timeout: Duration) -> Result<()
 /// Shut down the running daemon and start a fresh one. Escalates to hard kill
 /// if the soft shutdown doesn't complete within GRACEFUL_SHUTDOWN_TIMEOUT.
 pub(crate) fn restart_daemon(config: &DaemonConfig) -> Result<(), String> {
+    require_detached_start_allowed(&SandboxMarkers::from_env())?;
     let was_running = daemon_is_up(config) || daemon_startup_is_blocked(config);
     if was_running {
         stop_daemon(config, GRACEFUL_SHUTDOWN_TIMEOUT)?;
