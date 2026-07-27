@@ -188,7 +188,7 @@ fn clone_relative_target_falls_back_to_argv_target_when_def_repo_candidate_fails
     let temp = tempfile::tempdir().expect("create tempdir");
     let outer = temp.path().join("outer");
     let clone_dir = outer.join("nested").join("relative-clone");
-    fs::create_dir_all(clone_dir.join(".git")).expect("create clone git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&clone_dir.join(".git"));
 
     let start = serde_json::json!({
         "event":"start",
@@ -262,7 +262,7 @@ fn clone_with_late_family_resolution_does_not_need_ref_metadata() {
     assert!(normalizer.ingest_payload(&cmd_name).unwrap().is_none());
 
     // Simulate repo discoverability only once clone is about to exit.
-    fs::create_dir_all(clone_dir.join(".git")).expect("create clone git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&clone_dir.join(".git"));
 
     assert!(normalizer.ingest_payload(&exit).unwrap().is_none());
     let cmd = normalizer
@@ -281,8 +281,8 @@ fn clone_prefers_target_family_over_source_cwd_family() {
     let temp = tempfile::tempdir().expect("create tempdir");
     let source_repo = temp.path().join("source-repo");
     let cloned_repo = temp.path().join("cloned-repo");
-    fs::create_dir_all(source_repo.join(".git")).expect("create source git dir");
-    fs::create_dir_all(cloned_repo.join(".git")).expect("create cloned git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&source_repo.join(".git"));
+    crate::operations::git::test_utils::seed_valid_git_dir(&cloned_repo.join(".git"));
 
     let start = serde_json::json!({
         "event":"start",
@@ -331,7 +331,7 @@ fn clone_child_def_repo_does_not_overwrite_root_worktree() {
     let temp = tempfile::tempdir().expect("create tempdir");
     let cwd = temp.path().join("projects"); // non-repo CWD
     let clone_dest = cwd.join("testing-git"); // the clone destination
-    fs::create_dir_all(clone_dest.join(".git")).expect("create clone git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&clone_dest.join(".git"));
 
     let root_sid = "20260327T000000.000000Z-Hdeadbeef-P00010000";
     let child_sid = format!("{}/20260327T000000.000001Z-Hdeadbeef-P00010001", root_sid);
@@ -426,8 +426,8 @@ fn interleaved_roots_with_out_of_order_exits_finalize_independently() {
     let temp = tempfile::tempdir().expect("create tempdir");
     let repo_a = temp.path().join("repo-a");
     let repo_b = temp.path().join("repo-b");
-    fs::create_dir_all(repo_a.join(".git")).expect("create repo-a git dir");
-    fs::create_dir_all(repo_b.join(".git")).expect("create repo-b git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&repo_a.join(".git"));
+    crate::operations::git::test_utils::seed_valid_git_dir(&repo_b.join(".git"));
 
     let start_a = serde_json::json!({
         "event":"start",
@@ -488,6 +488,7 @@ fn start_ignores_repo_gitdir_hint_and_uses_cwd_for_worktree_resolution() {
     let worker_git_dir = common_git_dir.join("worktrees").join("worker-b");
     let worker_worktree = temp.path().join("repo-worker-b");
     let worker_head = "1111111111111111111111111111111111111111";
+    crate::operations::git::test_utils::seed_valid_git_dir(&common_git_dir);
     fs::create_dir_all(common_git_dir.join("refs").join("heads"))
         .expect("create common refs/heads");
     fs::create_dir_all(&worker_git_dir).expect("create linked worktree git dir");
@@ -548,7 +549,7 @@ fn destructive_stash_can_normalize_without_pre_command_target_oid() {
     let mut normalizer = TraceNormalizer::new(backend);
     let temp = tempfile::tempdir().expect("create tempdir");
     let repo = temp.path().join("repo");
-    fs::create_dir_all(repo.join(".git")).expect("create git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&repo.join(".git"));
 
     let start = serde_json::json!({
         "event":"start",

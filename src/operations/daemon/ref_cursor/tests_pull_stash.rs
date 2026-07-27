@@ -62,6 +62,7 @@ fn pull_rebase_span_starts_at_start_entry_when_expected_state_matches_pick() {
     let worktree = temp.path().join("repo");
     let git_dir = worktree.join(".git");
     fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
     append_reflog(
         &git_dir,
         "HEAD",
@@ -131,6 +132,7 @@ fn cold_pull_rebase_late_ingress_offset_still_recovers_start_and_branch_finish()
     let worktree = temp.path().join("repo");
     let git_dir = worktree.join(".git");
     fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     let start_line = format!(
         "{B} {C} Test User <test@example.com> 0 +0000\tpull --rebase (start): checkout {C}\n"
@@ -198,6 +200,7 @@ fn cold_pull_rebase_true_boundary_does_not_replay_older_pull_span() {
     let worktree = temp.path().join("repo");
     let git_dir = worktree.join(".git");
     fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     let old_start = format!(
         "{A} {B} Test User <test@example.com> 0 +0000\tpull --rebase (start): checkout main\n"

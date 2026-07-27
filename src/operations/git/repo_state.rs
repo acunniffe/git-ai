@@ -10,11 +10,23 @@ pub struct HeadState {
     pub detached: bool,
 }
 
+/// A directory-form `.git` entry is a repository boundary only if it contains
+/// a `HEAD` file. `HEAD` is present in normal git dirs, bare repos, and
+/// linked-worktree git dirs (`.git/worktrees/<name>/`). Callers must already
+/// know `path` is a directory; this performs exactly one extra stat.
+pub fn is_valid_git_dir(path: &Path) -> bool {
+    path.join("HEAD").is_file()
+}
+
 pub fn worktree_root_for_path(path: &Path) -> Option<PathBuf> {
     let mut current = Some(path);
     while let Some(candidate) = current {
         let dot_git = candidate.join(".git");
-        if dot_git.is_dir() || dot_git.is_file() {
+        // A directory-form .git without HEAD (e.g. `mkdir .git`) is not a
+        // repository boundary -- keep walking up.
+        if let Ok(metadata) = fs::metadata(&dot_git)
+            && (metadata.is_file() || (metadata.is_dir() && is_valid_git_dir(&dot_git)))
+        {
             return Some(candidate.to_path_buf());
         }
         current = candidate.parent();
@@ -55,7 +67,7 @@ pub fn common_dir_for_repo_path(path: &Path) -> Option<PathBuf> {
         return Some(common_dir);
     }
 
-    if path.is_dir() && path.join("HEAD").is_file() {
+    if path.is_dir() && is_valid_git_dir(path) {
         return common_dir_for_git_dir(path);
     }
 
@@ -119,6 +131,39 @@ mod tests {
 
         let resolved = worktree_root_for_path(&nested).unwrap();
         assert_eq!(resolved, worktree);
+    }
+
+    #[test]
+    fn is_valid_git_dir_requires_head_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let dot_git = temp.path().join(".git");
+        fs::create_dir_all(&dot_git).unwrap();
+        assert!(!is_valid_git_dir(&dot_git));
+
+        write_file(&dot_git.join("HEAD"), "ref: refs/heads/main\n");
+        assert!(is_valid_git_dir(&dot_git));
+    }
+
+    #[test]
+    fn worktree_root_for_path_skips_empty_nested_git_dir() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path();
+        write_file(&worktree.join(".git/HEAD"), "ref: refs/heads/main\n");
+        let nested = worktree.join("sub").join("deeper");
+        fs::create_dir_all(&nested).unwrap();
+        fs::create_dir_all(worktree.join("sub/.git")).unwrap();
+
+        let resolved = worktree_root_for_path(&nested).unwrap();
+        assert_eq!(resolved, worktree);
+    }
+
+    #[test]
+    fn worktree_root_for_path_none_when_only_empty_git_dir() {
+        let temp = tempfile::tempdir().unwrap();
+        let sub = temp.path().join("sub");
+        fs::create_dir_all(sub.join(".git")).unwrap();
+
+        assert_eq!(worktree_root_for_path(&sub), None);
     }
 
     #[test]

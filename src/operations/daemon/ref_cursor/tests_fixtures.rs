@@ -62,6 +62,9 @@ pub(super) fn command_with_worktree(
 }
 
 pub(super) fn append_reflog(common_dir: &Path, reference: &str, entries: &[(&str, &str, &str)]) {
+    // Discovery only honors directory-form git dirs that carry a HEAD file,
+    // so make the synthetic git dir valid before writing its reflog.
+    crate::operations::git::test_utils::seed_valid_git_dir(common_dir);
     let path = common_dir.join("logs").join(reference);
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     let mut text = String::new();

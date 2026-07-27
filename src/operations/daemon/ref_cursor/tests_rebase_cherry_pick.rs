@@ -84,6 +84,7 @@ fn cold_rebase_late_ingress_offset_still_recovers_start_and_branch_finish() {
     let worktree = temp.path().join("repo");
     let git_dir = worktree.join(".git");
     fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     let start_line =
         format!("{B} {C} Test User <test@example.com> 0 +0000\trebase (start): checkout main\n");
@@ -149,6 +150,7 @@ fn cold_rebase_true_boundary_does_not_replay_older_rebase_span() {
     let worktree = temp.path().join("repo");
     let git_dir = worktree.join(".git");
     fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     let old_start =
         format!("{A} {B} Test User <test@example.com> 0 +0000\trebase (start): checkout main\n");
@@ -284,6 +286,7 @@ fn rebase_does_not_attach_unrelated_branch_with_same_new_tip() {
     let worktree = temp.path().join("repo");
     let git_dir = worktree.join(".git");
     fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
     append_reflog(
         &git_dir,
         "HEAD",

@@ -242,6 +242,7 @@ mod tests {
         let worktree = temp.path().to_path_buf();
         let head_log = worktree.join(".git/logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+        crate::operations::git::test_utils::seed_valid_git_dir(&worktree.join(".git"));
 
         let family = FamilyKey::new(worktree.to_string_lossy().to_string());
         let state = FamilyState {

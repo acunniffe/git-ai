@@ -217,6 +217,24 @@ fn test_path_is_in_workdir() {
         repo.path_is_in_workdir(&nonexistent_in_repo),
         "Non-existent file in the repo (no nested .git/) should return true (fallback path)"
     );
+
+    // An empty directory-form .git (no HEAD) is not a valid repository and
+    // must be transparent: files beneath it still belong to the parent repo.
+    let empty_marker_dir = test_repo.path().join("empty-marker");
+    fs::create_dir_all(empty_marker_dir.join(".git")).unwrap();
+    let empty_marker_file = empty_marker_dir.join("file.txt");
+    fs::write(&empty_marker_file, "vendored content").unwrap();
+    assert!(
+        repo.path_is_in_workdir(&empty_marker_file),
+        "File beneath an empty .git directory should return true"
+    );
+
+    // Same for a non-existent path beneath it (normalized fallback branch)
+    let nonexistent_below_empty_marker = empty_marker_dir.join("not-yet").join("phantom.txt");
+    assert!(
+        repo.path_is_in_workdir(&nonexistent_below_empty_marker),
+        "Non-existent file beneath an empty .git directory should return true (fallback path)"
+    );
 }
 
 // ============================================================================

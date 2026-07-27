@@ -44,6 +44,7 @@ fn cold_start_late_ingress_offset_does_not_skip_commit_on_uninitialized_head_cur
     let git_dir = worktree.join(".git");
     let head_log = git_dir.join("logs/HEAD");
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     // A→B: the worktree's creation checkout (untraced by this family's cursor).
     // B→C: this command's commit. C→D: a trailing entry (e.g. a later op) so
@@ -99,6 +100,7 @@ fn cold_start_late_ingress_offset_does_not_skip_commit_on_uninitialized_common_r
     let head_log = git_dir.join("logs/HEAD");
     let branch_log = git_dir.join("logs").join(reference);
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
     fs::create_dir_all(branch_log.parent().unwrap()).unwrap();
 
     // HEAD records the commit normally (B→C), found from offset 0.
@@ -153,6 +155,7 @@ fn late_ingress_offset_does_not_advance_in_order_cursor_past_own_commit() {
     let git_dir = worktree.join(".git");
     let head_log = git_dir.join("logs/HEAD");
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     // A→B: prior switch onto the new branch (already consumed; cursor sits at
     // end of this line). B→C: this command's commit. C→D: the switch-back gt
@@ -210,6 +213,7 @@ fn ingress_offset_hint_skips_untraced_duplicate_message_commit() {
     let git_dir = worktree.join(".git");
     let head_log = git_dir.join("logs/HEAD");
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     // A→B: prior traced base (consumed; cursor at end). B→C: an untraced commit
     // the daemon never saw, sharing the message. C→D: this command's commit.
@@ -264,6 +268,7 @@ fn late_ingress_offset_skips_untraced_duplicate_message_commit() {
     let git_dir = worktree.join(".git");
     let head_log = git_dir.join("logs/HEAD");
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     let base_line = format!("{A} {B} Test User <test@example.com> 0 +0000\tcommit: traced base\n");
     let untraced_line =
@@ -342,6 +347,7 @@ fn commit_with_exact_reflog_message_ignores_stale_daemon_head() {
     let git_dir = worktree.join(".git");
     let head_log = git_dir.join("logs/HEAD");
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     let initial_line = format!("{A} {B} Test User <test@example.com> 0 +0000\tcommit: initial\n");
     let raw_line = format!("{B} {C} Test User <test@example.com> 0 +0000\tcommit: raw unseen\n");
@@ -378,6 +384,7 @@ fn commit_reflog_boundary_skips_untraced_duplicate_message() {
     let git_dir = worktree.join(".git");
     let head_log = git_dir.join("logs/HEAD");
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     let initial_line = format!("{A} {B} Test User <test@example.com> 0 +0000\tcommit: initial\n");
     let raw_line = format!("{B} {C} Test User <test@example.com> 0 +0000\tcommit: same message\n");

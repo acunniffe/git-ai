@@ -164,3 +164,15 @@ fn run_git_in(cwd: &Path, args: &[&str]) -> Result<String, GitAiError> {
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
+
+/// Create a minimal *valid* directory-form git dir fixture: the directory
+/// itself plus a `HEAD` file, which repository discovery requires before
+/// treating a `.git` directory as a repository boundary. For synthetic
+/// fixtures that don't run `git init`.
+pub fn seed_valid_git_dir(git_dir: &Path) {
+    std::fs::create_dir_all(git_dir).unwrap();
+    let head = git_dir.join("HEAD");
+    if !head.exists() {
+        std::fs::write(head, "ref: refs/heads/main\n").unwrap();
+    }
+}

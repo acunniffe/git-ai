@@ -293,6 +293,7 @@ async fn mutating_trace_payload_captures_repo_reflog_start_offsets() {
     let stash_log = repo.join(".git/logs/refs/stash");
     let branch_log = repo.join(".git/logs/refs/heads/main");
     std::fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
     std::fs::create_dir_all(stash_log.parent().unwrap()).unwrap();
     std::fs::create_dir_all(branch_log.parent().unwrap()).unwrap();
     let old_head_reflog = b"old HEAD reflog entry\n";

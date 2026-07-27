@@ -1430,3 +1430,99 @@ fn test_issue_954_claude_preset_non_git_cwd() {
 
     let _ = fs::remove_dir_all(&cwd_workspace);
 }
+
+// ===========================================================================
+// Scenario 8: Empty (invalid) nested .git directory inside parent repo
+//
+// A directory-form .git without a HEAD file is not a real repository -- git
+// itself ignores it. It must be transparent to discovery and attribution:
+// checkpoints for files beneath it belong to the enclosing parent repo.
+// ===========================================================================
+
+/// A file beneath an empty nested `.git` directory is checkpointed and
+/// attributed in the parent repo, exactly as if the empty `.git` dir did not
+/// exist.
+#[test]
+fn test_checkpoint_beneath_empty_nested_git_dir_mock_ai() {
+    let workspace = create_unique_workspace("git-ai-empty-nested-git-test");
+
+    let parent_path = workspace.join("parent-repo");
+    let parent = TestRepo::new_at_path(&parent_path);
+    let mut parent_readme = parent.filename("README.md");
+    parent_readme.set_contents(crate::lines!["# Parent Repo"]);
+    parent.stage_all_and_commit("initial parent").unwrap();
+
+    // An empty .git directory (e.g. left behind by tooling) is not a repo.
+    fs::create_dir_all(parent_path.join("tooling/.git")).unwrap();
+    fs::write(
+        parent_path.join("tooling/tool.txt"),
+        "AI line 1\nAI line 2\n",
+    )
+    .unwrap();
+
+    let tool_file_abs = parent.canonical_path().join("tooling").join("tool.txt");
+    parent
+        .git_ai_from_working_dir(
+            &parent.canonical_path(),
+            &["checkpoint", "mock_ai", tool_file_abs.to_str().unwrap()],
+        )
+        .expect("checkpoint for file beneath empty nested .git dir should succeed");
+
+    let working_log = parent.current_working_logs();
+    let ai_files = working_log.all_ai_touched_files().unwrap_or_default();
+    assert!(
+        ai_files.iter().any(|f| f.ends_with("tool.txt")),
+        "Scenario 8: file beneath an empty nested .git dir should be checkpointed \
+         in the parent repo, got: {ai_files:?}"
+    );
+
+    parent.stage_all_and_commit("add tool").unwrap();
+    let mut tool_file = parent.filename("tooling/tool.txt");
+    tool_file.assert_committed_lines(crate::lines!["AI line 1".ai(), "AI line 2".ai()]);
+
+    let _ = fs::remove_dir_all(&workspace);
+}
+
+/// Same layout, but the checkpoint runs with CWD *inside* the directory
+/// holding the empty `.git`: repository discovery must walk up past the
+/// invalid marker and root at the parent repo.
+#[test]
+fn test_checkpoint_from_cwd_inside_empty_nested_git_dir_mock_ai() {
+    let workspace = create_unique_workspace("git-ai-empty-nested-git-cwd-test");
+
+    let parent_path = workspace.join("parent-repo");
+    let parent = TestRepo::new_at_path(&parent_path);
+    let mut parent_readme = parent.filename("README.md");
+    parent_readme.set_contents(crate::lines!["# Parent Repo"]);
+    parent.stage_all_and_commit("initial parent").unwrap();
+
+    fs::create_dir_all(parent_path.join("tooling/.git")).unwrap();
+    fs::write(
+        parent_path.join("tooling/tool.txt"),
+        "AI line 1\nAI line 2\n",
+    )
+    .unwrap();
+
+    let tooling_cwd = parent.canonical_path().join("tooling");
+    let tool_file_abs = tooling_cwd.join("tool.txt");
+    parent
+        .git_ai_from_working_dir(
+            &tooling_cwd,
+            &["checkpoint", "mock_ai", tool_file_abs.to_str().unwrap()],
+        )
+        .expect("checkpoint from CWD inside empty nested .git dir should succeed");
+
+    let working_log = parent.current_working_logs();
+    let ai_files = working_log.all_ai_touched_files().unwrap_or_default();
+    assert!(
+        ai_files.iter().any(|f| f.ends_with("tool.txt")),
+        "Scenario 8 (cwd inside): file should be checkpointed in the parent repo \
+         when CWD is beneath the empty nested .git dir, got: {ai_files:?}"
+    );
+
+    parent.stage_all_and_commit("add tool").unwrap();
+    let mut tool_file = parent.filename("tooling/tool.txt");
+    tool_file.assert_committed_lines(crate::lines!["AI line 1".ai(), "AI line 2".ai()]);
+
+    let _ = fs::remove_dir_all(&workspace);
+}

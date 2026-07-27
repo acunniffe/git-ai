@@ -113,6 +113,7 @@ fn rebase_span_continuation_skips_stale_abort_before_selected_start() {
     let head_log = git_dir.join("logs/HEAD");
     let branch_log = git_dir.join("logs/refs/heads/feature");
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
     fs::create_dir_all(branch_log.parent().unwrap()).unwrap();
 
     let failed_start =

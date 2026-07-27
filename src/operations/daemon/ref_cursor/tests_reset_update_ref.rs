@@ -10,6 +10,7 @@ fn first_observed_head_boundary_skips_prior_reset_history() {
     let git_dir = worktree.join(".git");
     let head_log = git_dir.join("logs/HEAD");
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     let old_line = format!("{A} {B} Test User <test@example.com> 0 +0000\treset: moving to old\n");
     let start_offset = old_line.len() as u64;
@@ -44,6 +45,7 @@ fn reset_late_reflog_offset_uses_command_message_not_stale_state() {
     let git_dir = worktree.join(".git");
     let head_log = git_dir.join("logs/HEAD");
     fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
 
     let stale_line =
         format!("{A} {B} Test User <test@example.com> 0 +0000\treset: moving to stale\n");
@@ -111,6 +113,7 @@ fn direct_branch_update_ref_uses_argv_transition_when_reflog_cursor_starts_too_l
     let git_dir = worktree.join(".git");
     let reference = "refs/heads/feature";
     fs::create_dir_all(git_dir.join("logs").join("refs/heads")).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
     fs::create_dir_all(git_dir.join("logs")).unwrap();
 
     let branch_line = format!("{C} {D} Test User <test@example.com> 0 +0000\t\n");
@@ -155,6 +158,7 @@ fn direct_branch_update_ref_does_not_treat_stale_head_reflog_match_as_current_he
     let git_dir = worktree.join(".git");
     let reference = "refs/heads/feature";
     fs::create_dir_all(git_dir.join("logs").join("refs/heads")).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
     fs::create_dir_all(git_dir.join("logs")).unwrap();
 
     let stale_branch_line = format!("{C} {D} Test User <test@example.com> 0 +0000\t\n");

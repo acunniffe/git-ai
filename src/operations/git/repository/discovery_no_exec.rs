@@ -8,7 +8,7 @@
 use super::core::Repository;
 use crate::error::GitAiError;
 use crate::operations::git::repo_state::{
-    common_dir_for_git_dir, git_dir_for_worktree, worktree_root_for_path,
+    common_dir_for_git_dir, git_dir_for_worktree, is_valid_git_dir, worktree_root_for_path,
 };
 use crate::operations::git::repo_storage::RepoStorage;
 use std::path::{Path, PathBuf};
@@ -110,7 +110,9 @@ pub(super) fn discover_repository_paths_no_git_exec(
     };
 
     if start.file_name().and_then(|name| name.to_str()) == Some(".git") {
-        if start.is_dir() {
+        // An invalid directory-form .git (no HEAD) falls through to the
+        // worktree-root walk below, which resolves to the enclosing repo.
+        if start.is_dir() && is_valid_git_dir(&start) {
             let workdir = start.parent().ok_or_else(|| {
                 GitAiError::Generic(format!(
                     "Git directory has no parent workdir: {}",
@@ -162,7 +164,7 @@ pub(super) fn discover_repository_paths_no_git_exec(
 
     let mut current = Some(start.as_path());
     while let Some(dir) = current {
-        if dir.join("HEAD").is_file() && dir.join("objects").is_dir() {
+        if is_valid_git_dir(dir) && dir.join("objects").is_dir() {
             let workdir = dir
                 .parent()
                 .ok_or_else(|| no_parent_error("Git directory", dir))?;
@@ -355,9 +357,11 @@ pub fn discover_repository_in_path_no_git_exec(path: &Path) -> Result<Repository
 /// Check if any directory between `workdir` and `file_path` contains a `.git`
 /// entry that represents a **separate** git repository boundary.
 ///
-/// `.git` directories (nested independent repos) and `.git` files that point
-/// to a *linked worktree* (i.e., `gitdir: .../worktrees/…`) are treated as
-/// boundaries — a file inside such a directory belongs to a different repo.
+/// Valid `.git` directories (nested independent repos, i.e. containing a
+/// `HEAD` file) and `.git` files that point to a *linked worktree* (i.e.,
+/// `gitdir: .../worktrees/…`) are treated as boundaries — a file inside such
+/// a directory belongs to a different repo. An invalid directory-form `.git`
+/// (e.g. an empty `mkdir .git`) is not a repository and is transparent.
 ///
 /// `.git` files that point to a *submodule* (i.e., `gitdir: .git/modules/…`)
 /// are intentionally transparent: the parent repo tracks the submodule's
@@ -378,10 +382,12 @@ pub(super) fn has_intervening_git_dir(file_path: &Path, workdir: &Path) -> bool 
         }
         let potential_git = workdir.join(parent).join(".git");
         if potential_git.is_dir() {
-            // A .git directory always indicates a separate independent repo.
-            return true;
-        }
-        if potential_git.is_file() {
+            // Only a valid .git directory (containing HEAD) indicates a
+            // separate independent repo; an invalid one is transparent.
+            if is_valid_git_dir(&potential_git) {
+                return true;
+            }
+        } else if potential_git.is_file() {
             // A .git file is either a submodule pointer or a linked-worktree
             // pointer.  Only linked worktrees (gitdir points to …/worktrees/…)
             // represent a separate working-tree boundary; submodule pointers
@@ -412,4 +418,31 @@ fn is_linked_worktree_git_file(git_file: &Path) -> bool {
     // `/repo/.git/worktrees/<name>`.  A submodule's gitdir looks like
     // `../.git/modules/<name>`.
     gitdir.contains("/.git/worktrees/")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn has_intervening_empty_git_dir_is_transparent() {
+        let temp = tempfile::tempdir().unwrap();
+        let workdir = temp.path();
+        fs::create_dir_all(workdir.join("sub/.git")).unwrap();
+
+        let file_path = workdir.join("sub").join("file.txt");
+        assert!(!has_intervening_git_dir(&file_path, workdir));
+    }
+
+    #[test]
+    fn has_intervening_valid_git_dir_is_boundary() {
+        let temp = tempfile::tempdir().unwrap();
+        let workdir = temp.path();
+        fs::create_dir_all(workdir.join("sub/.git")).unwrap();
+        fs::write(workdir.join("sub/.git/HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let file_path = workdir.join("sub").join("file.txt");
+        assert!(has_intervening_git_dir(&file_path, workdir));
+    }
 }

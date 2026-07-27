@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -411,7 +410,7 @@ fn alias_commit_resolves_primary_command() {
     let backend = Arc::new(MockBackend::default());
     let temp = tempfile::tempdir().expect("create tempdir");
     let worktree = temp.path().join("repo");
-    fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&worktree.join(".git"));
     backend.set_alias(worktree.to_str().expect("utf8 worktree"), "ci", "commit");
     let mut normalizer = TraceNormalizer::new(backend);
 
@@ -445,7 +444,7 @@ fn alias_pull_rebase_expands_invoked_args_with_flags() {
     let backend = Arc::new(MockBackend::default());
     let temp = tempfile::tempdir().expect("create tempdir");
     let worktree = temp.path().join("repo");
-    fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&worktree.join(".git"));
     backend.set_alias(
         worktree.to_str().expect("utf8 worktree"),
         "up",
@@ -504,7 +503,7 @@ fn alias_pull_rebase_expands_invoked_args_without_child_cmd_name() {
     let backend = Arc::new(MockBackend::default());
     let temp = tempfile::tempdir().expect("create tempdir");
     let worktree = temp.path().join("repo");
-    fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&worktree.join(".git"));
     backend.set_alias(
         worktree.to_str().expect("utf8 worktree"),
         "up",
@@ -551,7 +550,7 @@ fn non_alias_pull_invocation_is_unchanged() {
     let backend = Arc::new(MockBackend::default());
     let temp = tempfile::tempdir().expect("create tempdir");
     let worktree = temp.path().join("repo");
-    fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+    crate::operations::git::test_utils::seed_valid_git_dir(&worktree.join(".git"));
     let mut normalizer = TraceNormalizer::new(backend);
 
     let start = serde_json::json!({
