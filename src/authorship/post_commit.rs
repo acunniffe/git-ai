@@ -385,7 +385,11 @@ where
     authorship_log = transform(authorship_log)?;
     authorship_log.metadata.base_commit_sha = commit_sha.clone();
 
-    if options.recover_attribution {
+    let is_debug_self_check = repo.workdir().is_ok_and(|workdir| {
+        crate::diagnostic_sentinels::path_is_in_debug_self_check_root(&workdir)
+    });
+    // Synthetic self-check commits already provide explicit attribution for every line.
+    if options.recover_attribution && !is_debug_self_check {
         let recovery_hunks = recovery_committed_hunks(
             repo,
             &parent_sha,
