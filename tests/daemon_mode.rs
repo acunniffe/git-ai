@@ -1098,6 +1098,24 @@ fn daemon_restart_refuses_sandbox_before_shutdown() {
 }
 
 #[test]
+#[serial]
+fn daemon_run_allows_sandbox_marker_for_foreground_process() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let _daemon = DaemonGuard::start_with_env(&repo, &[("SANDBOX_RUNTIME", "seatbelt")]);
+
+    assert!(
+        send_control_request(
+            &daemon_control_socket_path(&repo),
+            &ControlRequest::StatusFamily {
+                repo_working_dir: repo_workdir_string(&repo),
+            },
+        )
+        .is_ok(),
+        "foreground daemon should remain usable when started with a sandbox marker"
+    );
+}
+
+#[test]
 #[should_panic(expected = "pending daemon sync work")]
 fn dedicated_daemon_restart_rejects_pending_traced_command_for_test() {
     let mut repo = TestRepo::new_dedicated_daemon();
