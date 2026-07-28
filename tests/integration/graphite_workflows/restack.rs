@@ -12,7 +12,10 @@ fn run_bucket(family: &str, observation: &str, repeat: &str) {
         .into_iter()
         .filter(|s| s.observation == observation && s.repeat == repeat)
         .collect();
-    assert!(!scenarios.is_empty(), "empty bucket {family}/{observation}/{repeat}");
+    assert!(
+        !scenarios.is_empty(),
+        "empty bucket {family}/{observation}/{repeat}"
+    );
     let mut violations = Vec::new();
     for s in &scenarios {
         violations.extend(gt_sim::run_scenario(s));
@@ -48,4 +51,3 @@ fn refstdin_blind_once() {
 fn refstdin_traced_once() {
     run_bucket("REFSTDIN", "traced", "once");
 }
-

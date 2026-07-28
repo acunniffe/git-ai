@@ -1,9 +1,14 @@
 //! Faithful replays of the Graphite CLI's git command sequences, per the
 //! empirical catalog in `PLAN.md` Part 1. One function per workflow family;
 //! all git traffic goes through [`Exec`], which runs either traced (real git
-//! wired to the per-test daemon via trace2, daemon-synced after every tracked
-//! mutating command) or blind (`git_og_with_env` + trace2 disabled) for the
-//! rewrite phase of `observation = blind` scenarios.
+//! wired to the per-test daemon via trace2) or blind (`git_og_with_env` +
+//! trace2 disabled) for the rewrite phase of `observation = blind` scenarios.
+//!
+//! Daemon-sync discipline: traced commands ride the async trace2 pipeline
+//! (closer to production and much faster); `sync_daemon_force` barriers run
+//! only at flow boundaries — the end of each workflow round, before a blind
+//! daemon restart, before a linked worktree is removed, and at the start of
+//! the assertion phase (git-ai reads also pre-sync on their own).
 //!
 //! Key shapes implemented here:
 //! - synthetic-base restack: `cat-file -p <tip>~` / `commit-tree
@@ -25,6 +30,9 @@ use super::stackbuilder::{
 };
 use crate::repos::test_repo::{DaemonTestScope, TestRepo};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefStyle {
@@ -165,16 +173,9 @@ impl<'a> Exec<'a> {
             return self.repo.git_og_with_env(&full, &env);
         }
 
-        let result = self.repo.git_with_env(args, envs, self.cwd.as_deref());
-        if self
-            .repo
-            .git_command_affects_daemon_for_tracking(args, self.cwd.as_deref())
-        {
-            // Traced scenarios keep the daemon caught up after every tracked
-            // mutating command (the run_traced_git pattern).
-            self.repo.sync_daemon_force();
-        }
-        result
+        // Tracked commands record their test-sync sessions inside
+        // git_with_env; the next sync_barrier / git-ai read waits for them.
+        self.repo.git_with_env(args, envs, self.cwd.as_deref())
     }
 
     pub fn git_stdin(&self, args: &[&str], input: &[u8]) -> String {
@@ -182,16 +183,17 @@ impl<'a> Exec<'a> {
             self.repo
                 .git_og_with_stdin_and_env(args, &TRACE2_DISABLED_ENV, input)
         } else {
-            let result = self.repo.git_with_stdin(args, input);
-            if self
-                .repo
-                .git_command_affects_daemon_for_tracking(args, None)
-            {
-                self.repo.sync_daemon_force();
-            }
-            result
+            self.repo.git_with_stdin(args, input)
         };
         result.unwrap_or_else(|error| panic!("gt-sim git stdin {:?} failed: {}", args, error))
+    }
+
+    /// Flow-boundary barrier: wait for the daemon to process everything
+    /// issued so far. No-op for blind executions (the daemon saw nothing).
+    pub fn sync_barrier(&self) {
+        if !self.blind {
+            self.repo.sync_daemon_force();
+        }
     }
 
     pub fn rev_parse(&self, rev: &str) -> String {
@@ -770,6 +772,9 @@ pub fn worktree_restack(x: &Exec, state: &mut StackState, opts: &FlowOpts) {
     let wx = x.at_cwd(worktree_path.clone());
     restack(&wx, state, opts);
 
+    // Let the daemon process the worktree's commands (per-worktree reflogs)
+    // before the worktree disappears.
+    x.sync_barrier();
     x.git(&["worktree", "remove", "--force", worktree_str]);
 }
 
@@ -826,10 +831,58 @@ pub fn lifecycle(x: &Exec, state: &mut StackState, round: usize, opts: &FlowOpts
 // Scenario driver
 // ---------------------------------------------------------------------------
 
+/// Per-scenario wall-clock budget; a hung daemon costs one scenario (reported
+/// as a TIMEOUT violation), not the whole bucket.
+const SCENARIO_DEADLINE: Duration = Duration::from_secs(180);
+
 /// Full pipeline for one scenario: fresh repo + daemon, stack build, workflow
 /// replay (with blind recovery when applicable), attribution assertions.
-/// Returns the collected violations (empty = pass).
+/// Returns the collected violations (empty = pass). Bounded by
+/// [`SCENARIO_DEADLINE`]; on timeout the scenario thread is abandoned and a
+/// single "TIMEOUT" violation is returned. Scenario panics propagate to the
+/// caller unchanged.
 pub fn run_scenario(scenario: &Scenario) -> Vec<String> {
+    // Warm the once-per-process git-ai binary build before the clock starts,
+    // so the deadline and the timing line measure the scenario itself.
+    crate::repos::test_repo::get_binary_path();
+    let started = std::time::Instant::now();
+    let (sender, receiver) = mpsc::channel();
+    let scenario_for_thread = scenario.clone();
+    let handle = thread::Builder::new()
+        .name(format!("gt-sim-{}", scenario.id))
+        .spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_scenario_inner(&scenario_for_thread)
+            }));
+            let _ = sender.send(result);
+        })
+        .expect("spawn scenario thread");
+
+    let violations = match receiver.recv_timeout(SCENARIO_DEADLINE) {
+        Ok(Ok(violations)) => {
+            let _ = handle.join();
+            violations
+        }
+        Ok(Err(panic_payload)) => {
+            let _ = handle.join();
+            std::panic::resume_unwind(panic_payload)
+        }
+        Err(_) => vec![format!(
+            "{}: TIMEOUT — scenario exceeded {}s wall-clock (daemon likely hung); thread abandoned",
+            scenario.id,
+            SCENARIO_DEADLINE.as_secs()
+        )],
+    };
+    eprintln!(
+        "[gt-sim] {} finished in {:.1}s ({} violations)",
+        scenario.id,
+        started.elapsed().as_secs_f64(),
+        violations.len()
+    );
+    violations
+}
+
+fn run_scenario_inner(scenario: &Scenario) -> Vec<String> {
     let mut repo = TestRepo::new_with_daemon_scope(match scenario.observation_mode() {
         // Blind scenarios restart the daemon mid-test, which requires a
         // dedicated daemon; traced scenarios share the pool daemon.
@@ -842,12 +895,17 @@ pub fn run_scenario(scenario: &Scenario) -> Vec<String> {
 }
 
 /// Run the scenario's workflow (honoring `repeat`), then the blind-recovery
-/// step for `observation = blind`.
+/// step for `observation = blind`. A sync barrier closes every round so
+/// back-to-back rounds (and the daemon restart below) start from a fully
+/// processed daemon state.
 pub fn run_workflow(repo: &mut TestRepo, state: &mut StackState, scenario: &Scenario) {
     let rounds = scenario.repeat_mode().rounds();
     for round in 0..rounds {
         let x = Exec::for_scenario(repo, scenario);
         dispatch_family(&x, state, scenario, round);
+        // End-of-round barrier; also settles pending mock_ai checkpoint
+        // completions issued during blind rounds.
+        repo.sync_daemon_force();
     }
     if scenario.observation_mode() == Observation::Blind {
         recover_blind(repo);
@@ -895,6 +953,8 @@ fn dispatch_family(x: &Exec, state: &mut StackState, scenario: &Scenario, round:
 /// Blind recovery per PLAN: restart the daemon, then one traced no-op commit
 /// so the reflog cursor reconciles the unobserved ref moves.
 fn recover_blind(repo: &mut TestRepo) {
+    // Barrier before restart: the restart asserts no pending daemon work.
+    repo.sync_daemon_force();
     repo.restart_dedicated_daemon_for_test();
     repo.git(&["commit", "--allow-empty", "-m", "poke"])
         .expect("blind-recovery poke commit should succeed");

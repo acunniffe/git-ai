@@ -32,6 +32,10 @@ struct NoteExpectation {
 pub fn assert_attribution(repo: &TestRepo, state: &StackState) -> Vec<String> {
     let sid = &state.scenario_id;
     let mut violations = Vec::new();
+    // Assertion-phase barrier: everything the workflow issued must be
+    // processed before we read blame/notes. (git-ai blame and `git notes`
+    // reads below also pre-sync on their own, so no further explicit syncs
+    // are needed in this phase.)
     repo.sync_daemon_force();
 
     // 1. Commit pending (working-log-only) AI edits with a traced commit so
@@ -56,7 +60,6 @@ pub fn assert_attribution(repo: &TestRepo, state: &StackState) -> Vec<String> {
             ));
             continue;
         }
-        repo.sync_daemon_force();
         for expectation in files.iter().filter(|f| f.branch == branch.name) {
             check_file(repo, sid, expectation, &mut violations);
         }
@@ -91,13 +94,10 @@ fn commit_pending_edits(
 
     let branch = repo.current_branch();
     match repo.stage_all_and_commit("gt-sim: commit pending ai edits for assertion") {
-        Ok(commit) => {
-            repo.sync_daemon_force();
-            Some(PendingCommit {
-                branch,
-                commit: commit.commit_sha,
-            })
-        }
+        Ok(commit) => Some(PendingCommit {
+            branch,
+            commit: commit.commit_sha,
+        }),
         Err(error) => {
             violations.push(format!(
                 "{}: committing pending AI edits for assertion failed: {}",
