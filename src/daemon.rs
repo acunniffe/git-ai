@@ -3110,7 +3110,13 @@ impl ActorDaemonCoordinator {
             map.retain(|_, state| !state.entries.is_empty());
         }
         if let Ok(mut map) = self.side_effect_exec_locks.lock() {
-            map.retain(|_, lock| Arc::strong_count(lock) <= 1);
+            // Evict only IDLE locks (strong_count == 1: the map holds the sole
+            // Arc). A lock with clones out is held or awaited by a drain;
+            // evicting it would hand the next drain a fresh unlocked mutex and
+            // run two drains concurrently on one family, tearing working-log
+            // read-modify-writes. The map mutex makes this check atomic with
+            // removal; idle locks are safely recreated on demand.
+            map.retain(|_, lock| Arc::strong_count(lock) > 1);
         }
         if let Ok(mut map) = self.pending_rebase_original_head_by_worktree.lock() {
             map.shrink_to_fit();
@@ -8901,6 +8907,35 @@ mod tests {
         assert_eq!(
             checkpoint_control_response_timeout(&sample_checkpoint_request(), false),
             DAEMON_CONTROL_RESPONSE_TIMEOUT
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_keeps_held_family_exec_locks_and_evicts_only_idle_ones() {
+        let coord = ActorDaemonCoordinator::new();
+
+        let held_lock = coord
+            .side_effect_exec_lock("family-held")
+            .expect("held family lock");
+        let _held_guard = held_lock.lock().await;
+        coord
+            .side_effect_exec_lock("family-idle")
+            .expect("idle family lock");
+
+        coord.gc_stale_family_state();
+
+        let map = coord.side_effect_exec_locks.lock().unwrap();
+        let surviving = map.get("family-held").expect(
+            "GC must never evict a held exec lock: a re-created lock would let a \
+             second drain run concurrently on the same family",
+        );
+        assert!(
+            Arc::ptr_eq(surviving, &held_lock),
+            "GC must keep the SAME lock instance while it is held"
+        );
+        assert!(
+            !map.contains_key("family-idle"),
+            "GC should evict idle exec locks to bound the map"
         );
     }
 
