@@ -88,7 +88,7 @@
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "3.9.2",
-    "eslint": "^10.5.0",
+    "eslint": "^10.8.0",
     "ovsx": "1.0.1",
     "typescript": "^6.0.3"
   },
