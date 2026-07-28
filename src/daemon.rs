@@ -45,7 +45,7 @@ use std::os::fd::{AsFd, AsRawFd};
 #[cfg(windows)]
 use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::{Mutex as AsyncMutex, Notify, mpsc, oneshot};
@@ -86,6 +86,10 @@ const TRACE_ROOT_STARTED_AT_NS_FIELD: &str = "git_ai_root_started_at_ns";
 const TRACE_ROOT_WORKTREE_FIELD: &str = "git_ai_root_worktree";
 pub(crate) const TRACE_ROOT_REFLOG_START_OFFSETS_FIELD: &str = "git_ai_root_reflog_start_offsets";
 const TRACE_CONNECTION_CLOSED_EVENT: &str = "git_ai_connection_closed";
+// Sentinel trace2 event the daemon writes to its own trace socket as a liveness
+// ping. The trace reader recognizes it, stamps a received-timestamp, and closes
+// the connection without enqueuing it. See `daemon_socket_health_check_loop`.
+const TRACE_HEALTH_PING_EVENT: &str = "git_ai_health_ping";
 const DAEMON_CONTROL_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const DAEMON_CONTROL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
 const DAEMON_CHECKPOINT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -2553,6 +2557,10 @@ pub struct ActorDaemonCoordinator {
     shutdown_notify: Notify,
     shutdown_condvar: std::sync::Condvar,
     shutdown_condvar_mutex: Mutex<()>,
+    /// Wall-clock nanoseconds at which the trace reader last observed a health
+    /// ping (sentinel line). The socket health loop watches this watermark to
+    /// confirm the trace read path is still draining. `0` means none seen yet.
+    last_trace_ping_received_ns: AtomicU64,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -2644,7 +2652,21 @@ impl ActorDaemonCoordinator {
             shutdown_notify: Notify::new(),
             shutdown_condvar: std::sync::Condvar::new(),
             shutdown_condvar_mutex: Mutex::new(()),
+            last_trace_ping_received_ns: AtomicU64::new(0),
         }
+    }
+
+    /// Record that the trace reader observed a health ping (sentinel line),
+    /// stamping the current wall-clock time.
+    fn record_trace_health_ping(&self) {
+        self.last_trace_ping_received_ns
+            .store(now_unix_nanos() as u64, Ordering::Release);
+    }
+
+    /// Wall-clock nanoseconds at which the last trace health ping was observed,
+    /// or 0 if none has been seen yet.
+    fn last_trace_ping_received_ns(&self) -> u64 {
+        self.last_trace_ping_received_ns.load(Ordering::Acquire)
     }
 
     fn is_shutting_down(&self) -> bool {
@@ -7021,6 +7043,18 @@ fn process_trace_connection_line(
         Ok(v) => v,
         Err(_) => return Ok(None),
     };
+    // Liveness sentinel written by the daemon's own health-check loop. Stamp the
+    // received-timestamp so the loop can confirm the trace read path is still
+    // draining, then close the connection without treating it as a trace root
+    // or enqueuing it for ingest.
+    if parsed.get("event").and_then(Value::as_str) == Some(TRACE_HEALTH_PING_EVENT) {
+        coordinator.record_trace_health_ping();
+        return Ok(Some(TraceLineOutcome {
+            continue_reading: false,
+            #[cfg(not(windows))]
+            bootstrap_complete: false,
+        }));
+    }
     #[cfg(not(windows))]
     let event = parsed
         .get("event")
@@ -7199,6 +7233,72 @@ fn daemon_min_uptime_for_self_restart() -> u64 {
         .unwrap_or(DAEMON_MIN_UPTIME_FOR_SELF_RESTART_SECS)
 }
 
+/// Number of seconds a socket may go without acknowledging a liveness ping
+/// before the health loop raises an alert. Deliberately generous: the ping is a
+/// heartbeat, not a latency probe, and we never want a transient hiccup to fire.
+const DAEMON_PING_STALL_SECS: u64 = 120;
+
+fn daemon_ping_stall_secs() -> u64 {
+    std::env::var("GIT_AI_DAEMON_PING_STALL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DAEMON_PING_STALL_SECS)
+}
+
+/// Tracks whether a daemon socket keeps acknowledging liveness pings.
+///
+/// Each health-check tick reports whether the socket acknowledged a ping since
+/// the previous tick (control: a `Ping` request round-tripped; trace: the
+/// daemon stamped a received sentinel). Once a socket stays unacknowledged for
+/// `threshold`, the detector fires exactly once per stall episode so we alert
+/// without spamming, and re-arms only after the socket recovers. A zero
+/// `threshold` disables detection entirely.
+struct SocketPingHealth {
+    threshold: Duration,
+    unacked_since: Option<std::time::Instant>,
+    alerted: bool,
+}
+
+impl SocketPingHealth {
+    fn new(threshold: Duration) -> Self {
+        Self {
+            threshold,
+            unacked_since: None,
+            alerted: false,
+        }
+    }
+
+    /// Feed one observation. Returns `Some(stall_duration)` exactly once, on the
+    /// tick where the socket first crosses `threshold` without acknowledging a
+    /// ping. Acknowledgement resets the detector so a later stall alerts again.
+    fn observe(&mut self, acknowledged: bool, now: std::time::Instant) -> Option<Duration> {
+        if self.threshold.is_zero() || acknowledged {
+            self.unacked_since = None;
+            self.alerted = false;
+            return None;
+        }
+        let since = *self.unacked_since.get_or_insert(now);
+        let elapsed = now.saturating_duration_since(since);
+        if elapsed >= self.threshold && !self.alerted {
+            self.alerted = true;
+            return Some(elapsed);
+        }
+        None
+    }
+}
+
+/// Write a single health-ping sentinel line to the trace socket. The trace
+/// reader recognizes `TRACE_HEALTH_PING_EVENT`, stamps a received-timestamp, and
+/// closes the connection without ingesting it. Best-effort: a failure here is
+/// itself a liveness signal picked up by the stall detector on the next tick.
+fn send_trace_health_ping(trace_socket_path: &Path, timeout: Duration) -> Result<(), GitAiError> {
+    let mut stream = open_local_socket_stream_with_timeout(trace_socket_path, timeout)?;
+    let line = format!("{{\"event\":\"{}\"}}\n", TRACE_HEALTH_PING_EVENT);
+    stream.write_all(line.as_bytes())?;
+    stream.flush()?;
+    Ok(())
+}
+
 /// Background loop that verifies the daemon's sockets are reachable by
 /// actually connecting to them.  A successful connect proves the socket file
 /// exists, points to this daemon's listener, and that the listener thread is
@@ -7211,6 +7311,15 @@ fn daemon_min_uptime_for_self_restart() -> u64 {
 /// it has been up for at least 60 seconds.  If sockets fail before that,
 /// it shuts down without restart — the next wrapper invocation will attempt
 /// to start a fresh daemon.
+///
+/// Alongside the connect probes, the loop sends a liveness ping over each
+/// socket every tick — a `Ping` control request and a sentinel line on the
+/// trace socket — and tracks when each was last acknowledged. A connect probe
+/// only proves the listener calls `accept()`; the pings additionally prove the
+/// control handler and the trace read path keep draining, catching a wedge on
+/// an already-established connection. A ping stall only *alerts* (it does not
+/// restart) so we avoid the memory spikes and restart loops that aggressive
+/// drain-based restarts risked.
 fn daemon_socket_health_check_loop(
     coordinator: Arc<ActorDaemonCoordinator>,
     control_socket_path: PathBuf,
@@ -7218,14 +7327,40 @@ fn daemon_socket_health_check_loop(
 ) {
     let started = std::time::Instant::now();
     let interval = daemon_socket_health_check_interval().max(1);
+    let ping_stall = Duration::from_secs(daemon_ping_stall_secs());
+    let mut control_health = SocketPingHealth::new(ping_stall);
+    let mut trace_health = SocketPingHealth::new(ping_stall);
+    // Baseline the trace watermark before the first ping so the first
+    // evaluation only fires if the sentinel we send below is never stamped.
+    let mut prev_trace_ping_ns = coordinator.last_trace_ping_received_ns();
     tracing::info!(
         interval,
+        ping_stall_secs = ping_stall.as_secs(),
         control = %control_socket_path.display(),
         trace = %trace_socket_path.display(),
         "socket health check started"
     );
 
     loop {
+        if coordinator.is_shutting_down() {
+            return;
+        }
+
+        // Send a liveness ping over each socket, then sleep so the trace
+        // sentinel has time to be read before we evaluate acknowledgement. The
+        // control `Ping` round-trips synchronously, so its result already
+        // reflects control-path liveness for this tick.
+        let control_ping_ok = send_control_request_with_timeout(
+            &control_socket_path,
+            &ControlRequest::Ping,
+            DAEMON_SOCKET_PROBE_TIMEOUT,
+        )
+        .is_ok();
+        if let Err(error) = send_trace_health_ping(&trace_socket_path, DAEMON_SOCKET_PROBE_TIMEOUT)
+        {
+            tracing::debug!(%error, "trace health ping send failed");
+        }
+
         {
             let guard = coordinator
                 .shutdown_condvar_mutex
@@ -7241,6 +7376,27 @@ fn daemon_socket_health_check_loop(
 
         if coordinator.is_shutting_down() {
             return;
+        }
+
+        // Evaluate ping acknowledgement. The trace socket is one-way, so we
+        // confirm the sentinel was read by watching the daemon-side watermark
+        // advance rather than expecting a response.
+        let now = std::time::Instant::now();
+        let cur_trace_ping_ns = coordinator.last_trace_ping_received_ns();
+        let trace_ping_acked = cur_trace_ping_ns > prev_trace_ping_ns;
+        prev_trace_ping_ns = cur_trace_ping_ns;
+
+        if let Some(stall) = control_health.observe(control_ping_ok, now) {
+            tracing::warn!(
+                stall_secs = stall.as_secs(),
+                "daemon control socket stopped acknowledging health pings"
+            );
+        }
+        if let Some(stall) = trace_health.observe(trace_ping_acked, now) {
+            tracing::warn!(
+                stall_secs = stall.as_secs(),
+                "daemon trace socket stopped acknowledging health pings"
+            );
         }
 
         let control_ok =
@@ -9243,6 +9399,95 @@ mod tests {
             }
             tokio::task::yield_now().await;
         }
+        coord.request_shutdown();
+    }
+
+    /// A socket that keeps acknowledging pings never alerts; once it goes silent
+    /// past the threshold it alerts exactly once, then re-arms after recovery.
+    #[test]
+    fn socket_ping_health_alerts_once_per_stall_then_rearms() {
+        let threshold = Duration::from_secs(120);
+        let mut health = SocketPingHealth::new(threshold);
+        let t0 = std::time::Instant::now();
+
+        // Acknowledged pings never alert.
+        assert_eq!(health.observe(true, t0), None);
+
+        // A stall stays quiet until the threshold elapses.
+        assert_eq!(health.observe(false, t0 + Duration::from_secs(1)), None);
+        assert_eq!(health.observe(false, t0 + Duration::from_secs(119)), None);
+
+        // Crossing the threshold alerts exactly once for this episode.
+        let fired = health.observe(false, t0 + Duration::from_secs(121));
+        assert!(
+            fired.is_some_and(|elapsed| elapsed >= threshold),
+            "should alert once the unacknowledged span exceeds the threshold"
+        );
+        assert_eq!(
+            health.observe(false, t0 + Duration::from_secs(300)),
+            None,
+            "must not re-alert within the same stall episode"
+        );
+
+        // Recovery re-arms the detector so a later stall alerts again.
+        assert_eq!(health.observe(true, t0 + Duration::from_secs(310)), None);
+        assert_eq!(health.observe(false, t0 + Duration::from_secs(311)), None);
+        assert!(
+            health
+                .observe(false, t0 + Duration::from_secs(440))
+                .is_some(),
+            "a fresh stall after recovery must alert again"
+        );
+    }
+
+    /// A zero threshold disables ping-stall detection entirely.
+    #[test]
+    fn socket_ping_health_zero_threshold_never_alerts() {
+        let mut health = SocketPingHealth::new(Duration::from_secs(0));
+        let t0 = std::time::Instant::now();
+        for secs in [0u64, 1, 1_000, 1_000_000] {
+            assert_eq!(
+                health.observe(false, t0 + Duration::from_secs(secs)),
+                None,
+                "a zero threshold must never alert"
+            );
+        }
+    }
+
+    /// The trace health-ping sentinel must stamp the received watermark, close
+    /// the connection, and never register a root or enter the ingest queue.
+    #[tokio::test]
+    async fn trace_health_ping_sentinel_is_recorded_and_not_ingested() {
+        let coord = Arc::new(ActorDaemonCoordinator::new());
+        assert_eq!(
+            coord.last_trace_ping_received_ns(),
+            0,
+            "watermark starts unset"
+        );
+
+        let mut observed_roots = std::collections::BTreeSet::new();
+        let line = format!("{{\"event\":\"{}\"}}", TRACE_HEALTH_PING_EVENT);
+        let outcome = process_trace_connection_line(&line, coord.clone(), &mut observed_roots)
+            .expect("processing the sentinel must not error")
+            .expect("sentinel line must yield an outcome");
+
+        assert!(
+            !outcome.continue_reading,
+            "sentinel must close its connection after being observed"
+        );
+        assert!(
+            coord.last_trace_ping_received_ns() > 0,
+            "sentinel must stamp the trace health-ping watermark"
+        );
+        assert!(
+            observed_roots.is_empty(),
+            "sentinel must not be treated as a trace root"
+        );
+        assert_eq!(
+            coord.queued_trace_payloads.load(Ordering::Acquire),
+            0,
+            "sentinel must not be enqueued for ingest"
+        );
         coord.request_shutdown();
     }
 }

@@ -1597,6 +1597,78 @@ fn daemon_trace_listener_stalled_connection_does_not_block_later_trace_connectio
     );
 }
 
+/// The daemon's own liveness sentinel (written to the trace socket by the socket
+/// health-check loop) must be accepted by the real trace listener without being
+/// treated as a trace command: it must not produce a completion entry, must not
+/// wedge the listener, and must leave the daemon responsive to both a real trace
+/// command and a control `Ping` afterwards.
+#[test]
+#[cfg(not(windows))]
+fn daemon_trace_health_ping_sentinel_is_accepted_without_disrupting_ingest() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let control_socket = daemon_control_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    // Send the liveness sentinel exactly as the health-check loop does.
+    send_trace_frames(&trace_socket, &[json!({ "event": "git_ai_health_ping" })]);
+
+    // The daemon must still process a subsequent real trace command, proving the
+    // sentinel neither wedged the listener nor corrupted connection accounting.
+    let session = repos::test_repo::new_daemon_test_sync_session_id();
+    let session_arg = format!("git-ai.testSyncSession={session}");
+    send_trace_frames(
+        &trace_socket,
+        &[
+            json!({
+                "event": "start",
+                "sid": "health-ping-followup",
+                "argv": ["git", "-c", session_arg, "commit", "-m", "synthetic"],
+                "time_ns": 20_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "health-ping-followup",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 20_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "health-ping-followup",
+                "code": 0,
+                "time_ns": 20_100u64,
+            }),
+            trace_atexit_frame("health-ping-followup", 0, 20_101u64),
+        ],
+    );
+
+    let start = std::time::Instant::now();
+    let mut processed = false;
+    while start.elapsed() < Duration::from_secs(2) {
+        if repo
+            .daemon_completion_entries()
+            .iter()
+            .any(|entry| entry.test_sync_session.as_deref() == Some(session.as_str()))
+        {
+            processed = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    assert!(
+        processed,
+        "daemon did not process a real trace command after receiving a health-ping sentinel"
+    );
+
+    // The daemon remains responsive on the control socket.
+    assert!(
+        send_control_request(&control_socket, &ControlRequest::Ping).is_ok(),
+        "daemon should answer a control Ping after handling a health-ping sentinel"
+    );
+}
+
 #[test]
 #[cfg(not(windows))]
 fn daemon_stalled_unidentified_trace_connection_does_not_block_checkpoint_control_request() {
