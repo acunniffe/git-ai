@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::Command;
 #[cfg(not(unix))]
 use std::process::Stdio;
+use std::time::Duration;
 
 #[derive(Serialize)]
 struct StartedGitInvocationLogEntry {
@@ -75,6 +76,16 @@ fn new_test_sync_session() -> String {
     format!("gt-shim-{}", git_ai::uuid::generate_v4())
 }
 
+fn delay_for_test() {
+    let Ok(delay_ms) = env::var("GIT_AI_TEST_GIT_SHIM_DELAY_MS") else {
+        return;
+    };
+    let Ok(delay_ms) = delay_ms.parse::<u64>() else {
+        return;
+    };
+    std::thread::sleep(Duration::from_millis(delay_ms));
+}
+
 fn argv_with_test_sync_session(argv: &[String], test_sync_session: &str) -> Vec<String> {
     let mut out = Vec::with_capacity(argv.len() + 2);
     out.push("-c".to_string());
@@ -115,6 +126,7 @@ fn exec_target(target: &str, argv: &[String]) -> ! {
 #[cfg(unix)]
 fn main() {
     let argv = env::args().skip(1).collect::<Vec<_>>();
+    delay_for_test();
     let target = select_target(&argv).unwrap_or_else(|error| panic!("{error}"));
     let mut effective_argv = argv.clone();
     let mut test_sync_session = None;
@@ -139,6 +151,7 @@ fn main() {
 #[cfg(not(unix))]
 fn main() {
     let argv = env::args().skip(1).collect::<Vec<_>>();
+    delay_for_test();
     let target = select_target(&argv).unwrap_or_else(|error| panic!("{error}"));
     let mut effective_argv = argv.clone();
     let mut test_sync_session = None;

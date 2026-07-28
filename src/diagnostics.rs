@@ -332,7 +332,6 @@ pub fn check_trace2_global_config(target: &GitDiagnosticTarget) -> DiagnosticChe
 
 pub fn run_attribution_self_check(target: &GitDiagnosticTarget) -> DiagnosticCheckResult {
     let mut commands = Vec::new();
-    let deadline = Instant::now() + DEBUG_CHECK_TIMEOUT;
     let repo_path = debug_self_check_root().join(format!(
         "{}-{}",
         sanitize_label(&target.label),
@@ -344,71 +343,64 @@ pub fn run_attribution_self_check(target: &GitDiagnosticTarget) -> DiagnosticChe
         fs::create_dir_all(&repo_path)
             .map_err(|e| format!("failed to create {}: {}", repo_path.display(), e))?;
 
-        run_required_until(
+        run_required(
             &mut commands,
             &target.program,
             &["init", "."],
             Some(&repo_path),
-            deadline,
         )?;
-        run_required_until(
+        run_required(
             &mut commands,
             &target.program,
             &["config", "user.name", "Git AI Debug"],
             Some(&repo_path),
-            deadline,
         )?;
-        run_required_until(
+        run_required(
             &mut commands,
             &target.program,
             &["config", "user.email", "debug-self-check@git-ai.invalid"],
             Some(&repo_path),
-            deadline,
         )?;
-        run_required_until(
+        run_required(
             &mut commands,
             &target.program,
             &["remote", "add", "origin", DEBUG_SELF_CHECK_REMOTE_URL],
             Some(&repo_path),
-            deadline,
         )?;
 
         fs::write(&file_path, SELF_CHECK_CONTENT_UNTRACKED)
             .map_err(|e| format!("failed to write {}: {}", file_path.display(), e))?;
-        run_git_ai_checkpoint(&mut commands, &repo_path, "human", deadline)?;
-        wait_for_checkpoint_count(&repo_path, 1, deadline)?;
+        run_git_ai_checkpoint(&mut commands, &repo_path, "human")?;
+        wait_for_checkpoint_count(&repo_path, 1)?;
 
         fs::write(&file_path, SELF_CHECK_CONTENT_KNOWN_HUMAN)
             .map_err(|e| format!("failed to write {}: {}", file_path.display(), e))?;
-        run_git_ai_checkpoint(&mut commands, &repo_path, "mock_known_human", deadline)?;
-        wait_for_checkpoint_count(&repo_path, 2, deadline)?;
+        run_git_ai_checkpoint(&mut commands, &repo_path, "mock_known_human")?;
+        wait_for_checkpoint_count(&repo_path, 2)?;
 
         fs::write(&file_path, SELF_CHECK_CONTENT_AI)
             .map_err(|e| format!("failed to write {}: {}", file_path.display(), e))?;
-        run_git_ai_checkpoint(&mut commands, &repo_path, "mock_ai", deadline)?;
-        wait_for_checkpoint_count(&repo_path, 3, deadline)?;
+        run_git_ai_checkpoint(&mut commands, &repo_path, "mock_ai")?;
+        wait_for_checkpoint_count(&repo_path, 3)?;
 
-        run_required_until(
+        run_required(
             &mut commands,
             &target.program,
             &["add", SELF_CHECK_FILE],
             Some(&repo_path),
-            deadline,
         )?;
-        run_required_until(
+        run_required(
             &mut commands,
             &target.program,
             &["commit", "-m", "git-ai debug self check"],
             Some(&repo_path),
-            deadline,
         )?;
 
-        let commit_sha = run_required_until(
+        let commit_sha = run_required(
             &mut commands,
             &target.program,
             &["rev-parse", "HEAD"],
             Some(&repo_path),
-            deadline,
         )?
         .stdout
         .trim()
@@ -603,18 +595,25 @@ fn run_git_ai_checkpoint(
     commands: &mut Vec<CommandRecord>,
     repo_path: &Path,
     preset: &str,
-    deadline: Instant,
 ) -> Result<CommandRecord, String> {
     let git_ai = std::env::current_exe()
         .map_err(|e| format!("failed to resolve git-ai binary path: {}", e))?;
     let git_ai = git_ai.to_string_lossy().to_string();
-    run_required_until(
+    run_required(
         commands,
         &git_ai,
         &["checkpoint", preset, SELF_CHECK_FILE],
         Some(repo_path),
-        deadline,
     )
+}
+
+fn run_required(
+    commands: &mut Vec<CommandRecord>,
+    program: &str,
+    args: &[&str],
+    cwd: Option<&Path>,
+) -> Result<CommandRecord, String> {
+    run_required_with_timeout(commands, program, args, cwd, DEBUG_CHECK_TIMEOUT)
 }
 
 fn run_required_until(
@@ -776,12 +775,9 @@ fn remaining_timeout(deadline: Instant) -> Duration {
     deadline.saturating_duration_since(Instant::now())
 }
 
-fn wait_for_checkpoint_count(
-    repo_path: &Path,
-    expected_min_count: usize,
-    deadline: Instant,
-) -> Result<(), String> {
+fn wait_for_checkpoint_count(repo_path: &Path, expected_min_count: usize) -> Result<(), String> {
     let start = Instant::now();
+    let deadline = start + DEBUG_CHECK_TIMEOUT;
     let mut last_error = None;
 
     while Instant::now() < deadline {
