@@ -1667,6 +1667,413 @@ fn test_stash_push_pathspec_excludes_unstashed_file_from_stash_log() {
     b.assert_committed_lines(vec!["b line 1".ai(), "b line 2".ai()]);
 }
 
+/// Count non-empty lines in the live working log's checkpoints.jsonl for HEAD.
+fn live_checkpoint_line_count(repo: &TestRepo) -> usize {
+    let head = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let path = repo
+        .path()
+        .join(".git")
+        .join("ai")
+        .join("working_logs")
+        .join(head)
+        .join("checkpoints.jsonl");
+    fs::read_to_string(path)
+        .map(|c| c.lines().filter(|l| !l.trim().is_empty()).count())
+        .unwrap_or(0)
+}
+
+/// Files referenced by entries in the live working log's checkpoints.jsonl.
+fn live_checkpoint_files(repo: &TestRepo) -> std::collections::BTreeSet<String> {
+    let head = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let path = repo
+        .path()
+        .join(".git")
+        .join("ai")
+        .join("working_logs")
+        .join(head)
+        .join("checkpoints.jsonl");
+    let mut files = std::collections::BTreeSet::new();
+    if let Ok(content) = fs::read_to_string(path) {
+        for line in content.lines().filter(|l| !l.trim().is_empty()) {
+            let v: serde_json::Value = serde_json::from_str(line).expect("valid checkpoint json");
+            if let Some(entries) = v.get("entries").and_then(|e| e.as_array()) {
+                for entry in entries {
+                    if let Some(f) = entry.get("file").and_then(|f| f.as_str()) {
+                        files.insert(f.to_string());
+                    }
+                }
+            }
+        }
+    }
+    files
+}
+
+/// Count per-stash entry dirs across current and legacy stash dir versions.
+fn stash_entry_dir_count(repo: &TestRepo) -> usize {
+    let ai_dir = repo.path().join(".git").join("ai");
+    ["stashes", "stashes_v2"]
+        .iter()
+        .map(|d| {
+            fs::read_dir(ai_dir.join(d))
+                .map(|entries| entries.flatten().filter(|e| e.path().is_dir()).count())
+                .unwrap_or(0)
+        })
+        .sum()
+}
+
+/// Regression: repeated stash push/pop at the same HEAD used to double
+/// checkpoints.jsonl every cycle (push copied the working log into the stash
+/// without clearing it; pop raw-appended the copy back), growing it to GBs.
+#[test]
+fn test_stash_pop_cycles_do_not_grow_checkpoints() {
+    let repo = TestRepo::new();
+    let a_path = repo.path().join("a.txt");
+    let b_path = repo.path().join("b.txt");
+    fs::write(&a_path, "base a\n").unwrap();
+    fs::write(&b_path, "base b\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    fs::write(&a_path, "base a\nAI a 1\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "a.txt"]).unwrap();
+    fs::write(&b_path, "base b\nAI b 1\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "b.txt"]).unwrap();
+    fs::write(&a_path, "base a\nAI a 1\nAI a 2\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "a.txt"]).unwrap();
+
+    repo.sync_daemon_force();
+    let baseline = live_checkpoint_line_count(&repo);
+    assert!(
+        baseline >= 3,
+        "expected at least 3 checkpoint lines before cycling, got {baseline}"
+    );
+
+    for _ in 0..5 {
+        repo.git(&["stash", "push"]).expect("stash push");
+        repo.git(&["stash", "pop"]).expect("stash pop");
+    }
+    repo.sync_daemon_force();
+
+    let after = live_checkpoint_line_count(&repo);
+    assert!(
+        after <= baseline,
+        "checkpoints.jsonl must not grow across stash push/pop cycles (was {baseline} lines, now {after})"
+    );
+    assert_eq!(
+        stash_entry_dir_count(&repo),
+        0,
+        "pop must remove the stash attribution entry"
+    );
+
+    repo.stage_all_and_commit("commit after stash cycles")
+        .unwrap();
+    let mut a = repo.filename("a.txt");
+    a.assert_committed_lines(crate::lines![
+        "base a".unattributed_human(),
+        "AI a 1".ai(),
+        "AI a 2".ai(),
+    ]);
+    let mut b = repo.filename("b.txt");
+    b.assert_committed_lines(crate::lines!["base b".unattributed_human(), "AI b 1".ai(),]);
+}
+
+/// A full `git stash push` leaves the tree matching HEAD, so the live working
+/// log must be emptied (the stash entry carries the attribution); pop restores it.
+#[test]
+fn test_stash_push_clears_live_checkpoints_and_pop_restores() {
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("example.txt");
+    fs::write(&file_path, "base\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    fs::write(&file_path, "base\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "example.txt"])
+        .unwrap();
+
+    repo.sync_daemon_force();
+    let baseline = live_checkpoint_line_count(&repo);
+    assert!(baseline >= 1, "expected checkpoint lines, got {baseline}");
+
+    repo.git(&["stash", "push"]).expect("stash push");
+    repo.sync_daemon_force();
+    assert_eq!(
+        live_checkpoint_line_count(&repo),
+        0,
+        "stash push must clear the live checkpoints.jsonl"
+    );
+    let stash_initial = single_stash_v2_initial(&repo);
+    assert!(
+        stash_initial.files.contains_key("example.txt"),
+        "the stash entry must carry the stashed file's attribution, got {:?}",
+        stash_initial.files.keys().collect::<Vec<_>>()
+    );
+
+    repo.git(&["stash", "pop"]).expect("stash pop");
+    repo.sync_daemon_force();
+    assert_eq!(
+        stash_entry_dir_count(&repo),
+        0,
+        "pop must remove the stash attribution entry"
+    );
+    let live_initial = repo.current_working_logs().read_initial_attributions();
+    assert!(
+        live_initial.files.contains_key("example.txt"),
+        "pop must restore the stashed attribution into the live INITIAL, got {:?}",
+        live_initial.files.keys().collect::<Vec<_>>()
+    );
+
+    repo.stage_all_and_commit("commit popped stash").unwrap();
+    let mut file = repo.filename("example.txt");
+    file.assert_committed_lines(crate::lines!["base".unattributed_human(), "AI line".ai(),]);
+}
+
+/// `stash apply` keeps the stash entry around, and the daemon restores
+/// attribution even when git exits non-zero. Repeated applies must not
+/// compound the live working log.
+#[test]
+fn test_stash_apply_repeated_is_idempotent() {
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("example.txt");
+    fs::write(&file_path, "base\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    fs::write(&file_path, "base\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "example.txt"])
+        .unwrap();
+
+    repo.sync_daemon_force();
+    let baseline = live_checkpoint_line_count(&repo);
+    assert!(baseline >= 1, "expected checkpoint lines, got {baseline}");
+
+    repo.git(&["stash", "push"]).expect("stash push");
+    repo.git(&["stash", "apply"]).expect("stash apply");
+    // Second apply may fail (changes already present); the daemon still runs
+    // its conflict-tolerant restore, which must not duplicate attribution.
+    let _ = repo.git(&["stash", "apply"]);
+    repo.sync_daemon_force();
+
+    let after = live_checkpoint_line_count(&repo);
+    assert!(
+        after <= baseline,
+        "repeated stash apply must not compound the live log (was {baseline} lines, now {after})"
+    );
+    let live_initial = repo.current_working_logs().read_initial_attributions();
+    assert_eq!(
+        live_initial.files.get("example.txt").map(Vec::len),
+        Some(1),
+        "repeated apply must not duplicate INITIAL attributions"
+    );
+
+    repo.stage_all_and_commit("commit applied stash").unwrap();
+    let mut file = repo.filename("example.txt");
+    file.assert_committed_lines(crate::lines!["base".unattributed_human(), "AI line".ai(),]);
+}
+
+/// `git stash push -- <pathspec>` only stashes matching paths, so the live
+/// working log must keep checkpoints for the unstashed files and drop the
+/// stashed ones (complement of what the stash copy keeps).
+#[test]
+fn test_stash_push_pathspec_keeps_unstashed_checkpoints_in_live_log() {
+    let repo = TestRepo::new();
+    let a_path = repo.path().join("a.txt");
+    let b_path = repo.path().join("b.txt");
+    fs::write(&a_path, "base a\n").unwrap();
+    fs::write(&b_path, "base b\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    fs::write(&a_path, "base a\nAI a\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "a.txt"]).unwrap();
+    fs::write(&b_path, "base b\nAI b\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "b.txt"]).unwrap();
+
+    repo.git(&["stash", "push", "--", "a.txt"])
+        .expect("stash push -- a.txt");
+    repo.sync_daemon_force();
+
+    let live_files = live_checkpoint_files(&repo);
+    assert!(
+        live_files.contains("b.txt"),
+        "live log must keep the unstashed file b.txt, got {live_files:?}"
+    );
+    assert!(
+        !live_files.contains("a.txt"),
+        "live log must drop the stashed file a.txt, got {live_files:?}"
+    );
+
+    repo.git(&["stash", "pop"]).expect("stash pop");
+    repo.sync_daemon_force();
+    // Pop restores the stashed file's attribution into the live INITIAL;
+    // the unstashed file's checkpoints stayed live the whole time.
+    let live_initial = repo.current_working_logs().read_initial_attributions();
+    assert!(
+        live_initial.files.contains_key("a.txt"),
+        "after pop the stashed file must be attributed in the live INITIAL, got {:?}",
+        live_initial.files.keys().collect::<Vec<_>>()
+    );
+    assert!(
+        live_checkpoint_files(&repo).contains("b.txt"),
+        "the unstashed file's checkpoints must remain live after pop"
+    );
+
+    repo.stage_all_and_commit("commit both").unwrap();
+    let mut a = repo.filename("a.txt");
+    a.assert_committed_lines(crate::lines!["base a".unattributed_human(), "AI a".ai(),]);
+    let mut b = repo.filename("b.txt");
+    b.assert_committed_lines(crate::lines!["base b".unattributed_human(), "AI b".ai(),]);
+}
+
+/// Shifted pop (HEAD moved between push and pop) consolidates the stash copy
+/// into INITIAL attributions -- it must not append stash checkpoint lines to
+/// the new HEAD's checkpoints.jsonl, and attribution must survive the commit.
+#[test]
+fn test_stash_pop_after_head_move_stays_bounded() {
+    let repo = TestRepo::new();
+    let a_path = repo.path().join("a.txt");
+    fs::write(&a_path, "base a\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    fs::write(&a_path, "base a\nAI stashed\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "a.txt"]).unwrap();
+    repo.git(&["stash", "push"]).expect("stash push");
+
+    let b_path = repo.path().join("b.txt");
+    fs::write(&b_path, "human line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "b.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("move head").unwrap();
+
+    repo.sync_daemon_force();
+    let before_pop = live_checkpoint_line_count(&repo);
+
+    repo.git(&["stash", "pop"]).expect("stash pop");
+    repo.sync_daemon_force();
+
+    let after_pop = live_checkpoint_line_count(&repo);
+    assert_eq!(
+        after_pop, before_pop,
+        "shifted pop must not append stash checkpoint lines to the new HEAD's log"
+    );
+    assert_eq!(
+        stash_entry_dir_count(&repo),
+        0,
+        "pop must remove the stash attribution entry"
+    );
+
+    repo.stage_all_and_commit("commit shifted pop").unwrap();
+    let mut a = repo.filename("a.txt");
+    a.assert_committed_lines(crate::lines![
+        "base a".unattributed_human(),
+        "AI stashed".ai(),
+    ]);
+}
+
+/// Pre-fix versions could leave a multi-GB `.git/ai/stashes` dir behind (the
+/// old unversioned layout). Any stash operation must delete the legacy dir --
+/// dropping its (potentially exploded) attribution data -- and use the
+/// versioned dir for new stashes, so old bloated worklogs can never be
+/// re-appended or loaded into memory.
+#[test]
+fn test_legacy_stashes_dir_is_removed() {
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("example.txt");
+    fs::write(&file_path, "base\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    // Simulate a leftover legacy stash dir from a pre-fix version.
+    let legacy_dir = repo.path().join(".git").join("ai").join("stashes");
+    let legacy_worklog = legacy_dir.join("deadbeef_worklog");
+    fs::create_dir_all(&legacy_worklog).unwrap();
+    fs::write(
+        legacy_worklog.join("checkpoints.jsonl"),
+        "{\"stale\":\"data\"}\n",
+    )
+    .unwrap();
+    fs::write(legacy_dir.join("deadbeef.json"), "{}").unwrap();
+
+    fs::write(&file_path, "base\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "example.txt"])
+        .unwrap();
+    repo.git(&["stash", "push"]).expect("stash push");
+    repo.sync_daemon_force();
+
+    assert!(
+        !legacy_dir.exists(),
+        "legacy .git/ai/stashes dir must be deleted by stash operations"
+    );
+    let versioned_dir = repo.path().join(".git").join("ai").join("stashes_v2");
+    assert!(
+        versioned_dir.exists(),
+        "new stash attribution data must live in the versioned stash dir"
+    );
+
+    repo.git(&["stash", "pop"]).expect("stash pop");
+    repo.sync_daemon_force();
+
+    repo.stage_all_and_commit("commit popped stash").unwrap();
+    let mut file = repo.filename("example.txt");
+    file.assert_committed_lines(crate::lines!["base".unattributed_human(), "AI line".ai(),]);
+}
+
+/// `git stash pop -q`: the ref-cursor used to treat the first arg after the
+/// subcommand as the stash target, so `-q` broke stash-sha resolution and the
+/// restore never ran. Before push cleared the live log this was masked (the
+/// checkpoints were still there, doubled); now the restore must fire.
+#[test]
+fn test_stash_pop_quiet_flag_restores_attribution() {
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("example.txt");
+    fs::write(&file_path, "base\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    fs::write(&file_path, "base\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "example.txt"])
+        .unwrap();
+
+    repo.sync_daemon_force();
+    let baseline = live_checkpoint_line_count(&repo);
+    assert!(baseline >= 1, "expected checkpoint lines, got {baseline}");
+
+    repo.git(&["stash", "push", "-q"]).expect("stash push -q");
+    repo.git(&["stash", "pop", "-q"]).expect("stash pop -q");
+    repo.sync_daemon_force();
+
+    let live_initial = repo.current_working_logs().read_initial_attributions();
+    assert!(
+        live_initial.files.contains_key("example.txt"),
+        "quiet pop must still restore the stashed attribution, got {:?}",
+        live_initial.files.keys().collect::<Vec<_>>()
+    );
+    assert_eq!(
+        stash_entry_dir_count(&repo),
+        0,
+        "quiet pop must remove the stash attribution entry"
+    );
+
+    repo.stage_all_and_commit("commit popped stash").unwrap();
+    let mut file = repo.filename("example.txt");
+    file.assert_committed_lines(crate::lines!["base".unattributed_human(), "AI line".ai(),]);
+}
+
+/// Same flag-vs-target confusion for `git stash apply -q`.
+#[test]
+fn test_stash_apply_quiet_flag_restores_attribution() {
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("example.txt");
+    fs::write(&file_path, "base\n").unwrap();
+    repo.stage_all_and_commit("initial").unwrap();
+
+    fs::write(&file_path, "base\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "example.txt"])
+        .unwrap();
+
+    repo.git(&["stash", "push", "-q"]).expect("stash push -q");
+    repo.git(&["stash", "apply", "-q"]).expect("stash apply -q");
+    repo.sync_daemon_force();
+
+    repo.stage_all_and_commit("commit applied stash").unwrap();
+    let mut file = repo.filename("example.txt");
+    file.assert_committed_lines(crate::lines!["base".unattributed_human(), "AI line".ai(),]);
+}
+
 crate::reuse_tests_in_worktree!(
     test_stash_pop_with_ai_attribution,
     test_stash_apply_with_ai_attribution,

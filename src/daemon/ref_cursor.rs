@@ -915,9 +915,9 @@ impl RefCursor {
 
         if matches!(kind, "apply" | "pop" | "drop" | "branch") {
             let target = if kind == "branch" {
-                stash_args.get(2)
+                stash_positional_arg(stash_args, 1)
             } else {
-                stash_args.get(1)
+                stash_positional_arg(stash_args, 0)
             };
             cmd.stash_target_oid = self.resolve_stash_target_at_cursor(target)?;
         }
@@ -929,7 +929,7 @@ impl RefCursor {
                 cmd.ref_changes.push(entry_to_ref_change(&entry));
             }
         } else if matches!(kind, "pop" | "drop") {
-            self.consume_destructive_stash_operation(stash_args.get(1), cmd)?;
+            self.consume_destructive_stash_operation(stash_positional_arg(stash_args, 0), cmd)?;
         }
 
         if matches!(kind, "apply" | "pop" | "branch")
@@ -3518,6 +3518,20 @@ fn stash_command_args(args: &[String]) -> &[String] {
     } else {
         args
     }
+}
+
+/// Positional (non-flag) argument after the stash subcommand. pop/apply/drop
+/// take only boolean flags (`-q`, `--index`), so the stash target is the
+/// first positional, not literally `args[1]` -- `git stash pop -q` must not
+/// treat `-q` as the target (that made resolution fail and skipped the
+/// attribution restore entirely). For `branch` the branch name is positional 0
+/// and the optional stash target is positional 1.
+fn stash_positional_arg(stash_args: &[String], position: usize) -> Option<&String> {
+    stash_args
+        .iter()
+        .skip(1)
+        .filter(|arg| !arg.starts_with('-'))
+        .nth(position)
 }
 
 fn stash_push_message_from_args(args: &[String], kind: &str) -> Option<String> {

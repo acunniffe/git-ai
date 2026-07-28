@@ -257,8 +257,30 @@ impl RepoStorage {
         }
         new_log.write_initial(merged_initial)?;
 
+        // A log can carry the same checkpoints on both sides (e.g. merged
+        // forward and back across HEAD moves), so dedup by identity key --
+        // `diff` is a content hash, so (kind, diff, timestamp, author) never
+        // collides for distinct checkpoints.
         let mut checkpoints = old_log.read_all_checkpoints()?;
-        checkpoints.extend(new_log.read_all_checkpoints()?);
+        let seen: HashSet<(String, String, u64, String)> = checkpoints
+            .iter()
+            .map(|c| {
+                (
+                    c.kind.to_string(),
+                    c.diff.clone(),
+                    c.timestamp,
+                    c.author.clone(),
+                )
+            })
+            .collect();
+        checkpoints.extend(new_log.read_all_checkpoints()?.into_iter().filter(|c| {
+            !seen.contains(&(
+                c.kind.to_string(),
+                c.diff.clone(),
+                c.timestamp,
+                c.author.clone(),
+            ))
+        }));
         new_log.write_all_checkpoints(&checkpoints)?;
         Ok(())
     }
@@ -959,5 +981,71 @@ mod tests {
         // Both sides' unique entries survive.
         assert!(merged.files.contains_key("old_only.txt"));
         assert!(merged.files.contains_key("new_only.txt"));
+    }
+
+    fn checkpoint(diff: &str, timestamp: u64) -> Checkpoint {
+        let entry = crate::authorship::working_log::WorkingLogEntry::new(
+            "file.txt".to_string(),
+            "blobsha".to_string(),
+            Vec::new(),
+            Vec::new(),
+        );
+        let mut cp = Checkpoint::new(
+            CheckpointKind::AiAgent,
+            diff.to_string(),
+            "author".to_string(),
+            vec![entry],
+        );
+        cp.timestamp = timestamp;
+        cp
+    }
+
+    /// When both working logs carry the same checkpoints (e.g. a log that was
+    /// merged forward and back across HEAD moves), merging must not duplicate
+    /// them -- only checkpoints missing from the destination are appended.
+    #[test]
+    fn test_merge_working_log_dirs_dedups_identical_checkpoints() {
+        let tmp = TempDir::new().unwrap();
+        let workdir = tmp.path().join("workdir");
+        fs::create_dir_all(&workdir).unwrap();
+        let ai_dir = tmp.path().join("ai");
+        let storage = RepoStorage::for_repo_path(&ai_dir, &workdir).unwrap();
+
+        let old_sha = "1111111111111111111111111111111111111111";
+        let new_sha = "2222222222222222222222222222222222222222";
+
+        let shared_a = checkpoint("diff-shared-a", 100);
+        let shared_b = checkpoint("diff-shared-b", 200);
+        let old_only = checkpoint("diff-old-only", 300);
+        let new_only = checkpoint("diff-new-only", 400);
+
+        let old_log = storage.working_log_for_base_commit(old_sha).unwrap();
+        old_log
+            .write_all_checkpoints(&[shared_a.clone(), shared_b.clone(), old_only])
+            .unwrap();
+        let new_log = storage.working_log_for_base_commit(new_sha).unwrap();
+        new_log
+            .write_all_checkpoints(&[shared_a, shared_b, new_only])
+            .unwrap();
+
+        storage.rename_working_log(old_sha, new_sha).unwrap();
+
+        let merged = storage
+            .working_log_for_base_commit(new_sha)
+            .unwrap()
+            .read_all_checkpoints()
+            .unwrap();
+        let mut diffs: Vec<&str> = merged.iter().map(|c| c.diff.as_str()).collect();
+        diffs.sort_unstable();
+        assert_eq!(
+            diffs,
+            vec![
+                "diff-new-only",
+                "diff-old-only",
+                "diff-shared-a",
+                "diff-shared-b"
+            ],
+            "shared checkpoints must not duplicate on merge"
+        );
     }
 }
