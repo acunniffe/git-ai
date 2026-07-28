@@ -20,7 +20,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 interprocess = "2.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 libc = "0.2"
-jsonc-parser = { version = "0.32", features = ["cst"] }
+jsonc-parser = { version = "0.33", features = ["cst"] }
 dirs = "5.0"
 ureq = { version = "3.3", default-features = false, features = ["native-tls"] }
 url = "2.5"
