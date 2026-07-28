@@ -1,0 +1,4913 @@
+{
+ "dimensions": {
+  "stack": {
+   "single": "one branch off trunk, 1 AI commit",
+   "stack2_bot": "2-branch stack, change under test on the BOTTOM branch",
+   "stack2_top": "2-branch stack, change under test on the TOP branch",
+   "stack3_mid": "3-branch stack, change under test on the MIDDLE branch",
+   "stack3_all": "3-branch stack, AI commits on ALL branches"
+  },
+  "attribution": {
+   "committed": "AI work committed with notes before the workflow",
+   "uncommitted": "AI checkpoint in the working log, not yet committed",
+   "mixed": "committed AI commit plus uncommitted AI edits on top",
+   "multifile": "one commit touching 3 AI files (rename-adjacent shapes)"
+  },
+  "trunk": {
+   "ff": "trunk unchanged or clean fast-forward",
+   "diverged": "trunk advanced with non-overlapping changes (real restack)",
+   "overlap": "trunk advanced touching the same file regions (conflict fuel)"
+  },
+  "observation": {
+   "traced": "daemon observes every command (normal laptop)",
+   "blind": "rewrite phase executed raw (trace2 off), daemon restarted after -- reconciliation/replay territory"
+  },
+  "repeat": {
+   "once": "run the workflow once",
+   "twice": "run the workflow twice back-to-back (idempotency; second run is usually a no-op and must not disturb notes)"
+  }
+ },
+ "families": {
+  "SYNC_FF": "gt sync trunk fast-forward: fetch; update-ref trunk (or `reset -q --keep` when trunk/branch is checked out); stash create/ls-files snapshot around it",
+  "SYNC_RESTACK": "gt sync with restack: fetch + trunk move, then per-branch synthetic-base commit-tree -> merge-tree --allow-unrelated-histories -> commit-tree(real msg) -> update-ref, bottom-up through the stack",
+  "RESTACK": "gt restack without fetch: same rewrite core as SYNC_RESTACK, no remote",
+  "CREATE": "gt create: stash-wrapped branch creation + commit (stash create; checkout -b; commit; metadata refs)",
+  "MODIFY": "gt modify: amend HEAD (commit --amend shape) then restack descendants via the rewrite core",
+  "SUBMIT": "gt submit: restack if needed, then push --force-with-lease... --no-verify --atomic per branch",
+  "CONFLICT_CONTINUE": "restack hits a real conflict (merge-tree unresolvable / cleanRebaseMergeTree failure) -> gt falls back to real git rebase -> user resolves -> gt continue",
+  "CONFLICT_ABORT": "same conflict entry, then gt abort -> git rebase --abort + gt state restore; branch must return to pre-workflow tip with notes intact",
+  "UNDO": "gt undo of a completed restack: reset -q --keep <pre-restack-tip> moving the branch backward (fork-point-spanning ranges)",
+  "MOVE_ONTO": "gt move --onto: rewrite core applied with a different parent (not trunk); descendants restacked",
+  "HOUSEKEEPING": "gt checkout/track/trunk/info: metadata-only flows -- control group, must never touch attribution",
+  "FLAVOR_17X": "gt 1.7.x shapes: hash-object -w --stdin storms + eager metadata update-refs interleaved into the SYNC_RESTACK core",
+  "WORKTREE": "SYNC_RESTACK and MODIFY cores executed from a LINKED WORKTREE (.claude/worktrees pattern observed in production logs): per-worktree HEAD reflog, per-worktree working log, shared refs",
+  "REFSTDIN": "SYNC_RESTACK core but all branch moves applied via a single `update-ref --stdin` batch (binary-evidenced flavor): the daemon sees ONE command move many refs",
+  "RENAME": "AI commit renames a file (and edits it) then goes through the restack core; rename-following in note translation under merge-tree rewrites",
+  "MERGE_IN_STACK": "a merge commit inside the stack (pull-merge shape) goes through the restack core; exercises derive_merge_commit_mappings",
+  "PARTIAL_STAGE": "workflow starts with a working tree mixing staged AI edits, unstaged AI edits, and untracked files (`stash create` + ls-files snapshot boundary conditions)",
+  "LIFECYCLE": "full-chain composites: create -> modify -> sync(restack) -> submit; create -> sync(conflict->continue) -> modify -> submit; create -> sync -> undo -> sync again; attribution must survive the entire chain end-to-end",
+  "NESTED_CONFLICT": "conflicts at TWO stack levels in one sync: resolve+continue the first, then hit and resolve/abort the second"
+ },
+ "scenarios": [
+  {
+   "id": "GT-SYNC_FF-001",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-002",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-003",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-004",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-005",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-006",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-007",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-008",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-009",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-010",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-011",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-012",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-013",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-014",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-015",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-016",
+   "family": "SYNC_FF",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-017",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-018",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-019",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-020",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-021",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-022",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-023",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-024",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-025",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-026",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-027",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-028",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-029",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-030",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_FF-031",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_FF-032",
+   "family": "SYNC_FF",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-001",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-002",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-003",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-004",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-005",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-006",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-007",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-008",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-009",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-010",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-011",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-012",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-013",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-014",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-015",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-016",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-017",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-018",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-019",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-020",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-021",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-022",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-023",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-024",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-025",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-026",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-027",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-028",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-029",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-030",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-031",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-032",
+   "family": "SYNC_RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-033",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-034",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-035",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-036",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-037",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-038",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-039",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-040",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-041",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-042",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-043",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-044",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-045",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-046",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-047",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-048",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-049",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-050",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-051",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-052",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-053",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-054",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-055",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-056",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-057",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-058",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-059",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-060",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-061",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-062",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-063",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-064",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-065",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-066",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-067",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-068",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-069",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-070",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-071",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-072",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-073",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-074",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-075",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-076",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-077",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-078",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-079",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-080",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-081",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-082",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-083",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-084",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-085",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-086",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-087",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-088",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-089",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-090",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-091",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-092",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-093",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-094",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-095",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-096",
+   "family": "SYNC_RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-097",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-098",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-099",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-100",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-101",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-102",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-103",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-104",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-105",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-106",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-107",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-108",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-109",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-110",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-111",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-112",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-113",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-114",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-115",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-116",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-117",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-118",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-119",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-120",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-121",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-122",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-123",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-124",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-125",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-126",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-127",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-128",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-129",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-130",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-131",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-132",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-133",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-134",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-135",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-136",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-137",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-138",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-139",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-140",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-141",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-142",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-143",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-144",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-145",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-146",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-147",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-148",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-149",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-150",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-151",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-152",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-153",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-154",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-155",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-156",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-157",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-158",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-159",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SYNC_RESTACK-160",
+   "family": "SYNC_RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-RESTACK-001",
+   "family": "RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-002",
+   "family": "RESTACK",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-003",
+   "family": "RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-004",
+   "family": "RESTACK",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-005",
+   "family": "RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-006",
+   "family": "RESTACK",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-007",
+   "family": "RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-008",
+   "family": "RESTACK",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-009",
+   "family": "RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-010",
+   "family": "RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-011",
+   "family": "RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-012",
+   "family": "RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-013",
+   "family": "RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-014",
+   "family": "RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-015",
+   "family": "RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-016",
+   "family": "RESTACK",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-017",
+   "family": "RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-018",
+   "family": "RESTACK",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-019",
+   "family": "RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-020",
+   "family": "RESTACK",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-021",
+   "family": "RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-022",
+   "family": "RESTACK",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-023",
+   "family": "RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-024",
+   "family": "RESTACK",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-025",
+   "family": "RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-026",
+   "family": "RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-027",
+   "family": "RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-028",
+   "family": "RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-029",
+   "family": "RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-030",
+   "family": "RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-031",
+   "family": "RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-032",
+   "family": "RESTACK",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-033",
+   "family": "RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-034",
+   "family": "RESTACK",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-035",
+   "family": "RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-036",
+   "family": "RESTACK",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-037",
+   "family": "RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-038",
+   "family": "RESTACK",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-039",
+   "family": "RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RESTACK-040",
+   "family": "RESTACK",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-001",
+   "family": "CREATE",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-002",
+   "family": "CREATE",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-003",
+   "family": "CREATE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-004",
+   "family": "CREATE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-005",
+   "family": "CREATE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-006",
+   "family": "CREATE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-007",
+   "family": "CREATE",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-008",
+   "family": "CREATE",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-009",
+   "family": "CREATE",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-010",
+   "family": "CREATE",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-011",
+   "family": "CREATE",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-012",
+   "family": "CREATE",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-013",
+   "family": "CREATE",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-014",
+   "family": "CREATE",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-015",
+   "family": "CREATE",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CREATE-016",
+   "family": "CREATE",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-001",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-002",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-003",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-004",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-005",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-006",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-007",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-008",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-009",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-010",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-011",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-012",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-013",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-014",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-015",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-016",
+   "family": "MODIFY",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-017",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-018",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-019",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-020",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-021",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-022",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-023",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-024",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-025",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-026",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-027",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-028",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-029",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-030",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-031",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-032",
+   "family": "MODIFY",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-033",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-034",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-035",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-036",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-037",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-038",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-039",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-040",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-041",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-042",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-043",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-044",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-045",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-046",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MODIFY-047",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MODIFY-048",
+   "family": "MODIFY",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-SUBMIT-001",
+   "family": "SUBMIT",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-002",
+   "family": "SUBMIT",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-003",
+   "family": "SUBMIT",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-004",
+   "family": "SUBMIT",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-005",
+   "family": "SUBMIT",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-006",
+   "family": "SUBMIT",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-007",
+   "family": "SUBMIT",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-008",
+   "family": "SUBMIT",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-009",
+   "family": "SUBMIT",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-010",
+   "family": "SUBMIT",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-011",
+   "family": "SUBMIT",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-SUBMIT-012",
+   "family": "SUBMIT",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-001",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-002",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-003",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-004",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-005",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-006",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-007",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-008",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-009",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-010",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-011",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-012",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-013",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-014",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-015",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-016",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-017",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-018",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-019",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-020",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-021",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-022",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-023",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_CONTINUE-024",
+   "family": "CONFLICT_CONTINUE",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-001",
+   "family": "CONFLICT_ABORT",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-002",
+   "family": "CONFLICT_ABORT",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-003",
+   "family": "CONFLICT_ABORT",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-004",
+   "family": "CONFLICT_ABORT",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-005",
+   "family": "CONFLICT_ABORT",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-006",
+   "family": "CONFLICT_ABORT",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-007",
+   "family": "CONFLICT_ABORT",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-008",
+   "family": "CONFLICT_ABORT",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-009",
+   "family": "CONFLICT_ABORT",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-010",
+   "family": "CONFLICT_ABORT",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-011",
+   "family": "CONFLICT_ABORT",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-012",
+   "family": "CONFLICT_ABORT",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-013",
+   "family": "CONFLICT_ABORT",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-014",
+   "family": "CONFLICT_ABORT",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-015",
+   "family": "CONFLICT_ABORT",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-CONFLICT_ABORT-016",
+   "family": "CONFLICT_ABORT",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-001",
+   "family": "UNDO",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-002",
+   "family": "UNDO",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-003",
+   "family": "UNDO",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-004",
+   "family": "UNDO",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-005",
+   "family": "UNDO",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-006",
+   "family": "UNDO",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-007",
+   "family": "UNDO",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-008",
+   "family": "UNDO",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-009",
+   "family": "UNDO",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-010",
+   "family": "UNDO",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-011",
+   "family": "UNDO",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-012",
+   "family": "UNDO",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-013",
+   "family": "UNDO",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-014",
+   "family": "UNDO",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-015",
+   "family": "UNDO",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-016",
+   "family": "UNDO",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-017",
+   "family": "UNDO",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-018",
+   "family": "UNDO",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-019",
+   "family": "UNDO",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-020",
+   "family": "UNDO",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-021",
+   "family": "UNDO",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-022",
+   "family": "UNDO",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-UNDO-023",
+   "family": "UNDO",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-UNDO-024",
+   "family": "UNDO",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-MOVE_ONTO-001",
+   "family": "MOVE_ONTO",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MOVE_ONTO-002",
+   "family": "MOVE_ONTO",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MOVE_ONTO-003",
+   "family": "MOVE_ONTO",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MOVE_ONTO-004",
+   "family": "MOVE_ONTO",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MOVE_ONTO-005",
+   "family": "MOVE_ONTO",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MOVE_ONTO-006",
+   "family": "MOVE_ONTO",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MOVE_ONTO-007",
+   "family": "MOVE_ONTO",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MOVE_ONTO-008",
+   "family": "MOVE_ONTO",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-HOUSEKEEPING-001",
+   "family": "HOUSEKEEPING",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-HOUSEKEEPING-002",
+   "family": "HOUSEKEEPING",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-HOUSEKEEPING-003",
+   "family": "HOUSEKEEPING",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-HOUSEKEEPING-004",
+   "family": "HOUSEKEEPING",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-FLAVOR_17X-001",
+   "family": "FLAVOR_17X",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-FLAVOR_17X-002",
+   "family": "FLAVOR_17X",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-FLAVOR_17X-003",
+   "family": "FLAVOR_17X",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-FLAVOR_17X-004",
+   "family": "FLAVOR_17X",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-001",
+   "family": "WORKTREE",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-002",
+   "family": "WORKTREE",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-003",
+   "family": "WORKTREE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-004",
+   "family": "WORKTREE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-005",
+   "family": "WORKTREE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-006",
+   "family": "WORKTREE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-007",
+   "family": "WORKTREE",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-008",
+   "family": "WORKTREE",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-009",
+   "family": "WORKTREE",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-010",
+   "family": "WORKTREE",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-011",
+   "family": "WORKTREE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-012",
+   "family": "WORKTREE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-013",
+   "family": "WORKTREE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-014",
+   "family": "WORKTREE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-015",
+   "family": "WORKTREE",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-016",
+   "family": "WORKTREE",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-017",
+   "family": "WORKTREE",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-018",
+   "family": "WORKTREE",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-019",
+   "family": "WORKTREE",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-020",
+   "family": "WORKTREE",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-021",
+   "family": "WORKTREE",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-022",
+   "family": "WORKTREE",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-023",
+   "family": "WORKTREE",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-024",
+   "family": "WORKTREE",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-025",
+   "family": "WORKTREE",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-026",
+   "family": "WORKTREE",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-027",
+   "family": "WORKTREE",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-028",
+   "family": "WORKTREE",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-029",
+   "family": "WORKTREE",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-030",
+   "family": "WORKTREE",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-031",
+   "family": "WORKTREE",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-032",
+   "family": "WORKTREE",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-033",
+   "family": "WORKTREE",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-034",
+   "family": "WORKTREE",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-035",
+   "family": "WORKTREE",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-036",
+   "family": "WORKTREE",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-037",
+   "family": "WORKTREE",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-038",
+   "family": "WORKTREE",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-039",
+   "family": "WORKTREE",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-WORKTREE-040",
+   "family": "WORKTREE",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-001",
+   "family": "REFSTDIN",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-002",
+   "family": "REFSTDIN",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-003",
+   "family": "REFSTDIN",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-004",
+   "family": "REFSTDIN",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-005",
+   "family": "REFSTDIN",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-006",
+   "family": "REFSTDIN",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-007",
+   "family": "REFSTDIN",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-008",
+   "family": "REFSTDIN",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-009",
+   "family": "REFSTDIN",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-010",
+   "family": "REFSTDIN",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-011",
+   "family": "REFSTDIN",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-012",
+   "family": "REFSTDIN",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-013",
+   "family": "REFSTDIN",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-014",
+   "family": "REFSTDIN",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-015",
+   "family": "REFSTDIN",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-016",
+   "family": "REFSTDIN",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-017",
+   "family": "REFSTDIN",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-018",
+   "family": "REFSTDIN",
+   "stack": "stack2_top",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-019",
+   "family": "REFSTDIN",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-020",
+   "family": "REFSTDIN",
+   "stack": "stack2_top",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-021",
+   "family": "REFSTDIN",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-022",
+   "family": "REFSTDIN",
+   "stack": "stack2_top",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-023",
+   "family": "REFSTDIN",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-024",
+   "family": "REFSTDIN",
+   "stack": "stack2_top",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-025",
+   "family": "REFSTDIN",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-026",
+   "family": "REFSTDIN",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-027",
+   "family": "REFSTDIN",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-028",
+   "family": "REFSTDIN",
+   "stack": "stack3_mid",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-029",
+   "family": "REFSTDIN",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-030",
+   "family": "REFSTDIN",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-031",
+   "family": "REFSTDIN",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-032",
+   "family": "REFSTDIN",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-033",
+   "family": "REFSTDIN",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-034",
+   "family": "REFSTDIN",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-035",
+   "family": "REFSTDIN",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-036",
+   "family": "REFSTDIN",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-037",
+   "family": "REFSTDIN",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-038",
+   "family": "REFSTDIN",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-039",
+   "family": "REFSTDIN",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-REFSTDIN-040",
+   "family": "REFSTDIN",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-001",
+   "family": "RENAME",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-002",
+   "family": "RENAME",
+   "stack": "single",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-003",
+   "family": "RENAME",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-004",
+   "family": "RENAME",
+   "stack": "single",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-005",
+   "family": "RENAME",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-006",
+   "family": "RENAME",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-007",
+   "family": "RENAME",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-008",
+   "family": "RENAME",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-009",
+   "family": "RENAME",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-010",
+   "family": "RENAME",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-011",
+   "family": "RENAME",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-RENAME-012",
+   "family": "RENAME",
+   "stack": "stack3_mid",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MERGE_IN_STACK-001",
+   "family": "MERGE_IN_STACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MERGE_IN_STACK-002",
+   "family": "MERGE_IN_STACK",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MERGE_IN_STACK-003",
+   "family": "MERGE_IN_STACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-MERGE_IN_STACK-004",
+   "family": "MERGE_IN_STACK",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-001",
+   "family": "PARTIAL_STAGE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-002",
+   "family": "PARTIAL_STAGE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-003",
+   "family": "PARTIAL_STAGE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-004",
+   "family": "PARTIAL_STAGE",
+   "stack": "single",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-005",
+   "family": "PARTIAL_STAGE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-006",
+   "family": "PARTIAL_STAGE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-007",
+   "family": "PARTIAL_STAGE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-008",
+   "family": "PARTIAL_STAGE",
+   "stack": "single",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-009",
+   "family": "PARTIAL_STAGE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-010",
+   "family": "PARTIAL_STAGE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-011",
+   "family": "PARTIAL_STAGE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-012",
+   "family": "PARTIAL_STAGE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-013",
+   "family": "PARTIAL_STAGE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-014",
+   "family": "PARTIAL_STAGE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "ff",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-015",
+   "family": "PARTIAL_STAGE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-PARTIAL_STAGE-016",
+   "family": "PARTIAL_STAGE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-001",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-002",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-003",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-004",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-005",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-006",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-007",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-008",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-009",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-010",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-011",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-012",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-013",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-014",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-015",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-016",
+   "family": "LIFECYCLE",
+   "stack": "stack2_bot",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-017",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-018",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-019",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-020",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "committed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-021",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-022",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-023",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-024",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "uncommitted",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-025",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-026",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-027",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-028",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "mixed",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-029",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-030",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "traced",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-LIFECYCLE-031",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-LIFECYCLE-032",
+   "family": "LIFECYCLE",
+   "stack": "stack3_all",
+   "attribution": "multifile",
+   "trunk": "diverged",
+   "observation": "blind",
+   "repeat": "twice"
+  },
+  {
+   "id": "GT-NESTED_CONFLICT-001",
+   "family": "NESTED_CONFLICT",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-NESTED_CONFLICT-002",
+   "family": "NESTED_CONFLICT",
+   "stack": "stack2_bot",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-NESTED_CONFLICT-003",
+   "family": "NESTED_CONFLICT",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-NESTED_CONFLICT-004",
+   "family": "NESTED_CONFLICT",
+   "stack": "stack2_bot",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-NESTED_CONFLICT-005",
+   "family": "NESTED_CONFLICT",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-NESTED_CONFLICT-006",
+   "family": "NESTED_CONFLICT",
+   "stack": "stack3_mid",
+   "attribution": "committed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-NESTED_CONFLICT-007",
+   "family": "NESTED_CONFLICT",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "traced",
+   "repeat": "once"
+  },
+  {
+   "id": "GT-NESTED_CONFLICT-008",
+   "family": "NESTED_CONFLICT",
+   "stack": "stack3_mid",
+   "attribution": "mixed",
+   "trunk": "overlap",
+   "observation": "blind",
+   "repeat": "once"
+  }
+ ]
+}
