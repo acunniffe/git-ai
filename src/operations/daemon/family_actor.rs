@@ -28,7 +28,13 @@ fn should_retry_ref_enrichment(cmd: &NormalizedCommand) -> bool {
             Some("commit") | Some("cherry-pick")
         )
         && !cmd.reflog_start_offsets.is_empty()
-        && cmd.ref_changes.is_empty()
+        && !has_head_ref_change(cmd)
+}
+
+fn has_head_ref_change(cmd: &NormalizedCommand) -> bool {
+    cmd.ref_changes
+        .iter()
+        .any(|change| change.reference == "HEAD")
 }
 
 async fn enrich_command_with_retries(
@@ -41,14 +47,15 @@ async fn enrich_command_with_retries(
     // Git emits trace2 asynchronously, and the daemon can reach this actor
     // before a commit-like command's reflog append is visible to the reader.
     // A successful commit or cherry-pick is exact to retry: the matcher still
-    // requires the command's own reflog transition and command metadata, and
-    // the family actor has not reduced the command yet. Never broaden this
-    // into a live-HEAD guess.
+    // requires the command's own HEAD reflog transition and command metadata,
+    // and the family actor has not reduced the command yet. A branch-only
+    // match is still incomplete because history analysis needs HEAD. Never
+    // broaden this into a live-HEAD guess.
     if should_retry_ref_enrichment(cmd) {
         for delay in COMMIT_REF_ENRICHMENT_RETRY_DELAYS {
             tokio::time::sleep(*delay).await;
             command_start_refs = ref_cursor.enrich_command(cmd, state)?;
-            if !cmd.ref_changes.is_empty() {
+            if has_head_ref_change(cmd) {
                 break;
             }
         }
@@ -331,6 +338,13 @@ mod tests {
         assert!(should_retry_ref_enrichment(&cmd));
 
         cmd.primary_command = Some("cherry-pick".to_string());
+        assert!(should_retry_ref_enrichment(&cmd));
+
+        cmd.ref_changes.push(RefChange {
+            reference: "refs/heads/cherry-side".to_string(),
+            old: "1111111111111111111111111111111111111111".to_string(),
+            new: "2222222222222222222222222222222222222222".to_string(),
+        });
         assert!(should_retry_ref_enrichment(&cmd));
 
         cmd.exit_code = 1;
