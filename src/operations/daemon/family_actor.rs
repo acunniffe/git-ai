@@ -23,6 +23,7 @@ const COMMIT_REF_ENRICHMENT_RETRY_DELAYS: &[Duration] = &[
 fn should_retry_commit_ref_enrichment(cmd: &NormalizedCommand) -> bool {
     cmd.exit_code == 0
         && cmd.primary_command.as_deref() == Some("commit")
+        && !cmd.reflog_start_offsets.is_empty()
         && cmd.ref_changes.is_empty()
 }
 
@@ -211,6 +212,7 @@ pub fn spawn_family_actor(family_key: FamilyKey) -> FamilyActorHandle {
 mod tests {
     use super::*;
     use crate::model::domain::{CommandScope, Confidence, NormalizedCommand, RefChange};
+    use crate::operations::daemon::ref_cursor::capture_reflog_start_offsets_for_worktree;
     use std::fs;
     use std::path::PathBuf;
 
@@ -244,6 +246,8 @@ mod tests {
         let head_log = worktree.join(".git/logs/HEAD");
         fs::create_dir_all(head_log.parent().unwrap()).unwrap();
         crate::operations::git::test_utils::seed_valid_git_dir(&worktree.join(".git"));
+        fs::write(&head_log, "").unwrap();
+        let reflog_start_offsets = capture_reflog_start_offsets_for_worktree(&worktree);
 
         let family = FamilyKey::new(worktree.to_string_lossy().to_string());
         let state = FamilyState {
@@ -276,7 +280,7 @@ mod tests {
             exit_code: 0,
             started_at_ns: 1,
             finished_at_ns: 2,
-            reflog_start_offsets: HashMap::new(),
+            reflog_start_offsets,
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),
@@ -317,6 +321,9 @@ mod tests {
         assert!(!should_retry_commit_ref_enrichment(&cmd));
 
         cmd.primary_command = Some("commit".to_string());
+        assert!(!should_retry_commit_ref_enrichment(&cmd));
+
+        cmd.reflog_start_offsets.insert("HEAD".to_string(), 0);
         assert!(should_retry_commit_ref_enrichment(&cmd));
 
         cmd.exit_code = 1;
