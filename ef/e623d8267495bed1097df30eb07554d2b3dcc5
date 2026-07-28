@@ -1,0 +1,34 @@
+src/notes/reference_server.rs
+  s_ebdb9e45faa307::t_d4bddd552d9aa8 285-292
+src/notes/db.rs
+  s_ebdb9e45faa307::t_93965880a21118 515-516,527-535
+  s_ebdb9e45faa307::t_46aaf0bb74a11d 358-363,378-382,385-390,517-526
+  s_ebdb9e45faa307::t_c7a74a3d3e597c 62-65,80-97
+  s_ebdb9e45faa307::t_40147810262894 335-355,357,364-377,383-384,391
+src/daemon/telemetry_worker.rs
+  s_ebdb9e45faa307::t_772ce2f123cb5e 543-544,549
+  s_ebdb9e45faa307::t_3bd6fa48c25254 611-625
+  s_ebdb9e45faa307::t_0ed96a5f6060c6 637-644
+src/commands/notes_migrate.rs
+  s_ebdb9e45faa307::t_1ef0b0a7be5593 116-137
+src/git/notes_api.rs
+  s_ebdb9e45faa307::t_27b2074a2cf221 279-280,284
+  s_ebdb9e45faa307::t_151ecbad914038 318,322-327,334,339-344,351
+  s_ebdb9e45faa307::t_46aaf0bb74a11d 328-333,335-338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "efe623d8267495bed1097df30eb07554d2b3dcc5",
+  "prompts": {},
+  "sessions": {
+    "s_ebdb9e45faa307": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0a1a5f63-32cf-4498-af37-6240a5662695",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

@@ -1,0 +1,54 @@
+tests/integration/checkpoint_perf.rs
+  s_8d9d36585aec71::t_02fea89d1789e2 162
+tests/notes_sync_regression.rs
+  s_8d9d36585aec71::t_ac0593223f70da 446
+tests/integration/repos/test_repo.rs
+  s_8d9d36585aec71::t_0bacdd4d7dd13f 14-21
+  s_8d9d36585aec71::t_975690771b2772 1959-1960
+  s_8d9d36585aec71::t_d09391b2aa2776 58,67,72,80
+  s_8d9d36585aec71::t_8efe1f601c1a4b 380-381
+  s_8d9d36585aec71::t_b5761717e9a110 2847-2848
+  s_8d9d36585aec71::t_0890d4fe106586 2868,2875
+  s_8d9d36585aec71::t_30e07e98dbf321 2888
+tests/daemon_mode.rs
+  s_8d9d36585aec71::t_12bed5555257ed 325-327
+tests/integration/worktrees.rs
+  s_8d9d36585aec71::t_3c16a1f89fb975 2
+  s_8d9d36585aec71::t_47f5aa184583c6 235
+  s_8d9d36585aec71::t_3d899f035af44b 253
+  s_8d9d36585aec71::t_a41d55f2d748e1 277
+  s_8d9d36585aec71::t_9fd45157b71c54 296
+tests/integration/performance.rs
+  s_8d9d36585aec71::t_3d9d766e25c6e4 11
+  s_8d9d36585aec71::t_86befdd6c0ab1f 34-35
+src/daemon/telemetry_handle.rs
+  s_8d9d36585aec71::t_322728a42b3391 3
+  s_8d9d36585aec71::t_c0cf6e331f866d 110
+tests/integration/graphite.rs
+  s_8d9d36585aec71::t_8c6c518717f9ab 315-316
+  s_8d9d36585aec71::t_434170019cdfcf 336
+tests/async_mode.rs
+  s_8d9d36585aec71::t_d1bdef7a6f5633 80,82,94,96
+  s_8d9d36585aec71::t_071d8d69d805e7 99
+  s_8d9d36585aec71::t_721af180b9fdb1 230-231,235
+  s_8d9d36585aec71::t_176a5f37bccbf2 252-253
+  s_8d9d36585aec71::t_b085495d5bae67 272-273
+  s_8d9d36585aec71::t_64a99fb244d0b2 309
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "3def341690076cb122284ff74f28ef7f3ddac8c4",
+  "prompts": {},
+  "sessions": {
+    "s_8d9d36585aec71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33d20787-e26d-4a7f-9364-7a48fad08505",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": []
+    }
+  }
+}

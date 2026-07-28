@@ -1,0 +1,25 @@
+.github/workflows/test.yml
+  b9b8da0b057d00f4 8-9
+.github/workflows/e2e-tests.yml
+  b9b8da0b057d00f4 8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "01a9ef7cb91b4c8ee098cc210cda5ce35f36ce6d",
+  "prompts": {
+    "b9b8da0b057d00f4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd7bf21e-66d9-4649-82d2-0511f6118329",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,41 @@
+.github/workflows/test-vscode-extension.yml
+  s_21b93aaf9d7382::t_50ea774f8ecac1 30-31,34,37,40
+  s_21b93aaf9d7382::t_c77919214e3a47 49
+.github/workflows/opencode-type-check.yml
+  s_21b93aaf9d7382::t_8e050908476582 30-31,34,37
+agent-support/opencode/package-lock.json
+  ai_agent 1-421
+agent-support/vscode/package-lock.json
+  ai_agent 1-6784
+agent-support/opencode/README.md
+  s_21b93aaf9d7382::t_a681fbf1a9c26d 41
+  s_21b93aaf9d7382::t_4de41558ca2e4d 48
+.github/workflows/release-vscode-extension.yml
+  s_21b93aaf9d7382::t_5528d03440fa82 36,79,110
+  s_21b93aaf9d7382::t_3c4a27a633ee48 39,82,113
+  s_21b93aaf9d7382::t_7ef66f13de3576 35,78,109
+  s_21b93aaf9d7382::t_a8c2740e41596c 48
+  s_21b93aaf9d7382::t_c491b997c0727a 45
+  s_21b93aaf9d7382::t_8cc49afa05f8ac 42
+agent-support/vscode/package.json
+  s_21b93aaf9d7382::t_24067b4b538c6d 78
+  s_21b93aaf9d7382::t_61a34b73bf943b 75
+  s_21b93aaf9d7382::t_dd250dc07801f4 95
+  s_21b93aaf9d7382::t_a6c3e382215b10 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "0cabf2158739aadc0fb2cf3e27032ad74f894349",
+  "prompts": {},
+  "sessions": {
+    "s_21b93aaf9d7382": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "334dc815-7cfe-416d-839f-6f98811a07c6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

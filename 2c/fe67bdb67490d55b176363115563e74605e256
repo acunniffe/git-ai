@@ -1,0 +1,28 @@
+tests/integration/bash_tool_timeouts.rs
+  f5bf3e9a735b4a84 16-17,43-47,54-57,178-179
+src/commands/checkpoint_agent/bash_tool.rs
+  f5bf3e9a735b4a84 546-548
+tests/integration/bash_tool_benchmark.rs
+  f5bf3e9a735b4a84 20,76-78,92-96,339-345,402-405,425-427,431-433,438-439,444-445,462-465,485-487,491-493,498-499,504-505,522-525,542-544,548-550,555-556,561-562,606-611,645-650,690-692,696-698,709-710,715-716
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "2cfe67bdb67490d55b176363115563e74605e256",
+  "prompts": {
+    "f5bf3e9a735b4a84": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "db02b9f8-7051-46aa-99ec-d0fad7911f24",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 96,
+      "total_deletions": 40,
+      "accepted_lines": 96,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/3b7e71856b4ba2b6fc2b0f21ad5b1a32a34c279f0404340a23c6f1201d4c1c7f"
+    }
+  }
+}

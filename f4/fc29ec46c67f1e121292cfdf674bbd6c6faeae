@@ -1,0 +1,368 @@
+tests/prompt_across_commit.rs
+  human 11,15,29
+  ed1c34c 25-26
+  eb0afb0 1-10,12-14,34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "f4fc29ec46c67f1e121292cfdf674bbd6c6faeae",
+  "prompts": {
+    "4f23e1a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0e49ed3e-e7e2-42ce-b956-9f47fca2c032",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@test authorship::stats::tests::test_stats_for_user_bug (21-60) \n@stats.rs (986-995) \n\nThis test is broken. For some reason even though the Authorship log shows 1 line of AI code, the stats_for_commit_stats returns 0 ai_additions @prompt_across_commit.rs (13-14)",
+          "timestamp": "2025-11-18T15:47:25.337Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I can see the issue - the authorship log shows line 6 of `foo.py` was AI-generated (attestation entry with hash \"251b6fe\"), but `stats_for_commit_stats` returns `ai_additions: 0`. Let me examine the stats calculation logic to understand what's happening.",
+          "timestamp": "2025-11-18T15:47:33.262Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Looking at the code, I can see the issue. In the `stats_from_authorship_log` function at lines 488-513:\n\n```rust:488:513:/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs\nfor file_attestation in &log.attestations {\n    for entry in &file_attestation.entries {\n        // Count lines in this entry\n        let lines_in_entry: u32 = entry\n            .line_ranges\n            .iter()\n            .map(|range| match range {\n                LineRange::Single(_) => 1,\n                LineRange::Range(start, end) => end - start + 1,\n            })\n            .sum();\n\n        // Check if this is an AI-generated entry\n        if let Some(prompt_record) = log.metadata.prompts.get(&entry.hash) {\n            // Count accepted lines (lines that were accepted by the user without any human edits)\n            commit_stats.ai_accepted += lines_in_entry;\n\n            let key = format!(\n                \"{}::{}\",\n                prompt_record.agent_id.tool, prompt_record.agent_id.model\n            );\n            let tool_stats = commit_stats.tool_model_breakdown.entry(key).or_default();\n            tool_stats.ai_accepted += lines_in_entry;\n        }\n    }\n}\n```\n\nThe problem is that the attestation entry has hash **\"251b6fe\"**, but the prompts metadata only contains **\"2b64677\"**. The lookup at line 501 fails because these hashes don't match.\n\nLet me search for where these hashes are generated to understand the relationship:",
+          "timestamp": "2025-11-18T15:47:46.717Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Need to understand where attestation entry hashes come from to fix the hash mismatch issue.",
+            "query": "Where are attestation entry hashes created or set in the authorship log?",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "src/authorship",
+            "pattern": "AttestationEntry"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 150,
+            "offset": 500,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/virtual_attribution.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Need to understand what author_id represents and where it's assigned in the attribution flow.",
+            "query": "What is the structure of LineAttribution and where does author_id come from?",
+            "target_directories": [
+              "/Users/aidancunniffe/Desktop/git-ai/src/authorship"
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Need to understand how AI checkpoint author IDs are generated and whether they match the prompt hash keys.",
+            "query": "How are AI checkpoint author IDs generated or assigned when attributing lines?",
+            "target_directories": [
+              "/Users/aidancunniffe/Desktop/git-ai/src/authorship"
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "src/authorship",
+            "pattern": "generate_short_hash"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 300,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/virtual_attribution.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Need to understand how attributions from parent commits are incorporated and whether they might have different hash formats.",
+            "query": "How does VirtualAttributionState collect attributions from parent commits or base commits?",
+            "target_directories": [
+              "/Users/aidancunniffe/Desktop/git-ai/src/authorship"
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Need to find where blame results are converted to attributions and what hash format they use.",
+            "query": "How does new_for_base_commit use blame to get attributions from commit history?",
+            "target_directories": [
+              "/Users/aidancunniffe/Desktop/git-ai/src/authorship/virtual_attribution.rs"
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Need to understand how blame returns author IDs when use_prompt_hashes_as_names is true.",
+            "query": "What does use_prompt_hashes_as_names do in blame and how does it return author IDs?",
+            "target_directories": [
+              "/Users/aidancunniffe/Desktop/git-ai/src/git"
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "src/git",
+            "pattern": "use_prompt_hashes_as_names"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "pattern": "use_prompt_hashes_as_names"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 660,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/blame.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 70,
+            "offset": 630,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/blame.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Looking at line 258 of `authorship_log_serialization.rs` from earlier, I can see that `get_line_attribution` returns `entry.hash.clone()` as the prompt_hash. This is the hash stored in the attestation entry.\n\nSo the flow is:\n1. Attestation entry has a hash (e.g., \"251b6fe\")\n2. `get_line_attribution` returns this hash\n3. Blame uses this hash as the author_id\n4. VirtualAttributions stores this author_id in line attributions\n5. When converting to AuthorshipLog, it tries to look up this hash in the `prompts` map\n6. **BUG**: The hash doesn't exist in the prompts map because it's using a git commit SHA prefix instead of the prompt hash\n\nLet me look at where the attestation entries get created in the commit flow to understand why they have the wrong hash:",
+          "timestamp": "2025-11-18T15:49:10.816Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Need to find where attestation entries are created during commit to see why they might have git commit hashes instead of prompt hashes.",
+            "query": "How are attestation entries created when committing AI code?",
+            "target_directories": [
+              "/Users/aidancunniffe/Desktop/git-ai/src/authorship"
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I understand the issue! Looking at the code flow:\n\n1. When creating an `AuthorshipLog` from a commit, attestation entries use the `author_id` from line attributions (line 580-581 of `virtual_attribution.rs`)\n2. When blame runs with `use_prompt_hashes_as_names = true`, it returns the hash from the attestation entry in the parent commit\n3. In `stats_from_authorship_log`, it tries to look up `entry.hash` in the `prompts` map (line 501 of `stats.rs`)\n4. **BUG**: The lookup fails when the attestation entry hash doesn't match any key in the prompts map\n\nLooking at the test output, the attestation has hash \"251b6fe\" but the prompt is keyed by \"2b64677\". These are different hashes!\n\nLet me check how the prompt keys are generated when creating the authorship log:",
+          "timestamp": "2025-11-18T15:49:34.011Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 494,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/virtual_attribution.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I found it! The issue is in `stats_from_authorship_log` at line 501. It's trying to look up `entry.hash` in the prompts map, but in this case:\n- Attestation entry hash: \"251b6fe\" (probably from an old commit)\n- Prompt map key: \"2b64677\" (the correct prompt hash)\n\nThese hashes don't match, so the lookup fails and `ai_accepted` stays at 0.\n\nThe root cause is that when blame runs on a commit, it returns author_ids from the attestation entries in that commit's authorship log. These author_ids become the hashes in new attestation entries. But if those old attestation entries have incorrect hashes (perhaps from an old version of the code or a git commit SHA), the mismatch propagates.\n\nHowever, looking more carefully at the test output, I notice the prompt metadata is actually present with key \"2b64677\", but the attestation uses hash \"251b6fe\". This suggests the authorship log itself is malformed - it has an attestation entry with a hash that doesn't correspond to any prompt in the same log.\n\nLet me verify this by checking if there's logic to handle missing prompts:",
+          "timestamp": "2025-11-18T15:49:45.504Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 80,
+            "offset": 228,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/authorship_log_serialization.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I need to understand where this hash mismatch comes from. Let me look at the `discover_and_load_foreign_prompts` method:",
+          "timestamp": "2025-11-18T15:50:08.772Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 120,
+            "offset": 62,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/virtual_attribution.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I understand the issue! When `discover_and_load_foreign_prompts` fails to find a prompt in history (line 138-140), it silently skips it. This means we can have attestation entries with hashes that don't exist in the prompts map. When `stats_from_authorship_log` tries to look them up at line 501, the lookup fails and those lines aren't counted as AI additions.\n\nThe fix is to handle missing prompts gracefully in `stats_from_authorship_log`. Let me implement the fix:",
+          "timestamp": "2025-11-18T15:50:17.671Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's run the test to see if the fix works:",
+          "timestamp": "2025-11-18T15:50:35.706Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test test_stats_for_user_bug --lib -- --nocapture",
+            "explanation": "Running the failing test to see if the fix resolves the issue",
+            "is_background": false
+          }
+        }
+      ],
+      "total_additions": 26,
+      "total_deletions": 1,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    },
+    "eb0afb0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "554dc09d-ec8c-48be-b78a-8697f0488c67",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "set lines\n\n\n\ndef print_name(name: str) -> None:\n\n\n\n    \"\"\"Print the given name.\"\"\"\n\n    if name == 'foobar':\n\n        print('name not allowed!')\n\n    name = name.upper() \n\n    print(f\"Hello {name}\")\n\nprint_name(\"Michael\")\n\n\n\nall AI",
+          "timestamp": "2025-11-18T16:17:41.929Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you with this test case. Let me first read the current test file to understand the context.",
+          "timestamp": "2025-11-18T16:17:48.737Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/prompt_across_commit.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I see! You want to set the test file contents with that Python code and mark all lines as AI-authored. I'll update the test file:",
+          "timestamp": "2025-11-18T16:17:56.021Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/tests/prompt_across_commit.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Done! I've updated the test file with the Python code you provided, marking all lines (including the blank lines) as AI-authored using the `.ai()` method.",
+          "timestamp": "2025-11-18T16:18:13.988Z"
+        }
+      ],
+      "total_additions": 30,
+      "total_deletions": 0,
+      "accepted_lines": 14,
+      "overriden_lines": 4
+    },
+    "ed1c34c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8b1f0136-c178-4c9d-b5a1-3afb50027432",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@prompt_across_commit.rs (25-33) rewrite this to use insert_at helper in TestFile",
+          "timestamp": "2025-11-18T16:22:02.834Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you rewrite this to use the `insert_at` helper. Let me first read the file to understand the context and see how `insert_at` is used elsewhere.",
+          "timestamp": "2025-11-18T16:22:07.548Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/prompt_across_commit.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "tests",
+            "pattern": "fn insert_at"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 20,
+            "offset": 535,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/repos/test_file.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-A": 2,
+            "path": "tests",
+            "pattern": "\\.insert_at\\("
+          }
+        }
+      ],
+      "total_additions": 4,
+      "total_deletions": 11,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

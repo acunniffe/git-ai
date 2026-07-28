@@ -1,0 +1,41 @@
+skills/ask/SKILL.md
+  acff696a6bde4674 3,38,62-68,97-106
+  048e2a905c935593 1-2,4-11,13-37,39-61,69-96,107-154
+src/mdm/skills_installer.rs
+  048e2a905c935593 18-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "6abc70f9d80176f374ddf666d1993b5bfa11a535",
+  "prompts": {
+    "048e2a905c935593": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2714cc07-94a0-4c88-b94f-26d0d0fa50bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 147,
+      "total_deletions": 4,
+      "accepted_lines": 139,
+      "overriden_lines": 1,
+      "messages_url": "https://dev.usegitai.com/cas/a19329bf93803e1124b3a742670930dba650e8c2d0c1c57bec9dc12abe3ca2ec"
+    },
+    "acff696a6bde4674": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e3d47ce-7653-4e38-bfd7-2a792ce4f404",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 20,
+      "total_deletions": 3,
+      "accepted_lines": 19,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/a95b09ca817f5ffcaa7294a950f1f4a7e7b1496318cad69a8841cf1e910d8026"
+    }
+  }
+}

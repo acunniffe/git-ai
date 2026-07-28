@@ -1,0 +1,20 @@
+src/transcripts/agents/copilot.rs
+  s_57b891f35623ea::t_0b3b5d0853c996 93-95,98,103-108
+  s_57b891f35623ea::t_e731f3ad31aca8 421-431,433-437
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "4630baa783f6708c828b75e985d0a5ad86504148",
+  "prompts": {},
+  "sessions": {
+    "s_57b891f35623ea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9bdfe0a7-253b-46e1-9610-2b4f2f5eca44",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

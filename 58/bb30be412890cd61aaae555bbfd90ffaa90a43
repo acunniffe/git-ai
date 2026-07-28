@@ -1,0 +1,22 @@
+installer/linux/build-rpm.sh
+  s_c07cec28a64ec3::t_c197e84a367754 55-59
+  s_c07cec28a64ec3::t_3c5c16f6bb78e3 78-79
+installer/windows/build-msi.ps1
+  s_c07cec28a64ec3::t_7b54317db874ff 250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "58bb30be412890cd61aaae555bbfd90ffaa90a43",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}
