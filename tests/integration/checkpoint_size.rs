@@ -1,6 +1,5 @@
 use crate::repos::test_repo::TestRepo;
 use git_ai::authorship::working_log::CheckpointKind;
-use git_ai::git::repository::find_repository_in_path;
 use rand::{RngExt, distr::Alphanumeric};
 use serde_json::json;
 use std::{fs, time::Instant};
@@ -102,11 +101,7 @@ fn test_checkpoint_skips_oversized_files() {
     repo.git_ai(&["checkpoint", "mock_ai", "small.txt", "big.txt"])
         .expect("git-ai checkpoint should succeed");
 
-    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit("initial")
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit("initial");
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     assert_eq!(checkpoints.len(), 1, "expected exactly one checkpoint");
     let latest = checkpoints.last().unwrap();
@@ -130,11 +125,7 @@ fn test_checkpoint_saves_normal_files_under_limit() {
     repo.git_ai(&["checkpoint", "mock_ai", "normal.txt"])
         .expect("git-ai checkpoint should succeed");
 
-    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit("initial")
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit("initial");
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     assert_eq!(checkpoints.len(), 1, "expected exactly one checkpoint");
     let latest = checkpoints.last().unwrap();

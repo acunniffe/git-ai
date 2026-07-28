@@ -2915,7 +2915,6 @@ impl TestRepo {
                             .unwrap_or_else(|poisoned| poisoned.into_inner());
                         registry.raise_expected_checkpoint_count(family_key, *per_family_count);
                     }
-                    self.sync_daemon_force();
                 }
             }
             let combined = if stdout.is_empty() {
@@ -2966,9 +2965,6 @@ impl TestRepo {
                 let count = parse_checkpoint_request_count(&stdout);
                 if count > 0 {
                     self.record_pending_checkpoint_completions(count);
-                    if sync_before_read {
-                        self.sync_daemon_force();
-                    }
                 }
             }
             // Combine stdout and stderr since git-ai often writes to stderr
@@ -3031,7 +3027,6 @@ impl TestRepo {
                 let count = parse_checkpoint_request_count(&stdout);
                 if count > 0 {
                     self.record_pending_checkpoint_completions(count);
-                    self.sync_daemon_force();
                 }
             }
             // Combine stdout and stderr since git-ai often writes to stderr
@@ -3068,21 +3063,40 @@ impl TestRepo {
     }
 
     pub fn current_working_logs(&self) -> PersistedWorkingLog {
+        let commit_sha = {
+            let repo = GitAiRepository::find_repository_in_path(self.path.to_str().unwrap())
+                .expect("Failed to find repository");
+            // Get the current HEAD commit SHA, or use "initial" for empty repos
+            repo.head()
+                .ok()
+                .and_then(|head| head.target().ok())
+                .unwrap_or_else(|| "initial".to_string())
+        };
+        self.working_logs_for_base_commit(&commit_sha)
+    }
+
+    /// Opens the working log for `base_commit` after synchronizing the daemon,
+    /// so accepted-but-unprocessed checkpoints are visible to the read. Tests
+    /// must use this (or `current_working_logs`) instead of reading working
+    /// logs through raw storage APIs whenever checkpoints were issued through
+    /// the daemon.
+    pub fn working_logs_for_base_commit(&self, base_commit: &str) -> PersistedWorkingLog {
+        self.working_logs_for_repo_path_and_base_commit(&self.path, base_commit)
+    }
+
+    /// As [`Self::working_logs_for_base_commit`], but for a specific repo or
+    /// worktree path (e.g. a linked worktree that shares this repo's family).
+    pub fn working_logs_for_repo_path_and_base_commit(
+        &self,
+        repo_path: &Path,
+        base_commit: &str,
+    ) -> PersistedWorkingLog {
         self.sync_daemon_force();
 
-        let repo = GitAiRepository::find_repository_in_path(self.path.to_str().unwrap())
+        let repo = GitAiRepository::find_repository_in_path(repo_path.to_str().unwrap())
             .expect("Failed to find repository");
-
-        // Get the current HEAD commit SHA, or use "initial" for empty repos
-        let commit_sha = repo
-            .head()
-            .ok()
-            .and_then(|head| head.target().ok())
-            .unwrap_or_else(|| "initial".to_string());
-
-        // Get the working log for the current HEAD commit
         repo.storage
-            .working_log_for_base_commit(&commit_sha)
+            .working_log_for_base_commit(base_commit)
             .unwrap()
     }
 

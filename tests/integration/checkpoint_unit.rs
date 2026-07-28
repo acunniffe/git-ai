@@ -49,16 +49,12 @@ fn test_checkpoint_with_staged_changes() {
         .unwrap();
 
     // Verify the checkpoint was created with correct entries
-    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let base_commit = repo
         .git_og(&["rev-parse", "HEAD"])
         .unwrap()
         .trim()
         .to_string();
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     let latest = checkpoints.last().unwrap();
 
@@ -95,16 +91,12 @@ fn test_checkpoint_with_staged_changes_after_previous_checkpoint() {
         .unwrap();
 
     // Verify the checkpoint was created with correct entries
-    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let base_commit = repo
         .git_og(&["rev-parse", "HEAD"])
         .unwrap()
         .trim()
         .to_string();
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     let latest = checkpoints.last().unwrap();
 
@@ -141,16 +133,12 @@ fn test_checkpoint_with_only_staged_no_unstaged_changes() {
         .unwrap();
 
     // Verify the checkpoint was created with correct entries
-    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let base_commit = repo
         .git_og(&["rev-parse", "HEAD"])
         .unwrap()
         .trim()
         .to_string();
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     let latest = checkpoints.last().unwrap();
 
@@ -180,16 +168,12 @@ fn test_checkpoint_with_only_unstaged_changes_for_ai_without_pathspec() {
         .unwrap();
 
     // Verify the checkpoint was created
-    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let base_commit = repo
         .git_og(&["rev-parse", "HEAD"])
         .unwrap()
         .trim()
         .to_string();
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     let latest = checkpoints.last().unwrap();
 
@@ -359,17 +343,15 @@ fn test_checkpoint_records_conflicted_files() {
     assert!(has_conflicts, "Should have merge conflicts");
 
     // Try to checkpoint while there are conflicts
-    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let base_commit = repo
         .git_og(&["rev-parse", "HEAD"])
         .unwrap()
         .trim()
         .to_string();
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
+    let checkpoints_before = repo
+        .working_logs_for_base_commit(&base_commit)
+        .read_all_checkpoints()
         .unwrap();
-    let checkpoints_before = working_log.read_all_checkpoints().unwrap();
     let count_before = checkpoints_before.len();
 
     repo.git_ai(&["checkpoint", "mock_known_human", &lines_file])
@@ -377,7 +359,10 @@ fn test_checkpoint_records_conflicted_files() {
 
     // Checkpoints record conflicted files so conflict-resolution attribution can be
     // merged into the eventual rebase/merge commit.
-    let checkpoints_after = working_log.read_all_checkpoints().unwrap();
+    let checkpoints_after = repo
+        .working_logs_for_base_commit(&base_commit)
+        .read_all_checkpoints()
+        .unwrap();
     assert!(
         checkpoints_after.len() > count_before,
         "Should create a checkpoint for conflicted files"
@@ -465,10 +450,7 @@ fn test_checkpoint_filters_external_paths_from_stored_checkpoints() {
 
     // Manually inject a checkpoint with an external file path (simulating the bug)
     // This is what happens when a file outside the repo was tracked before the fix
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
 
     let external_entry = WorkingLogEntry::new(
         "/external/path/outside/repo.txt".to_string(),
@@ -507,10 +489,7 @@ fn test_checkpoint_filters_external_paths_from_stored_checkpoints() {
     );
 
     // Verify the new checkpoint only processed the valid file
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     let latest = checkpoints.last().unwrap();
 
@@ -564,24 +543,25 @@ fn test_checkpoint_works_after_conflict_resolution_maintains_authorship() {
 
     // While there are conflicts, checkpoint should still record the file so the
     // eventual resolution can carry explicit attribution.
-    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let base_commit = repo
         .git_og(&["rev-parse", "HEAD"])
         .unwrap()
         .trim()
         .to_string();
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
+    let checkpoints_before_conflict_checkpoint = repo
+        .working_logs_for_base_commit(&base_commit)
+        .read_all_checkpoints()
         .unwrap();
-    let checkpoints_before_conflict_checkpoint = working_log.read_all_checkpoints().unwrap();
     let count_before = checkpoints_before_conflict_checkpoint.len();
 
     repo.git_ai(&["checkpoint", "mock_known_human", &lines_file])
         .unwrap();
 
     // Checkpoint should record conflicted files during the conflict.
-    let checkpoints_after_conflict_checkpoint = working_log.read_all_checkpoints().unwrap();
+    let checkpoints_after_conflict_checkpoint = repo
+        .working_logs_for_base_commit(&base_commit)
+        .read_all_checkpoints()
+        .unwrap();
     assert!(
         checkpoints_after_conflict_checkpoint.len() > count_before,
         "Should create a checkpoint for conflicted files"
@@ -626,10 +606,7 @@ fn test_checkpoint_works_after_conflict_resolution_maintains_authorship() {
     repo.git_ai(&["checkpoint", "mock_known_human", &lines_file])
         .unwrap();
 
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     let latest = checkpoints.last().unwrap();
 
@@ -672,10 +649,7 @@ fn test_known_human_checkpoint_without_ai_history_records_h_hash_attributions() 
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     let latest = checkpoints.last().unwrap();
     let entry = latest
@@ -742,10 +716,7 @@ fn test_human_checkpoint_keeps_attributions_for_ai_touched_file() {
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     let latest = checkpoints.last().unwrap();
 
@@ -801,10 +772,7 @@ fn test_checkpoint_skips_default_ignored_files() {
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
 
     // Should have at least one checkpoint
@@ -862,10 +830,7 @@ fn test_checkpoint_skips_linguist_generated_files_from_root_gitattributes() {
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
 
     // Should have at least one checkpoint
@@ -900,10 +865,6 @@ fn test_compute_line_stats_ignores_whitespace_only_lines() {
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
 
     std::fs::write(repo.path().join("whitespace.txt"), "Seed line\n").unwrap();
     repo.git(&["add", "whitespace.txt"]).unwrap();
@@ -920,7 +881,8 @@ fn test_compute_line_stats_ignores_whitespace_only_lines() {
     repo.git_ai(&["checkpoint", "mock_known_human", "whitespace.txt"])
         .expect("First checkpoint should succeed");
 
-    let after_add_stats = working_log
+    let after_add_stats = repo
+        .working_logs_for_base_commit(&base_commit)
         .read_all_checkpoints()
         .expect("Should read checkpoints after addition");
     let after_add_last = after_add_stats
@@ -955,7 +917,8 @@ fn test_compute_line_stats_ignores_whitespace_only_lines() {
     repo.git_ai(&["checkpoint", "mock_known_human", "whitespace.txt"])
         .expect("Second checkpoint should succeed");
 
-    let after_delete_stats = working_log
+    let after_delete_stats = repo
+        .working_logs_for_base_commit(&base_commit)
         .read_all_checkpoints()
         .expect("Should read checkpoints after deletion");
     let latest_stats = after_delete_stats
@@ -1105,10 +1068,7 @@ fn test_checkpoint_crlf_blob_vs_lf_working_tree_stats_not_inflated() {
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
     let latest = checkpoints
         .last()
@@ -1154,10 +1114,7 @@ fn test_checkpoint_crlf_blob_vs_lf_working_tree_no_changes_skipped() {
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
 
     // The checkpoint may be empty (no entries) or absent entirely,
@@ -1216,10 +1173,7 @@ fn test_checkpoint_stale_crlf_blob_causes_ai_reattribution() {
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&base_commit)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&base_commit);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
 
     // Find the AI checkpoint entry for test.txt
@@ -1296,10 +1250,7 @@ fn test_checkpoint_fails_with_initial_missing_blobs() {
     // Strip file_blobs from INITIAL to simulate legacy data (pre-March-2026)
     let git_ai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let head_sha = git_ai_repo.head().unwrap().target().unwrap();
-    let working_log = git_ai_repo
-        .storage
-        .working_log_for_base_commit(&head_sha)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&head_sha);
     let initial = working_log.read_initial_attributions();
     assert!(
         initial.files.contains_key("file_a.txt"),
@@ -1401,16 +1352,12 @@ fn test_scoped_checkpoint_records_file_deletion() {
     );
 
     // Verify the checkpoint was recorded in the working log with deletion stats
-    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let head_sha = repo
         .git_og(&["rev-parse", "HEAD"])
         .unwrap()
         .trim()
         .to_string();
-    let working_log = gitai_repo
-        .storage
-        .working_log_for_base_commit(&head_sha)
-        .unwrap();
+    let working_log = repo.working_logs_for_base_commit(&head_sha);
     let checkpoints = working_log.read_all_checkpoints().unwrap();
 
     // The AI post-edit checkpoint should be recorded (human pre-edit is a no-op since
