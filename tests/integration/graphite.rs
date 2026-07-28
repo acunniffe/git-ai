@@ -59,9 +59,7 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::{TestRepo, real_git_executable};
 
 use serde::Deserialize;
-use std::path::PathBuf;
-use std::process::Command;
-use std::sync::OnceLock;
+use std::{fs, path::PathBuf, process::Command, sync::OnceLock};
 
 const DETERMINISTIC_GIT_NAME: &str = "Graphite Test";
 const DETERMINISTIC_GIT_EMAIL: &str = "graphite-test@example.com";
@@ -559,6 +557,202 @@ fn test_gt_modify_restacks_children_preserves_attribution() {
     // Check child branch attribution after restack
     gt(&repo, &["checkout", "child-branch"]).unwrap();
     child_file.assert_lines_and_blame(crate::lines!["child ai".ai(), "child human".human(),]);
+}
+
+#[test]
+#[ignore = "fixed by stacked implementation PR"]
+fn test_gt_modify_into_downstack_preserves_attribution() {
+    require_gt!();
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    gt_init(&repo);
+
+    let parent_path = repo.path().join("parent.txt");
+    fs::write(&parent_path, "alpha\nbravo\ncharlie\ndelta\necho\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "parent.txt"])
+        .unwrap();
+    repo.git(&["add", "--all"]).unwrap();
+    gt(&repo, &["create", "parent-branch", "--message", "parent"])
+        .expect("gt create parent should succeed");
+
+    let mut parent_file = repo.filename("parent.txt");
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "bravo".ai(),
+        "charlie".ai(),
+        "delta".ai(),
+        "echo".ai(),
+    ]);
+
+    let child_path = repo.path().join("child.txt");
+    fs::write(&child_path, "child-only\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "child.txt"])
+        .unwrap();
+    repo.git(&["add", "--all"]).unwrap();
+    gt(&repo, &["create", "child-branch", "--message", "child"])
+        .expect("gt create child should succeed");
+
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "bravo".ai(),
+        "charlie".ai(),
+        "delta".ai(),
+        "echo".ai(),
+    ]);
+    let mut child_file = repo.filename("child.txt");
+    child_file.assert_committed_lines(crate::lines!["child-only".ai()]);
+
+    // Match an AI agent's pre/post-edit checkpoint flow while remaining on the
+    // child branch and sending the resulting change into the parent branch.
+    repo.git_ai(&["checkpoint", "human", "parent.txt"]).unwrap();
+    fs::write(
+        &parent_path,
+        "alpha\nBRAVO edited by AI\ncharlie\nDELTA edited by AI\necho\nfoxtrot added by AI\n",
+    )
+    .unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "parent.txt"])
+        .unwrap();
+
+    gt(&repo, &["modify", "--all", "--into", "parent-branch"])
+        .expect("gt modify --into should succeed without Graphite authentication");
+
+    assert_head_branch(&repo, "child-branch");
+    assert_worktree_clean(&repo);
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "BRAVO edited by AI".ai(),
+        "charlie".ai(),
+        "DELTA edited by AI".ai(),
+        "echo".ai(),
+        "foxtrot added by AI".ai(),
+    ]);
+    child_file.assert_committed_lines(crate::lines!["child-only".ai()]);
+
+    gt(&repo, &["checkout", "parent-branch"]).expect("gt checkout parent should succeed");
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "BRAVO edited by AI".ai(),
+        "charlie".ai(),
+        "DELTA edited by AI".ai(),
+        "echo".ai(),
+        "foxtrot added by AI".ai(),
+    ]);
+}
+
+#[test]
+#[ignore = "fixed by stacked implementation PR"]
+fn test_graphite_modify_into_plumbing_preserves_transplanted_attribution() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+
+    repo.git(&["switch", "-c", "parent-branch"]).unwrap();
+    let parent_path = repo.path().join("parent.txt");
+    fs::write(&parent_path, "alpha\nbravo\ncharlie\ndelta\necho\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "parent.txt"])
+        .unwrap();
+    repo.git(&["add", "--all"]).unwrap();
+    repo.commit("parent").unwrap();
+
+    let parent_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let parent_base = repo
+        .git(&["rev-parse", "HEAD^"])
+        .unwrap()
+        .trim()
+        .to_string();
+    let mut parent_file = repo.filename("parent.txt");
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "bravo".ai(),
+        "charlie".ai(),
+        "delta".ai(),
+        "echo".ai(),
+    ]);
+
+    repo.git(&["switch", "-c", "child-branch"]).unwrap();
+    let child_path = repo.path().join("child.txt");
+    fs::write(&child_path, "child-only\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "child.txt"])
+        .unwrap();
+    repo.git(&["add", "--all"]).unwrap();
+    repo.commit("child").unwrap();
+
+    let child_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "bravo".ai(),
+        "charlie".ai(),
+        "delta".ai(),
+        "echo".ai(),
+    ]);
+    let mut child_file = repo.filename("child.txt");
+    child_file.assert_committed_lines(crate::lines!["child-only".ai()]);
+
+    repo.git_ai(&["checkpoint", "human", "parent.txt"]).unwrap();
+    fs::write(
+        &parent_path,
+        "alpha\nBRAVO edited by AI\ncharlie\nDELTA edited by AI\necho\nfoxtrot added by AI\n",
+    )
+    .unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "parent.txt"])
+        .unwrap();
+
+    // Exact attribution-relevant plumbing captured in Graphite 1.8.6's debug
+    // log for `gt modify --all --into <downstack-branch>`.
+    repo.git(&["add", "--all"]).unwrap();
+    repo.git(&[
+        "commit",
+        "-m",
+        "graphite (temporary): staged changes",
+        "--allow-empty",
+    ])
+    .unwrap();
+    let temporary_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "BRAVO edited by AI".ai(),
+        "charlie".ai(),
+        "DELTA edited by AI".ai(),
+        "echo".ai(),
+        "foxtrot added by AI".ai(),
+    ]);
+    child_file.assert_committed_lines(crate::lines!["child-only".ai()]);
+
+    let parent_tree = format!("{parent_commit}^{{tree}}");
+    let merge_target = repo
+        .git(&["commit-tree", &parent_tree, "-p", &child_commit, "-m", "_"])
+        .unwrap()
+        .trim()
+        .to_string();
+    let merged_tree = repo
+        .git(&["merge-tree", &merge_target, &temporary_commit])
+        .unwrap()
+        .trim()
+        .to_string();
+    let rewritten_parent = repo
+        .git(&[
+            "commit-tree",
+            &merged_tree,
+            "-p",
+            &parent_base,
+            "-m",
+            "parent",
+        ])
+        .unwrap()
+        .trim()
+        .to_string();
+    repo.git(&["update-ref", "refs/heads/parent-branch", &rewritten_parent])
+        .unwrap();
+
+    repo.git(&["switch", "parent-branch"]).unwrap();
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "BRAVO edited by AI".ai(),
+        "charlie".ai(),
+        "DELTA edited by AI".ai(),
+        "echo".ai(),
+        "foxtrot added by AI".ai(),
+    ]);
 }
 
 // ===========================================================================
