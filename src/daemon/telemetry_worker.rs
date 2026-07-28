@@ -34,6 +34,15 @@ const MAX_DAEMON_LOG_BUFFER_EVENTS: usize = 5000;
 
 static METRICS_UPLOAD_AVAILABLE: AtomicBool = AtomicBool::new(false);
 static METRICS_METADATA_BACKFILL_STARTED: AtomicBool = AtomicBool::new(false);
+
+/// Cooldown period after a metrics upload failure before retrying.
+/// Prevents repeated 30s-timeout attempts that hold large batches in memory.
+const METRICS_UPLOAD_FAILURE_COOLDOWN: Duration = Duration::from_secs(5 * 60);
+
+/// Timestamp (seconds since UNIX epoch) of the last metrics upload failure.
+/// When non-zero, upload attempts are skipped until the cooldown expires.
+static METRICS_UPLOAD_LAST_FAILURE_AT: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 static DAEMON_LOG_UPLOAD_IN_FLIGHT: std::sync::OnceLock<Arc<AtomicBool>> =
     std::sync::OnceLock::new();
 
@@ -671,7 +680,9 @@ fn flush_metrics(events: &[MetricEvent]) {
     let client = ApiClient::new(context);
 
     let should_upload = metrics_upload_allowed(&api_base_url, &client);
-    METRICS_UPLOAD_AVAILABLE.store(should_upload, Ordering::Relaxed);
+    let in_cooldown = metrics_upload_in_failure_cooldown_at(current_unix_ts());
+    let attempt_upload = should_upload && !in_cooldown;
+    METRICS_UPLOAD_AVAILABLE.store(attempt_upload, Ordering::Relaxed);
 
     let mut upload_failed = false;
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
@@ -682,12 +693,15 @@ fn flush_metrics(events: &[MetricEvent]) {
             continue;
         }
 
-        if should_upload && !upload_failed && std::time::Instant::now() < deadline {
+        if attempt_upload && !upload_failed && std::time::Instant::now() < deadline {
             match flush_pending_metrics_from_db(&client, deadline) {
-                Ok(_) => {}
+                Ok(_) => {
+                    clear_metrics_upload_failure();
+                }
                 Err(e) => {
                     tracing::warn!(%e, "telemetry: failed to upload pending metrics");
                     upload_failed = true;
+                    record_metrics_upload_failure_at(current_unix_ts());
                 }
             }
         }
@@ -700,15 +714,62 @@ fn flush_pending_metrics() {
     let client = ApiClient::new(context);
 
     let should_upload = metrics_upload_allowed(&api_base_url, &client);
-    METRICS_UPLOAD_AVAILABLE.store(should_upload, Ordering::Relaxed);
+    flush_pending_metrics_with(should_upload, current_unix_ts, |deadline| {
+        flush_pending_metrics_from_db(&client, deadline)
+    });
+}
+
+fn flush_pending_metrics_with<Now, Upload>(
+    should_upload: bool,
+    mut now_secs: Now,
+    mut upload_pending: Upload,
+) where
+    Now: FnMut() -> u64,
+    Upload: FnMut(std::time::Instant) -> Result<PendingMetricsFlushResult, GitAiError>,
+{
     if !should_upload {
+        METRICS_UPLOAD_AVAILABLE.store(false, Ordering::Relaxed);
         return;
     }
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    if let Err(e) = flush_pending_metrics_from_db(&client, deadline) {
-        tracing::warn!(%e, "telemetry: failed to upload pending metrics");
+    // Skip upload attempts during cooldown after a failure. This prevents
+    // repeated 30s-timeout HTTP requests that hold large event batches in
+    // memory while the server is unreachable.
+    if metrics_upload_in_failure_cooldown_at(now_secs()) {
+        // Still in cooldown — report upload as unavailable so backpressure
+        // doesn't count pending DB rows that can't be drained.
+        METRICS_UPLOAD_AVAILABLE.store(false, Ordering::Relaxed);
+        return;
     }
+
+    METRICS_UPLOAD_AVAILABLE.store(true, Ordering::Relaxed);
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    match upload_pending(deadline) {
+        Ok(_) => {
+            // Delivery succeeded — clear any prior failure state.
+            clear_metrics_upload_failure();
+        }
+        Err(e) => {
+            tracing::warn!(%e, "telemetry: failed to upload pending metrics");
+            record_metrics_upload_failure_at(now_secs());
+        }
+    }
+}
+
+fn metrics_upload_in_failure_cooldown_at(now_secs: u64) -> bool {
+    let last_failure = METRICS_UPLOAD_LAST_FAILURE_AT.load(Ordering::Relaxed);
+    last_failure > 0
+        && now_secs.saturating_sub(last_failure) < METRICS_UPLOAD_FAILURE_COOLDOWN.as_secs()
+}
+
+fn clear_metrics_upload_failure() {
+    METRICS_UPLOAD_LAST_FAILURE_AT.store(0, Ordering::Relaxed);
+}
+
+fn record_metrics_upload_failure_at(now_secs: u64) {
+    METRICS_UPLOAD_LAST_FAILURE_AT.store(now_secs, Ordering::Relaxed);
+    METRICS_UPLOAD_AVAILABLE.store(false, Ordering::Relaxed);
 }
 
 fn store_metrics_in_db(events: &[MetricEvent]) -> Result<Vec<i64>, GitAiError> {
@@ -1603,6 +1664,31 @@ mod tests {
         unix_now().min(u32::MAX as u64) as u32
     }
 
+    struct MetricsUploadStateGuard {
+        last_failure_at: u64,
+        upload_available: bool,
+    }
+
+    impl MetricsUploadStateGuard {
+        fn set(last_failure_at: u64, upload_available: bool) -> Self {
+            let previous_last_failure_at =
+                METRICS_UPLOAD_LAST_FAILURE_AT.swap(last_failure_at, Ordering::Relaxed);
+            let previous_upload_available =
+                METRICS_UPLOAD_AVAILABLE.swap(upload_available, Ordering::Relaxed);
+            Self {
+                last_failure_at: previous_last_failure_at,
+                upload_available: previous_upload_available,
+            }
+        }
+    }
+
+    impl Drop for MetricsUploadStateGuard {
+        fn drop(&mut self) {
+            METRICS_UPLOAD_LAST_FAILURE_AT.store(self.last_failure_at, Ordering::Relaxed);
+            METRICS_UPLOAD_AVAILABLE.store(self.upload_available, Ordering::Relaxed);
+        }
+    }
+
     fn test_message_envelope(message: &str) -> TelemetryEnvelope {
         TelemetryEnvelope::Message {
             timestamp: chrono::Utc::now().to_rfc3339(),
@@ -2123,6 +2209,59 @@ mod tests {
         assert_eq!(db.borrow().count().unwrap(), 1);
         let history = db.borrow().get_metric_history(0, None, &[1]).unwrap();
         assert!(history.iter().any(|record| record.ts == old_ts));
+    }
+
+    #[test]
+    #[serial_test::serial(metrics_upload_state)]
+    fn metrics_cooldown_flush_task_finishes_promptly_for_daemon_shutdown() {
+        let now_secs = unix_now();
+        let _guard = MetricsUploadStateGuard::set(now_secs, true);
+        let upload_called = Arc::new(AtomicBool::new(false));
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let elapsed = runtime.block_on({
+            let upload_called = Arc::clone(&upload_called);
+            async move {
+                let started = std::time::Instant::now();
+                tokio::time::timeout(
+                    Duration::from_millis(250),
+                    tokio::task::spawn_blocking(move || {
+                        flush_pending_metrics_with(
+                            true,
+                            || now_secs,
+                            |_deadline| {
+                                upload_called.store(true, Ordering::SeqCst);
+                                std::thread::sleep(Duration::from_secs(2));
+                                Ok(PendingMetricsFlushResult::default())
+                            },
+                        );
+                    }),
+                )
+                .await
+                .expect("cooldown metrics flush should not block daemon shutdown")
+                .expect("cooldown metrics flush task should not panic");
+                started.elapsed()
+            }
+        });
+
+        drop(runtime);
+
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "cooldown metrics flush should finish promptly, elapsed={elapsed:?}"
+        );
+        assert!(
+            !upload_called.load(Ordering::SeqCst),
+            "cooldown flush must not enter the upload path"
+        );
+        assert!(!METRICS_UPLOAD_AVAILABLE.load(Ordering::Relaxed));
+        assert_eq!(
+            METRICS_UPLOAD_LAST_FAILURE_AT.load(Ordering::Relaxed),
+            now_secs
+        );
     }
 
     fn sample_daemon_log_event(message: impl Into<String>) -> DaemonLogEvent {
