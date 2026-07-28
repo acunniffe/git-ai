@@ -20,14 +20,17 @@ const COMMIT_REF_ENRICHMENT_RETRY_DELAYS: &[Duration] = &[
     Duration::from_millis(1_000),
 ];
 
-fn should_retry_commit_ref_enrichment(cmd: &NormalizedCommand) -> bool {
+fn should_retry_ref_enrichment(cmd: &NormalizedCommand) -> bool {
     cmd.exit_code == 0
-        && cmd.primary_command.as_deref() == Some("commit")
+        && matches!(
+            cmd.primary_command.as_deref(),
+            Some("commit") | Some("cherry-pick")
+        )
         && !cmd.reflog_start_offsets.is_empty()
         && cmd.ref_changes.is_empty()
 }
 
-async fn enrich_command_with_commit_retries(
+async fn enrich_command_with_retries(
     ref_cursor: &mut RefCursor,
     cmd: &mut NormalizedCommand,
     state: &FamilyState,
@@ -35,11 +38,12 @@ async fn enrich_command_with_commit_retries(
     let mut command_start_refs = ref_cursor.enrich_command(cmd, state)?;
 
     // Git emits trace2 asynchronously, and the daemon can reach this actor
-    // before the commit's reflog append is visible to the reader. A successful
-    // commit is exact to retry: the matcher still requires the command's own
-    // reflog transition and commit message, and the family actor has not
-    // reduced the command yet. Never broaden this into a live-HEAD guess.
-    if should_retry_commit_ref_enrichment(cmd) {
+    // before a commit-like command's reflog append is visible to the reader.
+    // A successful commit or cherry-pick is exact to retry: the matcher still
+    // requires the command's own reflog transition and command metadata, and
+    // the family actor has not reduced the command yet. Never broaden this
+    // into a live-HEAD guess.
+    if should_retry_ref_enrichment(cmd) {
         for delay in COMMIT_REF_ENRICHMENT_RETRY_DELAYS {
             tokio::time::sleep(*delay).await;
             command_start_refs = ref_cursor.enrich_command(cmd, state)?;
@@ -149,19 +153,18 @@ pub fn spawn_family_actor(family_key: FamilyKey) -> FamilyActorHandle {
                         .worktree
                         .as_deref()
                         .map(crate::operations::git::canonicalize::canonicalize_or_self);
-                    let result =
-                        enrich_command_with_commit_retries(&mut ref_cursor, &mut cmd, &state)
-                            .await
-                            .and_then(|command_start_refs| {
-                                reducer::reduce_family_command_with_ref_snapshot(
-                                    &mut state,
-                                    cmd,
-                                    &analyzers,
-                                    &command_start_refs,
-                                    canonical_worktree,
-                                )
-                                .map(|(applied, _)| applied)
-                            });
+                    let result = enrich_command_with_retries(&mut ref_cursor, &mut cmd, &state)
+                        .await
+                        .and_then(|command_start_refs| {
+                            reducer::reduce_family_command_with_ref_snapshot(
+                                &mut state,
+                                cmd,
+                                &analyzers,
+                                &command_start_refs,
+                                canonical_worktree,
+                            )
+                            .map(|(applied, _)| applied)
+                        });
                     let _ = respond_to.send(result);
                 }
                 FamilyMsg::ApplyCheckpoint(respond_to) => {
@@ -301,7 +304,7 @@ mod tests {
         });
 
         let mut ref_cursor = RefCursor::new(family);
-        enrich_command_with_commit_retries(&mut ref_cursor, &mut cmd, &state)
+        enrich_command_with_retries(&mut ref_cursor, &mut cmd, &state)
             .await
             .unwrap();
 
@@ -316,18 +319,21 @@ mod tests {
     }
 
     #[test]
-    fn commit_enrichment_retry_requires_successful_unenriched_commit() {
+    fn ref_enrichment_retry_requires_successful_unenriched_commit_like_command() {
         let mut cmd = sample_normalized_cmd("family-1", 1);
-        assert!(!should_retry_commit_ref_enrichment(&cmd));
+        assert!(!should_retry_ref_enrichment(&cmd));
 
         cmd.primary_command = Some("commit".to_string());
-        assert!(!should_retry_commit_ref_enrichment(&cmd));
+        assert!(!should_retry_ref_enrichment(&cmd));
 
         cmd.reflog_start_offsets.insert("HEAD".to_string(), 0);
-        assert!(should_retry_commit_ref_enrichment(&cmd));
+        assert!(should_retry_ref_enrichment(&cmd));
+
+        cmd.primary_command = Some("cherry-pick".to_string());
+        assert!(should_retry_ref_enrichment(&cmd));
 
         cmd.exit_code = 1;
-        assert!(!should_retry_commit_ref_enrichment(&cmd));
+        assert!(!should_retry_ref_enrichment(&cmd));
 
         cmd.exit_code = 0;
         cmd.ref_changes.push(RefChange {
@@ -335,7 +341,7 @@ mod tests {
             old: "1111111111111111111111111111111111111111".to_string(),
             new: "2222222222222222222222222222222222222222".to_string(),
         });
-        assert!(!should_retry_commit_ref_enrichment(&cmd));
+        assert!(!should_retry_ref_enrichment(&cmd));
     }
 
     #[tokio::test]
@@ -370,7 +376,7 @@ mod tests {
         ];
 
         let mut ref_cursor = RefCursor::new(family);
-        enrich_command_with_commit_retries(&mut ref_cursor, &mut cmd, &state)
+        enrich_command_with_retries(&mut ref_cursor, &mut cmd, &state)
             .await
             .unwrap();
 
