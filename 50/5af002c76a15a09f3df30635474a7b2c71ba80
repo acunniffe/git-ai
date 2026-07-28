@@ -1,0 +1,132 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  7e48331 199-201,214-218,220-225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "f7f45af59cc653b08e6830d2ee68967730699fab",
+  "prompts": {
+    "7e48331": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ae27a0de-0267-43d5-90c9-1a17422fb761",
+        "model": "gpt-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Cursor composer data race partial log\n\n[2025-10-28T23:07:17.382Z] Executing hook 1/1 from user config\n═══════════════════════════════════════════════════════════════════════════════════════\nafterFileEdit\n═══════════════════════════════════════════════════════════════════════════════════════\nCommand: /Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input stdin (12ms) exit code: 1\n\nINPUT:\n{\n  \"conversation_id\": \"1dcb6399-1bb9-411e-8ae7-e471f4065e5f\",\n  \"generation_id\": \"30998494-99b6-4fa8-a192-bae90a94ab23\",\n  \"file_path\": \"/Users/svarlamov/projects/testing-git/index.ts\",\n  \"edits\": [\n    {\n      \"old_string\": \"console.log('Bonjour');\\n\\nconsole.log('CLI initialized - starting number print sequence');\\n\\n// Print numbers 1 through 10\\nfor (let i = 1; i <= 10; i++) {\\n\\tconsole.log(i);\\n}\\n\\nconsole.log('hello world');\\n\\nconsole.log('hello from claude code');\\n\\nconsole.log('hello world');\\nconsole.log('hello world');\\nconsole.log('hello world');\\n\",\n      \"new_string\": \"console.log('Bonjour');\\n\\nconsole.log('CLI initialized - starting number print sequence');\\n\\n// Print numbers 1 through 10\\nfor (let i = 1; i <= 10; i++) {\\n\\tconsole.log(i);\\n}\\n\\nconsole.log('hello world');\\n\\nconsole.log('hello from claude code');\\n\\nconsole.log('hello world');\\nconsole.log('hello world');\\nconsole.log('hello world');\\nconsole.log('hello cursor oct 29');\\n\"\n    }\n  ],\n  \"hook_event_name\": \"afterFileEdit\",\n  \"workspace_roots\": [\n    \"/Users/svarlamov/projects/testing-git\"\n  ]\n}\n\nOUTPUT:\n(empty)\n\nSTDERR:\nError running Cursor preset: No conversation data found in database\n\n═══════════════════════════════════════════════════════════════════════════════════════\n[2025-10-28T23:07:17.394Z] Hook 1 produced no output, continuing to next hook\n[2025-10-28T23:07:17.394Z] All hooks for step afterFileEdit completed but none returned a valid response\n\n\n-----------------------\n\nEven though we have code that says it should keep going, the program appears to have exited on the error.\n\nFix the code, and add unit tests that will verify this functionality",
+          "timestamp": "2025-10-28T23:17:31.379Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll search for where the Cursor composer payload is fetched and where the \"No conversation data found in database\" error is raised, and open the `cursor.rs` tests to add a new test that ensures graceful fallback instead of exiting.",
+          "timestamp": "2025-10-28T23:17:42.949Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Find where Cursor composer payload is fetched and errors are produced to adjust fallback behavior.",
+            "query": "Where is the Cursor composer payload fetched and how are errors handled when conversation data is missing?",
+            "target_directories": [
+              "src/commands/checkpoint_agent/"
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-C": 2,
+            "output_mode": "content",
+            "path": "/Users/svarlamov/projects/git-ai",
+            "pattern": "fetch_composer_payload"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-C": 2,
+            "output_mode": "content",
+            "path": "/Users/svarlamov/projects/git-ai",
+            "pattern": "No conversation data found in database"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/cursor.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/error.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I'll update the Cursor preset to gracefully handle missing conversation data by falling back to an empty transcript instead of erroring, and add tests that set up a temporary Cursor DB path to verify this behavior.",
+          "timestamp": "2025-10-28T23:18:20.011Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/tests/cursor.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 120,
+            "offset": 240,
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/cursor.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/test_utils.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/tests/cursor.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "- I’m going to make the Cursor preset continue gracefully when the conversation isn’t in the DB, then add a unit test that sets up a fake Cursor DB and verifies we don’t exit on that error.\n\nChanges made:\n- Cursor preset now treats missing conversation data as a non-fatal condition and proceeds with a placeholder transcript/model.\n- When updating to latest conversation, a missing conversation is treated as “not found” instead of an error.\n- Added a test that creates a temporary Cursor DB path from the fixture and confirms `afterFileEdit` returns success with an empty transcript when the conversation is missing.\n\n- src/commands/checkpoint_agent/agent_presets.rs\n  - In `CursorPreset::run`, replaced early `?` on missing conversation with a graceful fallback:\n```198:238:/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs\n// Fetch the composer data and extract transcript + model + edited filepaths\nlet (transcript, model) = match Self::fetch_composer_payload(&global_db, &conversation_id) {\n    Ok(payload) => Self::transcript_data_from_composer_payload(\n        &payload,\n        &global_db,\n        &conversation_id,\n    )?\n    .unwrap_or_else(|| {\n        println!(\"[Warning] Could not extract transcript from Cursor composer. Retrying at commit.\");\n        (AiTranscript::new(), \"unknown\".to_string())\n    }),\n    Err(GitAiError::PresetError(msg)) if msg == \"No conversation data found in database\" => {\n        println!(\"[Warning] No conversation data found in Cursor DB for this thread. Proceeding with placeholder and will re-sync at commit.\");\n        (AiTranscript::new(), \"unknown\".to_string())\n    }\n    Err(e) => return Err(e),\n};\n```\n  - In `fetch_latest_cursor_conversation`, map the same “No conversation data…” error to `Ok(None)` so callers can continue:\n```300:315:/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs\n// Fetch composer payload\nlet composer_payload = match Self::fetch_composer_payload(&global_db, conversation_id) {\n    Ok(v) => v,\n    Err(GitAiError::PresetError(msg)) if msg == \"No conversation data found in database\" => {\n        // Treat missing conversation as not found; allow caller to continue with existing data\n        return Ok(None);\n    }\n    Err(e) => return Err(e),\n};\n```\n\n- tests/cursor.rs\n  - Added a new macOS-only test that sets `HOME` to a temp dir, copies the fixture DB to `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`, and verifies a missing conversation does not cause failure:\n```253:329:/Users/svarlamov/projects/git-ai/tests/cursor.rs\n#[cfg(target_os = \"macos\")]\n#[test]\nfn test_cursor_preset_graceful_fallback_when_conversation_missing() {\n    use git_ai::commands::checkpoint_agent::agent_presets::{\n        AgentCheckpointFlags, AgentCheckpointPreset, CursorPreset,\n    };\n    use std::env;\n    use std::fs;\n\n    // Arrange\n    let prev_home = env::var(\"HOME\").ok();\n    let unique_suffix = format!(\n        \"{}\",\n        std::time::SystemTime::now()\n            .duration_since(std::time::UNIX_EPOCH)\n            .unwrap()\n            .as_nanos()\n    );\n    let tmp_home = env::temp_dir().join(format!(\"git_ai_home_test_{}\", unique_suffix));\n    let cursor_user_dir = tmp_home\n        .join(\"Library\")\n        .join(\"Application Support\")\n        .join(\"Cursor\")\n        .join(\"User\")\n        .join(\"globalStorage\");\n    fs::create_dir_all(&cursor_user_dir).expect(\"Failed to create Cursor user dir\");\n\n    let fixture_db = fixture_path(\"cursor_test.vscdb\");\n    let target_db = cursor_user_dir.join(\"state.vscdb\");\n    fs::copy(&fixture_db, &target_db).expect(\"Failed to copy fixture DB\");\n\n    unsafe { env::set_var(\"HOME\", &tmp_home); }\n\n    // Act with a missing conversation\n    let missing_conversation_id = \"11111111-2222-3333-4444-555555555555\";\n    let workspace_root = \"/Users/test/workspace\";\n    let edited_path = \"/Users/test/workspace/src/main.rs\";\n\n    let hook_input = format!(\n        r##\"{{\n        \"conversation_id\": \"{}\",\n        \"workspace_roots\": [\"{}\"],\n        \"hook_event_name\": \"afterFileEdit\",\n        \"file_path\": \"{}\"\n    }}\"##,\n        missing_conversation_id, workspace_root, edited_path\n    );\n\n    let flags = AgentCheckpointFlags { hook_input: Some(hook_input) };\n    let preset = CursorPreset;\n    let result = preset\n        .run(flags)\n        .expect(\"Cursor preset should gracefully fallback when conversation is missing\");\n\n    // Assert\n    assert_eq!(result.repo_working_dir.as_deref(), Some(workspace_root));\n    assert_eq!(\n        result.edited_filepaths.as_ref().map(|v| v.as_slice()),\n        Some(&[edited_path.to_string()][..])\n    );\n    assert_eq!(result.agent_id.tool.as_str(), \"cursor\");\n    assert_eq!(result.agent_id.id.as_str(), missing_conversation_id);\n    assert_eq!(result.agent_id.model.as_str(), \"unknown\");\n    let transcript = result.transcript.expect(\"Transcript should be present\");\n    assert_eq!(transcript.messages().len(), 0, \"Transcript should be empty\");\n\n    // Cleanup\n    if let Some(h) = prev_home {\n        unsafe { env::set_var(\"HOME\", h); }\n    }\n    let _ = fs::remove_dir_all(&tmp_home);\n}\n```\n\n- I ran linter checks for the modified files and fixed all reported issues.\n\n- The Cursor preset now logs a warning and continues with a placeholder instead of exiting when the conversation hasn’t yet been written to the DB.\n\n- The tests verify that on macOS with a valid DB present but missing conversation, `afterFileEdit` succeeds and produces an empty transcript, ensuring hooks don’t fail due to this race.",
+          "timestamp": "2025-10-28T23:20:08.428Z"
+        }
+      ],
+      "total_additions": 37,
+      "total_deletions": 16,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}

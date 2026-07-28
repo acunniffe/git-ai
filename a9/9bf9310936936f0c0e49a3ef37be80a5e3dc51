@@ -1,0 +1,69 @@
+src/commands/stats_delta.rs
+  human 144-145
+  8877e6c 114-118,143,146-151
+  e0994d5 7,122,155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.20",
+  "base_commit_sha": "a99bf9310936936f0c0e49a3ef37be80a5e3dc51",
+  "prompts": {
+    "8877e6c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5ff6d41e-3f72-4bac-8d63-6f067ada9ec1",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@stats_delta.rs (117-118) replace this with stats command and pass in the sha",
+          "timestamp": "2025-11-14T12:47:16.484Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll read the file first to understand the context better.",
+          "timestamp": "2025-11-14T12:47:22.886Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/stats_delta.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me search for how `CommitStats` are computed elsewhere in the codebase to understand what command or function should be called:",
+          "timestamp": "2025-11-14T12:47:32.900Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Finding how CommitStats are actually computed or retrieved from a commit SHA",
+            "query": "How are CommitStats computed or retrieved from a commit SHA?",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I found the `stats_for_commit_stats` function in `src/authorship/stats.rs`. Now I'll update the code to call this function instead of using the default stats. I'll need to add the necessary imports and call the function with the commit SHA.",
+          "timestamp": "2025-11-14T12:47:43.105Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": ""
+          }
+        }
+      ],
+      "total_additions": 15,
+      "total_deletions": 3,
+      "accepted_lines": 13,
+      "overriden_lines": 2
+    }
+  }
+}

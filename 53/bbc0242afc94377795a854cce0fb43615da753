@@ -1,0 +1,27 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  dacf127c97d5a34b 204,1233,1483,1648,1652
+src/daemon.rs
+  dacf127c97d5a34b 68,7210-7220,7222-7241,7243-7251,7253-7267,7269-7274,7276-7280,8631-8632,8634-8647,8654,8660,8662
+src/daemon/test_sync.rs
+  dacf127c97d5a34b 56-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "53bbc0242afc94377795a854cce0fb43615da753",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 175,
+      "total_deletions": 303,
+      "accepted_lines": 87,
+      "overriden_lines": 0
+    }
+  }
+}

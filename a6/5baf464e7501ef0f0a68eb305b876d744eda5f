@@ -1,0 +1,23 @@
+tests.rs
+  7a2648aff4d2e8e6 16-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "a65baf464e7501ef0f0a68eb305b876d744eda5f",
+  "prompts": {
+    "7a2648aff4d2e8e6": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1772065646560379000",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

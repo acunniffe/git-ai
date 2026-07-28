@@ -1,0 +1,46 @@
+src/main.rs
+  s_a73b2a35c101af::t_e408d424f53dba 44-140
+  s_a73b2a35c101af::t_45eb78bc8649a1 142-146
+src/daemon/control_client.rs
+  s_a73b2a35c101af::t_09db8b48d57c05 1-37
+tests/integration/daemon_e2e.rs
+  s_a73b2a35c101af::t_6f826798f5eb36 2,10-18
+  s_a73b2a35c101af::t_c66e93d4572010 535,688
+  s_a73b2a35c101af::t_fedd3242c69696 532-534,536-627,629-687,689-764,766-785,787-799,801-809
+src/daemon/checkpoint_worker.rs
+  s_a73b2a35c101af::t_3c56014a0e7187 1-9,11-41,43-258,260-266
+  s_a73b2a35c101af::t_93db2d7b376b3b 10
+  s_a73b2a35c101af::t_aa483c70449b1f 42
+src/daemon/mod.rs
+  s_a73b2a35c101af::t_f4cad87e289177 3
+  s_a73b2a35c101af::t_67f51ec581a4c9 1,4,8
+DAEMON_PLAN.md
+  s_a73b2a35c101af::t_483246c6464c80 300-301
+  s_a73b2a35c101af::t_525aa4e9273030 90,95-96,101-104,106-110
+src/daemon/run.rs
+  s_a73b2a35c101af::t_37339d51bb3b1b 60-62,66,70
+  s_a73b2a35c101af::t_e4732634f30a26 139-173
+src/daemon/protocol.rs
+  s_a73b2a35c101af::t_6984572d4aa691 1-41,43-56,58-119
+  s_a73b2a35c101af::t_9fd89e58e00e85 57
+  s_a73b2a35c101af::t_8847f04b9026b3 42
+src/daemon/control_socket.rs
+  s_a73b2a35c101af::t_3332a8bfe41c06 1-136,138-314
+  s_a73b2a35c101af::t_0f058be31766f8 137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "ffb8cc9a8b753fc878104b690170996ad01fa62e",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

@@ -1,0 +1,46 @@
+tests/pull_rebase_ff.rs
+  d3edf6bf5a030d45 204-374
+src/commands/hooks/fetch_hooks.rs
+  d3edf6bf5a030d45 6,10,75-77,179,186-191,312-364
+src/authorship/rebase_authorship.rs
+  e662f2f06e37aef7 391-396,406
+src/commands/git_handlers.rs
+  d3edf6bf5a030d45 87-89,138
+src/commands/hooks/rebase_hooks.rs
+  d3edf6bf5a030d45 281
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "e442d6afc2e855315b74c38d869e73038097bb83",
+  "prompts": {
+    "d3edf6bf5a030d45": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3fa536f0-781f-42ae-b157-44e6fa522cdb",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 252,
+      "total_deletions": 3,
+      "accepted_lines": 242,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/1d4fe971211a9f2cef688e1df6af08b784886fd2db7e1fba0d46128ae61ff6ba"
+    },
+    "e662f2f06e37aef7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f1b4368-9768-49fc-b5f2-945bd85e0286",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 1,
+      "accepted_lines": 7,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/b7b272bf7fcf2fc2dd9dc9343c204fb698b1bfffe9381ba20ec403b1c11dbb68"
+    }
+  }
+}

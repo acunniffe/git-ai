@@ -1,0 +1,51 @@
+src/commands/install_hooks.rs
+  s_59382cac373d67::t_97df6b375931f5 8,135-137,141-143,156,746,749,751
+  s_59382cac373d67::t_b0fd11ced7a9c1 150-152
+src/commands/daemon.rs
+  s_59382cac373d67::t_4691a92aa1b605 669-683,685,687,689-690
+src/config.rs
+  s_59382cac373d67::t_4dcd66143ea889 1416-1422,1424-1426,1428
+  s_59382cac373d67::t_316b4da5906e61 1423
+src/mdm/agents/github_copilot.rs
+  s_59382cac373d67::t_9d8d0fa58e78b8 78-87
+tests/integration/installer_process_memory.rs
+  s_59382cac373d67::t_316b4da5906e61 14
+  s_59382cac373d67::t_4ccb9651898277 1-13,15-46
+src/mdm/utils.rs
+  s_59382cac373d67::t_171143111f6ebb 9,17-18,28-59,62-64,66,68,73,78-81,83,85,90,662-665,669-670,672
+src/mdm/jetbrains/detection.rs
+  s_59382cac373d67::t_97df6b375931f5 89-91,93,97,176-182,185,187
+  s_59382cac373d67::t_e284b304485ed0 3-4
+src/mdm/agents/vscode.rs
+  s_59382cac373d67::t_9d8d0fa58e78b8 47-56
+src/mdm/agents/cursor.rs
+  s_59382cac373d67::t_9d8d0fa58e78b8 62-71
+src/mdm/agents/claude_code.rs
+  s_59382cac373d67::t_9d8d0fa58e78b8 324-333
+tests/integration/main.rs
+  s_59382cac373d67::t_4ccb9651898277 98
+src/mdm/agents/visual_studio.rs
+  s_59382cac373d67::t_97df6b375931f5 5,229-242,249
+src/process_timeout.rs
+  s_59382cac373d67::t_171143111f6ebb 120,131-140,379-399
+  s_59382cac373d67::t_9f2666ff9fa4ce 400
+src/auth/credential_backend.rs
+  s_59382cac373d67::t_acfb9f3fbede9e 109-111,113-124,126-128,132-139
+  s_59382cac373d67::t_316b4da5906e61 112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "ab86706d5ea0ba0a0a362f82a57139a32cb8f10f",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

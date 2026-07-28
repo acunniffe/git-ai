@@ -1,0 +1,25 @@
+src/ci/gitlab.rs
+  783fdb0e84b2ac6c 181-184,188-195,198,200-207,210,213-215,218-219,224,228-238,242-245,250,279
+src/ci/workflow_templates/gitlab.yaml
+  783fdb0e84b2ac6c 3-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.29",
+  "base_commit_sha": "c7b2509a5ac9453db3bb2bdf243b6720bf46b54b",
+  "prompts": {
+    "783fdb0e84b2ac6c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3ef4e955-0d2b-41b6-b233-48e233cb1964",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 94,
+      "total_deletions": 73,
+      "accepted_lines": 56,
+      "overriden_lines": 0
+    }
+  }
+}

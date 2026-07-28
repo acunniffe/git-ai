@@ -1,0 +1,24 @@
+src/daemon/git_backend.rs
+  fdf966670855b533 847-853,861
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "dcb7f11b7b03355902d228f4c5e2d1dd0e769c52",
+  "prompts": {
+    "fdf966670855b533": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3d5ee20e-29c6-4bdf-94c2-f8b8ca6bdd8a",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 3,
+      "accepted_lines": 8,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/f3b2f7fc3c9aeaba609be9cdbe66256674b2333b6a4e8ab22c7d7e2cbc59cf8d"
+    }
+  }
+}
