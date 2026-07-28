@@ -1597,6 +1597,16 @@ fn cherry_pick_command_has_flag(
     parsed.command_args.iter().any(|arg| arg == flag)
 }
 
+fn cherry_pick_command_terminates_pending_sequence(
+    cmd: &crate::daemon::domain::NormalizedCommand,
+) -> bool {
+    cherry_pick_command_has_flag(cmd, "--abort")
+        || cherry_pick_command_has_flag(cmd, "--quit")
+        || (cmd.exit_code == 0
+            && cherry_pick_command_has_flag(cmd, "--skip")
+            && cherry_pick_destination_commits(cmd).is_empty())
+}
+
 fn cherry_pick_source_args_from_command_args(args: &[String]) -> Vec<&str> {
     let mut sources = Vec::new();
     let mut idx = 0usize;
@@ -1642,6 +1652,10 @@ fn cherry_pick_source_args_from_command_args(args: &[String]) -> Vec<&str> {
 
 fn cherry_pick_source_is_range(source: &str) -> bool {
     source.contains("..")
+}
+
+fn cherry_pick_source_is_immutable_oid(source: &str) -> bool {
+    (4..=64).contains(&source.len()) && source.chars().all(|ch| ch.is_ascii_hexdigit())
 }
 
 fn cherry_pick_range_has_omitted_side(source: &str) -> bool {
@@ -2469,6 +2483,13 @@ struct PendingSquashMerge {
 }
 
 #[derive(Debug, Clone)]
+struct PendingCherryPickSources {
+    source_oids: Vec<String>,
+    // No command-bounded ref transition proved that Git started this sequence.
+    speculative: bool,
+}
+
+#[derive(Debug, Clone)]
 struct PendingCherryPickNoCommit {
     source_commits: Vec<String>,
     head: String,
@@ -2517,7 +2538,7 @@ pub struct ActorDaemonCoordinator {
         >,
     >,
     pending_rebase_original_head_by_worktree: Mutex<HashMap<String, (String, Option<String>)>>,
-    pending_cherry_pick_sources_by_worktree: Mutex<HashMap<String, Vec<String>>>,
+    pending_cherry_pick_sources_by_worktree: Mutex<HashMap<String, PendingCherryPickSources>>,
     pending_cherry_pick_no_commit_by_worktree: Mutex<HashMap<String, PendingCherryPickNoCommit>>,
     pending_squash_merge_by_worktree: Mutex<HashMap<String, PendingSquashMerge>>,
     inflight_effects_by_family: Mutex<HashMap<String, usize>>,
@@ -2931,7 +2952,7 @@ impl ActorDaemonCoordinator {
             map.shrink_to_fit();
         }
         if let Ok(mut map) = self.pending_cherry_pick_sources_by_worktree.lock() {
-            map.retain(|_, sources| !sources.is_empty());
+            map.retain(|_, pending| !pending.source_oids.is_empty());
         }
         if let Ok(mut map) = self.pending_squash_merge_by_worktree.lock() {
             map.retain(|_, pending| {
@@ -4481,7 +4502,8 @@ impl ActorDaemonCoordinator {
     fn set_pending_cherry_pick_sources_for_worktree(
         &self,
         worktree: &Path,
-        sources: Vec<String>,
+        source_oids: Vec<String>,
+        speculative: bool,
     ) -> Result<(), GitAiError> {
         let mut map = self
             .pending_cherry_pick_sources_by_worktree
@@ -4490,12 +4512,39 @@ impl ActorDaemonCoordinator {
                 GitAiError::Generic("pending cherry-pick sources map lock poisoned".to_string())
             })?;
         let key = Self::worktree_state_key(worktree);
-        if sources.is_empty() {
+        if source_oids.is_empty() {
             map.remove(&key);
         } else {
-            map.insert(key, sources);
+            map.insert(
+                key,
+                PendingCherryPickSources {
+                    source_oids,
+                    speculative,
+                },
+            );
         }
         Ok(())
+    }
+
+    fn prepare_pending_cherry_pick_sources_for_explicit_command(
+        &self,
+        worktree: &Path,
+    ) -> Result<bool, GitAiError> {
+        let mut map = self
+            .pending_cherry_pick_sources_by_worktree
+            .lock()
+            .map_err(|_| {
+                GitAiError::Generic("pending cherry-pick sources map lock poisoned".to_string())
+            })?;
+        let key = Self::worktree_state_key(worktree);
+        match map.get(&key) {
+            Some(pending) if !pending.speculative => Ok(false),
+            Some(_) => {
+                map.remove(&key);
+                Ok(true)
+            }
+            None => Ok(true),
+        }
     }
 
     fn clear_pending_cherry_pick_sources_for_worktree(
@@ -4524,23 +4573,21 @@ impl ActorDaemonCoordinator {
             })?;
         Ok(map
             .remove(&Self::worktree_state_key(worktree))
+            .map(|pending| pending.source_oids)
             .unwrap_or_default())
     }
 
     fn pending_cherry_pick_sources_for_worktree(
         &self,
         worktree: &Path,
-    ) -> Result<Vec<String>, GitAiError> {
+    ) -> Result<Option<PendingCherryPickSources>, GitAiError> {
         let map = self
             .pending_cherry_pick_sources_by_worktree
             .lock()
             .map_err(|_| {
                 GitAiError::Generic("pending cherry-pick sources map lock poisoned".to_string())
             })?;
-        Ok(map
-            .get(&Self::worktree_state_key(worktree))
-            .cloned()
-            .unwrap_or_default())
+        Ok(map.get(&Self::worktree_state_key(worktree)).cloned())
     }
 
     fn set_pending_cherry_pick_no_commit_for_worktree(
@@ -5124,6 +5171,19 @@ impl ActorDaemonCoordinator {
             self.detect_and_handle_non_ff_rewrites(cmd)?;
         }
 
+        let terminates_pending_cherry_pick = cmd.primary_command.as_deref() == Some("cherry-pick")
+            && cherry_pick_command_terminates_pending_sequence(cmd);
+        if terminates_pending_cherry_pick {
+            let worktree = cmd.worktree.as_ref().ok_or_else(|| {
+                GitAiError::Generic(format!(
+                    "cherry-pick side-effect state requires worktree sid={}",
+                    cmd.root_sid
+                ))
+            })?;
+            self.clear_pending_cherry_pick_sources_for_worktree(worktree)?;
+            self.clear_pending_cherry_pick_no_commit_for_worktree(worktree)?;
+        }
+
         if cmd.exit_code != 0 {
             let rebase_start = cmd
                 .ref_changes
@@ -5186,26 +5246,47 @@ impl ActorDaemonCoordinator {
                         cmd.root_sid
                     ))
                 })?;
-                if cmd.invoked_args.iter().any(|arg| arg == "--abort") {
-                    self.clear_pending_cherry_pick_sources_for_worktree(worktree)?;
-                    self.clear_pending_cherry_pick_no_commit_for_worktree(worktree)?;
-                } else if cmd.exit_code != 0 {
+                if !terminates_pending_cherry_pick {
                     let new_commits = cherry_pick_destination_commits(cmd);
                     let is_continue = cherry_pick_command_has_flag(cmd, "--continue");
                     let is_skip = cherry_pick_command_has_flag(cmd, "--skip");
-                    let mut source_oids = cmd.cherry_pick_source_oids.clone();
+                    let explicit_source_args = cherry_pick_source_args_for_side_effect(cmd);
+                    let can_replace_pending = explicit_source_args.is_empty()
+                        || self
+                            .prepare_pending_cherry_pick_sources_for_explicit_command(worktree)?;
+                    let cherry_pick_state_exists = cherry_pick_state_exists_for_worktree(worktree);
+                    // Only a command-bounded HEAD transition proves that this failed
+                    // command started a sequence. Sources recovered without one remain
+                    // replaceable by the next explicit cherry-pick.
+                    let mut source_oids_are_speculative =
+                        !explicit_source_args.is_empty() && new_commits.is_empty();
+                    let can_resolve_without_live_state = explicit_source_args.len() == 1
+                        && cherry_pick_source_is_immutable_oid(&explicit_source_args[0]);
+                    let mut source_oids = if can_replace_pending {
+                        cmd.cherry_pick_source_oids.clone()
+                    } else {
+                        Vec::new()
+                    };
                     let mut source_oids_from_daemon_pending = false;
-                    if source_oids.is_empty()
-                        && (!new_commits.is_empty()
-                            || cherry_pick_state_exists_for_worktree(worktree))
+                    if can_replace_pending
+                        && source_oids.is_empty()
+                        && (can_resolve_without_live_state
+                            || !new_commits.is_empty()
+                            || cherry_pick_state_exists)
                     {
                         let repo = find_repository_in_path(&worktree.to_string_lossy())?;
                         source_oids =
                             resolve_explicit_cherry_pick_sources_for_side_effect(&repo, cmd)?;
                     }
-                    if source_oids.is_empty() && (is_continue || is_skip) {
-                        source_oids = self.pending_cherry_pick_sources_for_worktree(worktree)?;
-                        source_oids_from_daemon_pending = !source_oids.is_empty();
+                    if (is_continue || is_skip)
+                        && let Some(pending) =
+                            self.pending_cherry_pick_sources_for_worktree(worktree)?
+                    {
+                        source_oids_are_speculative = pending.speculative;
+                        if source_oids.is_empty() {
+                            source_oids = pending.source_oids;
+                            source_oids_from_daemon_pending = true;
+                        }
                     }
                     let skipped_sources = usize::from(is_skip && source_oids_from_daemon_pending);
                     let applied_source_oids = source_oids
@@ -5238,7 +5319,11 @@ impl ActorDaemonCoordinator {
                             .skip(consumed_sources.min(source_oids.len()))
                             .cloned()
                             .collect();
-                        self.set_pending_cherry_pick_sources_for_worktree(worktree, remaining)?;
+                        self.set_pending_cherry_pick_sources_for_worktree(
+                            worktree,
+                            remaining,
+                            source_oids_are_speculative,
+                        )?;
                     }
                 }
             }
@@ -8139,6 +8224,116 @@ mod tests {
     }
 
     #[test]
+    fn delayed_cherry_pick_lookup_accepts_only_immutable_oid_sources() {
+        assert!(cherry_pick_source_is_immutable_oid("0123abc"));
+        assert!(cherry_pick_source_is_immutable_oid(
+            "0123456789abcdef0123456789abcdef01234567"
+        ));
+        assert!(!cherry_pick_source_is_immutable_oid("HEAD~1"));
+        assert!(!cherry_pick_source_is_immutable_oid("topic"));
+        assert!(!cherry_pick_source_is_immutable_oid("0123abc..4567def"));
+    }
+
+    #[test]
+    fn terminal_cherry_pick_controls_clear_pending_sources() {
+        const OLD: &str = "1111111111111111111111111111111111111111";
+        const NEW: &str = "2222222222222222222222222222222222222222";
+        let command =
+            |args: &[&str], exit_code: i32, ref_changes: Vec<crate::daemon::domain::RefChange>| {
+                test_history_command("cherry-pick", args, exit_code, ref_changes)
+            };
+
+        assert!(cherry_pick_command_terminates_pending_sequence(&command(
+            &["--abort"],
+            0,
+            Vec::new()
+        )));
+        assert!(cherry_pick_command_terminates_pending_sequence(&command(
+            &["--quit"],
+            0,
+            Vec::new()
+        )));
+        assert!(cherry_pick_command_terminates_pending_sequence(&command(
+            &["--skip"],
+            0,
+            Vec::new()
+        )));
+        assert!(!cherry_pick_command_terminates_pending_sequence(&command(
+            &["--skip"],
+            0,
+            vec![ref_change("HEAD", OLD, NEW)]
+        )));
+        assert!(!cherry_pick_command_terminates_pending_sequence(&command(
+            &["--skip"],
+            1,
+            Vec::new()
+        )));
+    }
+
+    #[test]
+    fn successful_cherry_pick_quit_clears_coordinator_pending_state() {
+        const SOURCE: &str = "1111111111111111111111111111111111111111";
+        const HEAD: &str = "2222222222222222222222222222222222222222";
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let coordinator = ActorDaemonCoordinator::new();
+            let worktree = Path::new("/repo");
+            coordinator
+                .set_pending_cherry_pick_sources_for_worktree(
+                    worktree,
+                    vec![SOURCE.to_string()],
+                    false,
+                )
+                .unwrap();
+            coordinator
+                .set_pending_cherry_pick_no_commit_for_worktree(
+                    worktree,
+                    vec![SOURCE.to_string()],
+                    HEAD.to_string(),
+                )
+                .unwrap();
+            let applied = crate::daemon::domain::AppliedCommand {
+                seq: 1,
+                command: test_history_command("cherry-pick", &["--quit"], 0, Vec::new()),
+                analysis: crate::daemon::domain::AnalysisResult {
+                    class: crate::daemon::domain::CommandClass::HistoryRewrite,
+                    // Keep unrelated non-FF detection inert while exercising the
+                    // side-effect coordinator with a successful terminal control.
+                    events: vec![crate::daemon::domain::SemanticEvent::CherryPickComplete {
+                        original_head: String::new(),
+                        new_head: String::new(),
+                        source_commits: Vec::new(),
+                        new_commits: Vec::new(),
+                    }],
+                    confidence: crate::daemon::domain::Confidence::High,
+                },
+            };
+
+            coordinator
+                .maybe_apply_side_effects_for_applied_command(None, &applied, &mut HashMap::new())
+                .await
+                .unwrap();
+
+            assert!(
+                coordinator
+                    .pending_cherry_pick_sources_for_worktree(worktree)
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(
+                coordinator
+                    .take_pending_cherry_pick_no_commit_for_worktree(worktree)
+                    .unwrap()
+                    .is_none()
+            );
+        });
+    }
+
+    #[test]
     fn checkpoint_requests_use_long_timeout_in_ci_or_test_env() {
         assert_eq!(
             checkpoint_control_response_timeout(&sample_checkpoint_request(), true),
@@ -8193,8 +8388,10 @@ mod tests {
         );
     }
 
-    fn test_rebase_command(
+    fn test_history_command(
+        command: &str,
         invoked_args: &[&str],
+        exit_code: i32,
         ref_changes: Vec<crate::daemon::domain::RefChange>,
     ) -> crate::daemon::domain::NormalizedCommand {
         crate::daemon::domain::NormalizedCommand {
@@ -8203,17 +8400,17 @@ mod tests {
             )),
             family_key: Some(crate::daemon::domain::FamilyKey("/repo/.git".to_string())),
             worktree: Some(PathBuf::from("/repo")),
-            root_sid: "rebase-test".to_string(),
+            root_sid: format!("{command}-test"),
             raw_argv: std::iter::once("git")
-                .chain(std::iter::once("rebase"))
+                .chain(std::iter::once(command))
                 .chain(invoked_args.iter().copied())
                 .map(str::to_string)
                 .collect(),
-            primary_command: Some("rebase".to_string()),
-            invoked_command: Some("rebase".to_string()),
+            primary_command: Some(command.to_string()),
+            invoked_command: Some(command.to_string()),
             invoked_args: invoked_args.iter().map(|arg| (*arg).to_string()).collect(),
             observed_child_commands: Vec::new(),
-            exit_code: 0,
+            exit_code,
             started_at_ns: 1,
             finished_at_ns: 2,
             reflog_start_offsets: HashMap::new(),
@@ -8223,6 +8420,13 @@ mod tests {
             ref_changes,
             confidence: crate::daemon::domain::Confidence::High,
         }
+    }
+
+    fn test_rebase_command(
+        invoked_args: &[&str],
+        ref_changes: Vec<crate::daemon::domain::RefChange>,
+    ) -> crate::daemon::domain::NormalizedCommand {
+        test_history_command("rebase", invoked_args, 0, ref_changes)
     }
 
     fn ref_change(reference: &str, old: &str, new: &str) -> crate::daemon::domain::RefChange {

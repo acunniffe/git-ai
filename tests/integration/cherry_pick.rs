@@ -333,6 +333,14 @@ fn test_cherry_pick_with_conflict_and_continue() {
         "AI_FEATURE_VERSION".ai(),
         "Line 3".human(),
     ]);
+
+    let stats = repo.stats().unwrap();
+    let tool_model = stats
+        .tool_model_breakdown
+        .get("mock_ai::unknown")
+        .expect("conflicted cherry-pick should preserve source session metadata");
+    assert_eq!(tool_model.ai_additions, 1);
+    assert_eq!(tool_model.ai_accepted, 1);
 }
 
 /// Test cherry-pick --abort
