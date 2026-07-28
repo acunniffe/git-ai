@@ -458,7 +458,31 @@ pub(crate) fn handle_non_fast_forward_rewrite_with_operation(
     onto: Option<&str>,
     operation: RewriteMetricOperation,
 ) -> Result<RewriteOutcome, GitAiError> {
-    let mappings = derive_mappings_from_range_diff(repo, old_tip, new_tip, onto)?;
+    handle_non_fast_forward_rewrite_with_additional_sources(
+        repo,
+        old_tip,
+        new_tip,
+        onto,
+        operation,
+        &[],
+    )
+}
+
+pub(crate) fn handle_non_fast_forward_rewrite_with_additional_sources(
+    repo: &Repository,
+    old_tip: &str,
+    new_tip: &str,
+    onto: Option<&str>,
+    operation: RewriteMetricOperation,
+    additional_sources: &[String],
+) -> Result<RewriteOutcome, GitAiError> {
+    let mut mappings = derive_mappings_from_range_diff(repo, old_tip, new_tip, onto)?;
+    mappings.extend(
+        additional_sources
+            .iter()
+            .filter(|source| source.as_str() != new_tip)
+            .map(|source| (source.clone(), new_tip.to_string())),
+    );
     if mappings.is_empty() {
         return Ok(RewriteOutcome::empty());
     }
@@ -474,6 +498,43 @@ pub(crate) fn handle_non_fast_forward_rewrite_with_operation(
     Ok(RewriteOutcome::from_metric_commits(
         attach_authorship_notes(metric_commits, shifted_notes),
     ))
+}
+
+pub(crate) fn transplant_deltas_match(
+    repo: &Repository,
+    source_parent: &str,
+    source_commit: &str,
+    old_target: &str,
+    new_target: &str,
+) -> Result<bool, GitAiError> {
+    fn exact_tree_diff(
+        repo: &Repository,
+        old_commit: &str,
+        new_commit: &str,
+    ) -> Result<Vec<u8>, GitAiError> {
+        let mut args = repo.global_args_for_exec();
+        args.extend([
+            "diff-tree".to_string(),
+            "-p".to_string(),
+            "-r".to_string(),
+            "--binary".to_string(),
+            "--full-index".to_string(),
+            "--no-commit-id".to_string(),
+            "--no-ext-diff".to_string(),
+            "--no-textconv".to_string(),
+            "--no-color".to_string(),
+            old_commit.to_string(),
+            new_commit.to_string(),
+        ]);
+        Ok(exec_git(&args)?.stdout)
+    }
+
+    let source_delta = exact_tree_diff(repo, source_parent, source_commit)?;
+    if source_delta.is_empty() {
+        return Ok(false);
+    }
+    let target_delta = exact_tree_diff(repo, old_target, new_target)?;
+    Ok(source_delta == target_delta)
 }
 
 fn handle_squash_merge(

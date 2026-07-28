@@ -560,7 +560,6 @@ fn test_gt_modify_restacks_children_preserves_attribution() {
 }
 
 #[test]
-#[ignore = "fixed by stacked implementation PR"]
 fn test_gt_modify_into_downstack_preserves_attribution() {
     require_gt!();
     let repo = TestRepo::new();
@@ -640,7 +639,6 @@ fn test_gt_modify_into_downstack_preserves_attribution() {
 }
 
 #[test]
-#[ignore = "fixed by stacked implementation PR"]
 fn test_graphite_modify_into_plumbing_preserves_transplanted_attribution() {
     let repo = TestRepo::new();
     setup_initial_commit(&repo);
@@ -752,6 +750,86 @@ fn test_graphite_modify_into_plumbing_preserves_transplanted_attribution() {
         "DELTA edited by AI".ai(),
         "echo".ai(),
         "foxtrot added by AI".ai(),
+    ]);
+}
+
+#[test]
+fn test_graphite_temporary_commit_does_not_attribute_a_different_rewrite() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+
+    repo.git(&["switch", "-c", "parent-branch"]).unwrap();
+    let parent_path = repo.path().join("parent.txt");
+    fs::write(&parent_path, "alpha\nbravo\ncharlie\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "parent.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("parent").unwrap();
+
+    let parent_base = repo
+        .git(&["rev-parse", "HEAD^"])
+        .unwrap()
+        .trim()
+        .to_string();
+    let mut parent_file = repo.filename("parent.txt");
+    parent_file.assert_committed_lines(crate::lines!["alpha".ai(), "bravo".ai(), "charlie".ai(),]);
+
+    // Prepare a different target tree before creating the Graphite temporary
+    // commit. Its delta must not receive the temporary commit's AI note.
+    repo.git(&["switch", "-c", "different-rewrite"]).unwrap();
+    repo.git_ai(&["checkpoint", "human", "parent.txt"]).unwrap();
+    fs::write(&parent_path, "alpha\ndifferent target rewrite\ncharlie\n").unwrap();
+    repo.stage_all_and_commit("different rewrite").unwrap();
+    let different_tree = repo
+        .git(&["rev-parse", "HEAD^{tree}"])
+        .unwrap()
+        .trim()
+        .to_string();
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "different target rewrite".unattributed_human(),
+        "charlie".ai(),
+    ]);
+
+    repo.git(&["switch", "parent-branch"]).unwrap();
+    repo.git(&["switch", "-c", "child-branch"]).unwrap();
+    repo.git_ai(&["checkpoint", "human", "parent.txt"]).unwrap();
+    fs::write(&parent_path, "alpha\nAI transplant candidate\ncharlie\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "parent.txt"])
+        .unwrap();
+    repo.git(&["add", "--all"]).unwrap();
+    repo.git(&[
+        "commit",
+        "-m",
+        "graphite (temporary): staged changes",
+        "--allow-empty",
+    ])
+    .unwrap();
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "AI transplant candidate".ai(),
+        "charlie".ai(),
+    ]);
+
+    let rewritten_parent = repo
+        .git(&[
+            "commit-tree",
+            &different_tree,
+            "-p",
+            &parent_base,
+            "-m",
+            "parent",
+        ])
+        .unwrap()
+        .trim()
+        .to_string();
+    repo.git(&["update-ref", "refs/heads/parent-branch", &rewritten_parent])
+        .unwrap();
+
+    repo.git(&["switch", "parent-branch"]).unwrap();
+    parent_file.assert_committed_lines(crate::lines![
+        "alpha".ai(),
+        "different target rewrite".unattributed_human(),
+        "charlie".ai(),
     ]);
 }
 
