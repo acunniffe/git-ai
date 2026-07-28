@@ -235,6 +235,7 @@ fn revert_side_effect_source_named_like_command_is_not_dropped() {
 }
 
 #[test]
+#[serial]
 fn conflict_resolution_note_read_errors_are_not_silently_ignored() {
     let temp = tempfile::tempdir().unwrap();
     let repo_path = temp.path().join("repo");
