@@ -28,3 +28,12 @@ pub(crate) mod scenario;
 pub(crate) mod stackbuilder;
 
 mod smoke;
+
+mod conflicts;
+mod create_modify_submit;
+mod lifecycle;
+mod restack;
+mod sync_ff;
+mod sync_restack;
+mod undo_move_misc;
+mod worktree_shapes;
