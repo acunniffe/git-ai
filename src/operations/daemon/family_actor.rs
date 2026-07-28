@@ -27,7 +27,12 @@ fn should_retry_ref_enrichment(cmd: &NormalizedCommand) -> bool {
             cmd.primary_command.as_deref(),
             Some("commit") | Some("cherry-pick")
         )
-        && !cmd.reflog_start_offsets.is_empty()
+        // A command may expose only a partial branch-ref match before its HEAD
+        // reflog entry is visible. That partial evidence can arrive without
+        // reflog-start offsets, so do not use the offset map as the only retry
+        // signal. With neither offsets nor ref evidence this remains a
+        // synthetic/unobservable command and must fail closed without waiting.
+        && (!cmd.reflog_start_offsets.is_empty() || !cmd.ref_changes.is_empty())
         && !has_head_ref_change(cmd)
 }
 
@@ -345,6 +350,9 @@ mod tests {
             old: "1111111111111111111111111111111111111111".to_string(),
             new: "2222222222222222222222222222222222222222".to_string(),
         });
+        assert!(should_retry_ref_enrichment(&cmd));
+
+        cmd.reflog_start_offsets.clear();
         assert!(should_retry_ref_enrichment(&cmd));
 
         cmd.exit_code = 1;
