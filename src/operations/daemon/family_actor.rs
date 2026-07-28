@@ -17,6 +17,7 @@ const COMMIT_REF_ENRICHMENT_RETRY_DELAYS: &[Duration] = &[
     Duration::from_millis(100),
     Duration::from_millis(200),
     Duration::from_millis(500),
+    Duration::from_millis(1_000),
 ];
 
 fn should_retry_commit_ref_enrichment(cmd: &NormalizedCommand) -> bool {
@@ -287,7 +288,7 @@ mod tests {
         let new = "2222222222222222222222222222222222222222";
         let delayed_head_log = head_log.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(400)).await;
+            tokio::time::sleep(Duration::from_millis(1_500)).await;
             fs::write(
                 delayed_head_log,
                 format!("{old} {new} Test User <test@example.com> 0 +0000\tcommit: delayed\n"),

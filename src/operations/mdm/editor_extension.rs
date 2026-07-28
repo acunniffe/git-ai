@@ -431,8 +431,18 @@ exit 1
         assert!(!check_announced.get());
 
         let install_announced = Cell::new(false);
-        let (_temp_dir, install_cli, _attempts_path, _args_path) =
+        let (_temp_dir, mut install_cli, _attempts_path, _args_path) =
             scripted_cli(EXTENSION_LIFECYCLE_SCRIPT);
+        install_cli.env_vars.extend([
+            (
+                "GIT_AI_TEST_EXTENSION_INSTALLED".to_string(),
+                "false".to_string(),
+            ),
+            (
+                "GIT_AI_TEST_INSTALL_SUCCEEDS".to_string(),
+                "false".to_string(),
+            ),
+        ]);
         let install_outcome = ensure_vsc_editor_extension_with_sleeper(
             Some(&install_cli),
             GIT_AI_VSCODE_EXTENSION_ID,
