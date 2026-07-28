@@ -4060,6 +4060,13 @@ impl ActorDaemonCoordinator {
             ));
         };
         let family = self.backend.resolve_family(&repo_work_dir)?.0;
+        crate::wltrace::wltrace("checkpoint.admission", Path::new(&family), || {
+            format!(
+                "receipt_seq={} repo_work_dir={}",
+                accepted.receipt_seq,
+                repo_work_dir.display()
+            )
+        });
 
         self.notify_checkpoint_stream(&request);
         self.wait_for_trace_ingest_seq(accepted.trace_ingest_target)
@@ -4533,6 +4540,22 @@ impl ActorDaemonCoordinator {
 
         let _ = self.begin_family_effect(family);
         for (order, ready_entry) in ready {
+            // Per-family drains must be strictly serialized; overlapping or
+            // order-regressing exec windows in a wltrace capture indicate a
+            // broken exec-lock (see the GC held-lock eviction regression).
+            crate::wltrace::wltrace("drain.exec", Path::new(family), || {
+                let entry = match &ready_entry {
+                    FamilySequencerEntry::ReadyCommand(command) => format!(
+                        "command:{}",
+                        command.primary_command.as_deref().unwrap_or("unknown")
+                    ),
+                    FamilySequencerEntry::Checkpoint { receipt_seq, .. } => {
+                        format!("checkpoint:seq={receipt_seq}")
+                    }
+                    _ => "other".to_string(),
+                };
+                format!("order={order} entry={entry}")
+            });
             match ready_entry {
                 FamilySequencerEntry::ReadyCommand(command) => {
                     // Wrap the entire command + side-effect pipeline in catch_unwind

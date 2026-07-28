@@ -1787,6 +1787,33 @@ fn daemon_checkpoint_receipt_logs_body_receive_errors() {
 
 #[test]
 #[cfg(not(windows))]
+fn wltrace_captures_daemon_working_log_ops_when_enabled() {
+    let trace_file = tempfile::NamedTempFile::new().expect("wltrace temp file");
+    let trace_path = trace_file.path().to_string_lossy().to_string();
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_WLTRACE", trace_path.as_str())]);
+
+    let file_path = repo.path().join("traced.txt");
+    fs::write(&file_path, "AI content\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "traced.txt"])
+        .unwrap();
+    repo.current_working_logs()
+        .read_all_checkpoints()
+        .expect("checkpoint should be readable");
+
+    let trace = fs::read_to_string(trace_file.path()).expect("read wltrace output");
+    for op in [
+        "op=checkpoint.admission",
+        "op=drain.exec",
+        "op=working_log.append_checkpoint",
+        "op=working_log.write_all_checkpoints.begin",
+        "op=working_log.write_all_checkpoints.end",
+    ] {
+        assert!(trace.contains(op), "wltrace output missing {op}:\n{trace}");
+    }
+}
+
+#[test]
+#[cfg(not(windows))]
 fn daemon_checkpoint_ack_does_not_wait_for_checkpoint_processing() {
     let repo = TestRepo::new_with_daemon_env(&[(
         "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
