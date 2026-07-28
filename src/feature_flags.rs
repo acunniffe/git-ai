@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub const DEFAULT_HOOKS_SYNC_INTERVAL_SECS: u64 = 6 * 60 * 60;
+
 /// Parse a boolean from an environment variable string.
 /// Accepts: "1", "true", "True", "TRUE" → Some(true)
 ///          "0", "false", "False", "FALSE" → Some(false)
@@ -12,16 +14,20 @@ fn parse_bool_env(value: Option<String>) -> Option<bool> {
     })
 }
 
+fn parse_u64_env(value: Option<String>) -> Option<u64> {
+    value.and_then(|value| value.parse().ok())
+}
+
 macro_rules! define_feature_flags {
     (
         $(
-            $field:ident: $file_name:ident, debug = $debug_default:expr, release = $release_default:expr
+            $field:ident: $file_name:ident ($type:ty, $env_parser:ident), debug = $debug_default:expr, release = $release_default:expr
         ),* $(,)?
     ) => {
         /// Feature flags for the application
         #[derive(Debug, Clone, Serialize)]
         pub struct FeatureFlags {
-            $(pub $field: bool,)*
+            $(pub $field: $type,)*
         }
 
         impl Default for FeatureFlags {
@@ -46,7 +52,7 @@ macro_rules! define_feature_flags {
         pub(crate) struct DeserializableFeatureFlags {
             $(
                 #[serde(default)]
-                $file_name: Option<bool>,
+                $file_name: Option<$type>,
             )*
         }
 
@@ -56,7 +62,7 @@ macro_rules! define_feature_flags {
             pub(crate) fn from_env(prefix: &str) -> Self {
                 DeserializableFeatureFlags {
                     $(
-                        $file_name: parse_bool_env(
+                        $file_name: $env_parser(
                             std::env::var(format!("{}{}", prefix, stringify!($file_name).to_uppercase())).ok()
                         ),
                     )*
@@ -76,15 +82,17 @@ macro_rules! define_feature_flags {
 }
 
 // Define all feature flags in one place
-// Format: struct_field: file_and_env_name, debug = <bool>, release = <bool>
+// Format: struct_field: file_and_env_name (type, env_parser), debug = <value>, release = <value>
 define_feature_flags!(
-    auth_keyring: auth_keyring, debug = false, release = false,
-    transcript_streaming: transcript_streaming, debug = true, release = true,
-    transcript_sweep: transcript_sweep, debug = true, release = true,
-    checkpoint_debug_log: checkpoint_debug_log, debug = false, release = false,
-    bash_checkpoints_v2: bash_checkpoints_v2, debug = false, release = false,
-    daemon_log_upload: daemon_log_upload, debug = true, release = true,
-    rewrite_metrics_events: rewrite_metrics_events, debug = true, release = false,
+    auth_keyring: auth_keyring (bool, parse_bool_env), debug = false, release = false,
+    transcript_streaming: transcript_streaming (bool, parse_bool_env), debug = true, release = true,
+    transcript_sweep: transcript_sweep (bool, parse_bool_env), debug = true, release = true,
+    checkpoint_debug_log: checkpoint_debug_log (bool, parse_bool_env), debug = false, release = false,
+    bash_checkpoints_v2: bash_checkpoints_v2 (bool, parse_bool_env), debug = false, release = false,
+    daemon_log_upload: daemon_log_upload (bool, parse_bool_env), debug = true, release = true,
+    rewrite_metrics_events: rewrite_metrics_events (bool, parse_bool_env), debug = true, release = false,
+    // Interval is expressed in seconds. Zero disables automatic hook synchronization.
+    hooks_sync_interval: hooks_sync_interval (u64, parse_u64_env), debug = DEFAULT_HOOKS_SYNC_INTERVAL_SECS, release = DEFAULT_HOOKS_SYNC_INTERVAL_SECS,
 );
 
 impl FeatureFlags {
@@ -132,6 +140,7 @@ mod tests {
     #[test]
     fn test_default_feature_flags() {
         let flags = FeatureFlags::default();
+        assert_eq!(flags.hooks_sync_interval, DEFAULT_HOOKS_SYNC_INTERVAL_SECS);
         #[cfg(debug_assertions)]
         {
             assert!(!flags.auth_keyring);
@@ -231,6 +240,52 @@ mod tests {
     }
 
     #[test]
+    fn test_hooks_sync_interval_file_override() {
+        let flags = FeatureFlags::from_deserializable(DeserializableFeatureFlags {
+            hooks_sync_interval: Some(90),
+            ..Default::default()
+        });
+
+        assert_eq!(flags.hooks_sync_interval, 90);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_hooks_sync_interval_env_overrides_file() {
+        unsafe {
+            std::env::set_var("GIT_AI_HOOKS_SYNC_INTERVAL", "45");
+        }
+
+        let flags = FeatureFlags::from_env_and_file(Some(DeserializableFeatureFlags {
+            hooks_sync_interval: Some(90),
+            ..Default::default()
+        }));
+
+        unsafe {
+            std::env::remove_var("GIT_AI_HOOKS_SYNC_INTERVAL");
+        }
+        assert_eq!(flags.hooks_sync_interval, 45);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_invalid_hooks_sync_interval_env_uses_file_value() {
+        unsafe {
+            std::env::set_var("GIT_AI_HOOKS_SYNC_INTERVAL", "not-a-number");
+        }
+
+        let flags = FeatureFlags::from_env_and_file(Some(DeserializableFeatureFlags {
+            hooks_sync_interval: Some(90),
+            ..Default::default()
+        }));
+
+        unsafe {
+            std::env::remove_var("GIT_AI_HOOKS_SYNC_INTERVAL");
+        }
+        assert_eq!(flags.hooks_sync_interval, 90);
+    }
+
+    #[test]
     fn test_serialization() {
         let flags = FeatureFlags {
             auth_keyring: true,
@@ -240,6 +295,7 @@ mod tests {
             bash_checkpoints_v2: true,
             daemon_log_upload: true,
             rewrite_metrics_events: true,
+            hooks_sync_interval: DEFAULT_HOOKS_SYNC_INTERVAL_SECS,
         };
 
         let serialized = serde_json::to_string(&flags).unwrap();
@@ -250,6 +306,7 @@ mod tests {
         assert!(serialized.contains("bash_checkpoints_v2"));
         assert!(serialized.contains("daemon_log_upload"));
         assert!(serialized.contains("rewrite_metrics_events"));
+        assert!(serialized.contains("hooks_sync_interval"));
     }
 
     #[test]
@@ -262,6 +319,7 @@ mod tests {
             bash_checkpoints_v2: true,
             daemon_log_upload: true,
             rewrite_metrics_events: true,
+            hooks_sync_interval: DEFAULT_HOOKS_SYNC_INTERVAL_SECS,
         };
         let cloned = flags.clone();
         assert_eq!(cloned.auth_keyring, flags.auth_keyring);
@@ -271,6 +329,7 @@ mod tests {
         assert_eq!(cloned.bash_checkpoints_v2, flags.bash_checkpoints_v2);
         assert_eq!(cloned.daemon_log_upload, flags.daemon_log_upload);
         assert_eq!(cloned.rewrite_metrics_events, flags.rewrite_metrics_events);
+        assert_eq!(cloned.hooks_sync_interval, flags.hooks_sync_interval);
     }
 
     #[test]

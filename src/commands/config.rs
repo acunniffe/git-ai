@@ -206,6 +206,7 @@ pub fn handle_config(args: &[String]) {
             }
             if key == "feature_flags.transcript_streaming"
                 || key == "feature_flags.transcript_sweep"
+                || key == "feature_flags.hooks_sync_interval"
                 || key == "transcript_streaming_lookback_days"
             {
                 println!("Run `git-ai bg restart` for changes to take effect.");

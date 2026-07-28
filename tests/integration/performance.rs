@@ -1,4 +1,4 @@
-use git_ai::feature_flags::FeatureFlags;
+use git_ai::feature_flags::{DEFAULT_HOOKS_SYNC_INTERVAL_SECS, FeatureFlags};
 use rand::seq::IndexedRandom;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
@@ -22,6 +22,7 @@ fn setup() {
         bash_checkpoints_v2: false,
         daemon_log_upload: true,
         rewrite_metrics_events: false,
+        hooks_sync_interval: DEFAULT_HOOKS_SYNC_INTERVAL_SECS,
     };
 
     git_ai::config::Config::set_test_feature_flags(test_flags.clone());
