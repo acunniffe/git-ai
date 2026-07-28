@@ -106,6 +106,7 @@ mod tests {
             family_key: None,
             worktree: None,
             root_sid: "r".to_string(),
+            trace_derived: false,
             raw_argv: vec!["git".to_string(), primary.to_string()],
             primary_command: Some(primary.to_string()),
             invoked_command: Some(primary.to_string()),

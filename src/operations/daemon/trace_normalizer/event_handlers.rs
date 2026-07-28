@@ -468,6 +468,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             family_key,
             worktree: pending.worktree,
             root_sid: pending.root_sid,
+            trace_derived: true,
             raw_argv: pending.raw_argv,
             primary_command,
             invoked_command,

@@ -43,6 +43,10 @@ pub struct NormalizedCommand {
     pub family_key: Option<FamilyKey>,
     pub worktree: Option<PathBuf>,
     pub root_sid: String,
+    /// Whether this command came from the trace2 normalizer rather than a
+    /// synthetic/unit-test fixture.
+    #[serde(skip)]
+    pub trace_derived: bool,
     pub raw_argv: Vec<String>,
     pub primary_command: Option<String>,
     pub invoked_command: Option<String>,

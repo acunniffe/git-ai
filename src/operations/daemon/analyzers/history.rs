@@ -394,6 +394,7 @@ mod tests {
             family_key: None,
             worktree: None,
             root_sid: "r".to_string(),
+            trace_derived: false,
             raw_argv: argv.iter().map(|s| s.to_string()).collect(),
             primary_command: Some(primary.to_string()),
             invoked_command: Some(primary.to_string()),

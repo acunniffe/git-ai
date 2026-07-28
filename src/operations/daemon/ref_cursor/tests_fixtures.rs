@@ -42,6 +42,7 @@ pub(super) fn command_with_worktree(
         family_key: Some(family.clone()),
         worktree,
         root_sid: "sid".to_string(),
+        trace_derived: false,
         raw_argv: std::iter::once("git".to_string())
             .chain(args.iter().map(|arg| arg.to_string()))
             .collect(),

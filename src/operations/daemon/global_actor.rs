@@ -70,6 +70,7 @@ mod tests {
             family_key: None,
             worktree: None,
             root_sid: format!("global-{}", seq),
+            trace_derived: false,
             raw_argv: vec!["git".to_string(), "help".to_string()],
             primary_command: Some("help".to_string()),
             invoked_command: Some("help".to_string()),

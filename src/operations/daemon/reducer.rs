@@ -283,6 +283,7 @@ mod tests {
             family_key: Some(FamilyKey::new("family:/tmp/repo")),
             worktree: Some(PathBuf::from("/tmp/repo")),
             root_sid: "sid".to_string(),
+            trace_derived: false,
             raw_argv: vec!["git".to_string(), "update-ref".to_string()],
             primary_command: Some("update-ref".to_string()),
             invoked_command: Some("update-ref".to_string()),

@@ -1154,6 +1154,7 @@ fn git_ai_command_requires_daemon_sync(args: &[&str]) -> bool {
                 | "show-prompt"
                 | "stats"
                 | "status"
+                | "await"
         )
     )
 }

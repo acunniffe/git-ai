@@ -187,6 +187,7 @@ fn test_rebase_command(
         family_key: Some(crate::model::domain::FamilyKey("/repo/.git".to_string())),
         worktree: Some(PathBuf::from("/repo")),
         root_sid: "rebase-test".to_string(),
+        trace_derived: false,
         raw_argv: std::iter::once("git")
             .chain(std::iter::once("rebase"))
             .chain(invoked_args.iter().copied())
