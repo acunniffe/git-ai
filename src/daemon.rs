@@ -2475,6 +2475,26 @@ struct PendingCherryPickNoCommit {
 }
 
 #[derive(Debug, Clone)]
+struct PendingGraphiteTransplant {
+    source_parent: String,
+    source_commit: String,
+}
+
+fn is_graphite_temporary_commit(cmd: &crate::daemon::domain::NormalizedCommand) -> bool {
+    const MESSAGE: &str = "graphite (temporary): staged changes";
+
+    cmd.primary_command.as_deref() == Some("commit")
+        && (cmd
+            .invoked_args
+            .windows(2)
+            .any(|args| matches!(args[0].as_str(), "-m" | "--message") && args[1] == MESSAGE)
+            || cmd
+                .invoked_args
+                .iter()
+                .any(|arg| arg.strip_prefix("--message=") == Some(MESSAGE)))
+}
+
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 enum RecentReplayPrerequisite {
     CheckoutSwitchRename {
@@ -2520,6 +2540,7 @@ pub struct ActorDaemonCoordinator {
     pending_cherry_pick_sources_by_worktree: Mutex<HashMap<String, Vec<String>>>,
     pending_cherry_pick_no_commit_by_worktree: Mutex<HashMap<String, PendingCherryPickNoCommit>>,
     pending_squash_merge_by_worktree: Mutex<HashMap<String, PendingSquashMerge>>,
+    pending_graphite_transplant_by_worktree: Mutex<HashMap<String, PendingGraphiteTransplant>>,
     inflight_effects_by_family: Mutex<HashMap<String, usize>>,
     /// Files with an in-flight AI edit (PreFileEdit received, PostFileEdit not yet completed).
     /// Outer key: family. Inner key: absolute file path string. Value: registration timestamp (nanos).
@@ -2608,6 +2629,7 @@ impl ActorDaemonCoordinator {
             pending_cherry_pick_sources_by_worktree: Mutex::new(HashMap::new()),
             pending_cherry_pick_no_commit_by_worktree: Mutex::new(HashMap::new()),
             pending_squash_merge_by_worktree: Mutex::new(HashMap::new()),
+            pending_graphite_transplant_by_worktree: Mutex::new(HashMap::new()),
             inflight_effects_by_family: Mutex::new(HashMap::new()),
             pending_ai_edits_by_family: Mutex::new(HashMap::new()),
             family_sequencers_by_family: Mutex::new(HashMap::new()),
@@ -2936,6 +2958,11 @@ impl ActorDaemonCoordinator {
         if let Ok(mut map) = self.pending_squash_merge_by_worktree.lock() {
             map.retain(|_, pending| {
                 !pending.source_head.trim().is_empty() && !pending.onto.trim().is_empty()
+            });
+        }
+        if let Ok(mut map) = self.pending_graphite_transplant_by_worktree.lock() {
+            map.retain(|_, pending| {
+                !pending.source_parent.trim().is_empty() && !pending.source_commit.trim().is_empty()
             });
         }
         if let Ok(mut map) = self.queued_trace_payloads_by_root.lock() {
@@ -4623,6 +4650,55 @@ impl ActorDaemonCoordinator {
         Ok(map.remove(&Self::worktree_state_key(worktree)))
     }
 
+    fn set_pending_graphite_transplant_for_worktree(
+        &self,
+        worktree: &Path,
+        source_parent: String,
+        source_commit: String,
+    ) -> Result<(), GitAiError> {
+        let mut map = self
+            .pending_graphite_transplant_by_worktree
+            .lock()
+            .map_err(|_| {
+                GitAiError::Generic("pending Graphite transplant map lock poisoned".to_string())
+            })?;
+        map.insert(
+            Self::worktree_state_key(worktree),
+            PendingGraphiteTransplant {
+                source_parent,
+                source_commit,
+            },
+        );
+        Ok(())
+    }
+
+    fn pending_graphite_transplant_for_worktree(
+        &self,
+        worktree: &Path,
+    ) -> Result<Option<PendingGraphiteTransplant>, GitAiError> {
+        let map = self
+            .pending_graphite_transplant_by_worktree
+            .lock()
+            .map_err(|_| {
+                GitAiError::Generic("pending Graphite transplant map lock poisoned".to_string())
+            })?;
+        Ok(map.get(&Self::worktree_state_key(worktree)).cloned())
+    }
+
+    fn clear_pending_graphite_transplant_for_worktree(
+        &self,
+        worktree: &Path,
+    ) -> Result<(), GitAiError> {
+        let mut map = self
+            .pending_graphite_transplant_by_worktree
+            .lock()
+            .map_err(|_| {
+                GitAiError::Generic("pending Graphite transplant map lock poisoned".to_string())
+            })?;
+        map.remove(&Self::worktree_state_key(worktree));
+        Ok(())
+    }
+
     fn resolve_heads_for_command(
         cmd: &crate::daemon::domain::NormalizedCommand,
     ) -> (String, String) {
@@ -4780,6 +4856,11 @@ impl ActorDaemonCoordinator {
             .filter(|rc| is_valid_oid(&rc.new) && !is_zero_oid(&rc.new))
             .map(|rc| rc.new.clone())
             .next();
+        let pending_graphite_transplant = if cmd.primary_command.as_deref() == Some("update-ref") {
+            self.pending_graphite_transplant_for_worktree(worktree)?
+        } else {
+            None
+        };
 
         // If we have a pending original head from a failed rebase, use it as old_tip
         // with the branch ref update as new_tip. This handles rebase --skip/--continue
@@ -4851,12 +4932,26 @@ impl ActorDaemonCoordinator {
                     crate::authorship::rewrite::RewriteMetricOperation::Rebase,
                 )?
             } else if cmd.primary_command.as_deref() == Some("update-ref") {
-                crate::authorship::rewrite::handle_non_fast_forward_rewrite_with_operation(
+                let additional_sources = if let Some(pending) = pending_graphite_transplant.as_ref()
+                    && is_ancestor_commit(&repo, old_tip, &pending.source_parent)
+                    && crate::authorship::rewrite::transplant_deltas_match(
+                        &repo,
+                        &pending.source_parent,
+                        &pending.source_commit,
+                        old_tip,
+                        new_tip,
+                    )? {
+                    vec![pending.source_commit.clone()]
+                } else {
+                    Vec::new()
+                };
+                crate::authorship::rewrite::handle_non_fast_forward_rewrite_with_additional_sources(
                     &repo,
                     old_tip,
                     new_tip,
                     rewrite_onto.as_deref(),
                     crate::authorship::rewrite::RewriteMetricOperation::UpdateRef,
+                    &additional_sources,
                 )?
             } else {
                 crate::authorship::rewrite::handle_non_fast_forward_rewrite_with_operation(
@@ -4884,6 +4979,9 @@ impl ActorDaemonCoordinator {
                     rewrite_metric_commits_with_branch(metric_commits, branch),
                 );
             }
+        }
+        if cmd.primary_command.as_deref() == Some("update-ref") && !collapsed.is_empty() {
+            self.clear_pending_graphite_transplant_for_worktree(worktree)?;
         }
 
         Ok(())
@@ -5558,6 +5656,18 @@ impl ActorDaemonCoordinator {
                                     Some(&recovery_preflight),
                                 )
                             })?;
+
+                            if is_graphite_temporary_commit(cmd)
+                                && let Some(source_parent) = base
+                                    .as_ref()
+                                    .filter(|base| is_valid_oid(base) && !is_zero_oid(base))
+                            {
+                                self.set_pending_graphite_transplant_for_worktree(
+                                    worktree.as_ref(),
+                                    source_parent.clone(),
+                                    new_head.clone(),
+                                )?;
+                            }
 
                             if cmd.primary_command.as_deref() == Some("commit")
                                 && let Some(pending) = self
