@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -31,33 +32,41 @@ def get_repo_root():
     ).stdout.strip()
 
 
+def build_harness_command(harness, resume_session=False, prompt=None):
+    """Build the command for launching an AI harness."""
+    if harness == "codex":
+        if resume_session:
+            command = ["codex", "resume", "--dangerously-bypass-approvals-and-sandbox"]
+        else:
+            command = ["codex", "--dangerously-bypass-approvals-and-sandbox"]
+
+    elif harness == "claude":
+        command = ["claude", "--dangerously-skip-permissions"]
+        if resume_session:
+            command.append("--resume")
+
+    else:
+        raise ValueError(f"Unknown harness '{harness}'")
+
+    if prompt:
+        command.append(prompt)
+
+    return command
+
+
 def open_worktree(worktree_dir, branch_name, harness=DEFAULT_HARNESS, resume_session=False, prompt=None):
     """Open the selected AI harness in the specified worktree."""
     set_tmux_window_name(branch_name)
     print(f"Launching {harness} in {worktree_dir}...")
     os.chdir(worktree_dir)
 
-    if harness == "codex":
-        if resume_session:
-            codex_args = ["codex", "resume", "--dangerously-bypass-approvals-and-sandbox"]
-            if prompt:
-                codex_args.append(prompt)
-        else:
-            codex_args = ["codex", "--dangerously-bypass-approvals-and-sandbox"]
-            if prompt:
-                codex_args.append(prompt)
-        os.execvp("codex", codex_args)
+    try:
+        command = build_harness_command(harness, resume_session, prompt)
+    except ValueError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        sys.exit(1)
 
-    if harness == "claude":
-        claude_args = ["claude", "--dangerously-skip-permissions"]
-        if resume_session:
-            claude_args.append("--resume")
-        if prompt:
-            claude_args.append(prompt)
-        os.execvp("claude", claude_args)
-
-    print(f"Error: Unknown harness '{harness}'", file=sys.stderr)
-    sys.exit(1)
+    os.execvp(command[0], command)
 
 
 def check_local_branch_exists(branch):
@@ -216,9 +225,8 @@ def cmd_resume(args):
     open_worktree(worktree_dir, branch, harness=args.harness, resume_session=True)
 
 
-def cmd_pr(args):
-    """Check out a PR into a worktree and launch Claude."""
-    pr_number = args.pr_number
+def checkout_pr_worktree(pr_number):
+    """Check out a PR into a worktree and return its path and branch."""
     repo_root = get_repo_root()
 
     # 1. Fetch PR metadata
@@ -237,8 +245,7 @@ def cmd_pr(args):
     # 3. Check if worktree already exists
     if os.path.exists(worktree_dir):
         print(f"Using existing worktree for PR #{pr_number}")
-        open_worktree(worktree_dir, branch_name, harness=args.harness, resume_session=False)
-        return
+        return worktree_dir, branch_name
 
     # 4. Checkout PR using gh CLI (handles fetching)
     print(f"Checking out PR #{pr_number}...")
@@ -269,8 +276,71 @@ def cmd_pr(args):
     print(f"Creating worktree at {worktree_dir}...")
     run(["git", "worktree", "add", worktree_dir, branch_name])
 
-    # 7. Launch the selected harness without resume
+    return worktree_dir, branch_name
+
+
+def cmd_pr(args):
+    """Check out a PR into a worktree and launch an AI harness."""
+    worktree_dir, branch_name = checkout_pr_worktree(args.pr_number)
+
     open_worktree(worktree_dir, branch_name, harness=args.harness, resume_session=False)
+
+
+def build_review_prompt(pr_number, additional_prompt=None):
+    """Build the slash command used to review a PR."""
+    prompt = f"/review PR#{pr_number}"
+    if additional_prompt is not None:
+        prompt += f" {additional_prompt}"
+    return prompt
+
+
+def open_heavy_review(worktree_dir, branch_name, prompt, reviewer_count):
+    """Open equal numbers of Codex and Claude reviewers in tiled tmux panes."""
+    if not os.environ.get("TMUX"):
+        print("Error: --heavy must be run inside tmux", file=sys.stderr)
+        sys.exit(1)
+
+    set_tmux_window_name(branch_name)
+    os.chdir(worktree_dir)
+
+    harnesses = list(HARNESS_CHOICES) * reviewer_count
+    print(
+        f"Launching {reviewer_count} Codex and {reviewer_count} Claude "
+        f"reviewers in {worktree_dir}..."
+    )
+
+    for harness in harnesses[1:]:
+        command = build_harness_command(harness, prompt=prompt)
+        run([
+            "tmux",
+            "split-window",
+            "-d",
+            "-c",
+            worktree_dir,
+            shlex.join(command),
+        ])
+
+    run(["tmux", "select-layout", "tiled"])
+
+    command = build_harness_command(harnesses[0], prompt=prompt)
+    os.execvp(command[0], command)
+
+
+def cmd_review(args):
+    """Check out a PR and launch one or more agents with a review prompt."""
+    worktree_dir, branch_name = checkout_pr_worktree(args.pr_number)
+    prompt = build_review_prompt(args.pr_number, args.additional_prompt)
+
+    if args.heavy is not None:
+        open_heavy_review(worktree_dir, branch_name, prompt, args.heavy)
+        return
+
+    open_worktree(
+        worktree_dir,
+        branch_name,
+        harness=args.harness,
+        prompt=prompt,
+    )
 
 
 def cmd_new(args):
@@ -335,6 +405,31 @@ def build_parser():
     p_pr.add_argument("pr_number", type=int, help="PR number to check out")
     add_harness_argument(p_pr)
     p_pr.set_defaults(func=cmd_pr)
+
+    p_review = subparsers.add_parser(
+        "review",
+        help="Check out a PR and launch an AI harness with /review",
+    )
+    p_review.add_argument("pr_number", type=int, help="PR number to review")
+    p_review.add_argument(
+        "additional_prompt",
+        nargs="?",
+        help="Optional additional review prompt (quote it to preserve whitespace)",
+    )
+    p_review.add_argument(
+        "--heavy",
+        nargs="?",
+        const=2,
+        type=int,
+        choices=range(1, 4),
+        metavar="N",
+        help=(
+            "Launch N Codex and N Claude reviewers in tiled tmux panes "
+            "(default: 2 of each)"
+        ),
+    )
+    add_harness_argument(p_review)
+    p_review.set_defaults(func=cmd_review)
 
     return parser
 
