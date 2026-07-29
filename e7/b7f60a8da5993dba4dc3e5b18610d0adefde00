@@ -1,0 +1,19 @@
+tests/integration/github_copilot.rs
+  s_f00ef7c0f45b07::t_dc13f702980562 23,41,63,88,363,693,708,723,740,757
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "e7b7f60a8da5993dba4dc3e5b18610d0adefde00",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

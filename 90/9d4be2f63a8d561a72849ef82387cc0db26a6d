@@ -1,0 +1,28 @@
+src/commands/checkpoint_agent/devin.rs
+  9895c13f87abdd18 1-116
+src/commands/git_ai_handlers.rs
+  9895c13f87abdd18 12,418-433
+src/commands/checkpoint_agent/mod.rs
+  9895c13f87abdd18 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.2",
+  "base_commit_sha": "909d4be2f63a8d561a72849ef82387cc0db26a6d",
+  "prompts": {
+    "9895c13f87abdd18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61fc1304-6f8c-4108-ac6e-237e4aa6814d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 153,
+      "total_deletions": 19,
+      "accepted_lines": 134,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/049ae842f564143a9c2811966773b1015f76c533781e6fb1df18d5b485368be1"
+    }
+  }
+}

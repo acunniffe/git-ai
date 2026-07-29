@@ -1,0 +1,28 @@
+src/daemon.rs
+  760c5cdc0bd01352 1361,1363-1364
+src/daemon/checkpoint.rs
+  760c5cdc0bd01352 90,92,94-95,97-102,104,119-123
+tests/integration/agent_usage_repo_url.rs
+  760c5cdc0bd01352 1-31,33-57,60-90,92-123,125-147,149-182,184-197
+tests/integration/main.rs
+  760c5cdc0bd01352 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "0c88295f934ec80a0ed6065fc3063b04f9dd160b",
+  "prompts": {
+    "760c5cdc0bd01352": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d6297b8-9b0f-403f-8196-c564a24d1982",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 264,
+      "total_deletions": 47,
+      "accepted_lines": 210,
+      "overriden_lines": 0
+    }
+  }
+}

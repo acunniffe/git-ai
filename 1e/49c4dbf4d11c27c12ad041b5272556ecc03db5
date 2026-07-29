@@ -1,0 +1,23 @@
+.github/CODEOWNERS
+  s_784e3644721859::t_16544f4b101a80 1-2
+.github/workflows/release.yml
+  s_784e3644721859::t_b9ae2519f579e8 24-25,32-34,44-51
+  s_784e3644721859::t_f623076b4c8fce 35-36,40-41
+  s_784e3644721859::t_c4c713ecdd8565 21-23,26-31,37-39,42-43,52,55,216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "1e49c4dbf4d11c27c12ad041b5272556ecc03db5",
+  "prompts": {},
+  "sessions": {
+    "s_784e3644721859": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee065-0fb3-7c92-86f6-f6c34710637c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

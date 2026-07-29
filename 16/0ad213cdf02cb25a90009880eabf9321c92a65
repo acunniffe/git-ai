@@ -1,0 +1,41 @@
+src/commands/git_ai_handlers.rs
+  s_8d2579124116c6::t_079b26ec087a4c 56,110-112,340-341
+  s_8d2579124116c6::t_f0e34dc5547f41 342
+src/metrics/mod.rs
+  s_8d2579124116c6::t_079b26ec087a4c 11
+src/commands/mod.rs
+  s_8d2579124116c6::t_079b26ec087a4c 1
+src/metrics/local_stats.rs
+  s_8d2579124116c6::t_efaa4612a76a08 196-199
+  s_8d2579124116c6::t_48a4bb488e4366 12
+  s_8d2579124116c6::t_d4a33b78d031c7 99,102
+  s_8d2579124116c6::t_3b57a74c5ecd87 1-6,10-11,13-78,93-98,100-101,103-195,200-201
+  s_8d2579124116c6::t_9517938b1b6531 7-9,79-92
+src/metrics/db.rs
+  s_8d2579124116c6::t_79c05707c77ae9 330-331
+  s_8d2579124116c6::t_079b26ec087a4c 12,30-40,53-57,283-329,416,454
+  s_8d2579124116c6::t_c6ea9bbd0bf71a 58-60
+src/commands/activity.rs
+  s_8d2579124116c6::t_013c07475d8e43 1-102,104-145,147-215
+  s_8d2579124116c6::t_db261437049fa4 103
+  s_8d2579124116c6::t_cae6ae606ed485 146
+src/daemon/telemetry_worker.rs
+  s_8d2579124116c6::t_0a7c5716e1404c 391-393
+  s_8d2579124116c6::t_079b26ec087a4c 319-321,365-390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "160ad213cdf02cb25a90009880eabf9321c92a65",
+  "prompts": {},
+  "sessions": {
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}
