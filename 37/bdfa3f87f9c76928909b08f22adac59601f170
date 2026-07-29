@@ -1,0 +1,23 @@
+scripts/generate_badges.sh
+  cc3c9b4d15d52997 12-14,16,19,49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "37bdfa3f87f9c76928909b08f22adac59601f170",
+  "prompts": {
+    "cc3c9b4d15d52997": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b97bd786-dc9a-466d-b036-80a1c2ecca9f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 7,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}

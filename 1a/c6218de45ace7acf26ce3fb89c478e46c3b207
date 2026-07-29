@@ -1,0 +1,58 @@
+tests/integration/rebase_hooks_unit.rs
+  f4f2b364dfcacebb 112,162,171,225,239,289,303
+tests/integration/stats_unit.rs
+  f4f2b364dfcacebb 7,301,351-355,357,450-454,548,584,699,737,848
+tests/integration/repository_unit.rs
+  f4f2b364dfcacebb 2-4,118-120
+tests/integration/internal_spawn_safety.rs
+  f4f2b364dfcacebb 97
+tests/integration/main.rs
+  f4f2b364dfcacebb 27,43,88,98
+tests/integration/post_commit_unit.rs
+  f4f2b364dfcacebb 4-6,262
+tests/integration/checkpoint_unit.rs
+  f4f2b364dfcacebb 2-3,5-6,19-20,25-28,198-199,203-211,217-218,234-235,244-245,249-257,262-263,290-291,295-303,309-310,329-330,334-342,347-348,363-367,428-432,471-473,489-493,557-558,567-568,578-586,590-591,599-600,670-671,722-725,731-732,757-758,768-769,779-787,791-792,800-801,834-835,837-840,851-852,864-865,873-874,876-877,925-926,938-944,946-947,966,1002-1003,1005-1006,1019-1022,1045-1049,1063-1064,1066-1067,1080-1083,1103-1104,1296-1297,1305-1306,1309-1310,1348-1349,1355-1356,1358-1359,1398-1399,1405-1406,1411-1412,1420-1421
+tests/integration/range_authorship_unit.rs
+  f4f2b364dfcacebb 2,12-13,15-19,22-26,30-34,71-75,79-83,118-119,127-131,162-163,165-169,178-182,184-185,189-193,197-201,239-240,242-246,250-251,272-282,316-317,319-323,326-335,337-345,381-382,384-388,391-395,397-398,402-422,460-461,463-467,470-474,476-480,483-493,495-499,535-536,538-542,545-549,551-554,556-560,975-976,978-982,985-989,992-1006,1008-1012
+tests/integration/repo_storage_unit.rs
+  f4f2b364dfcacebb 4-6
+tests/integration/virtual_attribution_unit.rs
+  f4f2b364dfcacebb 54
+tests/integration/ignore_unit.rs
+  f4f2b364dfcacebb 59,431
+tests/integration/pre_commit_unit.rs
+  f4f2b364dfcacebb 52
+tests/integration/refs_unit.rs
+  f4f2b364dfcacebb 8-9,50,157-158,204-205,229,318,459,501,522,547
+tests/integration/ci_partial_clone.rs
+  f4f2b364dfcacebb 11,34-41,248-255,272-279
+tests/integration/rebase_authorship_unit.rs
+  f4f2b364dfcacebb 3,7,147-148,233-234,258-259,303,379-380,438,558-559,1075-1079,1162-1163,1227,1234-1235,1385,1418,1455,1490,1525,1871,2136
+src/ci/ci_context.rs
+  f4f2b364dfcacebb 268-272
+tests/integration/daemon_unit.rs
+  f4f2b364dfcacebb 4
+tests/integration/prompt_utils_unit.rs
+  f4f2b364dfcacebb 4-7,215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.1",
+  "base_commit_sha": "1ac6218de45ace7acf26ce3fb89c478e46c3b207",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 546,
+      "total_deletions": 302,
+      "accepted_lines": 546,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/ff63ab7878b80ee7756e79bf4841bc44fd73595bdc23517e37dd7c9f9acb02a5"
+    }
+  }
+}

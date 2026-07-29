@@ -1,0 +1,35 @@
+src/authorship/imara_diff_utils.rs
+  s_1e555a33a1ffad::t_60b8696833f045 261
+  s_1e555a33a1ffad::t_7f175b7042cfb4 267-268,296-297
+  s_1e555a33a1ffad::t_3e40c95b0a2aa2 269-295,544,549-558
+  s_1e555a33a1ffad::t_db589e8f33d974 545-548,559-560
+src/daemon/checkpoint.rs
+  s_1e555a33a1ffad::t_7f175b7042cfb4 8,616,646,677,738
+tests/integration/checkpoint_unit.rs
+  s_1e555a33a1ffad::t_9bc13307ee9547 1134,1164
+src/authorship/virtual_attribution.rs
+  s_1e555a33a1ffad::t_9bc13307ee9547 3679-3703
+  s_1e555a33a1ffad::t_7f175b7042cfb4 7,9,1392,1538-1539,1547,1550,1568-1569,1571,1574,1592,1609-1610,1655-1657,1702-1706,1714,1738
+  s_1e555a33a1ffad::t_8df90cf24d034f 8,1396-1399,1468-1471,1512-1514,1520,1581-1586,1591
+tests/integration/daemon_commit_carryover.rs
+  s_1e555a33a1ffad::t_9d4dfd25cb181a 158
+  s_1e555a33a1ffad::t_f42524f53e15fb 117-120,122-143,145-157,159-161
+  s_1e555a33a1ffad::t_2539d72a3bd095 121,144
+  s_1e555a33a1ffad::t_7d307183d2f455 162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "391caabe23273a6646d79f3f8ce0f949762f45d5",
+  "prompts": {},
+  "sessions": {
+    "s_1e555a33a1ffad": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8180-a23c-76b0-89cc-5fb646e4dac2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

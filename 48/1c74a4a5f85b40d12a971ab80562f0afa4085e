@@ -1,0 +1,27 @@
+tests/integration/transcripts_claude_reader.rs
+  941263e0b8c3337c 106-108
+src/commands/checkpoint_agent/presets/codex.rs
+  941263e0b8c3337c 33,38-45
+tests/integration/windsurf.rs
+  941263e0b8c3337c 219-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "481c74a4a5f85b40d12a971ab80562f0afa4085e",
+  "prompts": {
+    "941263e0b8c3337c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38c42e01-ec70-4cf9-b136-c51756903a1e",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 27,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}

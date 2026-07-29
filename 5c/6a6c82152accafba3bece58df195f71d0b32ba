@@ -1,0 +1,259 @@
+src/commands/checkpoint_agent/presets/pi.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3,148,150,152,186,197,281-283,335-337
+tests/integration/sweep_e2e.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 10-14,80,82,252,264-270,275,277,279-280,293,296-302,306,314,324,326,328-329,342,354-361,375,386,404,411,413,415-416,429,443-450,453-460
+.github/workflows/release-vscode-extension.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 30,73,104,149
+agent-support/opencode/package.json
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 11
+src/lib.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 17
+src/streams/agents/copilot_otel.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1-1019
+tests/integration/windsurf.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 5-7,73,151
+tests/integration/event_timestamp_extraction.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 2-5
+tests/integration/gemini.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 6-8,133
+src/commands/checkpoint_agent/presets/mod.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 61,92,96,98,109,124-126
+tests/integration/codex.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 5-7,70,160
+src/feature_flags.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 84,147
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,10,66,80,82,96,142,227,291
+src/streams/agents/opencode.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3-6,29,32,37-39,52,60,73,80,85,122,131,152,159,208,218,223,247,283,327-341
+src/streams/watermark.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3,27,37,43,51-52,62,68-80,110,115,147,152,185,190,197-258,297,302,311-314,316-319,327,560-563,584-587,595,609,618-687
+tests/integration/ci_fork_notes.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1-914
+src/streams/agents/copilot.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-7,90-91,94-100,104-106,109-118,125,128,148-149,151,153-187,228,246,257-291,297-306,319-323,332-344,351-358,361,363,368,401,405,419,427,431,435,444,455,472,484,492,504,508,512,524,536-537,542-544,576,600,606
+src/config.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 118,122,191-192,198-199,228-229,282-285,297-299,335,418,471-474,480-483,557-704,876-880,927-938,958,962,986,990,1421-1423,1458,1462,1547-1636,1660,1664,1750-1760,1792,1796,1909-1923,2039-2048,2072-2082,2288-2320
+src/commands/daemon.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 586-588,599-604,680-706
+src/utils.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 154-320,1229-1270
+src/daemon/checkpoint.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 194-199
+tests/integration/superuser_guard.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1-122
+flake.nix
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 39
+tests/integration/agent_presets_comprehensive.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3-5,114,134,175,350,551,811
+src/ci/gitlab.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 11,22-135,195,290-343,426-440,442-451,454-465,473-474,501-503,514-515,528-530,536-537,546-548,556-557,602-798
+.github/workflows/nightly-agent-integration.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 141,249
+src/streams/mod.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1,4-6,10-11,13,18-19,22-23,25-26,28-29,34,40,52-53,55-56
+tests/integration/ci_squash_rebase.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,597,604-605,1018-1380,1702-2086,2102-2104
+src/streams/agents/droid.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-7,86,104,120,128,141,145,149,161,176-177,180-184,241,253-267
+.github/workflows/intellij-build.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 46,99,156,193
+.github/workflows/performance-benchmarks.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 31,87
+src/streams/agents/amp.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-7,31,66,87,97,122,138,143,154,158,162,171,182,204,216-230
+.github/workflows/test.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 59,115
+src/metrics/types.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 24
+src/commands/checkpoint_agent/presets/claude.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,73,75,90,93,95,115,121,181-183
+tests/integration/streams_e2e.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 7-15,42,45,47,49-50,65,68-70,79-89,93,156,162,164,166-167,180,184,190-194,211-212,214,216-217,230,235-239,250,253,255,257-258,272,275-285,290-300,309,314,316,318-319,332,334-341,349,404,409,411,413-414,427,433,476,480,489,491,493-494,507,509-516,542-788
+.github/workflows/update-changelog.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 56
+scripts/ai
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 13-16,34-35,37,39-60,100,175,187,215-216,240,272-273,277,298-307,315,318,321,326,331,334,336
+src/git/refs.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 10-11,37,42-52,148-159,173,175,200-234
+src/main.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3,15-36,71-85
+src/streams/agents/codex.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-7,36,47,52,165,185,199,204,216,220,224,236,248-249,252-256,287,299-300,303,307,330-342
+src/streams/agent.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1,3-4,6-78,92,113,138-148,153,156-158
+tests/integration/agent_v1.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 86
+tests/integration/opencode.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 19-21,210,447-449,476-478,503-505,623
+src/streams/db.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1,3,87-120,123,125,127,129-130,145,149,151-152,158,164,168,172,187,203,215,228,240-241,249-250,255,259,261-262,276-277,283-285,287-301,305-311,318,323,325-326,329-330,334,338-339,341,350-351,353,358-359,366,370-371,374,382-383,385,390-391,398,402-403,405,413-414,416,421-422,429,433-434,436,443-444,446,451-452,459-465,473-474,476-477,481-482,489-490,498,503,506-507,510-514,516,518-519,523,533,535,539-540,542,544-545,563,569,580,590,592,594,596-598,600,604,607-609,616-617,622-628,630-633,635,641-642,645-652,654-657,663,666-667,671,674-676,678-680,682-683,685,692,695,697,699-700,714,716-719,729,739,748-750,754-758,764,772,783,809,815,818-819,826,830-836,839-840,849-850,853-859,861-864,869-875,877-880,886,889,892-893,900,902-903,906-910,913-914,917-921,925,928,931-932,939,942-943,945-947,950-954,964-965,988,992-1238
+agent-support/opencode/README.md
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 20,33
+src/streams/agents/claude.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-7,111,129,145,152,163,167,171,182,194-195,198-202,233,276-277,280,284,302-314
+tests/integration/github_copilot.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-6
+src/metrics/mod.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 17-18
+tests/integration/droid.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-6
+src/streams/agents/copilot_cli.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 2-5,46,55,86,100,122-123,126,129,151-163,169
+src/streams/agents/windsurf.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3-6,43,53,57,68,72,76,87,99-100,103-107,138,150-163
+.github/workflows/test-vscode-extension.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 24
+src/commands/checkpoint_agent/presets/droid.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,128-133,157,159,186,194,266-268,298-300
+src/daemon/stream_worker_tests.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1,13,25,60,72,84,116,161
+.github/workflows/nightly-upgrade.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 22
+install.sh
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 172-206
+src/commands/upgrade.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 55,572,631
+src/ci/github.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 14-18,63-66,69-80,85,90-161,178-202,207-218,224-231,251-311
+src/daemon.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 33,78,1566-1592,1923-1942,1963-1964,1966-1968,2698-2725,3969,3971,4068,4070,4094-4106,7393-7402,7555-7556,7558,7574,7576-7577,8550-8555,8557-8558,8562-8563,8964,9034,9040-9083,9100-9135
+.github/workflows/lint-format.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 40,59,86
+tests/integration/ci_handlers_comprehensive.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 2,34-35,62-120,137,147,154-157,159,266-271,273,276,409
+src/daemon/stream_worker.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 11-17,21-23,28,59,87-151,153,155-156,159,161,168,170-171,178,180-181,185-208,217,219-220,224-225,229,232,234-235,238,241,244,246-247,250,253,260,262-263,281-286,295,303-305,314-326,335-337,342-372,374-377,379-466,474-489,491-492,506,508-509,521,526-532,550-551,555-575,579,595,607-692,700-706,710,713,715,717-718,732-792,822-823,826,828,832,837-838,854,870,873-879,882-883,885,887,889-890,892-919,922-927,931-939,948-954,957-961,964-969,975,980,995-1010,1012-1024,1041-1043,1048-1053,1057,1064-1070,1083,1085,1096-1101,1128,1136,1138-1139,1145,1152-1157,1187-1189,1191,1195,1199-1200,1216-1217,1220,1222-1224,1226-1227,1230,1232-1233,1240-1244,1304,1306,1308-1310,1312,1314-1357,1398,1406,1408-1409,1417,1420-1430,1435-1442,1455,1463,1465-1466,1486,1494,1496-1497,1509-1584,1601,1606-1608,1615,1617-1618
+.github/workflows/github-integration-tests.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 22
+tests/integration/streams_claude_reader.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3-6,122
+agent-support/opencode/git-ai.ts
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 21-23,27-28,146-177,180-185,187,189-211,213-265,268-272,277-337,339-343,345-347,349,355-362,364-367,370-371,375,381-395,399-402,404-407,409-413,415-419,422,424-452,456-490,493,497-499,503-506,509-511,514-515
+tests/integration/refs_unit.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 5-6,8-9,125-216
+Cargo.lock
+  ai_agent 1197,2015,2017,2023
+src/ci/workflow_templates/github.yaml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 5,9
+src/streams/agents/mod.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 7
+tests/integration/main.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 36,126-127,129
+src/commands/checkpoint_agent/presets/mock_ai.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 64
+src/streams/agents/pi.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3-6,43,53,57,68,72,76,87,99-100,103-107,138,150-164
+src/streams/agents/gemini.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-7,84,102,118,125,136,140,144,155,167-168,171-175,206,218-232
+tests/integration/ci_context_unit.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 17,35,59,119,151,172
+tests/integration/continue_cli.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 5-7,180,258
+.github/workflows/release-intellij-plugin.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 38
+src/commands/checkpoint_agent/presets/windsurf.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,113,115,145,172,240-242
+tests/integration/amp.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3-5,144,146
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 82,154
+src/daemon/test_sync.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 241-242,253-254
+src/commands/checkpoint_agent/presets/gemini.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,35,37,50,52,75,81,142-144
+.github/workflows/codeql.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 66,76,109
+Cargo.toml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3
+src/commands/checkpoint_agent/orchestrator.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 5,41,331,347,406,532
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,114,116,135,147,268-270,400
+src/commands/checkpoint_agent/presets/codex.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 5,40,133,135,167,182,252-254,277
+src/mdm/agents/opencode.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 218-219,241-244
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,45,47,69,75,131-133
+src/streams/model_extraction.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1-2,9,11,13-18,26,42,132-134,144,178,203,232-233,291,305,312,320,327,336,354,361,368,375,382,396,403,416,457
+src/streams/types.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 37,49,52,60,63,68,71,75,84,96,107,117,125,131
+install.ps1
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 342-405
+tests/integration/claude_code.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3-5,329,370
+.github/workflows/coverage.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 24
+.github/workflows/release.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 54,189,314,440
+tests/async_mode.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 89
+src/commands/ci_handlers.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 12-14,21-23,27-32,102-106,221,266-267,276,286-287,301-374,398-404,407,419-428
+agent-support/vscode/package.json
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 86,90,101
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,10,110,123,125,135,213,215,227-228,230,249,304,326,535-537,616-618,880-882,954
+src/streams/agents/continue_cli.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-7,68,86,102,107,118,122,126,135,143,164,176-189
+tests/integration/ci_partial_clone.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 72,79-80,142,149-150,223,230-231,314,321-322
+.github/workflows/e2e-tests.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 27
+agent-support/opencode/package-lock.json
+  ai_agent 12,19-96,98-100,103-104,108-110,116-118,125-127,133-138,163-227,234-291,301-316,338-346,368-380,396-408
+tests/integration/checkpoint_unit.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 241,270-323,437,1357
+src/ci/ci_context.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 9-15,20-24,33-43,55-59,64-67,73-74,83-84,117-118,151-196,205-231,265-266,269,271,274-275,281,284-311,378-543,556-742,753-762,787-958,962,972,995-1058
+src/commands/checkpoint_agent/presets/firebender.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 228,234,291,334
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 3,147,159,161,174,292,295,297,316,332,338
+.github/workflows/intellij-ui-tests.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 50
+.github/workflows/opencode-type-check.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 24
+.github/workflows/git-core-compat.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 38
+src/daemon/sweep_coordinator.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1-6,8-28,31-33,35,37,41-42,44,46-55,60-61,80-115,121,124-125,127-136,139-158,160-183,186-188,190-196,198-206
+tests/integration/test_utils_unit.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 39,151
+tests/integration/cursor.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 6-8
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 106,173
+agent-support/vscode/package-lock.json
+  ai_agent 11,17,21,803-805,808,812-814,1166-1168,1173-1176,1189,1195-1197,1201-1204,1220-1222,1226-1227,1242-1244,1248-1249,1260-1262,1277-1279,1283-1285,1302-1304,1316-1318,1322-1325,1344-1346,1351-1353,1368-1370,1374,1488-1490,1506,1512,5197-5199,5202,6202-6204
+.github/workflows/install-scripts-local.yml
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 59,205
+src/metrics/events.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1392-1524,1630-1736
+tests/integration/session_event_repo_url.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-7,57,59,62,65,67-68,70,72-73,240-245,260-265,279-280,282-291,313,319,321-328,369,375,377-384,403-413,438-448,455,483-484,488-494,496-503,529,535,539-546,573,579,582-589,615-616,619-626,630,648,663,690,696,699-706,711,787-788,790-797,802,809,855,882
+src/streams/sweep.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 1,20,24,31,44,47,62,67,83
+src/commands/checkpoint_agent/presets/amp.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4,268,308,310,324,326,346,352,418-419
+src/streams/agents/cursor.rs
+  s_dd6001a0a8fa4c::t_3f961df5da8ad3 4-7,83,101,117,124,135,139,143,154,166-167,170-174,205,217-230
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "5c6a6c82152accafba3bece58df195f71d0b32ba",
+  "prompts": {},
+  "sessions": {
+    "s_dd6001a0a8fa4c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2626d5dc-6c8b-40c5-8da1-050a1c01b516",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

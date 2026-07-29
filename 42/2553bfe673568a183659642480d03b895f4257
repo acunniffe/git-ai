@@ -1,0 +1,26 @@
+docs/superpowers/specs/2026-05-08-daemon-privilege-mismatch-design.md
+  s_1946ff3ec655a6::t_1a3b4480f09ef9 32,46
+  s_1946ff3ec655a6::t_cb707222d5d7e9 119,121,123,125-127,129-136,138
+  s_1946ff3ec655a6::t_542680b07a854c 103
+  s_1946ff3ec655a6::t_8d3fba63e47977 178
+  s_1946ff3ec655a6::t_2d77a91e9682e7 190,192
+  s_1946ff3ec655a6::t_c576058448c035 189
+docs/superpowers/plans/2026-05-08-daemon-privilege-mismatch.md
+  s_1946ff3ec655a6::t_4157cc3e52ee09 1-814
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.4",
+  "base_commit_sha": "422553bfe673568a183659642480d03b895f4257",
+  "prompts": {},
+  "sessions": {
+    "s_1946ff3ec655a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c7c4393-fb5b-4f09-b279-1a660e430da3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

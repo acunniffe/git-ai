@@ -1,0 +1,43 @@
+README.md
+  s_bf0fecb29192b8::t_8ece6ba3eae1d6 162
+  s_516086221f42a8::t_576f0670e3d8ed 109-110,115
+  s_bf0fecb29192b8::t_05d64dc453990d 144
+  s_bf0fecb29192b8::t_d606a9873d8776 150
+  s_bf0fecb29192b8::t_5e3238ff4f9381 141
+  s_bf0fecb29192b8::t_9bdc54e327e8c2 165
+  s_bf0fecb29192b8::t_94440fd47be510 147
+  s_bf0fecb29192b8::t_d97a02f9eca0ec 153
+  s_bf0fecb29192b8::t_1e7b5910d2b27b 156
+  s_bf0fecb29192b8::t_0e7e1fbdf953d4 159
+  s_bf0fecb29192b8::t_7086ca59c8beb1 133
+  h_ea2010baa7a42b 105,118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "2d50248ae2182926b88e6730823a5912f09c624d",
+  "prompts": {},
+  "humans": {
+    "h_ea2010baa7a42b": {
+      "author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_516086221f42a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29489235-3ad5-473e-b5b9-7a11c5b53a17",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_bf0fecb29192b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e0ad58a0-aaf7-4bbc-bae8-41960b225915",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

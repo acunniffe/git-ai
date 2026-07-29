@@ -1,0 +1,86 @@
+docs/reference.mdx
+  e61c0a4 43-48,52,57
+tests/stats.rs
+  e61c0a4 67,131-148,150,152-193,195,197-207
+  human 68,151,196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "00309900d71f8da788cde3006b058627ec0841a7",
+  "prompts": {
+    "e61c0a4": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d13537e7-a8cd-49ba-82f3-3b4c2eeb0f71",
+        "model": "gpt-5.1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Update @docs/reference.mdx to document that stats supports running stats over a range of commits and can use the empty tree sha to start from the very beginning for a range @src/authorship/stats.rs @src/authorship/range_authorship.rs",
+          "timestamp": "2025-11-30T16:44:19.844Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "head_limit": 200,
+            "output_mode": "content",
+            "path": "/Users/svarlamov/projects/git-ai",
+            "pattern": "stats_command",
+            "type": "rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "head_limit": 200,
+            "output_mode": "content",
+            "path": "/Users/svarlamov/projects/git-ai",
+            "pattern": "range_authorship",
+            "type": "rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "head_limit": 200,
+            "output_mode": "content",
+            "path": "/Users/svarlamov/projects/git-ai",
+            "pattern": "stats \"stats\"",
+            "type": "rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I’ll first inspect how the CLI wires `stats` and range authorship together, then update the `docs/reference.mdx` section for `stats` to describe commit ranges and the empty-tree SHA usage.",
+          "timestamp": "2025-11-30T16:44:31.437Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 260,
+            "offset": 1,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/main.rs"
+          }
+        }
+      ],
+      "total_additions": 108,
+      "total_deletions": 25,
+      "accepted_lines": 83,
+      "overriden_lines": 3
+    }
+  }
+}

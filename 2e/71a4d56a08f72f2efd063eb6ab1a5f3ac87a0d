@@ -1,0 +1,39 @@
+src/daemon.rs
+  0defeff3de23389b 571-655,657-667,3715-3716,3747-3749,3838,3873-3875,3879-3883,4512,4514,4644-4646,4650,4657-4659,4676-4677,4683-4687,4696-4710,4799-4800,4811-4812,4815,4848-4850,4864-4868,4873,4879-4880,4891,4894-4908,4920,4925-4940,4945-4947,4963-4964,4982,7734-7741,8596-8645,8648-8663,8666-8680,8683-8691,8694-8703,8706-8713,8716-8725,8728-8740,8743-8751,8754-8762,8765-8785,8788-8816,8819-8837,8840-8856,8858-8898,8912,8917-9000,5044-5050,5055-5064,5066-5070
+  597fbcce80335bea 7628
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.1",
+  "base_commit_sha": "2e71a4d56a08f72f2efd063eb6ab1a5f3ac87a0d",
+  "prompts": {
+    "0defeff3de23389b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3b972d3-1a88-4346-82ad-47e84df4345b",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 23,
+      "total_deletions": 19,
+      "accepted_lines": 22,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/8ddce848a596e0553bd38a825478e106a7b837bb59fe717c575965db9d297e73"
+    },
+    "597fbcce80335bea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5088777d-907a-414b-885d-c32df969c66d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 183,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/f46f22e859aa4e3b8629679d2a73d8d65b02903493fff1a4d857cc331b6796a8"
+    }
+  }
+}

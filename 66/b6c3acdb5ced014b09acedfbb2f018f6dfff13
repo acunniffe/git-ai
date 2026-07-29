@@ -1,0 +1,26 @@
+src/daemon/bash_checkpoints_db.rs
+  s_50c8cc07abd384::t_3b8f46a0c95bb6 246-260
+src/authorship/recovery/mod.rs
+  s_50c8cc07abd384::t_2d0053767276ec 156-179,185-187
+  s_50c8cc07abd384::t_b56ba8f8028a7d 180-184
+src/authorship/post_commit.rs
+  s_50c8cc07abd384::t_4997c14f65f544 288
+  s_50c8cc07abd384::t_b56ba8f8028a7d 218-225,227-249,254
+  s_50c8cc07abd384::t_27b08255a22b06 215-217,257,271-283,289
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "66b6c3acdb5ced014b09acedfbb2f018f6dfff13",
+  "prompts": {},
+  "sessions": {
+    "s_50c8cc07abd384": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1e4e321-1caf-47bf-b232-0be284c09477",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

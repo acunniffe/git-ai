@@ -1,0 +1,22 @@
+tests/async_mode.rs
+  s_7ce195f67db3e7::t_64300233619605 653-680
+src/commands/git_handlers.rs
+  s_7ce195f67db3e7::t_c093e52040eefd 64-72,74-79,89,153-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.9",
+  "base_commit_sha": "c19b68d50bc9cad9b2f2b473c24bf1d6152ebdf5",
+  "prompts": {},
+  "logical_commit_id": "c19b68d50bc9cad9b2f2b473c24bf1d6152ebdf5",
+  "sessions": {
+    "s_7ce195f67db3e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e29a1-d239-7550-b3e1-90f2238321af",
+        "model": "gpt-5.5"
+      },
+      "human_author": "peckfly <31184030+peckfly@users.noreply.github.com>"
+    }
+  }
+}

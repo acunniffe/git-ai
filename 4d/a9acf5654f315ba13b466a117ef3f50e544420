@@ -1,0 +1,63 @@
+src/utils.rs
+  8a091988d9e062fa 132-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "4da9acf5654f315ba13b466a117ef3f50e544420",
+  "prompts": {
+    "8a091988d9e062fa": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e5d8ef2f-28c4-4126-8f34-969734a0d3c3",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Generate a utility to check if I'm in windows subsytem linux",
+          "timestamp": "2026-01-02T14:41:02.597Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Checking `utils.rs` to understand the code style before adding a WSL detection utility.",
+          "timestamp": "2026-01-02T14:41:05.107Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a WSL detection utility to `utils.rs` following the existing code style.",
+          "timestamp": "2026-01-02T14:41:09.616Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linter errors:",
+          "timestamp": "2026-01-02T14:41:16.143Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Added a WSL detection utility. The linter warning that it's unused is expected for a new utility.\n\nThe function `is_wsl()`:\n- Checks if running on Linux (WSL only runs on Linux)\n- Reads `/proc/version` and looks for \"Microsoft\" or \"WSL\" strings\n- Falls back to checking WSL-specific environment variables (`WSL_DISTRO_NAME`, `WSL_INTEROP`)\n- Returns `true` if WSL is detected, `false` otherwise\n\nYou can use it like this:\n\n```rust\nuse crate::utils::is_wsl;\n\nif is_wsl() {\n    // Handle WSL-specific logic\n}\n```\n\nThe function is public and ready to use. The unused warning will disappear once you start using it in your code.",
+          "timestamp": "2026-01-02T14:41:21.039Z"
+        }
+      ],
+      "total_additions": 30,
+      "total_deletions": 0,
+      "accepted_lines": 30,
+      "overriden_lines": 0
+    }
+  }
+}

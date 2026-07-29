@@ -1,0 +1,40 @@
+src/commands/config.rs
+  s_fc75559ac4f905::t_854159ec88bea4 124
+  s_fc75559ac4f905::t_6c157c6428c1e0 117
+  s_fc75559ac4f905::t_747884b9cab1c8 125
+  s_fc75559ac4f905::t_63b21d4285bf77 118-123
+src/git/notes_api.rs
+  s_fc75559ac4f905::t_55dad70d4173d9 387-395
+src/daemon/telemetry_worker.rs
+  s_fc75559ac4f905::t_4f24f54c2ce496 548-555,558
+src/config.rs
+  s_fc75559ac4f905::t_ec4218357e34b7 1909-1910,1912
+  s_fc75559ac4f905::t_92488fc04b1dfb 457-462
+  s_fc75559ac4f905::t_fffc0f21c11fc4 1238,1240
+src/commands/notes_migrate.rs
+  s_fc75559ac4f905::t_655b4055ea5308 53-65
+  s_fc75559ac4f905::t_78b79b6f7e378a 468-472
+src/api/client.rs
+  s_fc75559ac4f905::t_16ca04c387cb76 217-223,225,227-232,234
+  s_fc75559ac4f905::t_63b21d4285bf77 405,412,419
+  s_fc75559ac4f905::t_f4e944cb888cde 403-404,406-411,413-418,420-426
+docs/notes-backend-spec.md
+  s_fc75559ac4f905::t_85a84d8ac32985 53-61
+  s_fc75559ac4f905::t_c40edf8bbec2ce 1-52,62-388
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "2d0f85896c1d9d6201266c038de7809d8b31593d",
+  "prompts": {},
+  "sessions": {
+    "s_fc75559ac4f905": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5db57508-d757-4e8a-818f-cb6ee2a0d040",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": null
+    }
+  }
+}
