@@ -319,7 +319,7 @@ fn claude_checkpoint(repo: &TestRepo, event: &str, file_path: &Path, session_id:
     let hook_input = json!({
         "cwd": repo.path().to_string_lossy().to_string(),
         "hook_event_name": event,
-        "tool_name": "Update",
+        "tool_name": "Edit",
         "session_id": session_id,
         "transcript_path": transcript_path.to_string_lossy().to_string(),
         "tool_use_id": format!("{session_id}-{event}"),

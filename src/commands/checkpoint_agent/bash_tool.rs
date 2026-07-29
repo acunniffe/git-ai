@@ -314,7 +314,7 @@ fn normalize_tool_name(tool_name: &str) -> &str {
 pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
     match agent {
         Agent::Claude => match tool_name {
-            "Write" | "Edit" | "MultiEdit" => ToolClass::FileEdit,
+            "Write" | "Edit" | "MultiEdit" | "NotebookEdit" => ToolClass::FileEdit,
             "Bash" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },

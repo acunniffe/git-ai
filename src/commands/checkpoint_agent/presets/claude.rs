@@ -48,9 +48,16 @@ impl AgentPreset for ClaudePreset {
             ));
         }
 
+        let tool_class = parse::optional_str_multi(&data, &["tool_name", "toolName"])
+            .map(|name| bash_tool::classify_tool(Agent::Claude, name))
+            // Preserve legacy Claude payloads that predate tool_name.
+            .unwrap_or(ToolClass::FileEdit);
+        if tool_class == ToolClass::Skip {
+            return Ok(Vec::new());
+        }
+
         let cwd = parse::required_str(&data, "cwd")?;
         let transcript_path = parse::required_str(&data, "transcript_path")?;
-
         let session_id = parse::optional_str(&data, "session_id")
             .map(|s| s.to_string())
             .unwrap_or_else(|| {
@@ -58,13 +65,10 @@ impl AgentPreset for ClaudePreset {
                     .unwrap_or_else(|_| "unknown".to_string())
             });
 
-        let tool_name = parse::optional_str_multi(&data, &["tool_name", "toolName"]);
         let hook_event = parse::optional_str_multi(&data, &["hook_event_name", "hookEventName"]);
         let tool_use_id = parse::str_or_default_multi(&data, &["tool_use_id", "toolUseId"], "bash");
 
-        let is_bash = tool_name
-            .map(|n| bash_tool::classify_tool(Agent::Claude, n) == ToolClass::Bash)
-            .unwrap_or(false);
+        let is_bash = tool_class == ToolClass::Bash;
 
         let context = PresetContext {
             agent_id: AgentId {
@@ -217,6 +221,59 @@ mod tests {
                 assert_eq!(e.tool_use_id, "tu-1");
             }
             _ => panic!("Expected PostBashCall"),
+        }
+    }
+
+    #[test]
+    fn test_claude_ignores_read_only_and_unsupported_tools() {
+        for hook_event in ["PreToolUse", "PostToolUse"] {
+            for tool_name in ["Read", "Glob", "Grep", "Task", "UnknownTool"] {
+                let input = json!({
+                    "hook_event_name": hook_event,
+                    "tool_name": tool_name,
+                    "transcript_path": "/does/not/exist.jsonl"
+                })
+                .to_string();
+
+                let events = ClaudePreset.parse(&input, "t_test123456789a").unwrap();
+                assert!(
+                    events.is_empty(),
+                    "{hook_event} {tool_name} unexpectedly produced events"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_ignored_claude_hook_produces_no_checkpoint_requests() {
+        let input = json!({
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Read",
+            "transcript_path": "/does/not/exist.jsonl"
+        })
+        .to_string();
+
+        let requests = crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
+            "claude", &input,
+        )
+        .unwrap();
+        assert!(requests.is_empty());
+    }
+
+    #[test]
+    fn test_claude_preserves_all_mutating_file_tools() {
+        for tool_name in ["Write", "Edit", "MultiEdit"] {
+            let pre = make_claude_hook_input("PreToolUse", tool_name);
+            assert!(matches!(
+                ClaudePreset.parse(&pre, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PreFileEdit(_)]
+            ));
+
+            let post = make_claude_hook_input("PostToolUse", tool_name);
+            assert!(matches!(
+                ClaudePreset.parse(&post, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PostFileEdit(_)]
+            ));
         }
     }
 
