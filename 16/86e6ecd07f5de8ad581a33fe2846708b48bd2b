@@ -1,0 +1,23 @@
+.github/workflows/install-scripts-local.yml
+  s_3db7ac9ce5b020::t_3b6f9cff01c5bf 10-17,34-35,145,147-153,171,311,321-337,512
+  s_3db7ac9ce5b020::t_e4d6a363a19300 174-176,525
+tests/daemon_mode.rs
+  s_3db7ac9ce5b020::t_3423b677ac9611 1812,1855-1857,1863,1869-1885,2236-2252
+  s_3db7ac9ce5b020::t_b19e4a6f4fb190 1858-1862,1865
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.17",
+  "base_commit_sha": "1686e6ecd07f5de8ad581a33fe2846708b48bd2b",
+  "prompts": {},
+  "sessions": {
+    "s_3db7ac9ce5b020": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fae56-bb7f-7a72-9bb9-36c2be0a01f3",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
