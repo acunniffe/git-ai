@@ -3386,12 +3386,13 @@ impl TestRepo {
 
                 // In daemon mode, the authorship note may not be immediately
                 // visible after the session completes due to filesystem flush
-                // timing. Retry briefly before failing.
+                // timing. Use bounded backoff before failing; the completion
+                // session has already established that note generation ran.
                 let mut content =
                     git_ai::operations::git::notes_api::read_note(&repo, &head_commit);
                 if content.is_none() {
-                    for _ in 0..10 {
-                        thread::sleep(Duration::from_millis(50));
+                    for delay_ms in [50, 100, 200, 400, 800] {
+                        thread::sleep(Duration::from_millis(delay_ms));
                         content =
                             git_ai::operations::git::notes_api::read_note(&repo, &head_commit);
                         if content.is_some() {

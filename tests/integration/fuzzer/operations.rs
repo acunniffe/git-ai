@@ -183,6 +183,10 @@ pub fn commit(
     seed: u64,
     msg: &str,
 ) {
+    // Checkpoints are delivered asynchronously by the test daemon. Drain them
+    // before the next Git mutation so the commit cannot race the checkpoint's
+    // working-log update (especially on Windows).
+    repo.sync_daemon_force();
     repo.git(&["add", "."]).unwrap();
     let added_lines = staged_added_lines(repo, &model.filename, Some("HEAD"));
     repo.git(&["commit", "-m", msg, "--allow-empty"])
@@ -203,6 +207,7 @@ pub fn amend(
     op_log: &mut Vec<String>,
     seed: u64,
 ) {
+    repo.sync_daemon_force();
     repo.git(&["add", "."]).unwrap();
     let parent = repo
         .git(&["rev-parse", "--verify", "HEAD^"])
@@ -258,6 +263,7 @@ pub fn rebase(
     checkpoint_ai(model, registry, repo, &side_chars, op_log);
     repo.git(&["add", "."]).unwrap();
     let side_added_lines = staged_added_lines(repo, &model.filename, Some("HEAD"));
+    repo.sync_daemon_force();
     repo.git(&["commit", "-m", "rebase: side commit"]).unwrap();
     model.apply_edge_recovery_for_added_lines(registry, &side_added_lines);
     model.clear_pending_attestations();
@@ -400,6 +406,7 @@ pub fn stash_roundtrip(
     // Produce a checkpointed-AI uncommitted change to stash.
     let chars = random_edit(model, registry, repo, alloc, rng, 2);
     checkpoint_ai(model, registry, repo, &chars, op_log);
+    repo.sync_daemon_force();
 
     // Nothing to stash if the worktree is clean relative to HEAD.
     let status = repo.git(&["status", "--porcelain"]).unwrap_or_default();
