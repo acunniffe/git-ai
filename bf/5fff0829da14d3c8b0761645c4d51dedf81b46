@@ -1,0 +1,22 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "bf5fff0829da14d3c8b0761645c4d51dedf81b46",
+  "prompts": {
+    "a72edd374004515c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "16c86e70-1a55-4d3d-86f9-45c2250c1646",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "8688852+Ryan-Adami@users.noreply.github.com",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/157ef8c866ef9314d7800a8618d9840bf1ca74deca8ae09edc5e2ad52816292a"
+    }
+  }
+}

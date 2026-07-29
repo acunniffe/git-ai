@@ -1,0 +1,24 @@
+src/commands/logs.rs
+  de8d9f5089bb101e 13-26,41-46,131-139,294-300,608-614,617-628
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.4",
+  "base_commit_sha": "5f176a2e370a41d84bf1c568852069fb2944a025",
+  "prompts": {
+    "de8d9f5089bb101e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7f8e90de-397a-49f3-914f-e1b418e0a228",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 73,
+      "total_deletions": 20,
+      "accepted_lines": 55,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/0c5bd979c65a91e70b123f5ab7c8b8054e5c903f0daf42ebafccf3d1692c026b"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+src/mdm/git_clients/fork_app.rs
+  017e812fc4b1fda7 248,250
+src/commands/checkpoint_agent/agent_presets.rs
+  017e812fc4b1fda7 856-857,862
+src/commands/git_handlers.rs
+  017e812fc4b1fda7 595
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "f4e6dfc59964254d36c4a2d2e9631569535b0ade",
+  "prompts": {
+    "017e812fc4b1fda7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "68a06385-2690-4527-b6b8-a1a62bd47ca2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 14,
+      "accepted_lines": 6,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/bc14d7ae07331beabc1afbe0e18b9fff8e614cd3d5bb2232a7cbd196b52e5ded"
+    }
+  }
+}

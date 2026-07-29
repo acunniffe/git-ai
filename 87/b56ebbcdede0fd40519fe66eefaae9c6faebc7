@@ -1,0 +1,25 @@
+src/git/authorship_traversal.rs
+  s_d01cfbfe3af2e2::t_7f5c6ca9274ac5 36-37
+  s_d01cfbfe3af2e2::t_72f3fb80a6e3ed 100-113
+  s_d01cfbfe3af2e2::t_d31f4fe40b6fd9 38-40
+src/git/gix_backend.rs
+  s_d01cfbfe3af2e2::t_792f19a6774bd0 375-422
+src/git/refs.rs
+  s_d01cfbfe3af2e2::t_b99d3bcc80ff63 141-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "87b56ebbcdede0fd40519fe66eefaae9c6faebc7",
+  "prompts": {},
+  "sessions": {
+    "s_d01cfbfe3af2e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cf9f0e5-b326-4a90-8216-2e35a90a30d9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

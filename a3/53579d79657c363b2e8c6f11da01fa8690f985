@@ -1,0 +1,20 @@
+README.md
+  s_1430e27f898b06::t_8f2635c4ed65f9 1,3,5,7-9,11,15-17
+  h_ea2010baa7a42b 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "a353579d79657c363b2e8c6f11da01fa8690f985",
+  "prompts": {},
+  "sessions": {
+    "s_1430e27f898b06": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac145480-4381-452f-9efd-3d60cf78cbbe",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

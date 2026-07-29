@@ -1,0 +1,46 @@
+tests/integration/bash_tool_benchmark.rs
+  5d2ef031c4dc7aea 3-6,8-13,18-20,22-23,26-86,90-97,104-116,121,124-127,281,286-288,290,300-309,317,320-326,328,332-337,339,341-342,346,348-349,353-354,361-362,364-365,367-368,370,381-385,393-394,404-405,407,409-410,412-413,415-417,420-427,435-436,444-445,455-456,458-461,463-464,466-468,471-473,475-478,486-487,495-496,506,508-509,511-516,519-526,534-535,537-538,547-548,562-564,567-575,577,579,581,584,586,588,592,594,596,600-608,610-611,613,615,617,621,623,627,629,631,636-640,642-643,645-646,648-652,654-655,659-661,663-666,689-703,847-850,856,859-860,864-870,879-881,885-893
+  f5bf3e9a735b4a84 87-89,98-103,282-285,289,291,406,414,465,503-504,557-559,662,687-688,704,861-863
+tests/integration/bash_tool_timeouts.rs
+  f5bf3e9a735b4a84 1-184
+tests/integration/main.rs
+  f5bf3e9a735b4a84 19
+src/commands/checkpoint_agent/bash_tool.rs
+  5d2ef031c4dc7aea 106-108
+  f5bf3e9a735b4a84 36-42,47-99,109-110,491-494,497,538,540-558,598-607,898-902,1328-1330,1337-1361,1372-1374,1387-1389,1419-1422,1466-1468
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "825588631cbb17ad2a9b55f12d0e3a8dd06d3265",
+  "prompts": {
+    "5d2ef031c4dc7aea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e87cbfc-de33-4279-baa4-8af080c23348",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 517,
+      "total_deletions": 538,
+      "accepted_lines": 354,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/92412b91bdf1e3e6911038ba7c2a57397f83dcb7c68891a8f36beeffe6940d5e"
+    },
+    "f5bf3e9a735b4a84": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "db02b9f8-7051-46aa-99ec-d0fad7911f24",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 409,
+      "total_deletions": 71,
+      "accepted_lines": 370,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/a5be84d90cc71d38c6961e8e7b9b393e12d8e755f72575e7cf12677c1e520067"
+    }
+  }
+}

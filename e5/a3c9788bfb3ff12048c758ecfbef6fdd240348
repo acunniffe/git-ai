@@ -1,0 +1,24 @@
+src/utils.rs
+  d29641e260d9b600 195,197-225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.9",
+  "base_commit_sha": "e5a3c9788bfb3ff12048c758ecfbef6fdd240348",
+  "prompts": {
+    "d29641e260d9b600": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "22be6308-467a-43a9-9b25-78a24db24aa0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 0,
+      "accepted_lines": 30,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/dd1c3560b497dddc9cd91492c4334bdc1b8b9c478a290fb517ae2f1078550fe0"
+    }
+  }
+}
