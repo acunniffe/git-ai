@@ -43,7 +43,7 @@ use windows_sys::Win32::System::JobObjects::{
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
 
-use super::test_file::TestFile;
+use super::test_file::{ExpectedLine, TestFile};
 
 const DAEMON_TEST_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
 const DAEMON_TEST_CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -3060,6 +3060,18 @@ impl TestRepo {
             // New file, start with empty lines
             TestFile::new_with_filename(file_path, vec![], self)
         }
+    }
+
+    pub fn set_file_contents_and_commit<T: Into<ExpectedLine>>(
+        &self,
+        filename: &str,
+        lines: Vec<T>,
+        message: &str,
+    ) -> Result<TestFile<'_>, String> {
+        let mut file = self.filename(filename);
+        file.set_contents(lines);
+        self.stage_all_and_commit(message)?;
+        Ok(file)
     }
 
     pub fn current_working_logs(&self) -> PersistedWorkingLog {

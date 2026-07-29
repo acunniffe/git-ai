@@ -4,10 +4,13 @@ use crate::repos::test_repo::TestRepo;
 #[test]
 fn test_chinese_simple_additions() {
     let repo = TestRepo::new();
-    let mut file = repo.filename("chinese.txt");
-
-    file.set_contents(crate::lines!["第一行", "第二行", "第三行"]);
-    repo.stage_all_and_commit("Initial commit").unwrap();
+    let mut file = repo
+        .set_file_contents_and_commit(
+            "chinese.txt",
+            crate::lines!["第一行", "第二行", "第三行"],
+            "Initial commit",
+        )
+        .unwrap();
 
     file.insert_at(3, crate::lines!["新增一行".ai(), "新增二行".ai()]);
     repo.stage_all_and_commit("AI adds chinese lines").unwrap();

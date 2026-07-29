@@ -35,16 +35,17 @@ use git_ai::git::repository as GitAiRepository;
 fn test_blame_success_basic_file() {
     // Happy path: Basic blame on a file with mixed human/AI authorship
     let repo = TestRepo::new();
-    let mut file = repo.filename("test.txt");
-
-    file.set_contents(crate::lines![
-        "Human line 1".human(),
-        "AI line 1".ai(),
-        "Human line 2".human(),
-        "AI line 2".ai()
-    ]);
-
-    repo.stage_all_and_commit("Mixed authorship").unwrap();
+    repo.set_file_contents_and_commit(
+        "test.txt",
+        crate::lines![
+            "Human line 1".human(),
+            "AI line 1".ai(),
+            "Human line 2".human(),
+            "AI line 2".ai()
+        ],
+        "Mixed authorship",
+    )
+    .unwrap();
 
     let output = repo.git_ai(&["blame", "test.txt"]).unwrap();
 
@@ -62,14 +63,12 @@ fn test_blame_success_basic_file() {
 fn test_blame_success_only_human_lines() {
     // Happy path: File with only human-authored lines
     let repo = TestRepo::new();
-    let mut file = repo.filename("human.txt");
-
-    file.set_contents(crate::lines![
-        "Human line 1".human(),
-        "Human line 2".human()
-    ]);
-
-    repo.stage_all_and_commit("All human").unwrap();
+    repo.set_file_contents_and_commit(
+        "human.txt",
+        crate::lines!["Human line 1".human(), "Human line 2".human()],
+        "All human",
+    )
+    .unwrap();
 
     let output = repo.git_ai(&["blame", "human.txt"]).unwrap();
 
@@ -83,11 +82,12 @@ fn test_blame_success_only_human_lines() {
 fn test_blame_success_only_ai_lines() {
     // Happy path: File with only AI-authored lines
     let repo = TestRepo::new();
-    let mut file = repo.filename("ai.txt");
-
-    file.set_contents(crate::lines!["AI line 1".ai(), "AI line 2".ai()]);
-
-    repo.stage_all_and_commit("All AI").unwrap();
+    repo.set_file_contents_and_commit(
+        "ai.txt",
+        crate::lines!["AI line 1".ai(), "AI line 2".ai()],
+        "All AI",
+    )
+    .unwrap();
 
     let output = repo.git_ai(&["blame", "ai.txt"]).unwrap();
 
