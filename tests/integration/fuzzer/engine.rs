@@ -44,7 +44,10 @@ impl FuzzerConfig {
 }
 
 pub fn run_fuzzer(config: FuzzerConfig) {
-    let repo = TestRepo::new();
+    // The fuzzer intentionally performs many checkpoint and rewrite operations.
+    // Keep its synchronization traffic off the shared pool so it cannot delay
+    // unrelated integration tests running in parallel.
+    let repo = TestRepo::new_dedicated_daemon();
     let mut rng = StdRng::seed_from_u64(config.seed);
     let mut alloc = CharAllocator::new();
     let mut registry = AttrRegistry::new();
