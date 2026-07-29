@@ -554,6 +554,18 @@ fn run_command_output(command: &mut Command, label: &str) -> Result<Output, Stri
     run_command_output_with_timeout(command, label, TEST_SUBPROCESS_TIMEOUT)
 }
 
+fn combine_command_output(stdout: &str, stderr: &str, stderr_first: bool) -> String {
+    if stdout.is_empty() {
+        stderr.to_string()
+    } else if stderr.is_empty() {
+        stdout.to_string()
+    } else if stderr_first {
+        format!("{}{}", stderr, stdout)
+    } else {
+        format!("{}{}", stdout, stderr)
+    }
+}
+
 fn run_command_output_with_stdin(
     command: &mut Command,
     label: &str,
@@ -2577,13 +2589,7 @@ impl TestRepo {
         let output = run_command_output(&mut command, &format!("git-no-test-sync {:?}", args))?;
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let combined = if stdout.is_empty() {
-            stderr
-        } else if stderr.is_empty() {
-            stdout
-        } else {
-            format!("{}{}", stdout, stderr)
-        };
+        let combined = combine_command_output(&stdout, &stderr, false);
         if output.status.success() {
             Ok(combined)
         } else {
@@ -2648,13 +2654,7 @@ impl TestRepo {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
             if output.status.success() {
-                let combined = if stdout.is_empty() {
-                    stderr
-                } else if stderr.is_empty() {
-                    stdout
-                } else {
-                    format!("{}{}", stdout, stderr)
-                };
+                let combined = combine_command_output(&stdout, &stderr, false);
                 if command_affects_daemon
                     && git_invocation_routes_to_clone_target(&tracked_invocation)
                 {
@@ -2684,7 +2684,7 @@ impl TestRepo {
                         .expect("daemon test sync session should exist for tracked command"),
                 );
             }
-            return Err(format!("{}{}", stdout, stderr));
+            return Err(combine_command_output(&stdout, &stderr, false));
         }
 
         Err("git_og_with_env failed after retries".to_string())
@@ -2818,13 +2818,7 @@ impl TestRepo {
 
             if output.status.success() {
                 // Combine stdout and stderr since git often writes to stderr
-                let combined = if stdout.is_empty() {
-                    stderr
-                } else if stderr.is_empty() {
-                    stdout
-                } else {
-                    format!("{}{}", stdout, stderr)
-                };
+                let combined = combine_command_output(&stdout, &stderr, false);
                 if command_affects_daemon {
                     if git_invocation_routes_to_clone_target(&tracked_invocation) {
                         let clone_cwd = canonical_working_dir
@@ -2862,6 +2856,23 @@ impl TestRepo {
         Err("git_with_env failed after retries".to_string())
     }
 
+    fn git_ai_command_from_working_dir(
+        &self,
+        working_dir: &std::path::Path,
+        args: &[&str],
+    ) -> Result<Command, String> {
+        let absolute_working_dir = working_dir.canonicalize().map_err(|e| {
+            format!(
+                "Failed to canonicalize working directory {}: {}",
+                working_dir.display(),
+                e
+            )
+        })?;
+        let mut command = self.git_ai_command_without_pre_sync_for_test(args, &[]);
+        command.current_dir(absolute_working_dir);
+        Ok(command)
+    }
+
     pub fn git_ai_from_working_dir(
         &self,
         working_dir: &std::path::Path,
@@ -2873,31 +2884,7 @@ impl TestRepo {
 
         let is_checkpoint = git_ai_primary_command(args) == Some("checkpoint");
 
-        let binary_path = get_binary_path();
-
-        let mut command = Command::new(binary_path);
-        let normalized_args = normalize_test_git_ai_checkpoint_args(args);
-
-        let absolute_working_dir = working_dir.canonicalize().map_err(|e| {
-            format!(
-                "Failed to canonicalize working directory {}: {}",
-                working_dir.display(),
-                e
-            )
-        })?;
-        command
-            .args(&normalized_args)
-            .current_dir(&absolute_working_dir);
-        self.configure_git_ai_env(&mut command);
-
-        if let Some(patch) = &self.config_patch
-            && let Ok(patch_json) = serde_json::to_string(patch)
-        {
-            command.env("GIT_AI_TEST_CONFIG_PATCH", patch_json);
-        }
-
-        command.env("GIT_AI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
-        command.env("GITAI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+        let mut command = self.git_ai_command_from_working_dir(working_dir, args)?;
 
         let output = run_command_output(&mut command, &format!("git-ai {:?}", args))?;
 
@@ -2917,22 +2904,10 @@ impl TestRepo {
                     }
                 }
             }
-            let combined = if stdout.is_empty() {
-                stderr
-            } else if stderr.is_empty() {
-                stdout
-            } else {
-                format!("{}{}", stdout, stderr)
-            };
+            let combined = combine_command_output(&stdout, &stderr, false);
             Ok(combined)
         } else {
-            let combined = if stdout.is_empty() {
-                stderr
-            } else if stderr.is_empty() {
-                stdout
-            } else {
-                format!("{}{}", stderr, stdout)
-            };
+            let combined = combine_command_output(&stdout, &stderr, true);
             Err(combined)
         }
     }
@@ -2968,25 +2943,13 @@ impl TestRepo {
                 }
             }
             // Combine stdout and stderr since git-ai often writes to stderr
-            let combined = if stdout.is_empty() {
-                stderr
-            } else if stderr.is_empty() {
-                stdout
-            } else {
-                format!("{}{}", stdout, stderr)
-            };
+            let combined = combine_command_output(&stdout, &stderr, false);
             Ok(combined)
         } else {
             // Combine stdout and stderr so callers can find structured
             // output (e.g. JSON errors) that the command wrote to stdout
             // before exiting with a non-zero status.
-            let combined = if stdout.is_empty() {
-                stderr
-            } else if stderr.is_empty() {
-                stdout
-            } else {
-                format!("{}{}", stderr, stdout)
-            };
+            let combined = combine_command_output(&stdout, &stderr, true);
             Err(combined)
         }
     }
@@ -2999,19 +2962,7 @@ impl TestRepo {
 
         let is_checkpoint = git_ai_primary_command(args) == Some("checkpoint");
 
-        let binary_path = get_binary_path();
-        let normalized_args = normalize_test_git_ai_checkpoint_args(args);
-
-        let mut command = Command::new(binary_path);
-        command.args(&normalized_args).current_dir(&self.path);
-        self.configure_git_ai_env(&mut command);
-
-        // Add config patch as environment variable if present
-        if let Some(patch) = &self.config_patch
-            && let Ok(patch_json) = serde_json::to_string(patch)
-        {
-            command.env("GIT_AI_TEST_CONFIG_PATCH", patch_json);
-        }
+        let mut command = self.git_ai_command_without_pre_sync_for_test(args, &[]);
 
         let output = run_command_output_with_stdin(
             &mut command,
@@ -3030,22 +2981,10 @@ impl TestRepo {
                 }
             }
             // Combine stdout and stderr since git-ai often writes to stderr
-            let combined = if stdout.is_empty() {
-                stderr
-            } else if stderr.is_empty() {
-                stdout
-            } else {
-                format!("{}{}", stdout, stderr)
-            };
+            let combined = combine_command_output(&stdout, &stderr, false);
             Ok(combined)
         } else {
-            let combined = if stdout.is_empty() {
-                stderr
-            } else if stderr.is_empty() {
-                stdout
-            } else {
-                format!("{}{}", stderr, stdout)
-            };
+            let combined = combine_command_output(&stdout, &stderr, true);
             Err(combined)
         }
     }
