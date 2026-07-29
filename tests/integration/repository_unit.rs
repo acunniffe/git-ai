@@ -312,6 +312,47 @@ fn find_repository_in_path_supports_bare_repositories() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn find_repository_in_path_retries_transient_config_read_lock() {
+    use std::fs::OpenOptions;
+    use std::os::windows::fs::OpenOptionsExt;
+    use std::thread;
+    use std::time::Duration;
+
+    let repo = TestRepo::new_with_daemon_scope(crate::repos::test_repo::DaemonTestScope::NoDaemon);
+    let config = OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(repo.path().join(".git").join("config"))
+        .expect("lock repository config");
+    let probe_error = repo
+        .git_og(&["rev-parse", "--show-toplevel"])
+        .expect_err("exclusive config lock should reproduce the Git read failure");
+    assert!(
+        probe_error.contains("Permission denied"),
+        "expected config lock failure, got: {probe_error}"
+    );
+
+    let unlock = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(100));
+        drop(config);
+    });
+
+    let discovered = find_repository_in_path(repo.path().to_str().unwrap());
+    unlock.join().expect("config unlock thread should join");
+
+    let discovered = discovered.expect("repository discovery should outwait a transient lock");
+    assert_eq!(
+        discovered
+            .workdir()
+            .expect("repository workdir")
+            .canonicalize()
+            .expect("canonical discovered workdir"),
+        repo.path().canonicalize().expect("canonical test repo")
+    );
+}
+
 #[test]
 fn find_repository_in_path_bare_repo_can_read_head_gitattributes() {
     let temp = tempfile::tempdir().expect("tempdir");

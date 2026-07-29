@@ -1943,7 +1943,7 @@ pub fn find_repository(global_args: &[String]) -> Result<Repository, GitAiError>
     rev_parse_args.push("--git-dir".to_string());
     rev_parse_args.push("--git-common-dir".to_string());
 
-    let rev_parse_output = exec_git(&rev_parse_args)?;
+    let rev_parse_output = exec_git_for_repository_discovery(&rev_parse_args)?;
     let rev_parse_stdout = String::from_utf8(rev_parse_output.stdout)?;
     let mut lines = rev_parse_stdout
         .lines()
@@ -2008,7 +2008,7 @@ pub fn find_repository(global_args: &[String]) -> Result<Repository, GitAiError>
         let mut top_level_args = global_args.to_owned();
         top_level_args.push("rev-parse".to_string());
         top_level_args.push("--show-toplevel".to_string());
-        let output = exec_git(&top_level_args)?;
+        let output = exec_git_for_repository_discovery(&top_level_args)?;
         PathBuf::from(String::from_utf8(output.stdout)?.trim())
     };
 
@@ -2069,6 +2069,40 @@ pub fn find_repository(global_args: &[String]) -> Result<Repository, GitAiError>
         canonical_workdir,
         cached_author_identity: std::sync::OnceLock::new(),
     })
+}
+
+const REPOSITORY_DISCOVERY_CONFIG_RETRY_LIMIT: usize = 3;
+const REPOSITORY_DISCOVERY_CONFIG_RETRY_DELAY: std::time::Duration =
+    std::time::Duration::from_millis(50);
+
+// Git for Windows can briefly deny `.git/config` reads while another process
+// releases its file handle. Repository discovery is read-only, so retry only
+// that exact failure and keep the number of additional Git spawns bounded.
+fn exec_git_for_repository_discovery(args: &[String]) -> Result<Output, GitAiError> {
+    let mut retries = 0;
+    loop {
+        match exec_git(args) {
+            Err(error)
+                if retries < REPOSITORY_DISCOVERY_CONFIG_RETRY_LIMIT
+                    && is_transient_git_config_read_error(&error) =>
+            {
+                retries += 1;
+                std::thread::sleep(REPOSITORY_DISCOVERY_CONFIG_RETRY_DELAY);
+            }
+            result => return result,
+        }
+    }
+}
+
+fn is_transient_git_config_read_error(error: &GitAiError) -> bool {
+    let GitAiError::GitCliError { stderr, .. } = error else {
+        return false;
+    };
+
+    stderr.contains("unable to access")
+        && stderr.contains("config")
+        && stderr.contains("Permission denied")
+        && stderr.contains("unknown error occurred while reading the configuration files")
 }
 
 #[doc(hidden)]
@@ -3311,6 +3345,14 @@ fn parse_hunk_header_counts(line: &str) -> Option<(u32, u32, u32)> {
 mod tests {
     use super::*;
 
+    fn git_cli_error(stderr: &str) -> GitAiError {
+        GitAiError::GitCliError {
+            code: Some(128),
+            stderr: stderr.to_string(),
+            args: vec!["rev-parse".to_string()],
+        }
+    }
+
     fn explicit_command_env(cmd: &Command, key: &str) -> Option<Option<String>> {
         cmd.get_envs()
             .find(|(name, _)| *name == key)
@@ -3338,6 +3380,18 @@ mod tests {
                 Some(Some((*value).to_string()))
             );
         }
+    }
+
+    #[test]
+    fn detects_transient_git_config_read_error() {
+        let error = git_cli_error(
+            "warning: unable to access '.git/config': Permission denied\n\
+             fatal: unknown error occurred while reading the configuration files\n",
+        );
+        assert!(is_transient_git_config_read_error(&error));
+
+        let malformed_config = git_cli_error("fatal: bad config line 1 in file .git/config\n");
+        assert!(!is_transient_git_config_read_error(&malformed_config));
     }
 
     #[test]
