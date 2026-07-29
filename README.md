@@ -174,9 +174,8 @@ We built Git AI for Teams to make it easy to roll out Git AI across your organiz
 - Tie incidents back to AI-sessions
 - Save prompts behind every generated hunk of code for harness engineering and code review
 
-<sub><i>▶ Watch the 2-minute demo</i></sub>
+<img width="1229" height="783" alt="Screenshot 2026-07-29 at 3 48 26 PM" src="https://github.com/user-attachments/assets/326ead5e-b15d-4d65-8b4f-ced862428c57" />
 
-https://github.com/user-attachments/assets/9c0d56a0-d6f6-4189-8d94-32155af33321
 
 ## FAQs
 
