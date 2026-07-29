@@ -502,6 +502,11 @@ fn trace_payload_worktree_hint(payload: &Value) -> Option<PathBuf> {
         .and_then(Value::as_str)
         .unwrap_or_default();
     if event == "def_repo" {
+        // Secondary repositories (repo index > 1, e.g. an embedded subrepo git
+        // peeked into during a commit) must not hint the command's worktree.
+        if crate::daemon::trace_normalizer::def_repo_is_secondary(payload) {
+            return None;
+        }
         if let Some(path) = payload
             .get("worktree")
             .or_else(|| payload.get("repo_working_dir"))
@@ -8937,6 +8942,30 @@ mod tests {
     use serial_test::serial;
     use std::ffi::OsString;
     use std::io::Write;
+
+    #[test]
+    fn secondary_def_repo_does_not_hint_worktree() {
+        let primary = serde_json::json!({
+            "event": "def_repo",
+            "sid": "s1",
+            "repo": 1,
+            "worktree": "/repo",
+        });
+        assert_eq!(
+            trace_payload_worktree_hint(&primary),
+            Some(PathBuf::from("/repo"))
+        );
+
+        // A nested/embedded repo git peeked into (repo index > 1) must not
+        // retarget the command's worktree at that repo.
+        let secondary = serde_json::json!({
+            "event": "def_repo",
+            "sid": "s1",
+            "repo": 2,
+            "worktree": "/repo/nested",
+        });
+        assert_eq!(trace_payload_worktree_hint(&secondary), None);
+    }
 
     struct EnvVarGuard {
         key: &'static str,
