@@ -564,8 +564,16 @@ fn test_classify_tool_gemini() {
         classify_tool(Agent::Gemini, "write_file"),
         ToolClass::FileEdit
     );
+    assert_eq!(
+        classify_tool(Agent::Gemini, "WriteFile"),
+        ToolClass::FileEdit
+    );
     assert_eq!(classify_tool(Agent::Gemini, "replace"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Gemini, "shell"), ToolClass::Bash);
+    assert_eq!(
+        classify_tool(Agent::Gemini, "run_shell_command"),
+        ToolClass::Bash
+    );
     assert_eq!(classify_tool(Agent::Gemini, "read_file"), ToolClass::Skip);
     assert_eq!(classify_tool(Agent::Gemini, "unknown"), ToolClass::Skip);
 }

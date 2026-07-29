@@ -319,8 +319,8 @@ pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
             _ => ToolClass::Skip,
         },
         Agent::Gemini => match tool_name {
-            "write_file" | "replace" => ToolClass::FileEdit,
-            "shell" => ToolClass::Bash,
+            "write_file" | "replace" | "WriteFile" => ToolClass::FileEdit,
+            "shell" | "run_shell_command" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::ContinueCli => match tool_name {
@@ -1486,7 +1486,15 @@ mod tests {
             classify_tool(Agent::Gemini, "write_file"),
             ToolClass::FileEdit
         );
+        assert_eq!(
+            classify_tool(Agent::Gemini, "WriteFile"),
+            ToolClass::FileEdit
+        );
         assert_eq!(classify_tool(Agent::Gemini, "shell"), ToolClass::Bash);
+        assert_eq!(
+            classify_tool(Agent::Gemini, "run_shell_command"),
+            ToolClass::Bash
+        );
 
         // Continue CLI
         assert_eq!(
