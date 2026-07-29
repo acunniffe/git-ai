@@ -1,0 +1,23 @@
+src/daemon/git_backend.rs
+  s_7e719d19471fd9::t_7cc10aaf524c80 329-335,567,730-747
+  s_7e719d19471fd9::t_1cb10a3135128d 748-749
+tests/integration/tls_native_certs.rs
+  s_7e719d19471fd9::t_7cc10aaf524c80 15-31,35-41
+  s_7e719d19471fd9::t_cb556ee7003aaa 32-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.9",
+  "base_commit_sha": "bf00bef66507501553f1b0c8f168c5d31f6db6e0",
+  "prompts": {},
+  "sessions": {
+    "s_7e719d19471fd9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f38e7-aa09-72c3-b383-9aa431d64253",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

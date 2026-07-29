@@ -1,0 +1,31 @@
+agent-support/vscode/EXTERNAL_CHANGES.md
+  eef79e3eeb3ea375 1-115
+RESEARCH_SUMMARY.md
+  eef79e3eeb3ea375 1-79
+agent-support/vscode/src/test/external-save.test.ts
+  eef79e3eeb3ea375 1-165
+agent-support/vscode/src/test/external-save-test.md
+  eef79e3eeb3ea375 1-39
+agent-support/vscode/src/known-human-checkpoint-manager.ts
+  eef79e3eeb3ea375 13-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "25001f8718fc2a6df2797186c453560af2f8c599",
+  "prompts": {
+    "eef79e3eeb3ea375": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b6569db-c7c4-4494-bd31-ba6c16708d1e",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 403,
+      "total_deletions": 485,
+      "accepted_lines": 403,
+      "overriden_lines": 0
+    }
+  }
+}

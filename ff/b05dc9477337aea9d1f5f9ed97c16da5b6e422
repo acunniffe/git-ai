@@ -1,0 +1,28 @@
+tests/integration/daemon_ipc_memory.rs
+  s_59382cac373d67::t_dc30405d92e11c 214-215
+  s_59382cac373d67::t_97c2d8a5338371 164
+  s_59382cac373d67::t_fef98c824e5dd8 5-6,10-11
+  s_59382cac373d67::t_2cbfc3a72ea8e4 4,7,12-13,16-18,149-163,165-213
+src/daemon.rs
+  s_59382cac373d67::t_cc90fe44a0f061 7846
+  s_59382cac373d67::t_04b25b24a304da 7837,7842,7845,7847-7871,7897-7899
+src/daemon/telemetry_handle.rs
+  s_59382cac373d67::t_04b25b24a304da 15,115-117,119-120
+  s_59382cac373d67::t_013f748857a2d3 118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "ffb05dc9477337aea9d1f5f9ed97c16da5b6e422",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

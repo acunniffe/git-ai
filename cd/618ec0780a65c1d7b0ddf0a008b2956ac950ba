@@ -1,0 +1,25 @@
+tests/integration/background_agent_attribution.rs
+  72fc5fe0297670cf 2,117-170
+src/authorship/rebase_authorship.rs
+  72fc5fe0297670cf 3006-3038
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "cd618ec0780a65c1d7b0ddf0a008b2956ac950ba",
+  "prompts": {
+    "72fc5fe0297670cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "534bcf48-6a02-485e-8e42-9ed35c20ce5e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 103,
+      "total_deletions": 16,
+      "accepted_lines": 88,
+      "overriden_lines": 0
+    }
+  }
+}

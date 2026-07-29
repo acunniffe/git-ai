@@ -1,0 +1,29 @@
+.github/dependabot.yml
+  9fb3fc942f3535d1 1-9
+.github/workflows/intellij-build.yml
+  9fb3fc942f3535d1 1-208
+.github/workflows/intellij-ui-tests.yml
+  9fb3fc942f3535d1 1-76
+.github/workflows/release-intellij-plugin.yml
+  9fb3fc942f3535d1 1-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "04d1858595986b83cf0130e54c7f3c8aea6584d8",
+  "prompts": {
+    "9fb3fc942f3535d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11a2455f-d881-47d7-b25f-40181d6345ae",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 400,
+      "total_deletions": 0,
+      "accepted_lines": 400,
+      "overriden_lines": 0
+    }
+  }
+}

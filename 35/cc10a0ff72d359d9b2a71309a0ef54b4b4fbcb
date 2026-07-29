@@ -1,0 +1,29 @@
+src/authorship/rewrite_op_v3.rs
+  ai_agent 1-1188
+src/git/mod.rs
+  ai_agent 16
+src/git/repository.rs
+  ai_agent 1045-1076
+src/daemon.rs
+  ai_agent 2814-2816
+src/authorship/mod.rs
+  ai_agent 17
+src/git/range_diff.rs
+  ai_agent 1-234
+tests/integration/rebase_authorship_unit.rs
+  ai_agent 5,8-9,11,360-361,434-435,570,696-697,699-700,834,957,988,1332
+tests/integration/rebase_realworld.rs
+  ai_agent 3631-3632,3634-3639,3662-3663,4645,4657,4669,4681,4973-4975,5012,5058,5365-5367,5380-5381,5394-5395,5408-5409,5643,5657-5658,5673,6004,6014,6024,6034,6044,6054,6065,6078-6079,6362,6369,6386,6393,6410,6417,6640,6653,6676,6905,6915,6922-6923,6929,6943,6958,7233,7244,7256-7258,7269,7548-7550,7589-7591,7641
+src/ci/ci_context.rs
+  ai_agent 2,6,197-208
+src/authorship/rebase_authorship.rs
+  ai_agent 7,540-541,543,545-564,568-569,571-573,575-577,579-599,602,604-610,613-615,618-620,622-628,631,634-656,658-668,671-677,680,682,684,692,695-701,705,711,713-716,718-719,729-732,735-738,741-743,753,1264-1266,1269-1270,1272-1277,1279-1287,1289,1291-1295,1297-1301,1305-1312,1316-1321
+tests/integration/rebase.rs
+  ai_agent 2510,2679
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "35cc10a0ff72d359d9b2a71309a0ef54b4b4fbcb",
+  "prompts": {}
+}

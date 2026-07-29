@@ -1,0 +1,26 @@
+Cargo.toml
+  f4f2b364dfcacebb 52
+tests/integration/ci_partial_clone.rs
+  f4f2b364dfcacebb 10-16,33,35-39,192,238-246,254-268,272
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.1",
+  "base_commit_sha": "5b413d1ca59ba6271c5b2ff79352b69dc37cd32f",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 40,
+      "total_deletions": 91,
+      "accepted_lines": 40,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/2bef559162236ea7898e6ce574d7474571e7c3321f6a615a140ea0aef4362bff"
+    }
+  }
+}

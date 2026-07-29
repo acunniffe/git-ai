@@ -1,0 +1,46 @@
+tests/integration/test_utils_unit.rs
+  s_1e909c66cd7db7::t_ae8a80ad55ab2c 6
+tests/integration/bash_tool_provenance.rs
+  s_1e909c66cd7db7::t_16fe27498491ba 100-101,122-123,132
+tests/integration/bash_tool_timeouts.rs
+  s_1e909c66cd7db7::t_24101a86f85aad 97,99,122-124
+  s_1e909c66cd7db7::t_01b6d587f9bbde 183
+  s_1e909c66cd7db7::t_8df63d2d272f14 133,135,151-153
+  s_1e909c66cd7db7::t_640404506d5f15 6-7
+tests/integration/bash_tool_conformance.rs
+  s_1e909c66cd7db7::t_6d56a8d33961f9 399
+  s_1e909c66cd7db7::t_64e8f79d2e6da0 371
+  s_1e909c66cd7db7::t_a1032fb1bdf720 1336,1343,1345
+  s_1e909c66cd7db7::t_ccbe8a5b297eef 415-416,421,425-429
+tests/integration/checkpoint_unit.rs
+  s_1e909c66cd7db7::t_ae8a80ad55ab2c 3-5,355
+src/commands/checkpoint_agent/bash_tool.rs
+  s_1e909c66cd7db7::t_5074e1fc5e6de0 1029,1031
+  s_1e909c66cd7db7::t_bb3bea229f867c 266
+  s_1e909c66cd7db7::t_93c7d0f90c8918 1042,1046
+  s_1e909c66cd7db7::t_b2c9974a52712f 982
+  s_1e909c66cd7db7::t_d3e66573d6943e 272-277
+  s_1e909c66cd7db7::t_d6701986a03c0e 124
+  s_1e909c66cd7db7::t_cfaaa077be45db 39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "317acd5f16316f1be701b898306a8c14c4497ba2",
+  "prompts": {},
+  "humans": {
+    "h_55c03ed47cd416": {
+      "author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  },
+  "sessions": {
+    "s_1e909c66cd7db7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61dc231c-45fe-4c3d-a859-0775945a306e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

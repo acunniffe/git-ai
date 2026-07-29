@@ -1,0 +1,21 @@
+src/diagnostics.rs
+  s_53c2b266fceff9::t_095a2bb92fd882 1392
+  s_53c2b266fceff9::t_a3549272952d12 1458-1461
+  s_53c2b266fceff9::t_34b5abe3823fd5 1462
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.12",
+  "base_commit_sha": "20d1afb745c3f1f335eaa7fc510a352877d520a5",
+  "prompts": {},
+  "sessions": {
+    "s_53c2b266fceff9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7904330e-caba-4122-be31-b819e81999c5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Siddhant Khare <Siddhant-K-code@users.noreply.github.com>"
+    }
+  }
+}

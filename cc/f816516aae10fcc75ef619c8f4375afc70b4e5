@@ -1,0 +1,23 @@
+src/commands/upgrade.rs
+  cbedf5b17c199fec 144-145,795-796
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.31",
+  "base_commit_sha": "ccf816516aae10fcc75ef619c8f4375afc70b4e5",
+  "prompts": {
+    "cbedf5b17c199fec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cda2a9f7-9ca9-4ca2-a0e3-17b4d796e843",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 1,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,24 @@
+README.md
+  671d0be9ef89cd50 232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "9b94889a88c10b4682c7c2a64d3c0058fe6736df",
+  "prompts": {
+    "671d0be9ef89cd50": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4b289f15-3a76-4996-bc77-5eb9f3e7b878",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/7f4fb12e4f49af49dacd14bdcb4877a165df10a99e7ac5c1fbd18e76ee135798"
+    }
+  }
+}

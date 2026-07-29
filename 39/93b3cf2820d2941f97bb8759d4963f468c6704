@@ -1,0 +1,26 @@
+tests/integration/stash_hooks_unit.rs
+  f4f2b364dfcacebb 1-31,44-111,125-173
+tests/integration/main.rs
+  f4f2b364dfcacebb 75,101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "3993b3cf2820d2941f97bb8759d4963f468c6704",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 177,
+      "total_deletions": 58,
+      "accepted_lines": 149,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/af95bdd08150e74ff55ce9a97192473b245e5619a5e86fb48fee2d6de4da86bc"
+    }
+  }
+}

@@ -1,0 +1,31 @@
+tests/integration/e2e_user_scenarios.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 379
+tests/integration/rebase_realworld.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 6
+tests/integration/repo_storage_unit.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 41-43,51,55
+src/git/notes_api.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 98-99
+src/daemon.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 21,1751-1753,5098-5107
+src/commands/git_ai_handlers.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 175-177
+tests/integration/rebase_note_integrity.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "8c2d6aca9b80932caac117afe0bd66943ffc65fc",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

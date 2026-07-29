@@ -1,0 +1,23 @@
+src/commands/install_hooks.rs
+  s_5f82797aa84a91::t_b38bc0c3babaf6 1252-1254,1260-1265
+src/daemon.rs
+  s_5f82797aa84a91::t_62b5b34036fb9a 6090,6188
+src/api/client.rs
+  s_5f82797aa84a91::t_a4f47808963136 199,215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "af4a4a30171fc06f2beb97421560e3eb88c5c606",
+  "prompts": {},
+  "sessions": {
+    "s_5f82797aa84a91": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef003-efb6-74a2-8916-fa6acdec34b7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
