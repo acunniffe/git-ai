@@ -351,6 +351,19 @@ impl<B: GitBackend> TraceNormalizer<B> {
         _sid: &str,
         root_sid: &str,
     ) -> Result<Option<NormalizedCommand>, GitAiError> {
+        // Trace2 numbers a process's repositories: the primary repo is 1;
+        // higher indices are secondary repos git merely peeked into (e.g. an
+        // embedded subrepo opened for a gitlink dirtiness check during
+        // commit/status). Only the primary repo defines the command's
+        // worktree/family — letting a secondary def_repo retarget them makes
+        // the ref cursor enrich the command against the wrong repo's reflog
+        // and silently lose attribution.
+        if def_repo_is_secondary(payload) {
+            if let Some(pending) = self.state.pending.get_mut(root_sid) {
+                merge_reflog_start_offsets_from_payload(pending, payload);
+            }
+            return Ok(None);
+        }
         let payload_worktree = payload_worktree(payload);
         let payload_repo = payload
             .get("repo")
@@ -788,6 +801,18 @@ fn payload_argv(payload: &Value) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Trace2 `def_repo` events carry a `repo` index: 1 is the process's primary
+/// repository; higher indices are secondary repositories git opened in
+/// passing (e.g. an embedded subrepo inspected for a gitlink entry). Absent
+/// or non-numeric indices are treated as primary to preserve behavior for
+/// payloads that don't carry the field.
+pub(crate) fn def_repo_is_secondary(payload: &Value) -> bool {
+    payload
+        .get("repo")
+        .and_then(Value::as_u64)
+        .is_some_and(|index| index > 1)
 }
 
 fn payload_worktree(payload: &Value) -> Option<PathBuf> {
@@ -1269,6 +1294,65 @@ mod tests {
         assert_eq!(cmd.root_sid, "s1");
         assert_eq!(cmd.primary_command.as_deref(), Some("status"));
         assert_eq!(cmd.exit_code, 0);
+    }
+
+    #[test]
+    fn normalizer_keeps_primary_repo_worktree_when_nested_repo_def_repo_arrives() {
+        // Committing a repo that contains an embedded (gitlink) subrepo makes
+        // git emit def_repo events for BOTH repositories on the root sid:
+        // repo:1 (the primary) and repo:2 (the nested repo it peeked into).
+        // Only repo:1 defines the command's worktree; if repo:2 wins, the
+        // whole command is retargeted at the nested repo and the ref cursor
+        // enriches the commit against the wrong reflog (the nested-subrepo
+        // attribution flake).
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        backend.set_family("/repo/nested", "/repo/nested/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+
+        let start = serde_json::json!({
+            "event":"start",
+            "sid":"s-nested-def-repo",
+            "ts":1,
+            "argv":["git","commit","-m","msg"],
+            "worktree":"/repo"
+        });
+        let def_repo_primary = serde_json::json!({
+            "event":"def_repo",
+            "sid":"s-nested-def-repo",
+            "ts":2,
+            "repo":1,
+            "worktree":"/repo"
+        });
+        let def_repo_nested = serde_json::json!({
+            "event":"def_repo",
+            "sid":"s-nested-def-repo",
+            "ts":3,
+            "repo":2,
+            "worktree":"/repo/nested"
+        });
+        let atexit = atexit_payload("s-nested-def-repo", 4);
+
+        assert!(normalizer.ingest_payload(&start).unwrap().is_none());
+        assert!(
+            normalizer
+                .ingest_payload(&def_repo_primary)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            normalizer
+                .ingest_payload(&def_repo_nested)
+                .unwrap()
+                .is_none()
+        );
+        let cmd = normalizer.ingest_payload(&atexit).unwrap().unwrap();
+
+        assert_eq!(
+            cmd.worktree.as_deref(),
+            Some(Path::new("/repo")),
+            "secondary def_repo (repo:2) must not retarget the command at the nested repo"
+        );
     }
 
     #[test]
