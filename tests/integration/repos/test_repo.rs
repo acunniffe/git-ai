@@ -43,7 +43,7 @@ use windows_sys::Win32::System::JobObjects::{
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
 
-use super::test_file::TestFile;
+use super::test_file::{AuthorType, TestFile};
 
 const DAEMON_TEST_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
 const DAEMON_TEST_CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -2451,6 +2451,75 @@ impl TestRepo {
         self.path
             .canonicalize()
             .expect("failed to canonicalize test repo path")
+    }
+
+    /// Write raw file contents into the repo, creating parent directories as
+    /// needed. Plain `fs::write` — no checkpoint side effects.
+    pub fn write_file(&self, rel: &str, contents: &str) {
+        let abs = self.path.join(rel);
+        if let Some(parent) = abs.parent() {
+            fs::create_dir_all(parent).expect("parent directory should be creatable");
+        }
+        fs::write(&abs, contents).expect("file write should succeed");
+    }
+
+    /// Scenario builder for the real AI-agent checkpoint flow on a single
+    /// file: write `pre_contents`, fire the file-scoped "human" pre-edit
+    /// checkpoint (the legacy/untracked checkpoint every AI preset fires
+    /// before it edits, so any changes made by something else are excluded),
+    /// then write `post_contents` and fire the file-scoped "mock_ai"
+    /// post-edit checkpoint. This is exactly the pre/post pattern documented
+    /// in CLAUDE.md and used by the real agent presets.
+    ///
+    /// Checkpoint-NUANCE tests — ordering, partial staging, unscoped
+    /// checkpoints, or assertions interleaved between the pre and post
+    /// steps — must keep writing the manual `fs::write` + `git_ai(&["checkpoint", ...])`
+    /// sequence themselves; this helper intentionally hides those steps.
+    pub fn ai_edit(&self, rel: &str, pre_contents: &str, post_contents: &str) {
+        self.write_file(rel, pre_contents);
+        self.checkpoint_file_with_preset(rel, "human")
+            .expect("pre-edit human checkpoint should succeed");
+        self.write_file(rel, post_contents);
+        self.checkpoint_file(rel, &AuthorType::Ai)
+            .expect("post-edit mock_ai checkpoint should succeed");
+    }
+
+    /// Scenario builder for the real known-human checkpoint flow: write
+    /// `contents`, then fire the file-scoped "mock_known_human" checkpoint.
+    /// Mirrors what our IDE/editor extensions do when they detect an actual
+    /// human keystroke, as opposed to the legacy/untracked "human" checkpoint.
+    ///
+    /// Checkpoint-NUANCE tests must keep writing the manual sequence
+    /// themselves; this helper intentionally hides those steps.
+    pub fn human_edit(&self, rel: &str, contents: &str) {
+        self.write_file(rel, contents);
+        self.checkpoint_file(rel, &AuthorType::Human)
+            .expect("known-human checkpoint should succeed");
+    }
+
+    /// Scenario builder for an untracked edit: write `contents` with no
+    /// checkpoint call at all. Identical to `write_file` — this alias exists
+    /// so call sites read as the matched `ai_edit`/`human_edit`/`untracked_edit`
+    /// trio rather than mixing a differently-named primitive in.
+    pub fn untracked_edit(&self, rel: &str, contents: &str) {
+        self.write_file(rel, contents);
+    }
+
+    pub(crate) fn checkpoint_file(
+        &self,
+        rel: &str,
+        author_type: &AuthorType,
+    ) -> Result<String, String> {
+        let args = match author_type {
+            AuthorType::Ai => ["checkpoint", "mock_ai", rel],
+            AuthorType::Human => ["checkpoint", "mock_known_human", rel],
+            AuthorType::UnattributedHuman => ["checkpoint", "--", rel],
+        };
+        self.git_ai(&args)
+    }
+
+    fn checkpoint_file_with_preset(&self, rel: &str, preset: &str) -> Result<String, String> {
+        self.git_ai(&["checkpoint", preset, rel])
     }
 
     pub fn test_db_path(&self) -> &PathBuf {
