@@ -1,0 +1,9 @@
+src/transcripts/agents/claude.rs
+  75b8b35dceb7e11d 310-313,361
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "b5993a91a5340e0fa201b98723e0ddc3cbb3f5f4",
+  "prompts": {}
+}

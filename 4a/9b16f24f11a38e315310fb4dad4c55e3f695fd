@@ -1,0 +1,33 @@
+src/daemon.rs
+  s_b3918a71142a3e::t_729612fe09f2f3 4751-4752
+  s_b3918a71142a3e::t_59f15cb99168ba 706,1166,1448,4606,4649
+src/authorship/rewrite.rs
+  s_b3918a71142a3e::t_59f15cb99168ba 240
+tests/integration/e2e_user_scenarios.rs
+  s_b3918a71142a3e::t_bc9989d99fec47 1287-1289,1291-1294,1296-1297
+src/ci/ci_context.rs
+  s_b3918a71142a3e::t_8f45eb85c3e34e 366-377
+  s_b3918a71142a3e::t_4ed829df1f312a 260-262,274-357,359-360
+tests/integration/cli_parser_rebase_args.rs
+  s_b3918a71142a3e::t_8a1a837b01a46c 1-86
+tests/integration/main.rs
+  s_b3918a71142a3e::t_08870156fbe335 43
+AGENTS.md
+  s_b3918a71142a3e::t_9df426e2ea223e 214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "4a9b16f24f11a38e315310fb4dad4c55e3f695fd",
+  "prompts": {},
+  "sessions": {
+    "s_b3918a71142a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de268d2e-4705-4c20-86ca-d1dc04eda164",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

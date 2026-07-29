@@ -1,0 +1,23 @@
+tests/cursor.rs
+  6fa987c013e9180a 1050
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "63f9948b1bd61c070b66e2cbf4f70830a508e646",
+  "prompts": {
+    "6fa987c013e9180a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "66cc4f8d-0e88-41c2-abe2-22dbdf93bcc9",
+        "model": "tab"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

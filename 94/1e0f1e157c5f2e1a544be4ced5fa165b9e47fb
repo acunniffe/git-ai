@@ -1,0 +1,51 @@
+src/commands/prompts_db.rs
+  b17379a67b0c6fff 141-142,228,576-583,590,825,902,944
+  0217c3402080a8f9 778
+  c0c4b294278941ad 10-12,89,93,188,200-202,210,213-215,219,225,232,234-239,242,515-535,593-597,650-656,658-660,688,694,705,723-727,729-731,763,766,768,771,782,784,803,808-809,817-818,824,826,845-846,855,877-881,887-888,892-894,897,901,903-940,943,951-967,972-1016,1018-1040,1042-1044,1048-1049,1052-1057,1059-1066,1068-1075
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.37",
+  "base_commit_sha": "941e0f1e157c5f2e1a544be4ced5fa165b9e47fb",
+  "prompts": {
+    "0217c3402080a8f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a69132a6-c20f-4ce6-9c86-1f7769105518",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "b17379a67b0c6fff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6ea3123-7a07-4a09-be9b-54f7e34762a7",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 31,
+      "total_deletions": 44,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    },
+    "c0c4b294278941ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "03301983-134c-4e89-8076-40674a26c671",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 283,
+      "total_deletions": 89,
+      "accepted_lines": 261,
+      "overriden_lines": 0
+    }
+  }
+}

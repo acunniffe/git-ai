@@ -1,0 +1,23 @@
+src/commands/git_ai_handlers.rs
+  a5a6b70a6a30015c 98-101,656-752
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "db771d0b080908eff4d529945265ef322f6c631d",
+  "prompts": {
+    "a5a6b70a6a30015c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6a41007c-09b2-4b81-b26c-85df1a65c233",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 101,
+      "total_deletions": 0,
+      "accepted_lines": 101,
+      "overriden_lines": 0
+    }
+  }
+}

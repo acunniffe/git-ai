@@ -1,0 +1,29 @@
+src/git/repo_storage.rs
+  e7b08d3d24eb79a9 744-757
+src/authorship/post_commit.rs
+  e7b08d3d24eb79a9 228-242
+src/authorship/rebase_authorship.rs
+  e7b08d3d24eb79a9 317-341
+tests/integration/squash_merge.rs
+  e7b08d3d24eb79a9 4-5,475-551
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "8f830646116536c4cfa4cc684a85a6dd0bb8737b",
+  "prompts": {
+    "e7b08d3d24eb79a9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f68e98e9-51e1-4549-bc4a-9bb6db7e5ca7",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 136,
+      "total_deletions": 3,
+      "accepted_lines": 133,
+      "overriden_lines": 0
+    }
+  }
+}

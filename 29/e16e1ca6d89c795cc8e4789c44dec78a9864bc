@@ -1,0 +1,25 @@
+src/ci/gitlab.rs
+  c6526533c74b055b 50-52,55-57,60
+src/ci/workflow_templates/gitlab.yaml
+  c6526533c74b055b 4,6-7,12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.30",
+  "base_commit_sha": "29e16e1ca6d89c795cc8e4789c44dec78a9864bc",
+  "prompts": {
+    "c6526533c74b055b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "190b7601-3781-4530-a205-221208a148fe",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 8,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}
