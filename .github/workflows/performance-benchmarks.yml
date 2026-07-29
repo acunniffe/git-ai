@@ -102,6 +102,11 @@ jobs:
           perf --version
           cargo install inferno --version 0.12.6 --locked
 
+      - name: Enable perf events
+        run: |
+          sudo sysctl -w kernel.perf_event_paranoid=-1
+          test "$(cat /proc/sys/kernel/perf_event_paranoid)" = "-1"
+
       - name: Run profiled smoke benchmark
         run: |
           python3 scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py \
@@ -214,6 +219,11 @@ jobs:
           fi
           perf --version
           cargo install inferno --version 0.12.6 --locked
+
+      - name: Enable perf events
+        run: |
+          sudo sysctl -w kernel.perf_event_paranoid=-1
+          test "$(cat /proc/sys/kernel/perf_event_paranoid)" = "-1"
 
       - name: Run profiled nasty benchmark
         run: |

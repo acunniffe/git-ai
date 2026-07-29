@@ -268,7 +268,15 @@ fn daemon_trace_listener_stalled_connection_does_not_block_later_trace_connectio
             json!({
                 "event": "start",
                 "sid": "stalled-listener-followup",
-                "argv": ["git", "-c", session_arg, "commit", "-m", "synthetic"],
+                "argv": [
+                    "git",
+                    "-c",
+                    session_arg,
+                    "commit",
+                    "--dry-run",
+                    "-m",
+                    "synthetic",
+                ],
                 "time_ns": 10_000u64,
             }),
             json!({
@@ -525,7 +533,15 @@ fn daemon_trace_listener_partial_line_does_not_block_later_trace_connections() {
             json!({
                 "event": "start",
                 "sid": "partial-listener-followup",
-                "argv": ["git", "-c", session_arg, "commit", "-m", "synthetic"],
+                "argv": [
+                    "git",
+                    "-c",
+                    session_arg,
+                    "commit",
+                    "--dry-run",
+                    "-m",
+                    "synthetic",
+                ],
                 "time_ns": 10_000u64,
             }),
             json!({
@@ -576,7 +592,7 @@ fn daemon_trace_connection_close_without_atexit_does_not_block_later_trace() {
             json!({
                 "event": "start",
                 "sid": "closed-before-atexit",
-                "argv": ["git", "commit", "-m", "incomplete"],
+                "argv": ["git", "commit", "--dry-run", "-m", "incomplete"],
                 "time_ns": 9_000u64,
             }),
             json!({
@@ -606,7 +622,15 @@ fn daemon_trace_connection_close_without_atexit_does_not_block_later_trace() {
             json!({
                 "event": "start",
                 "sid": "complete-after-closed-root",
-                "argv": ["git", "-c", session_arg, "commit", "-m", "synthetic"],
+                "argv": [
+                    "git",
+                    "-c",
+                    session_arg,
+                    "commit",
+                    "--dry-run",
+                    "-m",
+                    "synthetic",
+                ],
                 "time_ns": 10_000u64,
             }),
             json!({
