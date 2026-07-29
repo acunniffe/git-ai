@@ -29,6 +29,7 @@ use super::stackbuilder::{
     write_ai_file, write_file,
 };
 use crate::repos::test_repo::{DaemonTestScope, TestRepo};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::thread;
@@ -333,6 +334,9 @@ fn restack_range(
             hash_object_storm(x, 20);
         }
 
+        // old->new shas of this branch's replayed commits, for retargeting
+        // ai_commit_sha through rewrites (A1 -> A1', not blindly to the tip).
+        let mut commit_map: HashMap<String, String> = HashMap::new();
         let new_tip = if old_tip == new_parent {
             // Already exactly at the new parent — nothing to do.
             old_tip.clone()
@@ -349,21 +353,23 @@ fn restack_range(
                 move_ref(x, batch, opts.refstyle, &name, &new_parent);
                 new_parent.clone()
             }
-        } else if x.rev_parse(&format!("{old_tip}~")) == new_parent {
-            // Already based on the new parent (idempotent second run): skip.
-            old_tip.clone()
         } else {
-            match replay_branch_commit(x, &old_tip, &new_parent) {
-                Ok(minted) => {
-                    if is_checked_out {
-                        if checked_out_move(x, &minted) {
-                            minted
+            match replay_branch_commits(x, &old_parent, &old_tip, &new_parent) {
+                Ok((minted_tip, map)) => {
+                    commit_map = map;
+                    if minted_tip == old_tip {
+                        // Already based on the new parent (idempotent second
+                        // run): nothing moved.
+                        old_tip.clone()
+                    } else if is_checked_out {
+                        if checked_out_move(x, &minted_tip) {
+                            minted_tip
                         } else {
                             old_tip.clone()
                         }
                     } else {
-                        move_ref(x, batch, opts.refstyle, &name, &minted);
-                        minted
+                        move_ref(x, batch, opts.refstyle, &name, &minted_tip);
+                        minted_tip
                     }
                 }
                 Err(()) => {
@@ -382,8 +388,14 @@ fn restack_range(
 
         let rewritten = new_tip != old_tip && old_tip != old_parent;
         let branch = &mut state.branches[index];
-        if rewritten && branch.ai_commit_sha.is_some() {
-            branch.ai_commit_sha = Some(new_tip.clone());
+        if let Some(ai_commit) = branch.ai_commit_sha.clone() {
+            if let Some(mapped) = commit_map.get(&ai_commit) {
+                branch.ai_commit_sha = Some(mapped.clone());
+            } else if rewritten {
+                // No per-commit map (rebase fallback): the branch collapsed to
+                // a rewritten tip.
+                branch.ai_commit_sha = Some(new_tip.clone());
+            }
         }
         branch.tip_sha = new_tip.clone();
         old_parent = old_tip;
@@ -395,7 +407,110 @@ fn restack_range(
     }
 }
 
-/// Mint the restacked commit for a single-commit branch via the observed
+/// Replay every commit the branch carries (its first-parent chain over
+/// `old_parent..old_tip`) onto `new_parent`, bottom-up, threading the new
+/// parent and recording per-commit old->new mappings. Non-merge commits use
+/// the synthetic-base replay; merge commits are minted as REAL merges (first
+/// parent remapped, non-first parents kept as-is unless they were replayed).
+/// Commits already sitting on the right parent are skipped (idempotent
+/// re-runs). Returns the new tip plus the mapping; Err on the first
+/// merge-tree conflict (the caller falls back to a real rebase).
+fn replay_branch_commits(
+    x: &Exec,
+    old_parent: &str,
+    old_tip: &str,
+    new_parent: &str,
+) -> Result<(String, HashMap<String, String>), ()> {
+    let commits = x.git(&[
+        "rev-list",
+        "--reverse",
+        "--first-parent",
+        &format!("{old_parent}..{old_tip}"),
+    ]);
+    let mut map = HashMap::new();
+    let mut cursor = new_parent.to_string();
+    for commit in commits.lines().map(str::trim).filter(|c| !c.is_empty()) {
+        let parents = commit_parents(x, commit);
+        let first_parent = parents.first().cloned().unwrap_or_default();
+        let minted = if first_parent == cursor {
+            commit.to_string()
+        } else if parents.len() <= 1 {
+            replay_branch_commit(x, commit, &cursor)?
+        } else {
+            replay_merge_commit(x, commit, &parents, &cursor, &map)?
+        };
+        map.insert(commit.to_string(), minted.clone());
+        cursor = minted;
+    }
+    Ok((cursor, map))
+}
+
+fn commit_parents(x: &Exec, commit: &str) -> Vec<String> {
+    x.git(&["rev-list", "--parents", "-n", "1", commit])
+        .split_whitespace()
+        .skip(1)
+        .map(str::to_string)
+        .collect()
+}
+
+/// Mint a rewritten merge commit: merged tree via the synthetic-base trick
+/// against the new first parent, then a real merge commit keeping every
+/// non-first parent (remapped when it was itself replayed).
+fn replay_merge_commit(
+    x: &Exec,
+    old_merge: &str,
+    old_parents: &[String],
+    new_first_parent: &str,
+    map: &HashMap<String, String>,
+) -> Result<String, ()> {
+    x.git(&["cat-file", "-p", &format!("{old_merge}~")]);
+    let synthetic = x
+        .git(&[
+            "commit-tree",
+            &format!("{new_first_parent}^{{tree}}"),
+            "-p",
+            &format!("{old_merge}~"),
+            "-m",
+            "_",
+        ])
+        .trim()
+        .to_string();
+    let merged = x
+        .try_git(&[
+            "merge-tree",
+            "--allow-unrelated-histories",
+            &synthetic,
+            old_merge,
+        ])
+        .map_err(|_| ())?;
+    let tree = merged
+        .lines()
+        .next()
+        .expect("merge-tree should print a tree oid")
+        .trim()
+        .to_string();
+    let message = x
+        .git(&["log", "-1", "--format=%B", old_merge])
+        .trim()
+        .to_string();
+
+    let mut args: Vec<String> = vec![
+        "commit-tree".to_string(),
+        tree,
+        "-p".to_string(),
+        new_first_parent.to_string(),
+    ];
+    for parent in &old_parents[1..] {
+        args.push("-p".to_string());
+        args.push(map.get(parent).cloned().unwrap_or_else(|| parent.clone()));
+    }
+    args.push("-m".to_string());
+    args.push(message);
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    Ok(x.git(&arg_refs).trim().to_string())
+}
+
+/// Mint the restacked commit for a single (non-merge) commit via the observed
 /// plumbing sequence. Returns Err on a merge-tree conflict.
 fn replay_branch_commit(x: &Exec, old_tip: &str, new_parent: &str) -> Result<String, ()> {
     x.git(&["cat-file", "-p", &format!("{old_tip}~")]);
