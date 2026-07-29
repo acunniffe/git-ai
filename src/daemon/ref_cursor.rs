@@ -465,7 +465,48 @@ impl RefCursor {
             .head_expected_transition(cmd, state)
             .without_old_oid_constraint()
             .with_reflog_messages(commit_reflog_messages(&args, amend));
-        let Some(entry) = self.find_commit_head_entry(cmd, prefixes, expected)? else {
+        let entry = self.find_commit_head_entry(cmd, prefixes, expected.clone())?;
+        crate::wltrace::wltrace(
+            "ref_cursor.commit_entry",
+            cmd.worktree.as_deref().unwrap_or(Path::new("")),
+            || {
+                let cursor = cmd
+                    .worktree
+                    .as_deref()
+                    .and_then(git_dir_for_worktree)
+                    .map(|git_dir| head_key(&git_dir))
+                    .map(|key| {
+                        format!(
+                            "offset={:?} hint={:?} consumed={:?}",
+                            self.offsets.get(&key),
+                            self.command_start_hints.get(&key),
+                            self.consumed_offsets.get(&key),
+                        )
+                    })
+                    .unwrap_or_else(|| "no-key".to_string());
+                format!(
+                    "sid={} exit={} entry={} expected_new={:?} messages={:?} {cursor}",
+                    cmd.root_sid,
+                    cmd.exit_code,
+                    entry
+                        .as_ref()
+                        .map(|entry| format!(
+                            "{}->{}@{} msg={}",
+                            &entry.old[..8.min(entry.old.len())],
+                            &entry.new[..8.min(entry.new.len())],
+                            entry.start_offset,
+                            entry.message.chars().take(40).collect::<String>()
+                        ))
+                        .unwrap_or_else(|| "NONE".to_string()),
+                    expected
+                        .new_oid
+                        .as_ref()
+                        .map(|oid| &oid[..8.min(oid.len())]),
+                    expected.messages,
+                )
+            },
+        );
+        let Some(entry) = entry else {
             return Ok(());
         };
 
@@ -1223,6 +1264,21 @@ impl RefCursor {
         cmd: &mut NormalizedCommand,
         entry: CursorEntry,
     ) -> Result<(), GitAiError> {
+        crate::wltrace::wltrace(
+            "ref_cursor.consume_head_entry",
+            cmd.worktree.as_deref().unwrap_or(Path::new("")),
+            || {
+                format!(
+                    "sid={} cmd={} entry={}->{}@{} msg={}",
+                    cmd.root_sid,
+                    cmd.primary_command.as_deref().unwrap_or("unknown"),
+                    &entry.old[..8.min(entry.old.len())],
+                    &entry.new[..8.min(entry.new.len())],
+                    entry.start_offset,
+                    entry.message.chars().take(40).collect::<String>(),
+                )
+            },
+        );
         self.consume_entry(&entry)?;
         let old = entry.old.clone();
         let new = entry.new.clone();

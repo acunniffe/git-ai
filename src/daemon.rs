@@ -6113,6 +6113,16 @@ impl ActorDaemonCoordinator {
                             let repo = find_repository_in_path(&worktree)?;
                             let author = repo.effective_author_identity().formatted_or_unknown();
                             let base_opt = base.clone().filter(|b| !b.is_empty() && b != "initial");
+                            crate::wltrace::wltrace(
+                                "commit.post_commit",
+                                Path::new(cmd.worktree.as_deref().unwrap_or(Path::new(""))),
+                                || {
+                                    format!(
+                                        "sid={} base={:?} new_head={}",
+                                        cmd.root_sid, base_opt, new_head
+                                    )
+                                },
+                            );
                             let recovery_file_timestamps = Self::take_commit_file_timestamps(
                                 commit_file_timestamp_snapshots,
                                 new_head,
