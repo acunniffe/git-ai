@@ -3239,6 +3239,44 @@ impl Drop for TestRepo {
             return;
         }
 
+        // Drain any still-queued checkpoints for this repo before deleting it.
+        // With asynchronous checkpoint acknowledgement, a test whose final
+        // checkpoint is never followed by a synced read can otherwise remove
+        // the repo while the shared daemon still holds the checkpoint,
+        // producing spurious "Failed to resolve git common dir" / ENOENT
+        // daemon errors that pollute forensics. Only sync when the registry
+        // shows un-synced checkpoints, and best-effort: Drop must never panic
+        // (a panic here during unwinding would abort the process and mask the
+        // test's real failure), so skip the drain when the family key can't
+        // be resolved instead of using the panicking accessor.
+        if self.daemon_scope == DaemonTestScope::Shared
+            && self.has_active_daemon()
+            && let Some(family_key) = self
+                .daemon_family_key
+                .get()
+                .cloned()
+                .or_else(|| self.maybe_daemon_family_key_for_repo_path(&self.path))
+        {
+            let has_pending = {
+                let registry = daemon_sync_registry()
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                registry.pending_work_summary(&family_key).is_some()
+            };
+            if has_pending {
+                let repo_working_dir = self
+                    .path
+                    .canonicalize()
+                    .unwrap_or_else(|_| self.path.clone())
+                    .to_string_lossy()
+                    .to_string();
+                let _ = send_control_request(
+                    &self.daemon_control_socket_path(),
+                    &ControlRequest::SyncFamily { repo_working_dir },
+                );
+            }
+        }
+
         if self.daemon_scope == DaemonTestScope::Dedicated
             && let Some(daemon) = self.daemon_process.take()
         {
