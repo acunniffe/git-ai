@@ -1,0 +1,31 @@
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  s_a5f4b12640a58f::t_905a67241f91c5 1-3,5-7,12-223
+src/commands/checkpoint_agent/presets/amp.rs
+  s_a5f4b12640a58f::t_724abe5ff6352f 1-7,9-11,15-157,159-429
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_a5f4b12640a58f::t_b13c0d846f9af7 1-6,8-10,14-292,294-527
+src/commands/checkpoint_agent/presets/firebender.rs
+  s_a5f4b12640a58f::t_9c32dd2eac6a8b 1-7,9-13,17-116,118-455
+src/commands/checkpoint_agent/presets/pi.rs
+  s_a5f4b12640a58f::t_6eca7c7e5276fd 1-6,8-10,14-83,85-481
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  s_a5f4b12640a58f::t_36947cd2cca139 1-5,7-9,13-33,35-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "6c9696a77c71be1ac083841ead07a1da6b70a45c",
+  "prompts": {},
+  "sessions": {
+    "s_a5f4b12640a58f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cede33a-f5a5-4d2d-8694-f7b2f0278d54",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/eb0ad8dfaa68375369ace474b54d4f6f663cc5301d909550da32616fefd814c0"
+    }
+  }
+}

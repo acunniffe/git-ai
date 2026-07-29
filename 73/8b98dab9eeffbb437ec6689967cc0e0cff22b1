@@ -1,0 +1,21 @@
+tests/integration/cli_parser_rebase_args.rs
+  s_b3918a71142a3e::t_8a1a837b01a46c 1-86
+tests/integration/main.rs
+  s_b3918a71142a3e::t_08870156fbe335 43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "738b98dab9eeffbb437ec6689967cc0e0cff22b1",
+  "prompts": {},
+  "sessions": {
+    "s_b3918a71142a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de268d2e-4705-4c20-86ca-d1dc04eda164",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

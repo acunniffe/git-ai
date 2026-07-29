@@ -1,0 +1,48 @@
+src/commands/git_ai_handlers.rs
+  s_59382cac373d67::t_addca0ef2b00fe 554
+  s_59382cac373d67::t_cbb44a947662c3 561-573
+src/commands/daemon.rs
+  s_59382cac373d67::t_c5cf20c49ebdb4 855-882
+  s_59382cac373d67::t_beaa57f2f321ce 21-23
+  s_59382cac373d67::t_d065adbbee50e6 215,248-249,252-254
+  s_59382cac373d67::t_1620f344ada4be 24-26
+  s_59382cac373d67::t_dbddaeb18299d4 845-854
+  s_59382cac373d67::t_fe17d63ecd64da 216
+  s_59382cac373d67::t_ed87f163ec9db1 250-251
+  s_59382cac373d67::t_33c54563eac999 255-256
+tests/integration/checkpoint_size.rs
+  s_59382cac373d67::t_b4988affb45173 24-37,424-460
+  s_59382cac373d67::t_733ce325c503db 461
+src/daemon/telemetry_handle.rs
+  s_59382cac373d67::t_181ef8f5aeaebf 118
+tests/daemon_mode.rs
+  s_59382cac373d67::t_6a2b23eac87b30 4443-4445,4527-4530
+  s_59382cac373d67::t_92f8476d705683 4440-4441,4446,4493,4520-4526
+  s_59382cac373d67::t_cbb44a947662c3 660,662-664,669
+  s_59382cac373d67::t_913964ad73f3ae 4463-4465,4467,4473,4485,4490
+src/tokio_runtime.rs
+  s_59382cac373d67::t_211fdfcb4b76a9 9-10
+  s_59382cac373d67::t_aac3bd5eb11910 7-8,69-73,76,85-90,92-108,110-111
+  s_59382cac373d67::t_ada508924b80ad 22,54-59,61-68,91,109,112-113
+  s_59382cac373d67::t_9d776a24fb264b 75,77-84
+  s_59382cac373d67::t_fe17d63ecd64da 17,24-25
+  s_59382cac373d67::t_b1315ed0493700 60,74
+  s_59382cac373d67::t_b5d27a3d791b40 2,6,11-16,18-21
+  s_59382cac373d67::t_1a59b8afd8008e 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "2a86de9f97bdb78a58e9464930d090ea4d2e3a0c",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

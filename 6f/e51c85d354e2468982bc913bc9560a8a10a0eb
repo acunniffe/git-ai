@@ -1,0 +1,26 @@
+tests/integration/main.rs
+  f4f2b364dfcacebb 77,108,112
+tests/integration/ignore_unit.rs
+  f4f2b364dfcacebb 1-58,61-431,437-571
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "6fe51c85d354e2468982bc913bc9560a8a10a0eb",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 572,
+      "total_deletions": 542,
+      "accepted_lines": 565,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/2b9671972f1321292dfaf33d18b1d546433897099ab966bbd7f974a2802c04a4"
+    }
+  }
+}

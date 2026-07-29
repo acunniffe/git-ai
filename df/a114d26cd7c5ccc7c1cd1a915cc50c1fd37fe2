@@ -1,0 +1,66 @@
+src/daemon/control_socket.rs
+  s_3b8401a0cbe012::t_279cc917cc6091 64-68,72-78
+scripts/test_feature_tree.py
+  s_3b8401a0cbe012::t_5d56eacb7dbca5 1-141,143-156,160,162-187,212-215
+  s_3b8401a0cbe012::t_3a6b963c4f160d 142,157-159,161,188-211
+src/daemon/sqlite_ffi.rs
+  s_3b8401a0cbe012::t_168c256d46a07f 18
+  s_3b8401a0cbe012::t_0d1229500e18aa 211,215
+  s_3b8401a0cbe012::t_eadb188e62b267 1-17,19-210,212-214,216-274
+tests/integration/main.rs
+  s_3b8401a0cbe012::t_4fe1191a6da7f7 97-98
+src/commands/flush_metrics_db.rs
+  s_3b8401a0cbe012::t_ae3ee8009bf4ac 1-38
+tests/integration/telemetry_queue_e2e.rs
+  s_3b8401a0cbe012::t_12640ec282c100 1-414
+SECURITY.md
+  s_3b8401a0cbe012::t_809342a27e40d3 1-62
+src/daemon/api_client.rs
+  s_3b8401a0cbe012::t_62d16abe2f2d85 10-18
+  s_3b8401a0cbe012::t_667a36c42f4925 75,80,82-83,85
+  s_3b8401a0cbe012::t_e16099e667f708 260,264-282
+  s_3b8401a0cbe012::t_5a071aa052be03 104
+src/daemon/lifecycle.rs
+  s_3b8401a0cbe012::t_02d4f06a58bc13 225-239,241-244
+  s_3b8401a0cbe012::t_77a1ad47df7bed 240
+src/daemon/stats_persistence.rs
+  s_3b8401a0cbe012::t_54f4e426eb6712 40,62-82
+Cargo.toml
+  s_3b8401a0cbe012::t_9072bf07ec23c0 25-27
+src/main.rs
+  s_3b8401a0cbe012::t_dea94561e9b959 154
+  s_3b8401a0cbe012::t_66d23f6e5e030a 89
+src/daemon/telemetry_queue.rs
+  s_3b8401a0cbe012::t_5314fb9d22ae6b 1-255
+Cargo.lock
+  ai_agent 37,39,156,158,235,268,270,320,322,325,332,334,393,395,572,574,700,702,706,708,724,726,728,896-900
+src/daemon/telemetry_worker.rs
+  s_3b8401a0cbe012::t_7c22af3b2eb525 1,10,17,108-109,126-133,171,174,178-183,187,189-193,200-205,210,212-216,234-294,297,299-365
+  s_3b8401a0cbe012::t_7fc7e6646c1403 68-69,76-86
+src/commands/mod.rs
+  s_3b8401a0cbe012::t_ce77449ea8e942 12
+build.rs
+  s_3b8401a0cbe012::t_6495492782fd1c 1-21
+src/daemon/trace2_listener.rs
+  s_3b8401a0cbe012::t_ced8c3e8bf8383 117-118,120,125-130,142-147
+  s_3b8401a0cbe012::t_0d85a0b6a852d2 29-30,37,40-44,48-55
+  s_3b8401a0cbe012::t_a975042163c6ca 15
+src/daemon/mod.rs
+  s_3b8401a0cbe012::t_88a1af733a418b 22,24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "dfa114d26cd7c5ccc7c1cd1a915cc50c1fd37fe2",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

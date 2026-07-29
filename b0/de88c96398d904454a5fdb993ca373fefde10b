@@ -1,0 +1,26 @@
+src/authorship/pre_commit.rs
+  s_e1beca86e01012::t_4c6bc54010ab45 151-154
+src/commands/checkpoint_agent/presets/droid.rs
+  s_e1beca86e01012::t_3f41101ebf549f 112-113
+  s_e1beca86e01012::t_ab3febac515b6e 493-497
+tests/integration/bash_tool_provenance.rs
+  s_e1beca86e01012::t_4c6bc54010ab45 1735-1738
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "b0de88c96398d904454a5fdb993ca373fefde10b",
+  "prompts": {},
+  "sessions": {
+    "s_e1beca86e01012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "487d1aea-0650-42da-8d5c-193e33493c89",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/d462f374c91d125eb0c5b54a0a8b48419d591e61ed8af9f148c9b4b392298e0f"
+    }
+  }
+}

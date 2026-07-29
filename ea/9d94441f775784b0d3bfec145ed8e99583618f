@@ -1,0 +1,125 @@
+src/commands/internal.rs
+  s_a73b2a35c101af::t_7c55ad7fe2385a 7
+  s_a73b2a35c101af::t_ab42600b5880e5 356,366,381,387,402,409
+  s_a73b2a35c101af::t_0cd49bd8d9f745 424
+  s_a73b2a35c101af::t_91e53dcc16ddff 2
+  s_a73b2a35c101af::t_5cc562cb3a5f49 308
+src/core/stash.rs
+  s_a73b2a35c101af::t_1dc935e4156d5f 313-318,328-350,352,354-366,369-371,379-380,386
+  s_a73b2a35c101af::t_7d897ee8c0cabe 233-253
+src/core/working_log.rs
+  s_a73b2a35c101af::t_39c625bb84f12d 13-39
+  s_a73b2a35c101af::t_5a372714d4de1e 144-147,152
+  s_a73b2a35c101af::t_e3a00e882327ac 208,219-249
+  s_a73b2a35c101af::t_ca3012d5474155 143,148-150,153-154
+  s_a73b2a35c101af::t_9e5edb82fe731d 298-302
+  s_a73b2a35c101af::t_f5ef34e02bae5c 597-600,605-606,614-630
+src/commands/push_notes.rs
+  s_a73b2a35c101af::t_0b8725f9bdc8a2 1
+  s_a73b2a35c101af::t_e82da5d668ed34 3
+  s_a73b2a35c101af::t_8640b874c5328a 79
+src/commands/checkpoint.rs
+  s_a73b2a35c101af::t_d8703b9fce7637 11
+  s_a73b2a35c101af::t_4da0fe72698d51 1045
+  s_a73b2a35c101af::t_0ab7b3db6e2d37 1047
+  s_a73b2a35c101af::t_9acc382dadcf8f 4
+  s_a73b2a35c101af::t_30f80d3a09caa7 1060
+src/commands/post_rewrite.rs
+  s_a73b2a35c101af::t_5f86abe9da0ac3 2
+  s_a73b2a35c101af::t_8c3e5ec75af4be 67
+  s_a73b2a35c101af::t_e8c1e28cefedc0 346
+  s_a73b2a35c101af::t_ab569e9009e84e 6
+src/api/auth.rs
+  s_a73b2a35c101af::t_2dab01fb6c3426 42,45-61
+src/commands/doctor.rs
+  s_a73b2a35c101af::t_0cb0f502910bd0 324
+  s_a73b2a35c101af::t_68859b53d5e04e 245,259
+  s_a73b2a35c101af::t_c865c33b5a1d59 4
+  s_a73b2a35c101af::t_b2a07efffabd17 6
+src/daemon/trace2_listener.rs
+  s_a73b2a35c101af::t_c03fbc61d8fc87 6,14-15
+  s_a73b2a35c101af::t_511d5a5f74e319 59-64,66-75
+src/daemon/control_socket.rs
+  s_a73b2a35c101af::t_04c272f5a6a1a7 82-86,88-97
+  s_a73b2a35c101af::t_5fc9675e58d432 8,16-17
+src/core/post_commit.rs
+  s_a73b2a35c101af::t_c0dc8069133f87 232
+  s_a73b2a35c101af::t_70e532ce888638 195
+  s_a73b2a35c101af::t_ce8e6d4595b641 162
+  s_a73b2a35c101af::t_49faa04ab24586 13
+src/core/mod.rs
+  s_a73b2a35c101af::t_15564947466f67 3
+src/commands/post_commit.rs
+  s_a73b2a35c101af::t_3be6b25f44d15e 57
+  s_a73b2a35c101af::t_a02fda8b09f79c 6
+  s_a73b2a35c101af::t_f265b30dd6794a 1
+  s_a73b2a35c101af::t_8ad26fbc9325f6 207
+src/commands/search.rs
+  s_a73b2a35c101af::t_881b681102e1dd 2
+  s_a73b2a35c101af::t_fc0ac22c7b92a3 5
+  s_a73b2a35c101af::t_1c4bf6790da50a 119
+src/daemon/rewrite_worker.rs
+  s_a73b2a35c101af::t_6042fa97fe36a9 1323-1329,1331,1341,1345-1368
+  s_a73b2a35c101af::t_1b5b17086838cc 985-997,1011-1040
+  s_a73b2a35c101af::t_4cf4b9b060d608 729-732,740-741,757-764
+  s_a73b2a35c101af::t_36b4dbd4a4383c 1337-1340
+src/daemon/run.rs
+  s_a73b2a35c101af::t_8b7f92f628dcc9 57
+  s_a73b2a35c101af::t_02786b987a388b 188-190
+src/commands/fetch_notes.rs
+  s_a73b2a35c101af::t_89224e406ffc29 3
+  s_a73b2a35c101af::t_07c6ade128c800 72
+  s_a73b2a35c101af::t_60f9162cbc686d 1
+src/daemon/event_loop.rs
+  s_a73b2a35c101af::t_217b38e177e6cc 52-54
+  s_a73b2a35c101af::t_eb58b4081acee9 27
+  s_a73b2a35c101af::t_a92a9239e5960e 70-76,81-85
+  s_a73b2a35c101af::t_f9058cefe90c91 107,109-110,112,116
+  s_a73b2a35c101af::t_189c350f18dbaf 147-151
+  s_a73b2a35c101af::t_bd5e430c207ee2 111
+src/ci/mod.rs
+  s_a73b2a35c101af::t_98d98e07f8416f 11
+  s_a73b2a35c101af::t_9f8b4518892c3b 793
+src/commands/diff.rs
+  s_a73b2a35c101af::t_cb9644cc727133 255
+  s_a73b2a35c101af::t_569745eab5b909 7
+  s_a73b2a35c101af::t_5e8dd4f21c8ac4 278
+  s_a73b2a35c101af::t_9400ea6e4b2c7b 2
+src/commands/helpers.rs
+  s_a73b2a35c101af::t_6ed9c326a8e320 54
+  s_a73b2a35c101af::t_8b512eee8b8996 14
+  s_a73b2a35c101af::t_1df3d146d8b16f 5
+  s_a73b2a35c101af::t_0be5ad8668351e 3
+  s_a73b2a35c101af::t_555647fdb4279c 34
+src/lib.rs
+  s_a73b2a35c101af::t_9f2ce7918812bb 31,35
+src/core/git_binary.rs
+  s_a73b2a35c101af::t_378cbcd0fc6146 1-20,22-30
+src/commands/ci.rs
+  s_a73b2a35c101af::t_a43c151be409b8 110
+  s_a73b2a35c101af::t_80fb79200b8d03 162,186
+  s_a73b2a35c101af::t_6d5f6c3ba18465 1
+  s_a73b2a35c101af::t_54aaf09b2232fe 4
+  s_a73b2a35c101af::t_2e5cc606d2b71b 69
+src/daemon/lifecycle.rs
+  s_a73b2a35c101af::t_2b128eeb23be55 169
+  s_a73b2a35c101af::t_18828dbfacf69c 447
+  s_a73b2a35c101af::t_76fdb2e3bc8239 189-196,209,211-212,214-215
+  s_a73b2a35c101af::t_7c2b17e67992fa 446,448-464,466-469
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "ea9d94441f775784b0d3bfec145ed8e99583618f",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

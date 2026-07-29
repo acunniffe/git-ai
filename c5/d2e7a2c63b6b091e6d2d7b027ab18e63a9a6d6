@@ -1,0 +1,43 @@
+src/commands/activity_tui.rs
+  s_86cae81fcd9c97::t_b78167c8cdc4d5 622-628,638-676
+  s_86cae81fcd9c97::t_cf1f35e7dcc6ae 739-744
+  s_86cae81fcd9c97::t_226449f47dba3b 71-74,78-90,102-104,110-115,132-133,135
+  s_86cae81fcd9c97::t_81f0a9afb55581 208,212-217
+  s_86cae81fcd9c97::t_f9d7996123d289 27-51,96-101,117-123,307-311,427-428,510-513,525-529,629-637
+  s_86cae81fcd9c97::t_ec18f035c78079 4-7
+  s_86cae81fcd9c97::t_d4f80b1c1e7f61 264-272
+src/commands/activity.rs
+  s_86cae81fcd9c97::t_89bcb0346e15ec 103
+  s_86cae81fcd9c97::t_dc45c0707264bd 78-82,101-102,104-106
+  s_86cae81fcd9c97::t_9c8578939f7bf4 4-7
+  s_86cae81fcd9c97::t_f9d7996123d289 83-84,107
+src/daemon/telemetry_worker.rs
+  s_86cae81fcd9c97::t_eee7b1cdaefa97 9,11
+  s_86cae81fcd9c97::t_af71c71d083ee4 375,379,382
+src/metrics/local_stats.rs
+  s_86cae81fcd9c97::t_0209ac05eaf4e6 985
+  s_86cae81fcd9c97::t_9c87f3577c8d47 134-136,141,148
+  s_86cae81fcd9c97::t_9073f69732e639 934-984,986-987
+src/metrics/db.rs
+  s_86cae81fcd9c97::t_a65485a460d96a 41-45
+  s_86cae81fcd9c97::t_114c5f4fee242b 323-367,369-371,373-374
+  s_86cae81fcd9c97::t_dea1c72eb26629 63
+  s_86cae81fcd9c97::t_0686b2ba09c11f 12
+  s_86cae81fcd9c97::t_4857c585b53cc7 291-296,305,308-314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "c5d2e7a2c63b6b091e6d2d7b027ab18e63a9a6d6",
+  "prompts": {},
+  "sessions": {
+    "s_86cae81fcd9c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5160589a-86c2-41a5-bdcd-5daee68d43ef",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+agent-support/visualstudio/GitAiVS.sln
+  s_61bbcfe4478210::t_3f250d99a5a178 6,16-19
+agent-support/visualstudio/src/GitAiVS/GitAiPackage.cs
+  s_61bbcfe4478210::t_5b5c682a17b5d3 30
+agent-support/visualstudio/src/GitAiVS/source.extension.vsixmanifest
+  s_61bbcfe4478210::t_4e2b9a0a637272 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "29621a14663755d02786821133619c1154ed44fd",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}
