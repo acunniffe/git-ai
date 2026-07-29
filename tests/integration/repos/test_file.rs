@@ -257,121 +257,82 @@ impl<'a> TestFile<'a> {
     }
 
     pub fn assert_blame_snapshot(&self) {
-        let filename = self.file_path.to_str().expect("valid path");
-        let blame_output = self
-            .repo
-            .git_ai(&["blame", filename])
-            .expect("git-ai blame should succeed");
+        let blame_output = self.blame_output();
 
         let formatted = self.format_blame_for_snapshot(&blame_output);
         assert_debug_snapshot!(formatted);
     }
 
-    pub fn assert_lines_and_blame<T: Into<ExpectedLine>>(&mut self, lines: Vec<T>) {
-        let expected_lines: Vec<ExpectedLine> = lines.into_iter().map(|l| l.into()).collect();
-
-        // Get blame output
+    fn blame_output(&self) -> String {
         let filename = self.file_path.to_str().expect("valid path");
-        let blame_output = self
-            .repo
+        self.repo
             .git_ai(&["blame", filename])
-            .expect("git-ai blame should succeed");
+            .expect("git-ai blame should succeed")
+    }
 
-        // Parse the blame output to get (author, content) for each line
-        let actual_lines: Vec<(String, String)> = blame_output
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(|line| self.parse_blame_line(line))
-            .collect();
-
-        // Compare line counts
-        assert_eq!(
-            actual_lines.len(),
-            expected_lines.len(),
-            "Number of lines in blame output ({}) doesn't match expected ({})\nBlame output:\n{}",
-            actual_lines.len(),
-            expected_lines.len(),
-            blame_output
-        );
-
-        // Compare each line's content and authorship
-        for (i, ((actual_author, actual_content), expected_line)) in
-            actual_lines.iter().zip(&expected_lines).enumerate()
-        {
-            let line_num = i + 1;
-
-            // Check line content
-            assert_eq!(
-                actual_content.trim(),
-                expected_line.contents.trim(),
-                "Line {}: Content mismatch\nExpected: {:?}\nActual: {:?}\nFull blame output:\n{}",
-                line_num,
-                expected_line.contents,
-                actual_content,
-                blame_output
-            );
-
-            // Check authorship
-            match &expected_line.author_type {
-                AuthorType::Ai => {
-                    assert!(
-                        self.is_ai_author(actual_author),
-                        "Line {}: Expected AI author but got '{}'\nExpected: {:?}\nActual content: {:?}\nFull blame output:\n{}",
-                        line_num,
-                        actual_author,
-                        expected_line,
-                        actual_content,
-                        blame_output
-                    );
-                }
-                AuthorType::Human | AuthorType::UnattributedHuman => {
-                    assert!(
-                        !self.is_ai_author(actual_author),
-                        "Line {}: Expected Human author but got AI author '{}'\nExpected: {:?}\nActual content: {:?}\nFull blame output:\n{}",
-                        line_num,
-                        actual_author,
-                        expected_line,
-                        actual_content,
-                        blame_output
-                    );
-                }
-            }
-        }
+    pub fn assert_lines_and_blame<T: Into<ExpectedLine>>(&mut self, lines: Vec<T>) {
+        self.assert_lines_with_blame(lines, Self::parse_blame_lines, "lines in blame output");
     }
 
     /// Assert only committed lines (filters out uncommitted lines)
     /// Useful for partial staging tests where some lines aren't committed yet
     pub fn assert_committed_lines<T: Into<ExpectedLine>>(&mut self, lines: Vec<T>) {
+        self.assert_lines_with_blame(lines, Self::parse_committed_blame_lines, "committed lines");
+    }
+
+    fn assert_lines_with_blame<T: Into<ExpectedLine>>(
+        &mut self,
+        lines: Vec<T>,
+        select_lines: fn(&str) -> Vec<(String, String)>,
+        line_description: &str,
+    ) {
         let expected_lines: Vec<ExpectedLine> = lines.into_iter().map(|l| l.into()).collect();
+        let blame_output = self.blame_output();
+        let actual_lines = select_lines(&blame_output);
 
-        // Get blame output
-        let filename = self.file_path.to_str().expect("valid path");
-        let blame_output = self
-            .repo
-            .git_ai(&["blame", filename])
-            .expect("git-ai blame should succeed");
+        self.assert_blame_lines(
+            &actual_lines,
+            &expected_lines,
+            &blame_output,
+            line_description,
+        );
+    }
 
-        // Parse the blame output and filter out uncommitted lines
-        let committed_lines: Vec<(String, String)> = blame_output
+    fn parse_blame_lines(blame_output: &str) -> Vec<(String, String)> {
+        blame_output
             .lines()
             .filter(|line| !line.trim().is_empty())
-            .map(|line| self.parse_blame_line(line))
-            .filter(|(author, _)| author != "Not Committed Yet")
-            .collect();
+            .map(Self::parse_blame_line_static)
+            .collect()
+    }
 
-        // Compare line counts
+    fn parse_committed_blame_lines(blame_output: &str) -> Vec<(String, String)> {
+        Self::parse_blame_lines(blame_output)
+            .into_iter()
+            .filter(|(author, _)| author != "Not Committed Yet")
+            .collect()
+    }
+
+    fn assert_blame_lines(
+        &self,
+        actual_lines: &[(String, String)],
+        expected_lines: &[ExpectedLine],
+        blame_output: &str,
+        line_description: &str,
+    ) {
         assert_eq!(
-            committed_lines.len(),
+            actual_lines.len(),
             expected_lines.len(),
-            "Number of committed lines ({}) doesn't match expected ({})\nBlame output:\n{}",
-            committed_lines.len(),
+            "Number of {} ({}) doesn't match expected ({})\nBlame output:\n{}",
+            line_description,
+            actual_lines.len(),
             expected_lines.len(),
             blame_output
         );
 
         // Compare each line's content and authorship
         for (i, ((actual_author, actual_content), expected_line)) in
-            committed_lines.iter().zip(&expected_lines).enumerate()
+            actual_lines.iter().zip(expected_lines).enumerate()
         {
             let line_num = i + 1;
 
