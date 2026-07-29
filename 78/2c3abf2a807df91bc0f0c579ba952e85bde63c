@@ -1,0 +1,55 @@
+src/authorship/virtual_attribution.rs
+  157d967 36-39,436-438,1360-1362
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.19",
+  "base_commit_sha": "782c3abf2a807df91bc0f0c579ba952e85bde63c",
+  "prompts": {
+    "157d967": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8b583e47-cd1d-4dc0-a321-9d4eb0fb03a1",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@virtual_attribution.rs (447-450) do this for every Virtual Attribution factory method. default to making blame_start_commit the base",
+          "timestamp": "2025-11-13T15:03:54.005Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll read the virtual attribution file to find all factory methods that need this pattern applied.",
+          "timestamp": "2025-11-13T15:04:00.221Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/virtual_attribution.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I'll find all the factory methods that need this pattern applied. Let me search for methods that use `blame_start_commit`.",
+          "timestamp": "2025-11-13T15:04:14.699Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "output_mode": "content",
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/virtual_attribution.rs",
+            "pattern": "blame_start_commit"
+          }
+        }
+      ],
+      "total_additions": 18,
+      "total_deletions": 1,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}

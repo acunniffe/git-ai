@@ -1,0 +1,46 @@
+src/authorship/stats.rs
+  s_281104f69d513f::t_3f1116865b28ab 382,404,560,578
+tests/integration/eol_attribution.rs
+  s_281104f69d513f::t_6db0e5a83dcdaf 1-8,10-34,60-143,175
+  s_281104f69d513f::t_e5c220a2e81b85 9,144-174
+  s_281104f69d513f::t_282b7f7f59b500 35-59
+src/authorship/range_authorship.rs
+  s_281104f69d513f::t_3cd3dfa4b0bd00 351,353,358-359,362-363
+src/authorship/diff_ai_accepted.rs
+  s_281104f69d513f::t_df88305b785faa 22,24-33
+src/authorship/post_commit.rs
+  s_281104f69d513f::t_b04a0ea81e612c 229-233
+src/authorship/attribution_tracker.rs
+  s_281104f69d513f::t_a545c5341ccfde 758-759,763-769,783-787,791,797
+  s_281104f69d513f::t_37ad474c3591cb 2873-2894
+  s_281104f69d513f::t_45a4443a45c771 223-287,292-320,334-341,343-344,354-359,364-373,381-384,391-408
+  s_281104f69d513f::t_16563eef3f17bd 374-380,385-390
+  s_281104f69d513f::t_ff54bfc84554ee 291,321-333,342,345-353,360-363,760-762,772-773,788
+  s_281104f69d513f::t_fef4fd6b13c7bc 288-290
+src/commands/diff.rs
+  s_281104f69d513f::t_9d1d9ff6d6479a 489
+  s_281104f69d513f::t_ddb1a97feb0e5b 490,516-545,549,552-557,559-564,567-570,573,575-576,587,595,603,605,609,614-618,623,625-627,633-635,641,644-657,664-665,669-723,736-758
+  s_281104f69d513f::t_7b7a99fb8f326d 558,571,624,632,640
+  s_281104f69d513f::t_a795c2fda8ea58 6
+  s_281104f69d513f::t_baf3d5436b7de4 666-668
+  s_281104f69d513f::t_b5b8015daeeddd 628-630,636-638
+  s_281104f69d513f::t_f6a18216a8a570 484-488,491-492
+  s_281104f69d513f::t_6533a29b86bac9 724-735
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "4698246d6088b0a162d799e00a7354ef7de924ec",
+  "prompts": {},
+  "logical_commit_id": "4698246d6088b0a162d799e00a7354ef7de924ec",
+  "sessions": {
+    "s_281104f69d513f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e1c5c-cf3b-72a2-9202-cd95fd084346",
+        "model": "gpt-5.5"
+      },
+      "human_author": "peckfly <31184030+peckfly@users.noreply.github.com>"
+    }
+  }
+}

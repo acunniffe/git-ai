@@ -1,0 +1,22 @@
+tests/integration/main.rs
+  s_5fa6126148434e::t_59f35be9678a46 109
+tests/integration/rebase_empty_mapping.rs
+  s_5fa6126148434e::t_f6f4924bf4abf5 12,20-21,33,50,82,88
+  s_5fa6126148434e::t_59f35be9678a46 1-11,13-19,22-32,34-49,51-81,83-87,89-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "5fdd93a5f38d1645e46615ef904827316f55e595",
+  "prompts": {},
+  "sessions": {
+    "s_5fa6126148434e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7657-7426-7941-ad7b-e5dab741b58d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

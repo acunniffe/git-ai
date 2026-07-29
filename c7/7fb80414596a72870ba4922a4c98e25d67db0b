@@ -1,0 +1,23 @@
+src/git/refs.rs
+  98a4a399c94290b2 585-589,591-592,599-600,604-605,609-610
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "c77fb80414596a72870ba4922a4c98e25d67db0b",
+  "prompts": {
+    "98a4a399c94290b2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "745e3696-25dc-4021-ba4c-7e66bcaa5a1e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 43,
+      "total_deletions": 29,
+      "accepted_lines": 13,
+      "overriden_lines": 2
+    }
+  }
+}

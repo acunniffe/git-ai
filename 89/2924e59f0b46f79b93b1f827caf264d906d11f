@@ -1,0 +1,25 @@
+src/auth/credentials.rs
+  s_59382cac373d67::t_5fe129a26db797 3-5,110-116,127-133
+src/authorship/background_agent.rs
+  s_59382cac373d67::t_517f1c11d783d4 10-21,94,193-206
+  s_59382cac373d67::t_52fc28b6900897 68
+src/auth/credential_backend.rs
+  s_59382cac373d67::t_35737f1087d27a 4-5,137-143,180-184
+  s_59382cac373d67::t_6e24f372d08137 406-436
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "892924e59f0b46f79b93b1f827caf264d906d11f",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

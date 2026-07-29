@@ -1,0 +1,58 @@
+tests/integration/fuzzer/operations.rs
+  s_af2d349a5e032c::t_6575c4dba813bd 9-10
+  s_af2d349a5e032c::t_39bd84d1da28e2 6
+src/commands/blame.rs
+  s_af2d349a5e032c::t_1f9e7e1f9ad25a 1110-1111,1119
+  s_af2d349a5e032c::t_bc84570cae08d0 814
+  s_af2d349a5e032c::t_3eee8f181e2909 57-59
+  s_af2d349a5e032c::t_3ecb0eb830b2a2 743
+  s_af2d349a5e032c::t_80421f2dbb9fd8 850,866
+  s_af2d349a5e032c::t_a4eabd3bf59cc5 813,815-816
+  s_af2d349a5e032c::t_668e83731c98da 910,926
+src/authorship/rewrite_reset.rs
+  s_af2d349a5e032c::t_6cc2b198321b30 50-53,56-57
+  s_af2d349a5e032c::t_1f50f6501556be 78-79,82,84
+tests/integration/repos/test_repo.rs
+  s_af2d349a5e032c::t_ff98876cbaca47 897
+src/daemon.rs
+  s_af2d349a5e032c::t_68c9921e76c871 5334
+  s_af2d349a5e032c::t_b76ff431c46f45 3775-3786,3788-3796,3798-3804
+  s_af2d349a5e032c::t_523c2b4836d491 3787,3797
+  s_af2d349a5e032c::t_7cb7fbc0f5f948 4411-4416
+  s_af2d349a5e032c::t_38676b6ce7ade5 5589
+tests/integration/rewrite_ops_attribution.rs
+  s_af2d349a5e032c::t_1126f56b93c4e6 733-769,771-808,932-934
+  s_af2d349a5e032c::t_7d6ec1fccc5dca 770,809-829,835-901,904-931
+  s_af2d349a5e032c::t_26b2063a933fcf 447-452,454-455
+  s_af2d349a5e032c::t_bb0d50b94eb75c 491-495
+  s_af2d349a5e032c::t_229d6cb18ac5a2 458,463-468,486
+  s_af2d349a5e032c::t_f5ea986d0d5bed 470-471,474,476
+  s_af2d349a5e032c::t_d70ad78494ad49 456,487
+  s_af2d349a5e032c::t_fde82b0fa90913 653-732,935-956,958-964,966-989,991-1010,1013-1016,1019,1022-1026,1028-1029,1031-1062,1064-1065,1067-1075,1085,1087-1095,1099-1102,1104-1105,1112,1114-1120,1122-1158,1164-1184
+  s_af2d349a5e032c::t_ab1e5cb0f15b0d 1076-1084,1086,1096-1098,1103,1106-1111,1113
+  s_af2d349a5e032c::t_b10a2cf1576e5b 500-518
+  s_af2d349a5e032c::t_523c2b4836d491 65,84-85,123-127,130-134,163-164,323-327,414,459-462,481-484,497,519,547,577,643-644,830-834,902-903,957,965,990,1011-1012,1017-1018,1020-1021,1027,1030,1063,1066,1121,1159-1163
+  s_af2d349a5e032c::t_463dd7eb6a2fc8 457,469,472-473,475,477-480,485
+src/daemon/checkpoint.rs
+  s_af2d349a5e032c::t_08a925129d803d 203
+  s_af2d349a5e032c::t_f4151d9b4df9cf 658,663,672-675
+  s_af2d349a5e032c::t_523c2b4836d491 664-666
+  s_af2d349a5e032c::t_f9c991765a11b4 659-662,667-671
+  s_af2d349a5e032c::t_7ba3f1eaeb6471 769
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "8fc41972dc8c0e45b312ccf57db8a1fb3d939315",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

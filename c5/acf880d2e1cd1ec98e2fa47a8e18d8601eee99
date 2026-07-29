@@ -1,0 +1,55 @@
+tests/repos/test_repo.rs
+  2dd43ecd79b84e7a 35,51,55,59,109,212-222,224-229,237-238,730-752,755-772,774,802,844-845,848-853,862-863,866-873,875-882,884,887,892-900,942,944,946-949,953-954,1030-1031,1125-1133,1138-1143,1145-1158,1163-1165,1167-1176,1512,1562,1565,1579,1599,1601,1609,1612,1618,1645,1647,1659,1673-1675,1704,1706,1819-1827
+src/authorship/internal_db.rs
+  2dd43ecd79b84e7a 80,89,522-526,533-536,540-568
+DAEMON_MODE_SPEC.md
+  2dd43ecd79b84e7a 38,159-161,163-170,201-206,219,544,667-671,680,683-684,692-706,711,718-736,741,750-756,775-781,816-840,843-848,850-858
+src/commands/git_handlers.rs
+  2dd43ecd79b84e7a 115-121
+tests/repos/mod.rs
+  2dd43ecd79b84e7a 63
+DAEMON_PROJECT.md
+  2dd43ecd79b84e7a 1-16,18-25,30-31,39-40,47-48,55-56,64-65,71-72,79-80,84-85,91-92,98-100
+src/commands/start.rs
+  2dd43ecd79b84e7a 1,3-5
+src/commands/checkpoint.rs
+  2dd43ecd79b84e7a 15-16,19-20,28,30-31,33,58-65,163,165,270,276-293,470-487,491-494,586-716,718-792,799-874
+src/commands/git_hook_handlers.rs
+  2dd43ecd79b84e7a 2576,2662,2665
+src/commands/daemon_echo.rs
+  2dd43ecd79b84e7a 1-2,7,9,11,13,26-32,34-35,37-43
+src/commands/daemon_status.rs
+  2dd43ecd79b84e7a 1-2,4-8
+src/commands/mod.rs
+  2dd43ecd79b84e7a 7
+src/commands/stop.rs
+  2dd43ecd79b84e7a 1,3-4
+src/config.rs
+  2dd43ecd79b84e7a 161-165,182,872-875,914-915
+src/feature_flags.rs
+  2dd43ecd79b84e7a 60,129,138,235,244,255,266
+Cargo.toml
+  2dd43ecd79b84e7a 19-21,31
+src/commands/git_ai_handlers.rs
+  2dd43ecd79b84e7a 73-76,79-100,235-238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "c5acf880d2e1cd1ec98e2fa47a8e18d8601eee99",
+  "prompts": {
+    "2dd43ecd79b84e7a": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1772760185194397000",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1040,
+      "total_deletions": 776,
+      "accepted_lines": 856,
+      "overriden_lines": 24
+    }
+  }
+}

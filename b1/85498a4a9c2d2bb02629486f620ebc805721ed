@@ -1,0 +1,215 @@
+install.ps1
+  f1efa4fa23e3dff8 52-57,226-234,237-239,242,272-325,345-350
+.github/workflows/release.yml
+  f1efa4fa23e3dff8 295,304-305,315-325,334,350-351,355-358,382
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "b185498a4a9c2d2bb02629486f620ebc805721ed",
+  "prompts": {
+    "f1efa4fa23e3dff8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6a51024d-cdf4-4673-aa83-5a10caa72d92",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@.github/workflows/release.yml:294-302 update this so we also share a pinned version of the powershell script @install.ps1",
+          "timestamp": "2025-12-31T14:01:26.295Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 280,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/.github/workflows/release.yml"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/install.sh"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I can see the pattern. The shell script has placeholders that get replaced during release. I need to add similar placeholders to `install.ps1` and update the workflow to generate a pinned version.\n\nLet me update both files:",
+          "timestamp": "2025-12-31T14:01:42.551Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/install.ps1"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/install.ps1"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I need to add checksum verification to `install.ps1` and update the workflow. Let me first read the current state of the download section:",
+          "timestamp": "2025-12-31T14:01:55.359Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 240,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/install.ps1"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll add the checksum verification function and integrate it into the download flow:",
+          "timestamp": "2025-12-31T14:01:59.299Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/install.ps1"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me add the checksum verification call after the download succeeds:",
+          "timestamp": "2025-12-31T14:02:14.866Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/install.ps1"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me update the release workflow to generate the version-pinned PowerShell script:",
+          "timestamp": "2025-12-31T14:02:23.777Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/.github/workflows/release.yml"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me update the attestation and release file lists to include `install.ps1`:",
+          "timestamp": "2025-12-31T14:02:41.671Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/.github/workflows/release.yml"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/.github/workflows/release.yml"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/.github/workflows/release.yml"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me verify the line numbers in `install.ps1` are correct for the awk command:",
+          "timestamp": "2025-12-31T14:03:01.095Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 25,
+            "offset": 48,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/install.ps1"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-n": "true",
+            "path": "/Users/aidancunniffe/Desktop/git-ai/install.ps1",
+            "pattern": "__VERSION_PLACEHOLDER__|__CHECKSUMS_PLACEHOLDER__"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I need to update the awk command with the correct line numbers:",
+          "timestamp": "2025-12-31T14:03:09.842Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/.github/workflows/release.yml"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me verify the final changes:",
+          "timestamp": "2025-12-31T14:03:18.499Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 290,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/.github/workflows/release.yml"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 220,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/install.ps1"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 80,
+            "offset": 268,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/install.ps1"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The changes are complete. Here's a summary of what was updated:\n\n**`install.ps1`** - Added version pinning and checksum verification:\n- Added `$Repo` placeholder (line 54) with fallback to `acunniffe/git-ai`\n- Added `$PinnedVersion` placeholder (line 228) with fallback to environment variable or `latest`\n- Added `$EmbeddedChecksums` placeholder (line 233) for SHA256 checksums\n- Added `Verify-Checksum` function that parses pipe-separated checksums and verifies the downloaded binary\n- Integrated checksum verification into the download flow\n\n**`.github/workflows/release.yml`** - Updated to generate and publish the pinned PowerShell script:\n- Renamed step to \"Generate version-pinned install scripts\" (plural)\n- Added awk command to replace placeholders in `install.ps1` at lines 54, 228, and 233\n- Added `install.ps1` to the attestation subject-path\n- Added `install.ps1` to the release files\n- Updated release body with Windows/PowerShell installation instructions\n\nThe pinned `install.ps1` will now be included in each release with:\n- The repository hardcoded\n- The version pinned to the release tag\n- SHA256 checksums embedded for verification",
+          "timestamp": "2025-12-31T14:03:36.911Z"
+        }
+      ],
+      "total_additions": 107,
+      "total_deletions": 9,
+      "accepted_lines": 102,
+      "overriden_lines": 0
+    }
+  }
+}

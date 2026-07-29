@@ -1,0 +1,28 @@
+tests/integration/main.rs
+  f4f2b364dfcacebb 79,112,116,123
+tests/integration/rebase_authorship_unit.rs
+  f4f2b364dfcacebb 1,3-4,6-7,9,12-142,145-228,231-253,255-297,300-374,376-432,435-553,556-573,576-579,581-582,585-639,641-642,645-765,768-771,773-774,777-863,865-866,869-924,927-930,932-933,936-983,985-986,989-1064,1069-1072,1074-1079,1081-1085,1087-1091,1093-1146,1148,1152-1212,1217-1220,1222-1226,1229-1280,1283-1316,1318-1319,1322-1370,1372-1403,1405-1440,1442-1475,1477-1510,1512-1548
+src/authorship/rebase_authorship.rs
+  f4f2b364dfcacebb 20,31,2208,2326,3332,3569,4117,4527
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "ad0395deec519e76d368880eae241f33a6d17712",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 3792,
+      "total_deletions": 4436,
+      "accepted_lines": 1487,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/7286bd943268601b881ef3440dd59c237fd8220956f846c68037c29f0f0fab8d"
+    }
+  }
+}
