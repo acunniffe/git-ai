@@ -916,7 +916,6 @@ mod tests {
             ("HEAD".to_string(), "old-head".to_string()),
             ("refs/heads/main".to_string(), "old-head".to_string()),
         ]);
-
         let result = analyzer
             .analyze(&cmd, AnalysisView { refs: &refs })
             .unwrap();
