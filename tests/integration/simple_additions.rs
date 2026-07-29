@@ -1974,7 +1974,11 @@ fn test_author_config_cli_set_get_unset() {
 
 #[test]
 fn test_author_config_overrides_session_and_known_human_records() {
-    let mut repo = TestRepo::new();
+    // The author override must be visible to the daemon, which reads
+    // config.json from its own home. A shared pool daemon's config is
+    // rewritten by every concurrent test (clobbering the author key), so
+    // this test needs a dedicated daemon.
+    let mut repo = TestRepo::new_dedicated_daemon();
     repo.patch_git_ai_config(|patch| {
         patch.author = Some(AuthorConfig {
             name: Some("Config User".to_string()),
@@ -2023,7 +2027,8 @@ fn test_author_config_overrides_session_and_known_human_records() {
 
 #[test]
 fn test_author_config_partial_overrides_fall_back_to_git_committer_identity() {
-    let mut name_repo = TestRepo::new();
+    // Dedicated daemons: see test_author_config_overrides_session_and_known_human_records.
+    let mut name_repo = TestRepo::new_dedicated_daemon();
     name_repo.patch_git_ai_config(|patch| {
         patch.author = Some(AuthorConfig {
             name: Some("Config Name".to_string()),
@@ -2057,7 +2062,7 @@ fn test_author_config_partial_overrides_fall_back_to_git_committer_identity() {
         );
     }
 
-    let mut email_repo = TestRepo::new();
+    let mut email_repo = TestRepo::new_dedicated_daemon();
     email_repo.patch_git_ai_config(|patch| {
         patch.author = Some(AuthorConfig {
             name: None,
