@@ -311,6 +311,8 @@ pub fn cherry_pick(
     checkpoint_ai(model, registry, repo, &chars, op_log);
     repo.git(&["add", "."]).unwrap();
     let side_added_lines = staged_added_lines(repo, &model.filename, Some("HEAD"));
+    // Ensure the AI checkpoint is durable before creating the source commit.
+    repo.sync_daemon_force();
     repo.git(&["commit", "-m", "cherry-pick: side commit"])
         .unwrap();
     model.apply_edge_recovery_for_added_lines(registry, &side_added_lines);
@@ -319,6 +321,9 @@ pub fn cherry_pick(
 
     // Go back to main
     repo.git(&["checkout", &main_branch]).unwrap();
+    // The side commit is the source of the cherry-pick. Drain the source
+    // commit and checkout before asking the rewrite handler to consume it.
+    repo.sync_daemon_force();
     model.sync_from_disk(repo, registry);
 
     // Cherry-pick the side commit
