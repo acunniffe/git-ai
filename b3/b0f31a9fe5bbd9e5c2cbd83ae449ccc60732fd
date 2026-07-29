@@ -1,0 +1,29 @@
+tests/integration/github_copilot_integration.rs
+  s_122f961aa46a22::t_2d26fe854ce772 52
+tests/integration/rebase_determinism.rs
+  s_122f961aa46a22::t_ed1a67018e1397 185
+  s_122f961aa46a22::t_2d0759ebed5380 231
+  s_122f961aa46a22::t_059101b77a1dfa 432
+tests/integration/rebase_production_failures.rs
+  s_122f961aa46a22::t_07b9425653812a 278
+tests/integration/checkout_switch.rs
+  s_122f961aa46a22::t_ecacdcfbf85391 429
+tests/integration/rebase.rs
+  s_122f961aa46a22::t_73da39922614e2 3034
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "b3b0f31a9fe5bbd9e5c2cbd83ae449ccc60732fd",
+  "prompts": {},
+  "sessions": {
+    "s_122f961aa46a22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c99dd480-07a1-4da6-8ad5-4bc2483187aa",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

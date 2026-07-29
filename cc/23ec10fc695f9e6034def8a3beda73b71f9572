@@ -1,0 +1,45 @@
+src/api/bundle.rs
+  8c2ee1e46cb672f6 1-23,25-66
+src/main.rs
+  8c2ee1e46cb672f6 1
+src/config.rs
+  8c2ee1e46cb672f6 27,80-81,219-223,349-355,369,387,565,667
+src/api/mod.rs
+  8c2ee1e46cb672f6 1-7
+src/lib.rs
+  8c2ee1e46cb672f6 1
+src/authorship/internal_db.rs
+  8c2ee1e46cb672f6 102-120
+src/authorship/prompt_utils.rs
+  8c2ee1e46cb672f6 1-142
+src/commands/git_ai_handlers.rs
+  8c2ee1e46cb672f6 101-103,141-142
+src/commands/mod.rs
+  8c2ee1e46cb672f6 12
+src/api/client.rs
+  8c2ee1e46cb672f6 1-143
+src/commands/share.rs
+  8c2ee1e46cb672f6 1-108
+src/api/types.rs
+  8c2ee1e46cb672f6 1-65,67-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "cc23ec10fc695f9e6034def8a3beda73b71f9572",
+  "prompts": {
+    "8c2ee1e46cb672f6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f4bd172c-21fb-4d1f-a313-6dbceaa3bf4a",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 966,
+      "total_deletions": 356,
+      "accepted_lines": 594,
+      "overriden_lines": 2
+    }
+  }
+}

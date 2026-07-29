@@ -1,0 +1,19 @@
+docs/trace2-rewrite-fuzzer-spec.md
+  s_f00ef7c0f45b07::t_d04c125b16b6fd 1-909
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "01726b49838ec98b6cc797b6de164eb85cf9e8da",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

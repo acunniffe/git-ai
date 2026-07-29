@@ -1,0 +1,56 @@
+src/feature_flags.rs
+  s_4d604bdd40c765::t_13fd880e243b21 162-172,178,184-187,195,207-225
+  s_4d604bdd40c765::t_330bf27ec5f93b 85,139,147,234,242,252,259
+src/authorship/post_commit.rs
+  s_4d604bdd40c765::t_9c8d9871872f24 829-868
+  s_4d604bdd40c765::t_3db4b10f5d664b 957-1011
+  s_4d604bdd40c765::t_9e6d9e733215fa 725-730,732-736,743,768-773,775-780,782-786,788-794,813-815,820-823,825
+src/authorship/rewrite_revert.rs
+  s_4d604bdd40c765::t_ba116f1f3e2f7d 27
+  s_4d604bdd40c765::t_8090970af6cbdd 9,28-30,32,43,92,102,115-117,124,161,213-217,223
+src/authorship/rewrite.rs
+  s_4d604bdd40c765::t_5ec1624e7876c4 214-218,257-258,260-261,305,345,348
+  s_4d604bdd40c765::t_c4e4e950c6a89e 1104-1141
+  s_4d604bdd40c765::t_3b1326d4b989ff 180,198
+  s_4d604bdd40c765::t_90062c0dc6f2e3 33-129,147,151-154,164-179,183,188-190
+src/metrics/mod.rs
+  s_4d604bdd40c765::t_84ca5b832372ab 19
+src/metrics/types.rs
+  s_4d604bdd40c765::t_492a7a62891734 25,201
+src/metrics/events.rs
+  s_4d604bdd40c765::t_6f4fa56c37588f 555-556,1081
+  s_4d604bdd40c765::t_d13cb3595bccc6 1041-1080,1082-1087
+  s_4d604bdd40c765::t_26ab35a3a6efa9 308-554,557-585
+src/daemon.rs
+  s_4d604bdd40c765::t_2a0eb87dcaa04d 1423-1425
+  s_4d604bdd40c765::t_f9eeef680f3753 59
+  s_4d604bdd40c765::t_f223b8f073ee2f 4092-4093,4107-4110,4130-4145,4151-4154
+  s_4d604bdd40c765::t_374e26addbdd28 1439,1442,1449,1499-1500,1517-1526
+  s_4d604bdd40c765::t_9c2ee56d4b39c1 4817-4818,4820-4823,4825-4828
+  s_4d604bdd40c765::t_6f4fa56c37588f 4094-4099
+  s_4d604bdd40c765::t_e89ec41e485d69 4693-4700
+  s_4d604bdd40c765::t_45bb73b3f52fb1 4605,4613-4616,4720-4721,4729-4732
+tests/integration/performance.rs
+  s_4d604bdd40c765::t_fd0550acb40427 22
+src/daemon/rewrite_metrics.rs
+  s_4d604bdd40c765::t_1071b2fa13f070 11,193-194
+  s_4d604bdd40c765::t_e2e5cf35cd8886 1-10,12-18,20-30,35-126,132-192,195-211,217-255
+  s_4d604bdd40c765::t_5e6959f37c2985 19
+  s_4d604bdd40c765::t_6f4fa56c37588f 31-34,127-131,212-216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "6742223c8852c9b457dfecd234dca993e68a464f",
+  "prompts": {},
+  "sessions": {
+    "s_4d604bdd40c765": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee61a-3160-7480-af4b-dd94e5be48f4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

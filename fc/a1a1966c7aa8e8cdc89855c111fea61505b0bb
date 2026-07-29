@@ -1,0 +1,19 @@
+src/commands/install_hooks.rs
+  423d0b9 1183
+agent-support/vscode/src/extension.ts
+  be30ab0 2
+src/utils.rs
+  7e5320c 3
+src/commands/git_ai_handlers.rs
+  bc49de0 106
+src/observability/mod.rs
+  f35143d 183
+src/commands/hooks/push_hooks.rs
+  35eb637 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.17",
+  "base_commit_sha": "fca1a1966c7aa8e8cdc89855c111fea61505b0bb",
+  "prompts": {}
+}

@@ -1,0 +1,24 @@
+src/daemon/ref_cursor.rs
+  s_c4caee38248f54::t_dcb27cdba02680 2327-2330,3532-3552
+tests/integration/cold_trace2_repo.rs
+  s_c4caee38248f54::t_dcb27cdba02680 167-185,700
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.12",
+  "base_commit_sha": "93007cd06fbacd356aadacfda12443c96ec7801b",
+  "prompts": {},
+  "logical_commit_id": "93007cd06fbacd356aadacfda12443c96ec7801b",
+  "sessions": {
+    "s_c4caee38248f54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f461b-b0b9-7d71-96af-cd9c67e2fcb7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "peckfly <31184030+peckfly@users.noreply.github.com>",
+      "total_additions": 45,
+      "total_deletions": 1
+    }
+  }
+}

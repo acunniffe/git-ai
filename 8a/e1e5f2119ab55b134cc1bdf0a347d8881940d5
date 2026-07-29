@@ -1,0 +1,36 @@
+src/daemon/transcript_worker.rs
+  s_395f5898107085::t_5d074443045ab4 215-220,229-234,236-242,252
+  s_395f5898107085::t_80ac6779c183d3 305
+  s_395f5898107085::t_bc76c11ac466c7 494
+  s_395f5898107085::t_2016a619895544 440
+  s_395f5898107085::t_abf787e1b83a09 227-228,243-251
+  s_395f5898107085::t_67516e70ac5bc4 466-493,495-507
+  s_395f5898107085::t_7c42ca380515dd 14-15,17
+  s_395f5898107085::t_bff5564171082e 235
+  s_395f5898107085::t_06eb6f9d106279 285-290,299-304,306-309,319
+  s_395f5898107085::t_9f75f9288aee0e 297-298,310-318
+  s_395f5898107085::t_58be8fee4a0b7a 465
+src/transcripts/agents/copilot_otel.rs
+  s_395f5898107085::t_b736416559dea9 383,414,491,515,570
+src/daemon.rs
+  s_395f5898107085::t_b736416559dea9 7661-7664
+src/transcripts/watermark.rs
+  s_395f5898107085::t_ab5d1c9b798a7f 71-80
+  s_395f5898107085::t_b736416559dea9 68,248-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "8ae1e5f2119ab55b134cc1bdf0a347d8881940d5",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

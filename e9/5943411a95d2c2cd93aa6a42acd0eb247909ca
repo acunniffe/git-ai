@@ -1,0 +1,23 @@
+agent-support/opencode/git-ai.ts
+  d71f503ed96df010 60-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "e95943411a95d2c2cd93aa6a42acd0eb247909ca",
+  "prompts": {
+    "d71f503ed96df010": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1af37cd9-e8c2-450f-a800-fb1e639e27d7",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 5,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
