@@ -1,0 +1,161 @@
+src/utils.rs
+  e65652e 115
+src/authorship/post_commit.rs
+  e65652e 9,405-406,414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "09d57b273f22b94868cc84efbcdee11e2987a0ed",
+  "prompts": {
+    "e65652e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d64afd63-c778-45f8-969a-b7548dba0be2",
+        "model": "gpt-5-codex"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Hey so in large repos collect_unstaged_hunks is super slow as it requires a full status call\n\nCan you think of any alternative ways of getting unstaged hunks so we can filter them out? \n\nOr should we try to figure out a way to invert the logic so we're filtering what we know to be staged? \n\nthis is from chromium \n\ntimer: proxied_command took 2.265062208s\ntimer: working_log_for_base_commit took 13.833µs\ntimer: filter_untracked_files took 885.434333ms\ntimer: collect_committed_hunks took 1.182901417s\ntimer: collect_unstaged_hunks took 5.09636s\ntimer: convert_authorship_log_to_commit_coordinates took 2.875µs\ntimer: filter_to_committed_lines took 3.542µs\ntimer: notes_add took 14.087833ms\nyou  ████████████████████████████████████████ ai\n     100%                                   0%\ntimer: stats_for_commit_stats took 42.496834ms\ntimer: post_command_hooks took 7.289129208s"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you analyze this performance issue and explore alternatives. Let me first understand the current implementation."
+        },
+        {
+          "type": "assistant",
+          "text": "Looking at the code, I can see the performance issue clearly. The `collect_unstaged_hunks` function calls `repo.status()` on line 407, which in large repos like Chromium is extremely slow (5+ seconds) because it:\n\n1. Scans the entire working tree for untracked files\n2. Checks submodules\n3. Does extensive filesystem traversal\n\nHowever, you only need **unstaged changes in tracked files**, not a full status report.\n\nLet me search for how status is implemented to see if there's a faster alternative:"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I can see the issue. The `status()` method calls `git status --porcelain=v2` which scans the entire working tree, including looking for untracked files. This is very slow in large repos.\n\n## Analysis\n\nFor `collect_unstaged_hunks`, you only need **unstaged changes in tracked files**, not the full status report with untracked files. Looking at your timing data from Chromium:\n\n```\ntimer: collect_committed_hunks took 1.182901417s\ntimer: collect_unstaged_hunks took 5.09636s       ← The bottleneck\ntimer: convert_authorship_log_to_commit_coordinates took 2.875µs\n```\n\nThe `collect_unstaged_hunks` is 4x slower than `collect_committed_hunks`, which doesn't make sense since they're doing similar diff operations. The difference is the `repo.status()` call.\n\n## Solutions\n\nI have a few questions to understand the best approach:\n\n1. **Quick win: Use `git diff-files` instead of full status?**\n   - a) Yes - Replace `status()` with a faster method that only checks tracked files (recommended - likely 10x faster)\n   - b) No - I need the full status information including untracked files\n\n2. **Do you ever have unstaged changes after a commit in your workflow?**\n   - a) Rarely - I usually commit everything (we could add a fast-path check for this common case)\n   - b) Commonly - Often have unstaged changes remaining after partial commits\n\n3. **Alternative approach: Can we avoid needing unstaged hunks entirely?**\n   - a) Explore rewriting the coordinate conversion logic to work differently\n   - b) Keep current approach but optimize the status call\n\n## My Recommendation\n\nThe fastest fix is **option 1a**: Replace `repo.status()` in `collect_unstaged_hunks` with `git diff-files`, which:\n- Only checks tracked files (no untracked file scanning)\n- Should be 10-20x faster in large repos\n- Gives you the exact same information you need (unstaged changes)\n\nThis would be a 2-line change in the `collect_unstaged_hunks` function, replacing the `repo.status()` call with a new `repo.diff_files()` method that runs `git diff-files --name-status -z` or similar.\n\nWould you like me to proceed with this approach, or do you have a different preference?"
+        },
+        {
+          "type": "user",
+          "text": "yeah let's start there with option one. cut a new pub fn , we use status elsewhere and don't want to disrupt it."
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Let me create a plan to optimize the `collect_unstaged_hunks` performance by adding a new faster method."
+        },
+        {
+          "type": "user",
+          "text": "Implement the plan as specified. To-do's from the plan have already been created, do not create them again."
+        },
+        {
+          "type": "assistant",
+          "text": "I'll implement the optimization now. Let me start by adding the new `diff_files()` method and then update the `collect_unstaged_hunks()` function."
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check for any linter errors:"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Let me verify the changes look good:"
+        },
+        {
+          "type": "assistant",
+          "text": "Excellent! The implementation is complete. Let me update the plan to mark the todos as done:"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! The optimization is complete. Here's what I've implemented:\n\n## Summary of Changes\n\n### 1. **Added `Repository::diff_files()` method** (`src/git/status.rs`)\n- New public method that runs `git diff-files --name-only -z`\n- Returns only file paths with unstaged changes (no untracked file scanning)\n- Includes a fast parser `parse_diff_files()` that handles null-separated output\n- Lines 74-107\n\n### 2. **Updated `collect_unstaged_hunks()`** (`src/authorship/post_commit.rs`)\n- Replaced `repo.status()` call with `repo.diff_files()` (line 407)\n- Simplified loop to iterate over file paths directly (line 415)\n- Removed unused imports: `EntryKind` and `StatusCode` (line 9)\n- All other logic remains unchanged\n\n## Expected Performance Improvement\n\nIn large repos like Chromium:\n- **Before**: ~5 seconds (full status scan including untracked files)\n- **After**: ~100-500ms (only checks tracked files with unstaged changes)\n- **Speed up**: 10-50x faster\n\nThe key optimization is that `git diff-files` only checks the index against the working directory for tracked files, completely avoiding the expensive filesystem traversal for untracked files that `git status` performs.\n\nYou can test this in your Chromium repo with the next commit to see the performance improvement!"
+        },
+        {
+          "type": "user",
+          "text": "Hmm this still is quite slow \ntimer: filter_untracked_files took 896.116417ms\ntimer: collect_committed_hunks took 1.188166584s\ntimer: collect_unstaged_hunks took 1.9911595s\n\nIsn't a lot of this work duplicate? Can we do one call to status and share the results?"
+        },
+        {
+          "type": "assistant",
+          "text": "You're absolutely right! Looking at the code, there's a lot of duplicate work happening. Let me analyze what's going on:\n\n1. **`filter_untracked_files`** (896ms) - Gets `current_commit.tree()` and `parent_commit.tree()`\n2. **`collect_committed_hunks`** (1.2s) - Gets the same trees again, then diffs them\n3. **`collect_unstaged_hunks`** (2s) - Gets `head_commit.tree()` again, then for EACH unstaged file:\n   - Looks up tree entry\n   - Reads blob content\n   - Reads working directory file\n   - Runs `TextDiff::from_lines()` (expensive!)\n\nThe real bottleneck in `collect_unstaged_hunks` isn't the `diff_files()` call - it's that we're doing our own line-by-line diff with `TextDiff` for every unstaged file. That's slow!\n\n## Better approach: Use `git diff-files` with patch output\n\nInstead of:\n1. Getting list of files\n2. Reading each file's blob\n3. Reading each file from disk  \n4. Running TextDiff ourselves\n\nWe can:\n1. Run `git diff-files` with unified diff output\n2. Parse the hunks directly from git's output (git already computed the diff!)\n3. Extract line numbers from the hunks\n\nThis would be **much** faster because git's internal diff is highly optimized.\n\nWould you like me to:\n- **Option A**: Refactor `collect_unstaged_hunks` to use `git diff-files` patch output instead of doing our own TextDiff\n- **Option B**: Look at refactoring all three functions to share tree lookups and potentially combine some operations\n- **Option C**: Profile more to see exactly where the 2s is being spent in `collect_unstaged_hunks`\n\nI'm leaning toward **Option A** as it should give us the biggest win with minimal changes."
+        },
+        {
+          "type": "user",
+          "text": "Option B! And now that I think of it ... we only did the text diff thing because we were using lib2git and it sucked. If we're able to do get the same stuff directly from git we'd be crazy not to use it right? \n\nAlso for most of the comparisions if the blob hash is === to the other tree's blob hash we don't even need to look at contents. But git handles that if we use patch output. Let's absolutly do it. add the helpers you need to @Repository \n\nLet's start here but also have an eye towards bringing our changes to @checkpoint.rs  (later)"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! You're absolutely right - we should let git do the heavy lifting. Git's internal diff is highly optimized and it already knows to skip files where blob hashes match. Let me create a plan to refactor this properly."
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Let's refactor to use git's native diff output. This will be much faster because:\n\n1. **Git skips identical blobs** - if blob hashes match, git doesn't even read the content\n2. **Git's diff is highly optimized** - written in C, uses efficient algorithms\n3. **We avoid duplicate tree lookups** - can combine operations\n4. **No TextDiff overhead** - we just parse hunk headers instead of computing diffs ourselves\n\nLet me create todos and implement this:"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me implement the git-native diff approach. I'll add helpers to Repository that use `git diff` with unified output:"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me add the git diff helpers to `src/git/status.rs`:"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me add the unified diff parser function:"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check for linter errors and then refactor the post_commit functions:"
+        },
+        {
+          "type": "assistant",
+          "text": "Good, the warnings are expected. Let me check the LineRange structure:"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Now let me refactor `collect_committed_hunks` to use the new git-native diff:"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me refactor `collect_unstaged_hunks`:"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me clean up the unused imports:"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check what imports are actually there:"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me fix the unused variable warning:"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check the actual file content:"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Let me verify everything compiles:"
+        },
+        {
+          "type": "assistant",
+          "text": "Excellent! Everything compiles. Let me update the TODOs to reflect our progress:"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Let me create a summary of the refactoring:\n\n## Summary of Optimizations\n\nI've successfully refactored `post_commit.rs` to use git's native diff instead of our own TextDiff computations. Here's what changed:\n\n### **New Methods Added to `Repository` (in `src/git/status.rs`)**\n\n1. **`diff_tree_to_tree_hunks(from_sha, to_sha)`** - Gets line ranges for changes between two commits using `git diff`\n2. **`diff_head_to_workdir_hunks()`** - Gets line ranges for unstaged changes using `git diff HEAD`\n3. **`parse_unified_diff_hunks()`** - Parses unified diff output (`@@ -a,b +c,d @@` headers) to extract line numbers\n\n### **Refactored Functions (in `src/authorship/post_commit.rs`)**\n\n1. **`collect_committed_hunks()`** \n   - **Before**: Used libgit2 to read trees → read blobs → compute TextDiff for each file\n   - **After**: Single `git diff parent..commit` call, parse hunks directly\n   - Removed ~180 lines of manual diff logic\n\n2. **`collect_unstaged_hunks()`**\n   - **Before**: Called `repo.status()` (5s in Chromium) → read blobs → compute TextDiff for each file\n   - **After**: Single `git diff HEAD` call, parse hunks directly  \n   - Removed ~80 lines of manual diff logic\n\n### **Why This Is Much Faster**\n\n1. **Git skips identical files** - If blob hashes match, git doesn't even read the content\n2. **Git's diff is in C** - Highly optimized, uses efficient algorithms\n3. **One git call vs many** - We make 1-2 git calls total instead of N+1 (where N = files changed)\n4. **No status scan** - We don't scan for untracked files (was taking 5+ seconds in Chromium)\n\n### **Expected Performance in Chromium**\n\nBased on your timings:\n```\nBefore:\n- filter_untracked_files: 896ms\n- collect_committed_hunks: 1.2s  \n- collect_unstaged_hunks: 2s\nTotal: ~4.1s\n\nExpected After:\n- filter_untracked_files: ~896ms (unchanged)\n- collect_committed_hunks: ~50-100ms (git diff between commits)\n- collect_unstaged_hunks: ~50-100ms (git diff HEAD)\nTotal: ~1-1.2s\n\nSpeedup: 3-4x faster\n```\n\nThe code is now ready to test! Try making a commit in your Chromium repo and check the new timings. The performance should be dramatically better, especially for `collect_committed_hunks` and `collect_unstaged_hunks`."
+        },
+        {
+          "type": "user",
+          "text": "here's what I got now \n\ntimer: working_log_for_base_commit took 13.375µs\ntimer: filter_untracked_files took 898.541292ms\ntimer: collect_committed_hunks took 21.759708ms\ntimer: collect_unstaged_hunks took 3.127118583s\ntimer: convert_authorship_log_to_commit_coordinates took 4.042µs\ntimer: filter_to_committed_lines took 3.208µs\ntimer: notes_add took 76.635542ms\nyou  ████████████████████████████████████████ ai\n     100%                                   0%\ntimer: stats_for_commit_stats took 52.597ms\ntimer: post_command_hooks took 4.227792s"
+        },
+        {
+          "type": "assistant",
+          "text": "Wow, `collect_committed_hunks` went from 1.2s to 21ms - that's **57x faster**! 🎉\n\nBut `collect_unstaged_hunks` got **slower** (2s → 3.1s). That's unexpected. The issue is likely that `git diff HEAD` in Chromium is processing a lot of files with unstaged changes, and generating the full unified diff is slower than we anticipated.\n\nLet me optimize `diff_head_to_workdir_hunks` with some performance flags:"
+        },
+        {
+          "type": "assistant",
+          "text": "I added some performance flags (`--no-renames`, `--no-textconv`, `--ignore-submodules`), but I suspect the real issue is that `git diff HEAD` is still doing too much work in a massive repo like Chromium.\n\nThe binary is ready to test, but I think we might need a different approach if this is still slow. The issue is:\n\n**Current approach**: `git diff HEAD` walks through all tracked files and generates diff output\n**Problem**: In Chromium with many unstaged changes, this is expensive\n\n**Potential better approach**: \n1. Get list of changed files with `git diff-files --name-only` (fast, no content reading)\n2. Only if there are changes, run `git diff HEAD -- <file1> <file2> ...` for just those files\n\nLet me know what timing you get with the current build. If it's still slow ("
+        }
+      ],
+      "total_additions": 6472,
+      "total_deletions": 95,
+      "accepted_lines": 6169,
+      "overriden_lines": 191
+    }
+  }
+}

@@ -1,0 +1,24 @@
+scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py
+  8a69382429cc74a6 1-648
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "e17385023f3bde633b87c6c7beabda763f36a189",
+  "prompts": {
+    "8a69382429cc74a6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c6497-b6c7-7f71-9730-bc3efeca5d6a",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 648,
+      "total_deletions": 0,
+      "accepted_lines": 648,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/23f8ec32d1315559c027e62ebe72a53053ad209d886bc572148b64b7aa92fd70"
+    }
+  }
+}

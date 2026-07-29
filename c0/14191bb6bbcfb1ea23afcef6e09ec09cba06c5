@@ -1,0 +1,397 @@
+tests/show_prompt.rs
+  3d91391 1-171
+src/commands/show_prompt.rs
+  3d91391 50-54,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "c014191bb6bbcfb1ea23afcef6e09ec09cba06c5",
+  "prompts": {
+    "3d91391": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "057462c0-1810-4b88-9d15-cf6ffe72afa3",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Add a new git-ai command 'show-prompt' that will return the prompt object from the most recent commit's authorship note where the prompt with the given id is located. There are existing helpers in the codebase for finding the latest prompt by id in a repo.\n\n\n\n1. The prompt should take a single argument which is the prompt id\n\n2. Takes a flag --commit which is the revision name (commit sha, HEAD, etc.) that you can use with git to find the commit from which to pull the authorship note and the prompt id only from that note\n\n3. Takes a flag --offset which if commit is not provided, determines how many instances of the prompt to skip before returning. Since a given prompt id can show up in more than a single authorship note, this allows the user to ask for the value of the prompt from the 2nd, 3rd, etc. occurrence (going most recent->least recent). If the helper doesn't support offset, then update the helper to support it.\n\n4. Ensure that --offset and --commit are mutually exclusive",
+          "timestamp": "2025-11-28T18:48:11.146Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "list_dir",
+          "input": {
+            "target_directory": "/Users/svarlamov/projects/git-ai"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Find how existing git-ai commands are structured to understand the pattern for adding a new command.",
+            "query": "How are git-ai commands defined and structured?",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Find existing helpers for finding prompts by id that the user mentioned.",
+            "query": "helper function to find prompt by id in authorship notes",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/show.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/git/refs.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/authorship/authorship_log.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/mod.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 140,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/authorship/virtual_attribution.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 1,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/authorship/authorship_log_serialization.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me look at the error module and check how the git repository is accessed:",
+          "timestamp": "2025-11-28T18:48:38.638Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/error.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/svarlamov/projects/git-ai/src/git",
+            "pattern": "find_repository"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I have a clear picture. Let me create the `show-prompt` command:",
+          "timestamp": "2025-11-28T18:48:50.875Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": false,
+            "todos": [
+              {
+                "content": "Create src/commands/show_prompt.rs with the show-prompt command handler",
+                "id": "1",
+                "status": "in_progress"
+              },
+              {
+                "content": "Export the new module in src/commands/mod.rs",
+                "id": "2",
+                "status": "pending"
+              },
+              {
+                "content": "Register the show-prompt command in git_ai_handlers.rs",
+                "id": "3",
+                "status": "pending"
+              },
+              {
+                "content": "Add help text for the new command",
+                "id": "4",
+                "status": "pending"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "write",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/show_prompt.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/mod.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Create src/commands/show_prompt.rs with the show-prompt command handler",
+                "id": "1",
+                "status": "completed"
+              },
+              {
+                "content": "Export the new module in src/commands/mod.rs",
+                "id": "2",
+                "status": "completed"
+              },
+              {
+                "content": "Register the show-prompt command in git_ai_handlers.rs",
+                "id": "3",
+                "status": "in_progress"
+              },
+              {
+                "content": "Add help text for the new command",
+                "id": "4",
+                "status": "pending"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll add the `show-prompt` command to the handler:",
+          "timestamp": "2025-11-28T18:49:31.082Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Register the show-prompt command in git_ai_handlers.rs",
+                "id": "3",
+                "status": "completed"
+              },
+              {
+                "content": "Add help text for the new command",
+                "id": "4",
+                "status": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check for any linting errors and try to compile:",
+          "timestamp": "2025-11-28T18:49:46.865Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && cargo check 2>&1",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The code compiles successfully. The linter warnings about \"never used\" are false positives because the linter analyzed the file in isolation, but `cargo check` confirms the code compiles correctly with the cross-file references.\n\nLet me verify the command works:",
+          "timestamp": "2025-11-28T18:50:09.210Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && cargo build --release 2>&1 | tail -10",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && ./target/release/git-ai --help 2>&1",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && ./target/release/git-ai show-prompt 2>&1",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && ./target/release/git-ai show-prompt test-id --commit HEAD --offset 1 2>&1",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && ./target/release/git-ai show-prompt nonexistent-prompt-id 2>&1",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "All error cases work correctly. Let me also test the `--commit` flag with an invalid commit:",
+          "timestamp": "2025-11-28T18:50:45.402Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && ./target/release/git-ai show-prompt test-id --commit HEAD 2>&1",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && ./target/release/git-ai show-prompt test-id --unknown 2>&1",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The implementation is complete. Here's a summary of what was added:\n\n## New `show-prompt` Command\n\n### Files Created/Modified:\n\n1. **`src/commands/show_prompt.rs`** (new file) - The command handler that:\n   - Takes a prompt ID as a required argument\n   - Supports `--commit <rev>` to look in a specific commit only\n   - Supports `--offset <n>` to skip N occurrences (0 = most recent)\n   - Validates that `--commit` and `--offset` are mutually exclusive\n   - Outputs the prompt record as JSON, including the commit SHA where it was found\n\n2. **`src/commands/mod.rs`** - Added the new module export\n\n3. **`src/commands/git_ai_handlers.rs`** - Registered the command and added help text\n\n### Usage:\n\n```bash\n# Get the most recent occurrence of a prompt\ngit-ai show-prompt <prompt_id>\n\n# Get prompt from a specific commit\ngit-ai show-prompt <prompt_id> --commit HEAD\ngit-ai show-prompt <prompt_id> --commit abc123\n\n# Get the 2nd most recent occurrence (skip 1)\ngit-ai show-prompt <prompt_id> --offset 1\n\n# Get the 3rd most recent occurrence (skip 2)  \ngit-ai show-prompt <prompt_id> --offset 2\n```\n\n### Output Format:\n\n```json\n{\n  \"commit\": \"<commit_sha>\",\n  \"prompt_id\": \"<prompt_id>\",\n  \"prompt\": {\n    \"agent_id\": {...},\n    \"human_author\": ...,\n    \"messages\": [...],\n    ...\n  }\n}\n```",
+          "timestamp": "2025-11-28T18:50:54.570Z"
+        },
+        {
+          "type": "user",
+          "text": "update the documentation in the @docs for the CLI reference to include the show command",
+          "timestamp": "2025-11-30T16:16:51.386Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing `docs/reference.mdx` to add `show-prompt` documentation.",
+          "timestamp": "2025-11-30T16:16:55.227Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/docs/reference.mdx"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding `show-prompt` documentation to the reference:",
+          "timestamp": "2025-11-30T16:16:58.335Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/reference.mdx"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/reference.mdx"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Verifying the documentation was added correctly:",
+          "timestamp": "2025-11-30T16:17:03.529Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 73,
+            "target_file": "/Users/svarlamov/projects/git-ai/docs/reference.mdx"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 30,
+            "offset": 114,
+            "target_file": "/Users/svarlamov/projects/git-ai/docs/reference.mdx"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Added documentation for the `show-prompt` command to the CLI reference. Summary:\n\n1. **Added the command section** after `show` in the \"User Commands\" section\n2. **Updated metadata** (title, description, keywords) to include `show-prompt`\n\nThe documentation includes:\n- Description of what the command does\n- Usage examples for all three modes (default, `--commit`, `--offset`)\n- Arguments and options with explanations\n- Output format showing the JSON structure\n- Notes about mutual exclusivity and behavior\n\nThe documentation follows the same format as the other commands and is ready for use.",
+          "timestamp": "2025-11-30T16:17:05.875Z"
+        },
+        {
+          "type": "user",
+          "text": "Add unit tests for the show command",
+          "timestamp": "2025-11-30T16:23:50.289Z"
+        }
+      ],
+      "total_additions": 333,
+      "total_deletions": 159,
+      "accepted_lines": 179,
+      "overriden_lines": 0
+    }
+  }
+}

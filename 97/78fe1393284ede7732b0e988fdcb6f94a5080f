@@ -1,0 +1,36 @@
+src/metrics/local_stats.rs
+  s_27ed236e4270d9::t_9312d775424255 61
+  s_27ed236e4270d9::t_000a92b1060899 171,173
+  s_27ed236e4270d9::t_be30803c2087e6 256-259
+  s_27ed236e4270d9::t_5be135aa249632 513
+  s_27ed236e4270d9::t_738cc668211671 581-584,587
+  s_27ed236e4270d9::t_c4900dba080498 484-485,492,497
+  s_27ed236e4270d9::t_db12f61d1c2d8b 466
+  s_27ed236e4270d9::t_20c6328f48cb6f 881-882
+  s_27ed236e4270d9::t_c30d2c7479a363 908,910
+  s_27ed236e4270d9::t_7fc537d62a19d4 493-496,525-528
+src/commands/activity.rs
+  s_27ed236e4270d9::t_436e8b1ed547d2 3,33,59
+src/metrics/db.rs
+  s_27ed236e4270d9::t_fa7ec335e685fe 364
+  s_27ed236e4270d9::t_7fc537d62a19d4 350-351,354-363
+  s_27ed236e4270d9::t_63582f35bf5f4f 326,334-349
+  s_27ed236e4270d9::t_fb351058c64da6 396
+  s_27ed236e4270d9::t_23b2333abe46db 385,393-395,397-403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "9778fe1393284ede7732b0e988fdcb6f94a5080f",
+  "prompts": {},
+  "sessions": {
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

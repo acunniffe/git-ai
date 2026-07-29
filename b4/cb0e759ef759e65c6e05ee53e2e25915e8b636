@@ -1,0 +1,51 @@
+src/metrics/pos_encoded.rs
+  s_59382cac373d67::t_cc17e3acd4f206 21-23,28-73
+  s_59382cac373d67::t_594b110c704a00 74
+src/metrics/events.rs
+  s_59382cac373d67::t_b95900806109a5 379
+  s_59382cac373d67::t_c2229e881ee920 783,1254-1274,1358
+  s_59382cac373d67::t_cc17e3acd4f206 5-6,327-378,380-397,432-435,683-747,781-782
+  s_59382cac373d67::t_4726dc7f5b005e 784
+  s_59382cac373d67::t_aa22923cad8924 1253
+tests/integration/main.rs
+  s_59382cac373d67::t_cc17e3acd4f206 89
+src/daemon/telemetry_worker.rs
+  s_59382cac373d67::t_c2229e881ee920 741,1628-1631,1633-1658
+  s_59382cac373d67::t_c0e789fcfde3eb 716,733-740,742
+  s_59382cac373d67::t_e6ab8e4fbe3ac6 1524-1535
+  s_59382cac373d67::t_cc17e3acd4f206 25,675,678-679,706-715,717-732,743-760
+  s_59382cac373d67::t_53e7ecc34db9ba 17-20,669-672,674,676-677,680-690,693-705
+  s_59382cac373d67::t_641f0b8f98cd60 650-655,1618,1632,1675-1679
+  s_59382cac373d67::t_7d58fe0104ff54 1616-1617,1619-1627,1659-1674,1680-1681
+  s_59382cac373d67::t_39b77ab5032dad 649,656-664
+tests/integration/metrics_memory.rs
+  s_59382cac373d67::t_b95900806109a5 13,62-65
+  s_59382cac373d67::t_58e8242133680d 1-12,14-61,66-133
+src/observability/mod.rs
+  s_59382cac373d67::t_48a5ac19a02f51 77-87
+src/metrics/mod.rs
+  s_59382cac373d67::t_cc17e3acd4f206 56
+src/metrics/db.rs
+  s_59382cac373d67::t_11cced880b81ce 23-24,568,570,580,583-584,586-596,598,601-623
+  s_59382cac373d67::t_ca9fb5e72d103c 1567-1573,2486-2493,2496-2499,2511-2515,2521-2522,2540
+  s_59382cac373d67::t_6adba2970d76d9 2529,2531,2539
+  s_59382cac373d67::t_641f0b8f98cd60 2494-2495,2500-2510,2516-2520,2523-2528,2530,2532-2538,2541
+  s_59382cac373d67::t_503b212923be0f 624
+  s_59382cac373d67::t_5d024c4695bcce 2542
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "b4cb0e759ef759e65c6e05ee53e2e25915e8b636",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

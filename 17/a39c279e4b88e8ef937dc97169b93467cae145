@@ -1,0 +1,9 @@
+src/daemon.rs
+  0defeff3de23389b 6995
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "17a39c279e4b88e8ef937dc97169b93467cae145",
+  "prompts": {}
+}

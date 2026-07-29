@@ -1,0 +1,32 @@
+agent-support/neovim/plugin/git-ai.lua
+  73a492d33da4b1eb 1-7
+agent-support/neovim/README.md
+  73a492d33da4b1eb 1-54
+src/mdm/agents/mod.rs
+  73a492d33da4b1eb 10,24,45
+src/mdm/agents/neovim.rs
+  73a492d33da4b1eb 1-87
+agent-support/neovim/lua/git-ai/init.lua
+  73a492d33da4b1eb 1-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "59dfc23e66dee6a6f71d538f9d276d9d7829bc1a",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 289,
+      "total_deletions": 0,
+      "accepted_lines": 289,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/b3ae73dc4e6ae3879a41851e4fa83c906811bc2a43d2c132b96ecf9b2bddd568"
+    }
+  }
+}

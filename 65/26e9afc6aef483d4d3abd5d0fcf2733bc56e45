@@ -1,0 +1,27 @@
+src/daemon/telemetry_worker.rs
+  s_59382cac373d67::t_f6d876186831cd 1499-1507
+tests/integration/main.rs
+  s_59382cac373d67::t_f6d876186831cd 67
+tests/integration/daemon_notes_flush_memory.rs
+  s_59382cac373d67::t_03c639eb9c5e74 23
+  s_59382cac373d67::t_691bbc8b5858ac 1-2
+  s_59382cac373d67::t_f6d876186831cd 3-22,3-8,9-21,22,24-54
+src/daemon.rs
+  s_59382cac373d67::t_ea5bdad0c31034 2626-2641,2719,2815,6365-6371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "6526e9afc6aef483d4d3abd5d0fcf2733bc56e45",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

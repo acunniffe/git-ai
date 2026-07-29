@@ -1,0 +1,9 @@
+src/daemon/checkpoint.rs
+  760c5cdc0bd01352 90,92,94-95,97-102,104,119-123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "c77e75085e1c8e0f4ac3fa51d3da261cb4e19dbe",
+  "prompts": {}
+}

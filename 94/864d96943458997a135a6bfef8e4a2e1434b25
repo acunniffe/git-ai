@@ -1,0 +1,34 @@
+src/daemon.rs
+  s_8945c7ee6dc9c3::t_1d9915bec51ce5 27
+src/authorship/rewrite_op_v3.rs
+  s_8945c7ee6dc9c3::t_9c4eaf1cfc29b3 1,6,9-11,13-14
+  s_8945c7ee6dc9c3::t_2b5c6bb6c892e3 1047-2507
+src/git/repository.rs
+  s_8945c7ee6dc9c3::t_4fb293823b9bfb 1
+src/commands/hooks/rebase_hooks.rs
+  s_8945c7ee6dc9c3::t_1fd7cb2fdd1450 1
+tests/integration/ci_squash_rebase.rs
+  s_8945c7ee6dc9c3::t_3fa8c2befa9938 57,134,213,273,330,396,489,1065,1145,1223,1312
+src/ci/ci_context.rs
+  s_8945c7ee6dc9c3::t_918537f63255df 2
+tests/integration/rebase_authorship_unit.rs
+  s_8945c7ee6dc9c3::t_700e2d32ab90db 1010,1043,1080,1115,1150
+  s_8945c7ee6dc9c3::t_01c23f02c43768 6
+  s_8945c7ee6dc9c3::t_56f5be0c829fcd 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "94864d96943458997a135a6bfef8e4a2e1434b25",
+  "prompts": {},
+  "sessions": {
+    "s_8945c7ee6dc9c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c1d0e993-2f40-4fc9-bd64-60f748c657a8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

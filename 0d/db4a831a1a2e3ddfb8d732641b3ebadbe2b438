@@ -1,0 +1,51 @@
+tests/integration/fuzzer/operations.rs
+  s_af2d349a5e032c::t_06b0970bc6b96a 2635-2663,2672-2721,2723,2729-2743,2746-2791,2794-2864,2873-2875,2878-2959,2968-3028,3037-3156,3158-3184,3193-3205
+  s_af2d349a5e032c::t_4fab2095562de8 2441-2448,2607-2614,2664-2671,2722,2724-2728,2744-2745,2792-2793,2865-2872,2876-2877,2960-2967,3029-3036,3157,3185-3192
+  s_af2d349a5e032c::t_f52b58333138e9 2312-2440,2449-2606,2615-2634
+tests/integration/fuzzer/generators.rs
+  s_af2d349a5e032c::t_2f104d84e8b6a2 79-93
+  s_af2d349a5e032c::t_b2d85a6d42f2f4 202-205
+  s_af2d349a5e032c::t_315aaa8cdfcd13 153,164-165
+  s_af2d349a5e032c::t_e0e1e93cf2f1ec 75-78
+  s_af2d349a5e032c::t_21e7e39e873f0a 191,206-222
+  s_af2d349a5e032c::t_a0c0bff4269e1d 40
+tests/integration/fuzzer/engine.rs
+  s_af2d349a5e032c::t_8da934ed29a770 53-56,58
+  s_af2d349a5e032c::t_65cc5f9454ff5c 165-166
+  s_af2d349a5e032c::t_0571bc31e50174 11-24
+  s_af2d349a5e032c::t_47aa59f4bbb30e 71-76
+  s_af2d349a5e032c::t_e39776dd94c2d3 126-130
+  s_af2d349a5e032c::t_f86eb020c24465 144-148
+  s_af2d349a5e032c::t_b0d51f4fbe9e88 175-192
+  s_af2d349a5e032c::t_8127d0b9399799 875-1000
+  s_af2d349a5e032c::t_fc7d8b5c2590a9 819-874
+  s_af2d349a5e032c::t_57f6afda4ecd29 8
+  s_af2d349a5e032c::t_6b6ec7dd52a8ef 197-202
+  s_af2d349a5e032c::t_851af77ac8cc94 25-27
+  s_af2d349a5e032c::t_4c6a00064d925e 273
+  s_af2d349a5e032c::t_103feccae549e3 91-94
+  s_af2d349a5e032c::t_f3f5dfa5a457f3 40
+  s_af2d349a5e032c::t_bad6ba23620912 109-112
+  s_af2d349a5e032c::t_d976ebb621a942 521-530
+  s_af2d349a5e032c::t_8e087301c2a79c 230,238
+Taskfile.yml
+  s_af2d349a5e032c::t_819ced2c3f03da 121-128
+tests/integration/fuzzer/mod.rs
+  s_af2d349a5e032c::t_875b3765f80ba7 307-350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "0ddb4a831a1a2e3ddfb8d732641b3ebadbe2b438",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

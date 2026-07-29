@@ -1,0 +1,33 @@
+src/commands/sync_prompts.rs
+  0413d4118f3b6fbb 220-221,226,231,239-279
+src/authorship/post_commit.rs
+  0413d4118f3b6fbb 304,308
+src/commands/share.rs
+  0413d4118f3b6fbb 37-39
+src/commands/share_tui.rs
+  0413d4118f3b6fbb 51-53
+src/authorship/transcript.rs
+  0413d4118f3b6fbb 1,60-68,109-128
+src/authorship/internal_db.rs
+  0413d4118f3b6fbb 109-118,133-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.29",
+  "base_commit_sha": "7285835f1fa5df0af361181e4b2cbb8d5170bfa0",
+  "prompts": {
+    "0413d4118f3b6fbb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06d1532d-c81f-41d8-97cd-3692a3888a8c",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 95,
+      "overriden_lines": 0
+    }
+  }
+}

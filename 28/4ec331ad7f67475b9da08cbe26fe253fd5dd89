@@ -1,0 +1,21 @@
+src/mdm/utils.rs
+  s_013bd95a47de6d::t_2814eff1db82de 746-749,755-756,760-761
+  s_013bd95a47de6d::t_e6f29c140bb3bb 1610-1651
+  s_013bd95a47de6d::t_792dbc5bd811f5 750-754,757-759
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "284ec331ad7f67475b9da08cbe26fe253fd5dd89",
+  "prompts": {},
+  "sessions": {
+    "s_013bd95a47de6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c112ea8c-5595-44d1-8542-78df068d6d85",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}
