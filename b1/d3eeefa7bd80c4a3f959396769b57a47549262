@@ -1,0 +1,23 @@
+PR_DESCRIPTION.md
+  s_74a31c9b27ce26::t_38d21c93feba6f 1-223
+TESTING_PHASE_5A.md
+  s_74a31c9b27ce26::t_1af03c2b005ed4 1-349
+docs/telemetry-streams-summary.md
+  s_74a31c9b27ce26::t_1d75a26e81bff3 1-252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "b1d3eeefa7bd80c4a3f959396769b57a47549262",
+  "prompts": {},
+  "sessions": {
+    "s_74a31c9b27ce26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f769e90b-24f1-4f4b-92c3-236cbea1cee2",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+agent-support/intellij/gradle.properties
+  s_01685474622c9d::t_9e0776e0fe672a 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "c05571ad2cb8849dcc065e4c2e234328acc70fd3",
+  "prompts": {},
+  "sessions": {
+    "s_01685474622c9d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2311b2cf-9c49-48f7-acef-edb3bf832079",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

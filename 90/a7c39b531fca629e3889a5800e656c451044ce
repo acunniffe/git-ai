@@ -1,0 +1,21 @@
+agent-support/opencode/package.json
+  s_48e9fed71298c0::t_65d503a06d6bf2 11
+agent-support/opencode/package-lock.json
+  ai_agent 12,19-96,98-100,103-104,108-110,116-118,125-127,133-138,163-227,234-291,301-316,338-346,368-380,396-408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "90a7c39b531fca629e3889a5800e656c451044ce",
+  "prompts": {},
+  "sessions": {
+    "s_48e9fed71298c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8e27-0a8c-7eb2-b677-5719a3a20122",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
