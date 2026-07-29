@@ -2410,6 +2410,83 @@ fn daemon_stalled_unidentified_trace_connection_does_not_block_sync_control_requ
 
 #[test]
 #[cfg(not(windows))]
+fn daemon_sync_family_ignores_open_mutating_root_from_other_family() {
+    let first_repo = TestRepo::new_dedicated_daemon();
+    let second_repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let trace_socket = daemon_trace_socket_path(&first_repo);
+    let control_socket = daemon_control_socket_path(&first_repo);
+    let first_worktree = repo_workdir_string(&first_repo);
+    let second_worktree = repo_workdir_string(&second_repo);
+    let first_git_dir = first_repo.path().join(".git").to_string_lossy().to_string();
+    let sid = "cross-family-open-mutating-root";
+
+    let mut open_trace =
+        open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+            .expect("failed to connect to trace socket");
+    write_trace_frames_to_stream(
+        &mut open_trace,
+        &[
+            json!({
+                "event": "start",
+                "sid": sid,
+                "argv": ["git", "commit", "-m", "long-running commit"],
+                "time_ns": 1_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": sid,
+                "worktree": first_worktree,
+                "repo": first_git_dir,
+                "time_ns": 1_001u64,
+            }),
+        ],
+    );
+    thread::sleep(Duration::from_millis(150));
+
+    let own_control_socket = control_socket.clone();
+    let own_worktree = repo_workdir_string(&first_repo);
+    let (own_sync_tx, own_sync_rx) = mpsc::channel();
+    let own_sync = thread::spawn(move || {
+        let response = send_control_request_with_timeout(
+            &own_control_socket,
+            &ControlRequest::SyncFamily {
+                repo_working_dir: own_worktree,
+            },
+            Duration::from_secs(5),
+        );
+        let _ = own_sync_tx.send(response);
+    });
+    assert!(
+        own_sync_rx
+            .recv_timeout(Duration::from_millis(250))
+            .is_err(),
+        "sync.family must still wait for an open mutating root in its own family"
+    );
+
+    let unrelated_sync = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: second_worktree,
+        },
+        Duration::from_secs(1),
+    )
+    .expect("an open mutating root from another family must not block sync.family");
+    assert!(
+        unrelated_sync.ok,
+        "unrelated sync.family request failed: {unrelated_sync:?}"
+    );
+
+    write_trace_frames_to_stream(&mut open_trace, &[trace_atexit_frame(sid, 0, 1_002)]);
+    let own_sync_response = own_sync_rx
+        .recv_timeout(Duration::from_secs(1))
+        .expect("own-family sync should complete after the trace root closes")
+        .expect("own-family sync request failed");
+    assert!(own_sync_response.ok, "own-family sync failed");
+    own_sync.join().unwrap();
+}
+
+#[test]
+#[cfg(not(windows))]
 fn daemon_partial_trace_line_does_not_block_checkpoint_control_request() {
     let repo = TestRepo::new_dedicated_daemon();
     let trace_socket = daemon_trace_socket_path(&repo);
