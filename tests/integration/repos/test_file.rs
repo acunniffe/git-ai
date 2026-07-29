@@ -693,47 +693,21 @@ impl<'a> TestFile<'a> {
     }
 
     pub fn set_contents<T: Into<ExpectedLine>>(&mut self, lines: Vec<T>) -> &mut Self {
-        let lines: Vec<ExpectedLine> = lines.into_iter().map(|l| l.into()).collect();
-        // stub in AI Lines
-        let line_contents = lines
-            .iter()
-            .map(|s| {
-                if s.author_type == AuthorType::Ai {
-                    "||__AI LINE__ PENDING__||".to_string()
-                } else {
-                    s.contents.clone()
-                }
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        let human_kind = if lines
-            .iter()
-            .any(|l| l.author_type == AuthorType::UnattributedHuman)
-        {
-            &AuthorType::UnattributedHuman
-        } else {
-            &AuthorType::Human
-        };
-        self.write_and_checkpoint_with_contents(&line_contents, human_kind);
-
-        let line_contents_with_ai = lines
-            .iter()
-            .map(|s| s.contents.clone())
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        self.write_and_checkpoint_with_contents(&line_contents_with_ai, &AuthorType::Ai);
-
-        self.lines = lines;
-        self
+        self.set_contents_with_staging(lines, true)
     }
 
     /// Set file contents without staging (but still creates checkpoints for authorship tracking)
     /// Useful for testing scenarios with precise staging control
     pub fn set_contents_no_stage<T: Into<ExpectedLine>>(&mut self, lines: Vec<T>) -> &mut Self {
-        let lines: Vec<ExpectedLine> = lines.into_iter().map(|l| l.into()).collect();
+        self.set_contents_with_staging(lines, false)
+    }
 
+    fn set_contents_with_staging<T: Into<ExpectedLine>>(
+        &mut self,
+        lines: Vec<T>,
+        stage: bool,
+    ) -> &mut Self {
+        let lines: Vec<ExpectedLine> = lines.into_iter().map(|l| l.into()).collect();
         // stub in AI Lines
         let line_contents = lines
             .iter()
@@ -755,7 +729,7 @@ impl<'a> TestFile<'a> {
         } else {
             &AuthorType::Human
         };
-        self.write_and_checkpoint_no_stage(&line_contents, human_kind);
+        self.write_and_checkpoint_with_contents(&line_contents, human_kind, stage);
 
         let line_contents_with_ai = lines
             .iter()
@@ -763,7 +737,7 @@ impl<'a> TestFile<'a> {
             .collect::<Vec<String>>()
             .join("\n");
 
-        self.write_and_checkpoint_no_stage(&line_contents_with_ai, &AuthorType::Ai);
+        self.write_and_checkpoint_with_contents(&line_contents_with_ai, &AuthorType::Ai, stage);
 
         self.lines = lines;
         self
@@ -815,7 +789,12 @@ impl<'a> TestFile<'a> {
         self.run_checkpoint_for_author_type(author_type);
     }
 
-    fn write_and_checkpoint_with_contents(&self, contents: &str, author_type: &AuthorType) {
+    fn write_and_checkpoint_with_contents(
+        &self,
+        contents: &str,
+        author_type: &AuthorType,
+        stage: bool,
+    ) {
         // Create parent directories if they don't exist (important for nested paths like src/模块/组件.ts)
         if let Some(parent) = self.file_path.parent()
             && !parent.exists()
@@ -824,22 +803,11 @@ impl<'a> TestFile<'a> {
         }
         fs::write(&self.file_path, contents).unwrap();
 
-        // Stage the file first
-        self.repo.git(&["add", "-A"]).unwrap();
-
-        self.run_checkpoint_for_author_type(author_type);
-    }
-
-    fn write_and_checkpoint_no_stage(&self, contents: &str, author_type: &AuthorType) {
-        // Create parent directories if they don't exist (important for nested paths)
-        if let Some(parent) = self.file_path.parent()
-            && !parent.exists()
-        {
-            fs::create_dir_all(parent).expect("failed to create parent directories");
+        if stage {
+            // Stage the file first
+            self.repo.git(&["add", "-A"]).unwrap();
         }
-        fs::write(&self.file_path, contents).unwrap();
 
-        // Create checkpoint without staging - checkpoints work with unstaged files
         self.run_checkpoint_for_author_type(author_type);
     }
 }
