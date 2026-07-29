@@ -88,8 +88,11 @@ pub(crate) const TRACE_ROOT_REFLOG_START_OFFSETS_FIELD: &str = "git_ai_root_refl
 const TRACE_CONNECTION_CLOSED_EVENT: &str = "git_ai_connection_closed";
 const DAEMON_CONTROL_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const DAEMON_CONTROL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
+const DAEMON_CONTROL_RECEIVE_TIMEOUT: Duration = Duration::from_secs(2);
 const DAEMON_CHECKPOINT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(300);
 const DAEMON_SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
+const CHECKPOINT_INGRESS_REQUEST_LIMIT: usize = 1_024;
+const CHECKPOINT_INGRESS_BYTE_LIMIT: usize = 64 * 1024 * 1024;
 // Trace2 frames are written synchronously by Git to the daemon's Unix socket.
 // With small kernel socket buffers (macOS defaults to ~8 KiB), a bursty trace2
 // stream can fill the buffer and block the raw `git` process in `write()` until
@@ -111,6 +114,97 @@ const WINDOWS_STDOUT_HANDLE: u32 = (-11i32) as u32;
 #[cfg(windows)]
 const WINDOWS_STDERR_HANDLE: u32 = (-12i32) as u32;
 static DAEMON_PROCESS_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Default)]
+struct CheckpointIngressQuotaState {
+    requests: usize,
+    bytes: usize,
+}
+
+#[derive(Debug)]
+struct CheckpointIngressQuota {
+    request_limit: usize,
+    byte_limit: usize,
+    state: Mutex<CheckpointIngressQuotaState>,
+}
+
+#[derive(Debug)]
+struct CheckpointIngressQuotaError {
+    reason: &'static str,
+    requested_bytes: usize,
+    outstanding_requests: usize,
+    outstanding_bytes: usize,
+    request_limit: usize,
+    byte_limit: usize,
+}
+
+#[derive(Debug)]
+struct CheckpointIngressReservation {
+    quota: Arc<CheckpointIngressQuota>,
+    body_bytes: usize,
+}
+
+impl CheckpointIngressQuota {
+    fn new(request_limit: usize, byte_limit: usize) -> Self {
+        Self {
+            request_limit,
+            byte_limit,
+            state: Mutex::new(CheckpointIngressQuotaState::default()),
+        }
+    }
+
+    fn reserve(
+        self: &Arc<Self>,
+        body_bytes: usize,
+    ) -> Result<CheckpointIngressReservation, CheckpointIngressQuotaError> {
+        let mut state = self
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let reason = if state.requests >= self.request_limit {
+            Some("request_limit")
+        } else if body_bytes > self.byte_limit.saturating_sub(state.bytes) {
+            Some("byte_limit")
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            return Err(CheckpointIngressQuotaError {
+                reason,
+                requested_bytes: body_bytes,
+                outstanding_requests: state.requests,
+                outstanding_bytes: state.bytes,
+                request_limit: self.request_limit,
+                byte_limit: self.byte_limit,
+            });
+        }
+
+        state.requests += 1;
+        state.bytes += body_bytes;
+        Ok(CheckpointIngressReservation {
+            quota: Arc::clone(self),
+            body_bytes,
+        })
+    }
+}
+
+impl CheckpointIngressReservation {
+    fn body_bytes(&self) -> usize {
+        self.body_bytes
+    }
+}
+
+impl Drop for CheckpointIngressReservation {
+    fn drop(&mut self) {
+        let mut state = self
+            .quota
+            .state
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.requests = state.requests.saturating_sub(1);
+        state.bytes = state.bytes.saturating_sub(self.body_bytes);
+    }
+}
 
 #[cfg(windows)]
 unsafe extern "system" {
@@ -2415,6 +2509,30 @@ fn read_json_line<R: BufRead>(reader: &mut R) -> Result<Option<String>, GitAiErr
     Ok(Some(line))
 }
 
+fn read_checkpoint_body<R: BufRead>(
+    reader: &mut R,
+    body_bytes: usize,
+) -> Result<Vec<u8>, GitAiError> {
+    let mut body = vec![0; body_bytes];
+    reader.read_exact(&mut body).map_err(|error| {
+        GitAiError::Generic(format!(
+            "failed receiving {body_bytes}-byte checkpoint body: {error}"
+        ))
+    })?;
+    let mut delimiter = [0u8; 1];
+    reader.read_exact(&mut delimiter).map_err(|error| {
+        GitAiError::Generic(format!(
+            "failed receiving checkpoint body delimiter: {error}"
+        ))
+    })?;
+    if delimiter != [b'\n'] {
+        return Err(GitAiError::Generic(
+            "checkpoint body was not followed by a newline delimiter".to_string(),
+        ));
+    }
+    Ok(body)
+}
+
 #[derive(Debug)]
 enum FamilySequencerEntry {
     PendingRoot,
@@ -2532,6 +2650,7 @@ pub struct ActorDaemonCoordinator {
         Mutex<HashMap<String, VecDeque<RecentReplayPrerequisite>>>,
     side_effect_errors_by_family: Mutex<HashMap<String, BTreeMap<u64, String>>>,
     side_effect_exec_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
+    checkpoint_ingress_quota: Arc<CheckpointIngressQuota>,
     bash_sessions: Mutex<crate::daemon::bash_sessions::BashSessionState>,
     test_completion_log_dir: Option<PathBuf>,
     test_completion_log_lock: Mutex<()>,
@@ -2616,6 +2735,10 @@ impl ActorDaemonCoordinator {
             recent_replay_prerequisites_by_family: Mutex::new(HashMap::new()),
             side_effect_errors_by_family: Mutex::new(HashMap::new()),
             side_effect_exec_locks: Mutex::new(HashMap::new()),
+            checkpoint_ingress_quota: Arc::new(CheckpointIngressQuota::new(
+                CHECKPOINT_INGRESS_REQUEST_LIMIT,
+                CHECKPOINT_INGRESS_BYTE_LIMIT,
+            )),
             bash_sessions: Mutex::new(crate::daemon::bash_sessions::BashSessionState::new()),
             test_completion_log_dir: std::env::var("GIT_AI_TEST_DB_PATH")
                 .ok()
@@ -6139,38 +6262,44 @@ impl ActorDaemonCoordinator {
         false
     }
 
+    async fn handle_checkpoint_request(&self, request: CheckpointRequest) -> ControlResponse {
+        if let Some(worker) = &self.stream_worker
+            && let Some(stream_source) = &request.stream_source
+        {
+            let session_id = stream_source.session_id.clone();
+            let tool = request
+                .agent_id
+                .as_ref()
+                .map(|aid| aid.tool.clone())
+                .unwrap_or_else(|| "unknown".to_string());
+            let trace_id = request.trace_id.clone();
+            let tool_use_id = request.metadata.get("tool_use_id").cloned();
+            let repo_work_dir = request.files.first().map(|f| f.repo_work_dir.clone());
+
+            worker.notify_checkpoint(
+                session_id,
+                tool,
+                trace_id,
+                tool_use_id,
+                stream_source.path.clone(),
+                repo_work_dir,
+                stream_source.external_session_id.clone(),
+                stream_source.external_parent_session_id.clone(),
+            );
+        }
+
+        match self.ingest_checkpoint_payload(request).await {
+            Ok(response) => response,
+            Err(error) => ControlResponse::err(error.to_string()),
+        }
+    }
+
     async fn handle_control_request(&self, request: ControlRequest) -> ControlResponse {
         let result = match request {
             ControlRequest::Ping => Ok(ControlResponse::ok(None, None)),
-            ControlRequest::CheckpointRun { request } => {
-                if let Some(worker) = &self.stream_worker
-                    && let Some(stream_source) = &request.stream_source
-                {
-                    let session_id = stream_source.session_id.clone();
-                    let tool = request
-                        .agent_id
-                        .as_ref()
-                        .map(|aid| aid.tool.clone())
-                        .unwrap_or_else(|| "unknown".to_string());
-                    let trace_id = request.trace_id.clone();
-                    let tool_use_id = request.metadata.get("tool_use_id").cloned();
-
-                    let repo_work_dir = request.files.first().map(|f| f.repo_work_dir.clone());
-
-                    worker.notify_checkpoint(
-                        session_id,
-                        tool,
-                        trace_id,
-                        tool_use_id,
-                        stream_source.path.clone(),
-                        repo_work_dir,
-                        stream_source.external_session_id.clone(),
-                        stream_source.external_parent_session_id.clone(),
-                    );
-                }
-
-                self.ingest_checkpoint_payload(*request).await
-            }
+            ControlRequest::CheckpointRun { .. } => Err(GitAiError::Generic(
+                "checkpoint.run requires the framed checkpoint transport".to_string(),
+            )),
             ControlRequest::SyncFamily { repo_working_dir } => {
                 self.sync_family(repo_working_dir).await.and_then(|status| {
                     serde_json::to_value(status)
@@ -6656,6 +6785,7 @@ fn handle_windows_control_pipe_connection(
     coordinator: Arc<ActorDaemonCoordinator>,
     runtime_handle: tokio::runtime::Handle,
 ) {
+    server.set_read_timeout(Some(DAEMON_CONTROL_RECEIVE_TIMEOUT));
     let mut reader = BufReader::new(&mut server);
     if let Err(e) = handle_control_connection_actor_reader(&mut reader, coordinator, runtime_handle)
     {
@@ -6669,6 +6799,13 @@ fn handle_control_connection_actor(
     coordinator: Arc<ActorDaemonCoordinator>,
     runtime_handle: tokio::runtime::Handle,
 ) -> Result<(), GitAiError> {
+    stream
+        .set_recv_timeout(Some(DAEMON_CONTROL_RECEIVE_TIMEOUT))
+        .map_err(|error| {
+            GitAiError::Generic(format!(
+                "failed setting daemon control receive timeout: {error}"
+            ))
+        })?;
     let mut reader = BufReader::new(stream);
     handle_control_connection_actor_reader(&mut reader, coordinator, runtime_handle)
 }
@@ -6686,20 +6823,126 @@ fn handle_control_connection_actor_reader<R: Read + Write>(
         let parsed = serde_json::from_str::<ControlRequest>(trimmed);
         let mut shutdown_after_response = false;
         let response = match parsed {
+            Ok(ControlRequest::CheckpointRun { body_bytes }) => {
+                let body_bytes = match usize::try_from(body_bytes) {
+                    Ok(body_bytes) => body_bytes,
+                    Err(error) => {
+                        tracing::error!(
+                            component = "daemon",
+                            phase = "checkpoint_receive",
+                            reason = "body_length_overflow",
+                            declared_body_bytes = body_bytes,
+                            %error,
+                            "checkpoint body length does not fit this platform"
+                        );
+                        write_control_response(
+                            reader.get_mut(),
+                            &ControlResponse::err("checkpoint body length is too large"),
+                        )?;
+                        continue;
+                    }
+                };
+                let reservation = match coordinator.checkpoint_ingress_quota.reserve(body_bytes) {
+                    Ok(reservation) => reservation,
+                    Err(error) => {
+                        tracing::error!(
+                            component = "daemon",
+                            phase = "checkpoint_receive",
+                            reason = error.reason,
+                            requested_bytes = error.requested_bytes,
+                            outstanding_requests = error.outstanding_requests,
+                            outstanding_bytes = error.outstanding_bytes,
+                            request_limit = error.request_limit,
+                            byte_limit = error.byte_limit,
+                            "checkpoint ingress quota exhausted"
+                        );
+                        write_control_response(
+                            reader.get_mut(),
+                            &ControlResponse::err(format!(
+                                "checkpoint ingress busy: {}",
+                                error.reason
+                            )),
+                        )?;
+                        continue;
+                    }
+                };
+
+                if let Err(error) = write_control_response(
+                    reader.get_mut(),
+                    &ControlResponse::ok(None, Some(json!({ "ready": true }))),
+                ) {
+                    tracing::error!(
+                        component = "daemon",
+                        phase = "checkpoint_receive",
+                        reason = "ready_response_write_failed",
+                        body_bytes,
+                        %error,
+                        "failed writing checkpoint ready response"
+                    );
+                    return Err(error);
+                }
+
+                let body = match read_checkpoint_body(reader, reservation.body_bytes()) {
+                    Ok(body) => body,
+                    Err(error) => {
+                        tracing::error!(
+                            component = "daemon",
+                            phase = "checkpoint_receive",
+                            reason = "body_receive_failed",
+                            body_bytes,
+                            %error,
+                            "failed receiving checkpoint body"
+                        );
+                        return Err(error);
+                    }
+                };
+                match serde_json::from_slice::<CheckpointRequest>(&body) {
+                    Ok(request) => runtime_handle
+                        .block_on(async { coordinator.handle_checkpoint_request(request).await }),
+                    Err(error) => {
+                        tracing::error!(
+                            component = "daemon",
+                            phase = "checkpoint_receive",
+                            reason = "body_decode_failed",
+                            body_bytes,
+                            %error,
+                            "failed decoding checkpoint body"
+                        );
+                        ControlResponse::err(format!("invalid checkpoint body: {error}"))
+                    }
+                }
+            }
             Ok(req) => {
                 shutdown_after_response = matches!(req, ControlRequest::Shutdown);
                 runtime_handle.block_on(async { coordinator.handle_control_request(req).await })
             }
-            Err(e) => ControlResponse::err(format!("invalid control request: {}", e)),
+            Err(error) => {
+                tracing::error!(
+                    component = "daemon",
+                    phase = "control_receive",
+                    reason = "request_decode_failed",
+                    %error,
+                    "failed decoding daemon control request"
+                );
+                ControlResponse::err(format!("invalid control request: {error}"))
+            }
         };
-        let raw = serde_json::to_string(&response)?;
-        reader.get_mut().write_all(raw.as_bytes())?;
-        reader.get_mut().write_all(b"\n")?;
-        reader.get_mut().flush()?;
+        write_control_response(reader.get_mut(), &response)?;
         if shutdown_after_response {
             coordinator.request_stop();
         }
     }
+    Ok(())
+}
+
+fn write_control_response<W: Write>(
+    writer: &mut W,
+    response: &ControlResponse,
+) -> Result<(), GitAiError> {
+    let raw = serde_json::to_string(response)?;
+    writer.write_all(raw.as_bytes())?;
+    writer.write_all(b"\n")?;
+    writer.flush()?;
     Ok(())
 }
 
@@ -7913,6 +8156,78 @@ pub fn send_control_request(
     )
 }
 
+pub fn send_checkpoint_request_with_timeout(
+    socket_path: &Path,
+    request: &CheckpointRequest,
+    timeout: Duration,
+) -> Result<ControlResponse, GitAiError> {
+    send_checkpoint_request_with_timeouts(socket_path, request, timeout, timeout)
+}
+
+pub fn send_checkpoint_request(
+    socket_path: &Path,
+    request: &CheckpointRequest,
+) -> Result<ControlResponse, GitAiError> {
+    send_checkpoint_request_with_timeouts(
+        socket_path,
+        request,
+        DAEMON_CONTROL_CONNECT_TIMEOUT,
+        checkpoint_control_response_timeout(
+            &ControlRequest::CheckpointRun { body_bytes: 0 },
+            checkpoint_control_timeout_uses_ci_or_test_budget(),
+        ),
+    )
+}
+
+fn send_checkpoint_request_with_timeouts(
+    socket_path: &Path,
+    request: &CheckpointRequest,
+    connect_timeout: Duration,
+    response_timeout: Duration,
+) -> Result<ControlResponse, GitAiError> {
+    let body = serde_json::to_vec(request)?;
+    let body_bytes = u64::try_from(body.len())
+        .map_err(|_| GitAiError::Generic("checkpoint body length exceeds u64".to_string()))?;
+    let header = ControlRequest::CheckpointRun { body_bytes };
+
+    let mut stream = open_local_socket_stream_with_timeout(socket_path, connect_timeout)?;
+    set_daemon_client_stream_timeouts(&mut stream, socket_path, response_timeout)?;
+    let mut header_bytes = serde_json::to_vec(&header)?;
+    header_bytes.push(b'\n');
+    write_all_daemon_client_stream(&mut stream, socket_path, &header_bytes)?;
+
+    let mut response_reader = BufReader::new(stream);
+    let ready_line = read_daemon_client_line(&mut response_reader, socket_path, response_timeout)?;
+    let ready: ControlResponse =
+        serde_json::from_str(ready_line.trim()).map_err(GitAiError::from)?;
+    if !ready.ok {
+        return Ok(ready);
+    }
+    if ready
+        .data
+        .as_ref()
+        .and_then(|data| data.get("ready"))
+        .and_then(Value::as_bool)
+        != Some(true)
+    {
+        return Err(GitAiError::Generic(
+            "daemon checkpoint handshake omitted ready confirmation".to_string(),
+        ));
+    }
+
+    let mut framed_body = body;
+    framed_body.push(b'\n');
+    write_all_daemon_client_stream(response_reader.get_mut(), socket_path, &framed_body)?;
+    let response_line =
+        read_daemon_client_line(&mut response_reader, socket_path, response_timeout)?;
+    if response_line.trim().is_empty() {
+        return Err(GitAiError::Generic(
+            "empty daemon checkpoint response".to_string(),
+        ));
+    }
+    serde_json::from_str(response_line.trim()).map_err(GitAiError::from)
+}
+
 pub fn send_control_request_fire_and_forget(
     socket_path: &Path,
     request: &ControlRequest,
@@ -7986,23 +8301,7 @@ mod tests {
     }
 
     fn sample_checkpoint_request() -> ControlRequest {
-        use crate::commands::checkpoint_agent::orchestrator::{BaseCommit, CheckpointFile};
-        ControlRequest::CheckpointRun {
-            request: Box::new(CheckpointRequest {
-                trace_id: "test-trace".to_string(),
-                checkpoint_kind: CheckpointKind::Human,
-                agent_id: None,
-                files: vec![CheckpointFile {
-                    path: std::path::PathBuf::from("test.txt"),
-                    content: None,
-                    repo_work_dir: std::path::PathBuf::from("/tmp/repo"),
-                    base_commit: BaseCommit::Initial,
-                }],
-                path_role: PreparedPathRole::WillEdit,
-                stream_source: None,
-                metadata: std::collections::HashMap::new(),
-            }),
-        }
+        ControlRequest::CheckpointRun { body_bytes: 128 }
     }
 
     fn run_git_for_test(repo: &Path, args: &[&str]) -> String {
@@ -8152,6 +8451,40 @@ mod tests {
             checkpoint_control_response_timeout(&sample_checkpoint_request(), false),
             DAEMON_CONTROL_RESPONSE_TIMEOUT
         );
+    }
+
+    #[test]
+    fn checkpoint_ingress_quota_bounds_count_and_bytes_and_releases_on_drop() {
+        let quota = Arc::new(CheckpointIngressQuota::new(2, 10));
+        let first = quota.reserve(4).expect("first reservation");
+        let second = quota.reserve(6).expect("second reservation");
+
+        let count_error = quota.reserve(0).expect_err("count limit must reject");
+        assert_eq!(count_error.reason, "request_limit");
+
+        drop(second);
+        let byte_error = quota.reserve(7).expect_err("byte limit must reject");
+        assert_eq!(byte_error.reason, "byte_limit");
+
+        drop(first);
+        let replacement = quota.reserve(10).expect("released quota must be reusable");
+        assert_eq!(replacement.body_bytes(), 10);
+    }
+
+    #[test]
+    fn checkpoint_body_reader_requires_exact_length_and_delimiter() {
+        let mut valid = std::io::BufReader::new(std::io::Cursor::new(b"body\n".to_vec()));
+        assert_eq!(
+            read_checkpoint_body(&mut valid, 4).expect("valid framed body"),
+            b"body"
+        );
+
+        let mut truncated = std::io::BufReader::new(std::io::Cursor::new(b"bod".to_vec()));
+        assert!(read_checkpoint_body(&mut truncated, 4).is_err());
+
+        let mut missing_delimiter =
+            std::io::BufReader::new(std::io::Cursor::new(b"body!".to_vec()));
+        assert!(read_checkpoint_body(&mut missing_delimiter, 4).is_err());
     }
 
     #[test]

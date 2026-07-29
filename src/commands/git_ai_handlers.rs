@@ -4,7 +4,6 @@ use crate::authorship::range_authorship;
 use crate::authorship::stats::stats_command;
 use crate::commands;
 use crate::config;
-use crate::daemon::ControlRequest;
 use crate::git::find_repository;
 use crate::git::find_repository_in_path;
 use crate::git::repository::{CommitRange, Repository};
@@ -555,22 +554,32 @@ fn handle_checkpoint(args: &[String]) {
     let mut sent_count = 0u64;
     for request in requests {
         let t_send = std::time::Instant::now();
-        let control_request = ControlRequest::CheckpointRun {
-            request: Box::new(request),
-        };
         let send_result =
-            crate::daemon::send_control_request(&config.control_socket_path, &control_request);
+            crate::daemon::send_checkpoint_request(&config.control_socket_path, &request);
         if perf {
             eprintln!(
                 "[perf] checkpoint: ipc_send={:.1}ms",
                 t_send.elapsed().as_secs_f64() * 1000.0,
             );
         }
-        if let Err(e) = send_result {
-            eprintln!("Failed to send checkpoint to background worker: {}", e);
-            std::process::exit(0);
+        match send_result {
+            Ok(response) if response.ok => {
+                sent_count += 1;
+            }
+            Ok(response) => {
+                eprintln!(
+                    "Failed to send checkpoint to background worker: {}",
+                    response
+                        .error
+                        .unwrap_or_else(|| "daemon rejected checkpoint".to_string())
+                );
+                std::process::exit(0);
+            }
+            Err(error) => {
+                eprintln!("Failed to send checkpoint to background worker: {error}");
+                std::process::exit(0);
+            }
         }
-        sent_count += 1;
     }
 
     if std::env::var_os("GIT_AI_TEST_DB_PATH").is_some() {

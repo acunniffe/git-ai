@@ -12,6 +12,8 @@ use git_ai::commands::checkpoint_agent::orchestrator::{
 use git_ai::config::{NotesBackendConfig, NotesBackendKind};
 #[cfg(not(windows))]
 use git_ai::daemon::checkpoint::PreparedPathRole;
+#[cfg(not(windows))]
+use git_ai::daemon::send_checkpoint_request_with_timeout;
 use git_ai::daemon::send_control_request_with_timeout;
 use git_ai::daemon::{
     ControlRequest, DaemonConfig, DaemonLock, local_socket_connects_with_timeout,
@@ -30,6 +32,8 @@ use serde_json::Value;
 use serde_json::json;
 use serial_test::serial;
 use std::fs;
+#[cfg(not(windows))]
+use std::io::{BufRead, BufReader};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -1631,14 +1635,9 @@ fn daemon_stalled_unidentified_trace_connection_does_not_block_checkpoint_contro
         metadata: Default::default(),
     };
 
-    let response = send_control_request_with_timeout(
-        &control_socket,
-        &ControlRequest::CheckpointRun {
-            request: Box::new(request),
-        },
-        Duration::from_millis(500),
-    )
-    .expect("checkpoint control request should not block on unidentified trace sockets");
+    let response =
+        send_checkpoint_request_with_timeout(&control_socket, &request, Duration::from_millis(500))
+            .expect("checkpoint control request should not block on unidentified trace sockets");
 
     assert!(
         response.ok,
@@ -1684,14 +1683,9 @@ fn daemon_checkpoint_resolution_applies_total_content_budget() {
         metadata: Default::default(),
     };
 
-    let response = send_control_request_with_timeout(
-        &control_socket,
-        &ControlRequest::CheckpointRun {
-            request: Box::new(request),
-        },
-        Duration::from_secs(5),
-    )
-    .expect("checkpoint control request should succeed");
+    let response =
+        send_checkpoint_request_with_timeout(&control_socket, &request, Duration::from_secs(5))
+            .expect("checkpoint control request should succeed");
 
     assert!(
         response.ok,
@@ -1711,6 +1705,71 @@ fn daemon_checkpoint_resolution_applies_total_content_budget() {
         "expected daemon resolver to apply aggregate content budget"
     );
     assert_eq!(checkpoint.entries[0].file, "a_kept.txt");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_receipt_rejects_oversized_body_before_receiving_it() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let response = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::CheckpointRun {
+            body_bytes: 64 * 1024 * 1024 + 1,
+        },
+        Duration::from_millis(500),
+    )
+    .expect("daemon should return a quota response without waiting for a body");
+
+    assert!(!response.ok, "oversized checkpoint must be rejected");
+    assert_eq!(
+        response.error.as_deref(),
+        Some("checkpoint ingress busy: byte_limit")
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_receipt_releases_quota_when_body_sender_stalls() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let control_socket = daemon_control_socket_path(&repo);
+    let stream = open_local_socket_stream_with_timeout(&control_socket, Duration::from_millis(500))
+        .expect("connect to daemon control socket");
+    let mut stalled_reader = BufReader::new(stream);
+    let mut header = serde_json::to_vec(&ControlRequest::CheckpointRun {
+        body_bytes: 64 * 1024 * 1024,
+    })
+    .unwrap();
+    header.push(b'\n');
+    stalled_reader.get_mut().write_all(&header).unwrap();
+    stalled_reader.get_mut().flush().unwrap();
+
+    let mut ready_line = String::new();
+    stalled_reader.read_line(&mut ready_line).unwrap();
+    let ready: git_ai::daemon::ControlResponse = serde_json::from_str(ready_line.trim()).unwrap();
+    assert!(ready.ok, "daemon should reserve the declared body");
+
+    let blocked = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::CheckpointRun { body_bytes: 1 },
+        Duration::from_millis(500),
+    )
+    .expect("daemon should reject before receiving another body");
+    assert_eq!(
+        blocked.error.as_deref(),
+        Some("checkpoint ingress busy: byte_limit")
+    );
+
+    thread::sleep(Duration::from_millis(2_500));
+    let after_timeout = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::CheckpointRun { body_bytes: 1 },
+        Duration::from_millis(500),
+    )
+    .expect("daemon should release stalled checkpoint quota");
+    assert!(
+        after_timeout.ok,
+        "stalled checkpoint reservation should be released after receive timeout: {after_timeout:?}"
+    );
 }
 
 #[test]
@@ -1754,14 +1813,9 @@ fn daemon_checkpoint_initial_base_does_not_fall_back_to_processing_time_head() {
         metadata: Default::default(),
     };
 
-    let response = send_control_request_with_timeout(
-        &control_socket,
-        &ControlRequest::CheckpointRun {
-            request: Box::new(request),
-        },
-        Duration::from_secs(5),
-    )
-    .expect("checkpoint control request should succeed");
+    let response =
+        send_checkpoint_request_with_timeout(&control_socket, &request, Duration::from_secs(5))
+            .expect("checkpoint control request should succeed");
     assert!(response.ok, "checkpoint failed: {response:?}");
 
     let repository = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
@@ -1851,14 +1905,9 @@ fn daemon_partial_trace_line_does_not_block_checkpoint_control_request() {
         metadata: Default::default(),
     };
 
-    let response = send_control_request_with_timeout(
-        &control_socket,
-        &ControlRequest::CheckpointRun {
-            request: Box::new(request),
-        },
-        Duration::from_millis(500),
-    )
-    .expect("checkpoint control request should not block on incomplete trace frames");
+    let response =
+        send_checkpoint_request_with_timeout(&control_socket, &request, Duration::from_millis(500))
+            .expect("checkpoint control request should not block on incomplete trace frames");
 
     assert!(
         response.ok,
