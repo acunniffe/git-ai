@@ -1,0 +1,52 @@
+src/ci/ci_context.rs
+  49d18615096ec1fa 609-848
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.4",
+  "base_commit_sha": "2d8e168e83d7c51d7f3243e1451a7c5b20f36c58",
+  "prompts": {
+    "282b53a8e8cd8cf3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9d916d5-83ea-4fa7-99fa-621ee8b136ea",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 614,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/e5222b28031a63323633b7f634da94ce90adc11c2509950424ca17a3d624a5b1"
+    },
+    "49d18615096ec1fa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "569e2833-8db8-421f-b106-61da18ea11af",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 283,
+      "total_deletions": 42,
+      "accepted_lines": 241,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/221ac38bab88115136b6e158b87003d6c8352cf4d6a81929a55ae3bf79ee0bf3"
+    },
+    "e9f45d1ddcef7351": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6f412947-e236-4190-8c1b-231f8ec168cf",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 269,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/47b067f5a8769bb0a2350e61fd458ac1a5f3cfab1d5e87bc4cf7924ceafd7b46"
+    }
+  }
+}

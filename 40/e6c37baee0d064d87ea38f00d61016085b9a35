@@ -1,0 +1,24 @@
+src/commands/blame.rs
+  4ad6ad1e46ab1a56 3,1030-1061,1063
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "40e6c37baee0d064d87ea38f00d61016085b9a35",
+  "prompts": {
+    "4ad6ad1e46ab1a56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd120e40-7230-4551-a19d-bf8db8dc7f4f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 34,
+      "total_deletions": 1,
+      "accepted_lines": 34,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/4486e960772588ddfccf0b5a5bc82918b37a972da31b143d5125bb00860dfb8c"
+    }
+  }
+}

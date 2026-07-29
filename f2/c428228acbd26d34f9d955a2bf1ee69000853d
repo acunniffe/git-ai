@@ -1,0 +1,41 @@
+src/commands/hooks/mod.rs
+  71f132d171c301c4 11
+tests/integration/main.rs
+  71f132d171c301c4 74
+src/commands/hooks/revert_hooks.rs
+  71f132d171c301c4 1-16,22-134,137-150,152-169,172-182,186-191,193-313
+src/commands/git_handlers.rs
+  71f132d171c301c4 14,103-104,229,439,441,536-541,622
+tests/integration/revert_attribution.rs
+  71f132d171c301c4 1-127
+src/daemon/analyzers/history.rs
+  71f132d171c301c4 112-119
+src/daemon/domain.rs
+  71f132d171c301c4 145-148
+src/daemon.rs
+  71f132d171c301c4 21-22,595,1350-1436,1440,1443-1479,2944-2975,6086-6099,6464-6467,6471-6476
+src/daemon/trace_normalizer.rs
+  71f132d171c301c4 1409
+src/daemon/reducer.rs
+  71f132d171c301c4 115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "f2c428228acbd26d34f9d955a2bf1ee69000853d",
+  "prompts": {
+    "71f132d171c301c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5597a7ef-171b-4c73-b5b4-da83540f06d5",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 197,
+      "total_deletions": 2,
+      "accepted_lines": 639,
+      "overriden_lines": 0
+    }
+  }
+}

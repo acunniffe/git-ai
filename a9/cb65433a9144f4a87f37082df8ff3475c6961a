@@ -1,0 +1,23 @@
+tests/daemon_mode.rs
+  s_420929cbeb2649::t_6a122e20ac940f 962-963
+  s_420929cbeb2649::t_6a4eaf59bd822b 11-12,189,201,221,230-245,267-270,290-298,875-961
+src/daemon/telemetry_worker.rs
+  s_420929cbeb2649::t_2f2a1756388d2f 347-348
+  s_420929cbeb2649::t_6a4eaf59bd822b 334,339-346
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "a9cb65433a9144f4a87f37082df8ff3475c6961a",
+  "prompts": {},
+  "sessions": {
+    "s_420929cbeb2649": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ecb81-f112-7203-9064-ba812879fba0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Jean-Michel Bouchard <jim@polarcoordinates.org>"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+src/authorship/rebase_authorship.rs
+  597fbcce80335bea 1777-1778,1780-1789,1794,1800-1804,1808-1809,1820,1826
+tests/integration/rebase_realworld.rs
+  597fbcce80335bea 8856-8861,8863,9443-9448,9461-9462,9465-9466,9468-9469,9504-9576,13575
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "cda6e3906be1b5b20e2ad3348afe5e6bafd10945",
+  "prompts": {
+    "597fbcce80335bea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5088777d-907a-414b-885d-c32df969c66d",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 115,
+      "total_deletions": 49,
+      "accepted_lines": 115,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,9 @@
+src/authorship/rebase_authorship.rs
+  ai_agent 2823,2923-2933
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "d3621368def839e29e02fe2f9143eb386ab81134",
+  "prompts": {}
+}

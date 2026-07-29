@@ -1,0 +1,26 @@
+tests/integration/rebase.rs
+  e6e1e36c17caaf62 7,2295,2308,2370,2416-2417,2420,2450-2453
+src/commands/git_handlers.rs
+  e6e1e36c17caaf62 813-815,818,820-827,845-846,887-889
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "c9deae0a1a78f3d4246f8cbf87f0db061442921f",
+  "prompts": {
+    "e6e1e36c17caaf62": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48dcfaaa-bf69-4985-8c31-eb17fe6b0f06",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 34,
+      "total_deletions": 47,
+      "accepted_lines": 30,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/633a20927d9d730bd573c8b746a0bfe804175ca1f2eb47f1e38dc700e5c3e896"
+    }
+  }
+}

@@ -1,0 +1,287 @@
+.gitignore
+  38d1aa2 5
+src/observability/wrapper_performance_targets.rs
+  e6d574a 8,13-22,56-66
+Cargo.toml
+  1cc6b12 40
+tests/repos/test_repo.rs
+  human 98,101,104,107
+  9000962 223-225,227
+  e6d574a 5,13,40-51,84-85,87-94,96-97,99-100,102-103,105-106,108-112,114-116,226
+tests/performance.rs
+  1cc6b12 4-5,9,18-83,175-179,181-187,189-199,201-205,207-214
+  38d1aa2 1-3,6-8,10,15-17,85-88,95-96,99-101,103-107,134-140,142,144-160,162-174,218-223,225-243,251-296,298-323,325-349,351-374
+  90d3f34 161,350
+  ee5fb78 113-114,463-466,468-473,537
+  human 91,93-94,97-98,102,108-111,122
+  aa59dbb 11,13-14,141,143,215-217,224,244-245,247-249
+  6981f9e 414-459
+  4dc05d4 12,120-121,123-125,127-130,376-413,460-462,475-536
+src/utils.rs
+  e6d574a 9,15,20-24,27-29,38-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "530b2a5a2a3a4ab62835155cbefc51d7f2e7571d",
+  "prompts": {
+    "1cc6b12": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "26f4a952-44a1-467e-834c-6c8e7389f78b",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/performance.rs:1-430 add rstest as a dev dependency so we can do a matrix test for each of the repositories we've cloned. \n\nFor the first one help me create a test case where we take 3 random files for the repo (not large ones) and append a \"# Human Line\" in them. Then commit it. \n\n\n\nWe're testing the performance of the precommit hook basically, esp in big repositories \n\n\n\nThe benchmark we care about is the last commit, throw anything else out or just use regular repo.git command. \n\n\n\nCall this case \"human_only_edits_then_commit\"",
+          "timestamp": "2025-11-29T22:43:43.575Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I need to understand a few things about your codebase before creating a plan. Let me quickly examine the test repository structure and git wrapper to understand how to benchmark the precommit hook.",
+          "timestamp": "2025-11-29T22:43:55.803Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/repos/test_repo.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Understanding how to benchmark the precommit hook performance",
+            "query": "How does the git wrapper benchmark precommit hooks?",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/Cargo.toml"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I understand the structure better. I can see that:\n- `TestRepo` has a `benchmark_git` method that uses `GIT_AI_DEBUG_PERFORMANCE=2` to capture performance metrics\n- The performance metrics include pre-command, git, and post-command durations\n- The pre-commit hook is what we're testing performance for\n\nLet me ask one critical clarifying question:",
+          "timestamp": "2025-11-29T22:44:10.153Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Now I can create a comprehensive plan for you.",
+          "timestamp": "2025-11-29T22:45:25.017Z"
+        },
+        {
+          "type": "user",
+          "text": "Oh one last thing. When we clone and init we should always checkout default branch then create a branch off that called test-cases/$time_nanos\n\n\n\nthat way we can always get back to an og state for the repo",
+          "timestamp": "2025-11-29T22:47:23.586Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Good point! Let me update the plan to include this important detail about branch management for clean test state.",
+          "timestamp": "2025-11-29T22:47:30.622Z"
+        }
+      ],
+      "total_additions": 156,
+      "total_deletions": 61,
+      "accepted_lines": 106,
+      "overriden_lines": 0
+    },
+    "38d1aa2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "404fcd84-543b-416a-881c-cdd4846d3a5f",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/performance/test_performance.rs we're going to build a test suite for performance. \n\n\n\nI'll build the actual cases, but for now I need your help building out the fixture:\n\n- before all tests run, clone a repo list into an ingored folder .performance-repos\n\n- return a mapping of Repository from find_in_path @src/git/repository.rs so I can use those to test \n\n\n\nRepos to start with\n\nChromium\n\nReact \n\nnodejs/node\n\nmicrosoft/ChakraCore",
+          "timestamp": "2025-11-29T19:04:51.847Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I need to clarify a few things before creating a plan for the performance test fixture:",
+          "timestamp": "2025-11-29T19:05:02.415Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/.gitignore"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/repos/test_repo.rs"
+          }
+        },
+        {
+          "type": "user",
+          "text": "Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.\n\nTo-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.",
+          "timestamp": "2025-11-29T19:06:19.591Z"
+        }
+      ],
+      "total_additions": 491,
+      "total_deletions": 6,
+      "accepted_lines": 356,
+      "overriden_lines": 11
+    },
+    "4dc05d4": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8f7a4a8f-b7f3-4e3c-aa8a-1ff9926dc669",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 131,
+      "total_deletions": 115,
+      "accepted_lines": 113,
+      "overriden_lines": 1
+    },
+    "6981f9e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "407f5132-3e6d-4e3d-9227-36e9b4313014",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "benchmark summary should also include % overhead. average absolute overhead \n\n\n\nOverhead being anything where total > git",
+          "timestamp": "2025-11-29T22:38:27.867Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the performance test file to understand the current structure.",
+          "timestamp": "2025-11-29T22:38:30.727Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/performance.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking the BenchmarkResult structure:",
+          "timestamp": "2025-11-29T22:38:31.903Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/observability/wrapper_performance_targets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating the benchmark summary to include % overhead and average absolute overhead for cases where total > git.",
+          "timestamp": "2025-11-29T22:38:34.195Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/tests/performance.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linter errors:",
+          "timestamp": "2025-11-29T22:38:42.636Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updated the benchmark summary to include:\n\n1. **Overhead cases count**: Number of runs where total > git\n2. **Average absolute overhead**: Average of (total_duration - git_duration) for overhead cases\n3. **Average % overhead**: Average percentage overhead, calculated as `((total - git) / git) * 100` for each overhead case, then averaged\n\nThe summary now shows:\n- How many runs had overhead (total > git)\n- The average absolute overhead in time units\n- The average percentage overhead\n\nIf there are no overhead cases, it displays \"N/A\" for the overhead metrics. The calculations only include cases where total > git, as requested.",
+          "timestamp": "2025-11-29T22:38:46.290Z"
+        }
+      ],
+      "total_additions": 49,
+      "total_deletions": 0,
+      "accepted_lines": 46,
+      "overriden_lines": 0
+    },
+    "90d3f34": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "939b0576-c007-461e-b863-c664820d3467",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 39,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "aa59dbb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5a2a0797-a14c-496c-8d70-48426be36145",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/performance.rs:102-103 make this return a TestRepo using @test_repo.rs (38-44)",
+          "timestamp": "2025-11-29T22:01:06.803Z"
+        }
+      ],
+      "total_additions": 30,
+      "total_deletions": 29,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    },
+    "e6d574a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a8da00b0-f6e7-4ab7-a208-13a3b97a495d",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/repos/test_repo.rs:85-90 grab the git-ai (perf) line out of the output and return duration \n\n\n\n[git-ai (perf)]\\u{1b}[0m ✓ Performance target met for command: log. Total duration: 9ms, Git duration: 9ms\\n\")\n\n\n\n@test_repo.rs (298-303) use this format\n\n\n\n@wrapper_performance_targets.rs (1-104) \n\n\n\nIf it's easier maybe we do a structured output when GIT_AI_DEBUG_PERFORMANCE=2",
+          "timestamp": "2025-11-29T22:15:23.160Z"
+        }
+      ],
+      "total_additions": 100,
+      "total_deletions": 16,
+      "accepted_lines": 79,
+      "overriden_lines": 4
+    },
+    "ee5fb78": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "084d1fdf-51d8-4974-962c-a67d4657c5ce",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Ok now make me a sampler. It takes a block with test repo in scope and averages the execution time over n runs.",
+          "timestamp": "2025-11-29T22:04:14.538Z"
+        }
+      ],
+      "total_additions": 158,
+      "total_deletions": 0,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}

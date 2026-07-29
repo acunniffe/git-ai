@@ -1,0 +1,20 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "ce16a6ff8793fcb6cadfd2f082b47992994d71a0",
+  "prompts": {
+    "d971c9a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1edec6d3-197f-4cf2-9eae-ed663f32b1b1",
+        "model": "default"
+      },
+      "human_author": "Atnes Ness <atnesness@gmail.com>",
+      "messages": [],
+      "total_additions": 387,
+      "total_deletions": 153,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

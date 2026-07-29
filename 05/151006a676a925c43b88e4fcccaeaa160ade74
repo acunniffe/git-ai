@@ -1,0 +1,27 @@
+tests/daemon_mode.rs
+  4fc8bc60fc3c5663 3926-3928,3930-3944
+scripts/ci-test-with-retry.ps1
+  4fc8bc60fc3c5663 7-8,11,14-119,121-126,130-133,138-140,144,148,161,178-181,183
+src/commands/git_ai_handlers.rs
+  4fc8bc60fc3c5663 908-916,1141-1146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "05151006a676a925c43b88e4fcccaeaa160ade74",
+  "prompts": {
+    "4fc8bc60fc3c5663": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbd15-693a-7153-af8b-b3d304655878",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Test User",
+      "messages": [],
+      "total_additions": 188,
+      "total_deletions": 70,
+      "accepted_lines": 6644,
+      "overriden_lines": 0
+    }
+  }
+}

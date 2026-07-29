@@ -1,0 +1,54 @@
+tests/integration/repos/mod.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 95,206
+scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py
+  s_7e719d19471fd9::t_7d0cf0a80a6ee7 244
+tests/async_mode.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 256,376
+tests/integration/repos/test_repo.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 394,1762
+tests/commit_tree_update_ref.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 113,155,209,260
+tests/daemon_mode.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 546,612
+scripts/benchmarks/git/benchmark_nasty_rebases.sh
+  s_7e719d19471fd9::t_7d0cf0a80a6ee7 117
+src/commands/install_hooks.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 16
+tests/integration/daemon_commit_carryover.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 30
+tests/integration/graphite.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 289
+scripts/benchmarks/git/benchmark_modes_vs_main.py
+  s_7e719d19471fd9::t_7d0cf0a80a6ee7 274
+src/diagnostics.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 21
+src/daemon/trace_normalizer.rs
+  s_7e719d19471fd9::t_08203e69ba9733 1487-1533
+  s_ea99f27079798b::t_dd3c3f7d8b12b1 1486
+tests/integration/git_alias_resolution.rs
+  s_7e719d19471fd9::t_24b1598c5057df 182-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.11",
+  "base_commit_sha": "bb032516ecbdab6e7d5d0316725ef6f261d9d7dc",
+  "prompts": {},
+  "sessions": {
+    "s_7e719d19471fd9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f38e7-aa09-72c3-b383-9aa431d64253",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_ea99f27079798b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "17d0f6d4-d727-4e33-8c95-d2052548fcd0",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+tests/git-compat/run-core-tests.py
+  s_d46277b929576d::t_178b1a1af8ec67 345-349
+  s_d46277b929576d::t_2a1d22d293bfe3 48,106-107,331,353-354
+src/commands/daemon.rs
+  s_d46277b929576d::t_c0f30ce18758ab 214,218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "943d83d451fefd78f2b5209e55b49b6fbdbf61d2",
+  "prompts": {},
+  "sessions": {
+    "s_d46277b929576d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7d963b3-678f-4ed0-8566-d90a0d657703",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": []
+    }
+  }
+}

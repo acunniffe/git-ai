@@ -1,0 +1,21 @@
+src/git/gix_backend.rs
+  s_d01cfbfe3af2e2::t_aa1e8cd3932b94 210-233
+src/git/refs.rs
+  s_d01cfbfe3af2e2::t_31c7c82373cc9d 382-384,386-394,397-405,407-426,428
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "19dfded8e369a23b3fdc73dce3a592223bfe650d",
+  "prompts": {},
+  "sessions": {
+    "s_d01cfbfe3af2e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cf9f0e5-b326-4a90-8216-2e35a90a30d9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

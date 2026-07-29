@@ -1,0 +1,26 @@
+.github/workflows/git-core-compat.yml
+  c1970e7fa3ca2e03 57-68,73
+tests/git-compat/run-core-tests.py
+  c1970e7fa3ca2e03 14,61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "c1b2b57e7fe3fa519e30b281a98d984fb9a47776",
+  "prompts": {
+    "c1970e7fa3ca2e03": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5772698e-67e6-4639-a483-cbb8405da325",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test User",
+      "messages": [],
+      "total_additions": 19,
+      "total_deletions": 6,
+      "accepted_lines": 15,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/f343df33ae33557e8c83b508ca6459e6f3d1be5b949f9f3adbc9bc6f1bbada46"
+    }
+  }
+}

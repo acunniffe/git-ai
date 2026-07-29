@@ -1,0 +1,70 @@
+docs/reference.mdx
+  cf0d4a4a885bd715 239-319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "32f652400557c36765179e4478f37b93ac489c2c",
+  "prompts": {
+    "cf0d4a4a885bd715": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "92941530-d88a-469a-8f60-f9c642309534",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/config.rs:86-125 add documentation to @docs/reference.mdx",
+          "timestamp": "2025-12-21T13:24:00.140Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the config command implementation and the reference docs to add the `config` command documentation.",
+          "timestamp": "2025-12-21T13:24:03.440Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "src/commands/config.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "docs/reference.mdx"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding the `config` command documentation to `docs/reference.mdx` in the User Commands section.",
+          "timestamp": "2025-12-21T13:24:08.243Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "docs/reference.mdx"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linting errors in the updated file:",
+          "timestamp": "2025-12-21T13:24:20.672Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Added documentation for the `config` command to `docs/reference.mdx`. It includes:\n\n- **Usage patterns**: viewing, setting, and unsetting configuration values\n- **Configuration keys**: descriptions of all available settings\n- **Repository patterns**: how to specify repository patterns (glob patterns, URLs, file paths)\n- **Examples**: common usage examples\n- **Notes**: details about boolean values, arrays, feature flags, and the `--add` flag\n\nThe documentation is placed in the User Commands section, right after `install-hooks` and before the Plumbing Commands section, matching the format of the other commands in the reference.",
+          "timestamp": "2025-12-21T13:24:26.193Z"
+        }
+      ],
+      "total_additions": 90,
+      "total_deletions": 0,
+      "accepted_lines": 82,
+      "overriden_lines": 0
+    }
+  }
+}
