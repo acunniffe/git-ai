@@ -334,8 +334,10 @@ pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
             _ => ToolClass::Skip,
         },
         Agent::Amp => match tool_name {
-            "Write" | "Edit" => ToolClass::FileEdit,
-            "Bash" => ToolClass::Bash,
+            "Write" | "Edit" | "create_file" | "edit_file" | "apply_patch" | "undo_edit" => {
+                ToolClass::FileEdit
+            }
+            "Bash" | "shell_command" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::OpenCode => match tool_name {
@@ -1520,7 +1522,18 @@ mod tests {
 
         // Amp
         assert_eq!(classify_tool(Agent::Amp, "Write"), ToolClass::FileEdit);
+        assert_eq!(
+            classify_tool(Agent::Amp, "create_file"),
+            ToolClass::FileEdit
+        );
+        assert_eq!(classify_tool(Agent::Amp, "edit_file"), ToolClass::FileEdit);
+        assert_eq!(
+            classify_tool(Agent::Amp, "apply_patch"),
+            ToolClass::FileEdit
+        );
+        assert_eq!(classify_tool(Agent::Amp, "undo_edit"), ToolClass::FileEdit);
         assert_eq!(classify_tool(Agent::Amp, "Bash"), ToolClass::Bash);
+        assert_eq!(classify_tool(Agent::Amp, "shell_command"), ToolClass::Bash);
 
         // OpenCode
         assert_eq!(classify_tool(Agent::OpenCode, "edit"), ToolClass::FileEdit);
