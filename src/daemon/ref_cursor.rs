@@ -1007,13 +1007,72 @@ impl RefCursor {
             return Ok(());
         }
 
+        // A failed control-mode rebase (--continue/--skip that stopped on a
+        // later conflict) may have produced no reflog entry of its own (e.g.
+        // an empty resolution git skipped). Because trace processing is
+        // asynchronous, the entry written by the EVENTUAL successful continue
+        // can already be in the reflog by the time this command is enriched;
+        // consuming it here starves that final continue of its evidence and
+        // loses the rebased-branch transition (and with it the migration of
+        // conflict-resolution working logs). Failed commands take no side
+        // effects, so their ref evidence is never used: consume nothing. Any
+        // entry this command did create is picked up by the successful
+        // continue's chain walk below.
+        if cmd.exit_code != 0 && summarize_rebase_args(&rebase_command_args(cmd)).is_control_mode {
+            return Ok(());
+        }
+
         let expected = self.head_expected_transition(cmd, state);
         let first = match self.find_rebase_start_entry(cmd, expected.clone())? {
             Some(entry) => Some(entry),
-            None => {
-                self.find_head_entry_without_hint(cmd.worktree.as_deref(), &["rebase"], expected)?
-            }
+            None => self.find_head_entry_without_hint(
+                cmd.worktree.as_deref(),
+                &["rebase"],
+                expected.clone(),
+            )?,
         };
+        crate::wltrace::wltrace(
+            "ref_cursor.rebase_first_entry",
+            cmd.worktree.as_deref().unwrap_or(std::path::Path::new("")),
+            || {
+                let cursor = cmd
+                    .worktree
+                    .as_deref()
+                    .and_then(git_dir_for_worktree)
+                    .map(|git_dir| head_key(&git_dir))
+                    .map(|key| {
+                        format!(
+                            "offset={:?} hint={:?}",
+                            self.offsets.get(&key),
+                            self.command_start_hints.get(&key)
+                        )
+                    })
+                    .unwrap_or_else(|| "no-key".to_string());
+                format!(
+                    "sid={} exit={} first={} expected_old={:?} expected_new={:?} {cursor}",
+                    cmd.root_sid,
+                    cmd.exit_code,
+                    first
+                        .as_ref()
+                        .map(|entry| format!(
+                            "{}->{} msg={}",
+                            &entry.old[..8.min(entry.old.len())],
+                            &entry.new[..8.min(entry.new.len())],
+                            entry.message.chars().take(40).collect::<String>()
+                        ))
+                        .unwrap_or_else(|| "NONE".to_string()),
+                    expected
+                        .old_oids
+                        .iter()
+                        .map(|oid| oid.chars().take(8).collect::<String>())
+                        .collect::<Vec<_>>(),
+                    expected
+                        .new_oid
+                        .as_ref()
+                        .map(|oid| &oid[..8.min(oid.len())]),
+                )
+            },
+        );
         let Some(first) = first else {
             return Ok(());
         };
@@ -5216,6 +5275,86 @@ mod tests {
                     new: E.to_string(),
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn failed_rebase_continue_does_not_steal_final_continue_entry() {
+        // Two-conflict rebase: the FIRST `rebase --continue` resolves conflict
+        // one with an empty/kept-side resolution and stops again on conflict
+        // two (exit != 0). Its only reflog evidence so far is the start entry
+        // (already consumed by the initial failed `rebase <branch>`); the
+        // continue entry that later appears belongs to the SECOND, successful
+        // `rebase --continue`. The failed continue must not consume it — doing
+        // so leaves the final continue with no entry, no ref_changes, and the
+        // conflict-resolution working log is never attributed (the
+        // two-conflicts attribution flake).
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        fs::create_dir_all(git_dir.join("logs")).unwrap();
+        append_reflog(
+            &git_dir,
+            "HEAD",
+            &[
+                (A, B, "rebase (start): checkout main"),
+                (B, C, "rebase (continue): Add Rust joke"),
+                (C, C, "rebase (finish): returning to refs/heads/topic"),
+            ],
+        );
+        append_reflog(
+            &git_dir,
+            "refs/heads/topic",
+            &[(D, C, "rebase (finish): refs/heads/topic onto main")],
+        );
+
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+
+        // Initial rebase stops on the first conflict: consumes the start entry.
+        let mut initial =
+            command_with_worktree(&family, Some(worktree.clone()), &["rebase", "main"]);
+        initial.exit_code = 1;
+        cursor.enrich_command(&mut initial, &state).unwrap();
+        assert_eq!(
+            initial.ref_changes,
+            vec![RefChange {
+                reference: "HEAD".to_string(),
+                old: A.to_string(),
+                new: B.to_string(),
+            }],
+            "initial failed rebase should consume only the start entry"
+        );
+
+        // First --continue resolves conflict one and stops on conflict two.
+        // It produced no reflog entry of its own and must consume nothing.
+        let mut stopped_continue =
+            command_with_worktree(&family, Some(worktree.clone()), &["rebase", "--continue"]);
+        stopped_continue.exit_code = 1;
+        cursor
+            .enrich_command(&mut stopped_continue, &state)
+            .unwrap();
+        assert_eq!(
+            stopped_continue.ref_changes,
+            Vec::<RefChange>::new(),
+            "a --continue that stops on the next conflict must not steal the final continue's entry"
+        );
+
+        // Final --continue finishes the rebase: its continue + finish entries
+        // must still be available so the branch transition is established.
+        let mut final_continue =
+            command_with_worktree(&family, Some(worktree), &["rebase", "--continue"]);
+        cursor.enrich_command(&mut final_continue, &state).unwrap();
+        assert!(
+            final_continue
+                .ref_changes
+                .iter()
+                .any(|change| change.reference == "refs/heads/topic"
+                    && change.old == D
+                    && change.new == C),
+            "final --continue must recover the branch transition; got {:?}",
+            final_continue.ref_changes
         );
     }
 
