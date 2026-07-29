@@ -606,6 +606,7 @@ fn test_pull_rebase_force_pushed_target_preserves_remote_authorship_note() {
     contributor
         .git(&["push", "--force", "origin", "HEAD:main"])
         .unwrap();
+    contributor.sync_daemon_force();
     contributor
         .git_og(&["push", "--force", "origin", "refs/notes/ai:refs/notes/ai"])
         .unwrap();

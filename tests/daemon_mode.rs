@@ -11,6 +11,8 @@ use git_ai::commands::checkpoint_agent::orchestrator::{
 };
 use git_ai::config::{NotesBackendConfig, NotesBackendKind};
 #[cfg(not(windows))]
+use git_ai::daemon::ControlResponse;
+#[cfg(not(windows))]
 use git_ai::daemon::checkpoint::PreparedPathRole;
 #[cfg(not(windows))]
 use git_ai::daemon::send_checkpoint_request_with_timeout;
@@ -62,6 +64,18 @@ fn daemon_trace_socket_path(repo: &TestRepo) -> PathBuf {
 
 fn daemon_lock_path(repo: &TestRepo) -> PathBuf {
     DaemonConfig::from_home(&repo.daemon_home_path()).lock_path
+}
+
+#[cfg(not(windows))]
+fn wait_for_daemon_log(repo: &TestRepo, needle: &str) -> String {
+    let started = std::time::Instant::now();
+    loop {
+        let logs = repo.daemon_stderr_contents();
+        if logs.contains(needle) || started.elapsed() >= Duration::from_secs(2) {
+            return logs;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[allow(clippy::zombie_processes)]
@@ -1725,6 +1739,300 @@ fn daemon_checkpoint_receipt_rejects_oversized_body_before_receiving_it() {
         response.error.as_deref(),
         Some("checkpoint ingress busy: byte_limit")
     );
+    let daemon_logs = wait_for_daemon_log(&repo, "checkpoint ingress quota exhausted");
+    assert!(
+        daemon_logs.contains("reason=\"byte_limit\"")
+            && daemon_logs.contains("requested_bytes=67108865"),
+        "daemon logs did not contain checkpoint overflow context:\n{daemon_logs}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_receipt_logs_body_receive_errors() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let control_socket = daemon_control_socket_path(&repo);
+    let stream = open_local_socket_stream_with_timeout(&control_socket, Duration::from_millis(500))
+        .expect("connect to daemon control socket");
+    let mut reader = BufReader::new(stream);
+    let mut header = serde_json::to_vec(&ControlRequest::CheckpointRun { body_bytes: 4 }).unwrap();
+    header.push(b'\n');
+    reader.get_mut().write_all(&header).unwrap();
+    reader.get_mut().flush().unwrap();
+
+    let mut ready_line = String::new();
+    reader.read_line(&mut ready_line).unwrap();
+    let ready: ControlResponse = serde_json::from_str(ready_line.trim()).unwrap();
+    assert_eq!(
+        ready.data.as_ref().and_then(|data| data.get("ready")),
+        Some(&Value::Bool(true))
+    );
+
+    reader.get_mut().write_all(b"body!").unwrap();
+    reader.get_mut().flush().unwrap();
+    let mut final_line = String::new();
+    assert_eq!(
+        reader.read_line(&mut final_line).unwrap(),
+        0,
+        "invalid body delimiter must close the connection without an acknowledgement"
+    );
+
+    let daemon_logs = wait_for_daemon_log(&repo, "failed receiving checkpoint body");
+    assert!(
+        daemon_logs.contains("reason=\"body_receive_failed\"")
+            && daemon_logs.contains("body_bytes=4"),
+        "daemon logs did not contain checkpoint body receive context:\n{daemon_logs}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_ack_does_not_wait_for_checkpoint_processing() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+        "slow-checkpoint=2000",
+    )]);
+    let file_path = repo.path().join("slow-checkpoint.txt");
+    fs::write(&file_path, "AI content\n").unwrap();
+    let request = CheckpointRequest {
+        trace_id: "slow-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "slow-checkpoint-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("slow-checkpoint.txt"),
+            content: Some("AI content\n".to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+
+    let started = std::time::Instant::now();
+    let response = send_checkpoint_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &request,
+        Duration::from_millis(500),
+    )
+    .expect("checkpoint receipt acknowledgement must not wait for processing");
+    assert!(response.ok, "checkpoint receipt failed: {response:?}");
+    assert!(
+        response.seq.is_some(),
+        "receipt acknowledgement needs a sequence"
+    );
+    assert!(
+        started.elapsed() < Duration::from_millis(500),
+        "receipt acknowledgement waited for checkpoint processing"
+    );
+
+    let sync = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(5),
+    )
+    .expect("sync.family should wait for asynchronous checkpoint processing");
+    assert!(sync.ok, "sync.family failed: {sync:?}");
+
+    repo.stage_all_and_commit("Commit asynchronously processed checkpoint")
+        .unwrap();
+    let mut file = repo.filename("slow-checkpoint.txt");
+    file.assert_committed_lines(lines!["AI content".ai()]);
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_processing_failure_is_logged_after_receipt_ack() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_FAIL_CHECKPOINT_SIDE_EFFECT",
+        "failing-checkpoint",
+    )]);
+    let file_path = repo.path().join("failing-checkpoint.txt");
+    fs::write(&file_path, "content\n").unwrap();
+    let request = CheckpointRequest {
+        trace_id: "failing-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::Human,
+        agent_id: None,
+        files: vec![CheckpointFile {
+            path: PathBuf::from("failing-checkpoint.txt"),
+            content: Some("content\n".to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+
+    let receipt = send_checkpoint_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &request,
+        Duration::from_millis(500),
+    )
+    .expect("processing failure must happen after receipt acknowledgement");
+    assert!(receipt.ok, "checkpoint receipt failed: {receipt:?}");
+    let receipt_seq = receipt.seq.expect("receipt sequence");
+
+    let sync = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(5),
+    )
+    .expect("sync.family should complete with family error state");
+    assert!(sync.ok, "sync.family request failed: {sync:?}");
+    let last_error = sync
+        .data
+        .as_ref()
+        .and_then(|data| data.get("last_error"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        last_error.contains("synthetic checkpoint processing failure"),
+        "sync.family did not surface checkpoint failure: {sync:?}"
+    );
+
+    let daemon_logs = repo.daemon_stderr_contents();
+    assert!(
+        daemon_logs.contains("side_effect_failed")
+            && daemon_logs.contains("synthetic checkpoint processing failure")
+            && daemon_logs.contains(&format!("receipt_seq={receipt_seq}")),
+        "daemon logs did not contain structured checkpoint failure context:\n{daemon_logs}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_async_checkpoint_receipts_preserve_file_edit_order_before_commit() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+        "pre-edit-checkpoint=500",
+    )]);
+    let control_socket = daemon_control_socket_path(&repo);
+    let file_path = repo.path().join("ordered-edit.txt");
+
+    fs::write(
+        &file_path,
+        "committed baseline\nunchanged one\nunchanged two\nunchanged three\n",
+    )
+    .unwrap();
+    repo.stage_all_and_commit("Initial baseline").unwrap();
+    let mut file = repo.filename("ordered-edit.txt");
+    file.assert_committed_lines(lines![
+        "committed baseline".unattributed_human(),
+        "unchanged one".unattributed_human(),
+        "unchanged two".unattributed_human(),
+        "unchanged three".unattributed_human(),
+    ]);
+    let base_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    fs::write(
+        &file_path,
+        "untracked before AI\nunchanged one\nunchanged two\nunchanged three\n",
+    )
+    .unwrap();
+    let pre_edit = CheckpointRequest {
+        trace_id: "pre-edit-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::Human,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "ordered-edit-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("ordered-edit.txt"),
+            content: Some(
+                "untracked before AI\nunchanged one\nunchanged two\nunchanged three\n".to_string(),
+            ),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Sha(base_commit.clone()),
+        }],
+        path_role: PreparedPathRole::WillEdit,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+    let pre_receipt = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &pre_edit,
+        Duration::from_millis(500),
+    )
+    .expect("pre-edit receipt");
+    assert!(pre_receipt.ok && pre_receipt.seq.is_some());
+
+    fs::write(
+        &file_path,
+        "untracked before AI\nunchanged one\nunchanged two\nAI addition\n",
+    )
+    .unwrap();
+    let post_edit = CheckpointRequest {
+        trace_id: "post-edit-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "ordered-edit-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("ordered-edit.txt"),
+            content: Some(
+                "untracked before AI\nunchanged one\nunchanged two\nAI addition\n".to_string(),
+            ),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Sha(base_commit),
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+    let post_receipt = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &post_edit,
+        Duration::from_millis(500),
+    )
+    .expect("post-edit receipt");
+    assert!(post_receipt.ok && post_receipt.seq.is_some());
+    assert!(pre_receipt.seq < post_receipt.seq);
+
+    let checkpoints = repo
+        .current_working_logs()
+        .read_all_checkpoints()
+        .expect("ordered checkpoints should be readable");
+    assert_eq!(
+        checkpoints
+            .iter()
+            .map(|checkpoint| checkpoint.kind)
+            .collect::<Vec<_>>(),
+        vec![CheckpointKind::Human, CheckpointKind::AiAgent],
+        "checkpoint processing must preserve receipt order"
+    );
+    assert_eq!(
+        checkpoints[1].entries[0]
+            .line_attributions
+            .iter()
+            .map(|attribution| (attribution.start_line, attribution.end_line))
+            .collect::<Vec<_>>(),
+        vec![(4, 4)],
+        "the AI checkpoint should only attribute the post-edit addition"
+    );
+
+    repo.git_without_test_sync_for_test(&["add", "."], &[])
+        .unwrap();
+    repo.git_without_test_sync_for_test(&["commit", "-m", "Immediate commit after receipts"], &[])
+        .unwrap();
+
+    file.assert_committed_lines(lines![
+        "untracked before AI".unattributed_human(),
+        "unchanged one".unattributed_human(),
+        "unchanged two".unattributed_human(),
+        "AI addition".ai(),
+    ]);
 }
 
 #[test]
@@ -1817,6 +2125,15 @@ fn daemon_checkpoint_initial_base_does_not_fall_back_to_processing_time_head() {
         send_checkpoint_request_with_timeout(&control_socket, &request, Duration::from_secs(5))
             .expect("checkpoint control request should succeed");
     assert!(response.ok, "checkpoint failed: {response:?}");
+    let sync = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(5),
+    )
+    .expect("sync.family should wait for checkpoint processing");
+    assert!(sync.ok, "sync.family failed: {sync:?}");
 
     let repository = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
     let initial_working_log = repository

@@ -519,8 +519,6 @@ fn test_cursor_checkpoint_routes_nested_worktree_file_to_worktree_repo() {
         .expect("cursor checkpoint should succeed");
     println!("Checkpoint output: {}", output);
 
-    repo.sync_daemon_force();
-
     let parent_repo =
         find_repository_in_path(repo.path().to_str().unwrap()).expect("find parent repo");
     let parent_base = parent_repo
@@ -528,10 +526,7 @@ fn test_cursor_checkpoint_routes_nested_worktree_file_to_worktree_repo() {
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let parent_working_log = parent_repo
-        .storage
-        .working_log_for_base_commit(&parent_base)
-        .expect("parent working log");
+    let parent_working_log = repo.working_logs_for_base_commit(&parent_base);
 
     assert!(
         parent_working_log
@@ -548,10 +543,8 @@ fn test_cursor_checkpoint_routes_nested_worktree_file_to_worktree_repo() {
         .ok()
         .and_then(|head| head.target().ok())
         .unwrap_or_else(|| "initial".to_string());
-    let worktree_working_log = worktree_repo
-        .storage
-        .working_log_for_base_commit(&worktree_base)
-        .expect("worktree working log");
+    let worktree_working_log =
+        repo.working_logs_for_repo_path_and_base_commit(&worktree_path, &worktree_base);
 
     let touched_files = worktree_working_log
         .all_ai_touched_files()

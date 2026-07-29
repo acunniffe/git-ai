@@ -593,10 +593,7 @@ fn checkpoint_routes_to_linked_worktree_when_cwd_is_main_repo() {
         .expect("wt repo should have a HEAD")
         .target()
         .expect("HEAD should resolve");
-    let wt_working_log = wt_repo
-        .storage
-        .working_log_for_base_commit(&commit_sha)
-        .expect("open worktree working log");
+    let wt_working_log = repo.working_logs_for_repo_path_and_base_commit(&linked_wt, &commit_sha);
 
     let checkpoints = wt_working_log
         .read_all_checkpoints()
@@ -697,10 +694,7 @@ fn checkpoint_routes_to_nested_linked_worktree_when_cwd_is_main_repo() {
         .expect("wt repo should have a HEAD")
         .target()
         .expect("HEAD should resolve");
-    let wt_working_log = wt_repo
-        .storage
-        .working_log_for_base_commit(&commit_sha)
-        .expect("open worktree working log");
+    let wt_working_log = repo.working_logs_for_repo_path_and_base_commit(&linked_wt, &commit_sha);
 
     let checkpoints = wt_working_log
         .read_all_checkpoints()
@@ -766,10 +760,7 @@ fn human_checkpoint_routes_to_linked_worktree_when_cwd_is_main_repo() {
         .expect("wt repo should have a HEAD")
         .target()
         .expect("HEAD should resolve");
-    let wt_working_log = wt_repo
-        .storage
-        .working_log_for_base_commit(&commit_sha)
-        .expect("open worktree working log");
+    let wt_working_log = repo.working_logs_for_repo_path_and_base_commit(&linked_wt, &commit_sha);
 
     let checkpoints = wt_working_log
         .read_all_checkpoints()
@@ -826,10 +817,7 @@ fn human_checkpoint_routes_to_nested_linked_worktree_when_cwd_is_main_repo() {
         .expect("wt repo should have a HEAD")
         .target()
         .expect("HEAD should resolve");
-    let wt_working_log = wt_repo
-        .storage
-        .working_log_for_base_commit(&commit_sha)
-        .expect("open worktree working log");
+    let wt_working_log = repo.working_logs_for_repo_path_and_base_commit(&linked_wt, &commit_sha);
 
     let checkpoints = wt_working_log
         .read_all_checkpoints()
