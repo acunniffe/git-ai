@@ -249,13 +249,19 @@ impl AgentPreset for AmpPreset {
         let hook_input: AmpHookInput = serde_json::from_str(hook_input)
             .map_err(|e| GitAiError::PresetError(format!("Invalid JSON in hook_input: {}", e)))?;
 
-        let is_pre = hook_input.hook_event_name == "PreToolUse";
-
-        let is_bash = hook_input
+        let tool_class = hook_input
             .tool_name
             .as_deref()
-            .map(|name| bash_tool::classify_tool(Agent::Amp, name) == ToolClass::Bash)
-            .unwrap_or(false);
+            .map(|name| bash_tool::classify_tool(Agent::Amp, name))
+            // Preserve payloads from older Amp integrations that omitted tool_name.
+            .unwrap_or(ToolClass::FileEdit);
+        if tool_class == ToolClass::Skip {
+            return Ok(Vec::new());
+        }
+
+        let is_pre = hook_input.hook_event_name == "PreToolUse";
+
+        let is_bash = tool_class == ToolClass::Bash;
 
         let cwd = hook_input.cwd.as_deref().unwrap_or(".");
 
@@ -461,6 +467,68 @@ mod tests {
                 assert_eq!(e.tool_use_id, "tu-abc");
             }
             _ => panic!("Expected PostBashCall"),
+        }
+    }
+
+    #[test]
+    fn test_amp_ignores_read_only_and_unsupported_tools() {
+        for hook_event in ["PreToolUse", "PostToolUse"] {
+            for tool_name in ["Read", "finder", "glob", "Grep", "Task", "unknown_tool"] {
+                let input = make_amp_input(hook_event, tool_name);
+                let events = AmpPreset.parse(&input, "t_test").unwrap();
+                assert!(
+                    events.is_empty(),
+                    "{hook_event} {tool_name} unexpectedly produced events"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_ignored_amp_hook_produces_no_checkpoint_requests() {
+        let input = make_amp_input("PostToolUse", "Read");
+        let requests = crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
+            "amp", &input,
+        )
+        .unwrap();
+        assert!(requests.is_empty());
+    }
+
+    #[test]
+    fn test_amp_preserves_all_mutating_tools() {
+        for tool_name in [
+            "Write",
+            "Edit",
+            "create_file",
+            "edit_file",
+            "apply_patch",
+            "undo_edit",
+        ] {
+            let pre = make_amp_input("PreToolUse", tool_name);
+            assert!(matches!(
+                AmpPreset.parse(&pre, "t_test").unwrap()[..],
+                [ParsedHookEvent::PreFileEdit(_)]
+            ));
+
+            let post = make_amp_input("PostToolUse", tool_name);
+            assert!(matches!(
+                AmpPreset.parse(&post, "t_test").unwrap()[..],
+                [ParsedHookEvent::PostFileEdit(_)]
+            ));
+        }
+
+        for tool_name in ["Bash", "shell_command"] {
+            let pre = make_amp_input("PreToolUse", tool_name);
+            assert!(matches!(
+                AmpPreset.parse(&pre, "t_test").unwrap()[..],
+                [ParsedHookEvent::PreBashCall(_)]
+            ));
+
+            let post = make_amp_input("PostToolUse", tool_name);
+            assert!(matches!(
+                AmpPreset.parse(&post, "t_test").unwrap()[..],
+                [ParsedHookEvent::PostBashCall(_)]
+            ));
         }
     }
 
