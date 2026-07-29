@@ -1,0 +1,19 @@
+.github/workflows/release.yml
+  s_6bf095a97ce489::t_e3a5d1196b5ad1 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "ae2ce9e6e5d3ab3a85e8832c7a0ee1899da872b3",
+  "prompts": {},
+  "sessions": {
+    "s_6bf095a97ce489": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "040c7d4d-3fc1-4c2a-8739-66f2d17845ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

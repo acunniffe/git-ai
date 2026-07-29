@@ -1,0 +1,19 @@
+src/daemon/checkpoint.rs
+  s_70df104a963f41::t_a832b01241369a 75-78,82-85,1134,1140-1145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "46c8ca6ead72891bd136ad59b2c06fb31f40506d",
+  "prompts": {},
+  "sessions": {
+    "s_70df104a963f41": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8515-45c3-7662-ad80-4cda907edcf5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

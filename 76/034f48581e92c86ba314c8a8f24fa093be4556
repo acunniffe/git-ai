@@ -1,0 +1,51 @@
+src/git/repo_storage.rs
+  s_4d9b233c5a1999::t_6dbf7158098062 668,670,673,675
+  s_4d9b233c5a1999::t_0c4ff31d3d5fbb 704-708
+  s_4d9b233c5a1999::t_21b42c547a7a94 384-387
+tests/integration/checkpoint_unit.rs
+  s_4d9b233c5a1999::t_74d303ca078211 3,5
+  s_4d9b233c5a1999::t_2735bbb766300a 4
+  s_4d9b233c5a1999::t_dda59faf1637f3 356-373,382-387,393,398,403
+  s_4d9b233c5a1999::t_6cb325067950b6 265
+  s_4d9b233c5a1999::t_2eb4b07d686854 397
+  s_4d9b233c5a1999::t_73dd8c4880a354 248-258,261,266
+tests/integration/test_utils_unit.rs
+  s_4d9b233c5a1999::t_3f710aaff0a47f 3
+src/daemon.rs
+  s_4d9b233c5a1999::t_6a41e707eaf137 2649,2657-2661,2663-2668,2674
+  s_4d9b233c5a1999::t_606c640fc854d2 1403-1462,1468-1485
+  s_4d9b233c5a1999::t_db77dafbead444 1463-1467
+  s_4d9b233c5a1999::t_aa858731aa0fe5 34
+  s_4d9b233c5a1999::t_779d660805ca3d 2673
+  s_4d9b233c5a1999::t_c53b14b17bb891 2662,2669
+  s_4d9b233c5a1999::t_a91627be84a6e4 1859,1886
+  s_4d9b233c5a1999::t_47ca8931dad396 1870
+  s_4d9b233c5a1999::t_012a89bf115ef0 2643
+  s_4d9b233c5a1999::t_671ab96affaf9e 69
+  s_4d9b233c5a1999::t_f9a65d78de5256 1363,1389-1400
+src/commands/checkpoint_agent/orchestrator.rs
+  s_4d9b233c5a1999::t_56fc1f5ef2d79b 3
+src/daemon/checkpoint.rs
+  s_4d9b233c5a1999::t_35a6f7b97f3d59 24-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "76034f48581e92c86ba314c8a8f24fa093be4556",
+  "prompts": {},
+  "humans": {
+    "h_55c03ed47cd416": {
+      "author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  },
+  "sessions": {
+    "s_4d9b233c5a1999": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7e6a7bc9-0cb8-47aa-8408-4cab72391b45",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

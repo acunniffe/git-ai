@@ -1,0 +1,37 @@
+src/daemon/sweep_coordinator.rs
+  s_395f5898107085::t_0dc8445ea26046 111
+src/transcripts/agent.rs
+  s_395f5898107085::t_0dc8445ea26046 21,109
+tests/integration/sweep_e2e.rs
+  s_395f5898107085::t_0dc8445ea26046 271,314,397
+src/transcripts/db.rs
+  s_395f5898107085::t_0dc8445ea26046 87,91,106,123,246,255,283,301,305,313,318,320,333,344-345,364,375-376,395,405-406,425,434-435,454,463-464,488,532,666
+tests/integration/session_event_repo_url.rs
+  s_395f5898107085::t_0dc8445ea26046 70
+tests/integration/transcripts_e2e.rs
+  s_395f5898107085::t_0dc8445ea26046 44,151,197,235,280,373,456,516,647-648
+src/transcripts/agents/copilot.rs
+  s_395f5898107085::t_0dc8445ea26046 262,268
+src/daemon/transcript_worker_tests.rs
+  s_395f5898107085::t_0dc8445ea26046 13,25,60,72,84,116,161
+src/daemon/transcript_worker.rs
+  s_395f5898107085::t_0dc8445ea26046 56,229,249,256,265,300,317,324,332,415,448,481,491,539,553,590,624,655,663,720,733,761,800,815,848,859
+src/daemon.rs
+  s_395f5898107085::t_0dc8445ea26046 7698
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "96851dd556b83f61b16a7ec0faf0a06b1651c6b6",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

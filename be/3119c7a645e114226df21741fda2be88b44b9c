@@ -1,0 +1,19 @@
+src/daemon/bash_history_db.rs
+  s_cfb20a6a102d4d::t_3b8471f692c414 110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "be3119c7a645e114226df21741fda2be88b44b9c",
+  "prompts": {},
+  "sessions": {
+    "s_cfb20a6a102d4d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef69e-2f01-7191-829f-294bbd1e22bf",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
