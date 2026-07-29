@@ -2518,8 +2518,7 @@ fn is_linked_worktree_git_file(git_file: &Path) -> bool {
 }
 
 pub fn find_repository_in_path(path: &str) -> Result<Repository, GitAiError> {
-    let global_args = vec!["-C".to_string(), path.to_string()];
-    find_repository(&global_args)
+    discover_repository_in_path_no_git_exec(Path::new(path))
 }
 
 /// Find the git repository that contains the given file path by walking up the directory tree.
