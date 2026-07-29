@@ -63,6 +63,7 @@ pub mod domain;
 pub mod family_actor;
 pub mod git_backend;
 pub mod global_actor;
+pub mod rebase_reconcile;
 pub mod reducer;
 pub mod ref_cursor;
 pub mod rewrite_metrics;
@@ -2733,6 +2734,9 @@ pub struct ActorDaemonCoordinator {
     pending_cherry_pick_sources_by_worktree: Mutex<HashMap<String, Vec<String>>>,
     pending_cherry_pick_no_commit_by_worktree: Mutex<HashMap<String, PendingCherryPickNoCommit>>,
     pending_squash_merge_by_worktree: Mutex<HashMap<String, PendingSquashMerge>>,
+    /// Worktrees already scanned for rebases that completed while no daemon
+    /// was observing (reconciliation runs once per worktree per daemon life).
+    reconciled_unobserved_rebase_worktrees: Mutex<HashSet<String>>,
     inflight_effects_by_family: Mutex<HashMap<String, usize>>,
     /// Files with an in-flight AI edit (PreFileEdit received, PostFileEdit not yet completed).
     /// Outer key: family. Inner key: absolute file path string. Value: registration timestamp (nanos).
@@ -2829,6 +2833,7 @@ impl ActorDaemonCoordinator {
             pending_cherry_pick_sources_by_worktree: Mutex::new(HashMap::new()),
             pending_cherry_pick_no_commit_by_worktree: Mutex::new(HashMap::new()),
             pending_squash_merge_by_worktree: Mutex::new(HashMap::new()),
+            reconciled_unobserved_rebase_worktrees: Mutex::new(HashSet::new()),
             inflight_effects_by_family: Mutex::new(HashMap::new()),
             pending_ai_edits_by_family: Mutex::new(HashMap::new()),
             family_sequencers_by_family: Mutex::new(HashMap::new()),
@@ -5267,6 +5272,177 @@ impl ActorDaemonCoordinator {
     }
 
     /// Detects non-fast-forward ref moves and fires handle_rewrite_event.
+    /// Recover rebases that completed while no daemon was observing (daemon
+    /// down, or its trace ingestion broken) and replay them through the
+    /// non-fast-forward shift path so stranded authorship notes reach the
+    /// rewritten commits. Runs at most once per worktree per daemon lifetime,
+    /// on the first command that reaches side-effect processing for that
+    /// worktree.
+    ///
+    /// `command_is_completing_rebase` must be true when the triggering
+    /// command is itself a completing rebase / pull --rebase: if that command
+    /// actually rewrote history, its own span is already in the reflog by
+    /// side-effect time and is owned by the live path
+    /// (`detect_and_handle_non_ff_rewrites`), which additionally renames
+    /// working logs — something this after-the-fact replay does not attempt.
+    /// The span is identified by matching the command's observed ref
+    /// movement, not by position: an already-up-to-date rebase or a
+    /// fast-forward `pull --rebase` writes no span, and dropping the newest
+    /// span blindly would discard a genuinely stranded one — precisely the
+    /// natural case of a user re-running the same rebase after the blind
+    /// window.
+    fn reconcile_unobserved_rebases(
+        &self,
+        cmd: &crate::daemon::domain::NormalizedCommand,
+        command_is_completing_rebase: bool,
+    ) -> Result<(), GitAiError> {
+        let worktree = match cmd.worktree.as_ref() {
+            Some(w) => w,
+            None => return Ok(()),
+        };
+        {
+            let mut seen = self
+                .reconciled_unobserved_rebase_worktrees
+                .lock()
+                .map_err(|_| {
+                    GitAiError::Generic(
+                        "reconciled unobserved rebase worktrees lock poisoned".to_string(),
+                    )
+                })?;
+            if !seen.insert(Self::worktree_state_key(worktree)) {
+                return Ok(());
+            }
+        }
+
+        let head_log_path = match git_dir_for_worktree(worktree) {
+            Some(git_dir) => git_dir.join("logs").join("HEAD"),
+            None => return Ok(()),
+        };
+        let head_reflog = match fs::read_to_string(&head_log_path) {
+            Ok(contents) => contents,
+            // No reflog — nothing could have been missed.
+            Err(_) => return Ok(()),
+        };
+
+        let mut spans =
+            crate::daemon::rebase_reconcile::completed_rebase_spans(&head_reflog);
+        if command_is_completing_rebase
+            && spans.last().is_some_and(|newest| {
+                crate::daemon::rebase_reconcile::span_matches_command_ref_changes(
+                    newest,
+                    &cmd.ref_changes,
+                )
+            })
+        {
+            spans.pop();
+        }
+        // Reflog-only filters first (no git): age, degenerate spans, and a
+        // hard cap (newest kept) so total git work is bounded by a constant
+        // no matter how rebase-heavy the reflog is.
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        spans.retain(|span| {
+            span.old_tip != span.new_tip
+                && now_secs.saturating_sub(span.finished_at_secs)
+                    <= crate::daemon::rebase_reconcile::MAX_SPAN_AGE_SECS
+        });
+        if spans.len() > crate::daemon::rebase_reconcile::MAX_RECONCILE_SPANS {
+            spans.drain(..spans.len() - crate::daemon::rebase_reconcile::MAX_RECONCILE_SPANS);
+        }
+        if spans.is_empty() {
+            return Ok(());
+        }
+
+        let repo = find_repository_in_path(&worktree.to_string_lossy())?;
+
+        // Batched existence screen: one cat-file --batch-check spawn covers
+        // every tip of every span (never one git spawn per object).
+        let mut tips: Vec<String> = spans
+            .iter()
+            .flat_map(|span| [span.old_tip.clone(), span.new_tip.clone()])
+            .collect();
+        tips.sort();
+        tips.dedup();
+        let existing = match crate::daemon::rebase_reconcile::existing_commits(&repo, &tips) {
+            Ok(existing) => existing,
+            Err(error) => {
+                tracing::warn!(error = %error, "unobserved rebase existence probe failed");
+                return Ok(());
+            }
+        };
+        spans.retain(|span| existing.contains(&span.old_tip) && existing.contains(&span.new_tip));
+
+        // Batched notes screen: the spans' own reflog rows record the commits
+        // each rewrite created, so one commits_with_notes call over their
+        // union drops every span that was already handled — without any
+        // per-span git. Only genuinely stranded candidates (normally zero or
+        // one) reach the precise per-span probe below.
+        let mut rewritten: Vec<String> = spans
+            .iter()
+            .flat_map(|span| span.rewritten_commits.iter().cloned())
+            .collect();
+        rewritten.sort();
+        rewritten.dedup();
+        if !rewritten.is_empty() {
+            let noted = match crate::git::notes_api::commits_with_notes(&repo, &rewritten) {
+                Ok(noted) => noted,
+                Err(error) => {
+                    tracing::warn!(error = %error, "unobserved rebase notes screen failed");
+                    return Ok(());
+                }
+            };
+            spans.retain(|span| {
+                crate::daemon::rebase_reconcile::may_have_stranded_notes(span, &noted)
+            });
+        }
+
+        for span in spans {
+            // Precise probe, candidates only: empty sources also screens out
+            // fast-forward "rebases" (nothing reachable from the old tip
+            // alone), so no separate ancestor check is needed.
+            match crate::daemon::rebase_reconcile::span_has_stranded_notes(&repo, &span) {
+                Ok(true) => {}
+                Ok(false) => continue,
+                Err(error) => {
+                    tracing::warn!(
+                        error = %error,
+                        old_tip = %span.old_tip,
+                        new_tip = %span.new_tip,
+                        "unobserved rebase note probe failed"
+                    );
+                    continue;
+                }
+            }
+            tracing::info!(
+                old_tip = %span.old_tip,
+                new_tip = %span.new_tip,
+                onto = %span.onto,
+                finished_at_secs = span.finished_at_secs,
+                repo = %worktree.display(),
+                "reconciling rebase that completed while unobserved"
+            );
+            if let Err(error) =
+                crate::authorship::rewrite::handle_non_fast_forward_rewrite_with_operation(
+                    &repo,
+                    &span.old_tip,
+                    &span.new_tip,
+                    Some(span.onto.as_str()),
+                    crate::authorship::rewrite::RewriteMetricOperation::Rebase,
+                )
+            {
+                tracing::warn!(
+                    error = %error,
+                    old_tip = %span.old_tip,
+                    new_tip = %span.new_tip,
+                    "unobserved rebase reconciliation failed"
+                );
+            }
+        }
+        Ok(())
+    }
+
     fn detect_and_handle_non_ff_rewrites(
         &self,
         cmd: &crate::daemon::domain::NormalizedCommand,
@@ -5693,6 +5869,17 @@ impl ActorDaemonCoordinator {
                 Some("checkout" | "switch" | "branch" | "stash")
             )
         };
+        // Rebases that completed while no daemon was observing left their
+        // notes stranded on the pre-rebase commits (cursor state is in-memory
+        // only, and cold seeding skips pre-daemon reflog history). Replay any
+        // such recent span once per worktree — before the current command's
+        // own non-FF handling, so a chained rebase can find its source notes.
+        if cmd.exit_code == 0
+            && let Err(error) =
+                self.reconcile_unobserved_rebases(cmd, is_completing_rebase || is_pull_rebase)
+        {
+            tracing::warn!(error = %error, "unobserved rebase reconciliation failed");
+        }
         if !skip_non_ff && cmd.exit_code == 0 {
             self.detect_and_handle_non_ff_rewrites(cmd)?;
         }
