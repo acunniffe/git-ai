@@ -1,0 +1,14 @@
+src/commands/daemon.rs
+  s_d46277b929576d::t_94d4be898beec9 195-197,209
+  s_d46277b929576d::t_a9f4d0c45bd213 203-208,212-219,221-232
+  s_d46277b929576d::t_39a483519fc932 261
+  s_d46277b929576d::t_e0e1a2f2350fb8 289
+  s_d46277b929576d::t_e7dfd992625be8 7,10,18,284
+  s_d46277b929576d::t_95dbe22d3712a5 13-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "0365d30868bfcc270c2a7d41188542329e09b264",
+  "prompts": {}
+}

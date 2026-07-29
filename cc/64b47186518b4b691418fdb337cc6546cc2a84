@@ -1,0 +1,19 @@
+bench/side/side_2.txt
+  s_a1c49929bc453d::t_40fbe0814769a3 1-1000
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.5",
+  "base_commit_sha": "cc64b47186518b4b691418fdb337cc6546cc2a84",
+  "prompts": {},
+  "sessions": {
+    "s_a1c49929bc453d": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1778422869615030343",
+        "model": "unknown"
+      },
+      "human_author": "git-ai bench <bench@git-ai.local>"
+    }
+  }
+}

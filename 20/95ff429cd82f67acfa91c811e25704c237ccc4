@@ -1,0 +1,20 @@
+src/ci/github.rs
+  s_9f2edf21ca3f62::t_61a99247fb301c 82,111,133-139
+  s_9f2edf21ca3f62::t_c1f07675197365 160-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "2095ff429cd82f67acfa91c811e25704c237ccc4",
+  "prompts": {},
+  "sessions": {
+    "s_9f2edf21ca3f62": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e985a-2efb-70c0-9189-59cc243f7495",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+src/git/repo_state.rs
+  s_af2d349a5e032c::t_807024e6040c36 527-533
+  s_af2d349a5e032c::t_465ace4e55587e 761,784-788
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "85c488188b67f1dd09d62a7d1c8c8af53632c798",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

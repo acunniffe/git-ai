@@ -1,0 +1,41 @@
+src/commands/core_hooks.rs
+  b05b818d679016df 48-49,58,66,77,82,88,93,99,173-176,207,209,220,222,326,350,601-611,615,667,672,680,1029,1031,1167,1169,1502-1508,1510,1556-1577,1580,1596,1700,1702
+  365e11255b4b58bf 50-57,1509,1512
+src/git/repository.rs
+  b05b818d679016df 1929-1977,2041-2055
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "1c680ad8a68d113493ada539ad0ab7d2c7f14220",
+  "prompts": {
+    "365e11255b4b58bf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c623f-100e-7933-8053-c98b46781ec9",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 197,
+      "total_deletions": 10,
+      "accepted_lines": 18,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/80a55f903c562796836d0a3bb80b843f475395156ad4fa06dc07b7514d403f1d"
+    },
+    "b05b818d679016df": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c62da-942d-7633-843b-f1fcd525e819",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 183,
+      "total_deletions": 250,
+      "accepted_lines": 180,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5591edb8a120bdb49916a7e5c01a2702d8b99216c4a068331c579342738e9789"
+    }
+  }
+}

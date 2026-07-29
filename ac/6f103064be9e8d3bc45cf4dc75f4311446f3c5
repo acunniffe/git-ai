@@ -1,0 +1,21 @@
+src/enterprise_config.rs
+  s_5f82797aa84a91::t_5afdefbc7320fe 14,201,203-205,209-223,409-410,413-418,423,519-529
+src/commands/install_hooks.rs
+  s_5f82797aa84a91::t_239582f2de1ef0 1307-1331
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "ac6f103064be9e8d3bc45cf4dc75f4311446f3c5",
+  "prompts": {},
+  "sessions": {
+    "s_5f82797aa84a91": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef003-efb6-74a2-8916-fa6acdec34b7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

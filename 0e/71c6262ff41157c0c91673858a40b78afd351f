@@ -1,0 +1,26 @@
+tests/integration/ci_context_unit.rs
+  f4f2b364dfcacebb 1-203
+tests/integration/main.rs
+  f4f2b364dfcacebb 79,111,115,122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "0e71c6262ff41157c0c91673858a40b78afd351f",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 205,
+      "total_deletions": 240,
+      "accepted_lines": 204,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/adb29afc662ed778845678d45fc44aa81b66049bfd8ae5297454fe4fde55b419"
+    }
+  }
+}

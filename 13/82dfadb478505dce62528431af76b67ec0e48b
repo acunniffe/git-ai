@@ -1,0 +1,8 @@
+src/authorship/authorship_log_serialization.rs
+  0a1efe2 1385,1387,1392-1393,1413-1415
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "d3e11ebf071a729b10c6ad2e9d194a62d85d3795",
+  "prompts": {}
+}

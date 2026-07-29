@@ -1,0 +1,34 @@
+scripts/nightly/test-synthetic-checkpoint.sh
+  s_c09abde31deca4::t_27dcb7124d0c3c 63
+.github/workflows/e2e-tests.yml
+  s_c09abde31deca4::t_d783c04cb1cfda 11-12
+scripts/nightly/verify-synthetic-attribution.sh
+  s_c09abde31deca4::t_50a21424bae595 80-89,91
+  s_c09abde31deca4::t_d8fb2bcbc2fafd 97,101,103
+.github/workflows/install-scripts-local.yml
+  s_c09abde31deca4::t_e6a5257a1d35aa 524-544
+  s_c09abde31deca4::t_3d051de035af53 23-28
+  s_c09abde31deca4::t_dd65ed54fec9a3 311-351
+  s_c09abde31deca4::t_95615c64e240e0 465-475,480
+  s_c09abde31deca4::t_08d4bfce57360a 447-458,460,462
+scripts/nightly/verify-attribution.sh
+  s_c09abde31deca4::t_c1b6d32d3e6124 115-116,124
+  s_c09abde31deca4::t_8ea3622f888573 140
+  s_c09abde31deca4::t_03e1d67d9783a3 95-104,106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "7319befd61eb382b01b11492e583b4cbec713ecf",
+  "prompts": {},
+  "sessions": {
+    "s_c09abde31deca4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62ce70ec-4ab8-4e72-9ff4-02b950fd2936",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

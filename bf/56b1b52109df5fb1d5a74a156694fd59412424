@@ -1,0 +1,364 @@
+src/commands/continue_session.rs
+  05192137038af7a7 17,81-82,86-90,92,111-124,130,135-312,394-396,399,525-526,530,532,924,935,946-972,976-978,1052-1059,1066,1069-1070,1109-1118,1120,1124-1125,1127-1129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.1",
+  "base_commit_sha": "bf56b1b52109df5fb1d5a74a156694fd59412424",
+  "prompts": {
+    "05192137038af7a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11c3c99f-404a-4e4a-9681-165d9576618b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Briefly summarize the restored session context above: what was being worked on, what was accomplished, and what remains to be done. Then ask how you can help.",
+          "timestamp": "2026-02-07T03:39:21.890Z"
+        },
+        {
+          "type": "assistant",
+          "text": "The user wants me to summarize the restored session context and ask how I can help.",
+          "timestamp": "2026-02-07T03:39:24.481Z"
+        },
+        {
+          "type": "assistant",
+          "text": "## Session Summary\n\n**What was worked on:**\nThe `git-ai` project's Nix development environment and the `continue` command functionality.\n\n**What was accomplished:**\n\n1. **DevShell wrapper scripts** — The `flake.nix` `shellHook` was updated to replicate `scripts/dev-symlinks.sh`, creating wrapper scripts (`git`, `git-ai`, `git-og`) in `~/.git-ai-local-dev/gitwrap/bin/` so that `nix develop` automatically provides the development version of git-ai on `PATH`. The wrappers respect `CARGO_TARGET_DIR` when set.\n\n2. **Search and continue commands** — `git ai search` and `git ai continue` were implemented, allowing users to search AI session history and resume previous sessions in Claude Code.\n\n3. **`--summary` flag** — A `--summary` flag was added to `git ai continue` to optionally inject session context when launching Claude Code.\n\n4. **Build fix** — A `DEVELOPER_DIR` conflict causing cargo build failures in the Nix shell on macOS was resolved by unsetting it in the shellHook.\n\n5. **Hook investigation** — An investigation into why git-ai notes had empty prompts revealed that the repository's hooks were all managed by git-branchless, not git-ai. The hooks need explicit installation via `install-hooks`.\n\n**What remains:**\nThe working tree is clean on branch `johnw/continue`. All changes from that session were committed.\n\nHow can I help you today?",
+          "timestamp": "2026-02-07T03:39:33.578Z"
+        },
+        {
+          "type": "user",
+          "text": "<command-message>heavy</command-message>\n<command-name>/heavy</command-name>\n<command-args>When I ask to `continue` with git-ai, I want you to include as part of the context not just the prompts that were used and the session history from the git-ai notes, but also the commit message, the diffs of the commit itself, and the usual project context such as reading in CLAUDE.md, etc.</command-args>",
+          "timestamp": "2026-02-07T03:41:02.574Z"
+        },
+        {
+          "type": "user",
+          "text": "Remember the following:\n\n- Use the GitHub CLI (`gh`) for all GitHub-related tasks\n- Search the codebase for relevant files\n- Ensure code passes linting and type checking after doing any work\n- Use cpp-pro, python-pro, emacs-lisp-pro, rust-pro or haskell-pro as needed\n  for diagnosing and analyzing PRs, fixing code, and writing any new code.\n- If this worktree is anywhere under the \"positron\" or \"pos\" directories, then\n  use pal to confer with gemini-3-pro-preview and gpt-5.2-pro to reach\n  consensus on your deep analysis and review.\n- Use Web Search and Perplexity with the web-searcher skill as needed for\n  research and discovering resources.\n- Use sequential-thinking when appropriate to break down tasks further.\n- Use context7 whenever code examples might help.\n- Use the Notion MCP server to query for documents and supporting information\n  from Positron’s Notion document repository. Some of that information may be\n  out of date or no longer accurate, but there are a lot of details there that\n  might help you in your research.\n- Use `andoria make` for building on a Linux machine to test any changes\n  that you make.\n- You can ssh to andoria-08 and within a `tron/work/<WORKTREE NAME>` directory\n  use `nix develop --command FOO` to run any arbitrary command `FOO` on that\n  machine.\n\nThink deeply to analyze the following query, use pal to build consensus among\nyour partner LLMs and construct a well thought out plan of action based on the\nfollowing context, and then carefully execute that plan step by step:\n\n\nARGUMENTS: When I ask to `continue` with git-ai, I want you to include as part of the context not just the prompts that were used and the session history from the git-ai notes, but also the commit message, the diffs of the commit itself, and the usual project context such as reading in CLAUDE.md, etc.",
+          "timestamp": "2026-02-07T03:41:02.574Z"
+        },
+        {
+          "type": "assistant",
+          "text": "\n\nLet me start by understanding the current implementation of the `continue` command and how context is assembled.",
+          "timestamp": "2026-02-07T03:41:05.593Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Task",
+          "input": {
+            "description": "Explore continue command implementation",
+            "prompt": "Thoroughly explore the git-ai continue command implementation. I need to understand:\n\n1. How the `continue` command works end-to-end (src/commands/continue_session.rs)\n2. How session context/prompts are assembled for the `--append-system-prompt` flag passed to Claude Code\n3. What information is currently included in the restored session context\n4. How git-ai notes are read and parsed (look at authorship modules)\n5. How the `search` command finds sessions (src/commands/search.rs) since continue uses it\n6. The prompt_utils module that builds prompts (src/authorship/prompt_utils.rs)\n7. Any CLAUDE.md reading logic that exists\n8. How diffs and commit messages could be obtained\n\nSearch broadly - check src/authorship/, src/commands/, src/git_utils/, and any other relevant modules. I need complete understanding of the data flow from \"user runs git ai continue\" to \"Claude Code launches with context\".",
+            "subagent_type": "Explore"
+          },
+          "timestamp": "2026-02-07T03:41:12.055Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Excellent. Now let me read the key files I'll need to modify.",
+          "timestamp": "2026-02-07T03:42:31.852Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs"
+          },
+          "timestamp": "2026-02-07T03:42:32.647Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/commands/search.rs"
+          },
+          "timestamp": "2026-02-07T03:42:33.043Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/authorship/prompt_utils.rs"
+          },
+          "timestamp": "2026-02-07T03:42:33.492Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me understand how to get commit diffs and find CLAUDE.md files. Let me check the git utility functions and see how commit info is already retrieved.",
+          "timestamp": "2026-02-07T03:42:38.064Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Task",
+          "input": {
+            "description": "Explore git diff and CLAUDE.md patterns",
+            "prompt": "Search the git-ai codebase for:\n\n1. How `exec_git` is used to run git commands (look at src/git/repository.rs for the exec_git function and global_args_for_exec)\n2. Any existing code that generates diffs (git diff, git show, etc.) - search for \"diff\" in git-related modules\n3. How CLAUDE.md files are found/read anywhere in the codebase\n4. The Repository struct's methods - particularly workdir(), global_args_for_exec(), and any diff-related methods\n5. Look at how the `SearchResult` struct's `prompt_commits` field maps prompt hashes to commit SHAs\n\nFocus on src/git/ directory and the Repository type.",
+            "subagent_type": "Explore"
+          },
+          "timestamp": "2026-02-07T03:42:43.861Z"
+        },
+        {
+          "type": "assistant",
+          "text": "\n\nNow I have a thorough understanding of the codebase. Let me plan the implementation using sequential thinking.",
+          "timestamp": "2026-02-07T03:45:18.010Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "mcp__sequential-thinking__sequentialthinking",
+          "input": {
+            "nextThoughtNeeded": true,
+            "thought": "The user wants `git ai continue` to include richer context when launching Claude Code. Currently, `format_context_block` only includes:\n1. Basic commit info (SHA, author, date, message) \n2. Session conversation history (User/Assistant/Thinking/Plan messages)\n\nThe user wants to ADD:\n1. **Commit message** - already partially there (the one-line subject), but should include the full commit message body\n2. **Diffs of the commit** - the actual code changes from `git show` or `git diff`\n3. **Project context** like CLAUDE.md - read and include CLAUDE.md files\n\nLet me think about the implementation approach:\n\n**For commit messages:** `CommitInfo::from_commit_sha` currently uses `%s` (subject only). I should change this to `%B` (full body) or add a separate field for the full message.\n\n**For diffs:** I need to get the diff for each commit associated with the prompts. The `SearchResult` has `prompt_commits` which maps prompt hashes to commit SHAs. I can use `git show --stat` and `git diff` to get the diff. But I need to be careful about size - diffs can be huge. I should probably use `git show <sha>` which shows the commit message + diff, or `git diff <parent>..<sha>`.\n\n**For CLAUDE.md:** I need to find CLAUDE.md in the repo workdir and read it. Claude Code already reads CLAUDE.md on its own when launched, so actually the `--append-system-prompt` context doesn't need to duplicate what Claude Code will read itself. BUT the user explicitly asked for it to be included. Let me re-read: \"the usual project context such as reading in CLAUDE.md, etc.\" - this suggests they want the context to be self-contained so that when Claude reads the restored session, it also has the project instructions.\n\nWait - actually, Claude Code DOES read CLAUDE.md on its own when it starts up. Including it again in the system prompt would be redundant. The user might mean that the `continue` context should reference that CLAUDE.md exists or should instruct Claude to read it. Or they might want it included because when piping to stdout or clipboard, CLAUDE.md wouldn't be automatically available.\n\nActually, re-reading: \"the usual project context such as reading in CLAUDE.md\" - I think the user wants the restored context to feel complete. When Claude Code launches, it reads CLAUDE.md already. But including a note about it or the git status context would make it more useful. Let me include it since the user explicitly asked.\n\nLet me plan the changes:\n\n1. **Expand CommitInfo** to include full message body and the diff\n2. **Add a function to get the commit diff** using `git show` or `git diff parent..commit`\n3. **Add a function to find and read CLAUDE.md** from the repo workdir\n4. **Update `format_context_block`** to include:\n   - Full commit message (not just subject)\n   - Commit diff (with reasonable size limits)\n   - CLAUDE.md contents\n   - Git status info (current branch, etc.)\n5. **Update `format_context_json`** similarly",
+            "thoughtNumber": 1,
+            "totalThoughts": 4
+          },
+          "timestamp": "2026-02-07T03:45:23.794Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "mcp__sequential-thinking__sequentialthinking",
+          "input": {
+            "nextThoughtNeeded": true,
+            "thought": "Let me think about the specific implementation details:\n\n**CommitInfo changes:**\n- Add `full_message: String` field (using `%B` format) \n- Add `diff: Option<String>` field\n- The `from_commit_sha` method should fetch both\n- For the diff, use `git show --stat --patch <sha>` to get a combined output, or just `git diff <parent>..<sha>`\n- Need to limit diff size - maybe cap at 50KB or something reasonable\n\n**Getting the diff:**\nThe simplest approach is `git show <sha> --format=\"\" --patch --stat` which gives just the diff portion without the commit header (since we already have commit info). Or I could use `git diff <parent>..<sha>`. The `git show` approach is simpler since it handles merge commits and initial commits.\n\nActually, looking at the current code flow more carefully:\n\nIn `handle_continue`, there's a `commit_info` that's only populated for `ByCommit` mode. For other modes like `ByPattern` or `ByPromptId`, `commit_info` is None. But the `SearchResult` has `prompt_commits` which maps prompt hashes to commit SHAs.\n\nI should:\n1. Collect ALL commit SHAs from `result.prompt_commits`\n2. Get diffs for all of them\n3. Include in the context block\n\nBut that could be a LOT of data. Let me think about what the user actually wants...\n\nThe user said: \"the commit message, the diffs of the commit itself\" - referring to the commit(s) associated with the session. When you `continue` from a specific commit, you want to see what that commit actually changed.\n\nI think the right approach is:\n- For `ByCommit` mode: include the diff of that specific commit\n- For `ByCommitRange`: include diffs of all commits in the range (but this could be huge)\n- For other modes: include diffs of all associated commits found in `prompt_commits`\n\nTo keep it manageable, I'll:\n1. Cap the total diff output at a reasonable size (e.g., 100KB)\n2. Use `--stat` summary first, then the full patch\n3. If too large, truncate with a note\n\n**CLAUDE.md:**\n- Look for CLAUDE.md in the repo workdir\n- Also check for .claude/CLAUDE.md or similar patterns\n- Read and include the contents\n- Cap size at something reasonable\n\n**Implementation plan:**\n1. Add `get_commit_diff(repo, sha)` function to get the diff text\n2. Add `read_project_context(repo)` function to find and read CLAUDE.md\n3. Expand `CommitInfo` with `full_message` and remove the single-line `message` (or keep both)\n4. Update `format_context_block` to include new sections\n5. Update `format_context_json` similarly\n6. Collect commit diffs in `handle_continue` before formatting",
+            "thoughtNumber": 2,
+            "totalThoughts": 4
+          },
+          "timestamp": "2026-02-07T03:45:54.210Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "mcp__sequential-thinking__sequentialthinking",
+          "input": {
+            "nextThoughtNeeded": true,
+            "thought": "Let me refine the design. The format_context_block function signature needs to change. Currently:\n\n```rust\nfn format_context_block(\n    prompts: &BTreeMap<String, PromptRecord>,\n    commit_info: Option<&CommitInfo>,\n    max_messages: usize,\n) -> String\n```\n\nI need to add:\n- commit diffs (a map from SHA to diff text)\n- project context (CLAUDE.md contents, current branch, git status)\n\nI could either:\nA) Add more parameters to format_context_block\nB) Create a struct that holds all the context data\n\nOption B is cleaner. Let me create a `SessionContext` struct:\n\n```rust\nstruct SessionContext {\n    prompts: BTreeMap<String, PromptRecord>,\n    commit_info: Option<CommitInfo>,\n    commit_diffs: HashMap<String, String>,  // SHA -> diff text\n    project_context: Option<String>,  // CLAUDE.md contents\n    git_status: Option<String>,  // current branch info\n    max_messages: usize,\n}\n```\n\nActually, I want to keep changes minimal. Let me just add the new data as additional parameters rather than a major refactor. The function already exists and works. I'll add:\n- `commit_diffs: &HashMap<String, String>` \n- `project_context: Option<&str>`\n\nWait, but there are multiple call sites (handle_continue and handle_continue_tui). Let me check...\n\nLooking at the code, `format_context_block` is called in two places:\n1. `handle_continue` (line 346)\n2. `handle_continue_tui` (line 204)\n\nAnd `format_context_json` is called in one place:\n1. `handle_continue` (line 344)\n\nSo I need to update both call sites. For `handle_continue_tui`, the TUI mode picks a prompt interactively - it doesn't have commit info. But it could still benefit from CLAUDE.md and potentially diffs if there are associated commits.\n\nLet me keep it simple and just modify the existing functions to accept the additional data. I'll create helper functions to gather the data.\n\nFinal plan:\n1. Add `get_commit_diff()` helper function\n2. Add `read_project_context()` helper function  \n3. Update `CommitInfo` to include `full_message` \n4. Update `format_context_block` signature to accept diffs and project context\n5. Update `format_context_json` similarly\n6. Update both call sites in `handle_continue` and `handle_continue_tui`\n7. Add the gitStatus section that shows current branch/status (similar to what Claude Code's own context provides)",
+            "thoughtNumber": 3,
+            "totalThoughts": 4
+          },
+          "timestamp": "2026-02-07T03:46:08.092Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "mcp__sequential-thinking__sequentialthinking",
+          "input": {
+            "nextThoughtNeeded": false,
+            "thought": "Let me think about the actual output format. Looking at how the current session context looks when restored (from the conversation above), it has this structure:\n\n```\n# Restored AI Session Context\n\nThis context was restored from git-ai prompt history...\n\n## Source\n- **Commit**: d6ef284e - \"Add dev git-ai wrappers to devShell shellHook\" (John Wiegley, 2026-02-06 19:35:31 -0800)\n\n---\n\n## Session 1 of 1: Prompt 30569538\n- **Tool**: claude (claude-opus-4-6)\n- **Author**: John Wiegley <johnw@newartisans.com>\n\n### Conversation\n...\n\n---\n\nYou can now ask follow-up questions about this work.\n```\n\nI want to add:\n1. After the Source section, include the full commit message (multi-line)\n2. After the full commit message, include the diff\n3. Before everything (or at the end), include the CLAUDE.md and git status\n\nLet me design the new format:\n\n```\n# Restored AI Session Context\n\nThis context was restored from git-ai prompt history. It contains the AI conversation(s) associated with the specified code changes.\n\n## Source\n- **Commit**: d6ef284e - \"Add dev git-ai wrappers to devShell shellHook\" (John Wiegley, 2026-02-06 19:35:31 -0800)\n\n## Commit Message\nAdd dev git-ai wrappers to devShell shellHook\n\n<full body here>\n\n## Commit Diff\n<diff output here, possibly truncated>\n\n---\n\n## Session 1 of 1: Prompt 30569538\n...\n\n---\n\ngitStatus: This is the git status at the start of the conversation...\nCurrent branch: johnw/continue\n...\n```\n\nActually, looking at what the user showed in the restored context at the top of this conversation, the `gitStatus:` block appears at the bottom. That's actually what Claude Code puts there natively. The user wants the continue command to produce similar metadata.\n\nFor CLAUDE.md: Since Claude Code reads CLAUDE.md automatically when it starts, I think the key insight is that the user wants the session to be self-contained. When `--append-system-prompt` is used, Claude Code WILL also read its own CLAUDE.md. So including it again would be redundant for the `--launch` case. But for `--clipboard` or stdout output, it wouldn't be available.\n\nI think the right approach is: include a reference to CLAUDE.md being available, and include the git status/branch info as a footer. Don't duplicate CLAUDE.md since Claude Code reads it on its own. But DO include the commit message and diff since those are specific to the session being continued.\n\nActually wait, re-reading the user's request: \"the usual project context such as reading in CLAUDE.md, etc.\" - they specifically want CLAUDE.md included. Let me just include it. If it's redundant when Claude Code reads it, that's fine - better to have it than not, and it helps for clipboard/stdout modes.\n\nOK, final final plan. Let me code this up now.",
+            "thoughtNumber": 4,
+            "totalThoughts": 4
+          },
+          "timestamp": "2026-02-07T03:46:29.945Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Good point from the user — I'll create a dedicated context-gathering function. Let me now implement this. First, let me check how `CommitInfo::from_commit_sha` currently works and understand the full message format.",
+          "timestamp": "2026-02-07T03:46:35.477Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs",
+            "limit": 40,
+            "offset": 74
+          },
+          "timestamp": "2026-02-07T03:46:36.631Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me implement the changes. I'll use the rust-pro agent for the implementation since this is substantial Rust work.",
+          "timestamp": "2026-02-07T03:46:40.370Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Task",
+          "input": {
+            "description": "Implement enriched continue context",
+            "mode": "bypassPermissions",
+            "prompt": "I need to modify `/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs` to enrich the context that `git ai continue` provides when restoring AI sessions. The user wants:\n\n1. Full commit message (not just subject line)\n2. Commit diffs\n3. Project context (CLAUDE.md, git status info)\n4. All context-gathering logic in a single function for clarity\n\nHere is the current file for reference - I've already read it thoroughly. Here are the specific changes needed:\n\n## 1. Add `full_message` field to `CommitInfo` and fetch it\n\nChange `CommitInfo` to include both the subject and full body:\n\n```rust\n#[derive(Debug, Clone)]\npub struct CommitInfo {\n    pub sha: String,\n    pub author: String,\n    pub date: String,\n    pub message: String,       // subject line\n    pub full_message: String,  // full commit message body\n}\n```\n\nUpdate `from_commit_sha` to use a two-step approach: first get the metadata with `%H|||%an|||%ai|||%s`, then get full message with a separate `git log -1 --format=%B <sha>` call. The reason for two calls is that `%B` can contain the `|||` delimiter.\n\n## 2. Create helper functions\n\nAdd these helper functions:\n\n### `get_commit_diff(repo, sha) -> Result<String, GitAiError>`\nUses `git show --stat --patch --no-color <sha>` to get the diff. Truncates to 100KB with a note if too large.\n\n### `read_project_context(repo) -> Option<String>`\nLooks for CLAUDE.md in the repo workdir, reads it if found. Cap at 50KB.\n\n### `get_git_status_info(repo) -> Option<String>`\nGets current branch name and recent commit log (similar to what Claude Code provides as gitStatus context). Use `git branch --show-current` and `git log --oneline -5`.\n\n## 3. Create a `SessionContext` struct and `gather_session_context` function\n\nAs the user requested, put all context gathering into one clear function:\n\n```rust\n/// All context needed to restore an AI session\nstruct SessionContext {\n    prompts: BTreeMap<String, PromptRecord>,\n    commit_info: Option<CommitInfo>,\n    commit_diffs: BTreeMap<String, String>,  // SHA -> diff text\n    project_context: Option<String>,          // CLAUDE.md contents\n    git_status: Option<String>,              // branch/status info\n    max_messages: usize,\n}\n\n/// Gather all context needed to restore an AI session.\n///\n/// This is the single entry point for collecting session restoration context.\n/// It retrieves prompts, commit metadata, diffs, project instructions (CLAUDE.md),\n/// and git status information.\nfn gather_session_context(\n    repo: &Repository,\n    result: SearchResult,\n    commit_info: Option<CommitInfo>,\n    options: &ContinueOptions,\n) -> SessionContext {\n    // 1. Convert prompts to BTreeMap for ordered iteration\n    let mut prompts: BTreeMap<String, PromptRecord> = result.prompts.into_iter().collect();\n\n    // 2. Redact secrets\n    let redaction_count = redact_secrets_from_prompts(&mut prompts);\n    if redaction_count > 0 {\n        eprintln!(\"Redacted {} potential secret(s) from output\", redaction_count);\n    }\n\n    // 3. Collect commit diffs\n    let mut commit_diffs = BTreeMap::new();\n    // Collect unique commit SHAs from prompt_commits\n    let mut seen_shas = std::collections::HashSet::new();\n    // If we have a specific commit_info, include that diff\n    if let Some(ref info) = commit_info {\n        if seen_shas.insert(info.sha.clone()) {\n            if let Ok(diff) = get_commit_diff(repo, &info.sha) {\n                commit_diffs.insert(info.sha[..8.min(info.sha.len())].to_string(), diff);\n            }\n        }\n    }\n    // Also get diffs for any commits referenced in the search results\n    for shas in result.prompt_commits.values() {\n        for sha in shas {\n            if seen_shas.insert(sha.clone()) {\n                if let Ok(diff) = get_commit_diff(repo, sha) {\n                    commit_diffs.insert(sha[..8.min(sha.len())].to_string(), diff);\n                }\n            }\n        }\n    }\n\n    // 4. Read project context (CLAUDE.md)\n    let project_context = read_project_context(repo);\n\n    // 5. Get git status info\n    let git_status = get_git_status_info(repo);\n\n    // 6. Determine max messages\n    let max_messages = options.max_messages.unwrap_or(50);\n\n    SessionContext {\n        prompts,\n        commit_info,\n        commit_diffs,\n        project_context,\n        git_status,\n        max_messages,\n    }\n}\n```\n\n## 4. Update `format_context_block` to use `SessionContext`\n\nChange signature to accept `&SessionContext`. Add these sections to the output:\n\nAfter the Source section and before the sessions:\n- If project_context is Some, add a section with CLAUDE.md contents\n- If commit_info has a full_message that differs from message, show the full commit message\n- If commit_diffs is non-empty, add a \"## Commit Changes\" section with each diff\n\nAt the end (as a footer before \"You can now ask follow-up questions\"):\n- If git_status is Some, add the gitStatus info block\n\nThe format should look like:\n\n```\n# Restored AI Session Context\n\nThis context was restored from git-ai prompt history...\n\n## Source\n- **Commit**: d6ef284e - \"Add dev git-ai wrappers...\" (John Wiegley, 2026-02-06)\n\n## Commit Message\n<full commit message body, only if different from subject>\n\n## Commit Diff\n```diff\n<diff output>\n```\n\n---\n\n## Session 1 of 1: Prompt 30569538\n...\n\n---\n\ngitStatus: ...\nCurrent branch: ...\nRecent commits:\n...\n```\n\n## 5. Update `format_context_json` similarly\n\nAdd commit_diffs, project_context, and git_status fields to the JSON output.\n\n## 6. Update both call sites\n\nIn `handle_continue` (around line 330-347), replace the manual secret redaction and format calls with:\n```rust\nlet ctx = gather_session_context(&repo, result, commit_info, &parsed.options);\nlet output = if parsed.options.json {\n    format_context_json(&ctx)\n} else {\n    format_context_block(&ctx)\n};\n```\n\nIn `handle_continue_tui` (around line 189-204), similarly use gather_session_context. Since TUI mode doesn't have commit_info, pass None. The function will still provide project context and git status.\n\n## Important implementation notes:\n\n1. `get_commit_diff` should use `exec_git` with `repo.global_args_for_exec()` just like other functions in the file\n2. `read_project_context` should use `repo.workdir()` to find the repo root, then look for `CLAUDE.md` at the root\n3. Size limits: cap diff at 100KB, cap CLAUDE.md at 50KB\n4. The `result.prompt_commits` field needs to be accessed BEFORE `result.prompts` is moved into the BTreeMap. So in `gather_session_context`, collect the commit SHAs from `result.prompt_commits` first, or access them before the move.\n5. Make sure all existing tests still compile - the test module at the bottom of the file uses `format_context_block` indirectly through `parse_continue_args` tests, which should be fine since those don't call the format functions.\n6. Use `std::fs::read_to_string` for reading CLAUDE.md since it's a local file.\n7. For `get_git_status_info`, use `git branch --show-current` and `git log --oneline -5` via exec_git.\n\nPlease implement all of these changes in `/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs`. Make sure to read the file first to see its current state, then make the edits.",
+            "subagent_type": "rust-pro"
+          },
+          "timestamp": "2026-02-07T03:47:22.299Z"
+        },
+        {
+          "type": "assistant",
+          "text": "The implementation is complete. Let me verify the build compiles correctly and run the tests.",
+          "timestamp": "2026-02-07T03:51:26.670Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "input": {
+            "command": "cargo check 2>&1 | tail -20",
+            "description": "Check Rust compilation",
+            "timeout": 120000
+          },
+          "timestamp": "2026-02-07T03:51:27.620Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "input": {
+            "command": "cargo test --lib continue_session 2>&1 | tail -30",
+            "description": "Run continue_session tests",
+            "timeout": 120000
+          },
+          "timestamp": "2026-02-07T03:51:30.673Z"
+        },
+        {
+          "type": "assistant",
+          "text": "All 15 tests pass. Let me review the final state of the key parts of the file to make sure everything looks good.",
+          "timestamp": "2026-02-07T03:51:34.224Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs",
+            "limit": 50,
+            "offset": 1
+          },
+          "timestamp": "2026-02-07T03:51:34.993Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs",
+            "limit": 250,
+            "offset": 74
+          },
+          "timestamp": "2026-02-07T03:51:35.621Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check the updated call sites and the format functions.",
+          "timestamp": "2026-02-07T03:51:39.210Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs",
+            "limit": 60,
+            "offset": 370
+          },
+          "timestamp": "2026-02-07T03:51:40.582Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs",
+            "limit": 60,
+            "offset": 500
+          },
+          "timestamp": "2026-02-07T03:51:41.198Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check the format functions.",
+          "timestamp": "2026-02-07T03:51:43.643Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs",
+            "limit": 220,
+            "offset": 921
+          },
+          "timestamp": "2026-02-07T03:51:44.740Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Everything looks clean. I notice one thing in `get_commit_diff` — `git show` includes the commit header/message along with the diff, which means we'd be duplicating the commit message that's already shown in the \"Commit Message\" section. Let me refine that to only show the diff portion.",
+          "timestamp": "2026-02-07T03:51:58.727Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Edit",
+          "input": {
+            "file_path": "/Users/johnw/src/git-ai/continue/src/commands/continue_session.rs",
+            "new_string": "/// Get the diff for a specific commit.\n///\n/// Uses `git show --format=\"\" --stat --patch --no-color` to get just the diff\n/// (without the commit message header, which is shown separately).\n/// Truncates output to 100KB.\nfn get_commit_diff(repo: &Repository, sha: &str) -> Result<String, GitAiError> {\n    let mut args = repo.global_args_for_exec();\n    args.push(\"show\".to_string());\n    args.push(\"--format=\".to_string());\n    args.push(\"--stat\".to_string());\n    args.push(\"--patch\".to_string());\n    args.push(\"--no-color\".to_string());\n    args.push(sha.to_string());",
+            "old_string": "/// Get the diff for a specific commit.\n///\n/// Uses `git show --stat --patch --no-color` and truncates output to 100KB.\nfn get_commit_diff(repo: &Repository, sha: &str) -> Result<String, GitAiError> {\n    let mut args = repo.global_args_for_exec();\n    args.push(\"show\".to_string());\n    args.push(\"--stat\".to_string());\n    args.push(\"--patch\".to_string());\n    args.push(\"--no-color\".to_string());\n    args.push(sha.to_string());",
+            "replace_all": false
+          },
+          "timestamp": "2026-02-07T03:52:04.240Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me also look at the \"Commit Message\" section — it should always show the full message when we have commit info, not just when it differs from the subject. The subject line is already shown in the Source section, and the full message adds the body. But if there IS no body (subject == full_message), we don't need a separate section. The current logic is correct for that.\n\nHowever, I realize the \"Commit Changes\" section header says \"Commit {sha}\" but the diff no longer includes the commit message header (thanks to `--format=\"\"`). This means we're just showing the stat + patch, which is exactly what we want. Let me verify the build still passes.",
+          "timestamp": "2026-02-07T03:52:12.356Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "input": {
+            "command": "cargo check 2>&1 | tail -5",
+            "description": "Verify compilation after format fix",
+            "timeout": 120000
+          },
+          "timestamp": "2026-02-07T03:52:13.430Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "input": {
+            "command": "cargo test --lib continue_session 2>&1 | tail -20",
+            "description": "Run tests after format fix",
+            "timeout": 120000
+          },
+          "timestamp": "2026-02-07T03:52:17.399Z"
+        },
+        {
+          "type": "assistant",
+          "text": "All 15 tests pass. Let me do a quick end-to-end verification by running the continue command against a real commit.",
+          "timestamp": "2026-02-07T03:52:23.502Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "input": {
+            "command": "cargo build 2>&1 | tail -3",
+            "description": "Build the binary for testing",
+            "timeout": 120000
+          },
+          "timestamp": "2026-02-07T03:52:24.342Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "input": {
+            "command": "GIT_AI_DEBUG=0 /Users/johnw/Products/git-ai/continue/target/debug/git-ai continue --commit d6ef284 2>&1 | head -80",
+            "description": "Test continue command with real commit",
+            "timeout": 30000
+          },
+          "timestamp": "2026-02-07T03:52:50.391Z"
+        },
+        {
+          "type": "assistant",
+          "text": "The output includes all the new context: CLAUDE.md, full commit message with body, and the diff. Let me see the tail end too.",
+          "timestamp": "2026-02-07T03:53:54.686Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Bash",
+          "input": {
+            "command": "GIT_AI_DEBUG=0 /Users/johnw/Products/git-ai/continue/target/debug/git-ai continue --commit d6ef284 2>&1 | tail -40",
+            "description": "Check tail of continue output",
+            "timeout": 30000
+          },
+          "timestamp": "2026-02-07T03:53:56.175Z"
+        },
+        {
+          "type": "assistant",
+          "text": "The output looks exactly right. The restored context now includes:\n\n1. **Source** — commit SHA, subject, author, date\n2. **Project Instructions (CLAUDE.md)** — the repo's CLAUDE.md contents\n3. **Commit Message** — the full multi-line commit message (only shown when there's a body beyond the subject)\n4. **Commit Changes** — the actual diff with stat summary and patch\n5. **Session conversation** — the AI conversation history (prompts/responses)\n6. **gitStatus** — current branch and recent commits\n\nHere's a summary of the changes made to `src/commands/continue_session.rs`:\n\n**New helper functions:**\n- `get_commit_diff(repo, sha)` — retrieves the commit diff via `git show --format=\"\" --stat --patch --no-color`, truncated at 100KB\n- `read_project_context(repo)` — reads `CLAUDE.md` from the repo root, capped at 50KB\n- `get_git_status_info(repo)` — gets current branch and last 5 commits\n\n**New struct and context-gathering function:**\n- `SessionContext` — holds all data needed to format the restored session (prompts, commit info, diffs, CLAUDE.md, git status, max_messages)\n- `gather_session_context(repo, result, commit_info, options)` — single entry point that collects all session context: redacts secrets, gathers commit diffs for all referenced commits, reads CLAUDE.md, and gets git status\n\n**Updated existing code:**\n- `CommitInfo` — added `full_message` field; `from_commit_sha` now uses a two-step fetch to safely get the full body\n- `format_context_block` and `format_context_json` — now accept `&SessionContext` and include all new context sections\n- Both call sites (`handle_continue` and `handle_continue_tui`) simplified to use `gather_session_context`",
+          "timestamp": "2026-02-07T03:54:09.745Z"
+        }
+      ],
+      "total_additions": 278,
+      "total_deletions": 48,
+      "accepted_lines": 269,
+      "overriden_lines": 0
+    }
+  }
+}

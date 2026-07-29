@@ -1,0 +1,56 @@
+tests/integration/bash_attribution.rs
+  s_07677fd01e3e28::t_abedf9912ca9e5 12-13,193-227,243-248
+  s_07677fd01e3e28::t_9d174ec6b0c2e3 180-184,189-192,238-242,249-250
+  s_07677fd01e3e28::t_1f520d408632ce 185-188,229-234,251
+  s_07677fd01e3e28::t_d308b4332aef7c 228,235-237
+  s_8325116c39d6d7::t_d3c2fe29295daf 252-253
+src/daemon.rs
+  s_07677fd01e3e28::t_d78a19745b4f84 4160,4162-4163,4172,4176-4178,4190,4194-4195,4231-4258,4263
+  s_07677fd01e3e28::t_da1576e6e92221 5007
+  s_07677fd01e3e28::t_e5bb3ffb1a5f61 3449,3456
+  s_07677fd01e3e28::t_e7511ea0cb20ca 1947-1950
+  s_07677fd01e3e28::t_9a8cea368f09d0 2015-2016
+  s_07677fd01e3e28::t_47e5c671a1ca3c 2101
+  s_07677fd01e3e28::t_bc0be9002da8df 953-971
+  s_07677fd01e3e28::t_c3568729f46acd 4158-4159,4161,4164-4171,4173-4175,4179-4189,4191-4193,4196-4230
+  s_07677fd01e3e28::t_89d03482ce4bf6 4750,4756,4797-4802
+  s_07677fd01e3e28::t_c97efe3c3efaa8 5016
+  s_07677fd01e3e28::t_f55a9bf9450250 5044,5047-5051
+  s_07677fd01e3e28::t_7590d6365e3b5c 5045
+  s_07677fd01e3e28::t_1f520d408632ce 1945-1946,4744-4748,4792-4796
+  s_07677fd01e3e28::t_5bfdb6f9f66a16 3448,3450
+src/authorship/post_commit.rs
+  s_07677fd01e3e28::t_a42b8db66318e6 321-326
+  s_07677fd01e3e28::t_60a63d976a9f37 555-568,678
+  s_07677fd01e3e28::t_55051aa314541c 193-197,202-205,207-211
+  s_07677fd01e3e28::t_1f3edc421df0d9 1,6,94,96,106-109,122-126,186-192,198-201,206,212,262,334
+  s_07677fd01e3e28::t_469a68d45b6e83 569
+  s_07677fd01e3e28::t_e45d13d5d9208a 88-93,95,97-105,110-113,554
+  s_07677fd01e3e28::t_f0d236dea7a2f4 121,279
+src/authorship/attribution_recovery.rs
+  s_07677fd01e3e28::t_80287afaad108e 22-23,31,48,67,79-83,249-253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.1",
+  "base_commit_sha": "e627ed6a3c54e6f49c669b0e247796c77758df4e",
+  "prompts": {},
+  "sessions": {
+    "s_07677fd01e3e28": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efb48-8e12-7d70-a214-35a5fff40000",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_8325116c39d6d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef832-10b4-7680-b77e-07b50ccd804f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

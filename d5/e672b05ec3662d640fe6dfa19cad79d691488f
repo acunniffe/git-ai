@@ -1,0 +1,30 @@
+src/git/test_utils/mod.rs
+  a8ab382b519a854f 3,10,661-729
+src/authorship/post_commit.rs
+  a8ab382b519a854f 989-1038
+tests/integration/simple_additions.rs
+  a8ab382b519a854f 1750-1849,1862
+src/authorship/virtual_attribution.rs
+  a8ab382b519a854f 1386-1394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "d5e672b05ec3662d640fe6dfa19cad79d691488f",
+  "prompts": {
+    "a8ab382b519a854f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "46abe71e-e212-4c86-9eb8-10d3ecc7b6d6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 497,
+      "total_deletions": 268,
+      "accepted_lines": 234,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/8bdd28dd5630db8c772a26a9edd600ccb8bf77967d7870e13ff8c52822a2449a"
+    }
+  }
+}
