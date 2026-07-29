@@ -1,0 +1,52 @@
+installer/windows/build-msi-ci.ps1
+  s_c07cec28a64ec3::t_d67fe86fc525e8 1-16,20-71
+  s_c07cec28a64ec3::t_5ee42cbab69a78 17-19
+installer/windows/idt/Property.idt
+  s_c07cec28a64ec3::t_45396a726e0d6d 1-8
+installer/windows/idt/Media.idt
+  s_c07cec28a64ec3::t_9501bd8c621bb5 1-4
+installer/windows/idt/Upgrade.idt
+  s_c07cec28a64ec3::t_6e6daf6e5a7c6c 1-4
+installer/windows/README.md
+  s_c07cec28a64ec3::t_05b474246a7584 1-24,26,28-73,75-82
+  s_c07cec28a64ec3::t_fad9543403ccc0 25,27
+  s_c07cec28a64ec3::t_d6bd1291acdb37 74
+installer/windows/idt/Directory.idt
+  s_c07cec28a64ec3::t_6fc468244c4548 1-7
+installer/windows/idt/InstallExecuteSequence.idt
+  s_c07cec28a64ec3::t_0b6abd8ce8e4d7 1-19
+installer/windows/idt/FeatureComponents.idt
+  s_c07cec28a64ec3::t_679cef9d71507c 1-4
+installer/windows/idt/File.idt
+  s_c07cec28a64ec3::t_11c87a736f6aba 2
+  s_c07cec28a64ec3::t_2f47146e2b0393 1,3-5
+installer/windows/idt/Environment.idt
+  s_c07cec28a64ec3::t_0a8fff323ecfa5 1-4
+installer/windows/idt/AdminExecuteSequence.idt
+  s_c07cec28a64ec3::t_4537ef45c81744 1-10
+installer/windows/idt/Feature.idt
+  s_c07cec28a64ec3::t_e5d0053559ffac 1-4
+installer/windows/build-msi.ps1
+  s_c07cec28a64ec3::t_a1232e5379f12c 1-14,18-121,123-126,129-172,174-193,197-200,233-241
+  s_c07cec28a64ec3::t_370c222d7f4c62 173,194-196,201-232
+  s_c07cec28a64ec3::t_44ccaa34dced9c 122,127-128
+  s_c07cec28a64ec3::t_4766cf2065a123 15-17
+installer/windows/idt/Component.idt
+  s_c07cec28a64ec3::t_afed8a22412bc6 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.5",
+  "base_commit_sha": "3e51880c67ec86b947bed93d4bbe634f14de472a",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "admin <admin@git-ai-project.com>"
+    }
+  }
+}

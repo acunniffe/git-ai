@@ -1,0 +1,62 @@
+.github/workflows/test.yml
+  10a1506 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "27dd62d64f7814ec7bb0c26e9be85ef6d2c8efc9",
+  "prompts": {
+    "10a1506": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "accdbafc-1752-4c0e-ad32-5365755cf1e7",
+        "model": "default"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "For the tests, set `GIT_AI_DEBUG_PERFORMANCE=0` via env var",
+          "timestamp": "2025-11-02T02:36:40.762Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Checking the current test workflow configuration.",
+          "timestamp": "2025-11-02T02:36:47.085Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/.github/workflows/test.yml"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding `GIT_AI_DEBUG_PERFORMANCE=0` to the test step's environment variables.",
+          "timestamp": "2025-11-02T02:36:49.965Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/.github/workflows/test.yml"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Added `GIT_AI_DEBUG_PERFORMANCE: 0` to the test step's environment variables. Checking for linting issues:",
+          "timestamp": "2025-11-02T02:37:02.648Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Added `GIT_AI_DEBUG_PERFORMANCE: 0` to the test step environment variables. It will be set when tests run in GitHub Actions.",
+          "timestamp": "2025-11-02T02:37:07.156Z"
+        }
+      ],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

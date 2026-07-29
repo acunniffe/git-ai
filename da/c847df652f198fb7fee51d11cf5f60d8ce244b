@@ -1,0 +1,21 @@
+tests/integration/performance.rs
+  s_75a4c24a376e66::t_cdd8fa9408a38c 22
+src/feature_flags.rs
+  s_75a4c24a376e66::t_cdd8fa9408a38c 85,141,151,240,250,262,271
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "dac847df652f198fb7fee51d11cf5f60d8ce244b",
+  "prompts": {},
+  "sessions": {
+    "s_75a4c24a376e66": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5758-6085-7bc0-8dd9-a797aa7f7ab7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

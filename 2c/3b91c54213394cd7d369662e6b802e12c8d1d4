@@ -1,0 +1,25 @@
+src/daemon.rs
+  s_88e09c7ec5c2e7::t_e18a904382c176 9024-9030
+  s_88e09c7ec5c2e7::t_e03489759f1884 2715,2809,6530-6545,7005-7014,7392-7414,7416-7428,7431-7435,8394
+  s_88e09c7ec5c2e7::t_f0df41985a7742 9023
+tests/daemon_mode.rs
+  s_88e09c7ec5c2e7::t_2f6b698fbcd08a 1878-1930,1943,1946,1957-1972
+  s_88e09c7ec5c2e7::t_f916f9a4c01faa 1931-1942,1944-1945,1947-1956
+  s_88e09c7ec5c2e7::t_0b0c93c55bbd8d 1876-1877
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "2c3b91c54213394cd7d369662e6b802e12c8d1d4",
+  "prompts": {},
+  "sessions": {
+    "s_88e09c7ec5c2e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fabf9-ca63-7101-9454-7282f9548df6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

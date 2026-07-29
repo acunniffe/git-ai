@@ -1,0 +1,44 @@
+src/daemon/control_api.rs
+  s_395f5898107085::t_3344dc759784c9 145-147
+src/daemon/telemetry_worker.rs
+  s_395f5898107085::t_c97ca7d3c53b44 59,69
+  s_395f5898107085::t_f02a4b48b9e533 318-320
+  s_395f5898107085::t_13035c6e50dd8b 118-120
+  s_395f5898107085::t_069c20ccc8f100 198-217
+  s_395f5898107085::t_5caaf6df24f1d2 346,357-367,370-374
+  s_395f5898107085::t_04eb4e74968dfb 135
+  s_395f5898107085::t_83c4abe2387fe1 9
+  s_395f5898107085::t_18a2f0c458c97a 27
+src/metrics/events.rs
+  s_395f5898107085::t_5a699a52ea1062 1500-1551
+  s_395f5898107085::t_81c43a5042c7a3 9-10
+src/metrics/mod.rs
+  s_395f5898107085::t_9697cbbe826f62 17-18
+src/daemon/transcript_worker.rs
+  s_395f5898107085::t_978707d7b05425 651
+  s_395f5898107085::t_f0b0d7fb6f46e7 545-593,603-605
+  s_395f5898107085::t_55e791ea2e7880 635-650,652-748
+  s_395f5898107085::t_25efc086f33368 11-13,18
+src/transcripts/agents/copilot.rs
+  s_395f5898107085::t_856bfcc0396fae 323-326
+src/metrics/types.rs
+  s_395f5898107085::t_8bca051416535b 117-118,126
+src/transcripts/agent.rs
+  s_395f5898107085::t_709739ac7fd74c 8-10,17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "a52154c9150d98f0667983f7c148338004636a1c",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

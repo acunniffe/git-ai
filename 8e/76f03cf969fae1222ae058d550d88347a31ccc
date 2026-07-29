@@ -1,0 +1,24 @@
+src/commands/prompts_db.rs
+  6298d18f73ab1fb8 1004-1005,1012-1015,1051-1061,1101-1104,1106-1107,1111-1115,1130,1157-1170,1174-1182,1185,1187,1190-1205,1211-1215,1218,1278-1279,1289-1293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "8e76f03cf969fae1222ae058d550d88347a31ccc",
+  "prompts": {
+    "6298d18f73ab1fb8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c4d3ba41-3e3e-472c-91ca-1debab13ca82",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 83,
+      "total_deletions": 14,
+      "accepted_lines": 83,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/4c1797d188f2249c4ba4200c70fe767a95a6c210f9aecff268846251330882b0"
+    }
+  }
+}

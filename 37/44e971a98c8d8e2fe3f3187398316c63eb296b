@@ -1,0 +1,99 @@
+src/commands/checkpoint_agent/orchestrator.rs
+  s_48aaaaad03ca08::t_d28ea01baccf33 644-679
+  s_48aaaaad03ca08::t_5912eabf09ddcb 44-61,530,633,680
+src/daemon/telemetry_worker.rs
+  s_94fe8c3959d094::t_d948896621d7b8 533-534
+  s_94fe8c3959d094::t_a4f9dce559e6b6 99-107
+  s_b845f7fedbdc2d::t_2c9f3c3e03da10 532,535,584,613,617,621
+  s_b845f7fedbdc2d::t_d0c2bbc8edacb6 622,1264,1271,1278,1286,1289-1293,1295-1296,1300-1301,1303-1306,1308-1312,1314,1316-1322,1324,1326-1349,1352-1358,1374-1375
+src/daemon.rs
+  s_b845f7fedbdc2d::t_2c9f3c3e03da10 6213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "3744e971a98c8d8e2fe3f3187398316c63eb296b",
+  "prompts": {},
+  "sessions": {
+    "s_030ba9a1afbf5e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6219-0974-7e51-9aa5-175f63df5ecd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_10d7dc97ee3fb9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7123-7f7f-7063-9dd5-e8c26c38323d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_1e555a33a1ffad": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8180-a23c-76b0-89cc-5fb646e4dac2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_48aaaaad03ca08": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d7b-a01f-7771-85c5-12212e9825ce",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_75a4c24a376e66": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5758-6085-7bc0-8dd9-a797aa7f7ab7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_783b6672370794": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f576d-cb44-71d2-8079-83ae270208d1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_94fe8c3959d094": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f67ac-1fb7-7713-9cc6-b6917eba46fa",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_969d1ec2bc3012": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7618-316d-7f43-aff9-53a14c601a9a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_ad29575cd29b4c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f717a-b635-7b52-9a84-866cdac1153b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b845f7fedbdc2d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6dbb-fcb2-7772-a77a-ccfbfe3fcda0",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+agent-support/intellij/README.md
+  09ff2b496bfb1eb6 148,152-160
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/GitAiService.kt
+  552c7160428cb949 32-38,68-75,77-81,83-84,86-95,97-154,179-206,216-217,220-234,254,257-262,264-266,285-290,298-299,301-302,304,321,325-333,337,339,357-358
+  09ff2b496bfb1eb6 235,250,263,267,316,344
+agent-support/intellij/build.gradle.kts
+  09ff2b496bfb1eb6 12,38-42,153-162
+agent-support/intellij/src/main/resources/META-INF/plugin.xml
+  09ff2b496bfb1eb6 10
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/startup/DocumentTrackerStartupActivity.kt
+  09ff2b496bfb1eb6 7,18-20
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/TelemetryService.kt
+  09ff2b496bfb1eb6 1-120,122-123,137,146,156-268
+  552c7160428cb949 121,124-136,138-145,147-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "d621888e5cf3a1051b1ffa7bc3ae95ae7ae3c369",
+  "prompts": {
+    "09ff2b496bfb1eb6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b227d359-58de-4af8-a957-6a3ead835a03",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 284,
+      "total_deletions": 6,
+      "accepted_lines": 276,
+      "overriden_lines": 0
+    },
+    "552c7160428cb949": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3c1cf2b-83d1-4d23-a4fc-e3626f3775c2",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 214,
+      "total_deletions": 41,
+      "accepted_lines": 210,
+      "overriden_lines": 0
+    }
+  }
+}

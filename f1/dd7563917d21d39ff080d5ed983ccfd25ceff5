@@ -1,0 +1,28 @@
+src/authorship/rebase_authorship.rs
+  86929f7dd843d4eb 33-35,1249,2275,2433
+src/git/authorship_traversal.rs
+  86929f7dd843d4eb 38
+src/git/refs.rs
+  86929f7dd843d4eb 146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.3",
+  "base_commit_sha": "f1dd7563917d21d39ff080d5ed983ccfd25ceff5",
+  "prompts": {
+    "86929f7dd843d4eb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c4e55-2d47-7340-969e-ebd57204bfdb",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 5,
+      "accepted_lines": 8,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/13882338d3f4fdb69c9e7988a46485c19747b0cebd65399b72ded7d486047a9a"
+    }
+  }
+}
