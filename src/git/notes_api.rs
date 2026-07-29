@@ -406,17 +406,38 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
         }
     };
 
+    warm_cache_for_revisions(repo, &[rev_target])
+}
+
+/// Pre-warm the local notes cache for recent commits reachable from immutable
+/// revision OIDs captured by trace2.
+///
+/// All revisions are traversed by one bounded `rev-list` invocation and all
+/// cache misses are fetched in batches, so work does not scale in git process
+/// spawns with the number of updated refs or commits.
+pub fn warm_cache_for_revisions(repo: &Repository, revisions: &[String]) -> Result<(), GitAiError> {
+    use crate::git::repository::exec_git_with_stdin_writer;
+
+    if revisions.is_empty() {
+        return Ok(());
+    }
+
     let rev_list_args: Vec<String> = repo
         .global_args_for_exec()
         .into_iter()
         .chain([
             "rev-list".to_string(),
             "--max-count=500".to_string(),
-            rev_target,
+            "--stdin".to_string(),
         ])
         .collect();
-
-    let output = exec_git(&rev_list_args)?;
+    let output = exec_git_with_stdin_writer(&rev_list_args, |writer| {
+        for revision in revisions {
+            writer.write_all(revision.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+        Ok(())
+    })?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let all_shas: Vec<String> = stdout
         .lines()
@@ -425,7 +446,7 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
         .collect();
 
     if all_shas.is_empty() {
-        tracing::debug!("warm_cache_for_remote: no commits in HEAD history; skipping");
+        tracing::debug!("warm_cache_for_revisions: no reachable commits; skipping");
         return Ok(());
     }
 
@@ -438,18 +459,17 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
         .collect();
 
     if uncached.is_empty() {
-        tracing::debug!("warm_cache_for_remote: all commits already cached; skipping");
+        tracing::debug!("warm_cache_for_revisions: all commits already cached; skipping");
         return Ok(());
     }
 
     tracing::info!(
-        remote = %remote,
         backend = %"http",
         uncached_commits = uncached.len(),
         "fetching authorship notes"
     );
     tracing::debug!(
-        "warm_cache_for_remote: fetching notes for {} uncached commits",
+        "warm_cache_for_revisions: fetching notes for {} uncached commits",
         uncached.len()
     );
 

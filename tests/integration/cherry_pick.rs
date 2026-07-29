@@ -9,6 +9,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
+const TRACE2_DISABLED_ENV: [(&str, &str); 3] = [
+    ("GIT_TRACE2", "0"),
+    ("GIT_TRACE2_EVENT", "0"),
+    ("GIT_TRACE2_PERF", "0"),
+];
+
 /// Test cherry-picking a single AI-authored commit
 #[test]
 fn test_single_commit_cherry_pick() {
@@ -813,7 +819,10 @@ fn test_cherry_pick_from_remote_without_prefetched_notes() {
         .unwrap();
     // Fetch only the branch objects, explicitly excluding notes.
     target_repo
-        .git(&["fetch", "source", "refs/heads/*:refs/remotes/source/*"])
+        .git_og_with_env(
+            &["fetch", "source", "refs/heads/*:refs/remotes/source/*"],
+            &TRACE2_DISABLED_ENV,
+        )
         .unwrap();
 
     // Confirm notes are absent (the fix relies on detecting this absence).
@@ -830,9 +839,8 @@ fn test_cherry_pick_from_remote_without_prefetched_notes() {
 }
 
 #[test]
-#[ignore = "temporarily restored by the stacked transport-aware notes sync follow-up"]
-fn test_cherry_pick_preserves_authoritative_remote_target_note() {
-    let (repo, upstream) = TestRepo::new_with_remote();
+fn test_cherry_pick_merges_existing_authoritative_target_note() {
+    let repo = TestRepo::new();
     let file_path = repo.path().join("file.txt");
 
     fs::write(&file_path, "base\n").unwrap();
@@ -883,12 +891,6 @@ fn test_cherry_pick_preserves_authoritative_remote_target_note() {
     write_note(&git_ai_repo, &source_commit.commit_sha, &source_note)
         .expect("write stale source note");
 
-    repo.git_og(&["push", "origin", "feature"]).unwrap();
-    repo.git_og(&["push", "origin", "refs/notes/ai:refs/notes/ai"])
-        .unwrap();
-    let source_notes_ref = repo.git_og(&["rev-parse", "refs/notes/ai"]).unwrap();
-    let source_notes_ref = source_notes_ref.trim();
-
     repo.git(&["checkout", &main_branch]).unwrap();
     let deterministic_date = "2030-01-03T00:00:00Z";
     repo.git_og_with_env(
@@ -918,14 +920,8 @@ fn test_cherry_pick_preserves_authoritative_remote_target_note() {
         .serialize_to_string()
         .expect("serialize authoritative target note");
     write_note(&git_ai_repo, target_commit, &target_note).expect("write authoritative target note");
-    repo.git_og(&["push", "--force", "origin", "refs/notes/ai:refs/notes/ai"])
-        .unwrap();
 
     repo.git_og(&["reset", "--hard", &base_commit.commit_sha])
-        .unwrap();
-    repo.git_og(&["update-ref", "refs/notes/ai", source_notes_ref])
-        .unwrap();
-    repo.git_og(&["update-ref", "-d", "refs/notes/ai-remote/origin"])
         .unwrap();
 
     assert!(
@@ -934,12 +930,8 @@ fn test_cherry_pick_preserves_authoritative_remote_target_note() {
         "precondition: stale source note should already exist locally"
     );
     assert!(
-        upstream.read_authorship_note(target_commit).is_some(),
-        "precondition: authoritative target note should exist remotely"
-    );
-    assert!(
-        repo.read_authorship_note(target_commit).is_none(),
-        "precondition: target note should not exist locally"
+        repo.read_authorship_note(target_commit).is_some(),
+        "precondition: authoritative target note should already exist locally"
     );
 
     repo.git_with_env(
@@ -1420,7 +1412,10 @@ fn test_cherry_pick_from_remote_continues_when_notes_import_fails() {
         ])
         .unwrap();
     target_repo
-        .git(&["fetch", "source", "refs/heads/*:refs/remotes/source/*"])
+        .git_og_with_env(
+            &["fetch", "source", "refs/heads/*:refs/remotes/source/*"],
+            &TRACE2_DISABLED_ENV,
+        )
         .unwrap();
     let _ = target_repo.git(&["update-ref", "-d", "refs/notes/ai"]);
     let _ = target_repo.git(&["update-ref", "-d", "refs/notes/ai-remote/source"]);
@@ -1484,15 +1479,11 @@ crate::reuse_tests_in_worktree!(
     test_cherry_pick_bad_args_dont_corrupt_subsequent_attribution,
     test_cherry_pick_skip_preserves_subsequent_attribution,
     test_cherry_pick_from_remote_without_prefetched_notes,
+    test_cherry_pick_merges_existing_authoritative_target_note,
     test_local_cherry_pick_does_not_fetch_notes_for_fresh_destination,
     test_cherry_pick_from_remote_continues_when_notes_import_fails,
     test_cherry_pick_no_commit_defers_to_final_commit_tree,
     test_cherry_pick_skip_failed_next_conflict_advances_pending_remote_tracking_source,
     test_cherry_pick_skip_then_continue_applies_remaining_commits,
     test_cherry_pick_skip_failed_next_conflict_does_not_double_skip_refcursor_sources,
-);
-
-crate::reuse_tests_in_worktree_with_attrs!(
-    (#[ignore = "temporarily restored by the stacked transport-aware notes sync follow-up"])
-    test_cherry_pick_preserves_authoritative_remote_target_note,
 );
