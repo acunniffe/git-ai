@@ -1,0 +1,24 @@
+src/authorship/post_commit.rs
+  784dc7b4246d9110 156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.11",
+  "base_commit_sha": "7db3ddab29003c7f3369ad26403afb91177a2d9b",
+  "prompts": {
+    "784dc7b4246d9110": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1634253-41ef-4e4d-83e1-1ad3da02a25c",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/804e3a1348a0b9615491609f3e550bc59d30603e53db99e3725e71edddfd3154"
+    }
+  }
+}

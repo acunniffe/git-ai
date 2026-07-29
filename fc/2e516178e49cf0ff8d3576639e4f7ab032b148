@@ -1,0 +1,22 @@
+tests/integration/main.rs
+  s_f2b9b4d0a5efa6::t_badd2eba4df2a4 91
+tests/integration/proxy_passthrough.rs
+  s_f2b9b4d0a5efa6::t_8edfaad85274fb 32-35
+  s_f2b9b4d0a5efa6::t_909d0d460f979d 1-31,36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "fc2e516178e49cf0ff8d3576639e4f7ab032b148",
+  "prompts": {},
+  "sessions": {
+    "s_f2b9b4d0a5efa6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf28d639-11e1-4851-b914-d16eb53d907b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null
+    }
+  }
+}

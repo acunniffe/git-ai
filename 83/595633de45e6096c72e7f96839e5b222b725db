@@ -1,0 +1,23 @@
+src/authorship/stats.rs
+  8e3a6c8 103-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "83595633de45e6096c72e7f96839e5b222b725db",
+  "prompts": {
+    "8e3a6c8": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1763479508693328000",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

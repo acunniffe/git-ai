@@ -1,0 +1,23 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  4fc8bc60fc3c5663 990-997,1656-1676
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "fca373232be2a076347abf66054f4b44672b8536",
+  "prompts": {
+    "4fc8bc60fc3c5663": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbd15-693a-7153-af8b-b3d304655878",
+        "model": "gpt-5.5"
+      },
+      "human_author": "unknown",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 8,
+      "accepted_lines": 2512,
+      "overriden_lines": 0
+    }
+  }
+}

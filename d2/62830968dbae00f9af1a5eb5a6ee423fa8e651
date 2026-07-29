@@ -1,0 +1,71 @@
+src/commands/checkpoint.rs
+  eaad6c4 4,709-712,714-720,729
+  human 713
+  fc7cfc1 701-708,722-728,730-735,737-739,741-745
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "d262830968dbae00f9af1a5eb5a6ee423fa8e651",
+  "prompts": {
+    "eaad6c4": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a8682b02-2a9e-4004-9a9d-dd20b5e96975",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/blame.rs:167-174 explain the result type here",
+          "timestamp": "2025-11-30T15:21:15.935Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the file to explain the result type.",
+          "timestamp": "2025-11-30T15:21:21.299Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Checking the `PromptRecord` structure for context:",
+          "timestamp": "2025-11-30T15:21:27.917Z"
+        },
+        {
+          "type": "assistant",
+          "text": "## Result Type Explanation\n\nThe `blame` method returns:\n\n```rust\nResult<(HashMap<u32, String>, HashMap<String, PromptRecord>), GitAiError>\n```\n\n### Success case: `(HashMap<u32, String>, HashMap<String, PromptRecord>)`\n\nA tuple with two HashMaps:\n\n1. `HashMap<u32, String>` — Line-to-author mapping\n   - Key: `u32` — line number (1-indexed)\n   - Value: `String` — author identifier (AI tool name, prompt hash, or human username)\n   - Built in `overlay_ai_authorship` (lines 633-712)\n\n2. `HashMap<String, PromptRecord>` — Prompt metadata\n   - Key: `String` — prompt hash\n   - Value: `PromptRecord` — metadata about the AI prompt that generated the code\n   - `PromptRecord` includes:\n     - `agent_id`: AI tool used (e.g., \"claude\", \"gpt-4\")\n     - `human_author`: Human who triggered the AI\n     - `messages`: Conversation history\n     - Statistics: `total_additions`, `total_deletions`, `accepted_lines`, `overriden_lines`\n\n### Error case: `GitAiError`\n\nReturned on failure (e.g., file not found, invalid line ranges, repository errors).\n\n### Usage\n\nThe method overlays AI authorship on top of Git blame. The first HashMap maps each line to its author, and the second provides full prompt details for AI-generated lines, keyed by prompt hash.",
+          "timestamp": "2025-11-30T15:21:34.801Z"
+        },
+        {
+          "type": "user",
+          "text": "@src/commands/checkpoint.rs:713-714 ok so when we skip blame, we still need to have one line for each line in the current_content (1-indexed). Default to \"human\"",
+          "timestamp": "2025-11-30T15:23:10.362Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the relevant section to understand the context:",
+          "timestamp": "2025-11-30T15:23:13.018Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Checking more context to find `current_content` and understand the structure:",
+          "timestamp": "2025-11-30T15:23:16.251Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Checking what value to use for \"human\":",
+          "timestamp": "2025-11-30T15:23:20.042Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Checking the CheckpointKind definition to confirm the string value:",
+          "timestamp": "2025-11-30T15:23:22.500Z"
+        }
+      ],
+      "total_additions": 49,
+      "total_deletions": 43,
+      "accepted_lines": 13,
+      "overriden_lines": 1
+    }
+  }
+}

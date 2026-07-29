@@ -1,0 +1,70 @@
+tests/repos/test_file.rs
+  bfe0695 3-4,111-124,133-245,247-252
+tests/repos/test_repo.rs
+  bfe0695 5,41-44,165-183,245-249,255,260-261,264-269,272-283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "076df2c685e2d7170f8ac3d9d01283845c815e6d",
+  "prompts": {
+    "bfe0695": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9623c323-6ef0-40db-a8b8-7b6dedabed97",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "ok I want to be able to assert using the macro\n\nassert_lines_and_blame(lines![\n  \"conents of line 1\".ai()\n  \"contents of line 2\".ai()\n]\n)\n\nthe function should call the real git-ai blame AND compare each line's contents and authorship 1:1\n\nFailing and erroring if any line's assertion failed.\n\nThis lets us say explicitly what we expect the output to look like",
+          "timestamp": "2025-10-13T11:28:06.200Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you implement this testing macro with a clean syntax for asserting blame output. Let me first examine the current code structure.",
+          "timestamp": "2025-10-13T11:28:15.962Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Looking at the code, I can see the structure is already well set up. I need to implement the `assert_lines_and_blame` method that:\n\n1. Takes a vector of expected lines\n2. Runs git-ai blame\n3. Compares both content and authorship for each line 1:1\n4. Provides clear error messages when assertions fail\n\nLet me implement this:",
+          "timestamp": "2025-10-13T11:28:47.455Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me add a test to demonstrate the usage of this new assertion method:",
+          "timestamp": "2025-10-13T11:29:02.552Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check for any linting errors in the files I modified:",
+          "timestamp": "2025-10-13T11:29:15.021Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me fix the linter warning:",
+          "timestamp": "2025-10-13T11:29:23.276Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's run the tests to verify everything works:",
+          "timestamp": "2025-10-13T11:29:34.418Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! The test passes. Let me verify there are no more linting issues:",
+          "timestamp": "2025-10-13T11:29:58.778Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Excellent! I've successfully implemented the `assert_lines_and_blame` method. Here's what I did:\n\n## Summary\n\nThe `assert_lines_and_blame` method now allows you to explicitly assert both line contents and authorship using the clean syntax you requested:\n\n```rust\nexample_txt.assert_lines_and_blame(lines![\n    \"contents of line 1\".ai(),\n    \"contents of line 2\".ai(),\n    \"contents of line 3\".human(),\n]);\n```\n\n### Key Features\n\n1. **Calls Real git-ai blame**: The method executes the actual `git-ai blame` command on the file\n2. **1:1 Line Comparison**: Compares each line's content AND authorship exactly\n3. **Detailed Error Messages**: If any assertion fails, you get:\n   - Which line number failed\n   - What was expected vs. actual (both content and authorship)\n   - The full blame output for debugging\n4. **Works with existing syntax**: Uses the existing `lines!` macro and `.ai()`/`.human()` extension methods\n\n### Implementation Details\n\nThe method:\n- Parses blame output to extract `(author, content)` tuples for each line\n- Compares the number of lines first\n- Then compares each line's content (trimmed) and authorship type\n- Provides clear, actionable error messages when assertions fail\n\nI've also added a test (`test_assert_lines_and_blame`) that demonstrates the usage, and it passes successfully! ✅",
+          "timestamp": "2025-10-13T11:30:12.797Z"
+        }
+      ],
+      "total_additions": 4518,
+      "total_deletions": 125,
+      "accepted_lines": 4498,
+      "overriden_lines": 22
+    }
+  }
+}

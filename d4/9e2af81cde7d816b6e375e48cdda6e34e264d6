@@ -1,0 +1,29 @@
+src/commands/checkpoint.rs
+  a545bd1d8210fda0 176
+tests/merge_rebase.rs
+  a545bd1d8210fda0 268-269
+tests/blame_subdirectory.rs
+  a545bd1d8210fda0 378-394
+tests/diff_comprehensive.rs
+  a545bd1d8210fda0 583-605
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.6",
+  "base_commit_sha": "d49e2af81cde7d816b6e375e48cdda6e34e264d6",
+  "prompts": {
+    "a545bd1d8210fda0": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1772078719528343000",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 131,
+      "total_deletions": 43,
+      "accepted_lines": 43,
+      "overriden_lines": 0
+    }
+  }
+}
