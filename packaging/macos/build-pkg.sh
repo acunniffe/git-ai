@@ -32,19 +32,20 @@ esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORK_DIR="$ROOT/target/package/pkg-$ARCH"
+PAYLOAD_ROOT="$WORK_DIR/payload"
 SCRIPTS="$WORK_DIR/scripts"
 COMPONENT_PKG="$WORK_DIR/git-ai-component.pkg"
 OUTPUT_ABS="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$OUTPUT")"
 
 rm -rf "$WORK_DIR"
-mkdir -p "$SCRIPTS" "$(dirname "$OUTPUT_ABS")"
+mkdir -p "$PAYLOAD_ROOT" "$SCRIPTS" "$(dirname "$OUTPUT_ABS")"
 install -m 0755 "$BINARY" "$SCRIPTS/git-ai"
 install -m 0755 "$ROOT/packaging/macos/scripts/preinstall" "$SCRIPTS/preinstall"
 install -m 0755 "$ROOT/packaging/macos/scripts/postinstall" "$SCRIPTS/postinstall"
 xattr -cr "$SCRIPTS" 2>/dev/null || true
 
 pkgbuild \
-  --nopayload \
+  --root "$PAYLOAD_ROOT" \
   --scripts "$SCRIPTS" \
   --identifier "com.git-ai.git-ai" \
   --version "$VERSION" \

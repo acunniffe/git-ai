@@ -549,6 +549,16 @@ jobs:
           if (Test-Path (Join-Path $env:LOCALAPPDATA 'Git AI')) { throw 'MSI created the retired LocalAppData runtime' }
           if (Test-Path (Join-Path $env:ProgramFiles 'Git AI')) { throw 'MSI created a system-wide runtime' }
 
+          $binaryVersion = (& $gitAi --version).Trim()
+          $registration = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
+            Get-ItemProperty |
+            Where-Object { $_.DisplayName -eq 'Git AI' } |
+            Select-Object -First 1
+          if ($null -eq $registration) { throw 'MSI did not register Git AI for the installing user' }
+          if ($registration.DisplayVersion -ne $binaryVersion) {
+            throw "MSI version '$($registration.DisplayVersion)' does not match binary version '$binaryVersion'"
+          }
+
           $uninstall = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart" -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with exit code $($uninstall.ExitCode)" }
 
@@ -579,7 +589,13 @@ jobs:
           PKG=release/git-ai-macos-universal.pkg
           sudo installer -pkg "$PKG" -target /
           lipo "$git_ai" -verify_arch x86_64 arm64
-          "$git_ai" --version
+          binary_version="$("$git_ai" --version)"
+          receipt_id="com.git-ai.git-ai"
+          receipt_version="$(pkgutil --pkg-info "$receipt_id" | awk -F': ' '$1 == "version" { print $2 }')"
+          if [ "$receipt_version" != "$binary_version" ]; then
+            echo "::error::PKG receipt version '$receipt_version' does not match binary version '$binary_version'"
+            exit 1
+          fi
 
           binary_owner="$(/usr/bin/stat -f%Su "$git_ai")"
           state_owner="$(/usr/bin/stat -f%Su "$console_home/.git-ai")"
