@@ -17,6 +17,15 @@ impl AgentPreset for DroidPreset {
         let data: serde_json::Value = serde_json::from_str(hook_input)
             .map_err(|e| GitAiError::PresetError(format!("Invalid JSON in hook_input: {}", e)))?;
 
+        let tool_name = parse::optional_str_multi(&data, &["tool_name", "toolName"]);
+        let tool_class = tool_name
+            .map(|name| bash_tool::classify_tool(Agent::Droid, name))
+            // Preserve payloads from older Droid integrations that omitted tool_name.
+            .unwrap_or(ToolClass::FileEdit);
+        if tool_class == ToolClass::Skip {
+            return Ok(Vec::new());
+        }
+
         // session_id is optional — generate a fallback if not present
         let session_id =
             parse::optional_str_multi(&data, &["session_id", "sessionId"]).map(|s| s.to_string());
@@ -37,9 +46,6 @@ impl AgentPreset for DroidPreset {
             parse::optional_str_multi(&data, &["hookEventName", "hook_event_name"]).ok_or_else(
                 || GitAiError::PresetError("hookEventName not found in hook_input".to_string()),
             )?;
-
-        // Extract tool_name and classify it
-        let tool_name = parse::optional_str_multi(&data, &["tool_name", "toolName"]);
 
         // Extract file paths from tool_input
         let tool_input = data.get("tool_input").or_else(|| data.get("toolInput"));
@@ -110,9 +116,7 @@ impl AgentPreset for DroidPreset {
         };
 
         // Determine if this is a bash tool invocation
-        let is_bash = tool_name
-            .map(|name| bash_tool::classify_tool(Agent::Droid, name) == ToolClass::Bash)
-            .unwrap_or(false);
+        let is_bash = tool_class == ToolClass::Bash;
 
         let tool_use_id = parse::optional_str_multi(&data, &["tool_use_id", "toolUseId"])
             .unwrap_or("bash")
@@ -299,6 +303,61 @@ mod tests {
                 }
             }
             _ => panic!("Expected PostBashCall"),
+        }
+    }
+
+    #[test]
+    fn test_droid_ignores_read_only_and_unsupported_tools() {
+        for hook_event in ["PreToolUse", "PostToolUse"] {
+            for tool_name in ["Read", "Grep", "Glob", "Task", "UnknownTool"] {
+                let input = make_droid_hook_input(hook_event, tool_name);
+                let events = DroidPreset.parse(&input, "t_test123456789a").unwrap();
+                assert!(
+                    events.is_empty(),
+                    "{hook_event} {tool_name} unexpectedly produced events"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_ignored_droid_hook_produces_no_checkpoint_requests() {
+        let input = make_droid_hook_input("PostToolUse", "Read");
+        let requests = crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
+            "droid", &input,
+        )
+        .unwrap();
+        assert!(requests.is_empty());
+    }
+
+    #[test]
+    fn test_droid_preserves_all_mutating_tools() {
+        for tool_name in ["ApplyPatch", "Edit", "Write", "Create"] {
+            let pre = make_droid_hook_input("PreToolUse", tool_name);
+            assert!(matches!(
+                DroidPreset.parse(&pre, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PreFileEdit(_)]
+            ));
+
+            let post = make_droid_hook_input("PostToolUse", tool_name);
+            assert!(matches!(
+                DroidPreset.parse(&post, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PostFileEdit(_)]
+            ));
+        }
+
+        for tool_name in ["Bash", "Execute"] {
+            let pre = make_droid_hook_input("PreToolUse", tool_name);
+            assert!(matches!(
+                DroidPreset.parse(&pre, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PreBashCall(_)]
+            ));
+
+            let post = make_droid_hook_input("PostToolUse", tool_name);
+            assert!(matches!(
+                DroidPreset.parse(&post, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PostBashCall(_)]
+            ));
         }
     }
 

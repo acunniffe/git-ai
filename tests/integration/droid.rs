@@ -148,7 +148,7 @@ fn test_droid_preset_stores_metadata_paths() {
         "cwd": "/Users/testuser/projects/testing-git",
         "hookEventName": "PostToolUse",
         "sessionId": "052cb8d0-4616-488a-99fe-bfbbbe9429b3",
-        "toolName": "Read",
+        "toolName": "Write",
         "transcriptPath": jsonl_path.to_str().unwrap()
     })
     .to_string();
@@ -189,7 +189,7 @@ fn test_droid_preset_uses_raw_session_id() {
         "cwd": "/Users/testuser/projects/testing-git",
         "hookEventName": "PostToolUse",
         "sessionId": session_uuid,
-        "toolName": "Read",
+        "toolName": "Write",
         "transcriptPath": jsonl_path.to_str().unwrap()
     })
     .to_string();
