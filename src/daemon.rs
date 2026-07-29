@@ -829,6 +829,11 @@ fn process_conflict_resolution_working_logs(
     new_tip: &str,
     onto: Option<&str>,
 ) -> Result<RewriteMetricContext, GitAiError> {
+    crate::wltrace::wltrace(
+        "rebase.conflict_logs",
+        &repo.workdir().unwrap_or_default(),
+        || format!("new_tip={new_tip} onto={}", onto.unwrap_or("NONE")),
+    );
     let onto_sha = match onto {
         Some(s) if !s.is_empty() => s,
         _ => return Ok(RewriteMetricContext::default()),
@@ -5264,6 +5269,23 @@ impl ActorDaemonCoordinator {
         // with the branch ref update as new_tip. This handles rebase --skip/--continue
         // where HEAD can contain extra checkout/detach movement that is not the
         // rebased branch tip.
+        crate::wltrace::wltrace(
+            "rewrite.branch_transition",
+            Path::new(cmd.worktree.as_deref().unwrap_or(Path::new(""))),
+            || {
+                format!(
+                    "cmd={} branch_changes={} pending_original_head={} ref_changes={}",
+                    cmd.primary_command.as_deref().unwrap_or("unknown"),
+                    branch_changes.len(),
+                    pending_original_head
+                        .as_ref()
+                        .map(|(head, _)| head.as_str())
+                        .unwrap_or("NONE"),
+                    cmd.ref_changes.len(),
+                )
+            },
+        );
+
         if let Some((original_head, stored_onto)) = pending_original_head
             && let Some(new_tip) = rebase_new_tip_from_command(cmd, &original_head)
         {
@@ -5636,6 +5658,21 @@ impl ActorDaemonCoordinator {
                         .unwrap_or("");
                     let pending_old_head =
                         strict_rebase_original_head_from_command(cmd, semantic_old_head);
+                    crate::wltrace::wltrace(
+                        "rebase.pending_head",
+                        cmd.worktree.as_deref().unwrap_or(Path::new("")),
+                        || {
+                            format!(
+                                "old_head={} rebase_start={} ref_changes={}",
+                                pending_old_head.as_deref().unwrap_or("NONE"),
+                                rebase_start
+                                    .as_ref()
+                                    .map(|(old, new)| format!("{old}->{new}"))
+                                    .unwrap_or_else(|| "NONE".to_string()),
+                                cmd.ref_changes.len(),
+                            )
+                        },
+                    );
                     if let Some(old_head) = pending_old_head {
                         let rebase_onto = rebase_start.as_ref().map(|(_, new)| new.clone());
                         if std::env::var("GIT_AI_DEBUG_DAEMON_TRACE")
