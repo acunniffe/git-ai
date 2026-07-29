@@ -2712,6 +2712,7 @@ pub struct ActorDaemonCoordinator {
     next_checkpoint_receipt_seq: AtomicUsize,
     processed_checkpoint_receipt_seq: AtomicUsize,
     unadmitted_checkpoints: AtomicUsize,
+    accepting_checkpoints: AtomicBool,
     checkpoint_progress_notify: Notify,
     bash_sessions: Mutex<crate::daemon::bash_sessions::BashSessionState>,
     test_completion_log_dir: Option<PathBuf>,
@@ -2805,6 +2806,7 @@ impl ActorDaemonCoordinator {
             next_checkpoint_receipt_seq: AtomicUsize::new(0),
             processed_checkpoint_receipt_seq: AtomicUsize::new(0),
             unadmitted_checkpoints: AtomicUsize::new(0),
+            accepting_checkpoints: AtomicBool::new(true),
             checkpoint_progress_notify: Notify::new(),
             bash_sessions: Mutex::new(crate::daemon::bash_sessions::BashSessionState::new()),
             test_completion_log_dir: std::env::var("GIT_AI_TEST_DB_PATH")
@@ -6525,6 +6527,22 @@ impl ActorDaemonCoordinator {
         self.status_for_family(repo_working_dir).await
     }
 
+    async fn drain_accepted_checkpoints(&self) -> Result<(), GitAiError> {
+        loop {
+            let checkpoint_target = self.next_checkpoint_receipt_seq.load(Ordering::Acquire) as u64;
+            self.wait_for_checkpoint_admission_through(checkpoint_target)
+                .await;
+            self.wait_for_no_unadmitted_checkpoints().await;
+            self.wait_for_trace_ingest_processed_through().await;
+            self.drain_all_ready_family_sequencers().await?;
+
+            if self.outstanding_checkpoint_state().0 == 0 {
+                return Ok(());
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
     /// Wait for the daemon to finish all in-flight work and telemetry flushing.
     ///
     /// Progress is logged every few seconds. Returns an `AwaitResult` describing
@@ -6688,6 +6706,16 @@ impl ActorDaemonCoordinator {
 
     fn outstanding_checkpoint_state(&self) -> (usize, usize) {
         self.checkpoint_ingress_quota.outstanding()
+    }
+
+    fn set_checkpoint_acceptance(&self, accepting: bool) -> Result<(), GitAiError> {
+        let _sequencers = self
+            .family_sequencers_by_family
+            .lock()
+            .map_err(|_| GitAiError::Generic("family sequencer map lock poisoned".to_string()))?;
+        self.accepting_checkpoints
+            .store(accepting, Ordering::Release);
+        Ok(())
     }
 
     async fn handle_control_request(&self, request: ControlRequest) -> ControlResponse {
@@ -6984,7 +7012,28 @@ impl ActorDaemonCoordinator {
                 };
                 Ok(response)
             }
-            ControlRequest::Shutdown => Ok(ControlResponse::ok(None, None)),
+            ControlRequest::Shutdown => match self.set_checkpoint_acceptance(false) {
+                Err(error) => Err(error),
+                Ok(()) => {
+                    tracing::info!(
+                        component = "daemon",
+                        phase = "shutdown",
+                        "checkpoint acceptance closed for graceful shutdown"
+                    );
+                    match self.drain_accepted_checkpoints().await {
+                        Ok(()) => Ok(ControlResponse::ok(None, None)),
+                        Err(error) => {
+                            if let Err(reopen_error) = self.set_checkpoint_acceptance(true) {
+                                tracing::error!(
+                                    %reopen_error,
+                                    "failed reopening checkpoint acceptance after shutdown error"
+                                );
+                            }
+                            Err(error)
+                        }
+                    }
+                }
+            },
         };
 
         match result {
@@ -7232,6 +7281,27 @@ fn handle_control_connection_actor_reader<R: Read + Write>(
         let mut shutdown_after_response = false;
         let response = match parsed {
             Ok(ControlRequest::CheckpointRun { body_bytes }) => {
+                if !coordinator.accepting_checkpoints.load(Ordering::Acquire) {
+                    let acceptance_closed = {
+                        let _sequencers =
+                            coordinator
+                                .family_sequencers_by_family
+                                .lock()
+                                .map_err(|_| {
+                                    GitAiError::Generic(
+                                        "family sequencer map lock poisoned".to_string(),
+                                    )
+                                })?;
+                        !coordinator.accepting_checkpoints.load(Ordering::Acquire)
+                    };
+                    if acceptance_closed {
+                        write_control_response(
+                            reader.get_mut(),
+                            &ControlResponse::err("daemon is shutting down"),
+                        )?;
+                        continue;
+                    }
+                }
                 let body_bytes = match usize::try_from(body_bytes) {
                     Ok(body_bytes) => body_bytes,
                     Err(error) => {
@@ -7362,38 +7432,50 @@ fn handle_control_connection_actor_reader<R: Read + Write>(
                                     "family sequencer map lock poisoned".to_string(),
                                 )
                             })?;
-                    let receipt_seq = coordinator
-                        .next_checkpoint_receipt_seq
-                        .fetch_add(1, Ordering::Relaxed)
-                        as u64
-                        + 1;
-                    let received_at_ns = now_unix_nanos();
-                    let trace_ingest_target =
-                        coordinator.next_trace_ingest_seq.load(Ordering::Acquire) as u64;
-                    coordinator
-                        .unadmitted_checkpoints
-                        .fetch_add(1, Ordering::Release);
-                    permit.send(AcceptedCheckpoint {
-                        receipt_seq,
-                        received_at_ns,
-                        trace_ingest_target,
-                        body,
-                        reservation,
-                    });
-                    receipt_seq
+                    if coordinator.accepting_checkpoints.load(Ordering::Acquire) {
+                        let receipt_seq = coordinator
+                            .next_checkpoint_receipt_seq
+                            .fetch_add(1, Ordering::Relaxed)
+                            as u64
+                            + 1;
+                        let received_at_ns = now_unix_nanos();
+                        let trace_ingest_target =
+                            coordinator.next_trace_ingest_seq.load(Ordering::Acquire) as u64;
+                        coordinator
+                            .unadmitted_checkpoints
+                            .fetch_add(1, Ordering::Release);
+                        permit.send(AcceptedCheckpoint {
+                            receipt_seq,
+                            received_at_ns,
+                            trace_ingest_target,
+                            body,
+                            reservation,
+                        });
+                        Some(receipt_seq)
+                    } else {
+                        None
+                    }
                 };
-                tracing::info!(
-                    component = "daemon",
-                    phase = "checkpoint_receive",
-                    receipt_seq,
-                    retained_bytes = body_bytes,
-                    "checkpoint received into bounded ingress"
-                );
-                ControlResponse::ok(Some(receipt_seq), None)
+                match receipt_seq {
+                    Some(receipt_seq) => {
+                        tracing::info!(
+                            component = "daemon",
+                            phase = "checkpoint_receive",
+                            receipt_seq,
+                            retained_bytes = body_bytes,
+                            "checkpoint received into bounded ingress"
+                        );
+                        ControlResponse::ok(Some(receipt_seq), None)
+                    }
+                    None => ControlResponse::err("daemon is shutting down"),
+                }
             }
             Ok(req) => {
-                shutdown_after_response = matches!(req, ControlRequest::Shutdown);
-                runtime_handle.block_on(async { coordinator.handle_control_request(req).await })
+                let is_shutdown = matches!(req, ControlRequest::Shutdown);
+                let response = runtime_handle
+                    .block_on(async { coordinator.handle_control_request(req).await });
+                shutdown_after_response = is_shutdown && response.ok;
+                response
             }
             Err(error) => {
                 tracing::error!(
@@ -7406,22 +7488,23 @@ fn handle_control_connection_actor_reader<R: Read + Write>(
                 ControlResponse::err(format!("invalid control request: {error}"))
             }
         };
-        if let Err(error) = write_control_response(reader.get_mut(), &response) {
-            if let Some(receipt_seq) = response.seq {
-                tracing::error!(
-                    component = "daemon",
-                    phase = "checkpoint_receive",
-                    reason = "receipt_ack_write_failed",
-                    receipt_seq,
-                    %error,
-                    "failed writing checkpoint receipt acknowledgement"
-                );
-            }
-            return Err(error);
+        let write_result = write_control_response(reader.get_mut(), &response);
+        if let Err(error) = &write_result
+            && let Some(receipt_seq) = response.seq
+        {
+            tracing::error!(
+                component = "daemon",
+                phase = "checkpoint_receive",
+                reason = "receipt_ack_write_failed",
+                receipt_seq,
+                %error,
+                "failed writing checkpoint receipt acknowledgement"
+            );
         }
         if shutdown_after_response {
             coordinator.request_stop();
         }
+        write_result?;
     }
     Ok(())
 }
@@ -8352,6 +8435,7 @@ fn checkpoint_control_response_timeout(
         ControlRequest::Await { timeout_secs } => {
             Duration::from_secs(timeout_secs.saturating_add(5))
         }
+        ControlRequest::Shutdown => DAEMON_CHECKPOINT_RESPONSE_TIMEOUT,
         _ => DAEMON_CONTROL_RESPONSE_TIMEOUT,
     }
 }
@@ -8977,6 +9061,14 @@ mod tests {
         assert_eq!(
             checkpoint_control_response_timeout(&sample_checkpoint_request(), false),
             DAEMON_CONTROL_RESPONSE_TIMEOUT
+        );
+    }
+
+    #[test]
+    fn shutdown_requests_allow_checkpoint_drain_timeout() {
+        assert_eq!(
+            checkpoint_control_response_timeout(&ControlRequest::Shutdown, false),
+            DAEMON_CHECKPOINT_RESPONSE_TIMEOUT
         );
     }
 

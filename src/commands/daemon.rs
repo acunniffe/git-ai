@@ -603,12 +603,7 @@ fn handle_restart(args: &[String]) -> Result<(), String> {
         if hard {
             hard_kill_daemon(&config)?;
         } else {
-            // Attempt soft shutdown; escalate to hard kill on timeout.
-            let _ = send_control_request(&config.control_socket_path, &ControlRequest::Shutdown);
-            if !wait_for_daemon_dead(&config, GRACEFUL_SHUTDOWN_TIMEOUT) {
-                eprintln!("graceful shutdown timed out, force-killing daemon");
-                hard_kill_daemon(&config)?;
-            }
+            stop_daemon(&config, GRACEFUL_SHUTDOWN_TIMEOUT)?;
         }
 
         // Even after lock+sockets are gone, the process may still be alive
@@ -729,14 +724,26 @@ pub(crate) fn stop_daemon(config: &DaemonConfig, timeout: Duration) -> Result<()
         return Ok(());
     }
 
-    // Attempt soft shutdown via control socket if reachable.
+    let deadline = Instant::now() + timeout;
+
+    // Attempt soft shutdown via control socket if reachable. Bound the request
+    // itself by the caller's deadline because shutdown may now wait for
+    // acknowledged checkpoints before responding.
     if local_socket_connects_with_timeout(&config.control_socket_path, Duration::from_millis(100))
         .is_ok()
     {
-        let _ = send_control_request(&config.control_socket_path, &ControlRequest::Shutdown);
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if !remaining.is_zero() {
+            let _ = send_control_request_with_timeout(
+                &config.control_socket_path,
+                &ControlRequest::Shutdown,
+                remaining,
+            );
+        }
     }
 
-    if wait_for_daemon_dead(config, timeout) {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if wait_for_daemon_dead(config, remaining) {
         return Ok(());
     }
 

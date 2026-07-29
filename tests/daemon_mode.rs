@@ -1875,6 +1875,107 @@ fn daemon_checkpoint_ack_does_not_wait_for_checkpoint_processing() {
 
 #[test]
 #[cfg(not(windows))]
+fn daemon_soft_shutdown_drains_acknowledged_checkpoints() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+        "shutdown-first=1000",
+    )]);
+    let control_socket = daemon_control_socket_path(&repo);
+    let request = |trace_id: &str, path: &str, content: &str| CheckpointRequest {
+        trace_id: trace_id.to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "shutdown-drain-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from(path),
+            content: Some(content.to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+
+    fs::write(repo.path().join("first.txt"), "first\n").unwrap();
+    let first = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &request("shutdown-first", "first.txt", "first\n"),
+        Duration::from_millis(500),
+    )
+    .expect("first checkpoint should be acknowledged");
+    assert!(first.ok, "first checkpoint failed: {first:?}");
+
+    let logs = wait_for_daemon_log(&repo, "checkpoint start");
+    assert!(
+        logs.contains("checkpoint start"),
+        "first checkpoint never started processing:\n{logs}"
+    );
+
+    fs::write(repo.path().join("second.txt"), "second\n").unwrap();
+    let second = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &request("shutdown-second", "second.txt", "second\n"),
+        Duration::from_millis(500),
+    )
+    .expect("second checkpoint should be acknowledged");
+    assert!(second.ok, "second checkpoint failed: {second:?}");
+    assert!(
+        second.seq > first.seq,
+        "checkpoint receipts must preserve acceptance order"
+    );
+
+    let shutdown_socket = control_socket.clone();
+    let shutdown_thread = thread::spawn(move || {
+        send_control_request_with_timeout(
+            &shutdown_socket,
+            &ControlRequest::Shutdown,
+            Duration::from_secs(5),
+        )
+    });
+    let logs = wait_for_daemon_log(&repo, "checkpoint acceptance closed for graceful shutdown");
+    assert!(
+        logs.contains("checkpoint acceptance closed for graceful shutdown"),
+        "daemon never closed checkpoint acceptance:\n{logs}"
+    );
+
+    fs::write(repo.path().join("too-late.txt"), "too late\n").unwrap();
+    let too_late = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &request("shutdown-too-late", "too-late.txt", "too late\n"),
+        Duration::from_millis(500),
+    )
+    .expect("checkpoint submitted during graceful shutdown should receive a response");
+    assert!(
+        !too_late.ok && too_late.error.as_deref() == Some("daemon is shutting down"),
+        "graceful shutdown must stop accepting new checkpoints: {too_late:?}"
+    );
+
+    let shutdown = shutdown_thread
+        .join()
+        .expect("shutdown request thread panicked")
+        .expect("soft shutdown should wait for acknowledged checkpoints");
+    assert!(shutdown.ok, "soft shutdown failed: {shutdown:?}");
+
+    let repository = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let checkpoints = repository
+        .storage
+        .working_log_for_base_commit("initial")
+        .unwrap()
+        .read_all_checkpoints()
+        .unwrap();
+    assert_eq!(
+        checkpoints.len(),
+        2,
+        "soft shutdown must not discard successfully acknowledged checkpoints"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
 fn daemon_checkpoint_processing_failure_is_logged_after_receipt_ack() {
     let repo = TestRepo::new_with_daemon_env(&[(
         "GIT_AI_TEST_FAIL_CHECKPOINT_SIDE_EFFECT",
