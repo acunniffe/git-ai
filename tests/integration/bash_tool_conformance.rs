@@ -609,6 +609,7 @@ fn test_classify_tool_droid() {
     assert_eq!(classify_tool(Agent::Droid, "Write"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Droid, "Create"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Droid, "Bash"), ToolClass::Bash);
+    assert_eq!(classify_tool(Agent::Droid, "Execute"), ToolClass::Bash);
     assert_eq!(classify_tool(Agent::Droid, "Read"), ToolClass::Skip);
     assert_eq!(classify_tool(Agent::Droid, "unknown"), ToolClass::Skip);
 }

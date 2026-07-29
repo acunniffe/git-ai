@@ -330,7 +330,7 @@ pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
         },
         Agent::Droid => match tool_name {
             "ApplyPatch" | "Edit" | "Write" | "Create" => ToolClass::FileEdit,
-            "Bash" => ToolClass::Bash,
+            "Bash" | "Execute" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::Amp => match tool_name {
@@ -1516,6 +1516,7 @@ mod tests {
             ToolClass::FileEdit
         );
         assert_eq!(classify_tool(Agent::Droid, "Bash"), ToolClass::Bash);
+        assert_eq!(classify_tool(Agent::Droid, "Execute"), ToolClass::Bash);
 
         // Amp
         assert_eq!(classify_tool(Agent::Amp, "Write"), ToolClass::FileEdit);
