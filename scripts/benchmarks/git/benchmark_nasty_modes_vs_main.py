@@ -99,6 +99,8 @@ def start_perf_profiler(
             [
                 "perf",
                 "record",
+                "-e",
+                "cpu-clock",
                 "-F",
                 "99",
                 "--call-graph",

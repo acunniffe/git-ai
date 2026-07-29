@@ -81,7 +81,11 @@ fn log_plain_proxies_git_notes_backend() {
 
 #[test]
 fn log_multiple_commits_parse_record_boundaries() {
-    let repo = TestRepo::new();
+    // This test needs stable attribution across two commits. A shared daemon
+    // can have its config rewritten by another test between those commits,
+    // which makes the second commit legitimately produce no note.
+    let mut repo = TestRepo::new_dedicated_daemon();
+    repo.allow_only_self_for_collection();
     let mut file = repo.filename("history.txt");
 
     file.set_contents(lines!["first ai line".ai()]);

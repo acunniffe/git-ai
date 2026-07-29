@@ -73,6 +73,65 @@ jobs:
           path: .benchmarks/pr-smoke/artifacts/**
           if-no-files-found: ignore
 
+  pr-flamegraph-smoke:
+    if: github.event_name == 'pull_request'
+    name: PR Flamegraph Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Setup benchmark toolchain
+        uses: ./.github/actions/setup-performance-benchmarks
+        with:
+          cache-key: ${{ runner.os }}-perf-smoke-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-perf-smoke-
+            ${{ runner.os }}-perf-
+
+      - name: Install profiling tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y linux-tools-common linux-tools-generic || true
+          if ! command -v perf >/dev/null 2>&1; then
+            sudo apt-get install -y "linux-tools-$(uname -r)"
+          fi
+          perf --version
+          cargo install inferno --version 0.12.6 --locked
+
+      - name: Run profiled smoke benchmark
+        run: |
+          python3 scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py \
+            --work-root .benchmarks/pr-flamegraphs \
+            --feature-commits 8 \
+            --main-commits 4 \
+            --side-commits 3 \
+            --files 2 \
+            --lines-per-file 300 \
+            --burst-every 2 \
+            --repetitions 1 \
+            --flamegraph-dir .benchmarks/pr-flamegraphs/profiles \
+            --margin-pct 80 \
+            --margin-baseline main_daemon
+
+      - name: Render flamegraphs
+        if: always()
+        run: |
+          bash scripts/benchmarks/git/render_flamegraphs.sh \
+            .benchmarks/pr-flamegraphs/profiles \
+            .benchmarks/pr-flamegraphs/artifacts/flamegraphs
+
+      - name: Upload flamegraph smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr-flamegraph-benchmarks
+          path: .benchmarks/pr-flamegraphs/**
+          if-no-files-found: ignore
+
   nightly-full-benchmarks:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     name: Nightly Full Performance Benchmarks

@@ -27,19 +27,22 @@ render_variant() {
   local flamegraph="$OUTPUT_ROOT/${variant}.svg"
   local data_file
   if [[ ! -d "$variant_root" ]]; then
-    echo "warning: no profiles found for $variant" >&2
-    return 0
+    echo "error: no profiles found for $variant" >&2
+    return 1
   fi
 
   : > "$perf_script"
 
   while IFS= read -r -d '' data_file; do
-    perf script -i "$data_file" >> "$perf_script"
+    if ! perf script -i "$data_file" >> "$perf_script"; then
+      echo "error: failed to read perf profile $data_file" >&2
+      return 1
+    fi
   done < <(find "$variant_root" -type f -name '*.data' -print0 | sort -z)
 
   if [[ ! -s "$perf_script" ]]; then
-    echo "warning: no perf samples found for $variant" >&2
-    return 0
+    echo "error: no perf samples found for $variant" >&2
+    return 1
   fi
 
   inferno-collapse-perf < "$perf_script" > "$folded"

@@ -215,6 +215,7 @@ fi
 if [ "$1" = "--list-extensions" ]; then
     printf 'git-ai.git-ai-vscode\n'
 fi
+exit 0
 "#;
 
     #[cfg(unix)]
