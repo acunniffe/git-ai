@@ -1,0 +1,49 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  6bbe72c632bd0e79 2377-2382,2584-2637
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "21b2e268d4090fc12991bc19585f6b7476f9cc19",
+  "prompts": {
+    "0258c5b1691621d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80d9d130-1df9-4582-94e6-56a7a47eff46",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 18,
+      "overriden_lines": 0
+    },
+    "11d03b37dc3ad21b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9e7961-e2a3-4c64-9188-a3037cb57221",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 576,
+      "overriden_lines": 0
+    },
+    "6bbe72c632bd0e79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fe1fb639-387b-4313-b69f-d3fb8d250412",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 60,
+      "overriden_lines": 0
+    }
+  }
+}

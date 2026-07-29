@@ -1,0 +1,23 @@
+.github/workflows/codeql.yml
+  fce9aba6a80976b1 49,68-78,112-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "73af7b9ab14487460ac421cbfd9fe9339dfc2dce",
+  "prompts": {
+    "fce9aba6a80976b1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2a1561006ffew3YQFfpjC6fy5s",
+        "model": "openai/gpt-5.4"
+      },
+      "human_author": "Test Runner",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 7,
+      "accepted_lines": 16,
+      "overriden_lines": 0
+    }
+  }
+}

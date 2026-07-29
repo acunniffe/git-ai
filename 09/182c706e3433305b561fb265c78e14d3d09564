@@ -1,0 +1,29 @@
+src/mdm/agents/cline.rs
+  s_10d7dc97ee3fb9::t_8d313113a7562d 198-203
+  s_10d7dc97ee3fb9::t_8e80b70889b43c 370,406,408,469-500
+  s_10d7dc97ee3fb9::t_48f0b29b3c954b 195-197
+  s_10d7dc97ee3fb9::t_8e488b5618a435 204-206,367-369
+  s_10d7dc97ee3fb9::t_491340fca5e2c0 371-373,403-405
+  s_10d7dc97ee3fb9::t_e05d62ccfc7e39 407
+  s_10d7dc97ee3fb9::t_ffd3ecd00682c7 409-411,466-468
+  s_10d7dc97ee3fb9::t_c2918c65376ad5 501-503
+  s_10d7dc97ee3fb9::t_76e8d225df87bd 1-194,207-366,374-402,412-465
+src/mdm/agents/mod.rs
+  s_10d7dc97ee3fb9::t_30f32a65ad0a3e 3,20,41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "09182c706e3433305b561fb265c78e14d3d09564",
+  "prompts": {},
+  "sessions": {
+    "s_10d7dc97ee3fb9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7123-7f7f-7063-9dd5-e8c26c38323d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

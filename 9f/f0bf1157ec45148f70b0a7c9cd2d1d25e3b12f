@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-06-23-bash-attribution-recovery-design.md
+  s_50c8cc07abd384::t_e5f2180d82deb7 1-401
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "9ff0bf1157ec45148f70b0a7c9cd2d1d25e3b12f",
+  "prompts": {},
+  "sessions": {
+    "s_50c8cc07abd384": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1e4e321-1caf-47bf-b232-0be284c09477",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+.github/workflows/test.yml
+  s_68d68b8ea9fb88::t_93d9d087a57a64 79
+  s_68d68b8ea9fb88::t_86178abd84770f 108,113-115,122-124,127-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "05953338eafb7c265dea945bf7fd6c68d72cfc66",
+  "prompts": {},
+  "sessions": {
+    "s_68d68b8ea9fb88": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b634c777-9497-4607-b393-16d137b2549b",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Jean-Michel Bouchard <jim@polarcoordinates.org>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+src/api/types.rs
+  s_218fc31e3ddd9a::t_0ce1765675abd9 1
+src/api/cas.rs
+  s_218fc31e3ddd9a::t_d45fd397ae7f2a 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "254052f818deb34def6c4a9574eebf5b6dd1b764",
+  "prompts": {},
+  "sessions": {
+    "s_218fc31e3ddd9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1fdad75-0ada-417b-8f9c-3ed0c18eb119",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>"
+    }
+  }
+}

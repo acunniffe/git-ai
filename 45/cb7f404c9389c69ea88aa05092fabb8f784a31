@@ -1,0 +1,107 @@
+.github/workflows/release.yml
+  59932ce 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "16e0f7886f22e316b39f27fca93fe788514901f0",
+  "prompts": {
+    "59932ce": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d4a3dbf9-d378-4bd1-a714-42e9ccdc830e",
+        "model": "claude-4.5-haiku-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "can you explain why this libc was added?",
+          "timestamp": "2025-10-24T01:38:43.197Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "pattern": "libc",
+            "type": "rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Find where libc is used in the codebase to understand why it was added.",
+            "query": "How is libc being used for signal handling?",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "pattern": "t0005-signals",
+            "type": "rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Based on the code search, **`libc` was added to handle Unix signals properly when spawning child Git processes**. Here's why it was needed:\n\n## Signal Forwarding & Process Group Management\n\nThe `libc` crate is used in `src/commands/git_handlers.rs` for several critical signal handling operations:\n\n1. **Signal Forwarding** - When git-ai runs a git command as a child process, it needs to forward signals (SIGTERM, SIGINT, SIGHUP, SIGQUIT) from the parent to the child process group:\n```\nextern \"C\" fn forward_signal_handler(sig: libc::c_int) {\n    // Forward signals to child process group\n    let _ = libc::kill(-pgid, sig);\n}\n```\n\n2. **Process Group Creation** - For non-interactive commands, it creates a new process group so signals can be sent to the entire group:\n```\nlibc::setpgid(0, 0);  // Make child its own process group leader\n```\n\n3. **TTY Detection** - It checks if stdin is a terminal to determine if it should create a new process group:\n```\nlet is_interactive = unsafe { libc::isatty(libc::STDIN_FILENO) == 1 };\n```\n\n4. **Signal Mirroring on Exit** - If the child process was terminated by a signal, the parent mirrors that termination:\n```\nlibc::signal(sig, libc::SIG_DFL);\nlibc::raise(sig);\n```\n\n## Why for t0005-signals?\n\nThe test name \"t0005-signals\" likely tests signal handling in various scenarios (like Ctrl+C interruption, process termination, etc.). The `libc` dependency was added to make sure that git-ai properly handles and forwards signals between parent and child processes, which is critical for a tool that acts as a wrapper around git commands.",
+          "timestamp": "2025-10-24T01:38:46.638Z"
+        },
+        {
+          "type": "user",
+          "text": "unfortunatly on some linux boxes we're getting a \nx86_64-linux-gnu libc.so.6 version GLIBC_2.39 not found  (required by git)",
+          "timestamp": "2025-10-24T01:39:21.912Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/git-ai/Cargo.toml"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "pattern": "libc\\s*=",
+            "type": "toml"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/git-ai/.github/workflows/release.yml"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "This is a classic GLIBC compatibility issue on Linux. The problem is that **the binary built on `ubuntu-latest` (which uses GLIBC 2.39) is trying to run on older Linux systems that have older GLIBC versions**.\n\n## The Issue\n\nWhen you compile Rust binaries that use `libc`, they dynamically link against the system's GLIBC. If you build on a newer system, the binary requires that newer GLIBC version on runtime.\n\nLooking at your release workflow:\n- Line 22: `ubuntu-latest` is used to build the Linux x86_64 binary\n- `ubuntu-latest` is currently Ubuntu 24.04 LTS, which has **GLIBC 2.39**\n- Older Linux systems (Ubuntu 22.04, CentOS 7/8, etc.) have older GLIBC versions (2.35, 2.17, etc.)\n\n## Solutions\n\nHere are your options:\n\n### **Option 1: Build on Older Ubuntu (Recommended for max compatibility)**\nChange the workflow to build on `ubuntu-20.04` instead of `ubuntu-latest`. Ubuntu 20.04 has GLIBC 2.31, which covers most production Linux systems:\n\n```yaml\n- os: ubuntu-20.04  # Instead of ubuntu-latest\n  target: x86_64-unknown-linux-gnu\n```\n\n### **Option 2: Use GLIBC 2.17 baseline (Maximum compatibility)**\nBuild on `ubuntu-18.04` (GLIBC 2.27) or even older. However, these runners may eventually be deprecated.\n\n### **Option 3: Statically link GLIBC (Most portable)**\nAdd a Cargo configuration to statically link GLIBC:\n\n```toml\n# In Cargo.toml\n[profile.release]\nlto = true\n```\n\nCreate `.cargo/config.toml`:\n```toml\n[build]\nrustflags = [\"-C\", \"target-feature=+crt-static\"]\n```\n\n### **Option 4: Multi-version builds**\nPublish binaries built on different Ubuntu versions (20.04, 22.04, etc.) so users can pick the one matching their system.\n\n---\n\n**I'd recommend Option 1** - changing to `ubuntu-20.04` for the Linux build. It's simple, provides good compatibility, and is still a recent, well-supported LTS. Would you like me to update the workflow file?",
+          "timestamp": "2025-10-24T01:39:26.180Z"
+        },
+        {
+          "type": "user",
+          "text": "let's try older linux runners for x86 and arm.",
+          "timestamp": "2025-10-24T01:43:55.413Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "edit_file",
+          "input": {
+            "file_path": "/Users/aidancunniffe/git-ai/.github/workflows/release.yml"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've updated the workflow to use **Ubuntu 20.04 LTS for both x86_64 and ARM64 builds**. \n\n## What changed:\n- **x86_64**: `ubuntu-latest` → `ubuntu-20.04` \n- **ARM64**: `ubuntu-24.04-arm` → `ubuntu-20.04-arm`\n\n## Benefits:\n- **GLIBC 2.31** (from Ubuntu 20.04) instead of 2.39 — much broader compatibility\n- Works on CentOS 8+, Ubuntu 18.04+, Debian 10+, and most production Linux systems\n- Still a modern, well-supported LTS release\n\nThis should resolve the `GLIBC_2.39 not found` errors on older Linux boxes. The next release build should produce binaries that work across a much wider range of Linux systems.",
+          "timestamp": "2025-10-24T01:43:58.791Z"
+        }
+      ],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

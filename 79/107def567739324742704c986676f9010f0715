@@ -1,0 +1,24 @@
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_a29c067d812b6c::t_4a1413422c9ffe 197-223
+  s_a29c067d812b6c::t_e2dbacff7bf5cd 560-643
+  s_a29c067d812b6c::t_8d3e1d6a1d0129 83-89,92-97,103-107
+src/commands/checkpoint_agent/bash_tool.rs
+  s_a29c067d812b6c::t_14373b6df73ad1 1293-1296
+  s_a29c067d812b6c::t_3defe9e61262c8 361
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "79107def567739324742704c986676f9010f0715",
+  "prompts": {},
+  "sessions": {
+    "s_a29c067d812b6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b76d2654-275a-4359-bd5b-e2351e2189ff",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

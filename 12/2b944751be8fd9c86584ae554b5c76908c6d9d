@@ -1,0 +1,25 @@
+src/daemon.rs
+  71f132d171c301c4 980,2414,2598,2601,2606,2620-2635,5488,5502,5976,5987,6001-6002,6015,6279-6305
+src/git/rewrite_log.rs
+  71f132d171c301c4 485-486
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "122b944751be8fd9c86584ae554b5c76908c6d9d",
+  "prompts": {
+    "71f132d171c301c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5597a7ef-171b-4c73-b5b4-da83540f06d5",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 72,
+      "total_deletions": 11,
+      "accepted_lines": 57,
+      "overriden_lines": 0
+    }
+  }
+}

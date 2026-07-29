@@ -1,0 +1,26 @@
+src/authorship/post_commit.rs
+  s_c316e86963221e::t_067f4d7c44c55b 415
+  s_c316e86963221e::t_e4f43df9c0855f 488-489
+  s_c316e86963221e::t_034b5c15cac8bc 194,198,230
+src/metrics/events.rs
+  s_c316e86963221e::t_2f102f382973f0 30
+  s_c316e86963221e::t_e9888617d0ddfe 57,74
+  s_c316e86963221e::t_534cbd009d8602 183-192
+  s_c316e86963221e::t_cf2f9babe9a424 249-253,274
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "954f5ffd7df04522d369d1bc30bf69fdf5436f3e",
+  "prompts": {},
+  "sessions": {
+    "s_c316e86963221e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08d8c9e4-d405-4ffe-b2b0-01c5d7b0fa9e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
