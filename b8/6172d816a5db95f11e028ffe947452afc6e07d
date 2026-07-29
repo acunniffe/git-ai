@@ -1,0 +1,79 @@
+tests/daemon_mode.rs
+  s_7d470640a960b2::t_4d5959a89dcb70 14-15,70-78,1742-2013,2015-2035,2128-2136
+  s_7d470640a960b2::t_77788d37581aa7 69
+  s_7d470640a960b2::t_6e61da047bf6ef 2014
+  s_7d470640a960b2::t_023bb9ae62d02b 79-80
+src/daemon.rs
+  s_7d470640a960b2::t_17fd3e9c4694cf 7910-7924,7983-7995,8007-8019
+  s_7d470640a960b2::t_71922e114431cd 4624,4672,4812,4844,4856
+  s_7d470640a960b2::t_bcbde555ed4656 6946-6952,7118-7124
+  s_7d470640a960b2::t_dda70fb5b8ffc5 6437-6447
+  s_7d470640a960b2::t_70dfa2a27a15a8 6584-6586
+  s_7d470640a960b2::t_49c042eeb5bb81 8137
+  s_7d470640a960b2::t_c120a3994c8dc1 6613-6614
+  s_7d470640a960b2::t_7eda6c5c0688cc 4233-4246,4266
+  s_7d470640a960b2::t_e0aa7a59d128aa 2706-2710,2799-2803
+  s_7d470640a960b2::t_d95e3fa78b9440 156-164
+  s_7d470640a960b2::t_e77d9f1adc5009 51,147-155,2593-2594
+  s_7d470640a960b2::t_cba6ec751f0a57 7231-7248,7252,7254-7255,7263-7271,7277-7278,7310,7315
+  s_7d470640a960b2::t_b98b2afa34fd72 7257-7261,7272-7276,7279-7309,7311-7314,7316
+  s_7d470640a960b2::t_719d7f39a15c42 4481-4483,4610-4611,4668-4671,4673-4676,4789,4808-4811,4840-4843,4852-4855,4857-4861
+  s_7d470640a960b2::t_78fb7e5d9cb589 6396-6427,6429-6432
+  s_7d470640a960b2::t_92cbb1e2302151 207-214
+  s_7d470640a960b2::t_b3a0f1f7d400d8 3928-3964,3966-4002,4011-4049,4051-4183
+  s_7d470640a960b2::t_835d675f575aca 4779-4780,4790-4801
+  s_7d470640a960b2::t_8085b52e4cb7c5 7333-7345
+  s_7d470640a960b2::t_076ffaba65987c 981-1005
+  s_7d470640a960b2::t_e7212e8d850f58 3965,4003-4010,4050,4700-4703
+tests/integration/pull_rebase_ff.rs
+  s_7d470640a960b2::t_de6f16baf76637 609
+tests/integration/repos/test_repo.rs
+  s_7d470640a960b2::t_e5ba034d5544da 1859-1865
+  s_acbbcc77bb9da5::t_d93b5294842b86 3066-3076,3078-3085,3087-3094,3096-3097,3099
+src/commands/git_ai_handlers.rs
+  s_7d470640a960b2::t_8dccdcdd8516e2 567-572
+tests/integration/status_unit.rs
+  s_7d470640a960b2::t_212465fae03b87 1,50-59
+  s_7d470640a960b2::t_6ab5006e277468 60-63
+  s_7d470640a960b2::t_ab5d269d23a77d 64-65
+tests/integration/worktrees.rs
+  s_acbbcc77bb9da5::t_34449a3cf9f39c 596
+  s_acbbcc77bb9da5::t_73b02fc9afa4ac 697,763,820
+tests/integration/cursor.rs
+  s_acbbcc77bb9da5::t_bd16ed91f76096 546-547
+  s_acbbcc77bb9da5::t_acc3d854381f08 529
+tests/integration/checkpoint_size.rs
+  s_acbbcc77bb9da5::t_ef27cc6a8adf2f 104,128
+tests/integration/checkpoint_unit.rs
+  s_acbbcc77bb9da5::t_40632b0d55fff1 920-921
+  s_acbbcc77bb9da5::t_669d0b235856cf 351-353,362-365
+  s_acbbcc77bb9da5::t_3821efa2f38811 57,99,141,176,453,492,609,652,719,775,833,1071,1117,1176
+  s_acbbcc77bb9da5::t_8de9f75ee624c3 1360
+  s_acbbcc77bb9da5::t_dc319484419baf 1253
+  s_acbbcc77bb9da5::t_8cc09d5614ba55 884-885
+  s_acbbcc77bb9da5::t_af979a80169bdb 551-553,561-564
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "b86172d816a5db95f11e028ffe947452afc6e07d",
+  "prompts": {},
+  "sessions": {
+    "s_7d470640a960b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa51d-4cb8-7471-ad38-ead1f195155b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_acbbcc77bb9da5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebbc887-2ebd-47b6-8edf-b19158eee095",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
