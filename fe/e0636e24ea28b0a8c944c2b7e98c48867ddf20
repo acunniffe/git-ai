@@ -1,0 +1,40 @@
+.github/workflows/performance-benchmarks.yml
+  0defeff3de23389b 9,22-65
+src/git/command_classification.rs
+  0defeff3de23389b 38-61,95-160
+src/commands/git_handlers.rs
+  0defeff3de23389b 118,122-137,820-828,831,835-839
+docker/Dockerfile.readonly-flood-repro
+  0defeff3de23389b 1-46
+Taskfile.yml
+  0defeff3de23389b 74-78
+docker/repro_readonly_flood.sh
+  0defeff3de23389b 1-155
+benches/readonly_flood.rs
+  0defeff3de23389b 1-178
+Cargo.toml
+  0defeff3de23389b 48-50,54,80-85
+src/daemon.rs
+  0defeff3de23389b 571-655,657-667,3721-3722,4846-4865,4874,4877-4891,4903,4908-4923,4928-4930,4946-4947,4967-4968,4985,5051,5255,5458-5460,7633-7640,8445-8494,8497-8512,8515-8529,8532-8540,8543-8552,8555-8562,8565-8574,8577-8589,8592-8600,8603-8611,8614-8634,8637-8665,8668-8686,8689-8705,8707-8747
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "fee0636e24ea28b0a8c944c2b7e98c48867ddf20",
+  "prompts": {
+    "0defeff3de23389b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3b972d3-1a88-4346-82ad-47e84df4345b",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1098,
+      "total_deletions": 106,
+      "accepted_lines": 1014,
+      "overriden_lines": 26,
+      "messages_url": "https://usegitai.com/cas/eb2ab78359d205212611a5a5fb7688ca06ba5f86395580ce267fc4a3e8f9ceea"
+    }
+  }
+}

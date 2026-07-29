@@ -1,0 +1,13 @@
+src/commands/hooks/commit_hooks.rs
+  3800fef055e223b0 72-81,99-129,131-144,149-150,155-156,159-207,209-210,212-213,215-216,218-225
+src/synopsis/conversation.rs
+  3800fef055e223b0 1-8,11-13,15,17-53,55-206,212-238,240-268,270-287,289-293,295-349
+src/main.rs
+  3800fef055e223b0 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "e41f48fc3fce1b19664b47beda9867f0bee9e055",
+  "prompts": {}
+}

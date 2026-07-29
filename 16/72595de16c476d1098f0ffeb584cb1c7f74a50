@@ -1,0 +1,23 @@
+src/commands/install_hooks.rs
+  db593cd062660722 206-209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.38",
+  "base_commit_sha": "1672595de16c476d1098f0ffeb584cb1c7f74a50",
+  "prompts": {
+    "db593cd062660722": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8f9f2211-cde2-4f40-875e-1d07f302d6b3",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,30 @@
+tests/integration/prompt_across_commit.rs
+  cc96b9047e410e00 64-115
+tests/integration/repos/test_file.rs
+  cc96b9047e410e00 25,50,54,65-68,79-82,93-96,316,391,505,699-704,736-741,773-782
+tests/integration/codex.rs
+  cc96b9047e410e00 743-829,844
+tests/integration/squash_merge.rs
+  cc96b9047e410e00 473-603,609-610
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "852ad3cf160f274057da8eaf3bd7811f9bb611f7",
+  "prompts": {
+    "cc96b9047e410e00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b38558e-65c1-4381-ac6a-dbe9cec46b0e",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 314,
+      "total_deletions": 15,
+      "accepted_lines": 313,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/7647945a0df984f2706017957dc80654b2af8ba215d9223a113d120efaff8f2c"
+    }
+  }
+}

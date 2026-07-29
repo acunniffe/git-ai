@@ -1,0 +1,23 @@
+src/authorship/rebase_authorship.rs
+  6477b05bbf4fa6c0 148,2807,2812,2814,3245,3294-3295,3355,3364-3365,3409,3490-3491
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "161cea970494779e328fd5af888d9297b215d74d",
+  "prompts": {
+    "6477b05bbf4fa6c0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "53c6bfce-1c76-4ab7-b4d1-32999e9364e2",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 25,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}

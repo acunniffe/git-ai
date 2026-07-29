@@ -1,0 +1,48 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.1",
+  "base_commit_sha": "5ae6389bbba3a4d1583a44f778412f448f02c136",
+  "prompts": {
+    "0331a927bb88e971": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4046a5e4-de27-4294-8d20-16e7020e2e22",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "8688852+Ryan-Adami@users.noreply.github.com",
+      "messages": [],
+      "total_additions": 360,
+      "total_deletions": 29,
+      "accepted_lines": 359,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/76df1da7149a6a10cb49a10e590b20a20a0e882f5d1cbea1c3db90edfff2034d"
+    },
+    "0413d4118f3b6fbb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06d1532d-c81f-41d8-97cd-3692a3888a8c",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 95,
+      "overriden_lines": 0
+    },
+    "63c5b15e15c45dd7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b33232c0-faef-45e7-af59-c087f3101d85",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 63,
+      "total_deletions": 0,
+      "accepted_lines": 63,
+      "overriden_lines": 0
+    }
+  }
+}

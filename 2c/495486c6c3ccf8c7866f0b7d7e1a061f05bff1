@@ -1,0 +1,27 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.20",
+  "base_commit_sha": "2c495486c6c3ccf8c7866f0b7d7e1a061f05bff1",
+  "prompts": {
+    "3871765": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5c03fdba-624f-431f-bc43-27f8a24cdd88",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "remove all println profiles we added in @checkpoint.rs",
+          "timestamp": "2025-11-15T15:08:03.919Z"
+        }
+      ],
+      "total_additions": 2,
+      "total_deletions": 85,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

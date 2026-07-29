@@ -1,0 +1,57 @@
+.github/workflows/github-integration-tests.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 12-14,22,27,32
+.github/workflows/nightly-upgrade.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5,22
+.github/workflows/release-intellij-plugin.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 31,38,44,51
+.github/workflows/install-scripts-local.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5,59,64,71,174,205,210,217,547
+.github/workflows/test.yml
+  ai_agent 3-5,59,65,70,81,115,121,126
+.github/workflows/release.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 4,33,38,77,85,87,199,201,252-256,262-264,268,371,447
+.github/workflows/intellij-ui-tests.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 21-23,50,54,61,73
+.github/workflows/nightly-agent-integration.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 24-26,40,141,145,149,163,231,249,253,257,271,309,338,351-352,355,375
+.github/workflows/codeql.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 66,76,109
+.github/workflows/git-core-compat.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5,38,43,48,63
+.github/workflows/lint-format.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5,40,42,47,59,61,66,76,86,88,92,102
+.github/workflows/coverage.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5,24,29,35,46,75,83
+.github/workflows/e2e-tests.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5,27,32,37,57
+.github/workflows/install-scripts-nightly.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5
+.github/workflows/update-changelog.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 56,63,87
+.github/workflows/intellij-build.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 22-24,39,46,50,57,78,92,99,103,110,123,130,142,149,156,163,170,186,193,197,204,217
+.github/workflows/opencode-type-check.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5,24,27,30-31,34,37
+.github/workflows/performance-benchmarks.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5,31,36-38,41,46,74,87,92-94,97,102,140
+.github/workflows/test-vscode-extension.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 3-5,24,27,30-31,34,37,40,49
+.github/workflows/release-vscode-extension.yml
+  s_4515cd2faadcba::t_98ae90bf4e9fb9 19-21,30,32,35-36,39,42,45,48,55,73,75,78-79,82,85,91,104,106,109-110,113,116,122,135-136,142,146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "6cee310db2598cc1b68b0c4f7d001e9c902efa6b",
+  "prompts": {},
+  "sessions": {
+    "s_4515cd2faadcba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e4da275b-f76b-43b1-a93f-2f0bb3712ce9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

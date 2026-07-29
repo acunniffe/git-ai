@@ -1,0 +1,22 @@
+src/commands/hooks/rebase_hooks.rs
+  s_8d9d36585aec71::t_a5f2851c9bc432 2
+src/commands/hooks/push_hooks.rs
+  s_8d9d36585aec71::t_5be69d286f5f19 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "56e0828e558d5893d9b651ec34aeff450d09743d",
+  "prompts": {},
+  "sessions": {
+    "s_8d9d36585aec71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33d20787-e26d-4a7f-9364-7a48fad08505",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": []
+    }
+  }
+}

@@ -1,0 +1,40 @@
+scripts/benchmarks/git/benchmark_modes_vs_main.py
+  s_69a54df0345dbf::t_c634812ffbb7e5 1119
+  s_69a54df0345dbf::t_5c236959a32615 1006
+  s_69a54df0345dbf::t_900f2c0c58a1e9 391
+  s_69a54df0345dbf::t_9f4f10f203a8ab 44
+  s_69a54df0345dbf::t_4e9e1ff6bfb4d5 1220
+  s_69a54df0345dbf::t_231cd86ef24fd0 3,6-7
+  s_69a54df0345dbf::t_c8229227dd2d03 868,900,902,906,912,915,918,920,923,927-928,944
+  s_69a54df0345dbf::t_5bb3ec8b6555f3 1188,1193
+  s_69a54df0345dbf::t_a15c95e8a5ae1e 1059,1064-1065
+.github/workflows/performance-benchmarks.yml
+  s_69a54df0345dbf::t_7f248e09f41f00 64
+  s_69a54df0345dbf::t_f08e4f3fc56412 113,128
+scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py
+  s_69a54df0345dbf::t_79b8eb3c82b11b 31
+  s_69a54df0345dbf::t_2b7631c5aac15c 196-218,220-221,223-229,231
+  s_69a54df0345dbf::t_7df66910052307 585
+  s_69a54df0345dbf::t_3e691f178b7849 663,668
+  s_69a54df0345dbf::t_d2ad7a4f1ac8ca 735
+  s_69a54df0345dbf::t_89e90210673f6e 387,415,418,420,424,428-429,435,438,442
+  s_69a54df0345dbf::t_0d5e9e10fa97b0 515,520-521
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "01a21b6b95a1e05a483b11c24d130c4a1b246e91",
+  "prompts": {},
+  "sessions": {
+    "s_69a54df0345dbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a46a182e-c0bb-4405-9496-ba072ce77795",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/1ca7cb85a4ae150be0d1f44b1a60a5e917bf959c498ddd5d4ffa11f88d31e28c"
+    }
+  }
+}
