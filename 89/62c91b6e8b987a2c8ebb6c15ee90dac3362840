@@ -1,0 +1,51 @@
+src/daemon.rs
+  s_88e09c7ec5c2e7::t_c57fa5a5baec3a 7491-7501
+  s_7d470640a960b2::t_b98b2afa34fd72 7457
+  s_7d470640a960b2::t_8085b52e4cb7c5 7502
+  s_88e09c7ec5c2e7::t_e18a904382c176 9067-9073
+  s_acbbcc77bb9da5::t_85088fd953ff63 9074
+  s_88e09c7ec5c2e7::t_6698933d74edca 6711-6720,7015-7033,7284-7302
+  s_88e09c7ec5c2e7::t_9f367d5b4bb545 7303
+  s_88e09c7ec5c2e7::t_e03489759f1884 2715,2809,6530-6545,7034-7035,7435-7456,7459-7470,7474-7477,7507,8438
+  s_7d470640a960b2::t_61b5061c323da3 7304,7471
+  s_88e09c7ec5c2e7::t_3cfed0ef29e063 7036,7478
+src/commands/daemon.rs
+  s_88e09c7ec5c2e7::t_ee062c69c617d5 606,727-731,735-742,745-746
+tests/daemon_mode.rs
+  s_88e09c7ec5c2e7::t_f7294e110c85d0 1939-1946
+  s_88e09c7ec5c2e7::t_0b0c93c55bbd8d 1876-1877
+  s_88e09c7ec5c2e7::t_2f6b698fbcd08a 1878-1930,1947,1950,1953,1961-1976
+  s_88e09c7ec5c2e7::t_f916f9a4c01faa 1931-1938,1948-1949,1951-1952,1954-1960
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "8962c91b6e8b987a2c8ebb6c15ee90dac3362840",
+  "prompts": {},
+  "sessions": {
+    "s_7d470640a960b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa51d-4cb8-7471-ad38-ead1f195155b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_88e09c7ec5c2e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fabf9-ca63-7101-9454-7282f9548df6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_acbbcc77bb9da5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebbc887-2ebd-47b6-8edf-b19158eee095",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
