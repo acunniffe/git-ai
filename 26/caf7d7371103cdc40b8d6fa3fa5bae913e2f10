@@ -1,0 +1,26 @@
+tests/secrets_benchmark.rs
+  f004b5f471ac3294 1-405,407,409-433
+src/authorship/secrets.rs
+  f004b5f471ac3294 8,62-100,144,200,202-209,214-216,219-223,260-261,266-278,280-282,286-295
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.28",
+  "base_commit_sha": "26caf7d7371103cdc40b8d6fa3fa5bae913e2f10",
+  "prompts": {
+    "f004b5f471ac3294": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "db43baa4-8f94-4ada-896c-d3200c24d727",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 520,
+      "total_deletions": 20,
+      "accepted_lines": 517,
+      "overriden_lines": 2,
+      "messages_url": "http://localhost:4000/cas/e66700f5967e1d26aef0dd0cf2b181f19c29a6dc91aabf99e80458c9919bd7e1"
+    }
+  }
+}

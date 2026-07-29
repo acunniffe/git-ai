@@ -1,0 +1,24 @@
+tests/git_cli_arg_parsing.rs
+  395ba39b8433efd4 820-913
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.39",
+  "base_commit_sha": "024d7cca66b307cb07784885a1dc17f43d058734",
+  "prompts": {
+    "395ba39b8433efd4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b3c84c5c-c31f-4d9f-9210-d63ced29e0bc",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 94,
+      "total_deletions": 0,
+      "accepted_lines": 94,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/9c79fdaf35434041702665102d280c95a93b2e481668560044b10e98e04ba307"
+    }
+  }
+}

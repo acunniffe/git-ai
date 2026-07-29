@@ -1,0 +1,28 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  8c2ef04cb517f0b8 2377-2381,2413-2418,2432-2438,2440,2454,2457,2477-2479,2482-2491,2493-2513,2595-2640
+tests/integration/github_copilot_create_file.rs
+  8c2ef04cb517f0b8 1-330
+tests/integration/main.rs
+  8c2ef04cb517f0b8 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.8",
+  "base_commit_sha": "5b67f4f39e0bd99d7e1607af3c700f9b0fe1c6b2",
+  "prompts": {
+    "8c2ef04cb517f0b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40b15166-99ae-43fd-a14b-72819fefe741",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 552,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/03b41adba7cc8a6db0fd942a23f36482165ec3b737294f205cd19fc3329e4157"
+    }
+  }
+}

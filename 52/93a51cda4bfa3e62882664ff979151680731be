@@ -1,0 +1,19 @@
+src/authorship/background_agent.rs
+  s_e46ecf7a83ce12::t_1e490e3a73bbe6 28-29,31-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "5293a51cda4bfa3e62882664ff979151680731be",
+  "prompts": {},
+  "sessions": {
+    "s_e46ecf7a83ce12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bad7832d-32dd-4a1c-bd87-e9651fb3ecbd",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

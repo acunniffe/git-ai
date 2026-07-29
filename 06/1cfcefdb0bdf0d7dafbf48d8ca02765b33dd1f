@@ -1,0 +1,10 @@
+src/authorship/rebase_authorship.rs
+  601fa7cb531db267 681-683,719,739,742,750,830-831,833,853,1257-1258,1272,1315,1317,1411,2754,2756,2758,2772,2788,3307-3308,3311,3326-3327,3345,4078,4091
+  cc96b9047e410e00 3647
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "061cfcefdb0bdf0d7dafbf48d8ca02765b33dd1f",
+  "prompts": {}
+}

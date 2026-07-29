@@ -1,0 +1,43 @@
+src/commands/git_ai_handlers.rs
+  20bfdd600ceee1ee 65-67
+src/commands/install_hooks.rs
+  20bfdd600ceee1ee 1-3,13,15-17,111-112,169,188-233,479,493-512,514-525,694-914
+tests/corehooks_wrapper_regression.rs
+  20bfdd600ceee1ee 1-78
+src/utils.rs
+  20bfdd600ceee1ee 13-16
+src/git/repository.rs
+  20bfdd600ceee1ee 12,1410,1963-1965,1969-1973,1975-1988,2175,2204,2250
+src/commands/git_handlers.rs
+  20bfdd600ceee1ee 26,508,529
+tests/repos/mod.rs
+  20bfdd600ceee1ee 35-36,48-49
+src/commands/hooks/stash_hooks.rs
+  20bfdd600ceee1ee 112-121,126,176,190-197,313-318,342-368
+tests/repos/test_repo.rs
+  20bfdd600ceee1ee 5,15-16,22-55,62-63,74-89,104,119-120,124,136,140,145-149,176,184-185,193,195,228-229,234-235,245,259-260,263,404,408-409,411-416,418-444,446-447,457,460,462,475-476,478,491-492,498-504,507-515,713-715
+src/commands/mod.rs
+  20bfdd600ceee1ee 7
+src/commands/core_hooks.rs
+  20bfdd600ceee1ee 1-1291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "7ca04dd3c7bb8a18808bcbd2035d6414819bfc04",
+  "prompts": {
+    "20bfdd600ceee1ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c5937-d4b5-7c41-affc-185fb237c579",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1933,
+      "total_deletions": 120,
+      "accepted_lines": 1931,
+      "overriden_lines": 0
+    }
+  }
+}

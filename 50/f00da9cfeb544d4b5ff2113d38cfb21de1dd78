@@ -1,0 +1,69 @@
+tests/integration/test_utils_unit.rs
+  52e0337472fe7d8f 4,17-36,45,75,77
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  52e0337472fe7d8f 17,27,45,74,132,178
+src/commands/checkpoint_agent/presets/known_human.rs
+  52e0337472fe7d8f 10,46
+tests/daemon_mode.rs
+  52e0337472fe7d8f 8,27,554-555,1260-1264
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  52e0337472fe7d8f 66
+src/commands/checkpoint_agent/presets/pi.rs
+  52e0337472fe7d8f 29,103
+tests/integration/github_copilot.rs
+  52e0337472fe7d8f 129
+src/commands/checkpoint_agent/presets/claude.rs
+  52e0337472fe7d8f 154
+src/commands/checkpoint.rs
+  52e0337472fe7d8f 30,151-154,156-157,194-197,199-205,207-210,216,294,331,334-339,359,361-362,364-371,373-375,383-385,393,408,754,763,838-839
+src/commands/checkpoint_agent/presets/gemini.rs
+  52e0337472fe7d8f 119
+src/commands/status.rs
+  52e0337472fe7d8f 56
+src/daemon.rs
+  52e0337472fe7d8f 1351-1358,1360-1362,1365,3610,5446,5604-5618,5621,5625,5684,5698-5699,7116,7118-7122,7124-7127,7129,7133-7137,7139-7150,7152-7153,7191,7194,7199,7205,7214,8317,8319,8625-8627,8633-8646,8653,8659,8661
+tests/integration/agent_presets_comprehensive.rs
+  52e0337472fe7d8f 840-841
+src/commands/checkpoint_agent/presets/firebender.rs
+  52e0337472fe7d8f 26,131,451
+src/commands/checkpoint_agent/bash_tool.rs
+  52e0337472fe7d8f 286,343,347-349
+src/daemon/control_api.rs
+  52e0337472fe7d8f 11
+tests/integration/ai_tab.rs
+  52e0337472fe7d8f 55,90
+src/commands/git_ai_handlers.rs
+  52e0337472fe7d8f 322-323,325,329,345,349-353,355-368,372,374-377,379,381-383,385-388,390-394,396,398-401,406-407,411,413-414,419-420,911-918,922,948-955,959-964,976
+tests/integration/agent_v1.rs
+  52e0337472fe7d8f 33,67,147
+tests/integration/bash_tool_provenance.rs
+  52e0337472fe7d8f 1718,1720-1721,1723-1724,1727
+src/commands/checkpoint_agent/orchestrator.rs
+  52e0337472fe7d8f 17-23,29,249-251,256
+src/commands/checkpoint_agent/presets/cursor.rs
+  52e0337472fe7d8f 209
+src/commands/checkpoint_agent/presets/droid.rs
+  52e0337472fe7d8f 245
+tests/integration/checkpoint_unit.rs
+  52e0337472fe7d8f 2-3,26-28,198-200,274-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "50f00da9cfeb544d4b5ff2113d38cfb21de1dd78",
+  "prompts": {
+    "52e0337472fe7d8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f9931c2-b988-437f-8537-64a1ed799b25",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 243,
+      "total_deletions": 1879,
+      "accepted_lines": 79,
+      "overriden_lines": 0
+    }
+  }
+}

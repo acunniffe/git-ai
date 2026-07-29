@@ -1,0 +1,27 @@
+rebase_architecture_v3_ideal.svg
+  s_1562b1cd7c2fe7::t_09265d2ce681c5 1-1082
+rebase_architecture_v3_ideal.dot
+  s_1562b1cd7c2fe7::t_4bc5d399ed24fb 1-313,319-340
+  s_1562b1cd7c2fe7::t_440b9a1478bec4 314-318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "7236e34fc69dbcafd8c7ef5261f652a2851db542",
+  "prompts": {},
+  "humans": {
+    "h_55c03ed47cd416": {
+      "author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  },
+  "sessions": {
+    "s_1562b1cd7c2fe7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f9ac4ed4-0548-4dbe-85a2-da1ab8944211",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

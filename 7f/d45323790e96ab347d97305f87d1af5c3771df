@@ -1,0 +1,38 @@
+tests/integration/main.rs
+  s_59382cac373d67::t_b943f0f22293a5 56
+src/daemon.rs
+  s_59382cac373d67::t_b252202cb2678f 634-637,639,3967-3970,3972,3993-3997
+  s_59382cac373d67::t_d05b4302c99739 8753
+docs/daemon-trace2-ingestion-spec.md
+  s_59382cac373d67::t_fb51848ec65fd5 108-112,136-137,239-240
+  s_59382cac373d67::t_b252202cb2678f 138-140
+src/daemon/ref_cursor.rs
+  s_59382cac373d67::t_3debde119f7261 4829
+  s_59382cac373d67::t_b943f0f22293a5 4821-4828,4830-4838,4844-4848,4874-4893,4931-4944,4996-5005
+  s_59382cac373d67::t_3d04c77e55ccc9 19-25,1855-1861,1866-1872,2204-2209,2215,2221-2225,2252-2281,3059-3062,3065-3071,3076-3078,3139-3141,3150-3152,3196,3199-3205,3207-3234
+  s_59382cac373d67::t_b252202cb2678f 2197-2201,2216-2220,2231-2251,4839-4843,4849-4873
+  s_59382cac373d67::t_1fa56da50c8b1a 4945-4972,5006
+  s_59382cac373d67::t_a645a613245223 5007
+tests/integration/daemon_reflog_memory.rs
+  s_59382cac373d67::t_efdd62d489ba67 33
+  s_59382cac373d67::t_45cc618b481bea 26-27,59
+  s_59382cac373d67::t_b943f0f22293a5 1-25,28-32,34-58,60-77
+src/daemon/analyzers/history.rs
+  s_59382cac373d67::t_b252202cb2678f 143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "7fd45323790e96ab347d97305f87d1af5c3771df",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

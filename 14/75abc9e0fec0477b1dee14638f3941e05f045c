@@ -1,0 +1,22 @@
+tests/integration/repos/test_repo.rs
+  s_030ba9a1afbf5e::t_88726a8795a990 496,3656
+  s_030ba9a1afbf5e::t_ce5225434f4ab9 3643-3655,3657-3659
+  s_030ba9a1afbf5e::t_559fe57d7051dd 494-495,497
+  s_030ba9a1afbf5e::t_2825fdfc6634d9 3642
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "1475abc9e0fec0477b1dee14638f3941e05f045c",
+  "prompts": {},
+  "sessions": {
+    "s_030ba9a1afbf5e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6219-0974-7e51-9aa5-175f63df5ecd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+tests/daemon_mode.rs
+  s_1946ff3ec655a6::t_30c1a3a2fe8fcf 403
+tests/async_mode.rs
+  s_1946ff3ec655a6::t_552b1b9174489a 91-92
+  s_1946ff3ec655a6::t_da5bda7aa50d87 80
+tests/integration/bash_tool_benchmark.rs
+  s_1946ff3ec655a6::t_c1c7c081150770 65
+tests/windows_install_script.rs
+  s_1946ff3ec655a6::t_1651454c3ec45e 175
+tests/integration/repos/test_repo.rs
+  s_1946ff3ec655a6::t_7953578cb74c61 246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.4",
+  "base_commit_sha": "1a8843a94e41404fc545342e4ce2515030718e4b",
+  "prompts": {},
+  "sessions": {
+    "s_1946ff3ec655a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c7c4393-fb5b-4f09-b279-1a660e430da3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

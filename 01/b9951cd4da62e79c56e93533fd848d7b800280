@@ -1,0 +1,19 @@
+Cargo.lock
+  s_33fc001b7ca69a::t_2c617caad3d259 3547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "01b9951cd4da62e79c56e93533fd848d7b800280",
+  "prompts": {},
+  "sessions": {
+    "s_33fc001b7ca69a": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-4b55dc2043024ab6bc29e720cb8ea328",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

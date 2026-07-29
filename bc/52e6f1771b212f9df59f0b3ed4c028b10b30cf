@@ -1,0 +1,26 @@
+src/commands/upgrade.rs
+  s_f228a04fdb01b9::t_dc4a8b240ad004 2165,2175-2177
+  s_f228a04fdb01b9::t_27a5f450f767b4 1340-1348
+  s_f228a04fdb01b9::t_2778a2aaf94313 629-630,658-710
+  s_f228a04fdb01b9::t_d3249a062b2e51 1228-1236
+  s_f228a04fdb01b9::t_c4b428b720c739 973-981
+src/commands/config.rs
+  s_f228a04fdb01b9::t_b6f8c7721fe6fe 5
+  s_f228a04fdb01b9::t_970640f1e15cd4 114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "bc52e6f1771b212f9df59f0b3ed4c028b10b30cf",
+  "prompts": {},
+  "sessions": {
+    "s_f228a04fdb01b9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ebbcf-f4cd-7dc2-be9f-be67ef21a66f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
