@@ -1,0 +1,20 @@
+tests/integration/ci_handlers_comprehensive.rs
+  s_b3918a71142a3e::t_c15e1ee84bdb70 416-519
+  s_b3918a71142a3e::t_3422c6f9519e97 1-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "92cfc77bb7150dd72d5187f4a7b61c858c5264ba",
+  "prompts": {},
+  "sessions": {
+    "s_b3918a71142a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de268d2e-4705-4c20-86ca-d1dc04eda164",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

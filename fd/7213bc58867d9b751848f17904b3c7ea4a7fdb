@@ -1,0 +1,37 @@
+src/transcripts/agents/gemini.rs
+  759815a68a4f7264 6,11-13,30,34-35,37-61,105-107,125-128,130,133,138,140,157,159-164,168-169,171-184,186-190,193-199,205,227-231,239,254,258-261,267-268,273-274,278-281,287-289,293,298-299,303-306,311-315,327,329,331,340-341,345,353,357,361-383,386-389,393-394,398,400-403
+src/commands/checkpoint_agent/presets/gemini.rs
+  759815a68a4f7264 36,51,142
+tests/integration/gemini.rs
+  759815a68a4f7264 8,18,20,25-30,45,71,97,125,146,170,179,216,236,258,316,362,401-403,418,425,444,488
+src/commands/checkpoint_agent/presets/mod.rs
+  759815a68a4f7264 114
+tests/fixtures/gemini-session-simple.jsonl
+  759815a68a4f7264 1-7
+src/transcripts/model_extraction.rs
+  759815a68a4f7264 13-15,241-242
+tests/integration/agent_presets_comprehensive.rs
+  759815a68a4f7264 5,255,296,316,341-342,354-356,360,372-374,378,384-385,934,1008-1022,1025,1057-1060,1063,1073-1080,1083
+src/transcripts/sweep.rs
+  759815a68a4f7264 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "fd7213bc58867d9b751848f17904b3c7ea4a7fdb",
+  "prompts": {
+    "759815a68a4f7264": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9b8122a-6f33-4fcb-a981-7260b993c9a7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 274,
+      "total_deletions": 625,
+      "accepted_lines": 249,
+      "overriden_lines": 0
+    }
+  }
+}

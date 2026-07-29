@@ -1,0 +1,21 @@
+src/api/metrics.rs
+  s_9f07184cc60a68::t_e3a09e44736859 19-23
+src/commands/whoami.rs
+  s_9f07184cc60a68::t_e3a09e44736859 222,229,434
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "ebace15733624f89bda6c9b57554c3b769dddecd",
+  "prompts": {},
+  "sessions": {
+    "s_9f07184cc60a68": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-607d47aff9aa4e22ae2ce4346cfa8dfb",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

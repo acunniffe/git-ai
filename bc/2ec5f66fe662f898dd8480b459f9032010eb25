@@ -1,0 +1,44 @@
+src/daemon/checkpoint.rs
+  s_33647044a17208::t_b1984b97e8481d 266,443-444,455-458,473-477,479-480,482-484,486-488,849,879-883,885,902
+  s_33647044a17208::t_24c04c637c5a3b 441,448-449,454,489-490
+src/authorship/range_authorship.rs
+  s_33647044a17208::t_4a77e9bc45a4b7 230,262,276
+src/authorship/virtual_attribution.rs
+  s_33647044a17208::t_17943cdd51d792 130,138-142,144,146,149,202,210-215,220,260,271-275,277,287
+src/commands/install_hooks.rs
+  s_33647044a17208::t_7176ae8659637e 326-327,455-456
+src/mdm/spinner.rs
+  s_33647044a17208::t_9b8e46284d351b 34
+src/authorship/rebase_authorship.rs
+  s_33647044a17208::t_4bd7bfec250db6 2883-2888,2897
+  s_33647044a17208::t_efae6378b9765c 344,355,436,447,661,672,1322,2068,2875,2959,2975,3280,3292,3894
+  s_33647044a17208::t_d83ac02d4d041d 2876
+src/git/authorship_traversal.rs
+  s_33647044a17208::t_6dcabed597a280 19,198-200,202,204-206,208,210-211,213-214,216-235,237-248,251-269,272-274,276-278,280
+tests/integration/virtual_attribution_unit.rs
+  s_33647044a17208::t_22f4dd4df3f42f 34
+docs/pr-1153-review-findings.md
+  s_33647044a17208::t_c59777b6e3c10c 234,238-240
+src/tokio_runtime.rs
+  s_33647044a17208::t_fc6eb5244535ab 1-37
+src/git/repository.rs
+  s_33647044a17208::t_eda4589d71c956 1597,1609-1619,1625
+src/lib.rs
+  s_33647044a17208::t_d9d24fc96e37f2 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "bc2ec5f66fe662f898dd8480b459f9032010eb25",
+  "prompts": {},
+  "sessions": {
+    "s_33647044a17208": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ebc54-110f-7fc2-ac4a-b207d78f866f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+src/git/cli_parser.rs
+  71f132d171c301c4 264,273-276,279,288-291
+src/daemon.rs
+  71f132d171c301c4 1022
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "51b893a6c599af6c30ffc5bbf6fea0dafc999a9a",
+  "prompts": {
+    "71f132d171c301c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5597a7ef-171b-4c73-b5b4-da83540f06d5",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 2,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}

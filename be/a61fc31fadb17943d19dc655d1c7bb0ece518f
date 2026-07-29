@@ -1,0 +1,9 @@
+src/commands/upgrade.rs
+  349771e 397
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.17",
+  "base_commit_sha": "bea61fc31fadb17943d19dc655d1c7bb0ece518f",
+  "prompts": {}
+}

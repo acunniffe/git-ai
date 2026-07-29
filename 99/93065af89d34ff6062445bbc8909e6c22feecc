@@ -1,0 +1,34 @@
+src/authorship/virtual_attribution.rs
+  601fa7cb531db267 4,27,51,324,340-342,403-411,473,492,505-509,558-564,619,639,652-656,705-711,773,880,900,924,936-937,1242,1246,1380-1381,1444-1445,1457-1465,1514,1555,1599-1600,1683-1684,1687,1691-1697,1705,1774-1785,1914-1917,1926,2138
+src/authorship/post_commit.rs
+  601fa7cb531db267 294
+src/daemon.rs
+  601fa7cb531db267 1327,2649,2653
+src/git/repo_storage.rs
+  601fa7cb531db267 619,641,695,1155-1160
+src/authorship/rebase_authorship.rs
+  601fa7cb531db267 684-686,722,742,745,753,833-834,836,856,1260-1261,1275,1318,1320,1414,2757,2759,2761,2775,2791,3312-3313,3316,3331-3332,3350,4006,4083,4096
+src/commands/hooks/stash_hooks.rs
+  601fa7cb531db267 308-309,318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "9993065af89d34ff6062445bbc8909e6c22feecc",
+  "prompts": {
+    "601fa7cb531db267": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "535048a0-adb2-46f7-b663-5c12833c69ab",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 71,
+      "total_deletions": 30,
+      "accepted_lines": 11,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/89fc7757c9ce367db70a577f9bf1c3810b9d2ff8841edd8eb58c5d44a2fb688e"
+    }
+  }
+}

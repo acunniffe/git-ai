@@ -1,0 +1,19 @@
+Cargo.lock
+  s_20c321f887dd1d::t_ca86e3f4998d90 1022
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.14",
+  "base_commit_sha": "0713e534d05d3f52e50ab6d50e0eeb7aa88bf8cc",
+  "prompts": {},
+  "sessions": {
+    "s_20c321f887dd1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efa77-1f0e-7a61-9e6d-669dfb7d7ed5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

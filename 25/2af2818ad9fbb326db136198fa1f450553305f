@@ -1,0 +1,30 @@
+src/commands/git_ai_handlers.rs
+  213d858fd7aa3a28 1285
+src/config.rs
+  213d858fd7aa3a28 84,394-398,628-630,650,674,678-681,693,696,699,706,711,983,1091,1208
+src/commands/checkpoint.rs
+  213d858fd7aa3a28 69
+src/authorship/post_commit.rs
+  213d858fd7aa3a28 138,642
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "252af2818ad9fbb326db136198fa1f450553305f",
+  "prompts": {
+    "213d858fd7aa3a28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3971133-94f8-4b97-8a78-4db5c43291f8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 38,
+      "total_deletions": 43,
+      "accepted_lines": 27,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/05252cf0f89910e2e9ddc60f5d3a5e28ad4208f2470298bc4a399494917ae760"
+    }
+  }
+}

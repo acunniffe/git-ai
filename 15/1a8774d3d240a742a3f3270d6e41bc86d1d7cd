@@ -1,0 +1,19 @@
+tests/git-compat/whitelist.csv
+  s_657ade7d5a1637::t_bef922e481e98b 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "151a8774d3d240a742a3f3270d6e41bc86d1d7cd",
+  "prompts": {},
+  "sessions": {
+    "s_657ade7d5a1637": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e4b6f48-c39b-428f-95b3-512bd9ffcb4e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

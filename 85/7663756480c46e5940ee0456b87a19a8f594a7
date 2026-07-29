@@ -1,0 +1,23 @@
+src/git/repository.rs
+  559933586fc9fb47 1837-1848
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.38",
+  "base_commit_sha": "857663756480c46e5940ee0456b87a19a8f594a7",
+  "prompts": {
+    "559933586fc9fb47": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c542d0d8-2c62-485b-916e-df89053a7044",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 2,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}

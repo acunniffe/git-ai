@@ -1,0 +1,14 @@
+docs/migrations/sessions-v2-note-format.md
+  h_55c03ed47cd416 116-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "24902fa77362d7d25ebb95baf25edd2c49f28fad",
+  "prompts": {},
+  "humans": {
+    "h_55c03ed47cd416": {
+      "author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,59 @@
+.github/workflows/release.yml
+  s_2740b0b2a8bdc6::t_94f02e3a56d7f8 22-24,26,30,37-38,44-45,47-49,246-247,249-251,603,605-607,610-611
+  s_2740b0b2a8bdc6::t_084a37446a5715 5,51,193-227,253,310-343,351-353,355-410,412-505,507-514,516-523,525-527,534,545-549,551-555,557-560,571-576,598,601,608-609,658,668-671,730,747-748,773-774,777-778,792,875-889,891-915
+src/commands/install_hooks.rs
+  s_2740b0b2a8bdc6::t_0dcd9b21b6a5da 343,402-408,410-412,414-425,430-431
+packaging/README.md
+  s_2740b0b2a8bdc6::t_2c1621131c4f91 1-7,9-13,19-22,24-29
+packaging/macos/build-pkg.sh
+  s_2740b0b2a8bdc6::t_9d5253a5c95240 1-34,36-39,47-48,50-65
+  s_e3d5c00d94c096::t_cf17d8b65e888f 42-43
+packaging/macos/scripts/postinstall
+  s_2740b0b2a8bdc6::t_691cc57ed2107b 1-3,6,47-48
+  s_e3d5c00d94c096::t_cf17d8b65e888f 11-12,22-23,36-37,41,44-45
+packaging/macos/scripts/preinstall
+  s_2740b0b2a8bdc6::t_f5536f93a4d86e 1-3
+packaging/windows/build-msi.ps1
+  s_2740b0b2a8bdc6::t_cb65028f7fdf08 1-18,20-26,28-29,31-35,46-47,49-51,53-60
+  s_2740b0b2a8bdc6::t_c7550d8411243e 19,27,52
+packaging/windows/git-ai.wxs
+  s_2740b0b2a8bdc6::t_97e1cab0211cae 1,5-14,16,23-26,28-32,34-35,43-51,53-68
+  s_2740b0b2a8bdc6::t_c7550d8411243e 27,36-42
+tests/package_installers.rs
+  s_2740b0b2a8bdc6::t_ab912dbe078360 1-13,21-23,26-35,37,42-44,46-50,69-82,87-88
+packaging/windows/git-ai-login.cmd
+  s_2740b0b2a8bdc6::t_c7550d8411243e 1-10
+tests/package_login_startup.rs
+  s_2740b0b2a8bdc6::t_c7550d8411243e 1-9,11,16-19,21-23,25-41
+  s_e3d5c00d94c096::t_cf17d8b65e888f 10,12-15,20,24
+packaging/macos/launchagents/git-ai-daemon-launcher
+  s_2740b0b2a8bdc6::t_c7550d8411243e 1-3
+  s_e3d5c00d94c096::t_cf17d8b65e888f 4-5
+packaging/macos/launchagents/com.git-ai.daemon.plist
+  s_2740b0b2a8bdc6::t_c7550d8411243e 1-8,12-16
+  s_e3d5c00d94c096::t_cf17d8b65e888f 9-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "6f0790aca21110f1a9181aca87c19cda652d3bfd",
+  "prompts": {},
+  "sessions": {
+    "s_2740b0b2a8bdc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6cfb-8eed-7430-8509-7cb0df96f1ba",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_e3d5c00d94c096": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f82b0-e5c2-7c60-90b9-203e4bbd9ceb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
