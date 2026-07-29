@@ -1,0 +1,33 @@
+agent-support/intellij/build.gradle.kts
+  88370bad0d6def42 54-55
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/StackTraceAnalyzer.kt
+  88370bad0d6def42 36-37,39,69-71
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/DocumentChangeTrackerService.kt
+  88370bad0d6def42 47,56
+agent-support/intellij/gradle.properties
+  88370bad0d6def42 13
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/VfsRefreshListener.kt
+  88370bad0d6def42 74,76-77,87
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/TrackedAgent.kt
+  88370bad0d6def42 8-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.11",
+  "base_commit_sha": "541dfab369a8dd09237b6a8081915de1aa6b83d9",
+  "prompts": {
+    "88370bad0d6def42": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b6e2c37b-5b10-404d-a16a-2ba94d617ade",
+        "model": "claude-4.6-opus-max-thinking"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 26,
+      "total_deletions": 20,
+      "accepted_lines": 20,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,26 @@
+src/daemon.rs
+  s_acbbcc77bb9da5::t_082303f8acd3c5 832-836
+  s_acbbcc77bb9da5::t_5d8c5be8947566 5661-5675
+  s_acbbcc77bb9da5::t_d4bbcbceb82033 5272-5288
+src/daemon/ref_cursor.rs
+  s_acbbcc77bb9da5::t_51ed6f7f3d1a83 1010-1024
+  s_acbbcc77bb9da5::t_94fb1d2d2d0a85 1030-1032,1034-1074
+  s_acbbcc77bb9da5::t_9198801e61930b 5281-5358,5360
+  s_acbbcc77bb9da5::t_1dc3a93f4d1ffe 1028-1029,1075,5359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "3accd6c5006e1d1f37c777051398ee5874f9317c",
+  "prompts": {},
+  "sessions": {
+    "s_acbbcc77bb9da5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebbc887-2ebd-47b6-8edf-b19158eee095",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

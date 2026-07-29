@@ -1,0 +1,25 @@
+tests/integration/bash_tool_conformance.rs
+  7c44422c356af7cc 632-633
+src/commands/checkpoint_agent/bash_tool.rs
+  7c44422c356af7cc 459-461
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "5843f8d69d172acea2cde9288a70044b1a1c568a",
+  "prompts": {
+    "7c44422c356af7cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d3117-4717-7b43-a5db-3235fb8aadaf",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Test Runner",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

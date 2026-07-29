@@ -1,0 +1,43 @@
+README.md
+  2b1ebac 60-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "1da9d4ddaa103cb050c1aa4cb1b4927805e114c9",
+  "prompts": {
+    "2b1ebac": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "db5ce708-7f62-43ff-8ff1-84a0cde31f07",
+        "model": "gpt-5-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Instead of the two lists, convert to a markdown table and use Checkmark emojis where supported.\n\nColumns:\n\nAgent | Authorship | Prompts\n[Cursor via Hooks](/docs/integrations/cursor.md) | check | check"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll open `README.md` to locate the \"Fully-supported\" and \"Help needed\" lists so I can replace them with a markdown table using checkmark emojis."
+        },
+        {
+          "type": "assistant",
+          "text": "I'll replace the two integration lists in `README.md` with a single markdown table using ✅ for supported features."
+        },
+        {
+          "type": "assistant",
+          "text": "I converted the two lists into a single markdown table with ✅ for supported entries. I'll run a quick linter check on README.md."
+        },
+        {
+          "type": "assistant",
+          "text": "- Replaced the “Fully-supported” and “Help needed” lists in `README.md` with a table using ✅ to indicate support.\n\n```35:52:/Users/svarlamov/projects/git-ai/README.md\n## Integrations\n\n| Agent | Authorship | Prompts |\n| --- | --- | --- |\n| [Cursor via Hooks](/docs/integrations/cursor.md) | ✅ | ✅ |\n| [Claude Code via Hooks](/docs/integrations/claude-code.md) | ✅ | ✅ |\n| [VS Code & GitHub Copilot via Extension](/docs/integrations/vs-code-github-copilot.md) | ✅ | ✅ |\n| Sourcegraph Cody + Amp |  |  |\n| OpenAI Codex |  |  |\n| Windsurf |  |  |\n| RovoDev CLI |  |  |\n| _your agent here_ |  |  |\n```"
+        }
+      ],
+      "total_additions": 10,
+      "total_deletions": 19,
+      "accepted_lines": 2,
+      "overriden_lines": 8
+    }
+  }
+}

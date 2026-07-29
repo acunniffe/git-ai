@@ -1,0 +1,19 @@
+tests/integration/config_cli_coverage.rs
+  s_f228a04fdb01b9::t_180b1441dd8ee7 287-288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "6bf31c3caf93461f5a669dc43255a0a5128af6f0",
+  "prompts": {},
+  "sessions": {
+    "s_f228a04fdb01b9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ebbcf-f4cd-7dc2-be9f-be67ef21a66f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

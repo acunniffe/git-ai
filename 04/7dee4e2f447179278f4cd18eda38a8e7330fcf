@@ -1,0 +1,24 @@
+AGENTS.md
+  s_f0f56f034c0003::t_7846d9e9ba5e4a 222
+  s_f0f56f034c0003::t_80831e9ae7549c 82
+  s_f0f56f034c0003::t_43690982fd77b7 90
+  s_f0f56f034c0003::t_283ccf181f038c 213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "047dee4e2f447179278f4cd18eda38a8e7330fcf",
+  "prompts": {},
+  "sessions": {
+    "s_f0f56f034c0003": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f7996688-d98a-4370-9b9c-19a7511f83d9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/0a9a6cd9ba0839e5ba657c4a142cf8825be8b6ff781f224f80fdbe57f7b057ea"
+    }
+  }
+}

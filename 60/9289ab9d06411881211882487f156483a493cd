@@ -1,0 +1,135 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.30",
+  "base_commit_sha": "609289ab9d06411881211882487f156483a493cd",
+  "prompts": {
+    "7f56457cbd4dc258": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c881cc8a-4559-4f33-af7f-4052d5b7d1ea",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "add a check for interactive terminals in @src/utils.rs . make sure it's windows and unix compatible",
+          "timestamp": "2025-12-31T13:16:53.027Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a cross-platform interactive terminal check in `src/utils.rs`. Checking the file first, then implementing it.",
+          "timestamp": "2025-12-31T13:16:58.575Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/Cargo.toml"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a cross-platform interactive terminal check using Rust's standard library `IsTerminal` trait, which works on both Windows and Unix.",
+          "timestamp": "2025-12-31T13:17:02.523Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linter errors:",
+          "timestamp": "2025-12-31T13:17:06.942Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Added a cross-platform interactive terminal check function to `src/utils.rs`.\n\n1. **Added the import**: `use std::io::IsTerminal;` — standard library trait for terminal detection\n2. **Added the function**: `is_interactive_terminal()` — checks if stdin is connected to a terminal\n\nThe function uses `std::io::IsTerminal`, which works on both Windows and Unix. It returns `true` when stdin is a TTY (interactive) and `false` when it's redirected (pipe, file, or non-interactive).\n\nThe function is public and documented. No linter errors. Ready to use.",
+          "timestamp": "2025-12-31T13:17:11.015Z"
+        },
+        {
+          "type": "user",
+          "text": "make it a oncelock is_terminal",
+          "timestamp": "2025-12-31T13:22:01.576Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updating the function to use a `OnceLock` pattern, similar to the other static checks in the file.",
+          "timestamp": "2025-12-31T13:22:05.270Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a `OnceLock` for the terminal check, following the same pattern as the other static checks:",
+          "timestamp": "2025-12-31T13:22:06.625Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updated the function to use a `OnceLock` pattern. The linter warnings are expected: the function is public and meant to be used elsewhere.\n\nThe implementation:\n1. **Added a static `IS_TERMINAL` OnceLock** — caches the terminal check result\n2. **Updated `is_interactive_terminal()`** — uses `get_or_init()` to check once and cache the result, matching the pattern used by `DEBUG_ENABLED` and `DEBUG_PERFORMANCE_LEVEL`\n\nThe terminal check runs once on first call and is cached for subsequent calls, improving performance when called multiple times.",
+          "timestamp": "2025-12-31T13:22:17.024Z"
+        }
+      ],
+      "total_additions": 45,
+      "total_deletions": 0,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "e6d574a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a8da00b0-f6e7-4ab7-a208-13a3b97a495d",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/repos/test_repo.rs:85-90 grab the git-ai (perf) line out of the output and return duration \n\n\n\n[git-ai (perf)]\\u{1b}[0m ✓ Performance target met for command: log. Total duration: 9ms, Git duration: 9ms\\n\")\n\n\n\n@test_repo.rs (298-303) use this format\n\n\n\n@wrapper_performance_targets.rs (1-104) \n\n\n\nIf it's easier maybe we do a structured output when GIT_AI_DEBUG_PERFORMANCE=2",
+          "timestamp": "2025-11-29T22:15:23.160Z"
+        }
+      ],
+      "total_additions": 100,
+      "total_deletions": 16,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

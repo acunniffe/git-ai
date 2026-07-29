@@ -1,0 +1,25 @@
+src/config.rs
+  f0cae675a161e796 18,62,118-123,126,130,148,154,158-177,249,251-264,335,352,478,576-634
+src/authorship/post_commit.rs
+  f0cae675a161e796 77-78,373-374
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "cd8e7aeb8873c58fec7660f925156d1115bc41ae",
+  "prompts": {
+    "f0cae675a161e796": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6ffd8922-5813-4ef3-bf7a-8f2127bbe577",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 193,
+      "total_deletions": 50,
+      "accepted_lines": 117,
+      "overriden_lines": 1
+    }
+  }
+}

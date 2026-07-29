@@ -1,0 +1,71 @@
+src/commands/git_handlers.rs
+  b8ce2cb 7,80,127,192-201,274-283
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "f3f9d6f15d48b7a2ea567181940e93d110d8de68",
+  "prompts": {
+    "b8ce2cb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4f3460bb-59ca-47e3-b5c4-e03dd8725a95",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "when config proxy_push_notes_with_head = false use the @src/commands/hooks/push_hooks_legacy_max_compat.rs \n\n\n\nit requires a pre and post push hook and some changes to context I beleive to pass around the future. \n\n@src/commands/git_handlers.rs:189-191",
+          "timestamp": "2025-11-25T21:24:31.698Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you implement the conditional logic to use the legacy push hooks when `proxy_push_notes_with_head = false`. Let me first check the existing push_hooks implementation and the config structure.",
+          "timestamp": "2025-11-25T21:24:43.370Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "src/commands/hooks/push_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "src/feature_flags.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "src/commands/hooks/mod.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check how the fetch hooks handle async operations since you mentioned passing around futures in the context:",
+          "timestamp": "2025-11-25T21:25:04.239Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "explanation": "Looking for how fetch hooks use the context to pass around async handles",
+            "query": "How do fetch hooks use command_hooks_context to pass around async handles?",
+            "target_directories": [
+              "src/commands/hooks"
+            ]
+          }
+        }
+      ],
+      "total_additions": 233,
+      "total_deletions": 2,
+      "accepted_lines": 234,
+      "overriden_lines": 1
+    }
+  }
+}

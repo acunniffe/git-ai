@@ -1,0 +1,21 @@
+src/metrics/local_stats.rs
+  s_f4253bff8cf478::t_1a0b3ae6de6f23 52-55,499-503,505,507-512
+src/commands/activity.rs
+  s_f4253bff8cf478::t_921ab2743b3115 197-205
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "9fd0c9b44c5da25fabd13df764c756fe3b4a9b0a",
+  "prompts": {},
+  "sessions": {
+    "s_f4253bff8cf478": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50b2-525b-70b0-8f45-874075a6ecce",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

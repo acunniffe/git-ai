@@ -1,0 +1,28 @@
+tests/integration/graphite.rs
+  s_fd3085d21df0c2::t_a09a009d84886a 62,562-756
+  s_874c76a011967b::t_f9e549e2461efd 757
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "b8975c4d398d3accd70b014bfce4b38170857f7c",
+  "prompts": {},
+  "sessions": {
+    "s_874c76a011967b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa631-25f9-7cd0-8872-4795a506d802",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_fd3085d21df0c2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faad8-bcfc-7be3-87ea-a75f974c97fc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

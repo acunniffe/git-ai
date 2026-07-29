@@ -1,0 +1,68 @@
+src/process_timeout.rs
+  s_59382cac373d67::t_044571359abd2d 444
+  s_59382cac373d67::t_171143111f6ebb 141,151-159,161,361,435,445-464
+  s_59382cac373d67::t_9f2666ff9fa4ce 465
+  s_59382cac373d67::t_4ac86407999e91 362-395
+  s_59382cac373d67::t_9dbebb495a2dba 36-41
+src/mdm/agents/visual_studio.rs
+  s_59382cac373d67::t_97df6b375931f5 5,229-242,249
+src/mdm/utils.rs
+  s_59382cac373d67::t_171143111f6ebb 9,17-18,28-49,57-58,60-64,60-61,62-64,67-69,71,73,78,83-86,88,90,95,677-680,684-685,687
+  s_59382cac373d67::t_52f92dbde90033 864-881
+  s_59382cac373d67::t_6f79fd75626749 50-61,50-56,59
+  s_59382cac373d67::t_dbc4ee245dcb5f 135-144
+  s_59382cac373d67::t_69dd6b934d7361 936-954
+src/mdm/agents/vscode.rs
+  s_59382cac373d67::t_8c1685ce92d4cf 6-9,49
+  s_59382cac373d67::t_3bd82f00ecf318 48
+src/mdm/agents/claude_code.rs
+  s_59382cac373d67::t_3bd82f00ecf318 325
+  s_59382cac373d67::t_3a2d6e29c5a34f 326
+  s_59382cac373d67::t_8c1685ce92d4cf 4-6
+src/commands/daemon.rs
+  s_59382cac373d67::t_9dbebb495a2dba 679
+  s_59382cac373d67::t_4691a92aa1b605 669-678,681,683,685-686
+tests/integration/main.rs
+  s_59382cac373d67::t_4ccb9651898277 98
+tests/integration/installer_process_memory.rs
+  s_59382cac373d67::t_316b4da5906e61 14
+  s_59382cac373d67::t_4579880cf380d4 9,33,36-37
+  s_59382cac373d67::t_4ccb9651898277 1-8,10-13,15-32,34-35,38-48
+src/auth/credential_backend.rs
+  s_59382cac373d67::t_316b4da5906e61 112
+  s_59382cac373d67::t_9dbebb495a2dba 120
+  s_59382cac373d67::t_acfb9f3fbede9e 109-111,113-119,122-124,128-135
+src/mdm/agents/github_copilot.rs
+  s_59382cac373d67::t_8c1685ce92d4cf 4-6,80
+  s_59382cac373d67::t_3bd82f00ecf318 79
+src/mdm/agents/cursor.rs
+  s_59382cac373d67::t_3bd82f00ecf318 62
+  s_59382cac373d67::t_8c1685ce92d4cf 6-8,63
+src/commands/debug.rs
+  s_59382cac373d67::t_b498497071f313 940
+src/mdm/jetbrains/detection.rs
+  s_59382cac373d67::t_e284b304485ed0 3-4
+  s_59382cac373d67::t_97df6b375931f5 89-91,93,97,176-182,185,187
+src/commands/install_hooks.rs
+  s_59382cac373d67::t_97df6b375931f5 8,135-137,141-143,156,746,749,751
+  s_59382cac373d67::t_b0fd11ced7a9c1 150-152
+src/config.rs
+  s_59382cac373d67::t_9dbebb495a2dba 1423
+  s_59382cac373d67::t_4dcd66143ea889 1416-1422,1425
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "1934ad21d0cb968f7249c6936b71b82dbb0eb1db",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,26 @@
+src/commands/git_ai_handlers.rs
+  4846718a47b8c0fe 297,306,937-941
+tests/cursor.rs
+  4846718a47b8c0fe 328-352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.7",
+  "base_commit_sha": "9168ad97b7c31896d28e429f7ed5af698440bc55",
+  "prompts": {
+    "4846718a47b8c0fe": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ca287-e031-7043-8691-d24c0344c537",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 36,
+      "total_deletions": 2,
+      "accepted_lines": 36,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/4e2c53cd97e8841524f31df1561b271c047c99354e96205b60a583c4da3026f7"
+    }
+  }
+}

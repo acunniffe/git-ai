@@ -1,0 +1,14 @@
+src/mdm/agents/droid.rs
+  h_4d34d4bd6f48b4 12-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "e90e85e999f04e5522bf78f7e100605e869cf094",
+  "prompts": {},
+  "humans": {
+    "h_4d34d4bd6f48b4": {
+      "author": "Raj Jaiswal <rajaiswalx@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+tests/ai_tab.rs
+  461b68f 278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "9fc943b56fb6c310021cdafbcda9aa23facfc60d",
+  "prompts": {
+    "461b68f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ecf1ef87-bd7b-4cec-9c0b-d9a6b8d8d0af",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@ai_tab.rs (276-281) ignore this on just windows",
+          "timestamp": "2025-11-07T14:03:00.515Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you add the Windows ignore attribute to that test. Let me first read the file to see the full context.",
+          "timestamp": "2025-11-07T14:03:07.316Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 10,
+            "offset": 276,
+            "target_file": "/Users/aidancunniffe/git-ai/tests/ai_tab.rs"
+          }
+        }
+      ],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

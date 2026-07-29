@@ -1,0 +1,24 @@
+src/authorship/virtual_attribution.rs
+  617049f94f0d2a17 4,32,59,96,181-183,340,384,394,414-426,429-474,550,573,618,638-649,653-692,759,783,827-828,848-860,863-890,892-896,898-902,976,1186,1209,1214-1218,1832-1834,1886-1887,2140-2142,2358
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "d4be23bfe8f38d6195da02e4aeb47c24a8d0583b",
+  "prompts": {
+    "617049f94f0d2a17": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cec6ec9-6015-41ad-a344-5a78f9d31c75",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 282,
+      "total_deletions": 99,
+      "accepted_lines": 183,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/33c35d9c11246798d048b20b47c2dae254b509f869dafbe96e1eb0fa477e0c88"
+    }
+  }
+}
