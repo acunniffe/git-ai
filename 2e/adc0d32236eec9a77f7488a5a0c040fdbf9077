@@ -1,0 +1,31 @@
+tests/daemon_mode.rs
+  4fc8bc60fc3c5663 1060-1068,1070,1072,1074-1077,1080-1097
+src/commands/daemon.rs
+  4fc8bc60fc3c5663 13,77,221,251,265-303,318,602
+scripts/ci-test-with-retry.ps1
+  4fc8bc60fc3c5663 6-7,13,23,55,60,68-88,105
+scripts/ci-test-with-retry.sh
+  4fc8bc60fc3c5663 10,21-45,94
+tests/async_mode.rs
+  4fc8bc60fc3c5663 294-300,479-486,528-533
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "2eadc0d32236eec9a77f7488a5a0c040fdbf9077",
+  "prompts": {
+    "4fc8bc60fc3c5663": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbd15-693a-7153-af8b-b3d304655878",
+        "model": "gpt-5.5"
+      },
+      "human_author": "unknown",
+      "messages": [],
+      "total_additions": 172,
+      "total_deletions": 60,
+      "accepted_lines": 835,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,61 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "b04bf2b0ad93d8e74a5d96055b0dd8b5f749005c",
+  "prompts": {
+    "6f1baff": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c6c26e7c-6cf7-42f6-9f46-01582f774262",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@agent-support/vscode/src/ai-edit-manager.ts:92-137 In addition to dirty files, try to get the content of the saved filepath from within vscode (not directly from the FS) and expand the dirtyfiles and make sure that key is added. This helps in codespaces usecases where  sometimes there's a lag between the save event firing and the change actually being on the FS",
+          "timestamp": "2025-11-25T16:00:59.802Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the file to understand the structure, then updating the code to read the saved file's content from VS Code and include it in the checkpoint data.",
+          "timestamp": "2025-11-25T16:01:02.278Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/ai-edit-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating `evaluateSaveForCheckpoint` to read the saved file's content from VS Code's text documents and include it in the checkpoint data.",
+          "timestamp": "2025-11-25T16:01:06.196Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/ai-edit-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linting errors:",
+          "timestamp": "2025-11-25T16:01:08.368Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updated the code to read the saved file's content from VS Code's text documents and include it in the checkpoint data.\n\n1. **Gets dirty files** using the existing `getDirtyFiles()` method\n2. **Finds the text document** for the saved file path from VS Code's open text documents\n3. **Adds the file's content** to the `dirtyFiles` object using the file path as the key, even if it's no longer marked as dirty\n4. **Passes the expanded `dirtyFiles`** to the checkpoint\n\nThis addresses codespaces scenarios where there's a lag between the save event and the file system update, ensuring we capture the correct content from VS Code's in-memory representation rather than waiting for the file system.\n\nNo linting errors. The change is ready to use.",
+          "timestamp": "2025-11-25T16:01:11.906Z"
+        }
+      ],
+      "total_additions": 14,
+      "total_deletions": 1,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}

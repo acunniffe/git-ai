@@ -1,0 +1,26 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  6bf027081a6def25 7,1435-1436,1438,1542-1571
+tests/integration/cursor.rs
+  6bf027081a6def25 2,596-704
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.5",
+  "base_commit_sha": "405c62c6595ca72567bc865f375c4b3afa77dda0",
+  "prompts": {
+    "6bf027081a6def25": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d4b12-8bb3-7ed3-a3be-cca0cad393a6",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 146,
+      "total_deletions": 22,
+      "accepted_lines": 146,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e43441f86843d060a1d69f589b610da1aa1c16febc22b882b04bd647be882944"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+tests/daemon_mode.rs
+  s_ffae96f84ad2b5::t_1b581ece95195a 1025,1048-1067
+  s_ffae96f84ad2b5::t_107c8ea82d568c 1027-1028,1030,1033-1035,1038,1044-1047
+  s_ffae96f84ad2b5::t_90739a9968f00d 1026
+  s_ffae96f84ad2b5::t_1a948b2d32ea34 981-984,986-1002,1004-1024
+  s_ffae96f84ad2b5::t_b0b9b264cdc5ee 1003
+  s_ffae96f84ad2b5::t_ddee6224b9fac2 985,1031-1032
+  s_ffae96f84ad2b5::t_290ae140eaff40 1029,1036-1037,1039-1043
+  s_ffae96f84ad2b5::t_5ba26eb17ddcc3 980
+src/sandbox.rs
+  s_ffae96f84ad2b5::t_faf4d4f64ca967 20-25
+  s_ffae96f84ad2b5::t_7f1cfda663beee 27-33
+scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py
+  s_ffae96f84ad2b5::t_a49f9f1d78b3ff 204-206,209
+tests/integration/repos/test_repo.rs
+  s_ffae96f84ad2b5::t_ddee6224b9fac2 190,554-562,1280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "90dfa506771f152746b9bd29f708544559ea1d6b",
+  "prompts": {},
+  "sessions": {
+    "s_ffae96f84ad2b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f90a8-35b0-7211-9d69-4eebe034ee36",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

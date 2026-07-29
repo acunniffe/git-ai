@@ -1,0 +1,39 @@
+install.ps1
+  e1aaab4aeadd7049 296-297,301-302,306-307
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.10",
+  "base_commit_sha": "9bd5bfd80b2321712ca83c4ea4762705c41e7a93",
+  "prompts": {
+    "e1aaab4aeadd7049": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "260dff16-41ad-4578-a75e-79def076ef5e",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Andrew Churchill <chu.andrew.8@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Please update @install.ps1 so it downloads directly from GitHub. Might look something like:\n\n        @{ Url = \"https://github.com/$Repo/releases/latest/download/$binaryName.exe\";          Name = \"$binaryName.exe\" },\n        @{ Url = \"https://github.com/$Repo/releases/latest/download/$binaryName\";              Name = $binaryName }",
+          "timestamp": "2026-03-10T23:04:34.712Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I need to update the download URLs from `usegitai.com/worker` to GitHub's release URL format. Note that GitHub uses `/releases/latest/download/` for the latest tag (not `/releases/download/latest/`).",
+          "timestamp": "2026-03-10T23:04:45.377Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Done. The three download URL cases now point to GitHub:\n\n- **Pinned version**: `https://github.com/$Repo/releases/download/$releaseTag/$binaryName.exe`\n- **Env var override**: `https://github.com/$Repo/releases/download/$releaseTag/$binaryName.exe`\n- **Latest**: `https://github.com/$Repo/releases/latest/download/$binaryName.exe` (note GitHub's `/latest/download/` path format)\n\nEach case also has the corresponding no-extension URL variant.",
+          "timestamp": "2026-03-10T23:04:56.378Z"
+        }
+      ],
+      "total_additions": 6,
+      "total_deletions": 6,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}

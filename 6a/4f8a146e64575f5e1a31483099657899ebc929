@@ -1,0 +1,46 @@
+.github/workflows/nightly-agent-integration.yml
+  s_976a4a671e785d::t_df5fdaa9cd2239 40-44,81,88,91,108,112,118,124,172-176,183,285-289,296
+.github/workflows/test-vscode-extension.yml
+  s_976a4a671e785d::t_d813b0dc6b348a 11-13,17-19,32-37,42-43,46,49,52,61
+tests/integration/graphite.rs
+  s_976a4a671e785d::t_becd0265c5301f 75,110,264
+.github/workflows/update-changelog.yml
+  s_976a4a671e785d::t_df5fdaa9cd2239 67-72,93
+pnpm-workspace.yaml
+  s_976a4a671e785d::t_995d798091376a 9
+  s_976a4a671e785d::t_60e75a9d339728 1-4,11-13,31-41,46-50
+  s_976a4a671e785d::t_b6a94124e50e6c 5-8,10
+  s_976a4a671e785d::t_3749bdfaa70b17 42-45
+  s_976a4a671e785d::t_71b5bb7d6fd12d 20
+  s_976a4a671e785d::t_6aae9819befb71 14-19,21-30
+.github/workflows/install-scripts-local.yml
+  s_976a4a671e785d::t_df5fdaa9cd2239 49,51,53,55,75-79,81,200,202,204,206,226-230,232
+.github/workflows/opencode-type-check.yml
+  s_976a4a671e785d::t_d813b0dc6b348a 11-13,17-19,32-37,42-43,46,49
+agent-support/opencode/README.md
+  s_976a4a671e785d::t_087c34c37dc891 41,48
+agent-support/vscode/.vscode/settings.json
+  s_976a4a671e785d::t_087c34c37dc891 9
+.github/workflows/test.yml
+  s_976a4a671e785d::t_df5fdaa9cd2239 85-90,92
+.github/workflows/release-vscode-extension.yml
+  s_976a4a671e785d::t_d813b0dc6b348a 32-36,40-41,44,47,50,53,80-84,88-89,92,101,116-120,124-125,128,137,168-172,178,184
+.github/workflows/coverage.yml
+  s_976a4a671e785d::t_df5fdaa9cd2239 50-55,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "6a4f8a146e64575f5e1a31483099657899ebc929",
+  "prompts": {},
+  "sessions": {
+    "s_976a4a671e785d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9d91-dd25-7813-a62a-11cd36da37a1",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

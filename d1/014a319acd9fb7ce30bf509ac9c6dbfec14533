@@ -1,0 +1,23 @@
+src/daemon/control_api.rs
+  52e0337472fe7d8f 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "d1014a319acd9fb7ce30bf509ac9c6dbfec14533",
+  "prompts": {
+    "52e0337472fe7d8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f9931c2-b988-437f-8537-64a1ed799b25",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 49,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

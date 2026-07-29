@@ -1,0 +1,51 @@
+src/daemon.rs
+  s_8325116c39d6d7::t_d291e57f9c9504 13-14,1401,1599,1679,4749-4750,4783,4786
+  s_8325116c39d6d7::t_f56371e97f3ac3 4731-4733,4736,4740-4741,4743,4747-4748
+  s_8325116c39d6d7::t_52da00120078f9 1590-1592,1601-1604,1607-1666,1673-1674,1700,1709,4920-4921,4925-4926
+  s_8325116c39d6d7::t_a7b8fb91e153e9 4644-4651
+  s_8325116c39d6d7::t_86d048d4e4957b 1403-1474,1476-1477,1479-1483,1489-1490,1492-1493,1495-1504,1543-1589,1675-1678,1680
+  s_8325116c39d6d7::t_84d5f0edf1225b 4620-4629,4640
+  s_8325116c39d6d7::t_290fa63f0aceda 9-12
+  s_8325116c39d6d7::t_6b7b8a78f06cac 4777-4782
+  s_8325116c39d6d7::t_ccfea117e0a038 1381,1395-1400,1475,1478,1484-1488,1491,1494,1505-1542,1593-1598,1605-1606,1667-1672,4737-4739,4742,4922-4924
+  s_dea92a44b3e7ab::t_047f566b1bed83 1402,1600
+tests/integration/rewrite_ops_attribution.rs
+  s_8325116c39d6d7::t_52da00120078f9 159-192
+tests/integration/internal_spawn_safety.rs
+  s_8325116c39d6d7::t_932af66af57faf 119-141
+tests/integration/cherry_pick.rs
+  s_8325116c39d6d7::t_cd35b3d20f3a6a 831,857-858
+  s_8325116c39d6d7::t_7730addcffa275 832-856
+  s_8325116c39d6d7::t_4d615a841daa43 859-950
+src/daemon/ref_cursor.rs
+  s_8325116c39d6d7::t_eae41e1e220dfa 2379
+  s_dea92a44b3e7ab::t_4b5e8bf16f8d22 2380
+  s_8325116c39d6d7::t_b7e9f395b536a3 2234
+  s_8325116c39d6d7::t_3173b00f0ac14c 438,442-443,2237,2242-2244,2250
+  s_8325116c39d6d7::t_f516c2169cb82a 459-463,2241,2370-2378
+  s_8325116c39d6d7::t_52da00120078f9 525,529-530,536-540
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.1",
+  "base_commit_sha": "f1264ffae5bc4a962e4fbf506c7afb5c5121ff2c",
+  "prompts": {},
+  "sessions": {
+    "s_8325116c39d6d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef832-10b4-7680-b77e-07b50ccd804f",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_dea92a44b3e7ab": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efb55-f55c-79b1-bcab-04ad291e2b70",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

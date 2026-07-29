@@ -1,0 +1,27 @@
+agent-support/vscode/src/blame-lens-manager.ts
+  730a5960eb1e17f8 3,13-14,94,177,180,187,190-191,231-232,279-280,339-340,349,351-354,356-359,361-364,366-376,379-386,389-400,402-403,407-409,413-414,420,423,427-428,430-431,434,438-439,442-444,448-452,454-458,495,497,616-617,619-620,623,630,633-634,637,883-884
+agent-support/vscode/src/utils/config.ts
+  730a5960eb1e17f8 3-4,18-27
+agent-support/vscode/package.json
+  730a5960eb1e17f8 37-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.30",
+  "base_commit_sha": "197cb7eb93acf4de878423e56e6cf33d613b847e",
+  "prompts": {
+    "730a5960eb1e17f8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f1de8be8-6b77-4f66-81ae-6c0e3931495f",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 447,
+      "total_deletions": 438,
+      "accepted_lines": 175,
+      "overriden_lines": 3
+    }
+  }
+}

@@ -1,0 +1,59 @@
+tests/integration/opencode.rs
+  759815a68a4f7264 89-96
+src/transcripts/agents/droid.rs
+  759815a68a4f7264 153-154,214-216
+src/transcripts/agent.rs
+  759815a68a4f7264 22-28
+src/transcripts/agents/copilot.rs
+  759815a68a4f7264 6-8,89-103,109-110,130,132,134,144,146,148,151,156-157,169,186-188,193-204,206-210,212-214,227,273,306-308,379
+src/daemon/transcript_worker.rs
+  759815a68a4f7264 8,272-276,279,294,296-301,303-304,306-309,311-338,340-343,357
+src/metrics/types.rs
+  759815a68a4f7264 30-33,66-78
+tests/integration/github_copilot.rs
+  759815a68a4f7264 6,27,70,95
+src/transcripts/agents/windsurf.rs
+  759815a68a4f7264 69-70,103-105
+src/transcripts/agents/claude.rs
+  759815a68a4f7264 155-156,189-191
+src/transcripts/agents/opencode.rs
+  759815a68a4f7264 78-89,127-134,150-165
+src/transcripts/agents/amp.rs
+  759815a68a4f7264 136,153-155,160-173,175,177-182,184-186
+src/transcripts/agents/pi.rs
+  759815a68a4f7264 69-70,103-105
+src/metrics/events.rs
+  759815a68a4f7264 1126-1131
+src/metrics/mod.rs
+  759815a68a4f7264 56-65
+src/transcripts/agents/gemini.rs
+  759815a68a4f7264 108,125-127,132-145,147-148,167-170
+src/transcripts/agents/codex.rs
+  759815a68a4f7264 124-125,158-160
+src/transcripts/agents/continue_cli.rs
+  759815a68a4f7264 101,118-120,125-134,137-143,145-147
+src/daemon/telemetry_worker.rs
+  759815a68a4f7264 150-162
+src/transcripts/agents/cursor.rs
+  759815a68a4f7264 133-134,167-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ae4fe956960e3e37c15c8bf73dab7c484d486c39",
+  "prompts": {
+    "759815a68a4f7264": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9b8122a-6f33-4fcb-a981-7260b993c9a7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 406,
+      "total_deletions": 246,
+      "accepted_lines": 326,
+      "overriden_lines": 0
+    }
+  }
+}

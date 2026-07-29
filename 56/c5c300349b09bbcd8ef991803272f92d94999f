@@ -1,0 +1,119 @@
+src/authorship/internal_db.rs
+  efc6c64a58d5577f 389-392
+  819cbf69de318fdc 13,72-79,989-1018,1138,1682-1716
+src/commands/show_prompt.rs
+  819cbf69de318fdc 3,44-48,50-54,57,66,70-73,75-77
+  efc6c64a58d5577f 6,38-40,43,49,55-56,59,61-62,68-69,74,81-99,101-102
+  1a9dd4a8e529759c 1-2,37,41-42,58,60,63-65,67,78-80,100,103-106
+src/authorship/prompt_utils.rs
+  e85ad12fcf6f76d5 14,541-542,544-547,549-571
+  1a9dd4a8e529759c 540,543,548
+skills/ask/SKILL.md
+  6255cb8a3c5c6e00 52-70
+src/commands/blame.rs
+  819cbf69de318fdc 1,371,936-942,948,993,1072-1090,1094-1097
+  6255cb8a3c5c6e00 142-144,192,274-277,400,1052,1314,1351-1354,1409-1412,1501-1533,1861-1866
+  e85ad12fcf6f76d5 4
+agent-support/vscode/src/blame-lens-manager.ts
+  819cbf69de318fdc 2,4,33-35,229-230,235,240,245,499-502,582-585,962,1127-1139,1181,1183-1210,1213,1491-1547,1549-1553,1567
+  efc6c64a58d5577f 1548
+agent-support/vscode/src/blame-service.ts
+  819cbf69de318fdc 6-10,15,36,49,345,380-400,402,404-427
+  efc6c64a58d5577f 401,403
+src/api/cas.rs
+  1dd2b73441343021 3,59-72,74-100
+  efc6c64a58d5577f 73
+src/api/types.rs
+  1dd2b73441343021 120-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "56c5c300349b09bbcd8ef991803272f92d94999f",
+  "prompts": {
+    "1a9dd4a8e529759c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bbb6e8bb-a2c0-4c88-8986-5d7aabe24321",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 29,
+      "total_deletions": 66,
+      "accepted_lines": 22,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/5c2190e1ec0c35a23b53b3420794215ccbb06d47fe7c42ddd7df0ed6773917f4"
+    },
+    "1dd2b73441343021": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a377345b-8a4e-4b65-a347-8b89d31bd645",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 128,
+      "total_deletions": 3,
+      "accepted_lines": 61,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/9793744290a5894195a018fca320a6b04d703481fac50b902a23648955d886f8"
+    },
+    "6255cb8a3c5c6e00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c6dbd57f-0885-4c08-a0e8-4af8ab587390",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 105,
+      "total_deletions": 30,
+      "accepted_lines": 77,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/b7367b05d4c6da1bb425ef5bf3545aa2b80d6f9e8903fd5572a271a50afd266a"
+    },
+    "819cbf69de318fdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02c2eaf-38d0-4569-a276-c2268bb81686",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 333,
+      "total_deletions": 24,
+      "accepted_lines": 309,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/86d76f6aa3531cc64eaedb334703369971406d33f03e0faa0ace0cb16b55468d"
+    },
+    "e85ad12fcf6f76d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "836bc47f-3368-40c3-89b7-3b28ec8dc1bd",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 29,
+      "accepted_lines": 31,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/44acd034359242074ae3d3ea29f2c54d1e703cd10c1863defa5b2eebb3e65d02"
+    },
+    "efc6c64a58d5577f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4493ed45-520e-4580-b967-c35aee97cbd2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 122,
+      "total_deletions": 104,
+      "accepted_lines": 43,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/6ba8b427b1484de075982daadba3e78747b462d61dd7a9006275862eb38e0e88"
+    }
+  }
+}

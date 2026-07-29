@@ -1,0 +1,65 @@
+src/transcripts/db.rs
+  s_395f5898107085::t_4ace0391a1ba9f 451-455,608-609,685-688,814-815,822-823
+tests/integration/transcripts_e2e.rs
+  s_395f5898107085::t_4ace0391a1ba9f 72-73,253-254,260-261,296-299,472-475,616-620
+src/daemon/transcript_worker.rs
+  s_395f5898107085::t_25efc086f33368 11-13,18
+  s_395f5898107085::t_55e791ea2e7880 648-662,664-733,735-758
+  s_395f5898107085::t_f0b0d7fb6f46e7 553-601,613-614
+  s_395f5898107085::t_4ace0391a1ba9f 513-517,543-547,611-612,621-625,663,734,773-777,827-831,1124-1126
+src/transcripts/agents/copilot.rs
+  s_395f5898107085::t_856bfcc0396fae 323-326
+src/metrics/events.rs
+  s_395f5898107085::t_5a699a52ea1062 1500-1551
+  s_395f5898107085::t_81c43a5042c7a3 9-10
+src/metrics/types.rs
+  s_395f5898107085::t_8bca051416535b 117-118,126
+src/transcripts/agents/copilot_otel.rs
+  s_395f5898107085::t_4ace0391a1ba9f 224-225,227,392,407,426
+tests/integration/sweep_e2e.rs
+  s_395f5898107085::t_4ace0391a1ba9f 342-345,432-435
+tests/integration/session_event_repo_url.rs
+  s_12e965d1da53af::t_0177636b88b6e6 468
+  s_395f5898107085::t_4ace0391a1ba9f 307-310,359-362,384-387,415-418,458-463,465-467,504-507,543-546,576-579,652-655,739-742
+src/daemon/sweep_coordinator.rs
+  s_395f5898107085::t_4ace0391a1ba9f 52-55
+src/transcripts/agent.rs
+  s_395f5898107085::t_709739ac7fd74c 8-10,17
+src/metrics/mod.rs
+  s_395f5898107085::t_9697cbbe826f62 17-18
+src/daemon/telemetry_worker.rs
+  s_395f5898107085::t_5caaf6df24f1d2 346,357-367,370-374
+  s_395f5898107085::t_f02a4b48b9e533 318-320
+  s_395f5898107085::t_13035c6e50dd8b 118-120
+  s_395f5898107085::t_04eb4e74968dfb 135
+  s_395f5898107085::t_83c4abe2387fe1 9
+  s_395f5898107085::t_069c20ccc8f100 198-217
+  s_395f5898107085::t_18a2f0c458c97a 27
+  s_395f5898107085::t_c97ca7d3c53b44 59,69
+src/daemon/control_api.rs
+  s_395f5898107085::t_3344dc759784c9 145-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "a8c877439573994f006561624b8666986643c2ff",
+  "prompts": {},
+  "sessions": {
+    "s_12e965d1da53af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b761d17-9c3e-4ab8-9597-c00f2545d4e3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null
+    }
+  }
+}

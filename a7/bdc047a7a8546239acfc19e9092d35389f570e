@@ -1,0 +1,38 @@
+tests/checkout_switch.rs
+  62c746da40816bff 4,170,211,337
+tests/repos/test_repo.rs
+  62c746da40816bff 587-605
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.32",
+  "base_commit_sha": "a7bdc047a7a8546239acfc19e9092d35389f570e",
+  "prompts": {
+    "62c746da40816bff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5cfbf891-b2ac-4ee7-85dc-25ddcc9fb5c0",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 23,
+      "total_deletions": 20,
+      "accepted_lines": 23,
+      "overriden_lines": 0
+    },
+    "caf6877fc7e1cb0d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "25027714-3a45-4554-91fa-461f42f73936",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 19,
+      "total_deletions": 3,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

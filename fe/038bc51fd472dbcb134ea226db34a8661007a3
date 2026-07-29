@@ -1,0 +1,24 @@
+src/commands/blame.rs
+  3040f8fe5f0de4ff 354-360,420-426,429-432,453-454,457,1138-1139,1144-1145,1148-1149,1169,1173,1206,1214,1228,1230-1235,1257-1258,1263-1264,1267-1268,1280,1284-1292,1305,1308,1310-1326,1347,1351,1356-1357,1365,1382-1404,1406-1408,1412-1416,1420,1423,1459-1469,1471-1472,1474-1485,1489-1490,1496,1499-1507
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.6",
+  "base_commit_sha": "fe038bc51fd472dbcb134ea226db34a8661007a3",
+  "prompts": {
+    "3040f8fe5f0de4ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ca159-5868-7ab3-8803-d431f383281e",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 295,
+      "total_deletions": 279,
+      "accepted_lines": 155,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/24637fd8221b5d958a1aa8ed088ec78644eba5c7fa407d6128c2dbbca461812c"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+src/commands/hooks/commit_hooks.rs
+  905e78355a5396c6 87-89
+src/metrics/mod.rs
+  905e78355a5396c6 3-4,24-26,50-51,59-61,70,72-75
+src/commands/git_ai_handlers.rs
+  905e78355a5396c6 501-503
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "c9f9151fa547d3c31fc383d28352a8053eeb5f11",
+  "prompts": {
+    "905e78355a5396c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f93ca03-76da-4ce7-9d59-ec6308c089c0",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 21,
+      "total_deletions": 86,
+      "accepted_lines": 21,
+      "overriden_lines": 0
+    }
+  }
+}
