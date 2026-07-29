@@ -2,19 +2,15 @@
 #[path = "integration/repos/mod.rs"]
 mod repos;
 
-#[cfg(not(windows))]
 use git_ai::authorship::working_log::AgentId;
 use git_ai::authorship::working_log::CheckpointKind;
-#[cfg(not(windows))]
 use git_ai::commands::checkpoint_agent::orchestrator::{
     BaseCommit, CheckpointFile, CheckpointRequest,
 };
 use git_ai::config::{NotesBackendConfig, NotesBackendKind};
 #[cfg(not(windows))]
 use git_ai::daemon::ControlResponse;
-#[cfg(not(windows))]
 use git_ai::daemon::checkpoint::PreparedPathRole;
-#[cfg(not(windows))]
 use git_ai::daemon::send_checkpoint_request_with_timeout;
 use git_ai::daemon::send_control_request_with_timeout;
 use git_ai::daemon::{
@@ -1813,8 +1809,7 @@ fn wltrace_captures_daemon_working_log_ops_when_enabled() {
 }
 
 #[test]
-#[cfg(not(windows))]
-fn daemon_checkpoint_ack_does_not_wait_for_checkpoint_processing() {
+fn daemon_checkpoint_ack_preserves_order_with_immediate_commit() {
     let repo = TestRepo::new_with_daemon_env(&[(
         "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
         "slow-checkpoint=2000",
@@ -1857,20 +1852,37 @@ fn daemon_checkpoint_ack_does_not_wait_for_checkpoint_processing() {
         "receipt acknowledgement waited for checkpoint processing"
     );
 
-    let sync = send_control_request_with_timeout(
-        &daemon_control_socket_path(&repo),
-        &ControlRequest::SyncFamily {
-            repo_working_dir: repo_workdir_string(&repo),
-        },
-        Duration::from_secs(5),
-    )
-    .expect("sync.family should wait for asynchronous checkpoint processing");
-    assert!(sync.ok, "sync.family failed: {sync:?}");
-
-    repo.stage_all_and_commit("Commit asynchronously processed checkpoint")
+    repo.git_without_test_sync_for_test(&["add", "."], &[])
         .unwrap();
+    repo.git_without_test_sync_for_test(
+        &[
+            "commit",
+            "-m",
+            "Commit immediately after checkpoint receipt",
+        ],
+        &[],
+    )
+    .unwrap();
+
     let mut file = repo.filename("slow-checkpoint.txt");
     file.assert_committed_lines(lines!["AI content".ai()]);
+
+    let head = repo.git(&["rev-parse", "HEAD"]).unwrap();
+    let note = repo
+        .read_authorship_note(head.trim())
+        .expect("immediate commit should have an authorship note");
+    let log =
+        git_ai::authorship::authorship_log_serialization::AuthorshipLog::deserialize_from_string(
+            &note,
+        )
+        .expect("authorship note should deserialize");
+    assert!(
+        log.metadata
+            .sessions
+            .values()
+            .any(|session| session.agent_id.id == "slow-checkpoint-session"),
+        "immediate commit should retain checkpoint session metadata"
+    );
 }
 
 #[test]
@@ -2120,7 +2132,6 @@ fn daemon_checkpoint_processing_failure_is_logged_after_receipt_ack() {
 }
 
 #[test]
-#[cfg(not(windows))]
 fn daemon_async_checkpoint_receipts_preserve_file_edit_order_before_commit() {
     let repo = TestRepo::new_with_daemon_env(&[(
         "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
@@ -2211,28 +2222,6 @@ fn daemon_async_checkpoint_receipts_preserve_file_edit_order_before_commit() {
     assert!(post_receipt.ok && post_receipt.seq.is_some());
     assert!(pre_receipt.seq < post_receipt.seq);
 
-    let checkpoints = repo
-        .current_working_logs()
-        .read_all_checkpoints()
-        .expect("ordered checkpoints should be readable");
-    assert_eq!(
-        checkpoints
-            .iter()
-            .map(|checkpoint| checkpoint.kind)
-            .collect::<Vec<_>>(),
-        vec![CheckpointKind::Human, CheckpointKind::AiAgent],
-        "checkpoint processing must preserve receipt order"
-    );
-    assert_eq!(
-        checkpoints[1].entries[0]
-            .line_attributions
-            .iter()
-            .map(|attribution| (attribution.start_line, attribution.end_line))
-            .collect::<Vec<_>>(),
-        vec![(4, 4)],
-        "the AI checkpoint should only attribute the post-edit addition"
-    );
-
     repo.git_without_test_sync_for_test(&["add", "."], &[])
         .unwrap();
     repo.git_without_test_sync_for_test(&["commit", "-m", "Immediate commit after receipts"], &[])
@@ -2244,6 +2233,23 @@ fn daemon_async_checkpoint_receipts_preserve_file_edit_order_before_commit() {
         "unchanged two".unattributed_human(),
         "AI addition".ai(),
     ]);
+
+    let head = repo.git(&["rev-parse", "HEAD"]).unwrap();
+    let note = repo
+        .read_authorship_note(head.trim())
+        .expect("immediate commit should have an authorship note");
+    let log =
+        git_ai::authorship::authorship_log_serialization::AuthorshipLog::deserialize_from_string(
+            &note,
+        )
+        .expect("authorship note should deserialize");
+    assert!(
+        log.metadata
+            .sessions
+            .values()
+            .any(|session| session.agent_id.id == "ordered-edit-session"),
+        "immediate commit should retain ordered checkpoint session metadata"
+    );
 }
 
 #[test]

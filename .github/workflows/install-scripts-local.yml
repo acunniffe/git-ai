@@ -7,7 +7,14 @@ on:
   schedule:
     - cron: '0 3 * * *'  # 3 AM UTC nightly
   pull_request:
-    types: [labeled]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'install.sh'
+      - 'install.ps1'
+      - 'scripts/**'
+      - '.github/workflows/install-scripts-local.yml'
   push:
     branches: [main]
     paths:
@@ -24,9 +31,8 @@ on:
 
 env:
   # The daemon is always required — the git proxy only performs attribution
-  # when connected to a daemon (see git_handlers.rs). Each job starts a
-  # per-job daemon via start-async-daemon.sh (Unix) or inline PowerShell
-  # (Windows, using named pipes).
+  # when connected to a daemon (see git_handlers.rs). The isolated TEST_HOME
+  # makes the daemon started by `git-ai install` private to each matrix job.
   GIT_AI_TEST_FORCE_TTY: "1"
   GIT_AI_POST_COMMIT_TIMEOUT_MS: "30000"
 
@@ -34,12 +40,6 @@ jobs:
   install-local-unix:
     name: E2E ${{ matrix.agent.name }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      github.event_name == 'merge_group' ||
-      (github.event_name == 'pull_request' && github.event.label.name == 'integration')
     strategy:
       fail-fast: false
       matrix:
@@ -142,10 +142,15 @@ jobs:
           cd /tmp/e2e-test-repo
           "$INSTALL_DIR/git-ai" install
 
-      - name: Start async daemon
+      - name: Verify Git and checkpoints use the installed daemon
         run: |
-          source "$GITHUB_WORKSPACE/scripts/nightly/start-async-daemon.sh" \
-            "$HOME/.git-ai/bin/git-ai"
+          INSTALL_DIR="$HOME/.git-ai/bin"
+          cd /tmp/e2e-test-repo
+          test -z "${GIT_AI_DAEMON_HOME:-}"
+          "$INSTALL_DIR/git-ai" bg status
+          actual_target="$(git config --global --get trace2.eventTarget)"
+          expected_target="af_unix:stream:$HOME/.git-ai/internal/daemon/trace2.sock"
+          test "$actual_target" = "$expected_target"
 
       - name: Run synthetic agent commit
         env:
@@ -163,11 +168,12 @@ jobs:
           bash "$GITHUB_WORKSPACE/scripts/nightly/verify-synthetic-attribution.sh" \
             "${{ matrix.agent.name }}" /tmp/e2e-test-repo
 
-      - name: Stop async daemon
+      - name: Stop installed daemon
         if: always()
         run: |
-          bash "$GITHUB_WORKSPACE/scripts/nightly/stop-async-daemon.sh" \
-            "$HOME/.git-ai/bin/git-ai"
+          if [ -x "$HOME/.git-ai/bin/git-ai" ]; then
+            "$HOME/.git-ai/bin/git-ai" bg shutdown || true
+          fi
 
       - name: Upload E2E test results
         if: always()
@@ -181,12 +187,6 @@ jobs:
   install-local-windows:
     name: E2E ${{ matrix.agent.name }} on windows-latest
     runs-on: windows-latest
-    if: >-
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'push' ||
-      github.event_name == 'merge_group' ||
-      (github.event_name == 'pull_request' && github.event.label.name == 'integration')
     strategy:
       fail-fast: false
       matrix:
@@ -308,7 +308,7 @@ jobs:
           & $gitAiExe install
           if ($LASTEXITCODE -ne 0) { throw "git-ai install failed with exit code $LASTEXITCODE" }
 
-      - name: Start async daemon (Windows)
+      - name: Verify Git and checkpoints use the installed daemon
         shell: pwsh
         env:
           HOME: ${{ env.TEST_HOME }}
@@ -318,36 +318,24 @@ jobs:
         run: |
           $installDir = Join-Path $env:USERPROFILE ".git-ai\bin"
           $gitAiExe = Join-Path $installDir "git-ai.exe"
-          # Create daemon home with config
-          $daemonHome = Join-Path $env:RUNNER_TEMP "git-ai-daemon"
-          New-Item -ItemType Directory -Force -Path (Join-Path $daemonHome ".git-ai") | Out-Null
-          # Find the real git (not the proxy)
-          $realGit = (Get-Command git -CommandType Application | Where-Object { $_.Source -notlike "*\.git-ai\*" } | Select-Object -First 1).Source
-          if (-not $realGit) { $realGit = "C:\Program Files\Git\cmd\git.exe" }
-          $config = @{
-            git_path = $realGit
-            disable_auto_updates = $true
-            feature_flags = @{ git_hooks_enabled = $false }
-            quiet = $false
-          } | ConvertTo-Json -Depth 5
-          Set-Content -Path (Join-Path $daemonHome ".git-ai\config.json") -Value $config
-          # Export daemon env vars
-          Add-Content -Path $env:GITHUB_ENV -Value "GIT_AI_DAEMON_HOME=$daemonHome"
-          $env:GIT_AI_DAEMON_HOME = $daemonHome
-          # Start the daemon in the background
-          $proc = Start-Process -FilePath $gitAiExe -ArgumentList "bg","run" -PassThru -NoNewWindow
-          Add-Content -Path $env:GITHUB_ENV -Value "ASYNC_DAEMON_PID=$($proc.Id)"
-          # Wait for the daemon to be ready (up to 15s)
-          $waited = 0
-          while ($waited -lt 15000) {
-            # Test connectivity by running a simple command that requires the daemon
-            $testResult = & $gitAiExe bg status 2>&1
-            if ($LASTEXITCODE -eq 0) { break }
-            Start-Sleep -Milliseconds 250
-            $waited += 250
+          if ($env:GIT_AI_DAEMON_HOME) {
+            throw "GIT_AI_DAEMON_HOME changed after install: $env:GIT_AI_DAEMON_HOME"
           }
-          if ($waited -ge 15000) { throw "Daemon did not start within 15 seconds" }
-          Write-Host "Async daemon started (PID=$($proc.Id))"
+          Set-Location $env:E2E_TEST_REPO
+          & $gitAiExe bg status
+          if ($LASTEXITCODE -ne 0) { throw "Installed daemon is not running" }
+
+          $actualTarget = (git config --global --get trace2.eventTarget | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0) { throw "trace2.eventTarget is not configured" }
+          $internalDir = Join-Path $env:USERPROFILE ".git-ai\internal"
+          $pathBytes = [System.Text.Encoding]::UTF8.GetBytes($internalDir)
+          $pathHash = [System.Convert]::ToHexString(
+            [System.Security.Cryptography.SHA256]::HashData($pathBytes)
+          ).ToLowerInvariant()
+          $expectedTarget = "\\.\pipe\git-ai-$($pathHash.Substring(0, 16))-trace2"
+          if ($actualTarget -ne $expectedTarget) {
+            throw "Git trace2 target '$actualTarget' does not match installed daemon '$expectedTarget'"
+          }
 
       - name: Run synthetic agent commit (Windows)
         shell: pwsh
@@ -521,7 +509,7 @@ jobs:
           $lines | Set-Content -Path $log
           Write-Log "=== Synthetic attribution verification COMPLETE: $agent ==="
 
-      - name: Stop async daemon (Windows)
+      - name: Stop installed daemon (Windows)
         if: always()
         shell: pwsh
         env:
@@ -534,12 +522,7 @@ jobs:
           $gitAiExe = Join-Path $installDir "git-ai.exe"
           if (Test-Path $gitAiExe) {
             & $gitAiExe bg shutdown 2>&1 | Out-Null
-          }
-          if ($env:ASYNC_DAEMON_PID) {
-            $proc = Get-Process -Id $env:ASYNC_DAEMON_PID -ErrorAction SilentlyContinue
-            if ($proc) {
-              $proc | Stop-Process -Force -ErrorAction SilentlyContinue
-            }
+            $global:LASTEXITCODE = 0
           }
 
       - name: Upload E2E test results
