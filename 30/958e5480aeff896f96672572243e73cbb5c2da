@@ -1,0 +1,60 @@
+tests/daemon_mode.rs
+  s_e1beca86e01012::t_e2c9f36e3c564f 592,602
+src/commands/git_ai_handlers.rs
+  s_e1beca86e01012::t_cedcd2060ebd21 476-477,479,481-482,484
+  s_e1beca86e01012::t_546abc2058d47e 771
+  s_e1beca86e01012::t_7711a290084d2a 790-793
+  s_e1beca86e01012::t_9e6f8ea277379d 27
+  s_e1beca86e01012::t_02749ef0466a1a 6
+src/commands/checkpoint_agent/bash_tool.rs
+  s_e1beca86e01012::t_80301941baaa03 308
+  s_e1beca86e01012::t_a1c6651356e32a 1189
+  s_e1beca86e01012::t_4148c9d20d24d7 1292,1296
+src/commands/checkpoint.rs
+  s_e1beca86e01012::t_13ece3c4b78fcc 898-904
+  s_e1beca86e01012::t_7258e11fc0f74d 2833,2837
+  s_e1beca86e01012::t_40012760b6dcda 2684,2688
+  s_e1beca86e01012::t_72c6d1ba7a4382 2741,2745
+  s_e1beca86e01012::t_9ff3d9131a043b 987,989
+  s_e1beca86e01012::t_5e6fee9d89a515 2626,2630
+  s_e1beca86e01012::t_c5d1f7aea50040 1954-1956
+  s_e1beca86e01012::t_20cf28e25b8c79 2325-2326,2330-2337
+src/commands/checkpoint_agent/orchestrator.rs
+  s_e1beca86e01012::t_ea1b48da97c002 189
+  s_e1beca86e01012::t_07a781f402330b 237
+  s_e1beca86e01012::t_06cfb157c4a2f9 81
+  s_e1beca86e01012::t_e1ffc786b127a4 110
+  s_e1beca86e01012::t_1a2d635b74ce15 131
+  s_e1beca86e01012::t_af24961e5a5c47 19
+  s_e1beca86e01012::t_a6f80a65b85c3d 152
+src/daemon.rs
+  s_e1beca86e01012::t_110917ee1b74f8 1811
+src/git/test_utils/mod.rs
+  s_e1beca86e01012::t_09194ef9e6baef 1572-1573,1577-1584
+  s_e1beca86e01012::t_779b734d69476b 354
+  s_e1beca86e01012::t_b7a50725a79e13 523
+src/authorship/pre_commit.rs
+  s_e1beca86e01012::t_f3d61f85b4901c 151-153
+tests/integration/bash_tool_provenance.rs
+  s_e1beca86e01012::t_4ce4f28f47bd6a 1735-1738
+tests/integration/claude_code.rs
+  s_e1beca86e01012::t_6b0982f5601ad7 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "30958e5480aeff896f96672572243e73cbb5c2da",
+  "prompts": {},
+  "sessions": {
+    "s_e1beca86e01012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "487d1aea-0650-42da-8d5c-193e33493c89",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/3b05a25538f3c844e329d8a3243c5a7840c02c4c40cd9a971d07293a100c63c8"
+    }
+  }
+}

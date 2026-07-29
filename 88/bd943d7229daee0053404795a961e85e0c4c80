@@ -1,0 +1,23 @@
+tests/agent_commits_blame.rs
+  3930485f61fd689b 479-480,552,556-557
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.13",
+  "base_commit_sha": "88bd943d7229daee0053404795a961e85e0c4c80",
+  "prompts": {
+    "3930485f61fd689b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf45e44d-b133-4d57-bdc5-07cb51c9a24d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 5,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

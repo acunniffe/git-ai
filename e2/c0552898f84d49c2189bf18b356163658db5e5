@@ -1,0 +1,37 @@
+src/daemon/sweep_coordinator.rs
+  s_a5dfa179876619::t_85b5b441abb75b 37,42,46-58
+  s_a5dfa179876619::t_8b06f4b91b2fc0 190-201
+  s_a5dfa179876619::t_875d844bd364b1 148-153
+  s_a5dfa179876619::t_74938fe724519e 8
+src/daemon/transcript_worker.rs
+  s_a5dfa179876619::t_65c4ef738a7014 402-408,415-423
+  s_a5dfa179876619::t_7b6cbe398e89e4 1208-1212,1220-1224
+src/config.rs
+  s_a5dfa179876619::t_6548391446bd59 2009,2023
+  s_a5dfa179876619::t_20703506f4e7ba 225-226
+  s_a5dfa179876619::t_d655aaf67754ee 475-478
+  s_a5dfa179876619::t_3b14036d89c315 774-785,808,835
+  s_a5dfa179876619::t_5457994ce1d468 195-196
+  s_a5dfa179876619::t_b85da89bf6d3c5 1417
+  s_a5dfa179876619::t_f474708d6f337f 1537
+  s_a5dfa179876619::t_67870c874d45dc 1993-2008,2010-2022,2024-2026
+  s_a5dfa179876619::t_4ab07119b5cd77 1266-1268
+  s_a5dfa179876619::t_81357a00939555 1306
+  s_a5dfa179876619::t_6dc62a55ab602f 121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "e2c0552898f84d49c2189bf18b356163658db5e5",
+  "prompts": {},
+  "sessions": {
+    "s_a5dfa179876619": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f56c7348-724b-4c86-9649-b23e4fb70319",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null
+    }
+  }
+}

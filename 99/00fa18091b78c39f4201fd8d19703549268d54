@@ -1,0 +1,27 @@
+src/commands/git_ai_handlers.rs
+  c3e0a41996057d42 217-220
+src/commands/diff.rs
+  c3e0a41996057d42 5,49,58,89-91,206-208,225-229,267-271,303-314,1149,1184,1504,1575,1626-1631,1633-1641,1643-1654
+tests/diff.rs
+  c3e0a41996057d42 316-321,911-980,1826-1828
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "9900fa18091b78c39f4201fd8d19703549268d54",
+  "prompts": {
+    "c3e0a41996057d42": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cca9e-04fb-7232-812e-1d85d75a9283",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 153,
+      "total_deletions": 2,
+      "accepted_lines": 153,
+      "overriden_lines": 0
+    }
+  }
+}

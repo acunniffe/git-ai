@@ -1,0 +1,59 @@
+src/git/rewrite_log.rs
+  3d16c6b 29-30,103-104,285-289,293-298,301,303-309,311-315
+src/commands/hooks/reset_hooks.rs
+  3d16c6b 20-29,74-86,89,91-93,118-131
+src/git/test_utils/mod.rs
+  3d16c6b 1132-1134,1143-1147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "1a0a71f9b796a1acca3c7faaf88732d9ec284c94",
+  "prompts": {
+    "3d16c6b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "267a80eb-4615-4a8c-9159-819dfe18f35e",
+        "model": "gpt-5-codex"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "ok now let's reduce the reset log types downt o one\n\nReset {\n  kind: 'hard'  | 'soft' | 'mixed'\n  keep: bool\n  merge: bool\n  new_head_sha // where we moved head\n  old_head_sha // where e started\n}"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you consolidate the reset log types into a single `Reset` variant. Let me update the code:"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've successfully consolidated the reset log types into a single `Reset` variant. Here's what I changed:\n\n## Summary of Changes:\n\n1. **Created a new `ResetKind` enum** with three variants: `Hard`, `Soft`, and `Mixed` (serialized as lowercase strings)\n\n2. **Created a new unified `ResetEvent` struct** with the fields you specified:\n   - `kind: ResetKind` - the type of reset (hard, soft, or mixed)\n   - `keep: bool` - whether --keep flag was used\n   - `merge: bool` - whether --merge flag was used\n   - `new_head_sha: String` - where HEAD moved to\n   - `old_head_sha: String` - where HEAD started from\n\n3. **Replaced the two enum variants** `ResetSoft` and `ResetHard` with a single `Reset` variant\n\n4. **Updated the helper method** from `reset_soft()` and `reset_hard()` to a single `reset()` method\n\n5. **Removed the old structs** `ResetSoftEvent` and `ResetHardEvent`\n\nThe changes compile successfully with no linter errors, and there were no existing usages of the old types in the codebase to update. The new structure provides a more flexible and unified way to track all types of git reset operations with their various flags."
+        },
+        {
+          "type": "user",
+          "text": "now wire this up"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll wire up the new unified `ResetEvent` to log reset operations in the reset hooks. Let me read the full file first to see where we need to add the logging:"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll wire up the reset event logging properly. I need to:\n\n1. Remove the incomplete event logging code\n2. Add proper event logging that captures the correct reset kind, keep, and merge flags"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! The linter errors are just pre-existing dead code warnings unrelated to our changes. Let me verify the build compiles correctly:"
+        },
+        {
+          "type": "assistant",
+          "text": "I need to fix a compilation error. Let me check where `ResetKind` is being used without the full path:"
+        }
+      ],
+      "total_additions": 2772,
+      "total_deletions": 43,
+      "accepted_lines": 2756,
+      "overriden_lines": 5
+    }
+  }
+}

@@ -1,0 +1,73 @@
+src/transcripts/agents/droid.rs
+  759815a68a4f7264 12-14,17-25,78-83,85-88,258-364,374,399
+src/transcripts/agents/claude.rs
+  759815a68a4f7264 12-14,17-25,84-89,91-94,318,343,388,403-524
+src/transcripts/agent.rs
+  759815a68a4f7264 49-59
+src/transcripts/agents/copilot.rs
+  759815a68a4f7264 14-16,19-27,82-87,89-92,354,376-583,607,638
+src/transcripts/agents/amp.rs
+  759815a68a4f7264 12-14,17-25,71-76,78-81,222,229-326,352,384,417
+src/transcripts/agents/pi.rs
+  759815a68a4f7264 13-32,35-38,146,153-259,279,310,336
+src/transcripts/agents/opencode.rs
+  759815a68a4f7264 14-27,190-195,197-200,280,287-456
+src/transcripts/agents/windsurf.rs
+  759815a68a4f7264 13-32,35-38,146,153-259,278,303,326
+src/transcripts/agents/gemini.rs
+  759815a68a4f7264 13-15,18-26,68-73,75-78,209,216-313,330,361
+tests/integration/transcripts_claude_reader.rs
+  759815a68a4f7264 22,54,102,121
+tests/integration/amp.rs
+  759815a68a4f7264 26,45
+tests/integration/codex.rs
+  759815a68a4f7264 20
+tests/integration/opencode.rs
+  759815a68a4f7264 28
+tests/integration/claude_code.rs
+  759815a68a4f7264 15,256,406
+tests/integration/agent_presets_comprehensive.rs
+  759815a68a4f7264 126-130,145-149,165-169,341,362,384,1029,1050,1079,1107
+tests/integration/cursor.rs
+  759815a68a4f7264 20,44,75
+tests/integration/sweep_e2e.rs
+  759815a68a4f7264 86,109,152,196,410,444,472,504
+src/transcripts/agents/cursor.rs
+  759815a68a4f7264 12-14,17-25,62-67,69-72,217,224-330,349
+tests/integration/transcripts_e2e.rs
+  759815a68a4f7264 89
+tests/integration/gemini.rs
+  759815a68a4f7264 20
+tests/integration/github_copilot.rs
+  759815a68a4f7264 26,43,69,94
+src/transcripts/agents/continue_cli.rs
+  759815a68a4f7264 15-17,20-28,61-66,68-71,183,190-284,301,330,360
+tests/integration/continue_cli.rs
+  759815a68a4f7264 18
+src/transcripts/agents/codex.rs
+  759815a68a4f7264 13-15,18-26,78-83,85-88,199,206-312,331,363
+tests/integration/droid.rs
+  759815a68a4f7264 20
+tests/integration/windsurf.rs
+  759815a68a4f7264 187,215,236
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "5642b6bc401c06c3295059c83190b7d974cdce92",
+  "prompts": {
+    "759815a68a4f7264": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9b8122a-6f33-4fcb-a981-7260b993c9a7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1707,
+      "total_deletions": 135,
+      "accepted_lines": 1673,
+      "overriden_lines": 0
+    }
+  }
+}

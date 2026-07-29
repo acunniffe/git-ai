@@ -1,0 +1,21 @@
+src/commands/git_ai_handlers.rs
+  s_581df82272424a::t_c5f79c8911d18e 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "f093b8e39fbf822d74c9a151a487901602d88db1",
+  "prompts": {},
+  "sessions": {
+    "s_581df82272424a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "061133a6-91f0-452a-904b-7ded1a82be41",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/588d90dbac1a538a3e0c97368c31396fd1b24a83354d59753e241a4612f01d99"
+    }
+  }
+}
