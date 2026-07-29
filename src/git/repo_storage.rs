@@ -111,6 +111,7 @@ impl RepoStorage {
 
     pub fn delete_working_log_for_base_commit(&self, sha: &str) -> Result<(), GitAiError> {
         let working_log_dir = self.working_logs.join(sha);
+        crate::wltrace::wltrace("working_log.delete", &working_log_dir, String::new);
         if working_log_dir.exists() {
             // Both debug and release: move to old-{sha} for retention
             let old_dir = self.working_logs.join(format!("old-{}", sha));
@@ -195,9 +196,15 @@ impl RepoStorage {
             return Ok(());
         }
         if !new_dir.exists() {
+            crate::wltrace::wltrace("working_log.rename", &old_dir, || {
+                format!("to={}", new_dir.display())
+            });
             fs::rename(&old_dir, &new_dir)?;
             tracing::debug!("Renamed working log from {} to {}", old_sha, new_sha);
         } else {
+            crate::wltrace::wltrace("working_log.merge", &old_dir, || {
+                format!("to={}", new_dir.display())
+            });
             self.merge_working_log_dirs(old_sha, new_sha, &old_dir, &new_dir)?;
             fs::remove_dir_all(&old_dir)?;
             tracing::debug!("Merged working log from {} into {}", old_sha, new_sha);
@@ -329,6 +336,7 @@ impl PersistedWorkingLog {
     }
 
     pub fn reset_working_log(&self) -> Result<(), GitAiError> {
+        crate::wltrace::wltrace("working_log.reset", &self.dir, String::new);
         // Clear all blobs by removing the blobs directory
         let blobs_dir = self.dir.join("blobs");
         if blobs_dir.exists() {
@@ -453,6 +461,7 @@ impl PersistedWorkingLog {
 
     /* append checkpoint */
     pub fn append_checkpoint(&self, checkpoint: &Checkpoint) -> Result<(), GitAiError> {
+        crate::wltrace::wltrace("working_log.append_checkpoint", &self.dir, String::new);
         // Read existing checkpoints
         let mut checkpoints = self.read_all_checkpoints().unwrap_or_default();
 
@@ -512,8 +521,12 @@ impl PersistedWorkingLog {
                 continue;
             }
 
-            let checkpoint: Checkpoint = serde_json::from_str(&line)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            let checkpoint: Checkpoint = serde_json::from_str(&line).map_err(|e| {
+                crate::wltrace::wltrace("working_log.read_checkpoints.TORN", &self.dir, || {
+                    format!("err={e} line_len={}", line.len())
+                });
+                std::io::Error::new(std::io::ErrorKind::InvalidData, e)
+            })?;
 
             if checkpoint.api_version != CHECKPOINT_API_VERSION {
                 tracing::debug!(
@@ -663,6 +676,9 @@ impl PersistedWorkingLog {
     /// by post-commit after transcripts have been refetched and need to be preserved
     /// for from_just_working_log() to read them.
     pub fn write_all_checkpoints(&self, checkpoints: &[Checkpoint]) -> Result<(), GitAiError> {
+        crate::wltrace::wltrace("working_log.write_all_checkpoints.begin", &self.dir, || {
+            format!("count={}", checkpoints.len())
+        });
         let checkpoints_file = self.checkpoints_file();
         let mut output = BufWriter::new(fs::File::create(&checkpoints_file)?);
 
@@ -672,6 +688,11 @@ impl PersistedWorkingLog {
         }
 
         output.flush()?;
+        crate::wltrace::wltrace(
+            "working_log.write_all_checkpoints.end",
+            &self.dir,
+            String::new,
+        );
         Ok(())
     }
 
@@ -780,6 +801,7 @@ impl PersistedWorkingLog {
 
     /// Write a fully-formed INITIAL state, preserving any persisted blob references.
     pub fn write_initial(&self, initial: InitialAttributions) -> Result<(), GitAiError> {
+        crate::wltrace::wltrace("working_log.write_initial", &self.dir, String::new);
         let filtered_files: HashMap<String, Vec<LineAttribution>> = initial
             .files
             .into_iter()
