@@ -1,0 +1,43 @@
+src/daemon.rs
+  s_b3918a71142a3e::t_d44077ee010843 876,1491,1494,1500
+  s_b3918a71142a3e::t_809ca361022fce 2156,831,1442,1505-1506,2624,2635,2723,4797,5409,6615,6812,6838
+  s_b3918a71142a3e::t_9438acf042cbd8 5047,832,857,1453,1485,1507,2625,2636,2724,2993,2997,4790,4795,4798,6609,6616,6792,6802,6813,6818,6828,6839
+  s_b3918a71142a3e::t_80d9b8cecfc8a6 5079
+  s_b3918a71142a3e::t_b897ee897992f4 856,1441,1448-1452
+src/daemon/ref_cursor.rs
+  s_ca3493cd5ff580::t_9b73001e5721df 1118,1122-1147,1156-1161
+  s_ca3493cd5ff580::t_9692595a26ef5c 1148-1155
+  s_ca3493cd5ff580::t_f43ede3b8e203c 1310-1318,1321-1322
+  s_ca3493cd5ff580::t_508bbd47263d80 2299,2322
+  s_ca3493cd5ff580::t_6c6743e22321d4 2358
+  s_ca3493cd5ff580::t_e2fb874b6e7375 2414-2415
+  s_ca3493cd5ff580::t_94aad3ad0e79c4 2424-2426
+  s_ca3493cd5ff580::t_69d79e92b5a999 2431,2444
+  s_ca3493cd5ff580::t_350e2a1cc04c05 3057-3083
+  s_ca3493cd5ff580::t_4b89512c3a2276 3084-3088
+  s_ca3493cd5ff580::t_2c099aa3f548f7 3089-3194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "809799d20251bf9c992774a5aa4ee3803130cec6",
+  "prompts": {},
+  "sessions": {
+    "s_b3918a71142a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de268d2e-4705-4c20-86ca-d1dc04eda164",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_ca3493cd5ff580": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "30a076c6-8e2e-42a4-aafc-a0f557fd1930",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

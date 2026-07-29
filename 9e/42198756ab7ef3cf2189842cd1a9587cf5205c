@@ -1,0 +1,19 @@
+src/authorship/rewrite_op_v3.rs
+  s_143a1d280c5192::t_358ce963d4bb7d 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "9e42198756ab7ef3cf2189842cd1a9587cf5205c",
+  "prompts": {},
+  "sessions": {
+    "s_143a1d280c5192": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "16f4cc15-d67e-4325-8452-63fc441ddc49",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

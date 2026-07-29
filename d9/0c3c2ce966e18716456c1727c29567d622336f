@@ -1,0 +1,37 @@
+tests/config_fresh_test.rs
+  8929bfe4dfae3e13 10-81,88,129,156,192,224,238,268,298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "d90c3c2ce966e18716456c1727c29567d622336f",
+  "prompts": {
+    "1e9c333a25b3d95f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bba54458-9c9c-4f70-9b68-f3922d7e7f40",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "8929bfe4dfae3e13": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "875a0a17-6f40-47b2-a959-115a3557537e",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 81,
+      "total_deletions": 92,
+      "accepted_lines": 81,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e8d66eb2a6236bd81f0eeada65560d47956c29d377c2273f5cd8876684a43ca2"
+    }
+  }
+}

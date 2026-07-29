@@ -1,0 +1,26 @@
+.github/workflows/release.yml
+  f184800188f6410a 56,87,90,94,164,172,186,196,199,202,238,277,304,352,361,422,429
+.github/dependabot.yml
+  f184800188f6410a 34-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.12",
+  "base_commit_sha": "6bb5b614b896f7a0cd1f62b78c30231492c27ad5",
+  "prompts": {
+    "f184800188f6410a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7ff7fffc-b7f8-4fb2-866c-9bf958fa8653",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 25,
+      "total_deletions": 20,
+      "accepted_lines": 25,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/5654962afd5bd4002cf5adc74d504d04ca661835ba6f0758b3b0b240b94bd1ff"
+    }
+  }
+}

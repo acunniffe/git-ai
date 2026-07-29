@@ -1,0 +1,26 @@
+tests/integration/repos/test_repo.rs
+  c1970e7fa3ca2e03 2846
+src/config.rs
+  c1970e7fa3ca2e03 804,807
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "4c00a613898eeed0547724811c6cc1d1adea5d99",
+  "prompts": {
+    "c1970e7fa3ca2e03": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5772698e-67e6-4639-a483-cbb8405da325",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test User",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 14,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/bf98eb46d7bf5683a45ae2d956f6ee341e9860d1c2cd8f5978e53ea4cb4cf40f"
+    }
+  }
+}

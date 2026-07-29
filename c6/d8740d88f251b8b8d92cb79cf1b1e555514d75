@@ -1,0 +1,31 @@
+README.md
+  s_152624a4be48a6::t_2f047f95b2ed49 89,98,219-220
+  s_152624a4be48a6::t_2b8cdf90d90f28 107
+  s_152624a4be48a6::t_e475ca43c09d35 84
+  s_152624a4be48a6::t_bc354112555419 174
+  h_ea2010baa7a42b 117-119,122-123
+  s_152624a4be48a6::t_16c1a26264ed85 135
+  s_152624a4be48a6::t_2e6f9109f2379b 215
+  s_152624a4be48a6::t_e0ef72026462dc 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "c6d8740d88f251b8b8d92cb79cf1b1e555514d75",
+  "prompts": {},
+  "humans": {
+    "h_ea2010baa7a42b": {
+      "author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_152624a4be48a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b60844b4-7c84-42c9-a68d-23fea798e06c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

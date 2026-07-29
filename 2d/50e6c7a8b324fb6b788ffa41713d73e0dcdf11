@@ -1,0 +1,24 @@
+src/utils.rs
+  ea14ec443f05d87e 12,134-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.39",
+  "base_commit_sha": "2d50e6c7a8b324fb6b788ffa41713d73e0dcdf11",
+  "prompts": {
+    "ea14ec443f05d87e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "516abe84-2d38-4c83-b3d3-890baa9633da",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 23,
+      "total_deletions": 0,
+      "accepted_lines": 23,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/261c2a7c4352914a45b86a98bda3c2ba46100ca0adead410189059b2940f321d"
+    }
+  }
+}
