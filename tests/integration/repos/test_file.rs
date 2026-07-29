@@ -52,51 +52,41 @@ impl ExpectedLine {
 }
 
 /// Trait to add .ai(), .human(), and .unattributed_human() methods to string types
-pub trait ExpectedLineExt {
-    fn ai(self) -> ExpectedLine;
-    fn human(self) -> ExpectedLine;
-    fn unattributed_human(self) -> ExpectedLine;
-}
+pub trait ExpectedLineExt: Sized {
+    #[doc(hidden)]
+    fn into_expected_line_contents(self) -> String;
 
-impl ExpectedLineExt for &str {
     fn ai(self) -> ExpectedLine {
-        ExpectedLine::new(self.to_string(), AuthorType::Ai)
+        ExpectedLine::new(self.into_expected_line_contents(), AuthorType::Ai)
     }
 
     fn human(self) -> ExpectedLine {
-        ExpectedLine::new(self.to_string(), AuthorType::Human)
+        ExpectedLine::new(self.into_expected_line_contents(), AuthorType::Human)
     }
 
     fn unattributed_human(self) -> ExpectedLine {
-        ExpectedLine::new(self.to_string(), AuthorType::UnattributedHuman)
+        ExpectedLine::new(
+            self.into_expected_line_contents(),
+            AuthorType::UnattributedHuman,
+        )
+    }
+}
+
+impl ExpectedLineExt for &str {
+    fn into_expected_line_contents(self) -> String {
+        self.to_string()
     }
 }
 
 impl ExpectedLineExt for String {
-    fn ai(self) -> ExpectedLine {
-        ExpectedLine::new(self, AuthorType::Ai)
-    }
-
-    fn human(self) -> ExpectedLine {
-        ExpectedLine::new(self, AuthorType::Human)
-    }
-
-    fn unattributed_human(self) -> ExpectedLine {
-        ExpectedLine::new(self, AuthorType::UnattributedHuman)
+    fn into_expected_line_contents(self) -> String {
+        self
     }
 }
 
 impl ExpectedLineExt for ExpectedLine {
-    fn ai(self) -> ExpectedLine {
-        ExpectedLine::new(self.contents, AuthorType::Ai)
-    }
-
-    fn human(self) -> ExpectedLine {
-        ExpectedLine::new(self.contents, AuthorType::Human)
-    }
-
-    fn unattributed_human(self) -> ExpectedLine {
-        ExpectedLine::new(self.contents, AuthorType::UnattributedHuman)
+    fn into_expected_line_contents(self) -> String {
+        self.contents
     }
 }
 
