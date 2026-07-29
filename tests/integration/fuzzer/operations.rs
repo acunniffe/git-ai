@@ -121,6 +121,9 @@ pub fn checkpoint_ai(
 ) {
     repo.git_ai(&["checkpoint", "mock_ai", &model.filename])
         .unwrap_or_else(|e| panic!("checkpoint mock_ai failed: {}", e));
+    // Checkpoints are submitted asynchronously. Drain the daemon before the
+    // next raw-git mutation so the commit cannot overtake its attribution.
+    repo.sync_daemon();
 
     let session = registry.allocate_ai_session();
     for &ch in written_chars {
@@ -147,6 +150,7 @@ pub fn checkpoint_human(
 ) {
     repo.git_ai(&["checkpoint", "mock_known_human", &model.filename])
         .unwrap_or_else(|e| panic!("checkpoint mock_known_human failed: {}", e));
+    repo.sync_daemon();
 
     for &ch in written_chars {
         let record = AttrRecord::new(LineAttribution::KnownHuman);
@@ -166,6 +170,7 @@ pub fn checkpoint_human(
 pub fn checkpoint_untracked(model: &FileModel, repo: &TestRepo, op_log: &mut Vec<String>) {
     repo.git_ai(&["checkpoint", "human", &model.filename])
         .unwrap_or_else(|e| panic!("checkpoint human failed: {}", e));
+    repo.sync_daemon();
     op_log.push(format!("checkpoint_untracked({})", model.filename));
 }
 
