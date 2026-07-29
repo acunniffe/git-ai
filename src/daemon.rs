@@ -20,6 +20,7 @@ use crate::{
     commands::checkpoint_agent::orchestrator::CheckpointRequest,
     daemon::checkpoint::PreparedPathRole,
 };
+use futures::{StreamExt, stream};
 #[cfg(not(windows))]
 use interprocess::local_socket::ConnectOptions;
 #[cfg(not(windows))]
@@ -48,7 +49,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::sync::{Mutex as AsyncMutex, Notify, mpsc};
+use tokio::sync::{Mutex as AsyncMutex, Notify, Semaphore, mpsc};
 use tokio::time::Duration;
 
 pub mod analyzers;
@@ -93,6 +94,7 @@ const DAEMON_CHECKPOINT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(300);
 const DAEMON_SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
 const CHECKPOINT_INGRESS_REQUEST_LIMIT: usize = 1_024;
 const CHECKPOINT_INGRESS_BYTE_LIMIT: usize = 64 * 1024 * 1024;
+const CHECKPOINT_FAMILY_DRAIN_CONCURRENCY: usize = 2;
 // Trace2 frames are written synchronously by Git to the daemon's Unix socket.
 // With small kernel socket buffers (macOS defaults to ~8 KiB), a bursty trace2
 // stream can fill the buffer and block the raw `git` process in `write()` until
@@ -982,22 +984,53 @@ fn rfc3339_to_unix_nanos(value: &str) -> Option<u128> {
         .and_then(|timestamp| u128::try_from(timestamp.timestamp_nanos_opt()?).ok())
 }
 
+#[cfg(feature = "test-support")]
+fn checkpoint_test_delay(env_var: &str, trace_id: &str) -> Option<Duration> {
+    let spec = std::env::var(env_var).ok()?;
+    spec.split(',').find_map(|entry| {
+        let (entry_trace_id, delay_ms) = entry.split_once('=')?;
+        if entry_trace_id != trace_id {
+            return None;
+        }
+        delay_ms
+            .parse::<u64>()
+            .ok()
+            .filter(|delay_ms| *delay_ms > 0)
+            .map(Duration::from_millis)
+    })
+}
+
+#[cfg(feature = "test-support")]
+fn wait_at_checkpoint_test_barrier(trace_id: &str) -> Result<(), GitAiError> {
+    let Ok(barrier_dir) = std::env::var("GIT_AI_TEST_CHECKPOINT_SIDE_EFFECT_BARRIER_DIR") else {
+        return Ok(());
+    };
+    let barrier_dir = PathBuf::from(barrier_dir);
+    fs::create_dir_all(&barrier_dir)?;
+    let marker = format!("{:x}", Sha256::digest(trace_id.as_bytes()));
+    fs::write(barrier_dir.join(marker), [])?;
+
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(2) {
+        if fs::read_dir(&barrier_dir)?.count() >= 2 {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    Err(GitAiError::Generic(format!(
+        "checkpoint test barrier timed out for {trace_id}"
+    )))
+}
+
 fn apply_checkpoint_side_effect(mut request: CheckpointRequest) -> Result<(), GitAiError> {
     #[cfg(feature = "test-support")]
     {
-        if let Ok(spec) = std::env::var("GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT") {
-            for entry in spec.split(',') {
-                let Some((trace_id, delay_ms)) = entry.split_once('=') else {
-                    continue;
-                };
-                if trace_id == request.trace_id
-                    && let Ok(delay_ms) = delay_ms.parse::<u64>()
-                    && delay_ms > 0
-                {
-                    std::thread::sleep(Duration::from_millis(delay_ms));
-                    break;
-                }
-            }
+        wait_at_checkpoint_test_barrier(&request.trace_id)?;
+        if let Some(delay) = checkpoint_test_delay(
+            "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+            &request.trace_id,
+        ) {
+            std::thread::sleep(delay);
         }
         if std::env::var("GIT_AI_TEST_FAIL_CHECKPOINT_SIDE_EFFECT")
             .is_ok_and(|trace_id| trace_id == request.trace_id)
@@ -2707,6 +2740,7 @@ pub struct ActorDaemonCoordinator {
         Mutex<HashMap<String, VecDeque<RecentReplayPrerequisite>>>,
     side_effect_errors_by_family: Mutex<HashMap<String, BTreeMap<u64, String>>>,
     side_effect_exec_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
+    checkpoint_side_effect_semaphore: Semaphore,
     checkpoint_ingress_quota: Arc<CheckpointIngressQuota>,
     checkpoint_ingress_tx: std::sync::OnceLock<mpsc::Sender<AcceptedCheckpoint>>,
     next_checkpoint_receipt_seq: AtomicUsize,
@@ -2798,6 +2832,7 @@ impl ActorDaemonCoordinator {
             recent_replay_prerequisites_by_family: Mutex::new(HashMap::new()),
             side_effect_errors_by_family: Mutex::new(HashMap::new()),
             side_effect_exec_locks: Mutex::new(HashMap::new()),
+            checkpoint_side_effect_semaphore: Semaphore::new(CHECKPOINT_FAMILY_DRAIN_CONCURRENCY),
             checkpoint_ingress_quota: Arc::new(CheckpointIngressQuota::new(
                 CHECKPOINT_INGRESS_REQUEST_LIMIT,
                 CHECKPOINT_INGRESS_BYTE_LIMIT,
@@ -3359,10 +3394,20 @@ impl ActorDaemonCoordinator {
             let map = self.family_sequencers_by_family.lock().map_err(|_| {
                 GitAiError::Generic("family sequencer map lock poisoned".to_string())
             })?;
-            map.keys().cloned().collect::<Vec<_>>()
+            map.iter()
+                .filter(|(_, state)| !state.entries.is_empty())
+                .map(|(family, _)| family.clone())
+                .collect::<Vec<_>>()
         };
-        for family in families {
-            self.drain_ready_family_sequencer_entries(&family).await?;
+        let first_error = stream::iter(families)
+            .map(|family| async move { self.drain_ready_family_sequencer_entries(&family).await })
+            .buffer_unordered(CHECKPOINT_FAMILY_DRAIN_CONCURRENCY)
+            .fold(None, |first_error, result| async move {
+                first_error.or_else(|| result.err())
+            })
+            .await;
+        if let Some(error) = first_error {
+            return Err(error);
         }
         Ok(())
     }
@@ -4058,6 +4103,12 @@ impl ActorDaemonCoordinator {
             serde_json::from_slice(&accepted.body).map_err(|error| {
                 GitAiError::Generic(format!("invalid accepted checkpoint body: {error}"))
             })?;
+        #[cfg(feature = "test-support")]
+        if let Some(delay) =
+            checkpoint_test_delay("GIT_AI_TEST_DELAY_CHECKPOINT_ADMISSION", &request.trace_id)
+        {
+            tokio::time::sleep(delay).await;
+        }
         let trace_id = request.trace_id.clone();
         let file_count = request.files.len();
         let Some(repo_work_dir) = request.files.first().map(|file| file.repo_work_dir.clone())
@@ -4507,12 +4558,9 @@ impl ActorDaemonCoordinator {
             if self.unadmitted_checkpoints.load(Ordering::Acquire) > 0 {
                 return Ok(());
             }
-            let state = map
-                .entry(family.to_string())
-                .or_insert_with(|| FamilySequencerState {
-                    next_ordinal: 1,
-                    entries: BTreeMap::new(),
-                });
+            let Some(state) = map.get_mut(family) else {
+                return Ok(());
+            };
             while let Some(first_entry) = state.entries.first_entry() {
                 if matches!(first_entry.get(), FamilySequencerEntry::PendingRoot) {
                     break;
@@ -4732,6 +4780,15 @@ impl ActorDaemonCoordinator {
 
                     let should_log_completion = true; // Always log for test sync
                     tracing::info!(kind = %checkpoint_kind_str, repo = %repo_wd, "checkpoint start");
+                    let checkpoint_side_effect_permit = self
+                        .checkpoint_side_effect_semaphore
+                        .acquire()
+                        .await
+                        .map_err(|_| {
+                            GitAiError::Generic(
+                                "checkpoint side-effect semaphore closed".to_string(),
+                            )
+                        })?;
                     let checkpoint_start = std::time::Instant::now();
                     let checkpoint_request = {
                         let future = async {
@@ -4739,14 +4796,21 @@ impl ActorDaemonCoordinator {
                                 let ack =
                                     self.coordinator.apply_checkpoint(Path::new(&repo_wd)).await;
                                 match ack {
-                                    Ok(ack) => run_blocking_side_effect(|| {
-                                        apply_checkpoint_side_effect(*request)
-                                    })
-                                    .map(|_| ack.seq),
+                                    Ok(ack) => {
+                                        crate::tokio_runtime::spawn_blocking_result(move || {
+                                            apply_checkpoint_side_effect(*request)
+                                        })
+                                        .await
+                                        .map(|_| ack.seq)
+                                    }
                                     Err(error) => Err(error),
                                 }
                             } else {
-                                apply_checkpoint_side_effect(*request).map(|_| 0)
+                                crate::tokio_runtime::spawn_blocking_result(move || {
+                                    apply_checkpoint_side_effect(*request)
+                                })
+                                .await
+                                .map(|_| 0)
                             }
                         };
                         let caught = std::panic::AssertUnwindSafe(future);
@@ -4778,6 +4842,7 @@ impl ActorDaemonCoordinator {
                             )))
                         }
                     };
+                    drop(checkpoint_side_effect_permit);
                     let checkpoint_duration_ms = checkpoint_start.elapsed().as_millis();
                     if result.is_ok() {
                         tracing::info!(
@@ -9098,6 +9163,22 @@ mod tests {
         assert!(
             !map.contains_key("family-idle"),
             "GC should evict idle exec locks to bound the map"
+        );
+    }
+
+    #[tokio::test]
+    async fn draining_an_unknown_family_does_not_retain_empty_sequencer_state() {
+        let coord = ActorDaemonCoordinator::new();
+
+        coord
+            .drain_ready_family_sequencer_entries_locked("family-with-no-work")
+            .await
+            .expect("empty family drain");
+
+        let map = coord.family_sequencers_by_family.lock().unwrap();
+        assert!(
+            !map.contains_key("family-with-no-work"),
+            "global drains must not grow the sequencer map with empty families"
         );
     }
 
