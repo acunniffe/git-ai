@@ -1,0 +1,23 @@
+src/utils.rs
+  98dca1b 10-11,47-83,132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "a81c74c176db432608551f4733350954af6050db",
+  "prompts": {
+    "98dca1b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "4b8a5b26-86fd-4a3b-833c-17089b82bf79",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 50,
+      "total_deletions": 8,
+      "accepted_lines": 41,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,25 @@
+src/commands/checkpoint_agent/presets/mock_ai.rs
+  s_af2d349a5e032c::t_4b4bb7dc8976f0 20,29,45,63
+src/authorship/rebase_authorship.rs
+  s_af2d349a5e032c::t_4b4bb7dc8976f0 1133-1136,1138
+src/commands/checkpoint_agent/presets/mock_known_human.rs
+  s_af2d349a5e032c::t_4b4bb7dc8976f0 10,35,42
+src/git/refs.rs
+  s_af2d349a5e032c::t_4b4bb7dc8976f0 181-193,203-206,208,210-216,218-223,225-229,231-234,236-240,242,257-269,279-290,292-296,298-299,301-306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "1936d3a9b3c3349ec152f5ab2077dfbd5083acb4",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

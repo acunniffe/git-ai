@@ -1,0 +1,24 @@
+tests/integration/diff.rs
+  8c01ae080dcda34a 2866-2871
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "5c943c5dfab6213c795ba66a1b346a0f529f5be6",
+  "prompts": {
+    "8c01ae080dcda34a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1ae72d5-8d48-4a16-b56b-51f4d03dbf1a",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 4,
+      "accepted_lines": 6,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/27ffa1fa14020e6c87803c8aca491c7d0275e17d8d5ed99ea6373b691e83f5f5"
+    }
+  }
+}

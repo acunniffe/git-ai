@@ -1,0 +1,29 @@
+src/commands/config.rs
+  6a0cd0107f4716c2 51-52,54
+src/authorship/attribution_tracker.rs
+  6a0cd0107f4716c2 223-260,1138-1140,1227-1228,1232,1364-1366,1796-1799,2237-2342
+src/authorship/authorship_log_serialization.rs
+  6a0cd0107f4716c2 572-573,576-577,580,598-603
+src/commands/diff.rs
+  6a0cd0107f4716c2 258-260,285-286,299-300,546-547,690-691,757-758,768-769
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.35",
+  "base_commit_sha": "6b404b4b788a04726a3518741337d7f03d3cb807",
+  "prompts": {
+    "6a0cd0107f4716c2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cffc7dcc-47c7-4d77-bf4b-49d2b14dbad6",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 186,
+      "total_deletions": 44,
+      "accepted_lines": 186,
+      "overriden_lines": 0
+    }
+  }
+}

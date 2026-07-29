@@ -1,0 +1,25 @@
+src/git/sync_authorship.rs
+  c5b6e6dbc097f326 193,314
+src/git/refs.rs
+  c5b6e6dbc097f326 555,558,583-588
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "ae41ae6461aa9332f3a16863ca097e31b7263e49",
+  "prompts": {
+    "c5b6e6dbc097f326": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfa78cba-a1ec-46af-bfe4-7b5df10c6735",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 4,
+      "accepted_lines": 10,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,45 @@
+.github/workflows/lint-format.yml
+  7e13b8237fe59306 32-37
+  48917e60fe84ecef 27,29,56,58,82,84
+.github/workflows/e2e-tests.yml
+  48917e60fe84ecef 47-48
+Taskfile.yml
+  48917e60fe84ecef 53-92
+src/utils.rs
+  7e13b8237fe59306 153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "31593138777871a1f34efa8c7f1617f78cf4351f",
+  "prompts": {
+    "48917e60fe84ecef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2cbb425f-7eff-4822-9da2-8e174c248910",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 51,
+      "total_deletions": 9,
+      "accepted_lines": 51,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/c893c4e06fffc0b819eeeff1ad5b81a24da01d4f461d892199908e32c8715919"
+    },
+    "7e13b8237fe59306": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c8457552-7bc0-45cf-91fd-d33cacf19159",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 5,
+      "accepted_lines": 7,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/7cf4da68a7cf3b83eb3ba2bf1fd2c30ce750b257e45c81f407c0a247990da070"
+    }
+  }
+}

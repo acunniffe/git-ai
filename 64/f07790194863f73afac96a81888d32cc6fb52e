@@ -1,0 +1,51 @@
+src/commands/flush_metrics_db.rs
+  s_9126b2b26f4a5e::t_216e4e9be20fbc 6,8,37-38,67,70-73,75-90,177-180
+  s_4b65461fe9cd07::t_52a395e121aaff 181-182
+src/daemon/telemetry_worker.rs
+  s_9126b2b26f4a5e::t_1ad5b6ef10c11d 1713,1777,1833,1904,1980,2047,2092,2135,2181
+  s_9126b2b26f4a5e::t_58a690fccc3f60 749,755,802,809,818,832,836,840,847-852,858-866,878
+  s_9126b2b26f4a5e::t_0e66ee7041be55 1734-1776,1778-1788
+  s_9126b2b26f4a5e::t_db5231f56003b7 1614-1620
+  s_9126b2b26f4a5e::t_b82e52807e937d 1703,1823,1889,1965,2038,2090,2133,2171
+  s_9126b2b26f4a5e::t_a4805c9f11527e 739-744,757-760,811,823-824
+  s_9126b2b26f4a5e::t_1602ff82434ccd 1733
+tests/daemon_mode.rs
+  s_9126b2b26f4a5e::t_b528990937d4c7 18-21,5265-5281,5283-5303,5307-5350
+  s_9126b2b26f4a5e::t_635439df586265 5282,5305-5306
+  s_9126b2b26f4a5e::t_f21300e35a0d6a 5304
+  s_4b65461fe9cd07::t_712d420304ad3a 5351-5352
+tests/integration/repos/test_repo.rs
+  s_9126b2b26f4a5e::t_b5e30151e33626 1207-1230
+src/config.rs
+  s_9126b2b26f4a5e::t_a4805c9f11527e 458
+  s_9126b2b26f4a5e::t_0b9ea596bfadcf 2521-2527,2531-2534,2537-2538,2540-2542
+  s_9126b2b26f4a5e::t_2c418c299a6c60 317-320,1687-1698
+  s_9126b2b26f4a5e::t_9ee46da77f90af 439-451,453-457,464-476,478-479
+  s_9126b2b26f4a5e::t_635439df586265 462-463,2528-2530,2535-2536,2539
+src/metrics/mod.rs
+  s_9126b2b26f4a5e::t_ea2594cae06dd9 24-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "64f07790194863f73afac96a81888d32cc6fb52e",
+  "prompts": {},
+  "sessions": {
+    "s_4b65461fe9cd07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8510-a458-74b0-b87f-9bfe931cc43b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_9126b2b26f4a5e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8541-8a7f-7a40-aba6-9be645ef17ef",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

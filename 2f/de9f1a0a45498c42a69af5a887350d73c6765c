@@ -1,0 +1,11 @@
+tests/integration/main.rs
+  71f132d171c301c4 71
+tests/integration/rebase_attribution_remaining.rs
+  71f132d171c301c4 1-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "2fde9f1a0a45498c42a69af5a887350d73c6765c",
+  "prompts": {}
+}
