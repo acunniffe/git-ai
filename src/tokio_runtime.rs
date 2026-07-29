@@ -65,10 +65,16 @@ fn build_bounded_runtime(
 }
 
 pub(crate) fn build_daemon_runtime() -> Result<tokio::runtime::Runtime, String> {
-    build_bounded_runtime(
-        DAEMON_RUNTIME_WORKER_THREADS,
-        DAEMON_RUNTIME_MAX_BLOCKING_THREADS,
-    )
+    #[cfg(feature = "test-support")]
+    let worker_threads = std::env::var("GIT_AI_TEST_DAEMON_RUNTIME_WORKER_THREADS")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DAEMON_RUNTIME_WORKER_THREADS);
+    #[cfg(not(feature = "test-support"))]
+    let worker_threads = DAEMON_RUNTIME_WORKER_THREADS;
+
+    build_bounded_runtime(worker_threads, DAEMON_RUNTIME_MAX_BLOCKING_THREADS)
 }
 
 // Post-commit attribution calls this helper from inside the daemon runtime.
