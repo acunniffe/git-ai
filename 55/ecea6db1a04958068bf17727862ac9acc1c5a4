@@ -1,0 +1,40 @@
+install.ps1
+  2f585c61119477e0 370-402
+src/main.rs
+  6149c141e2fa7c9a 43-44
+install.sh
+  2f585c61119477e0 255-260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.37",
+  "base_commit_sha": "55ecea6db1a04958068bf17727862ac9acc1c5a4",
+  "prompts": {
+    "2f585c61119477e0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ac9ff917-24c0-4559-844f-87c8ec6fabdd",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 39,
+      "total_deletions": 0,
+      "accepted_lines": 39,
+      "overriden_lines": 0
+    },
+    "6149c141e2fa7c9a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7caf2030-5f4b-4536-8a61-603968ac803c",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

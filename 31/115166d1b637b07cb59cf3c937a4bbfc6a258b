@@ -1,0 +1,23 @@
+src/commands/upgrade.rs
+  5546c1bf55f71488 999-1009
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "31115166d1b637b07cb59cf3c937a4bbfc6a258b",
+  "prompts": {
+    "5546c1bf55f71488": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4955f811-a4cf-4d0e-93ae-811f83b84223",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 0,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}

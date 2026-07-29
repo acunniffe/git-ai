@@ -1,0 +1,23 @@
+install.ps1
+  s_a2be596689b277::t_2b6306fe1fdedc 600
+  s_a2be596689b277::t_3e35d0c89b184c 361
+  s_a2be596689b277::t_7a565b731b535c 298
+  s_a2be596689b277::t_a6679e14b7c50d 592-595
+  s_a2be596689b277::t_c1c62bddc7ae65 416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "038818538d924fd2f943d97974b3be400f4cf535",
+  "prompts": {},
+  "sessions": {
+    "s_a2be596689b277": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6701ebd2-1093-45c8-b893-dfe78275e794",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

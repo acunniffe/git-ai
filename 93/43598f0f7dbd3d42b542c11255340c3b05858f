@@ -1,0 +1,36 @@
+src/commands/checkpoint_agent/presets/mod.rs
+  s_a5f4b12640a58f::t_c5db6a4f8780b4 1-19,21-55,58-76,80-122
+  s_e1beca86e01012::t_281ffafc3e4cbf 56-57
+  s_a5f4b12640a58f::t_683219131deb73 77-79
+src/commands/checkpoint_agent/presets/claude.rs
+  s_a5f4b12640a58f::t_1a036bbf55666a 8,11-13,33,253-254,23,30-31,111-112,131,152,176,190,204,226,239
+  s_a5f4b12640a58f::t_25e5a974169262 1-7,9-10,14-22,24-29,32,34-61,63-110,113-130,132-151,153-175,177-189,191-203,205-219,222-225,227-238,240-252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "9343598f0f7dbd3d42b542c11255340c3b05858f",
+  "prompts": {},
+  "sessions": {
+    "s_a5f4b12640a58f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cede33a-f5a5-4d2d-8694-f7b2f0278d54",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/950fae245724f97067323a15212e9029a27409290eac69c23e8e9fe56346b2b7"
+    },
+    "s_e1beca86e01012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "487d1aea-0650-42da-8d5c-193e33493c89",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/5d3001048cfead70e2ebadbfaf3ad2001ddda04e6c0d5a3f298f2fb94d975e1a"
+    }
+  }
+}

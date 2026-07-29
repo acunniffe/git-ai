@@ -1,0 +1,28 @@
+tests/integration/refs_unit.rs
+  f4f2b364dfcacebb 1-587
+src/git/refs.rs
+  f4f2b364dfcacebb 24,32,36,40,513
+tests/integration/main.rs
+  f4f2b364dfcacebb 83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.1",
+  "base_commit_sha": "6d93e2ed0f3277e6354fb315d5d8eccad50381b5",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 593,
+      "total_deletions": 600,
+      "accepted_lines": 593,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/20a35b489cfa8ec8ebd975033e06ed932d6c6335f4f195e7d69ae4d847f18086"
+    }
+  }
+}

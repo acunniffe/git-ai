@@ -1,0 +1,25 @@
+src/mdm/agents/codex.rs
+  s_e967952c0c7e38::t_366b1f83ec07d9 436-458
+  s_e967952c0c7e38::t_73ddc228d55c90 1843-1845,1856-1862,1878-1884,1895-1906,1908-1943,1945-1948,1953-2080
+  s_e967952c0c7e38::t_0173183e07c4a3 7
+  s_e967952c0c7e38::t_9cea8d8571a136 148-150,1846-1855,1863-1877,1885-1894,1907,1944,1949-1952
+  s_e967952c0c7e38::t_bc3625bfdff818 99-119,121-147,151-163
+  s_e967952c0c7e38::t_d9c5a3996e48cc 245-246,306,314,320-343
+  s_e967952c0c7e38::t_5cfedcddf0935a 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.8",
+  "base_commit_sha": "d9a83c722e36a80a5ae2769bf7ab37969fe46490",
+  "prompts": {},
+  "sessions": {
+    "s_e967952c0c7e38": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f24da102-09c1-4500-807d-7ec768f873fd",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

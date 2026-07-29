@@ -1,0 +1,21 @@
+installer/windows/idt/InstallE.idt
+  s_c07cec28a64ec3::t_c527c13ed2e8c7 15
+.github/workflows/release.yml
+  s_c07cec28a64ec3::t_bbe24207b1d4f7 699-701
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "7ebd77ed60ea0b1f7236e56dd473ebac1de4e127",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}
