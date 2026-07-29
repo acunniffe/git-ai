@@ -129,7 +129,7 @@ impl UpdateCache {
 struct ChannelInfo {
     version: String,
     checksum: String,
-    created_at: Option<String>,
+    created_at: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -465,9 +465,13 @@ fn persist_update_state_with_next_check(
 ) {
     let mut cache = UpdateCache::new(channel);
     cache.last_checked_at = current_timestamp();
-    cache.next_check_after = Some(next_check_after.unwrap_or_else(|| {
-        regular_next_check_after(cache.last_checked_at, channel, upgrade_jitter_seconds)
-    }));
+    let regular_after =
+        regular_next_check_after(cache.last_checked_at, channel, upgrade_jitter_seconds);
+    cache.next_check_after = Some(
+        next_check_after
+            .map(|next_check_after| next_check_after.max(regular_after))
+            .unwrap_or(regular_after),
+    );
     cache.upgrade_jitter_seconds = Some(upgrade_jitter_seconds);
     cache.minimum_package_upgrade_age_seconds = Some(minimum_package_upgrade_age_seconds);
     if let Some(release) = release {
@@ -649,7 +653,7 @@ fn release_from_response(
     }
 
     let created_at =
-        parse_optional_release_created_at(channel_info.created_at.as_deref(), channel, &tag);
+        parse_optional_release_created_at(channel_info.created_at.as_ref(), channel, &tag);
 
     Ok(ChannelRelease {
         tag,
@@ -677,14 +681,31 @@ fn parse_release_created_at(value: &str) -> Result<u64, String> {
         .map_err(|_| format!("Release created_at '{}' is before Unix epoch", value))
 }
 
+fn parse_release_created_at_value(value: &serde_json::Value) -> Result<Option<u64>, String> {
+    match value {
+        serde_json::Value::Null => Ok(None),
+        serde_json::Value::String(value) => parse_release_created_at(value).map(Some),
+        serde_json::Value::Number(value) => value.as_u64().map(Some).ok_or_else(|| {
+            format!(
+                "Invalid release created_at '{}': expected non-negative Unix seconds",
+                value
+            )
+        }),
+        _ => Err(format!(
+            "Invalid release created_at '{}': expected ISO-8601 string or Unix seconds",
+            value
+        )),
+    }
+}
+
 fn parse_optional_release_created_at(
-    value: Option<&str>,
+    value: Option<&serde_json::Value>,
     channel: UpdateChannel,
     tag: &str,
 ) -> Option<u64> {
     let value = value?;
-    match parse_release_created_at(value) {
-        Ok(created_at) => Some(created_at),
+    match parse_release_created_at_value(value) {
+        Ok(created_at) => created_at,
         Err(err) => {
             eprintln!("Warning: {}", err);
             log_message(
@@ -1600,7 +1621,14 @@ mod tests {
         assert_eq!(action, UpgradeAction::ReleaseTooNew);
         let cache = read_update_cache().unwrap();
         assert!(!cache.update_available());
-        assert_eq!(cache.next_check_after, Some(created_at + minimum_age));
+        let next_check_after = cache.next_check_after.unwrap();
+        assert!(
+            next_check_after
+                >= cache
+                    .last_checked_at
+                    .saturating_add(UPDATE_CHECK_INTERVAL_SECS)
+        );
+        assert!(next_check_after > created_at + minimum_age);
 
         clear_test_cache_dir();
     }
@@ -2199,7 +2227,7 @@ mod tests {
             ChannelInfo {
                 version: "v1.2.3".to_string(),
                 checksum: "abc123def456".to_string(),
-                created_at: Some("2026-06-05T23:09:48.000Z".to_string()),
+                created_at: Some(serde_json::json!("2026-06-05T23:09:48.000Z")),
             },
         );
         let releases = ReleasesResponse { channels };
@@ -2213,14 +2241,30 @@ mod tests {
     }
 
     #[test]
-    fn test_release_from_response_created_at_unix_seconds() {
+    fn test_release_from_response_created_at_unix_seconds_string() {
         let mut channels = HashMap::new();
         channels.insert(
             "latest".to_string(),
             ChannelInfo {
                 version: "v1.2.3".to_string(),
                 checksum: "abc123def456".to_string(),
-                created_at: Some("1780700988".to_string()),
+                created_at: Some(serde_json::json!("1780700988")),
+            },
+        );
+        let release =
+            release_from_response(ReleasesResponse { channels }, UpdateChannel::Latest).unwrap();
+        assert_eq!(release.created_at, Some(1780700988));
+    }
+
+    #[test]
+    fn test_release_from_response_created_at_unix_seconds_number() {
+        let mut channels = HashMap::new();
+        channels.insert(
+            "latest".to_string(),
+            ChannelInfo {
+                version: "v1.2.3".to_string(),
+                checksum: "abc123def456".to_string(),
+                created_at: Some(serde_json::json!(1780700988_u64)),
             },
         );
         let release =
@@ -2236,7 +2280,23 @@ mod tests {
             ChannelInfo {
                 version: "v1.2.3".to_string(),
                 checksum: "abc123def456".to_string(),
-                created_at: Some("not-a-date".to_string()),
+                created_at: Some(serde_json::json!("not-a-date")),
+            },
+        );
+        let release =
+            release_from_response(ReleasesResponse { channels }, UpdateChannel::Latest).unwrap();
+        assert_eq!(release.created_at, None);
+    }
+
+    #[test]
+    fn test_release_from_response_invalid_created_at_type_is_ignored() {
+        let mut channels = HashMap::new();
+        channels.insert(
+            "latest".to_string(),
+            ChannelInfo {
+                version: "v1.2.3".to_string(),
+                checksum: "abc123def456".to_string(),
+                created_at: Some(serde_json::json!({"unexpected": true})),
             },
         );
         let release =
