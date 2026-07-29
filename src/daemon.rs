@@ -4238,13 +4238,19 @@ impl ActorDaemonCoordinator {
 
     async fn wait_for_trace_ingest_seq(&self, target: u64) {
         loop {
+            // Enroll in the notification BEFORE checking the condition.
+            // `Notify::notify_waiters` only wakes already-enrolled waiters, so
+            // checking first would leave a window where the final progress
+            // notification is lost and the waiter stalls until shutdown.
+            let progress = self.trace_ingest_progress_notify.notified();
+            tokio::pin!(progress);
+            progress.as_mut().enable();
             let processed = self.processed_trace_ingest_seq.load(Ordering::Acquire) as u64;
             if processed >= target {
                 return;
             }
-            let progress = self.trace_ingest_progress_notify.notified();
             tokio::select! {
-                _ = progress => {}
+                _ = &mut progress => {}
                 _ = self.wait_for_shutdown() => return,
             }
         }
@@ -6401,15 +6407,19 @@ impl ActorDaemonCoordinator {
 
     async fn wait_for_checkpoint_admission_through(&self, target: u64) {
         loop {
+            // Enroll before checking (see wait_for_trace_ingest_seq): the
+            // final admission's notify_waiters must not race the load.
+            let progress = self.checkpoint_progress_notify.notified();
+            tokio::pin!(progress);
+            progress.as_mut().enable();
             let processed = self
                 .processed_checkpoint_receipt_seq
                 .load(Ordering::Acquire) as u64;
             if processed >= target {
                 return;
             }
-            let progress = self.checkpoint_progress_notify.notified();
             tokio::select! {
-                _ = progress => {}
+                _ = &mut progress => {}
                 _ = self.wait_for_shutdown() => return,
             }
         }
@@ -6417,15 +6427,15 @@ impl ActorDaemonCoordinator {
 
     async fn wait_for_no_unadmitted_checkpoints(&self) {
         loop {
-            if self.unadmitted_checkpoints.load(Ordering::Acquire) == 0 {
-                return;
-            }
+            // Enroll before checking (see wait_for_trace_ingest_seq).
             let progress = self.checkpoint_progress_notify.notified();
+            tokio::pin!(progress);
+            progress.as_mut().enable();
             if self.unadmitted_checkpoints.load(Ordering::Acquire) == 0 {
                 return;
             }
             tokio::select! {
-                _ = progress => {}
+                _ = &mut progress => {}
                 _ = self.wait_for_shutdown() => return,
             }
         }
