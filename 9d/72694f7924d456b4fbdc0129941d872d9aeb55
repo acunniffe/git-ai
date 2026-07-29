@@ -1,0 +1,38 @@
+src/authorship/stats.rs
+  human 99-100
+  a46b69b 101
+  ba62dad 93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "9d72694f7924d456b4fbdc0129941d872d9aeb55",
+  "prompts": {
+    "a46b69b": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1763479347424878000",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 2
+    },
+    "ba62dad": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1763479339248561000",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

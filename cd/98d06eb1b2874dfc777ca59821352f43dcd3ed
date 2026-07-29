@@ -1,0 +1,26 @@
+tests/integration/fuzzer/engine.rs
+  s_af2d349a5e032c::t_cdf56eb4983a8a 13-19,25-30
+  s_af2d349a5e032c::t_f7f25d4bbcf707 1003-1094
+tests/integration/fuzzer/generators.rs
+  s_af2d349a5e032c::t_8d7106b6c73470 222,229-236
+  s_af2d349a5e032c::t_cc8d5b5ff7cf0a 94-100
+tests/integration/fuzzer/operations.rs
+  s_af2d349a5e032c::t_831f4e1bd9603c 3206-3420,3422-3475,3484-3553
+  s_af2d349a5e032c::t_51e154167f7a7a 3421,3476-3483
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "cd98d06eb1b2874dfc777ca59821352f43dcd3ed",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

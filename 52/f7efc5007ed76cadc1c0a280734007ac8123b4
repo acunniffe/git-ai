@@ -1,0 +1,588 @@
+src/commands/install_hooks.rs
+  5f4ad1a4e8537eb7 4,94,99-101,223-225
+  6e76289 140,142,144,238,243,264
+  ba39693df25f4f2a 95-96,216-217,222
+  740f8b30d3762afe 7,9-38,80,82,89,92,204
+  cad771d35272a2a6 52,192-195,320-321
+  cb4f16c756527153 2-3,5-6,39-51,53-55,57-60,62-64,66,71-72,78,81,85-86,88,102,104-106,108-113,118-120,122-123,125,127,129,134,136-138,141,143,147-169,171-172,175,180,186,188-191,207-214,226,228-230,232-237,240-242,245,247-249,251-259,261-263,265-267,269-272,276-281,283-297,300-302,305-307,312-319,322
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.37",
+  "base_commit_sha": "52f7efc5007ed76cadc1c0a280734007ac8123b4",
+  "prompts": {
+    "5f4ad1a4e8537eb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73dc2433-1436-4e3a-8c4a-5d0a57540f45",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 476,
+      "total_deletions": 213,
+      "accepted_lines": 266,
+      "overriden_lines": 2
+    },
+    "740f8b30d3762afe": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "de5e11c7-4620-490a-ad5e-99f98c5ec1aa",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "can we make this return a Hashmap of tools and @src/commands/install_hooks.rs:37-38 and a status\n\n\"not-found\" \"installed\" \"already-installed\"",
+          "timestamp": "2025-12-31T13:13:41.549Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you modify the `run` function to return a HashMap with tool installation statuses. Let me first read the current implementation to understand the structure.",
+          "timestamp": "2025-12-31T13:13:45.937Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 200,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 300,
+            "offset": 200,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I understand the structure. I'll modify the function to return a HashMap with tool statuses. Let me also check if there are more tools like Windsurf:",
+          "timestamp": "2025-12-31T13:13:59.717Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs",
+            "pattern": "check_windsurf"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs",
+            "pattern": "^fn check_"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Now I'll modify the function to return a HashMap with the installation status for each tool. Here's what I'll do:\n\n1. Add the HashMap import\n2. Change the return type\n3. Track status for each tool (claude-code, cursor, vscode, opencode, gemini)\n4. Return the HashMap",
+          "timestamp": "2025-12-31T13:14:07.383Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me update the `async_run` function to track and return the status HashMap:",
+          "timestamp": "2025-12-31T13:14:21.418Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 110,
+            "offset": 98,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 210,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check for any linter errors and see where this function is called:",
+          "timestamp": "2025-12-31T13:15:38.924Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "install_hooks::run"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check the caller to see if it needs to be updated:",
+          "timestamp": "2025-12-31T13:15:43.032Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 20,
+            "offset": 75,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me update the caller to handle the new return type:",
+          "timestamp": "2025-12-31T13:15:47.179Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The linter errors are unrelated to our changes. Let me verify our changes by reading the updated function:",
+          "timestamp": "2025-12-31T13:15:56.209Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 60,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Let me verify the changes compile correctly:",
+          "timestamp": "2025-12-31T13:15:59.957Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo check --quiet 2>&1 | head -20",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo build --quiet 2>&1 | grep -E \"error\\[|error:\" | head -20",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo build 2>&1 | tail -5",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Excellent! The changes compiled successfully. Let me create a simple example to show you how the updated function works:\n\n```rust\n// The function now returns a HashMap with tool installation statuses\npub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError>\n\n// Example return value:\n// HashMap {\n//     \"claude-code\": \"not-found\",\n//     \"cursor\": \"installed\",\n//     \"vscode\": \"already-installed\",\n//     \"opencode\": \"not-found\",\n//     \"gemini\": \"not-found\",\n// }\n```\n\n## Summary of Changes\n\nI've successfully modified the `install_hooks::run` function to return a `HashMap<String, String>` with the following statuses for each tool:\n\n### Tools tracked:\n- **claude-code**\n- **cursor** \n- **vscode**\n- **opencode**\n- **gemini**\n\n### Possible statuses:\n- **\"not-found\"** - Tool was not detected or failed to install\n- **\"installed\"** - Hooks/extensions were successfully installed or updated\n- **\"already-installed\"** - Hooks/extensions were already up to date\n\n### Changes made:\n1. ✅ Added `HashMap` import\n2. ✅ Changed return type from `Result<(), GitAiError>` to `Result<HashMap<String, String>, GitAiError>`\n3. ✅ Updated `async_run` function to track status for each tool\n4. ✅ Added status tracking for all 5 tools throughout the installation process\n5. ✅ Updated the caller in `git_ai_handlers.rs` to handle the new return type\n6. ✅ Verified compilation - builds successfully with no errors!\n\nThe function maintains all its existing behavior (spinners, diffs, error messages) while now also returning a structured HashMap of installation statuses.",
+          "timestamp": "2025-12-31T13:16:22.095Z"
+        },
+        {
+          "type": "user",
+          "text": "can we use an enum instead and then have it use a to_hashmap impl that goes string -> string",
+          "timestamp": "2025-12-31T13:16:27.397Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Great idea! Let me refactor this to use an enum with a conversion method. I'll create a proper status enum and add a `to_hashmap` implementation.",
+          "timestamp": "2025-12-31T13:16:48.615Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check for linter errors and verify the build:",
+          "timestamp": "2025-12-31T13:20:34.196Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo build --quiet 2>&1 | grep -E \"error\\[|Compiling git-ai|Finished\" | head -10",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo build 2>&1 | tail -10",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Let me verify the implementation by reading the updated code:",
+          "timestamp": "2025-12-31T13:20:46.308Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 90,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/install_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Excellent! Now let me create a simple test to demonstrate the usage:",
+          "timestamp": "2025-12-31T13:20:53.398Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Now let me write a quick summary document showing how to use the new enum-based API:",
+          "timestamp": "2025-12-31T13:20:57.815Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --lib install_hooks --quiet 2>&1 | head -20",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Great! The code compiles and tests pass. Let me create a simple example showing the new API:\n\n```rust\n// Example usage of the new enum-based API\n\nuse std::collections::HashMap;\nuse crate::commands::install_hooks::{InstallStatus, to_hashmap};\n\n// Internal function returns HashMap<String, InstallStatus>\nfn internal_install() -> HashMap<String, InstallStatus> {\n    let mut statuses = HashMap::new();\n    statuses.insert(\"cursor\".to_string(), InstallStatus::Installed);\n    statuses.insert(\"vscode\".to_string(), InstallStatus::AlreadyInstalled);\n    statuses.insert(\"claude-code\".to_string(), InstallStatus::NotFound);\n    statuses\n}\n\n// Public API converts to HashMap<String, String>\nlet result = to_hashmap(internal_install());\n// result = {\n//     \"cursor\": \"installed\",\n//     \"vscode\": \"already-installed\", \n//     \"claude-code\": \"not-found\"\n// }\n\n// You can also use the enum directly\nlet status = InstallStatus::Installed;\nassert_eq!(status.as_str(), \"installed\");\n```\n\n## Summary\n\nI've successfully refactored the code to use an enum-based approach:\n\n### New Types\n\n**`InstallStatus` enum** with three variants:\n- `NotFound` - Tool not detected or failed to install\n- `Installed` - Successfully installed or updated\n- `AlreadyInstalled` - Already up to date\n\n### Key Features\n\n1. **Type-safe internally**: The `async_run` function now returns `HashMap<String, InstallStatus>` for type safety\n2. **String conversion**: The `to_hashmap()` function converts `HashMap<String, InstallStatus>` → `HashMap<String, String>`\n3. **Clean API**: The public `run()` function still returns `HashMap<String, String>` for easy consumption\n4. **Helper method**: `InstallStatus::as_str()` provides the string representation\n\n### Benefits\n\n- ✅ Type-safe enum prevents typos and invalid statuses\n- ✅ Easy to extend with new status variants\n- ✅ Clear documentation via enum variants\n- ✅ Backwards compatible - still returns `HashMap<String, String>`\n- ✅ Compiles successfully with no errors!\n\nThe conversion happens at the boundary between internal logic (enum) and external API (strings), giving you the best of both worlds!",
+          "timestamp": "2025-12-31T13:21:02.456Z"
+        },
+        {
+          "type": "user",
+          "text": "@src/commands/git_ai_handlers.rs:98-99 send this in the log_message",
+          "timestamp": "2025-12-31T13:24:24.912Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me read the context around this code to understand how to properly pass the statuses to `log_message`:",
+          "timestamp": "2025-12-31T13:24:31.423Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 25,
+            "offset": 80,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I can see the issue - `statuses` is a `HashMap<String, String>` but `Value::Object` expects a `serde_json::Map<String, Value>`. Let me check the imports and fix the conversion:",
+          "timestamp": "2025-12-31T13:24:37.454Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 30,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check what `log_message` expects:",
+          "timestamp": "2025-12-31T13:24:43.040Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "^pub fn log_message"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll fix the conversion to properly pass the statuses HashMap to `log_message`:",
+          "timestamp": "2025-12-31T13:24:47.751Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me check if there are any linter errors and verify the build:",
+          "timestamp": "2025-12-31T13:24:54.377Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo build --quiet 2>&1 | grep -E \"error\\[|Finished\" | head -5",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo build 2>&1 | tail -5",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! The code compiles successfully. Let me verify the change:",
+          "timestamp": "2025-12-31T13:25:03.733Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 12,
+            "offset": 95,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/git_ai_handlers.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! ✅ I've successfully updated the code to send the installation statuses in the `log_message`. \n\n## What Changed\n\nThe `install-hooks` command now logs the installation statuses for all tools:\n\n```rust\nmatch commands::install_hooks::run(&args[1..]) {\n    Ok(statuses) => {\n        if let Ok(statuses_value) = serde_json::to_value(&statuses) {\n            log_message(\"install-hooks\", \"info\", Some(statuses_value));\n        }\n    }\n    Err(e) => {\n        eprintln!(\"Install hooks failed: {}\", e);\n        std::process::exit(1);\n    }\n}\n```\n\nThe `statuses` HashMap (containing tool names → status strings) is now converted to a `serde_json::Value` and passed to `log_message`, which will log something like:\n\n```json\n{\n  \"message\": \"install-hooks\",\n  \"level\": \"info\",\n  \"context\": {\n    \"cursor\": \"installed\",\n    \"vscode\": \"already-installed\",\n    \"claude-code\": \"not-found\",\n    \"opencode\": \"not-found\",\n    \"gemini\": \"not-found\"\n  }\n}\n```\n\nThe code compiles successfully with no errors! 🎉",
+          "timestamp": "2025-12-31T13:25:08.566Z"
+        }
+      ],
+      "total_additions": 109,
+      "total_deletions": 41,
+      "accepted_lines": 70,
+      "overriden_lines": 2
+    },
+    "ba39693df25f4f2a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "afa9600e-5a42-4355-bcbb-849a893c7c9a",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 51,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    },
+    "cad771d35272a2a6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "97b1bb12-f049-4e83-931f-dd8e4ee9068d",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Update @src/commands/install_hooks.rs with support for gemini. It's basically the same pattern as with Claude, except the name of the cli binary is `gemini`, the settings path is ~/.gemini/settings.json, and the hooks we need to add look like this:\n\n\n\n  \"hooks\": {\n\n\n\n    \"BeforeTool\": [\n\n      {\n\n        \"matcher\": \"write_file|replace\",\n\n        \"hooks\": [\n\n          {\n\n            \"type\": \"command\",\n\n            \"command\": \"git-ai checkpoint gemini --hook-input stdin\"\n\n          }\n\n        ]\n\n      }\n\n    ],\n\n    \"AfterTool\": [\n\n      {\n\n        \"matcher\": \"write_file|replace\",\n\n        \"hooks\": [\n\n          {\n\n            \"type\": \"command\",\n\n            \"command\": \"git-ai checkpoint gemini --hook-input stdin\"\n\n          }\n\n        ]\n\n      }\n\n    ]\n\n  },\n\n\n\nIn the settings file, we will also need to enable hooks like so:\n\n\n\n  \"tools\": {\n\n    \"enableHooks\": true\n\n  },",
+          "timestamp": "2025-12-10T16:29:24.367Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Adding Gemini support following the Claude Code pattern. Reviewing the Claude implementation, then adding Gemini equivalents.",
+          "timestamp": "2025-12-10T16:29:30.221Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {}
+        }
+      ],
+      "total_additions": 1264,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "cb4f16c756527153": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f14e63e-5526-40d8-bfac-ea01d4d9f2ca",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 3168,
+      "total_deletions": 3215,
+      "accepted_lines": 3124,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,29 @@
+test_bash_detection.txt
+  b7f350504b25aace 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.25",
+  "base_commit_sha": "50193e2277f4d7bdf5597f37b3c5cbdcc2347a76",
+  "prompts": {
+    "b7f350504b25aace": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "test-session",
+        "model": "unknown"
+      },
+      "human_author": "shawn.tian <shawn.tian@bkyo.io>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "test",
+          "timestamp": "2025-01-05T10:00:00Z"
+        }
+      ],
+      "total_additions": 3,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}

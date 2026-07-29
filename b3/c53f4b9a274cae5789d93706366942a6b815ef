@@ -1,0 +1,49 @@
+src/http.rs
+  s_ba4e223de8de79::t_85fb0c157b7f7d 71,73-80,82-83
+  s_ba4e223de8de79::t_5b2425fd0f26a6 1-2,24-70,72,81,84-150,154-164,166-168,171-177,180-268
+src/mdm/jetbrains/download.rs
+  s_ba4e223de8de79::t_4a65016b5f5963 20-21
+src/api/client.rs
+  s_ba4e223de8de79::t_19a11c83bb3348 193-195
+  s_ba4e223de8de79::t_c7ff51c25ff0b9 364
+  s_ba4e223de8de79::t_0be70f329935db 114-116,119-121
+  s_ba4e223de8de79::t_37e2313e03b3f3 229,232,234,238,241-243
+  s_ba4e223de8de79::t_51a315d9dadc36 207-208,211,213,217,220-221
+src/repo_url.rs
+  s_ba4e223de8de79::t_86eea9aeb1c532 7-10,20-22,28-48,51,53-55,57,63,66-71,74,180
+src/daemon/telemetry_worker.rs
+  s_ba4e223de8de79::t_84534b2d186702 615-618
+  s_ba4e223de8de79::t_42deb28f845d13 595-599
+  s_ba4e223de8de79::t_bcfc7706f9fa5e 519-521
+src/commands/upgrade.rs
+  s_ba4e223de8de79::t_09c55505dfc693 407-408
+  s_ba4e223de8de79::t_5a1cfba0573d5e 368-370
+src/ci/gitlab.rs
+  s_ba4e223de8de79::t_10d34566f12d65 81-83
+src/auth/client.rs
+  s_ba4e223de8de79::t_204191169952b7 63,101,145
+  s_ba4e223de8de79::t_632585415502c6 62,100,144
+  s_ba4e223de8de79::t_96f9dbff5ca330 61,99,143
+tests/integration/tls_native_certs.rs
+  s_ba4e223de8de79::t_48ec109edbe2f0 3
+Cargo.toml
+  s_ba4e223de8de79::t_43740e38f7e438 25-26
+  s_ba4e223de8de79::t_f0f2fa7217eec2 8
+  s_ba4e223de8de79::t_d5aed17c1690cc 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "b3c53f4b9a274cae5789d93706366942a6b815ef",
+  "prompts": {},
+  "sessions": {
+    "s_ba4e223de8de79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "81f985e5-0182-4a69-b30b-d3d0cb3a9b96",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

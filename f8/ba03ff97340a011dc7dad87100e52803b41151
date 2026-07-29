@@ -1,0 +1,39 @@
+tests/integration/session_event_attribution.rs
+  s_5822efdedb26cc::t_bf86917825e228 1-223
+tests/integration/main.rs
+  s_5822efdedb26cc::t_5c0c5368074e13 115
+docs/session-event-attribution-recovery-plan.md
+  s_5822efdedb26cc::t_d748bec0929b81 1-212
+src/metrics/db.rs
+  s_5822efdedb26cc::t_459e62aa7946ab 1224-1259
+  s_5822efdedb26cc::t_89813724d9e155 1062,1942-1971,1973-2012,2014-2040,2045-2057
+  s_5822efdedb26cc::t_bf2fdab3bead42 211-231
+  s_5822efdedb26cc::t_142c0fd68926bc 91-103,965-1061
+  s_5822efdedb26cc::t_788531ee482b8f 1972,2013
+  s_5822efdedb26cc::t_b6a668380f1652 2041-2044
+  s_5822efdedb26cc::t_adc5b5dfd88761 1063
+src/authorship/attribution_recovery.rs
+  s_5822efdedb26cc::t_48b71bb46ae56b 262-263,267-273
+  s_5822efdedb26cc::t_70e705331adc07 5,11,21,52-60,186-261,264-266,274-295
+  s_5822efdedb26cc::t_b6a668380f1652 605-606
+  s_5822efdedb26cc::t_4f90427b84a7ca 296,300,699-726
+  s_5822efdedb26cc::t_4dc1e510607032 509-604,607-634
+  s_5822efdedb26cc::t_1b9b8065d4fa29 297,1036-1055,1199-1250
+  s_5822efdedb26cc::t_35e54163efb6e5 298-299,301,1251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.1",
+  "base_commit_sha": "f8ba03ff97340a011dc7dad87100e52803b41151",
+  "prompts": {},
+  "sessions": {
+    "s_5822efdedb26cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efcbc-8f48-7602-a00f-b20b39b170ef",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
