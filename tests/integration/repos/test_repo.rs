@@ -1154,6 +1154,28 @@ impl Default for TestRepo {
 }
 
 impl TestRepo {
+    fn new_with_paths(
+        path: PathBuf,
+        test_home: PathBuf,
+        test_db_path: PathBuf,
+        daemon_scope: DaemonTestScope,
+        base_repo_path: Option<PathBuf>,
+        base_test_db_path: Option<PathBuf>,
+    ) -> Self {
+        Self {
+            path,
+            feature_flags: FeatureFlags::default(),
+            config_patch: None,
+            test_db_path,
+            test_home,
+            daemon_scope,
+            daemon_process: None,
+            _base_repo_path: base_repo_path,
+            _base_test_db_path: base_test_db_path,
+            daemon_family_key: OnceLock::new(),
+        }
+    }
+
     fn parsed_git_invocation_for_tracking(
         &self,
         args: &[&str],
@@ -1412,18 +1434,17 @@ impl TestRepo {
         // daemon writes align.
         let wt_test_db_path = base_test_db_path.clone();
 
-        let mut repo = Self {
-            path: worktree_path,
-            feature_flags,
-            config_patch,
-            test_db_path: wt_test_db_path,
-            test_home: base_test_home,
+        let mut repo = Self::new_with_paths(
+            worktree_path,
+            base_test_home,
+            wt_test_db_path,
             daemon_scope,
-            daemon_process,
-            _base_repo_path: Some(base_path),
-            _base_test_db_path: Some(base_test_db_path),
-            daemon_family_key: OnceLock::new(),
-        };
+            Some(base_path),
+            Some(base_test_db_path),
+        );
+        repo.feature_flags = feature_flags;
+        repo.config_patch = config_patch;
+        repo.daemon_process = daemon_process;
 
         repo.apply_default_config_patch();
         repo
@@ -1443,18 +1464,8 @@ impl TestRepo {
         // Clone from cached template (git init + config + symbolic-ref already done)
         clone_template_to(&path);
 
-        let mut repo = Self {
-            path,
-            feature_flags: FeatureFlags::default(),
-            config_patch: None,
-            test_db_path,
-            test_home,
-            daemon_scope,
-            daemon_process: None,
-            _base_repo_path: None,
-            _base_test_db_path: None,
-            daemon_family_key: OnceLock::new(),
-        };
+        let mut repo =
+            Self::new_with_paths(path, test_home, test_db_path, daemon_scope, None, None);
 
         repo.apply_default_config_patch();
         repo.setup_daemon_mode();
@@ -1474,18 +1485,14 @@ impl TestRepo {
 
         clone_template_to(&path);
 
-        let mut repo = Self {
+        let mut repo = Self::new_with_paths(
             path,
-            feature_flags: FeatureFlags::default(),
-            config_patch: None,
-            test_db_path,
             test_home,
-            daemon_scope: DaemonTestScope::Dedicated,
-            daemon_process: None,
-            _base_repo_path: None,
-            _base_test_db_path: None,
-            daemon_family_key: OnceLock::new(),
-        };
+            test_db_path,
+            DaemonTestScope::Dedicated,
+            None,
+            None,
+        );
 
         repo.apply_default_config_patch();
 
@@ -1558,18 +1565,14 @@ impl TestRepo {
             );
         }
 
-        let mut repo = Self {
-            path: worktree_path,
-            feature_flags: FeatureFlags::default(),
-            config_patch: None,
-            test_db_path,
+        let mut repo = Self::new_with_paths(
+            worktree_path,
             test_home,
+            test_db_path,
             daemon_scope,
-            daemon_process: None,
-            _base_repo_path: Some(main_path),
-            _base_test_db_path: None,
-            daemon_family_key: OnceLock::new(),
-        };
+            Some(main_path),
+            None,
+        );
 
         repo.apply_default_config_patch();
         repo.setup_daemon_mode();
@@ -1592,18 +1595,7 @@ impl TestRepo {
         // Clone from cached bare template
         clone_bare_template_to(&path);
 
-        let repo = Self {
-            path,
-            feature_flags: FeatureFlags::default(),
-            config_patch: None,
-            test_db_path,
-            test_home,
-            daemon_scope,
-            daemon_process: None,
-            _base_repo_path: None,
-            _base_test_db_path: None,
-            daemon_family_key: OnceLock::new(),
-        };
+        let repo = Self::new_with_paths(path, test_home, test_db_path, daemon_scope, None, None);
 
         let mut repo = repo;
         repo.setup_daemon_mode();
@@ -1640,18 +1632,14 @@ impl TestRepo {
         let upstream_test_db_path = resolve_test_db_path(&base, upstream_n, &upstream_test_home);
         clone_bare_template_to(&upstream_path);
 
-        let mut upstream = Self {
-            path: upstream_path.clone(),
-            feature_flags: FeatureFlags::default(),
-            config_patch: None,
-            test_db_path: upstream_test_db_path,
-            test_home: upstream_test_home,
+        let mut upstream = Self::new_with_paths(
+            upstream_path.clone(),
+            upstream_test_home,
+            upstream_test_db_path,
             daemon_scope,
-            daemon_process: None,
-            _base_repo_path: None,
-            _base_test_db_path: None,
-            daemon_family_key: OnceLock::new(),
-        };
+            None,
+            None,
+        );
 
         // Ensure the upstream default branch is named "main" for consistency across Git versions
         let _ = upstream.git(&["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -1681,18 +1669,14 @@ impl TestRepo {
         // Configure mirror with user credentials
         set_repo_user_config(&mirror_path);
 
-        let mut mirror = Self {
-            path: mirror_path,
-            feature_flags: FeatureFlags::default(),
-            config_patch: None,
-            test_db_path: mirror_test_db_path,
-            test_home: mirror_test_home,
+        let mut mirror = Self::new_with_paths(
+            mirror_path,
+            mirror_test_home,
+            mirror_test_db_path,
             daemon_scope,
-            daemon_process: None,
-            _base_repo_path: None,
-            _base_test_db_path: None,
-            daemon_family_key: OnceLock::new(),
-        };
+            None,
+            None,
+        );
 
         // Ensure the default branch is named "main" for consistency across Git versions
         let _ = mirror.git(&["symbolic-ref", "HEAD", "refs/heads/main"]);
@@ -1726,18 +1710,14 @@ impl TestRepo {
             clone_template_to(path);
         }
 
-        let mut repo = Self {
-            path: path.to_path_buf(),
-            feature_flags: FeatureFlags::default(),
-            config_patch: None,
-            test_db_path,
+        let mut repo = Self::new_with_paths(
+            path.to_path_buf(),
             test_home,
+            test_db_path,
             daemon_scope,
-            daemon_process: None,
-            _base_repo_path: None,
-            _base_test_db_path: None,
-            daemon_family_key: OnceLock::new(),
-        };
+            None,
+            None,
+        );
 
         repo.apply_default_config_patch();
         repo.setup_daemon_mode();
