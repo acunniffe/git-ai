@@ -1,0 +1,54 @@
+src/daemon/telemetry_worker.rs
+  s_94fe8c3959d094::t_d948896621d7b8 533-534,1545
+  s_94fe8c3959d094::t_a4f9dce559e6b6 99-107
+  s_94fe8c3959d094::t_65204f8ce1756e 569-570,572,574-576
+  s_94fe8c3959d094::t_14f2aaa83347dd 577,1544,1547,1549-1551,1554,1580-1581
+  s_94fe8c3959d094::t_d4055d948e291e 1546,1553
+  s_94fe8c3959d094::t_1cdee43e0c82dc 578-579
+  s_b845f7fedbdc2d::t_a5798e6d98bcc5 1384,1548
+  s_b845f7fedbdc2d::t_4a80b9f2ef9617 1552,1555-1579
+  s_b845f7fedbdc2d::t_2c9f3c3e03da10 38,50-55,514-518,524,531-532,535-538,543,554,557,571,573,584,613,617,621
+  s_b845f7fedbdc2d::t_d0c2bbc8edacb6 622,624-630,632-643,645-662,1264,1271,1278,1286,1289-1293,1295-1296,1300-1301,1303-1306,1308-1312,1314,1316-1322,1324,1326-1349,1352-1358,1374-1383,1385-1398,1400,1404,1406
+  s_b845f7fedbdc2d::t_9407479fe112c6 1403
+src/notes/db.rs
+  s_94fe8c3959d094::t_90ed7f45b26e70 468,475-476
+  s_94fe8c3959d094::t_8f6740710cf261 808,810-833,835-836
+  s_b845f7fedbdc2d::t_333a2d2ed8506e 809,834
+  s_b845f7fedbdc2d::t_9407479fe112c6 465-467,469-474
+src/commands/await.rs
+  s_94fe8c3959d094::t_5043f4cfa06e50 39-45
+  s_94fe8c3959d094::t_d7cc6594c3f252 133
+  s_94fe8c3959d094::t_135376e5b71954 7,96,132,151-161
+  s_94fe8c3959d094::t_fb9ac0f5e4dcfb 131,134-135
+  s_94fe8c3959d094::t_c7db2bad0e84d2 136-137
+  s_94fe8c3959d094::t_7686d313ad2123 162
+tests/daemon_mode.rs
+  s_94fe8c3959d094::t_47f505015e6d3d 5164-5177
+  s_94fe8c3959d094::t_ee90225fd566e0 5057-5066
+src/daemon.rs
+  s_b845f7fedbdc2d::t_2c9f3c3e03da10 6213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "3be3a472ece78e47e43b077fddbb5b93c9c190fb",
+  "prompts": {},
+  "sessions": {
+    "s_94fe8c3959d094": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f67ac-1fb7-7713-9cc6-b6917eba46fa",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b845f7fedbdc2d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6dbb-fcb2-7772-a77a-ccfbfe3fcda0",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

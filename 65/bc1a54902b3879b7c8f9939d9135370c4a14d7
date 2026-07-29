@@ -1,0 +1,28 @@
+src/git/diff_tree_to_tree.rs
+  24aced2a7fde299c 180
+src/git/repository.rs
+  24aced2a7fde299c 1718,1769,1844,1894
+src/commands/status.rs
+  24aced2a7fde299c 270-271,273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "65bc1a54902b3879b7c8f9939d9135370c4a14d7",
+  "prompts": {
+    "24aced2a7fde299c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f19a4b97-1cfc-455a-b34a-7c2afdbb15a0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 32,
+      "total_deletions": 33,
+      "accepted_lines": 8,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/5abf90ba3d4a48bea7ebb211dbb47f96bec3ab3e06322a01e9ce8240ecd7e426"
+    }
+  }
+}

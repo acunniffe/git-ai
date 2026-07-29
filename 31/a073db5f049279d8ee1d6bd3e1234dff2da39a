@@ -1,0 +1,24 @@
+tests/integration/bash_tool_provenance.rs
+  d68470bacd2b5112 1445,1527
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "31a073db5f049279d8ee1d6bd3e1234dff2da39a",
+  "prompts": {
+    "d68470bacd2b5112": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b9725fad-dc6a-4664-be74-e46286421977",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/f4638f95866777c784d78c1599b6e8d9adc2c4136bb0fc354298b8eb6162283a"
+    }
+  }
+}

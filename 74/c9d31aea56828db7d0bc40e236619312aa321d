@@ -1,0 +1,23 @@
+.github/workflows/coverage.yml
+  d46277b929576d9f 3-5,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "74c9d31aea56828db7d0bc40e236619312aa321d",
+  "prompts": {
+    "d46277b929576d9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7d963b3-678f-4ed0-8566-d90a0d657703",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 23,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}

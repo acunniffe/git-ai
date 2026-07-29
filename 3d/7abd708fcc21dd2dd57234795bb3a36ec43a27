@@ -1,0 +1,8 @@
+src/git/repo_storage.rs
+  dea8c6e 148,198-199,201,207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "3d7abd708fcc21dd2dd57234795bb3a36ec43a27",
+  "prompts": {}
+}

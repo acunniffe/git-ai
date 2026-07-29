@@ -1,0 +1,59 @@
+src/git/repository.rs
+  7ee5d6109d6ee4e8 5
+src/daemon.rs
+  7ee5d6109d6ee4e8 1948
+src/git/test_utils/mod.rs
+  7ee5d6109d6ee4e8 1176
+src/commands/blame.rs
+  7ee5d6109d6ee4e8 7
+src/authorship/rebase_authorship.rs
+  7ee5d6109d6ee4e8 7-12,629,716,1814,2051,2900,3372,3508,3598,4616
+src/authorship/authorship_log_serialization.rs
+  7ee5d6109d6ee4e8 292,296
+src/authorship/prompt_utils.rs
+  7ee5d6109d6ee4e8 12
+src/git/notes_api.rs
+  7ee5d6109d6ee4e8 1-67
+src/git/mod.rs
+  7ee5d6109d6ee4e8 4
+src/git/authorship_traversal.rs
+  7ee5d6109d6ee4e8 5
+src/authorship/virtual_attribution.rs
+  7ee5d6109d6ee4e8 158,163
+src/authorship/post_commit.rs
+  7ee5d6109d6ee4e8 13
+src/commands/git_handlers.rs
+  7ee5d6109d6ee4e8 663
+src/authorship/stats.rs
+  7ee5d6109d6ee4e8 5
+src/commands/show.rs
+  7ee5d6109d6ee4e8 3
+src/authorship/range_authorship.rs
+  7ee5d6109d6ee4e8 11
+src/ci/ci_context.rs
+  7ee5d6109d6ee4e8 6
+src/commands/diff.rs
+  7ee5d6109d6ee4e8 7
+src/commands/search.rs
+  7ee5d6109d6ee4e8 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ab38e9deeb75720d9c777f54d82a8af9f4ad9ba6",
+  "prompts": {
+    "7ee5d6109d6ee4e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfb718b9-3e94-482a-bffa-deaa4d9e5fcc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 102,
+      "total_deletions": 29,
+      "accepted_lines": 101,
+      "overriden_lines": 0
+    }
+  }
+}

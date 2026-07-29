@@ -1,0 +1,28 @@
+tests/integration/diff.rs
+  8c01ae080dcda34a 2735-2747,2749-2811,2813-2825,2827-2857,2898-2899
+src/commands/diff.rs
+  8c01ae080dcda34a 1,152-153,183,191,399,747,782,798,818,828,846,867,878,897,948-953,978-983,1008,1018,1210,1219,1236,1241,1255,1277,1287,1295,1310,1650,1671-1675,1677,1684-1688,1690,1703,1718,1722-1726,1728,1732-1736,1738,1740-1744,1746,1810,1813,1854,1857-1865,2287,2289,2292,2297-2315,2317-2319,2324,2326,2596,2606
+src/commands/blame.rs
+  8c01ae080dcda34a 2,14,65-66,410-415,417,424,553,1037,1046,1073,1075-1082,1245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "b027ffe7170a6ed8c0c10ccb0f21e73411a718b9",
+  "prompts": {
+    "8c01ae080dcda34a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1ae72d5-8d48-4a16-b56b-51f4d03dbf1a",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 283,
+      "total_deletions": 77,
+      "accepted_lines": 260,
+      "overriden_lines": 9,
+      "messages_url": "https://dev.usegitai.com/cas/c37ee5ffd119a9422b0ea923be9e32cfd5fdbf691bedd6ce2b7454c0393a8b75"
+    }
+  }
+}

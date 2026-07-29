@@ -1,0 +1,22 @@
+src/git/rewrite_log.rs
+  s_218fc31e3ddd9a::t_b854ed4235bcb2 422
+  s_218fc31e3ddd9a::t_32c13fc35a6b97 308
+src/git/diff_tree_to_tree.rs
+  s_218fc31e3ddd9a::t_ee119659942b86 263
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.7",
+  "base_commit_sha": "170e411bae4b7cb2bd7753bd7a1865e79722ce6f",
+  "prompts": {},
+  "sessions": {
+    "s_218fc31e3ddd9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1fdad75-0ada-417b-8f9c-3ed0c18eb119",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>"
+    }
+  }
+}

@@ -1,0 +1,61 @@
+src/daemon.rs
+  s_8d88c8fcb33d86::t_c772b4f49b9723 4661-4680
+  s_8d88c8fcb33d86::t_f4eb9d0e863636 5161-5215,5218-5227,5230-5234
+  s_8d88c8fcb33d86::t_238dbea58657db 5216-5217,5228-5229
+tests/integration/fuzzer/helpers.rs
+  s_8d88c8fcb33d86::t_3ad3c94bf413ee 221
+src/authorship/bash_repo_hints.rs
+  s_8d88c8fcb33d86::t_0fdad89bf61061 1-4,6,8-31,33-38,40-42,44-55,59-305,307-336,338-357,359-369,408-417,419-450,452-526,528-573,592-654
+  s_8d88c8fcb33d86::t_238dbea58657db 32,306,337,358,396,418,451,527
+  s_8d88c8fcb33d86::t_0d8e6642829470 574-591
+  s_8d88c8fcb33d86::t_47ae9f26781db2 5,7
+  s_8d88c8fcb33d86::t_d6cbe9f3abd1ca 39,43,370-395,397-407
+  s_8d88c8fcb33d86::t_9aa2e083fdd285 56-58
+src/commands/checkpoint_agent/orchestrator.rs
+  s_8d88c8fcb33d86::t_1399ce932e7c39 400-436,482-518
+src/daemon/control_api.rs
+  s_8d88c8fcb33d86::t_ccf4a71f53d56b 59-84
+src/commands/checkpoint_agent/bash_tool.rs
+  s_8d88c8fcb33d86::t_3b61168d237ca1 885-960
+src/authorship/mod.rs
+  s_8d88c8fcb33d86::t_238dbea58657db 7
+src/authorship/attribution_recovery.rs
+  s_8d88c8fcb33d86::t_856813b7bf4703 1006-1025,1055,1058,1074,1077,1095-1101,1103,1108,1117-1120,1139,1158-1164,1166
+  s_8d88c8fcb33d86::t_238dbea58657db 94-100,102,424,514,519-523
+  s_8d88c8fcb33d86::t_15c1ac5308ebd6 297,313-315,317,321,330-332,334,338,350-351,369-374,418-419,438-443,515-518
+  s_8d88c8fcb33d86::t_1da2064bcfba78 364-365,388-412,433-434,457-461,464-482
+  s_8d88c8fcb33d86::t_a08e288768f55a 161
+  s_8d88c8fcb33d86::t_9115f74f62fe8f 462-463,1114-1115
+  s_8d88c8fcb33d86::t_96836e24b39a14 538,547-548,556,562-579,591-607,609-610,632-633,660-682
+  s_8d88c8fcb33d86::t_33d8e980bdcd12 580-590,608
+  s_8d88c8fcb33d86::t_7de79c61f4d108 305,322,339
+  s_8d88c8fcb33d86::t_3ed7178fe8ad17 283-296,298-302,306-312,316,318-320,323-329,333,335-337,340-343,345-349,352-363,366-368,375-386,415-416,420-423,425-432,435-437,444-456,483-513,524-531,634-635,683,711
+  s_8d88c8fcb33d86::t_8a53aa0cbf687b 92-93,101,103,106,113-116,120-123,125-130,133-135,149-150,154-155
+  s_8d88c8fcb33d86::t_34bff92054c290 5-8,11-13,21
+  s_8d88c8fcb33d86::t_b1e3f72c4e0cf9 684
+src/daemon/bash_history_db.rs
+  s_8d88c8fcb33d86::t_7347edb21f3d64 8,43-71,119-164,478-601,655-711,735-758,795-796,869-871,879-903
+  s_8d88c8fcb33d86::t_238dbea58657db 12-13,41-42,72-73
+  s_8d88c8fcb33d86::t_01566c831bb667 1000-1086,1126-1163,1218,1221
+  s_8d88c8fcb33d86::t_3af6ee3e21938c 797-798,872-878,904-905,999,1164-1166
+tests/integration/bash_attribution.rs
+  s_8d88c8fcb33d86::t_6746c91e89a047 9,19-37,68-116,127-219,221
+  s_8d88c8fcb33d86::t_238dbea58657db 117-126
+  s_8d88c8fcb33d86::t_da92a3631e0b8d 220,222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.0",
+  "base_commit_sha": "da560d4e79ef0299e56a9363776034b2596f4abb",
+  "prompts": {},
+  "sessions": {
+    "s_8d88c8fcb33d86": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef9eb-f076-7cb1-97a6-e8a992f028b7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Jean-Michel Bouchard <jim@polarcoordinates.org>"
+    }
+  }
+}

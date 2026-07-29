@@ -1,0 +1,32 @@
+src/authorship/rewrite.rs
+  s_42a4d3201f0416::t_3abe3ada5e596a 1541-1551
+  s_42a4d3201f0416::t_4eabdbf681843c 936-961,1016-1045,1067-1083,1085-1088,1114,1131,1134-1135,1144-1160,1502-1540,1552-1686
+scripts/repro/daemon-restack-undo-mapping-bomb/README.md
+  s_79ef014d760098::t_61741c1057ac08 1-167
+scripts/repro/daemon-restack-undo-mapping-bomb/repro.sh
+  s_79ef014d760098::t_5f747b30954ef0 1-428
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "96655e65d56f9c3c89ca379497f769472c845f94",
+  "prompts": {},
+  "sessions": {
+    "s_42a4d3201f0416": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9c04-1b41-7532-be44-2544140b2921",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_79ef014d760098": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9811b0c7-b02f-4b8a-ab71-1bd29878f12f",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
