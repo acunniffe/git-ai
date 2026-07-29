@@ -1,0 +1,35 @@
+src/metrics/db.rs
+  s_4bc25a9d71eb98::t_5f80571eace693 571-573,577-578,582-583,585-586,588-589,591
+  s_4bc25a9d71eb98::t_e460a78df3a785 1467-1477
+  s_4bc25a9d71eb98::t_3d429e25c7235c 632,1198-1262
+  s_4bc25a9d71eb98::t_bda2e26773b658 71-84,555-570,574-576,579-581,584,587,590,592-631
+src/api/metrics.rs
+  s_4bc25a9d71eb98::t_b67cda53352c57 17-26
+src/daemon/telemetry_worker.rs
+  s_4bc25a9d71eb98::t_b67cda53352c57 6
+src/commands/flush_metrics_db.rs
+  s_4bc25a9d71eb98::t_b67cda53352c57 5,18
+src/api/mod.rs
+  s_4bc25a9d71eb98::t_b67cda53352c57 9
+src/commands/whoami.rs
+  s_4bc25a9d71eb98::t_170c6227704001 325
+  s_4bc25a9d71eb98::t_5254c62a7b5e5b 2
+  s_4bc25a9d71eb98::t_5bc42178838386 166-169,327
+  s_4bc25a9d71eb98::t_85fc274455f89a 1,5-6,23-26,29-30,32-42,44-45,47,49-65,67-94,96-98,100-101,104-106,108-109,111,113-122,124,126-165,170-178,183-248,260,266-324,326,328-371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "3ad0c4399a0a493458bfed30260dd44fd066c209",
+  "prompts": {},
+  "sessions": {
+    "s_4bc25a9d71eb98": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eeffe-c0c4-7822-8a64-4c50e006500e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

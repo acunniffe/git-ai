@@ -1,0 +1,22 @@
+src/commands/activity.rs
+  s_f11817b86707de::t_5dc904b718edd6 278-294,328
+  s_f11817b86707de::t_3e3d239fd08571 539-548
+  s_f11817b86707de::t_ff3d5479e9e384 204-229,231,236-242
+  s_f11817b86707de::t_7e44ee5fca05fe 362,366,368,377-387,389-392,398
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.2",
+  "base_commit_sha": "fb452b7fbf123161f49a0c9e466cf9f221cda923",
+  "prompts": {},
+  "sessions": {
+    "s_f11817b86707de": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "924fc9b9-e6af-4bed-a29d-1705ea45c0df",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

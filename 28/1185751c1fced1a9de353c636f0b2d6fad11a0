@@ -1,0 +1,23 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  381053640db11045 112-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "281185751c1fced1a9de353c636f0b2d6fad11a0",
+  "prompts": {
+    "381053640db11045": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "624f89ef-ff33-4c84-aeaa-d909dea2500f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Daniel Thorne <ldthorne96@gmail.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,53 @@
+src/authorship/post_commit.rs
+  6be3b64614a8d65b 160-165,401-479
+src/api/metrics.rs
+  6be3b64614a8d65b 1-178
+src/commands/git_ai_handlers.rs
+  6be3b64614a8d65b 130-135
+src/metrics/types.rs
+  6be3b64614a8d65b 1-118
+src/metrics/events.rs
+  6be3b64614a8d65b 1-390
+src/commands/flush_metrics_db.rs
+  6be3b64614a8d65b 1-99
+src/main.rs
+  6be3b64614a8d65b 9
+src/metrics/pos_encoded.rs
+  6be3b64614a8d65b 1-415
+src/metrics/db.rs
+  6be3b64614a8d65b 1-400
+src/commands/flush_metrics.rs
+  6be3b64614a8d65b 1-105
+src/api/mod.rs
+  6be3b64614a8d65b 4,8
+src/lib.rs
+  6be3b64614a8d65b 9
+src/commands/mod.rs
+  6be3b64614a8d65b 9-10
+src/metrics/attrs.rs
+  6be3b64614a8d65b 1-176
+src/metrics/mod.rs
+  6be3b64614a8d65b 1-167
+src/commands/hooks/push_hooks.rs
+  6be3b64614a8d65b 65-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "26f9a0a9fc83ab48cabf326721a32192df96dec5",
+  "prompts": {
+    "6be3b64614a8d65b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5cf37262-77ef-4e48-87f1-fd179f2ca8b2",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 2275,
+      "total_deletions": 128,
+      "accepted_lines": 2148,
+      "overriden_lines": 0
+    }
+  }
+}

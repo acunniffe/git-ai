@@ -1,0 +1,14 @@
+AGENTS.md
+  h_dac2ecdcedf37f 27,34-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "3a6167fc77074b5c1d743ff19096f52e58769ce7",
+  "prompts": {},
+  "humans": {
+    "h_dac2ecdcedf37f": {
+      "author": "Sasha Varlamov"
+    }
+  }
+}

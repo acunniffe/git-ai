@@ -1,0 +1,23 @@
+src/commands/mod.rs
+  s_31b447d16e21cf::t_bf15e3468521f1 26
+src/metrics/local_stats.rs
+  s_31b447d16e21cf::t_bf15e3468521f1 727-730,740-743,972-980
+src/commands/usage.rs
+  s_31b447d16e21cf::t_bf15e3468521f1 63,70-77,89-93,102-105,128,138-140,148-152,231-235,315-321,430-434,574-578,580-584
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "e19f2741000750a4cbe5a6518dd6c65d5866fbe1",
+  "prompts": {},
+  "sessions": {
+    "s_31b447d16e21cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66093f0b-52af-4448-b87a-0255bfb1a244",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

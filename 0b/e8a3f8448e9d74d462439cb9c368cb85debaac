@@ -1,0 +1,24 @@
+tests/integration/config_cli_coverage.rs
+  s_35dc4a4b913bd2::t_a034e88a645a5d 157-160
+  s_35dc4a4b913bd2::t_4b923ec61b9198 143-156,161-184
+src/commands/config.rs
+  s_35dc4a4b913bd2::t_e023f494f33306 813-817
+  s_35dc4a4b913bd2::t_b5b0839b3cb7d7 1307-1310
+  s_35dc4a4b913bd2::t_97e88dbef59e80 1447-1452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "0be8a3f8448e9d74d462439cb9c368cb85debaac",
+  "prompts": {},
+  "sessions": {
+    "s_35dc4a4b913bd2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6143c255-d93d-4a16-bf9f-af1f008b2180",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

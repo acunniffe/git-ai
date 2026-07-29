@@ -1,0 +1,19 @@
+src/daemon/telemetry_worker.rs
+  s_74a2428186d231::t_f44707620df344 641-643
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "51c33238d249b453bedffa82887b43a865434b2f",
+  "prompts": {},
+  "sessions": {
+    "s_74a2428186d231": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd0dacf2-8372-4c39-b5a0-8122cebcd921",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

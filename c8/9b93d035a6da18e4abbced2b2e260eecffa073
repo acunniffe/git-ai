@@ -1,0 +1,25 @@
+src/transcripts/agent.rs
+  941263e0b8c3337c 66
+src/transcripts/agents/continue_cli.rs
+  941263e0b8c3337c 87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "c89b93d035a6da18e4abbced2b2e260eecffa073",
+  "prompts": {
+    "941263e0b8c3337c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38c42e01-ec70-4cf9-b136-c51756903a1e",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

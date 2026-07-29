@@ -1,0 +1,23 @@
+agent-support/visualstudio/src/GitAiVS/GitAiPackage.cs
+  s_61bbcfe4478210::t_815666807ace0b 59
+agent-support/visualstudio/src/GitAiVS/Listeners/TextBufferListener.cs
+  s_61bbcfe4478210::t_04e82d719625ad 63
+agent-support/visualstudio/src/GitAiVS/Services/CheckpointService.cs
+  s_61bbcfe4478210::t_9138c306a279fb 17-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "869bf91983cb0309db1c7638f0de0ce961bda035",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

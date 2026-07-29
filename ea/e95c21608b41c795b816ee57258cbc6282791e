@@ -1,0 +1,19 @@
+src/utils.rs
+  s_9af8539bab1bf4::t_a9080245e9f27d 146-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "eae95c21608b41c795b816ee57258cbc6282791e",
+  "prompts": {},
+  "sessions": {
+    "s_9af8539bab1bf4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b7c8eb1-6383-4a27-b0c6-5f70389caf44",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

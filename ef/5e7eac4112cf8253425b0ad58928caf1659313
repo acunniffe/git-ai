@@ -1,0 +1,20 @@
+docs/rewrite-ops-spec.md
+  s_ca3493cd5ff580::t_d7379c41b07811 68,57
+  s_ca3493cd5ff580::t_4dfd7ddfd226d3 1-55,58-67,70-131,143-263
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "ef5e7eac4112cf8253425b0ad58928caf1659313",
+  "prompts": {},
+  "sessions": {
+    "s_ca3493cd5ff580": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "30a076c6-8e2e-42a4-aafc-a0f557fd1930",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

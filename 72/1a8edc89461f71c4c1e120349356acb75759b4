@@ -1,0 +1,19 @@
+installer/windows/build-msi.ps1
+  s_c07cec28a64ec3::t_50cd7c376f6624 205-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "721a8edc89461f71c4c1e120349356acb75759b4",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "admin <admin@git-ai-project.com>"
+    }
+  }
+}

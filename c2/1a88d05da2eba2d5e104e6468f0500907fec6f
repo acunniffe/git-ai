@@ -1,0 +1,23 @@
+README.md
+  090109e0a7f05fe3 113-114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "c21a88d05da2eba2d5e104e6468f0500907fec6f",
+  "prompts": {
+    "090109e0a7f05fe3": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1766425744460532000",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}
