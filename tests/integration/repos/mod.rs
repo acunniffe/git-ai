@@ -10,11 +10,41 @@ macro_rules! subdir_test_variants {
         fn $test_name:ident() $body:block
     ) => {
         paste::paste! {
-            // Variant 1: Run from subdirectory (original behavior)
+            // Variant 1: Run from the repository root.
             #[test]
-            fn [<test_ $test_name _from_subdir>]() $body
+            fn [<test_ $test_name _from_root>]() {
+                $crate::repos::test_repo_adapters::with_repo_invocation(
+                    $crate::repos::test_repo_adapters::RepoInvocation::Root,
+                    || {
+                        type TestRepo =
+                            $crate::repos::test_repo_adapters::InvocationTestRepo;
+                        $body
+                    },
+                );
+            }
 
-            // Variant 1b: Run from subdirectory with a worktree-backed repo
+            // Variant 1b: Run from the repository root in worktree mode.
+            #[test]
+            fn [<test_ $test_name _from_root_in_worktree>]() {
+                $crate::repos::test_repo::with_worktree_mode(|| {
+                    [<test_ $test_name _from_root>]()
+                });
+            }
+
+            // Variant 2: Run from a subdirectory (original behavior).
+            #[test]
+            fn [<test_ $test_name _from_subdir>]() {
+                $crate::repos::test_repo_adapters::with_repo_invocation(
+                    $crate::repos::test_repo_adapters::RepoInvocation::Subdirectory,
+                    || {
+                        type TestRepo =
+                            $crate::repos::test_repo_adapters::InvocationTestRepo;
+                        $body
+                    },
+                );
+            }
+
+            // Variant 2b: Run from a subdirectory with a worktree-backed repo.
             #[test]
             fn [<test_ $test_name _from_subdir_in_worktree>]() {
                 $crate::repos::test_repo::with_worktree_mode(|| {
@@ -22,15 +52,20 @@ macro_rules! subdir_test_variants {
                 });
             }
 
-            // Variant 2: Run with -C flag from arbitrary directory
+            // Variant 3: Run with -C flag from an arbitrary directory.
             #[test]
             fn [<test_ $test_name _with_c_flag>]() {
-                type TestRepo =
-                    $crate::repos::test_repo_adapters::TestRepoWithCFlag;
-                $body
+                $crate::repos::test_repo_adapters::with_repo_invocation(
+                    $crate::repos::test_repo_adapters::RepoInvocation::CFlag,
+                    || {
+                        type TestRepo =
+                            $crate::repos::test_repo_adapters::InvocationTestRepo;
+                        $body
+                    },
+                );
             }
 
-            // Variant 2b: Run with -C flag from arbitrary directory in worktree mode
+            // Variant 3b: Run with -C flag from an arbitrary directory in worktree mode.
             #[test]
             fn [<test_ $test_name _with_c_flag_in_worktree>]() {
                 $crate::repos::test_repo::with_worktree_mode(|| {

@@ -1,5 +1,4 @@
 use crate::repos::test_file::ExpectedLineExt;
-use crate::repos::test_repo::TestRepo;
 use std::fs;
 
 crate::subdir_test_variants! {
