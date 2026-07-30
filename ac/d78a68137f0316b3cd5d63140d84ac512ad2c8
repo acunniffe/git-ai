@@ -1,0 +1,33 @@
+src/commands/share_tui.rs
+  9dae44478e043d71 1-385
+Cargo.toml
+  9dae44478e043d71 25-26
+src/commands/prompt_picker.rs
+  9dae44478e043d71 1-523
+src/authorship/internal_db.rs
+  9dae44478e043d71 141-250,631-721
+src/commands/mod.rs
+  9dae44478e043d71 13,15
+src/commands/share.rs
+  9dae44478e043d71 9,11,14-24,26,31,33-34,56-57,107-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "acd78a68137f0316b3cd5d63140d84ac512ad2c8",
+  "prompts": {
+    "9dae44478e043d71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2a7e508a-5c6c-4944-a717-444429a3c637",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1220,
+      "total_deletions": 28,
+      "accepted_lines": 1213,
+      "overriden_lines": 0
+    }
+  }
+}

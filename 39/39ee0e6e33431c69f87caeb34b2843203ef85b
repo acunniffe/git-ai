@@ -1,0 +1,56 @@
+tests/integration/fuzzer/generators.rs
+  s_af2d349a5e032c::t_6d42fcac1bcf4c 2
+  s_af2d349a5e032c::t_85d1476c9ce9ae 1,3-27,29-39,41-81
+  s_af2d349a5e032c::t_af0cb3a51e1051 28,40
+tests/integration/fuzzer/oracle.rs
+  s_af2d349a5e032c::t_f5bd5d70eccfae 1-255
+tests/integration/fuzzer/mod.rs
+  s_af2d349a5e032c::t_87f4f1b40cfe36 1,3,5,7
+  s_af2d349a5e032c::t_f61ef45893f380 2,4,6,8-113
+tests/integration/fuzzer/operations.rs
+  s_af2d349a5e032c::t_a4a20228c71e28 233-237
+  s_af2d349a5e032c::t_862facffcfd609 195,203
+  s_af2d349a5e032c::t_2234d9c3eebcaa 151,159,165
+  s_af2d349a5e032c::t_c93d4f6c406d49 135,150,158,164
+  s_af2d349a5e032c::t_d576c202d0987b 353-357,363
+  s_af2d349a5e032c::t_dcdd1194ecc346 1-3,5-26,34-91,97-99,102-112,120,122-125,127-129,136-144,153-154,160-162,166-174,176-188,194,196,198-199,202,204-205,209-210,212-215,219-220,225,229-231,238,247-248,250,252,254-255,257,259-274,279-286,292,301-352,358-362,364-384
+  s_af2d349a5e032c::t_a72a386f9885bf 92-96,100-101
+  s_af2d349a5e032c::t_6c96ccb9ab4239 189-193,197
+  s_af2d349a5e032c::t_34ba52c3a85149 145-149,152
+  s_af2d349a5e032c::t_b5543f99c079a8 211,216,221,224,228,232
+  s_af2d349a5e032c::t_a3e5b41aebdf2c 113-119,121,126,130-134
+  s_af2d349a5e032c::t_48263cfdd397f5 4
+  s_af2d349a5e032c::t_9bb4e479ce95f6 155-157,163
+  s_af2d349a5e032c::t_dcabd40d07f559 287-291
+  s_af2d349a5e032c::t_e60b574bf3a675 27-33,175,200-201,258,275-278
+  s_af2d349a5e032c::t_8a802d1185c3e4 206-208,217-218,222-223,226-227,249,251,253,256
+  s_af2d349a5e032c::t_0db92bf54c24d7 239-246,293-300
+tests/integration/main.rs
+  s_af2d349a5e032c::t_e60b574bf3a675 60
+tests/integration/fuzzer/engine.rs
+  s_af2d349a5e032c::t_fc3abf7cb3e659 2-6,8,11,13-51,57-63,68-70,76-80,82-96,98-99,116,122-131,133-208,215-219,221-224,230,239-247
+  s_af2d349a5e032c::t_129e08f617bfe6 117-118,120-121,225-229,231-238
+  s_af2d349a5e032c::t_395b16cd0e620a 1
+  s_af2d349a5e032c::t_66f882395d84eb 9-10
+  s_af2d349a5e032c::t_ee4955459c14de 71-75,81
+  s_af2d349a5e032c::t_e60b574bf3a675 7,64-67
+  s_af2d349a5e032c::t_7ca0da935c28ae 102-106,112
+  s_af2d349a5e032c::t_c63395c8aa5ad1 210-214,220
+  s_af2d349a5e032c::t_6adc21be0a73a8 12,52-56,97,100-101,107-111,113-115,119,132,209
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "3939ee0e6e33431c69f87caeb34b2843203ef85b",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,45 @@
+src/git/sync_authorship.rs
+  c5b6e6dbc097f326 193,314
+tests/integration/notes_merge_mixed_fanout.rs
+  h_938c77d52bff70 54-55
+src/git/refs.rs
+  c5b6e6dbc097f326 555,580-585
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "0c82420052e8e633ec1fb612d7e6ff522ad58669",
+  "prompts": {
+    "98a4a399c94290b2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "745e3696-25dc-4021-ba4c-7e66bcaa5a1e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 43,
+      "total_deletions": 29,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    },
+    "c5b6e6dbc097f326": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfa78cba-a1ec-46af-bfe4-7b5df10c6735",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 4,
+      "accepted_lines": 257,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_938c77d52bff70": {
+      "author": "Andrew Churchill"
+    }
+  }
+}

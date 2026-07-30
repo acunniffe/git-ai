@@ -1,0 +1,29 @@
+agent-support/visualstudio/src/GitAiVS/Listeners/DocumentSaveListener.cs
+  s_61bbcfe4478210::t_db42620566231a 62,66
+  s_61bbcfe4478210::t_45f1fc92884b30 101
+agent-support/visualstudio/src/GitAiVS/Detection/TabCompletionFilter.cs
+  s_61bbcfe4478210::t_09caed2e47bdd8 37,46
+agent-support/visualstudio/src/GitAiVS/GitAiPackage.cs
+  s_61bbcfe4478210::t_049c0a09be41ca 122
+agent-support/visualstudio/src/GitAiVS/Listeners/TextBufferListener.cs
+  s_61bbcfe4478210::t_be568121eb8013 83
+  s_61bbcfe4478210::t_421cddf4067dad 151,155-157
+  s_61bbcfe4478210::t_dd5f11f7883fd6 166
+  s_61bbcfe4478210::t_4b060818c3eb13 132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "3475ee52848bac0393fcaeafe869279eea789231",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

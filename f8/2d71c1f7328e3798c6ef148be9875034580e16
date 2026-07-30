@@ -1,0 +1,46 @@
+docs/daemon_mode_test_compat_todos.md
+  43f2cf42f74f2faf 1-114
+tests/repos/test_repo.rs
+  4c8af2b558f4c1cb 596-601,603
+tests/rebase.rs
+  4c8af2b558f4c1cb 491,497,532,538
+src/git/rewrite_log.rs
+  4c8af2b558f4c1cb 413-414,424,431
+src/daemon.rs
+  4c8af2b558f4c1cb 6,15,1270-1313,1454,1463,1527,1567-1568,2094-2118,2131-2133,2151-2183,2185-2196,2372-2373,2377,2663-2691,2893,2902,2971,2975-2979,2989-3005,3007-3017,3079-3080,3084,3091,3105-3109,3150-3218,3220-3228,3230-3247
+tests/pull_rebase_ff.rs
+  4c8af2b558f4c1cb 520,526
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.11",
+  "base_commit_sha": "f82d71c1f7328e3798c6ef148be9875034580e16",
+  "prompts": {
+    "43f2cf42f74f2faf": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1773284647556051000",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 114,
+      "total_deletions": 0,
+      "accepted_lines": 114,
+      "overriden_lines": 0
+    },
+    "4c8af2b558f4c1cb": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1773286880751990000",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 384,
+      "total_deletions": 73,
+      "accepted_lines": 325,
+      "overriden_lines": 3
+    }
+  }
+}

@@ -1,0 +1,47 @@
+tests/integration/main.rs
+  s_902a0f1d196d58::t_941a24688e3c14 104
+src/authorship/rebase_recovery.rs
+  ai_agent 1-134
+src/commands/mod.rs
+  s_902a0f1d196d58::t_8e91e32ced16e5 20
+src/authorship/rebase_types.rs
+  ai_agent 1-68
+src/commands/rebase_recover.rs
+  ai_agent 1-153
+src/commands/git_ai_handlers.rs
+  s_902a0f1d196d58::t_81796dac822fb7 176-190
+src/authorship/rebase_ops.rs
+  ai_agent 1-338
+tests/integration/rebase_recovery.rs
+  ai_agent 1-224
+src/authorship/mod.rs
+  s_902a0f1d196d58::t_67da576f00a156 17
+  s_902a0f1d196d58::t_9c39a7c2849218 18
+  s_902a0f1d196d58::t_4d90ebac8c6ffc 19
+src/authorship/rebase_authorship.rs
+  s_902a0f1d196d58::t_7fa4005a82c59e 4,7
+  s_902a0f1d196d58::t_c6683368cd9189 5-6
+  s_902a0f1d196d58::t_bc378cfbbf4aa2 860
+  s_902a0f1d196d58::t_c0984fe5ce58c3 1040-1054
+  s_902a0f1d196d58::t_379afceb5bc76e 3863
+  s_902a0f1d196d58::t_293debf944d4e7 3,8-10
+  s_902a0f1d196d58::t_dcd4bc0efc4030 3266
+  s_902a0f1d196d58::t_a304931b1fc30a 2423
+  s_902a0f1d196d58::t_a19b5c34c7344d 2421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "6eb3cabd4ccf17fb3395deb59e2fd7075f73320e",
+  "prompts": {},
+  "sessions": {
+    "s_902a0f1d196d58": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27060e1d-e308-41df-8e3e-99989a51b65d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "admin <admin@git-ai-project.com>"
+    }
+  }
+}

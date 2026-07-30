@@ -1,0 +1,23 @@
+src/main.rs
+  5bdcc5ba6dfacd2e 40-41,43-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.37",
+  "base_commit_sha": "3aa055fc9bc5e6061e700521cfd37c6dce6d8d30",
+  "prompts": {
+    "5bdcc5ba6dfacd2e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "42293c61-55d4-4d2e-a17e-f33ed15319d8",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 1
+    }
+  }
+}

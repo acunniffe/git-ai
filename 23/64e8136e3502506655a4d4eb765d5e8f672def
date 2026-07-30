@@ -1,0 +1,21 @@
+src/daemon/ref_cursor.rs
+  s_f00ef7c0f45b07::t_01643c0b1c8519 4,467,480-483
+tests/daemon_mode.rs
+  s_f00ef7c0f45b07::t_62cfa808494190 1236-1355
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "2364e8136e3502506655a4d4eb765d5e8f672def",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

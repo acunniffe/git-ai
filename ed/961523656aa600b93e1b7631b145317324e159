@@ -1,0 +1,23 @@
+src/mdm/ensure_git_symlinks.rs
+  374e6dafdb5e2955 39,41,44-45,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ed961523656aa600b93e1b7631b145317324e159",
+  "prompts": {
+    "374e6dafdb5e2955": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e24042d6-2809-494a-97a0-27db3a7440f0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 27,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}

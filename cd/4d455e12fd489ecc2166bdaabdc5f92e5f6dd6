@@ -1,0 +1,25 @@
+install.sh
+  374e6dafdb5e2955 337-351
+install.ps1
+  374e6dafdb5e2955 620-637
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "cd4d455e12fd489ecc2166bdaabdc5f92e5f6dd6",
+  "prompts": {
+    "374e6dafdb5e2955": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e24042d6-2809-494a-97a0-27db3a7440f0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 35,
+      "total_deletions": 37,
+      "accepted_lines": 38,
+      "overriden_lines": 0
+    }
+  }
+}

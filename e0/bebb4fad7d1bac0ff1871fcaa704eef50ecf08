@@ -1,0 +1,23 @@
+src/utils.rs
+  b2b87d06cdc719c0 405
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.4",
+  "base_commit_sha": "e0bebb4fad7d1bac0ff1871fcaa704eef50ecf08",
+  "prompts": {
+    "b2b87d06cdc719c0": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1775139823659613000",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

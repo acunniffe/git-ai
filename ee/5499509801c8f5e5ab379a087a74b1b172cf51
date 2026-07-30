@@ -1,0 +1,23 @@
+src/commands/post_commit.rs
+  s_a73b2a35c101af::t_367541f0d47aab 9-35
+  s_a73b2a35c101af::t_5dbdc75ad69c13 221-224
+  s_a73b2a35c101af::t_90b538bba95ab7 50-54
+src/daemon/post_commit_worker.rs
+  s_a73b2a35c101af::t_b12300550c06f2 128-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "ee5499509801c8f5e5ab379a087a74b1b172cf51",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

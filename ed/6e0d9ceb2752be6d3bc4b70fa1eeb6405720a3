@@ -1,0 +1,59 @@
+tests/windows_install_script.rs
+  s_567dab71b64423::t_fc158abb2e9816 518-529
+  s_567dab71b64423::t_e9a3cd8acf0c72 530-573
+install.ps1
+  s_567dab71b64423::t_413418ec9ea09b 259-363,562-568
+  s_6defe6c356c429::t_ea5c943d65243f 569
+tests/integration/install_hooks_comprehensive.rs
+  s_567dab71b64423::t_4d96053e33fb6a 442
+  s_567dab71b64423::t_954ee5e5eaab0f 447
+  s_567dab71b64423::t_fc158abb2e9816 458-462,464-465,468-474,480,494-550
+  s_567dab71b64423::t_3a2d5a87e3a498 475-479
+  s_567dab71b64423::t_9793715407943b 551
+  s_567dab71b64423::t_f045a6d5d1de23 453-456
+  s_567dab71b64423::t_f870547c06999a 457
+install.sh
+  s_567dab71b64423::t_f6f97c8b9830e3 128-238,398-400
+  s_6defe6c356c429::t_d2893f29cbb7e1 401-402
+src/commands/install_hooks.rs
+  s_567dab71b64423::t_20da1293d61476 16-17
+src/main.rs
+  s_567dab71b64423::t_20da1293d61476 31
+src/commands/install_hooks/shell_env.rs
+  s_567dab71b64423::t_b52adfa8fdfbdd 179
+  s_567dab71b64423::t_1a02be2d229778 227,239-240,258,263,344
+  s_567dab71b64423::t_20da1293d61476 67-74,161-177,193-198,208-217,220-226,228-238,241-257,259-262,264-265,267
+  s_567dab71b64423::t_81b431f0f90e6a 180-185,218-219,349-365
+  s_567dab71b64423::t_fc158abb2e9816 266,345-348,366-378
+  s_6defe6c356c429::t_395343a6e22602 178,268
+  s_567dab71b64423::t_954ee5e5eaab0f 192
+src/commands/git_ai_handlers.rs
+  s_567dab71b64423::t_20da1293d61476 165-167
+  s_567dab71b64423::t_1b869c9172ab4e 19-41
+  s_567dab71b64423::t_fce061db240146 1280-1289
+  s_567dab71b64423::t_c5ac468fab6e59 62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "ed6e0d9ceb2752be6d3bc4b70fa1eeb6405720a3",
+  "prompts": {},
+  "sessions": {
+    "s_567dab71b64423": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8f7c-ba9b-7112-8d11-3570848d66bb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_6defe6c356c429": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa19b-6f20-70b1-9dfb-25d8f73e7730",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
