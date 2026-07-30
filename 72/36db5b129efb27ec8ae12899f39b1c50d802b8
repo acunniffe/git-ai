@@ -1,0 +1,29 @@
+src/commands/ci_handlers.rs
+  a961120a28b49255 32,41-42,44-48,193,222-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "7236db5b129efb27ec8ae12899f39b1c50d802b8",
+  "prompts": {
+    "a961120a28b49255": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ee2071b1-463c-4e51-aca6-566e0003d5a2",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/ci_handlers.rs:1-221 add a flag --no-cleanup that skips teardown when set",
+          "timestamp": "2025-12-08T14:48:05.284Z"
+        }
+      ],
+      "total_additions": 13,
+      "total_deletions": 7,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}

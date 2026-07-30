@@ -1,0 +1,21 @@
+tests/integration/simple_additions.rs
+  s_50c8cc07abd384::t_92afe24d40fb1f 1963-1965
+  s_50c8cc07abd384::t_b67231d0bcd31b 1910-1914
+  s_50c8cc07abd384::t_114116be4c0b38 1999
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "19d022fe49781aee768a01bd7788cb8f587b2d23",
+  "prompts": {},
+  "sessions": {
+    "s_50c8cc07abd384": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1e4e321-1caf-47bf-b232-0be284c09477",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

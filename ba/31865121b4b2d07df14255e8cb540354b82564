@@ -1,0 +1,27 @@
+src/commands/checkpoint_agent/orchestrator.rs
+  dacf127c97d5a34b 9-11,16,51-78,104-109,112-115,117,122-128
+src/commands/git_ai_handlers.rs
+  dacf127c97d5a34b 454-456
+tests/integration/repos/test_repo.rs
+  dacf127c97d5a34b 2016-2017
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ba31865121b4b2d07df14255e8cb540354b82564",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 78,
+      "total_deletions": 36,
+      "accepted_lines": 66,
+      "overriden_lines": 0
+    }
+  }
+}

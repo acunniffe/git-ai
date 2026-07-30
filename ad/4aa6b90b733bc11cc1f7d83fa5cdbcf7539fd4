@@ -1,0 +1,39 @@
+docs/attribution-fuzzer-spec.md
+  s_ca3493cd5ff580::t_4dfd7ddfd226d3 3,5-6,10-99,102-132
+docs/rewrite-ops-spec.md
+  s_ca3493cd5ff580::t_4dfd7ddfd226d3 1-55,57-67,70-252
+docs/daemon-trace2-ingestion-spec.md
+  s_ca3493cd5ff580::t_4dfd7ddfd226d3 1,3-4,6-7,9,11-14,16-19,21-22,24-30,32-35,37-40,42,44-56,59-234
+src/daemon/ref_cursor.rs
+  s_ca3493cd5ff580::t_9692595a26ef5c 1259-1266
+  s_ca3493cd5ff580::t_390b54ec29e681 42
+  s_ca3493cd5ff580::t_6c6743e22321d4 2508
+  s_ca3493cd5ff580::t_2c099aa3f548f7 3243-3362
+  s_ca3493cd5ff580::t_508bbd47263d80 2449,2472
+  s_ca3493cd5ff580::t_9b73001e5721df 1229,1233-1258,1267-1272
+  s_ca3493cd5ff580::t_e2fb874b6e7375 2565-2566
+  s_ca3493cd5ff580::t_f886237da9d8c6 90
+  s_ca3493cd5ff580::t_94aad3ad0e79c4 2575-2577
+  s_ca3493cd5ff580::t_37f47b916a1d8b 110
+  s_ca3493cd5ff580::t_69d79e92b5a999 2583,2596
+  s_ca3493cd5ff580::t_367e8e6cd69756 22-28
+  s_ca3493cd5ff580::t_19dbf2556575b2 194-197,208-221
+AGENTS.md
+  s_ca3493cd5ff580::t_4dfd7ddfd226d3 43,54,56,58,60-66,74,82,84,86,88,90,204,220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "ad4aa6b90b733bc11cc1f7d83fa5cdbcf7539fd4",
+  "prompts": {},
+  "sessions": {
+    "s_ca3493cd5ff580": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "30a076c6-8e2e-42a4-aafc-a0f557fd1930",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

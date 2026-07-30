@@ -1,0 +1,23 @@
+src/mdm/skills_installer.rs
+  8c02a3aee845fcbf 5,7-8,10,13-14,16,28-30,33-35,38-43,45-59,61-63,65-66,68,71-83,86,89-96,105,114,117-148,153,157,173,177-199,207,216-219,221-223,226-228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "79ac29e55509ade0fbfc73f5090efcd3947b2d60",
+  "prompts": {
+    "8c02a3aee845fcbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d4964079-45a1-4717-a8e0-43150d6e1200",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "acunniffe@gmail.com",
+      "messages": [],
+      "total_additions": 176,
+      "total_deletions": 186,
+      "accepted_lines": 149,
+      "overriden_lines": 0
+    }
+  }
+}

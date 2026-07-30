@@ -1,0 +1,24 @@
+src/authorship/stats.rs
+  dfbe0d5977c07788 228,927
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "9b3dd8ce109060926a6406d4121115a521c9706a",
+  "prompts": {
+    "dfbe0d5977c07788": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f9fb4a6-add5-4036-a604-4b1d03ee7b85",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 7,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/52b206b25f34ad2b1fd737b769b50d4071aa57dde91c78f878cedb1a7455690f"
+    }
+  }
+}

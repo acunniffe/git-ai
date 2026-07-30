@@ -1,0 +1,39 @@
+src/http.rs
+  s_59382cac373d67::t_a176bcf23b5b54 1,6,77-115,117,157-172
+  s_59382cac373d67::t_4325d5317a5cc2 76
+  s_59382cac373d67::t_4fbaf70cf12f7d 75,138-156,173-174
+  s_59382cac373d67::t_0cc03dd4e1072c 116
+  s_59382cac373d67::t_70b16e97889d85 5,7,49-64,66,68-74
+tests/integration/main.rs
+  s_59382cac373d67::t_02a2726e7f910b 56
+src/commands/analyze/cube.rs
+  s_59382cac373d67::t_a176bcf23b5b54 92-93
+tests/integration/daemon_http_memory.rs
+  s_59382cac373d67::t_6edaa9749047e7 192-194,196-197
+  s_59382cac373d67::t_02a2726e7f910b 1-2,4-16,18-27,29-30,32-44,51-52,54-64,66-74,76,78-82,78-83,87-125,88-127,138-143,140-143,145-148,155-164,166-180,182-190,195,198-205,208-213
+  s_59382cac373d67::t_b75b7894d4ee5b 3,144,149-154
+  s_59382cac373d67::t_7144ba32db2ab7 165
+  s_59382cac373d67::t_d042293ca4183b 206
+  s_59382cac373d67::t_99ce7075a5b232 17,28,31,45-50,53,65,75,77,83-86,126-137,181,191
+  s_59382cac373d67::t_0cc03dd4e1072c 207
+src/api/client.rs
+  s_59382cac373d67::t_a176bcf23b5b54 313
+docs/daemon-trace2-ingestion-spec.md
+  s_59382cac373d67::t_cee52489fd27f3 95-100,279-280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "98ec35267a03506a6151ba5d1fe722893f39f671",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

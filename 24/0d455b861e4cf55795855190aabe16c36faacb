@@ -1,0 +1,22 @@
+agent-support/vscode/src/utils/binary-path.ts
+  s_8d2579124116c6::t_ccb1cbe6d4260f 18-19
+agent-support/vscode/src/extension.ts
+  s_8d2579124116c6::t_83a5460d884c34 11
+  s_8d2579124116c6::t_0ad7ab07922574 26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "240d455b861e4cf55795855190aabe16c36faacb",
+  "prompts": {},
+  "sessions": {
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}
