@@ -1,0 +1,37 @@
+src/daemon/checkpoint.rs
+  760c5cdc0bd01352 4-6,92
+tests/integration/agent_usage_repo_url.rs
+  s_760c5cdc0bd013::t_7d6ba1d8912537 168-200
+  760c5cdc0bd01352 58-59
+src/metrics/attrs.rs
+  760c5cdc0bd01352 169,254,307,323,330,345,389,414,458
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "3c115637a5c0d9d053d9081272d74e830b8f6717",
+  "prompts": {
+    "760c5cdc0bd01352": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d6297b8-9b0f-403f-8196-c564a24d1982",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 16,
+      "total_deletions": 45,
+      "accepted_lines": 243,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_760c5cdc0bd013": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d6297b8-9b0f-403f-8196-c564a24d1982",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,23 @@
+scripts/ai
+  4ba387f78fe33548 90,92-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "91fa1a65e097f9115e2992c01d2c2eb65c8951b2",
+  "prompts": {
+    "4ba387f78fe33548": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1be30fab-3ae0-4a38-8d8d-e7ddb490f725",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 13,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}

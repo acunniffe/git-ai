@@ -1,0 +1,55 @@
+src/git/repo_storage.rs
+  5ab44df7bfad4cb7 71-74
+src/authorship/rebase_authorship.rs
+  6477b05bbf4fa6c0 152,2816,2823,3254,3303-3304,3364,3373-3374,3418,3499-3500
+  08d6af5333b9e070 163-167
+  5ab44df7bfad4cb7 96,129-130,132-138,147,151,2821,3547-3670
+src/authorship/virtual_attribution.rs
+  5ab44df7bfad4cb7 477
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "5097eeea41aaa78667c83551aa21e38a111ee015",
+  "prompts": {
+    "08d6af5333b9e070": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e5158993-76c1-45a4-ac7f-b67ea1eb1096",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 1,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    },
+    "5ab44df7bfad4cb7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9ce75d42-90a4-4f0c-abc6-931dff7265c8",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 144,
+      "total_deletions": 14,
+      "accepted_lines": 142,
+      "overriden_lines": 0
+    },
+    "6477b05bbf4fa6c0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "53c6bfce-1c76-4ab7-b4d1-32999e9364e2",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 25,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}

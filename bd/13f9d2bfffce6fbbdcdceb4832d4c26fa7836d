@@ -1,0 +1,32 @@
+src/daemon.rs
+  s_f00ef7c0f45b07::t_dfffa9be51aa6c 1148-1151
+  s_f00ef7c0f45b07::t_5fec044f3fcf70 1152,1156-1164
+src/authorship/virtual_attribution.rs
+  s_f00ef7c0f45b07::t_56ce64c3837a8e 1556
+  s_f00ef7c0f45b07::t_dfffa9be51aa6c 1558,1663,1709,1721
+  s_f00ef7c0f45b07::t_f870312ff091fc 1610-1611
+  s_f00ef7c0f45b07::t_8ca65f51a1e74c 1764-1779,1782,1784-1788
+  s_f00ef7c0f45b07::t_1eb4b924fbfaef 1565-1589,1662,1664-1672,1674-1694,1723-1724,1735-1736
+  s_f00ef7c0f45b07::t_21edd223a34720 3275-3310,3319
+  s_f00ef7c0f45b07::t_554b84263011da 3311-3318
+  s_f00ef7c0f45b07::t_ffbdcb56e56544 1609,1612-1644,1697
+  s_f00ef7c0f45b07::t_920b177fdd90a0 1548-1555,1557,1559-1564,1590-1608,1645-1661,1673,1695-1696,1698-1708,1710-1720,1722,1725-1734,1737-1763,1780-1781,1783
+tests/commit_tree_update_ref.rs
+  s_f00ef7c0f45b07::t_9bc349d2ad9a8f 785-787,807,809,816,828-839,841
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "bd13f9d2bfffce6fbbdcdceb4832d4c26fa7836d",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

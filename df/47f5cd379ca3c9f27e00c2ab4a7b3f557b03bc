@@ -1,0 +1,39 @@
+tests/daemon_mode.rs
+  s_acbbcc77bb9da5::t_9de1917e91aba7 1790-1815
+  s_acbbcc77bb9da5::t_10045b505d974e 1789
+src/lib.rs
+  s_acbbcc77bb9da5::t_5357f4cd32a88e 27
+src/wltrace.rs
+  s_acbbcc77bb9da5::t_786eacef15fc76 1-64
+src/daemon.rs
+  s_acbbcc77bb9da5::t_2f4d930a8a69f6 4063-4069
+  s_acbbcc77bb9da5::t_cf3fb28c1b6904 4543-4558
+src/git/repo_storage.rs
+  s_acbbcc77bb9da5::t_1b031a5cc642f1 114
+  s_acbbcc77bb9da5::t_ceaa0c3f3f162e 199-201,205-207
+  s_acbbcc77bb9da5::t_185a5aa03a58c3 339
+  s_acbbcc77bb9da5::t_22b103acb8dd67 524-529
+  s_acbbcc77bb9da5::t_cf7932283240b8 464
+  s_acbbcc77bb9da5::t_dc9d248c888e47 679-681,691
+  s_acbbcc77bb9da5::t_603ad2138cb81a 692-695,804
+tests/integration/repos/test_repo.rs
+  s_acbbcc77bb9da5::t_f5cd898057494b 3248-3259
+  s_acbbcc77bb9da5::t_d1221faf3673b3 3245-3247,3260-3277
+  s_acbbcc77bb9da5::t_7804c83bc95e20 3242-3244,3278-3279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "df47f5cd379ca3c9f27e00c2ab4a7b3f557b03bc",
+  "prompts": {},
+  "sessions": {
+    "s_acbbcc77bb9da5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebbc887-2ebd-47b6-8edf-b19158eee095",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

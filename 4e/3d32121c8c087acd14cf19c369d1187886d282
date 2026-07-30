@@ -1,0 +1,19 @@
+agent-support/vscode/package.json
+  s_3ef0492c7c2938::t_2ca282d6a2358e 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "4e3d32121c8c087acd14cf19c369d1187886d282",
+  "prompts": {},
+  "sessions": {
+    "s_3ef0492c7c2938": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "71be9641-4207-4d3d-ab3c-27b5821b57fb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  2bd66f69ebb1399f 837,839,841,844,849,851,853,904,906,908,910,917-918,920,922-923
+agent-support/vscode/src/ai-edit-manager.ts
+  2bd66f69ebb1399f 184-185,187-188,268,270
+tests/github_copilot.rs
+  2bd66f69ebb1399f 313,318,321,323,372-373,375,380,384-433,457,460,462,486,489-516,535,544,547,563,568,571,577,601-610,643-766
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "b4f0ebb73f594ca3c5c2c3d1372d6b004026f0eb",
+  "prompts": {
+    "2bd66f69ebb1399f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2cc6a482-116a-4407-a719-c684914967a5",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 287,
+      "total_deletions": 26,
+      "accepted_lines": 287,
+      "overriden_lines": 0
+    }
+  }
+}

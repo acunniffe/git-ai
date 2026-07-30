@@ -1,0 +1,56 @@
+src/commands/checkpoint_agent/presets/amp.rs
+  dacf127c97d5a34b 3-4
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  dacf127c97d5a34b 3-4
+src/commands/checkpoint_agent/presets/droid.rs
+  dacf127c97d5a34b 3-4
+src/commands/checkpoint_agent/presets/gemini.rs
+  dacf127c97d5a34b 3-4
+src/commands/git_ai_handlers.rs
+  dacf127c97d5a34b 7,10,12,301,305,316-318,325,332,334-337,339,341,343,347-352,356-359,361,364-366,368,370,373-377,379,381-384,385-387,388-390,878,882-889,893,898,919-926,930-935,947,954-955
+src/commands/checkpoint_agent/presets/known_human.rs
+  dacf127c97d5a34b 10,46
+src/commands/checkpoint_agent/presets/opencode.rs
+  dacf127c97d5a34b 2-3
+src/commands/checkpoint_agent/orchestrator.rs
+  dacf127c97d5a34b 5-6,9,15-28,34,177,188,190-201,203-209,211-212,216-242,247
+src/commands/status.rs
+  dacf127c97d5a34b 56
+src/commands/checkpoint_agent/presets/windsurf.rs
+  dacf127c97d5a34b 3-4
+src/commands/checkpoint_agent/presets/pi.rs
+  dacf127c97d5a34b 2-3
+src/commands/checkpoint_agent/bash_tool.rs
+  dacf127c97d5a34b 192,256,258,816,819,821-822,823,828-831,838-839,841-842,847,848,849,852-853,855,858-862,869,877,879-881,885-886,890-891,895-896,898,900,901,903,905-908,911-916,954-966,969-978,979,980,981,983-997,1000-1001,1020-1049,1051,1054,1055-1059,1062,1064
+src/commands/checkpoint_agent/presets/codex.rs
+  dacf127c97d5a34b 4-5
+src/commands/checkpoint_agent/presets/claude.rs
+  dacf127c97d5a34b 3-4
+src/daemon/bash_sessions.rs
+  dacf127c97d5a34b 1-45,46-47,48-61
+src/daemon/control_api.rs
+  dacf127c97d5a34b 1-2,8,14,35-41,42,43-49,50,51-55,91-105
+src/daemon.rs
+  dacf127c97d5a34b 68,1783-1795,5555-5557,5573-5574,5576-5578,7123-7128,7180-7190,7191-7198,7199-7218,7219-7220,7221-7229,7230-7231,7232-7246,7247-7248,7249-7254,7255-7256,7257-7261,8604-8605,8607-8620,8627,8633,8635
+src/commands/checkpoint_agent/presets/firebender.rs
+  dacf127c97d5a34b 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "4107b2d826fe19cf955c20538bb705b793a1da5c",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 120,
+      "total_deletions": 128,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    }
+  }
+}
