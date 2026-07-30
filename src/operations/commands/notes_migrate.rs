@@ -16,11 +16,10 @@ use crate::config::{Config, NotesBackendKind};
 use crate::error::GitAiError;
 use crate::model::api_types::{NoteEntry, NotesUploadRequest};
 use crate::model::repository::notes_db::NotesDatabase;
+use crate::operations::git::cat_file::{BatchReadPolicy, batch_read_blob_contents_with_policy};
 use crate::operations::git::find_repository;
 use crate::operations::git::repository::resolve_api_author_identity;
 use std::collections::HashMap;
-use std::io::Write;
-use std::process::{Command, Stdio};
 
 /// Entry point for `git-ai notes migrate`.
 pub fn handle_notes_migrate(args: &[String]) {
@@ -169,7 +168,8 @@ fn read_all_ref_notes(
         .map(|(blob, commit)| (blob.clone(), commit.clone()))
         .collect();
     let blob_shas: Vec<String> = note_pairs.iter().map(|(b, _)| b.clone()).collect();
-    let blob_contents = cat_file_batch(repo, &blob_shas)?;
+    let blob_contents =
+        batch_read_blob_contents_with_policy(repo, &blob_shas, BatchReadPolicy::Tolerant)?;
     let mut entries: Vec<(String, String)> = Vec::new();
     for (blob_sha, content) in &blob_contents {
         if let Some(commit_sha) = blob_to_commit.get(blob_sha) {
@@ -231,13 +231,14 @@ fn migrate_refs_to_http(
         .collect();
 
     let blob_shas: Vec<String> = note_pairs.iter().map(|(b, _)| b.clone()).collect();
-    let blob_contents = match cat_file_batch(repo, &blob_shas) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("error: failed to read note content: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let blob_contents =
+        match batch_read_blob_contents_with_policy(repo, &blob_shas, BatchReadPolicy::Tolerant) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("error: failed to read note content: {}", e);
+                std::process::exit(1);
+            }
+        };
 
     // Build (commit_sha, content) pairs.
     let mut entries: Vec<(String, String)> = Vec::new();
@@ -390,126 +391,6 @@ fn list_notes(
     Ok(pairs)
 }
 
-/// Bulk-read blob contents via `git cat-file --batch`.
-///
-/// Feeds the blob SHAs on stdin and parses the binary protocol output.
-/// Returns a map of `blob_sha → content`.
-fn cat_file_batch(
-    repo: &crate::operations::git::repository::Repository,
-    blob_shas: &[String],
-) -> Result<HashMap<String, String>, GitAiError> {
-    if blob_shas.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    // `global_args_for_exec()` returns the per-repository flags (e.g. `-C <path>
-    // --no-pager`) but NOT the git binary itself.  The git binary comes from
-    // `Config::get().git_cmd()`, matching the pattern used in `exec_git` in
-    // repository.rs.
-    let git_bin = crate::config::Config::get().git_cmd().to_string();
-    let git_flags = repo.global_args_for_exec();
-
-    let mut cmd = Command::new(&git_bin);
-    cmd.args(&git_flags);
-    cmd.arg("cat-file");
-    cmd.arg("--batch");
-    cmd.stdin(Stdio::piped());
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
-    crate::clients::git_cli::apply_internal_git_env(&mut cmd);
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| GitAiError::Generic(format!("failed to spawn git cat-file --batch: {}", e)))?;
-
-    // Take stdin out of the child so we can write in a separate thread.
-    // This avoids a pipe deadlock: with many notes, stdout fills its buffer
-    // and the child blocks on write, while the parent is still writing to
-    // stdin and blocks there too.
-    let mut stdin = child.stdin.take().ok_or_else(|| {
-        GitAiError::Generic("failed to open git cat-file --batch stdin".to_string())
-    })?;
-
-    let blob_shas_owned: Vec<String> = blob_shas.to_vec();
-    let writer_thread = std::thread::spawn(move || -> Result<(), std::io::Error> {
-        for sha in &blob_shas_owned {
-            writeln!(stdin, "{}", sha)?;
-        }
-        Ok(())
-    });
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| GitAiError::Generic(format!("git cat-file --batch failed: {}", e)))?;
-
-    if let Err(e) = writer_thread.join().expect("stdin writer thread panicked")
-        && e.kind() != std::io::ErrorKind::BrokenPipe
-    {
-        return Err(GitAiError::IoError(e));
-    }
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(GitAiError::Generic(format!(
-            "git cat-file --batch exited {}: {}",
-            output.status, stderr
-        )));
-    }
-
-    // Parse the output format:
-    //   <sha> <type> <size>\n<content-bytes>\n
-    // We process byte-by-byte to handle binary-safe output.
-    let data = output.stdout;
-    let mut result = HashMap::new();
-    let mut pos = 0usize;
-
-    while pos < data.len() {
-        // Find the end of the header line.
-        let header_end = match data[pos..].iter().position(|&b| b == b'\n') {
-            Some(off) => pos + off,
-            None => break,
-        };
-        let header = std::str::from_utf8(&data[pos..header_end])
-            .unwrap_or("")
-            .trim();
-        pos = header_end + 1; // skip the '\n'
-
-        // Header format: "<sha> <type> <size>" or "<sha> missing"
-        let mut parts = header.splitn(3, ' ');
-        let sha = match parts.next() {
-            Some(s) => s.to_string(),
-            None => break,
-        };
-        let obj_type = parts.next().unwrap_or("missing");
-
-        if obj_type == "missing" {
-            // Object not in repo; skip.
-            continue;
-        }
-
-        let size_str = parts.next().unwrap_or("0");
-        let size: usize = size_str.parse().unwrap_or(0);
-
-        // Read exactly `size` bytes of content, then skip the trailing '\n'.
-        if pos + size > data.len() {
-            break;
-        }
-        let content_bytes = &data[pos..pos + size];
-        pos += size;
-        // Skip the trailing newline separator (if present).
-        if pos < data.len() && data[pos] == b'\n' {
-            pos += 1;
-        }
-
-        // Convert content to UTF-8 (note content is always text).
-        if let Ok(content) = std::str::from_utf8(content_bytes) {
-            result.insert(sha, content.to_string());
-        }
-    }
-
-    Ok(result)
-}
-
 fn print_help() {
     eprintln!("git ai notes migrate - Bulk-upload existing git notes to the HTTP backend");
     eprintln!();
@@ -553,6 +434,13 @@ mod tests {
     fn add_git_note(repo: &TmpRepo, commit_sha: &str, note: &str) {
         repo.git_command(&["notes", "--ref=ai", "add", "-f", "-m", note, commit_sha])
             .expect("git notes add");
+    }
+
+    fn read_note_blobs(
+        repo: &crate::operations::git::repository::Repository,
+        blob_shas: &[String],
+    ) -> Result<HashMap<String, String>, GitAiError> {
+        batch_read_blob_contents_with_policy(repo, blob_shas, BatchReadPolicy::Tolerant)
     }
 
     /// Integration test:
@@ -612,7 +500,8 @@ mod tests {
             .collect();
         let blob_shas: Vec<String> = note_pairs.iter().map(|(b, _)| b.clone()).collect();
 
-        let blob_contents = cat_file_batch(repo.gitai_repo(), &blob_shas).expect("cat_file_batch");
+        let blob_contents =
+            read_note_blobs(repo.gitai_repo(), &blob_shas).expect("read_note_blobs");
         assert_eq!(blob_contents.len(), 3, "should read 3 blob contents");
 
         let mut entries: Vec<(String, String)> = Vec::new();
@@ -705,11 +594,11 @@ mod tests {
         );
     }
 
-    /// Unit test: `cat_file_batch` with empty input returns empty map.
+    /// Unit test: the tolerant shared reader returns an empty map for empty input.
     #[test]
-    fn cat_file_batch_empty_input() {
+    fn read_note_blobs_empty_input() {
         let repo = TmpRepo::new().expect("TmpRepo::new");
-        let result = cat_file_batch(repo.gitai_repo(), &[]).expect("cat_file_batch");
+        let result = read_note_blobs(repo.gitai_repo(), &[]).expect("read_note_blobs");
         assert!(result.is_empty());
     }
 
@@ -742,7 +631,8 @@ mod tests {
             .map(|(b, c)| (b.clone(), c.clone()))
             .collect();
         let blob_shas: Vec<String> = note_pairs.iter().map(|(b, _)| b.clone()).collect();
-        let blob_contents = cat_file_batch(repo.gitai_repo(), &blob_shas).expect("cat_file_batch");
+        let blob_contents =
+            read_note_blobs(repo.gitai_repo(), &blob_shas).expect("read_note_blobs");
 
         let entries: Vec<(String, String)> = blob_contents
             .iter()
