@@ -1,13 +1,22 @@
 use crate::repos::test_repo::{DaemonTestScope, TestRepo};
 use git_ai::authorship::stats::CommitStats;
+use git_ai::authorship::working_log::{AgentId, CheckpointKind};
+use git_ai::commands::checkpoint_agent::orchestrator::{
+    BaseCommit, CheckpointFile, CheckpointRequest,
+};
+use git_ai::daemon::checkpoint::PreparedPathRole;
+use git_ai::daemon::send_checkpoint_request_with_timeout;
 use serde::Deserialize;
 use std::fs;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct StatusOutput {
     stats: CommitStats,
     checkpoints: Vec<serde_json::Value>,
+    checkpoint_processing_pending: bool,
 }
 
 fn extract_json_object(output: &str) -> String {
@@ -60,6 +69,81 @@ fn test_status_remains_available_when_daemon_is_not_running() {
     assert!(
         status.checkpoints.is_empty(),
         "offline status should preserve the empty-checkpoint result"
+    );
+    assert!(
+        !status.checkpoint_processing_pending,
+        "an unavailable daemon should not break status or report a pending checkpoint"
+    );
+}
+
+#[test]
+fn test_status_reports_pending_checkpoint_without_waiting_for_daemon_sync() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+        "status-pending-checkpoint=2000",
+    )]);
+    write_file(&repo, "pending.txt", "committed\n");
+    repo.git_og(&["add", "pending.txt"]).unwrap();
+    repo.git_og(&["commit", "-m", "initial"]).unwrap();
+    let base_commit = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+
+    write_file(&repo, "pending.txt", "committed\nAI edit\n");
+    let request = CheckpointRequest {
+        trace_id: "status-pending-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "status-pending-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("pending.txt"),
+            content: Some("committed\nAI edit\n".to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Sha(base_commit),
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+    let response = send_checkpoint_request_with_timeout(
+        &repo.daemon_control_socket_path(),
+        &request,
+        Duration::from_millis(500),
+    )
+    .expect("checkpoint should receive an asynchronous receipt");
+    assert!(
+        response.ok,
+        "checkpoint receipt should succeed: {response:?}"
+    );
+
+    let text = repo
+        .git_ai_without_pre_sync_for_test(&["status"])
+        .expect("text status should succeed while checkpoint processing is pending");
+    assert!(
+        text.contains("Checkpoint processing is still in progress. Status may be incomplete."),
+        "text status should warn that its results may be incomplete: {text}"
+    );
+
+    let started = Instant::now();
+    let raw = repo
+        .git_ai_without_pre_sync_for_test(&["status", "--json"])
+        .expect("status should succeed while checkpoint processing is pending");
+    let elapsed = started.elapsed();
+    let status: StatusOutput =
+        serde_json::from_str(&extract_json_object(&raw)).expect("valid status JSON");
+
+    assert!(
+        status.checkpoint_processing_pending,
+        "status should report the accepted checkpoint as pending"
+    );
+    assert!(
+        elapsed < Duration::from_secs(1),
+        "status should not wait for the delayed checkpoint side effect: {elapsed:?}"
     );
 }
 
