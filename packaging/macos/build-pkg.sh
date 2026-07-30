@@ -39,6 +39,7 @@ OUTPUT_ABS="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$
 
 rm -rf "$WORK_DIR"
 mkdir -p "$PAYLOAD_ROOT" "$SCRIPTS" "$(dirname "$OUTPUT_ABS")"
+chmod 0755 "$PAYLOAD_ROOT"
 install -m 0755 "$BINARY" "$SCRIPTS/git-ai"
 install -m 0755 "$ROOT/packaging/macos/scripts/preinstall" "$SCRIPTS/preinstall"
 install -m 0755 "$ROOT/packaging/macos/scripts/postinstall" "$SCRIPTS/postinstall"
