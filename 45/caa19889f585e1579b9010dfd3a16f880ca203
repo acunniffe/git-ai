@@ -1,0 +1,181 @@
+agent-support/vscode/src/blame-lens-manager.ts
+  6d3650378b016bc5 4,12-13,29-33,57,71-77,89,112,143,146,156-158,172,174,183-185,189,191,267,276-277,305-306,316-323,325-328,330-368,371-388,582-590,598-610,614-616,711
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "45caa19889f585e1579b9010dfd3a16f880ca203",
+  "prompts": {
+    "6d3650378b016bc5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0d9c7a23-4108-4685-9eee-26d95490ecd1",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/blame-lens-manager.ts:1-696 I've decided that I want the authorship notes BEFORE not after",
+          "timestamp": "2025-12-27T01:29:45.427Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll change the decoration type to show authorship annotations before the line content instead of after.",
+          "timestamp": "2025-12-27T01:29:50.800Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I need to update the decoration application code to use `before` instead of `after`:",
+          "timestamp": "2025-12-27T01:29:58.431Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Done! I've changed the authorship annotations to appear **before** the line content instead of after. The changes include:\n\n1. **Decoration type configuration** (line 20-28): Changed from `after` to `before` property\n2. **Margin adjustment**: Changed from left margin (`'0 0 0 7em'`) to right margin (`'0 3em 0 0'`) to provide spacing between the annotation and the code\n3. **Decoration rendering** (lines 332 and 404-407): Updated all decoration applications to use `before` instead of `after`\n\nThe authorship notes with the 🤖 emoji, model info, and line counts will now display before the code lines rather than after them.",
+          "timestamp": "2025-12-27T01:30:11.684Z"
+        },
+        {
+          "type": "user",
+          "text": "hmm I meant before, like a RUN button",
+          "timestamp": "2025-12-27T01:32:51.810Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Ah, I understand now! You want the authorship annotations to appear in the gutter area (like a Run button or breakpoint), not as inline text. \n\nUnfortunately, VS Code's text decorations with `before`/`after` are always inline with the text. To get annotations truly in the gutter or as clickable elements above lines, we have a few options:\n\n1. **Gutter Icons** - Show icons in the margin (but can only show icons, not text)\n2. **CodeLens** - Show clickable text above lines (like Run buttons)\n3. **Keep inline but style it differently** - Make the `before` decoration more visually distinct\n\nWhich approach would you prefer? \n\nFor showing the full authorship info (🤖 cursor|model <Name> +5), I'd recommend **CodeLens** since it can display text and appears as a separate clickable element above the code lines. Would that work for you?\n\nOr if you want something simpler, I could style the inline `before` decoration with a background color and more padding to make it look more like a separate element?",
+          "timestamp": "2025-12-27T01:33:09.501Z"
+        },
+        {
+          "type": "user",
+          "text": "Above code lines yes",
+          "timestamp": "2025-12-27T01:33:22.620Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I'll refactor this to use CodeLens, which shows clickable text above code lines. This is a better UX for authorship information.",
+          "timestamp": "2025-12-27T01:33:28.019Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've successfully refactored the code to use **CodeLens** instead of inline decorations. Here's what changed:\n\n## Key Changes:\n\n1. **Removed inline decorations** - No more `before`/`after` text decorations\n2. **Implemented CodeLensProvider** - The `BlameLensManager` now implements the `vscode.CodeLensProvider` interface\n3. **CodeLens appears above lines** - Authorship information (🤖 tool|model <Name> +lines) now appears as clickable text above AI-authored code blocks\n4. **Clickable CodeLens** - Clicking on a CodeLens shows detailed author information in a popup\n5. **Smart visibility** - CodeLens only appears when you have a multi-line selection with AI-authored code\n\n## How it works:\n\n- When you select multiple lines, the extension identifies AI-authored \"hunks\" (contiguous blocks)\n- Each AI hunk gets a CodeLens above it showing: `🤖 cursor|claude-3-opus <Aidan> +5`\n- Clicking the CodeLens shows the full prompt and details\n- Hovering over AI-authored lines still shows the hover tooltip\n- The status bar still shows model logos for the selection\n\nThe CodeLens will appear as a separate line above your code, just like Run buttons or test indicators!",
+          "timestamp": "2025-12-27T01:35:26.782Z"
+        }
+      ],
+      "total_additions": 145,
+      "total_deletions": 116,
+      "accepted_lines": 134,
+      "overriden_lines": 0
+    }
+  }
+}

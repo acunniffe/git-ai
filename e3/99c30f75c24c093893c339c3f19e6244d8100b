@@ -1,0 +1,58 @@
+src/authorship/rewrite_stash.rs
+  s_f00ef7c0f45b07::t_b6cffba9ff23a8 364-365
+src/commands/status.rs
+  s_f00ef7c0f45b07::t_c975a8ae4a0d9c 131
+src/git/repo_storage.rs
+  s_f00ef7c0f45b07::t_6aa2037efb18f5 537-539,544
+  s_f00ef7c0f45b07::t_27810f6677e326 532-536,540-543,545-557
+tests/integration/worktrees.rs
+  s_f00ef7c0f45b07::t_58dcc25700e364 13,377-379,381-387,390
+tests/integration/amend.rs
+  s_f00ef7c0f45b07::t_c92a59b0f7f005 435,442
+src/authorship/post_commit.rs
+  s_f00ef7c0f45b07::t_8f70a4efb296a2 308-319,323-335,354-357,369-383,402
+  s_f00ef7c0f45b07::t_7de0312a9bce05 320-322
+  s_f00ef7c0f45b07::t_5dc73aa6e4a9ef 14,67,70,87-92,120
+  s_f00ef7c0f45b07::t_aad3d21b1e0bfe 114,396
+tests/integration/main.rs
+  s_f00ef7c0f45b07::t_feb93c2cbe6a34 47
+src/authorship/virtual_attribution.rs
+  s_f00ef7c0f45b07::t_8dd2a32875f0dc 5,1563,2057-2059
+  s_f00ef7c0f45b07::t_48fe0f057ea230 1497
+  s_f00ef7c0f45b07::t_bbb77809fefc80 948-949,966-967,970,978
+  s_f00ef7c0f45b07::t_0c93049ced71cf 903
+  s_f00ef7c0f45b07::t_9a625dd214e5bc 1533-1535
+  s_f00ef7c0f45b07::t_6079891c99e094 9,1398-1496,1498-1532,1536-1562,1564-1572,1590,1619,1649-1660,1726-1754,2056,2060-2069,2142
+  s_f00ef7c0f45b07::t_aac3b88492ee58 899-902,904-906
+  s_f00ef7c0f45b07::t_b676060a773fa0 898,907-913
+tests/integration/simple_additions.rs
+  s_f00ef7c0f45b07::t_22013d43febb3b 1768-1773,1776-1777
+tests/integration/initial_attributions.rs
+  s_f00ef7c0f45b07::t_b4dc5da9a57025 7,66-69,71-77,162-165,167-173,267-278,342-345,347-353,356,436-439,441-447
+  s_f00ef7c0f45b07::t_86f1203f4b3f7f 450-451
+src/daemon.rs
+  s_f00ef7c0f45b07::t_59fd414d4d28ba 790,5496,5574-5576,5714
+  s_f00ef7c0f45b07::t_90771b0f11be5e 3316-3319
+tests/integration/daemon_commit_carryover.rs
+  s_f00ef7c0f45b07::t_df966f3dfc0be2 95,99
+  s_f00ef7c0f45b07::t_b8b5e43d28aa48 3,48-52,59-79
+  s_f00ef7c0f45b07::t_8f4590d064ad47 81-94,96-98,100-115
+  s_f00ef7c0f45b07::t_767bf776ef51f1 1-2,4-47,53,80
+  s_f00ef7c0f45b07::t_143c5d10d67518 54-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "e399c30f75c24c093893c339c3f19e6244d8100b",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

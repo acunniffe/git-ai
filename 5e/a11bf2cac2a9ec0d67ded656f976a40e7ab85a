@@ -1,0 +1,27 @@
+CONTRIBUTING.md
+  03289bafe4628da6 41,44-45,48
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/GitAiService.kt
+  03289bafe4628da6 71-73,90-91,94-95,99-100
+flake.nix
+  03289bafe4628da6 196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "5ea11bf2cac2a9ec0d67ded656f976a40e7ab85a",
+  "prompts": {
+    "03289bafe4628da6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd8d647d-72e9-40be-bb4e-f19dbf3171df",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 16,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}

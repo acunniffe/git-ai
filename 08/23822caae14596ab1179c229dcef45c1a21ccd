@@ -1,0 +1,24 @@
+src/git/test_utils/mod.rs
+  601fa7cb531db267 507
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "0823822caae14596ab1179c229dcef45c1a21ccd",
+  "prompts": {
+    "601fa7cb531db267": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "535048a0-adb2-46f7-b663-5c12833c69ab",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/d1650a1a69f81b095f81e9486a084640dcff6b749300c3fbea26d8829bfe8041"
+    }
+  }
+}

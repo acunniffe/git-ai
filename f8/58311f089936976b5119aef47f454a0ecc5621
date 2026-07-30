@@ -1,0 +1,29 @@
+tests/integration/continue_cli.rs
+  s_1eeb4f6def9ecf::t_ef2542c4a0305d 381
+tests/integration/windsurf.rs
+  s_1eeb4f6def9ecf::t_ef2542c4a0305d 316
+tests/integration/ci_squash_rebase.rs
+  s_1eeb4f6def9ecf::t_2190f89c36061b 311
+  s_1eeb4f6def9ecf::t_526aee9a913be6 341
+  s_1eeb4f6def9ecf::t_951aa96f947464 3,308-310
+tests/integration/gemini.rs
+  s_1eeb4f6def9ecf::t_ef2542c4a0305d 348
+tests/integration/session_event_attribution.rs
+  s_1eeb4f6def9ecf::t_7ada2e9d73d2e5 10,15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.11",
+  "base_commit_sha": "f858311f089936976b5119aef47f454a0ecc5621",
+  "prompts": {},
+  "sessions": {
+    "s_1eeb4f6def9ecf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24a5-539f-7dd3-9793-1f096a58ff70",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}
