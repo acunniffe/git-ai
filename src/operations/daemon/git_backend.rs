@@ -2,6 +2,7 @@ use crate::error::GitAiError;
 use crate::model::domain::FamilyKey;
 use crate::operations::git::alias_parser::parse_alias_tokens;
 use crate::operations::git::cli_parser::parse_git_cli_args;
+use crate::operations::git::command_policy::is_builtin_command;
 use crate::operations::git::repo_state::{common_dir_for_repo_path, common_dir_for_worktree};
 use crate::operations::git::repository::discover_repository_in_path_no_git_exec;
 use std::collections::{HashMap, HashSet};
@@ -186,7 +187,7 @@ impl SystemGitBackend {
             if !seen.insert(command.clone()) {
                 return Ok(None);
             }
-            if is_builtin_primary_command(&command) {
+            if is_builtin_command(&command) {
                 return Ok(Some((command, current.command_args)));
             }
 
@@ -260,69 +261,6 @@ fn read_all_aliases_from_config(config: &gix_config::File<'_>) -> HashMap<String
         }
     }
     aliases
-}
-
-fn is_builtin_primary_command(command: &str) -> bool {
-    matches!(
-        command,
-        "add"
-            | "blame"
-            | "branch"
-            | "cat-file"
-            | "check-attr"
-            | "check-ignore"
-            | "check-mailmap"
-            | "checkout"
-            | "cherry-pick"
-            | "clean"
-            | "clone"
-            | "commit"
-            | "config"
-            | "count-objects"
-            | "describe"
-            | "diff"
-            | "diff-files"
-            | "diff-index"
-            | "diff-tree"
-            | "fetch"
-            | "for-each-ref"
-            | "grep"
-            | "hash-object"
-            | "help"
-            | "init"
-            | "log"
-            | "ls-files"
-            | "ls-tree"
-            | "merge"
-            | "merge-base"
-            | "mktree"
-            | "mv"
-            | "name-rev"
-            | "notes"
-            | "pull"
-            | "push"
-            | "rebase"
-            | "remote"
-            | "reset"
-            | "restore"
-            | "rev-list"
-            | "rev-parse"
-            | "revert"
-            | "rm"
-            | "shortlog"
-            | "show"
-            | "stash"
-            | "status"
-            | "switch"
-            | "symbolic-ref"
-            | "tag"
-            | "update-ref"
-            | "var"
-            | "verify-commit"
-            | "verify-tag"
-            | "version"
-            | "worktree"
-    )
 }
 
 impl GitBackend for SystemGitBackend {

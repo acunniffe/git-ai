@@ -3,6 +3,7 @@ pub mod canonicalize;
 pub(crate) mod cat_file;
 pub mod cli_parser;
 pub mod command_classification;
+pub(crate) mod command_policy;
 pub mod fast_reader;
 pub mod notes_api;
 pub(crate) mod notes_store;

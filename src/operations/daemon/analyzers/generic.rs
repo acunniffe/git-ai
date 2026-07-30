@@ -4,6 +4,7 @@ use crate::model::domain::{
 };
 use crate::operations::daemon::analyzers::{AnalysisView, CommandAnalyzer};
 use crate::operations::git::command_classification::is_definitely_read_only_command;
+use crate::operations::git::command_policy::{is_repo_admin_command, is_transport_command};
 
 #[derive(Default)]
 pub struct GenericAnalyzer;
@@ -66,29 +67,6 @@ impl CommandAnalyzer for GenericAnalyzer {
             confidence: Confidence::Low,
         })
     }
-}
-
-fn is_transport_command(command: &str) -> bool {
-    matches!(
-        command,
-        "clone" | "fetch" | "pull" | "push" | "remote" | "ls-remote"
-    )
-}
-
-fn is_repo_admin_command(command: &str) -> bool {
-    matches!(
-        command,
-        "init"
-            | "worktree"
-            | "config"
-            | "credential"
-            | "gc"
-            | "maintenance"
-            | "fsck"
-            | "prune"
-            | "pack-refs"
-            | "reflog"
-    )
 }
 
 fn is_read_only_command(command: &str) -> bool {
@@ -156,5 +134,28 @@ mod tests {
             )
             .unwrap();
         assert!(!result.events.is_empty());
+    }
+
+    #[test]
+    fn generic_policy_categories_follow_shared_command_metadata() {
+        let analyzer = GenericAnalyzer;
+        for (command_name, expected_class) in [
+            ("ls-remote", CommandClass::Transport),
+            ("maintenance", CommandClass::RepoAdmin),
+            ("status", CommandClass::ReadOnly),
+        ] {
+            let result = analyzer
+                .analyze(
+                    &command(command_name),
+                    AnalysisView {
+                        refs: &std::collections::HashMap::new(),
+                    },
+                )
+                .unwrap();
+            assert_eq!(
+                result.class, expected_class,
+                "unexpected class for {command_name}"
+            );
+        }
     }
 }

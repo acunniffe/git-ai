@@ -1,38 +1,10 @@
+use super::command_policy;
+
 /// Returns true if the given git subcommand is guaranteed to never mutate
 /// repository state (refs, objects, config, worktree). Used to skip expensive
 /// trace2 ingestion work and suppress trace2 emission for read-only commands.
 pub fn is_definitely_read_only_command(command: &str) -> bool {
-    matches!(
-        command,
-        "blame"
-            | "cat-file"
-            | "check-attr"
-            | "check-ignore"
-            | "check-mailmap"
-            | "count-objects"
-            | "describe"
-            | "diff"
-            | "diff-files"
-            | "diff-index"
-            | "diff-tree"
-            | "for-each-ref"
-            | "grep"
-            | "help"
-            | "log"
-            | "ls-files"
-            | "ls-tree"
-            | "merge-base"
-            | "name-rev"
-            | "rev-list"
-            | "rev-parse"
-            | "shortlog"
-            | "show"
-            | "status"
-            | "var"
-            | "verify-commit"
-            | "verify-tag"
-            | "version"
-    )
+    command_policy::is_definitely_read_only_command(command)
 }
 
 /// Returns true if the full Git invocation is guaranteed to never mutate
@@ -71,28 +43,7 @@ pub fn is_definitely_read_only_git_invocation(command: &str, command_args: &[Str
 /// Returns true when a Git command may mutate repository state and therefore
 /// must be treated as an ordered trace2 root.
 pub fn may_mutate_repo_state_command(command: &str) -> bool {
-    matches!(
-        command,
-        "branch"
-            | "checkout"
-            | "cherry-pick"
-            | "clone"
-            | "commit"
-            | "fetch"
-            | "init"
-            | "merge"
-            | "pull"
-            | "push"
-            | "rebase"
-            | "remote"
-            | "reset"
-            | "revert"
-            | "stash"
-            | "switch"
-            | "tag"
-            | "update-ref"
-            | "worktree"
-    )
+    command_policy::may_mutate_repo_state_command(command)
 }
 
 /// Returns true when a full Git invocation may mutate repository state and
@@ -107,26 +58,7 @@ pub fn git_invocation_may_mutate_repo_state(command: &str, command_args: &[Strin
 /// target a different repository context and must not be sequenced under the
 /// launching repository family.
 pub fn participates_in_family_sequencer_command(command: &str) -> bool {
-    matches!(
-        command,
-        "branch"
-            | "checkout"
-            | "cherry-pick"
-            | "commit"
-            | "fetch"
-            | "merge"
-            | "pull"
-            | "push"
-            | "rebase"
-            | "remote"
-            | "reset"
-            | "revert"
-            | "stash"
-            | "switch"
-            | "tag"
-            | "update-ref"
-            | "worktree"
-    )
+    command_policy::participates_in_family_sequencer_command(command)
 }
 
 /// Returns true when a full Git invocation must be ordered inside an existing
@@ -386,6 +318,7 @@ fn worktree_invocation_is_read_only(args: &[String]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::command_policy::{is_builtin_command, is_repo_admin_command, is_transport_command};
     use super::*;
 
     #[test]
@@ -416,6 +349,36 @@ mod tests {
     fn unknown_commands_not_read_only() {
         assert!(!is_definitely_read_only_command("my-custom-alias"));
         assert!(!is_definitely_read_only_command(""));
+    }
+
+    #[test]
+    fn canonical_policy_preserves_cross_consumer_categories() {
+        for command in ["clone", "fetch", "pull", "push", "remote", "ls-remote"] {
+            assert!(
+                is_transport_command(command),
+                "{command} should be transport"
+            );
+        }
+        for command in [
+            "config",
+            "credential",
+            "gc",
+            "maintenance",
+            "fsck",
+            "prune",
+            "pack-refs",
+            "reflog",
+            "worktree",
+        ] {
+            assert!(
+                is_repo_admin_command(command),
+                "{command} should be repository-admin"
+            );
+        }
+
+        assert!(is_builtin_command("commit"));
+        assert!(!is_builtin_command("ls-remote"));
+        assert!(!is_builtin_command("daemon_preconnect"));
     }
 
     #[test]
