@@ -1,0 +1,30 @@
+data-privacy.md
+  f8164abde60f8fb7 1-4,6,8-33,35-42,44-49,51-58
+  h_670eaf8bab379b 5,7,34,43,50,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.2",
+  "base_commit_sha": "7828ce37220da5e73c9ba73596b4461732615eaf",
+  "prompts": {
+    "f8164abde60f8fb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd120be4-04bb-4387-bf42-01f1c94f5043",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 72,
+      "total_deletions": 0,
+      "accepted_lines": 53,
+      "overriden_lines": 5,
+      "messages_url": "https://usegitai.com/cas/5e5c9577021b721176ba7032410d74434e8369ec74dfd4a041586a0c1c43d2f8"
+    }
+  },
+  "humans": {
+    "h_670eaf8bab379b": {
+      "author": "Aidan Cunniffe"
+    }
+  }
+}

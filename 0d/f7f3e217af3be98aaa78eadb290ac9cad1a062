@@ -1,0 +1,48 @@
+src/commands/checkpoint_agent/opencode_preset.rs
+  0710cc7e5a8610d2 54-68,78,80,92,96,105,114,124,126,329,334-337,340,429,431-451
+tests/fixtures/opencode-storage/part/msg-assistant-001/prt-004.json
+  0710cc7e5a8610d2 1-7
+tests/fixtures/opencode-storage/part/msg-assistant-001/prt-001.json
+  0710cc7e5a8610d2 7-8
+tests/fixtures/opencode-storage/part/msg-assistant-001/prt-003.json
+  0710cc7e5a8610d2 7-8
+tests/fixtures/opencode-storage/part/msg-user-001/prt-001.json
+  0710cc7e5a8610d2 7-8
+tests/fixtures/opencode-storage/part/msg-assistant-001/prt-002.json
+  0710cc7e5a8610d2 7-8,12-19,22-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "0df7f3e217af3be98aaa78eadb290ac9cad1a062",
+  "prompts": {
+    "0710cc7e5a8610d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9849edc7-d28b-42de-8ac7-f671dd6c39a6",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 88,
+      "total_deletions": 39,
+      "accepted_lines": 81,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/af76a62d8bbf9ad753e483e60996a8b84948a158dca966de2847ff6dc9238ca4"
+    },
+    "90d81fc8b821d7a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79b7d8ca-9cb9-4d0c-b272-44aa0a16c36e",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 4,
+      "accepted_lines": 4,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e97aec7894638a26c6c4e9dda5c35cfe7ed3756b4f29f793e48147731e3a1f3f"
+    }
+  }
+}

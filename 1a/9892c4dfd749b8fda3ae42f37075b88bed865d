@@ -1,0 +1,139 @@
+src/mdm/agents/kilo.rs
+  2b80a3e5bc171d13 6-47,49,51-140,142-161
+  7664bb89748a5955 48,50
+  9e2964711b021dcb 5
+  86487d04bfa0ff51 141
+src/commands/checkpoint_agent/presets/opencode.rs
+  e477d8d4b95eb7f3 14-224,360
+agent-support/opencode/git-ai.ts
+  a55feed2f3edc687 2
+  2b80a3e5bc171d13 4,17,231,254,284
+src/mdm/agents/opencode.rs
+  2b80a3e5bc171d13 7-9,14-55,60,65,71,75,79,105,249-250,253-254,261,263,275,277-278,283-284
+src/commands/checkpoint_agent/presets/kilo.rs
+  e477d8d4b95eb7f3 1-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "1a9892c4dfd749b8fda3ae42f37075b88bed865d",
+  "prompts": {
+    "253bca66fa3864dc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2020eff07ffeioYKscM4oWFE6t",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "2b80a3e5bc171d13": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_20243a627ffevXCthLKB4iPQbZ",
+        "model": "unknown"
+      },
+      "human_author": "Michael",
+      "messages": [],
+      "total_additions": 99,
+      "total_deletions": 108,
+      "accepted_lines": 220,
+      "overriden_lines": 0
+    },
+    "4462bfc8e19b72d0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_2020c5476ffelLEuJdlW4Qphod",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "7664bb89748a5955": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_202119d42ffezOKzjHUnvryzSr",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "86487d04bfa0ff51": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_20208de94ffexj62FnKeJdv5N9",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "9e2964711b021dcb": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_202098dbdffeQnnxKoeOUcAiAJ",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "a55feed2f3edc687": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_202159290ffeEOOZHZhV5FVp5C",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 9,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "e477d8d4b95eb7f3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_202478a30ffetc5QShmD8EqWpe",
+        "model": "unknown"
+      },
+      "human_author": "Michael",
+      "messages": [],
+      "total_additions": 222,
+      "total_deletions": 389,
+      "accepted_lines": 237,
+      "overriden_lines": 0
+    },
+    "feac79f6e68855e9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_202110769ffeCWPh0DRKYwUocK",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

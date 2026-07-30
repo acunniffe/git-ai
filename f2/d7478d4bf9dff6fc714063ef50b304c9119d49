@@ -1,0 +1,25 @@
+src/git/sync_authorship.rs
+  s_032cf4fb6d69d7::t_4e136025a87abc 429-517
+src/commands/install.rs
+  s_032cf4fb6d69d7::t_de2b6ccd713c0b 1
+src/authorship/virtual_attribution.rs
+  s_032cf4fb6d69d7::t_4e136025a87abc 2916-2983
+src/commands/mod.rs
+  s_032cf4fb6d69d7::t_4e136025a87abc 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "f2d7478d4bf9dff6fc714063ef50b304c9119d49",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

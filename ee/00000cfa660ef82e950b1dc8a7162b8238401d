@@ -1,0 +1,23 @@
+src/mdm/agents/xcode.rs
+  s_281104f69d513f::t_23e9a805488e48 1186-1190,1282,1285-1287
+  s_281104f69d513f::t_6b97c4c2beca76 7,156,161-172,791
+agent-support/xcode/Sources/git-ai-xcode-watcher/main.swift
+  s_281104f69d513f::t_ce47e7316d0777 5,118,120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "ee00000cfa660ef82e950b1dc8a7162b8238401d",
+  "prompts": {},
+  "logical_commit_id": "ee00000cfa660ef82e950b1dc8a7162b8238401d",
+  "sessions": {
+    "s_281104f69d513f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e1c5c-cf3b-72a2-9202-cd95fd084346",
+        "model": "gpt-5.5"
+      },
+      "human_author": "peckfly <31184030+peckfly@users.noreply.github.com>"
+    }
+  }
+}
