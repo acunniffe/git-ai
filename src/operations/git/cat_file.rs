@@ -1,7 +1,7 @@
 //! Batched reads from Git's object database through `git cat-file --batch`.
 //!
-//! Keeping the byte framing and missing-object policy here gives every caller
-//! the same parser while retaining a single Git process for an arbitrary batch.
+//! Keeping the byte framing and result policy here gives every caller the same
+//! parser while retaining a single Git process for an arbitrary batch.
 
 use std::collections::HashMap;
 use std::time::Duration;
@@ -22,9 +22,27 @@ const CONFIG_ACCESS_RETRY_DELAYS: &[Duration] = &[
     Duration::from_millis(800),
 ];
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Controls how malformed or missing records from Git's batch protocol are handled.
+///
+/// `Tolerant` is intentionally limited to notes migration, which historically
+/// skipped unusable records while importing whatever valid records remained.
+pub(crate) enum BatchReadPolicy {
+    Strict,
+    Tolerant,
+}
+
 pub(crate) fn batch_read_blob_contents(
     repo: &Repository,
     blob_oids: &[String],
+) -> Result<HashMap<String, String>, GitAiError> {
+    batch_read_blob_contents_with_policy(repo, blob_oids, BatchReadPolicy::Strict)
+}
+
+pub(crate) fn batch_read_blob_contents_with_policy(
+    repo: &Repository,
+    blob_oids: &[String],
+    policy: BatchReadPolicy,
 ) -> Result<HashMap<String, String>, GitAiError> {
     if blob_oids.is_empty() {
         return Ok(HashMap::new());
@@ -36,13 +54,15 @@ pub(crate) fn batch_read_blob_contents(
 
     let stdin_data = blob_oids.join("\n") + "\n";
     let output = exec_cat_file(&args, stdin_data.as_bytes())?;
-    let results = parse_batch_output(&output.stdout)?;
-    for oid in blob_oids {
-        if !results.contains_key(oid) {
-            return Err(GitAiError::Generic(format!(
-                "missing git blob object referenced by authorship note: {}",
-                oid
-            )));
+    let results = parse_batch_output_with_policy(&output.stdout, policy)?;
+    if policy == BatchReadPolicy::Strict {
+        for oid in blob_oids {
+            if !results.contains_key(oid) {
+                return Err(GitAiError::Generic(format!(
+                    "missing git blob object referenced by authorship note: {}",
+                    oid
+                )));
+            }
         }
     }
     Ok(results)
@@ -87,7 +107,15 @@ fn is_transient_config_access_error(error: &GitAiError) -> bool {
     )
 }
 
+#[cfg(test)]
 fn parse_batch_output(data: &[u8]) -> Result<HashMap<String, String>, GitAiError> {
+    parse_batch_output_with_policy(data, BatchReadPolicy::Strict)
+}
+
+fn parse_batch_output_with_policy(
+    data: &[u8],
+    policy: BatchReadPolicy,
+) -> Result<HashMap<String, String>, GitAiError> {
     let mut results = HashMap::new();
     let mut pos = 0usize;
 
@@ -97,37 +125,78 @@ fn parse_batch_output(data: &[u8]) -> Result<HashMap<String, String>, GitAiError
             None => break,
         };
 
-        let header = std::str::from_utf8(&data[pos..header_end])?;
-        let parts: Vec<&str> = header.split_whitespace().collect();
-        if parts.len() < 2 {
+        let header = match std::str::from_utf8(&data[pos..header_end]) {
+            Ok(header) => header,
+            Err(_error) if policy == BatchReadPolicy::Tolerant => break,
+            Err(error) => return Err(error.into()),
+        };
+
+        let (oid, is_missing, size) = match policy {
+            BatchReadPolicy::Strict => {
+                let parts: Vec<&str> = header.split_whitespace().collect();
+                if parts.len() < 2 {
+                    pos = header_end + 1;
+                    continue;
+                }
+
+                if parts[1] == "missing" {
+                    (String::new(), true, 0)
+                } else if parts.len() < 3 {
+                    pos = header_end + 1;
+                    continue;
+                } else {
+                    let size: usize = parts[2].parse().map_err(|e| {
+                        GitAiError::Generic(format!("Invalid size in cat-file output: {}", e))
+                    })?;
+                    (parts[0].to_string(), false, size)
+                }
+            }
+            BatchReadPolicy::Tolerant => {
+                let mut parts = header.trim().splitn(3, ' ');
+                let Some(oid) = parts.next() else {
+                    break;
+                };
+                let object_type = parts.next().unwrap_or("missing");
+                if object_type == "missing" {
+                    (String::new(), true, 0)
+                } else {
+                    let size = parts.next().unwrap_or("0").parse().unwrap_or(0);
+                    (oid.to_string(), false, size)
+                }
+            }
+        };
+
+        if is_missing {
             pos = header_end + 1;
             continue;
         }
-
-        let oid = parts[0].to_string();
-        if parts[1] == "missing" {
-            pos = header_end + 1;
-            continue;
-        }
-
-        if parts.len() < 3 {
-            pos = header_end + 1;
-            continue;
-        }
-
-        let size: usize = parts[2]
-            .parse()
-            .map_err(|e| GitAiError::Generic(format!("Invalid size in cat-file output: {}", e)))?;
 
         let content_start = header_end + 1;
         let content_end = content_start + size;
         if content_end > data.len() {
+            if policy == BatchReadPolicy::Tolerant {
+                break;
+            }
             return Err(GitAiError::Generic(
                 "Malformed cat-file --batch output: truncated content".to_string(),
             ));
         }
 
-        let content = String::from_utf8_lossy(&data[content_start..content_end]).to_string();
+        let content = match policy {
+            BatchReadPolicy::Strict => {
+                String::from_utf8_lossy(&data[content_start..content_end]).to_string()
+            }
+            BatchReadPolicy::Tolerant => {
+                let Ok(content) = std::str::from_utf8(&data[content_start..content_end]) else {
+                    pos = content_end;
+                    if pos < data.len() && data[pos] == b'\n' {
+                        pos += 1;
+                    }
+                    continue;
+                };
+                content.to_string()
+            }
+        };
         results.insert(oid, content);
 
         pos = content_end;
@@ -160,6 +229,16 @@ mod tests {
     #[test]
     fn skips_missing_objects() {
         assert!(parse_batch_output(b"abc123 missing\n").unwrap().is_empty());
+    }
+
+    #[test]
+    fn tolerant_policy_skips_missing_objects() {
+        let data = b"abc123 missing\ndef456 blob 5\nworld\n";
+
+        let result = parse_batch_output_with_policy(data, BatchReadPolicy::Tolerant).unwrap();
+
+        assert_eq!(result.get("def456"), Some(&"world".to_string()));
+        assert!(!result.contains_key("abc123"));
     }
 
     #[test]
@@ -221,6 +300,37 @@ mod tests {
             error.to_string(),
             "Generic error: Invalid size in cat-file output: invalid digit found in string"
         );
+    }
+
+    #[test]
+    fn tolerant_policy_keeps_legacy_invalid_size_behavior() {
+        let result =
+            parse_batch_output_with_policy(b"abc123 blob notanumber\n", BatchReadPolicy::Tolerant)
+                .unwrap();
+
+        assert_eq!(result.get("abc123"), Some(&String::new()));
+    }
+
+    #[test]
+    fn tolerant_policy_returns_partial_results_for_truncated_content() {
+        let data = b"abc123 blob 5\nhello\ndef456 blob 20\npartial";
+
+        let result = parse_batch_output_with_policy(data, BatchReadPolicy::Tolerant).unwrap();
+
+        assert_eq!(result.get("abc123"), Some(&"hello".to_string()));
+        assert!(!result.contains_key("def456"));
+    }
+
+    #[test]
+    fn tolerant_policy_skips_invalid_utf8_content() {
+        let result = parse_batch_output_with_policy(
+            b"abc123 blob 2\n\xffx\ndef456 blob 5\nworld\n",
+            BatchReadPolicy::Tolerant,
+        )
+        .unwrap();
+
+        assert!(!result.contains_key("abc123"));
+        assert_eq!(result.get("def456"), Some(&"world".to_string()));
     }
 
     #[test]
@@ -295,6 +405,28 @@ mod tests {
                 "Generic error: missing git blob object referenced by authorship note: {missing_oid}"
             )
         );
+    }
+
+    #[test]
+    fn tolerant_read_allows_missing_objects() {
+        let repo = TmpRepo::new().unwrap();
+        repo.write_file("blob.txt", "hello\n", false).unwrap();
+        let oid = repo
+            .git_command(&["hash-object", "-w", "blob.txt"])
+            .unwrap()
+            .trim()
+            .to_string();
+        let missing_oid = "0000000000000000000000000000000000000000".to_string();
+
+        let result = batch_read_blob_contents_with_policy(
+            repo.gitai_repo(),
+            &[oid.clone(), missing_oid.clone()],
+            BatchReadPolicy::Tolerant,
+        )
+        .unwrap();
+
+        assert_eq!(result.get(&oid), Some(&"hello\n".to_string()));
+        assert!(!result.contains_key(&missing_oid));
     }
 
     #[test]
