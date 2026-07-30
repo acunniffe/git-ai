@@ -8,6 +8,8 @@ use git_ai::daemon::{
     local_socket_connects_with_timeout, open_local_socket_stream_with_timeout,
     send_control_request,
 };
+#[cfg(not(windows))]
+use interprocess::local_socket::traits::Stream;
 use repos::test_repo::{DaemonTestScope, TestRepo, get_binary_path, real_git_executable};
 use serde_json::Value;
 use std::fs;
@@ -501,6 +503,22 @@ fn send_on_persistent_conn<R: Read + Write>(
     serde_json::from_str::<ControlResponse>(line.trim()).expect("parse daemon response")
 }
 
+#[cfg(not(windows))]
+fn assert_control_connection_closed<R: Read + Write>(reader: &mut BufReader<R>) {
+    let mut request = serde_json::to_vec(&ControlRequest::Ping).expect("serialize ping request");
+    request.push(b'\n');
+    if reader.get_mut().write_all(&request).is_ok() && reader.get_mut().flush().is_ok() {
+        let mut response = String::new();
+        let bytes_read = reader
+            .read_line(&mut response)
+            .expect("idle connection should be closed without a read error");
+        assert_eq!(
+            bytes_read, 0,
+            "daemon should close a control connection after the idle deadline"
+        );
+    }
+}
+
 /// Integration test: verifies that a persistent control socket connection can
 /// deliver telemetry envelopes and CAS payloads to the daemon, and that the
 /// daemon acknowledges each request with `ok: true` without closing the
@@ -543,6 +561,11 @@ fn daemon_telemetry_and_cas_over_persistent_connection() {
     };
     let resp = send_on_persistent_conn(&mut reader, &telemetry_req);
     assert!(resp.ok, "telemetry submit should succeed: {:?}", resp.error);
+
+    // The daemon telemetry handle intentionally keeps this connection open
+    // between sparse events. It must survive beyond the checkpoint body
+    // receive timeout, which does not apply to ordinary control traffic.
+    thread::sleep(Duration::from_millis(2_500));
 
     // 2. Send CAS payloads over the *same* connection
     let cas_req = ControlRequest::SubmitCas {
@@ -590,5 +613,64 @@ fn daemon_telemetry_and_cas_over_persistent_connection() {
 
     // Clean up
     drop(reader);
+    shutdown_daemon(&repo);
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_reaps_silent_initial_control_connection() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let start_output = daemon_command_output(&repo, &["bg", "start"], repo.path());
+    assert!(
+        start_output.status.success(),
+        "daemon start should succeed: stdout={} stderr={}",
+        String::from_utf8_lossy(&start_output.stdout),
+        String::from_utf8_lossy(&start_output.stderr)
+    );
+    wait_for_daemon_sockets(&repo);
+
+    let control_path = daemon_control_socket_path(&repo);
+    let stream = open_local_socket_stream_with_timeout(&control_path, Duration::from_secs(2))
+        .expect("should connect to daemon control socket");
+    stream
+        .set_recv_timeout(Some(Duration::from_secs(1)))
+        .expect("should set client receive timeout");
+    let mut reader = BufReader::new(stream);
+
+    thread::sleep(Duration::from_millis(2_500));
+
+    assert_control_connection_closed(&mut reader);
+
+    shutdown_daemon(&repo);
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_reaps_idle_control_connection_after_valid_request() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    start_daemon(&repo);
+    wait_for_daemon_sockets(&repo);
+
+    let control_path = daemon_control_socket_path(&repo);
+    let stream = open_local_socket_stream_with_timeout(&control_path, Duration::from_secs(2))
+        .expect("should connect to daemon control socket");
+    stream
+        .set_recv_timeout(Some(Duration::from_secs(1)))
+        .expect("should set client receive timeout");
+    let mut reader = BufReader::new(stream);
+
+    let response = send_on_persistent_conn(
+        &mut reader,
+        &ControlRequest::SubmitTelemetry {
+            envelopes: Vec::new(),
+        },
+    );
+    assert!(response.ok, "telemetry submit should succeed");
+
+    thread::sleep(Duration::from_millis(10_500));
+
+    assert_control_connection_closed(&mut reader);
+
     shutdown_daemon(&repo);
 }

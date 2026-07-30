@@ -90,6 +90,7 @@ const TRACE_CONNECTION_CLOSED_EVENT: &str = "git_ai_connection_closed";
 const DAEMON_CONTROL_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const DAEMON_CONTROL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
 const DAEMON_CONTROL_RECEIVE_TIMEOUT: Duration = Duration::from_secs(2);
+const DAEMON_CONTROL_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
 const DAEMON_CHECKPOINT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(300);
 const DAEMON_SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
 const CHECKPOINT_INGRESS_REQUEST_LIMIT: usize = 1_024;
@@ -7312,12 +7313,11 @@ fn windows_control_pipe_worker_loop(
 
 #[cfg(windows)]
 fn handle_windows_control_pipe_connection(
-    mut server: WindowsPipeServer,
+    server: WindowsPipeServer,
     coordinator: Arc<ActorDaemonCoordinator>,
     runtime_handle: tokio::runtime::Handle,
 ) {
-    server.set_read_timeout(Some(DAEMON_CONTROL_RECEIVE_TIMEOUT));
-    let mut reader = BufReader::new(&mut server);
+    let mut reader = BufReader::new(server);
     if let Err(e) = handle_control_connection_actor_reader(&mut reader, coordinator, runtime_handle)
     {
         tracing::error!(
@@ -7330,34 +7330,82 @@ fn handle_windows_control_pipe_connection(
     }
 }
 
+trait ControlConnection: Read + Write {
+    fn set_receive_timeout(&mut self, timeout: Option<Duration>) -> Result<(), GitAiError>;
+}
+
+#[cfg(windows)]
+impl ControlConnection for WindowsPipeServer {
+    fn set_receive_timeout(&mut self, timeout: Option<Duration>) -> Result<(), GitAiError> {
+        self.set_read_timeout(timeout);
+        Ok(())
+    }
+}
+
+#[cfg(not(windows))]
+impl ControlConnection for LocalSocketStream {
+    fn set_receive_timeout(&mut self, timeout: Option<Duration>) -> Result<(), GitAiError> {
+        self.set_recv_timeout(timeout).map_err(|error| {
+            GitAiError::Generic(format!(
+                "failed setting daemon control receive timeout: {error}"
+            ))
+        })
+    }
+}
+
+fn control_receive_timed_out(error: &GitAiError) -> bool {
+    matches!(
+        error,
+        GitAiError::IoError(io_error)
+            if matches!(
+                io_error.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+            )
+    )
+}
+
 #[cfg(not(windows))]
 fn handle_control_connection_actor(
     stream: LocalSocketStream,
     coordinator: Arc<ActorDaemonCoordinator>,
     runtime_handle: tokio::runtime::Handle,
 ) -> Result<(), GitAiError> {
-    stream
-        .set_recv_timeout(Some(DAEMON_CONTROL_RECEIVE_TIMEOUT))
-        .map_err(|error| {
-            GitAiError::Generic(format!(
-                "failed setting daemon control receive timeout: {error}"
-            ))
-        })?;
     let mut reader = BufReader::new(stream);
     handle_control_connection_actor_reader(&mut reader, coordinator, runtime_handle)
 }
 
-fn handle_control_connection_actor_reader<R: Read + Write>(
+fn handle_control_connection_actor_reader<R: ControlConnection>(
     reader: &mut BufReader<R>,
     coordinator: Arc<ActorDaemonCoordinator>,
     runtime_handle: tokio::runtime::Handle,
 ) -> Result<(), GitAiError> {
-    while let Some(line) = read_json_line(reader)? {
+    reader
+        .get_mut()
+        .set_receive_timeout(Some(DAEMON_CONTROL_RECEIVE_TIMEOUT))?;
+    let mut uses_idle_timeout = false;
+    loop {
+        let line = match read_json_line(reader) {
+            Ok(Some(line)) => line,
+            Ok(None) => break,
+            Err(error) if control_receive_timed_out(&error) => break,
+            Err(error) => return Err(error),
+        };
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
         }
         let parsed = serde_json::from_str::<ControlRequest>(trimmed);
+        if !uses_idle_timeout
+            && matches!(
+                &parsed,
+                Ok(request) if !matches!(request, ControlRequest::CheckpointRun { .. })
+            )
+        {
+            reader
+                .get_mut()
+                .set_receive_timeout(Some(DAEMON_CONTROL_IDLE_TIMEOUT))?;
+            uses_idle_timeout = true;
+        }
         let mut shutdown_after_response = false;
         let response = match parsed {
             Ok(ControlRequest::CheckpointRun { body_bytes }) => {
@@ -7440,6 +7488,11 @@ fn handle_control_connection_actor_reader<R: Read + Write>(
                     return Err(error);
                 }
 
+                if uses_idle_timeout {
+                    reader
+                        .get_mut()
+                        .set_receive_timeout(Some(DAEMON_CONTROL_RECEIVE_TIMEOUT))?;
+                }
                 let body = match read_checkpoint_body(reader, reservation.body_bytes()) {
                     Ok(body) => body,
                     Err(error) => {
@@ -7454,6 +7507,11 @@ fn handle_control_connection_actor_reader<R: Read + Write>(
                         return Err(error);
                     }
                 };
+                if uses_idle_timeout {
+                    reader
+                        .get_mut()
+                        .set_receive_timeout(Some(DAEMON_CONTROL_IDLE_TIMEOUT))?;
+                }
                 let Some(checkpoint_tx) = coordinator.checkpoint_ingress_tx.get().cloned() else {
                     tracing::error!(
                         component = "daemon",
@@ -8096,10 +8154,10 @@ fn daemon_min_uptime_for_self_restart() -> u64 {
         .unwrap_or(DAEMON_MIN_UPTIME_FOR_SELF_RESTART_SECS)
 }
 
-/// Background loop that verifies the daemon's sockets are reachable by
-/// actually connecting to them.  A successful connect proves the socket file
-/// exists, points to this daemon's listener, and that the listener thread is
-/// alive and calling accept().  If either probe fails (deleted file, stale
+/// Background loop that verifies the daemon's sockets are reachable. The
+/// control probe performs a bounded Ping request so it also proves a handler
+/// can receive and respond, while the write-only trace2 socket is verified by
+/// connecting to its listener. If either probe fails (deleted file, stale
 /// socket, hung listener), the daemon spawns a detached restart process and
 /// shuts down.
 ///
@@ -8140,8 +8198,21 @@ fn daemon_socket_health_check_loop(
             return;
         }
 
-        let control_ok =
-            local_socket_connects_with_timeout(&control_socket_path, DAEMON_SOCKET_PROBE_TIMEOUT);
+        let control_ok = send_control_request_with_timeouts(
+            &control_socket_path,
+            &ControlRequest::Ping,
+            DAEMON_SOCKET_PROBE_TIMEOUT,
+            DAEMON_CONTROL_RESPONSE_TIMEOUT,
+        )
+        .and_then(|response| {
+            if response.ok {
+                Ok(())
+            } else {
+                Err(GitAiError::Generic(response.error.unwrap_or_else(|| {
+                    "daemon Ping returned an error".to_string()
+                })))
+            }
+        });
         let trace_ok =
             local_socket_connects_with_timeout(&trace_socket_path, DAEMON_SOCKET_PROBE_TIMEOUT);
 
