@@ -1,0 +1,21 @@
+tests/integration/ci_handlers_comprehensive.rs
+  s_f00ef7c0f45b07::t_32eaab128d5207 75,85,92,337
+src/commands/ci_handlers.rs
+  s_f00ef7c0f45b07::t_b6f655bd65e486 18-20,209,253,263,273,310,313,325-328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "a7503bebc69026f8e6723c97a3b2dd7bfeb4fef4",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

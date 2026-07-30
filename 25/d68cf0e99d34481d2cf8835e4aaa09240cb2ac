@@ -1,0 +1,83 @@
+tests/integration/transcripts_claude_reader.rs
+  0cd56453d16f4fdd 29,34,36-37,39,43,45-46,49,51-55,57-58,108-109,180,182-183,186-187,210-223
+src/transcripts/agents/claude.rs
+  0cd56453d16f4fdd 187,325-329,371-375
+src/daemon/transcript_worker.rs
+  0cd56453d16f4fdd 8,315,318
+src/transcripts/agents/windsurf.rs
+  0cd56453d16f4fdd 101,151-152,176-177
+tests/integration/continue_cli.rs
+  0cd56453d16f4fdd 27-28,31-33,46,50,59-62,74,78,86-89,127,131-134,139-142,173,178-180,185,230,234,239,243-247
+tests/integration/droid.rs
+  0cd56453d16f4fdd 26,29-45,47-48,51,53-58,236,252,256,260-263,265-266,272,286,289-290,293-295,297-298,301-302,426,438,441-442,445-450,452-462,466-473
+src/transcripts/agents/pi.rs
+  0cd56453d16f4fdd 101,151-158,162,177,180-185,208-211
+tests/integration/github_copilot.rs
+  0cd56453d16f4fdd 36,50-54,56-57,60-61,64-65,68-69,72-76,78,80,102,128,439,672,674-675,677-678,684-685,691-692,711-716
+src/metrics/mod.rs
+  0cd56453d16f4fdd 16-18
+src/transcripts/types.rs
+  0cd56453d16f4fdd 42-43
+src/transcripts/agents/amp.rs
+  0cd56453d16f4fdd 154,160-168,170,172-173,229-234,261,293-300
+src/transcripts/agents/cursor.rs
+  0cd56453d16f4fdd 165,224-225
+src/transcripts/agents/copilot.rs
+  0cd56453d16f4fdd 193-194,285-286,292,368-371,399,401-404
+tests/integration/codex.rs
+  0cd56453d16f4fdd 31-41,43-44,47,51,55-56,59,63
+tests/integration/claude_code.rs
+  0cd56453d16f4fdd 21,24-33,40-42,280-288,293,295-304,307-317,320-321,324,326-328,331,333-335,338-348,350,355-360,362-364,367,369-371,374-386,389-394,396-398,401,403-410,419-421,435,438-439,443-450,453-455,481,484,486-488,491-493,497,499-501,645-666,669-678,683-684,687,689,691-693,695-698,700,705,707-709,712,714,716-727,731,733-735,738,740,742-753,757,759,761-772,776,778-780,803-807,809,811,814,839-842,844,846,849,874-877,879,883,891,904-905,907-911,913-917
+src/transcripts/agents/codex.rs
+  0cd56453d16f4fdd 124,156-157,206-211,215,238,240-242
+src/transcripts/agents/opencode.rs
+  0cd56453d16f4fdd 32-33,37,65,71,77-78,81,86,96,98,104,106,110-112,116,152,162,167,169-170,173-186
+tests/integration/windsurf.rs
+  0cd56453d16f4fdd 197,201,203-204,208,210-211,217,236-239,294,298,302,305,309,313,316-324,328,332,335-338,344-346,348,350,362-363,366,370-371,374-375,378-379,381
+src/metrics/events.rs
+  0cd56453d16f4fdd 4-6,1078-1080,1083,1085-1086,1088-1089,1092-1094,1098,1101-1103,1109-1113,1117,1119
+src/transcripts/mod.rs
+  0cd56453d16f4fdd 51
+tests/integration/opencode.rs
+  0cd56453d16f4fdd 38-42,44-51,53-55,58,62,65-70,73,77-87,89
+src/transcripts/agents/droid.rs
+  0cd56453d16f4fdd 211-212,274-279
+src/transcripts/agents/gemini.rs
+  0cd56453d16f4fdd 167,215-220,251
+tests/integration/agent_presets_comprehensive.rs
+  0cd56453d16f4fdd 132,165-170,362,1028-1029,1045,1049,1106-1107,1110,1112
+tests/integration/gemini.rs
+  0cd56453d16f4fdd 30-35,48,52,61-70,82,86,94-97,109-110,113-115,118-121,123-124,126-132,136,150-151,154-167,170-171,173-176,221-222,226,230,232-234,262-263
+tests/integration/cursor.rs
+  0cd56453d16f4fdd 32-35,38,42,47-66,79-80,84,87-94,96,98-99,112-113,116-127,132-138,151-152,155-167,179-180,183-198,200-201
+tests/integration/sweep_e2e.rs
+  0cd56453d16f4fdd 179,182
+src/metrics/types.rs
+  0cd56453d16f4fdd 23
+tests/integration/transcripts_e2e.rs
+  0cd56453d16f4fdd 119-120
+src/transcripts/agents/continue_cli.rs
+  0cd56453d16f4fdd 146,194-196,223,252-255
+tests/integration/amp.rs
+  0cd56453d16f4fdd 32,35-36,39-48,65-70,72,74-82,87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "25d68cf0e99d34481d2cf8835e4aaa09240cb2ac",
+  "prompts": {
+    "0cd56453d16f4fdd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ebe5db68-314a-4040-b703-c40f67efbd3b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 3299,
+      "total_deletions": 5133,
+      "accepted_lines": 999,
+      "overriden_lines": 0
+    }
+  }
+}

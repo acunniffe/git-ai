@@ -1,0 +1,28 @@
+.github/workflows/release-vscode-extension.yml
+  s_6bf095a97ce489::t_1c2a00920d8ec8 91
+  s_6bf095a97ce489::t_16e06517533277 135-136
+  s_6bf095a97ce489::t_91069663ac4075 122
+  s_6bf095a97ce489::t_3babb69bacc017 20
+.github/workflows/nightly-agent-integration.yml
+  s_6bf095a97ce489::t_3944da9d1f2c72 351-352
+.github/workflows/release.yml
+  s_6bf095a97ce489::t_9ce1ed18f1d68a 87
+  s_6bf095a97ce489::t_991b4592ec78ba 201
+  s_6bf095a97ce489::t_6151daea7b127c 33,38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "e5ef7249ef5b1e27ae7e7636219d2cd853cebfce",
+  "prompts": {},
+  "sessions": {
+    "s_6bf095a97ce489": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "040c7d4d-3fc1-4c2a-8739-66f2d17845ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

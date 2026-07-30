@@ -1,0 +1,166 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  c7c3998 571-572,574,577-578,580,582-588,590-593
+  human 581,589
+src/commands/checkpoint.rs
+  human 1043
+src/authorship/working_log.rs
+  9404987 6
+src/authorship/post_commit.rs
+  b8578e7 5,179-190,192-195,197-206
+  14d78f4 178,207
+  human 191,196,208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.20",
+  "base_commit_sha": "f8a6379eda948f320c7a70533ce9a297b6def12d",
+  "prompts": {
+    "9404987": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "82bb1f32-db21-4391-9d5f-83e962abbdfc",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@working_log.rs (50-59) Update all AgentId instantions in the project to use the new function",
+          "timestamp": "2025-11-14T17:58:08.500Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you update all `AgentId` instantiations in the project to use the new `new` function. Let me first search for all current instantiations of `AgentId` in the codebase.",
+          "timestamp": "2025-11-14T17:58:16.236Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/authorship/working_log.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/svarlamov/projects/git-ai",
+            "pattern": "AgentId\\s*\\{"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let me look at the actual instantiations to see which ones need to be updated. I'll check several key source files:",
+          "timestamp": "2025-11-14T17:58:26.261Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-A": 3,
+            "-B": 1,
+            "output_mode": "content",
+            "path": "/Users/svarlamov/projects/git-ai",
+            "pattern": "AgentId\\s*\\{"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I can see there are many `AgentId` struct literal instantiations throughout the codebase. Let me create a plan and update them all to use the new `new` function:",
+          "timestamp": "2025-11-14T17:58:36.002Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": false,
+            "todos": [
+              {
+                "content": "Update AgentId instantiations in src/authorship/working_log.rs (test file)",
+                "id": "1",
+                "status": "in_progress"
+              },
+              {
+                "content": "Update AgentId instantiations in src/commands/checkpoint_agent/agent_presets.rs",
+                "id": "2",
+                "status": "pending"
+              },
+              {
+                "content": "Update AgentId instantiations in src/commands/checkpoint.rs",
+                "id": "3",
+                "status": "pending"
+              },
+              {
+                "content": "Update AgentId instantiations in src/commands/git_ai_handlers.rs",
+                "id": "4",
+                "status": "pending"
+              },
+              {
+                "content": "Update AgentId instantiations in tests/initial_attributions.rs",
+                "id": "5",
+                "status": "pending"
+              },
+              {
+                "content": "Update AgentId instantiations in src/git/test_utils/mod.rs",
+                "id": "6",
+                "status": "pending"
+              },
+              {
+                "content": "Update AgentId instantiations in src/commands/checkpoint_agent/agent_v1_preset.rs",
+                "id": "7",
+                "status": "pending"
+              },
+              {
+                "content": "Update AgentId instantiations in src/authorship/authorship_log_serialization.rs",
+                "id": "8",
+                "status": "pending"
+              },
+              {
+                "content": "Update AgentId instantiations in src/authorship/authorship_log.rs",
+                "id": "9",
+                "status": "pending"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/authorship/working_log.rs"
+          }
+        }
+      ],
+      "total_additions": 174,
+      "total_deletions": 160,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    },
+    "b8578e7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c5eb4898-4e06-4e8e-8918-855bdca27e58",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 51,
+      "total_deletions": 16,
+      "accepted_lines": 27,
+      "overriden_lines": 2
+    },
+    "c7c3998": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0282bcbd-cd22-46a7-8f66-9013345df47b",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 29,
+      "total_deletions": 14,
+      "accepted_lines": 17,
+      "overriden_lines": 2
+    }
+  }
+}

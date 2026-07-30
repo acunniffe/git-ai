@@ -1,0 +1,22 @@
+src/git/notes_api.rs
+  s_484687b2c41eab::t_d7a47298ded2f7 1467
+  s_484687b2c41eab::t_6f7f587d1259da 1418
+src/git/sync_authorship.rs
+  s_484687b2c41eab::t_c236730808333b 36-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "57481eeec43d852d30c2afc38fab5effcf3cca42",
+  "prompts": {},
+  "sessions": {
+    "s_484687b2c41eab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b0aba11-2a62-45f1-bbb3-33bb1051d8ad",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ubuntu <ubuntu@ip-172-31-38-209.ap-south-1.compute.internal>"
+    }
+  }
+}

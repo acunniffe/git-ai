@@ -1,0 +1,23 @@
+src/ci/gitlab.rs
+  783fdb0e84b2ac6c 15,20-21,45-49,52,55,73-74,98-130,132-133,135-136,139-142,144,149-168,171-175,245-249,253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.29",
+  "base_commit_sha": "c22b5ba0ba5505450389758d5227b6a632c04964",
+  "prompts": {
+    "783fdb0e84b2ac6c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3ef4e955-0d2b-41b6-b233-48e233cb1964",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 92,
+      "total_deletions": 7,
+      "accepted_lines": 89,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,42 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  22849d75273cf2e2 1400-1403,1405,1439
+src/utils.rs
+  d47ad0a5e188fc58 215-219,221-255
+src/mdm/agents/cursor.rs
+  22849d75273cf2e2 17,89,135,138,146,148,172-185,187,292-293,466,471,494,497,500,521,539,544,565,568,572,593,611,616,645,648,652,666,670-672,680,686-1032
+tests/integration/cursor.rs
+  22849d75273cf2e2 199,300,331
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.20",
+  "base_commit_sha": "519b34a700b71198ab79d8493b2a74092b680749",
+  "prompts": {
+    "22849d75273cf2e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0f358f9a-7c30-4ad7-9275-df0ebef5928d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 420,
+      "total_deletions": 55,
+      "accepted_lines": 402,
+      "overriden_lines": 0
+    },
+    "d47ad0a5e188fc58": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e1b6667-ae4f-41de-94d8-34863efc3282",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 41,
+      "total_deletions": 0,
+      "accepted_lines": 40,
+      "overriden_lines": 1
+    }
+  }
+}

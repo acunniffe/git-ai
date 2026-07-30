@@ -1,0 +1,29 @@
+tests/integration/rebase.rs
+  s_4b321b35f327bb::t_3333ec3885e505 2990-2996
+  s_4b321b35f327bb::t_85b200f814434f 2870
+  s_4b321b35f327bb::t_8fcbdc23bb7289 2862,2909,2912-2913,2919,2943-2957,2959,2961-2962,2965-2974,2976-2989,2999-3001
+  s_4b321b35f327bb::t_4458efda34ce0d 2960,2963-2964
+  s_4b321b35f327bb::t_6f74bcf1312220 2871-2881,2931-2937,3003
+src/authorship/rewrite.rs
+  s_4b321b35f327bb::t_4ae8d7b6ec9b6b 1883-1884
+  s_4b321b35f327bb::t_753835791bb46a 1174
+  s_4b321b35f327bb::t_8625c9463c8b27 1928-1931,1935,1944,1949-1950,1954,1961-1968,1971
+  s_4b321b35f327bb::t_06c3a4a547cc63 52,54,56,60-61,75,77-80,82-83,87-88,485-489,491,1101-1102,1104,1137,1167-1168,1173
+  s_4b321b35f327bb::t_681c0a05799a84 1026
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "3b1b64054c7302dae2180298cbfb5d188110cfa6",
+  "prompts": {},
+  "sessions": {
+    "s_4b321b35f327bb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9c24-a345-7e63-9b58-4a48986ee55c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

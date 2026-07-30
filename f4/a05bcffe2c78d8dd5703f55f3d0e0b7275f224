@@ -1,0 +1,68 @@
+tests/daemon_mode.rs
+  s_88e09c7ec5c2e7::t_c5173a14da35e8 1980-1981,1988-1989,2025-2026
+  s_88e09c7ec5c2e7::t_832a1109b5e3eb 1979,1982-1987,1990-2024,2027-2059
+  s_88e09c7ec5c2e7::t_594265a378f203 1977-1978
+src/daemon.rs
+  s_88e09c7ec5c2e7::t_9d0d2e04114c8e 3401-3406,4558-4559,4787-4791,4796-4800
+  dacf127c97d5a34b 4792
+  s_88e09c7ec5c2e7::t_0a8326b899020b 9133,9135
+  s_88e09c7ec5c2e7::t_388b7a55021193 9130
+  s_88e09c7ec5c2e7::t_14dba31efcf218 97
+  s_88e09c7ec5c2e7::t_3eea4511d3484f 9124,9134
+  s_88e09c7ec5c2e7::t_ff5bd59254bc5e 9125-9128
+  s_88e09c7ec5c2e7::t_08a030712d7975 987-1002,1029-1033
+  s_88e09c7ec5c2e7::t_e243e02600de22 23,3400
+  s_7d470640a960b2::t_b3a0f1f7d400d8 4102
+  s_88e09c7ec5c2e7::t_4d884b3475b26e 1003-1024,1028
+  s_acbbcc77bb9da5::t_2f4d930a8a69f6 4103-4107
+  s_7d470640a960b2::t_47649553f37b45 9137-9139
+  s_88e09c7ec5c2e7::t_63b628d7c596bd 4557
+  s_88e09c7ec5c2e7::t_4abec230f5e69e 9129,9131-9132,9136
+  s_88e09c7ec5c2e7::t_97cfbe81a4ea40 3395-3398
+  s_88e09c7ec5c2e7::t_4134b54859d028 4786
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "f4a05bcffe2c78d8dd5703f55f3d0e0b7275f224",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 31,
+      "total_deletions": 443,
+      "accepted_lines": 145,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_7d470640a960b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa51d-4cb8-7471-ad38-ead1f195155b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_88e09c7ec5c2e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fabf9-ca63-7101-9454-7282f9548df6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_acbbcc77bb9da5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebbc887-2ebd-47b6-8edf-b19158eee095",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

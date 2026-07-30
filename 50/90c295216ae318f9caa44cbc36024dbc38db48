@@ -1,0 +1,43 @@
+tests/integration/diff.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 1991-1994
+tests/integration/github_copilot_integration.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 102-105,107
+tests/integration/sessions_cutover.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 532,535-537,541-542,547,550,567-571,574,600,658-661,670,673,690-694,697,1674-1677,1686,1689,1706-1710,1713,1789-1792,1801,1804,1821-1825,1828,1903-1906,1915,1918,1935-1939,1942,2125-2128,2137,2140,2157-2161,2164
+tests/integration/ci_fork_notes.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 29-38,55-56
+tests/integration/reset.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 302-303,307
+tests/integration/stash_attribution.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 261-264,790-793,867-870
+tests/integration/subdirs.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 813-814,818
+tests/integration/rebase_attribution_remaining.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 16-21
+tests/integration/graphite.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 615-618,621,777-780,783
+tests/integration/worktrees.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 225-228,244-247,265-268,292-295
+tests/integration/ci_squash_rebase.rs
+  s_cfb20a6a102d4d::t_641d18c7037f28 1227,1229-1238,1249-1250,1254
+tests/integration/codex.rs
+  s_cfb20a6a102d4d::t_b6adc120f9420b 282-285
+tests/integration/simple_additions.rs
+  s_cfb20a6a102d4d::t_9dc0f54024dd65 1126-1127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "5090c295216ae318f9caa44cbc36024dbc38db48",
+  "prompts": {},
+  "sessions": {
+    "s_cfb20a6a102d4d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef69e-2f01-7191-829f-294bbd1e22bf",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
