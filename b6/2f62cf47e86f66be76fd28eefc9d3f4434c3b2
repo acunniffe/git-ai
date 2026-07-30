@@ -1,0 +1,21 @@
+installer/README.md
+  s_c07cec28a64ec3::t_7359ad730032b2 14
+  s_c07cec28a64ec3::t_313e8c98f2f05c 23
+  s_c07cec28a64ec3::t_e59913b867563b 79-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "b62f62cf47e86f66be76fd28eefc9d3f4434c3b2",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

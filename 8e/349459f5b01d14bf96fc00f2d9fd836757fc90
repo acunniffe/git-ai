@@ -1,0 +1,14 @@
+agent-support/intellij/gradle.properties
+  h_55c03ed47cd416 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "8e349459f5b01d14bf96fc00f2d9fd836757fc90",
+  "prompts": {},
+  "humans": {
+    "h_55c03ed47cd416": {
+      "author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

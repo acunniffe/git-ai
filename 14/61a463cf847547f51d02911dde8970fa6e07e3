@@ -1,0 +1,64 @@
+src/mdm/agents/opencode.rs
+  s_59382cac373d67::t_6aaf022f1a1c32 69-70
+  s_59382cac373d67::t_980e1a61f0671a 107,155
+src/mdm/agents/gemini.rs
+  s_59382cac373d67::t_980e1a61f0671a 79,258,347
+src/mdm/jetbrains/download.rs
+  s_59382cac373d67::t_d3d4fca5b86541 139
+  s_59382cac373d67::t_2ae7a8ad9d6bff 2,5-23,81-87,93-101,140,147,153,170,176-178,181-182,186,196-211
+  s_59382cac373d67::t_a8f652241dddde 141-146
+tests/integration/installer_config_memory.rs
+  s_59382cac373d67::t_abe069d73746fd 1-2
+  s_59382cac373d67::t_095b8ff01ef218 3-8,10,12-18,20,22-25,27,34
+  s_59382cac373d67::t_633ce6cfc53023 9,26,28-33
+  s_59382cac373d67::t_ae6f0c6176c85a 11,19
+  s_59382cac373d67::t_b328e812210caf 21
+src/mdm/agents/firebender.rs
+  s_59382cac373d67::t_980e1a61f0671a 53,104,226
+src/mdm/agents/droid.rs
+  s_59382cac373d67::t_980e1a61f0671a 113,286,375
+src/mdm/agents/github_copilot.rs
+  s_59382cac373d67::t_980e1a61f0671a 107,196,356
+tests/integration/main.rs
+  s_59382cac373d67::t_ae6f0c6176c85a 97
+src/mdm/agents/visual_studio.rs
+  s_59382cac373d67::t_36b67eda44fc35 323-324
+src/mdm/agents/windsurf.rs
+  s_59382cac373d67::t_97c09258513792 12,42
+  s_59382cac373d67::t_67bd8108f0367e 51,150,231
+  s_59382cac373d67::t_5b6eaee4d4bac8 145
+src/mdm/agents/codex.rs
+  s_59382cac373d67::t_f399d859622ee4 694,700,752,760,883,898
+src/mdm/agents/claude_code.rs
+  s_59382cac373d67::t_980e1a61f0671a 81,248,344
+src/mdm/utils.rs
+  s_59382cac373d67::t_bf7a329827b6d5 814
+  s_59382cac373d67::t_9f185d251b65eb 815-825
+  s_59382cac373d67::t_67bd8108f0367e 15-23,744
+src/mdm/agents/amp.rs
+  s_59382cac373d67::t_6aaf022f1a1c32 67-68
+  s_59382cac373d67::t_67bd8108f0367e 93,126
+src/mdm/jetbrains/detection.rs
+  s_59382cac373d67::t_36b67eda44fc35 163,318,454
+src/mdm/agents/pi.rs
+  s_59382cac373d67::t_67bd8108f0367e 85,118
+  s_59382cac373d67::t_6aaf022f1a1c32 60-61
+src/mdm/agents/cursor.rs
+  s_59382cac373d67::t_67bd8108f0367e 83,125,274
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "1461a463cf847547f51d02911dde8970fa6e07e3",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,80 @@
+src/transcripts/agents/gemini.rs
+  s_36e4b30d0b68c4::t_923cb72714c712 216-222,226
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 223-225
+src/daemon/telemetry_worker.rs
+  s_36e4b30d0b68c4::t_b3d2ba8cbae5d1 140-142,144-146
+  s_36e4b30d0b68c4::t_2abe343e96689f 143
+src/transcripts/agents/copilot_cli.rs
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 125-127
+  s_36e4b30d0b68c4::t_11769c103ed05c 119-124,128-129
+src/transcripts/agent.rs
+  s_36e4b30d0b68c4::t_9157017d415fde 54-65
+  s_36e4b30d0b68c4::t_e39f3c6ebb5059 75-92
+tests/integration/main.rs
+  s_36e4b30d0b68c4::t_0038294edbc379 55
+src/transcripts/agents/cursor.rs
+  s_36e4b30d0b68c4::t_632094f749e577 202-210
+src/metrics/types.rs
+  s_36e4b30d0b68c4::t_c4cc1afb72dbc9 79-98
+src/transcripts/agents/claude.rs
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 281-283
+  s_36e4b30d0b68c4::t_32463b226908ad 275-280,284-285
+src/transcripts/agents/continue_cli.rs
+  s_36e4b30d0b68c4::t_0e7484ca8e721a 172-180
+src/transcripts/agents/amp.rs
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 219-221
+  s_36e4b30d0b68c4::t_44d8ec76d7fbd0 212-218,222
+src/transcripts/agents/copilot.rs
+  s_36e4b30d0b68c4::t_3494287b68e871 253-258,262-263
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 259-261
+src/transcripts/agents/droid.rs
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 261-263
+  s_36e4b30d0b68c4::t_4246c88f46998a 254-260,264
+src/daemon/transcript_worker.rs
+  s_36e4b30d0b68c4::t_659d57904494bf 16
+  s_36e4b30d0b68c4::t_37b26929fffb55 33
+  s_36e4b30d0b68c4::t_ab94b7b5c4d917 772-773,776
+  s_36e4b30d0b68c4::t_e225fcb4371ea1 336
+  s_36e4b30d0b68c4::t_14d0980d70c7f6 485,488,502-503,505-516,522
+  s_36e4b30d0b68c4::t_793338f3cf8fa6 765-771,774-775,777-817,819-838,840-843,845-855,857-869,872-883,885-893,895,897,901-919,921-939
+  s_36e4b30d0b68c4::t_0b31d6e797aa5b 870-871,894,896,898-900
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 486-487
+  s_36e4b30d0b68c4::t_2298c98dd77eca 229-260,264-335,337-357
+  s_36e4b30d0b68c4::t_d879d4a80997db 712-764
+  s_36e4b30d0b68c4::t_420de1b0ab9a72 23-32,34-36
+  s_36e4b30d0b68c4::t_4b597908ce8c1c 519
+  s_36e4b30d0b68c4::t_1c5e4855550903 839,844
+  s_36e4b30d0b68c4::t_dc77d4ac61be3a 818,856,884,920
+src/transcripts/agents/codex.rs
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 272-274
+  s_36e4b30d0b68c4::t_7bb87ca5502fc0 266-271,275-276
+src/transcripts/agents/opencode.rs
+  s_36e4b30d0b68c4::t_bd2db92694b51b 320-326,330
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 327-329
+tests/integration/event_timestamp_extraction.rs
+  s_36e4b30d0b68c4::t_22f97a6009ae80 29
+  s_36e4b30d0b68c4::t_c8d3a935118173 1-3,6-28,30-163,166-171,175-232
+  s_36e4b30d0b68c4::t_d9de88fd2ad4db 164-165,172-174
+  s_36e4b30d0b68c4::t_df476e66c4c2c1 4-5
+src/transcripts/agents/windsurf.rs
+  s_36e4b30d0b68c4::t_d10451b1fba7b0 145-153
+src/transcripts/agents/pi.rs
+  s_36e4b30d0b68c4::t_8f0b5f76599fd4 152-154
+  s_36e4b30d0b68c4::t_2238c304662f70 145-151,155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.8",
+  "base_commit_sha": "c56f5190c998e8f21b2c35e67b14cf4b5f754d00",
+  "prompts": {},
+  "sessions": {
+    "s_36e4b30d0b68c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "18288edc-a740-4bbc-98d3-db70db720809",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

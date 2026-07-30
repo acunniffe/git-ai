@@ -1,0 +1,25 @@
+src/daemon/stream_worker.rs
+  s_add8f52fac813d::t_c85455249581d1 994-1002,1008-1013
+  s_add8f52fac813d::t_20ff2cd942ec94 69-72,74-90
+  s_add8f52fac813d::t_aa8f6865022464 1157-1162
+  s_add8f52fac813d::t_87ea7dd793b6bb 73
+src/daemon/stream_worker_tests.rs
+  s_add8f52fac813d::t_4034bbdb5ce358 1-3,5
+  s_add8f52fac813d::t_e332e413046a62 102-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.12",
+  "base_commit_sha": "0610c61f7cf3b5f069af2feb0f02ccb1acf79ae0",
+  "prompts": {},
+  "sessions": {
+    "s_add8f52fac813d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9abff084-e4f1-4fff-89a9-883e2af4c02e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Siddhant Khare <Siddhant-K-code@users.noreply.github.com>"
+    }
+  }
+}

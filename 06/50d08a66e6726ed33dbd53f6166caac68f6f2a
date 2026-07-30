@@ -1,0 +1,9 @@
+src/authorship/post_commit.rs
+  14d78f4 134,138,161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.20",
+  "base_commit_sha": "0650d08a66e6726ed33dbd53f6166caac68f6f2a",
+  "prompts": {}
+}

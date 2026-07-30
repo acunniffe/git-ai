@@ -1,0 +1,24 @@
+docs/superpowers/specs/2026-04-11-multi-ide-known-human-design.md
+  73a492d33da4b1eb 1-398
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "3b4cb22cfdcc9a00e317363b9870878235129b4a",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 401,
+      "total_deletions": 3,
+      "accepted_lines": 398,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/9a8455d452997f9e5aec79b562698ccf3cb15c2658bf48148f6b526fafb130f1"
+    }
+  }
+}

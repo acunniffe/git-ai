@@ -1,0 +1,23 @@
+src/git/repo_storage.rs
+  a065c2579295dcd3 591-593
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "da66c92d6dd8a798c4b477abfc5777fdc3c8251e",
+  "prompts": {
+    "a065c2579295dcd3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9de4835-cf67-48a6-b7e6-220de1a704b0",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 11,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}

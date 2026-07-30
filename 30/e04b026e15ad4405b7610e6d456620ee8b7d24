@@ -1,0 +1,24 @@
+tests/internal_db_integration.rs
+  444f8be51b49332e 1-618
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.28",
+  "base_commit_sha": "30e04b026e15ad4405b7610e6d456620ee8b7d24",
+  "prompts": {
+    "444f8be51b49332e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "02386bf4-d589-4a28-ab66-1fc54205b8b5",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 654,
+      "total_deletions": 36,
+      "accepted_lines": 618,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/ca3d7ad514778b1f2679d55676af261fbac667983990094fb0dc8f2b1613a022"
+    }
+  }
+}

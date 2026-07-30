@@ -1,0 +1,24 @@
+src/config.rs
+  d62dd896ec766258 1695-1699
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "a6227d64b05792ab6b8de7b9004c3ad637535c51",
+  "prompts": {
+    "d62dd896ec766258": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cb8ee9c-f765-4cb8-8839-ed090b886a6f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 4,
+      "accepted_lines": 5,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/c414b849bb6ebf8a8206115ee7c9679cdddffd255b0738176b25e6b1ef2e97da"
+    }
+  }
+}

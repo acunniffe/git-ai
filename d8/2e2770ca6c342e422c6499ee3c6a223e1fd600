@@ -1,0 +1,22 @@
+scripts/ai
+  s_eb5f24d84d584f::t_f734c516beae56 79-157
+  s_eb5f24d84d584f::t_6bd4dba8107abb 293-296
+  s_eb5f24d84d584f::t_c1ea16bee1aafe 7,10
+  s_eb5f24d84d584f::t_8a312d59aa18b9 30,38-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "d82e2770ca6c342e422c6499ee3c6a223e1fd600",
+  "prompts": {},
+  "sessions": {
+    "s_eb5f24d84d584f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c13bd735-3ebd-47a3-8457-ddc019fb00f7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

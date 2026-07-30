@@ -1,0 +1,25 @@
+AGENTS.md
+  h_55c03ed47cd416 5
+  s_ddd48773cb990e::t_d53cd1b8820cec 1-4,6-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.7",
+  "base_commit_sha": "02f776d21db70a5ee8660a8a6d640f20aa2793da",
+  "prompts": {},
+  "humans": {
+    "h_55c03ed47cd416": {
+      "author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  },
+  "sessions": {
+    "s_ddd48773cb990e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52faaf7a-10cf-40f8-98a8-fcc7f4f083b2",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

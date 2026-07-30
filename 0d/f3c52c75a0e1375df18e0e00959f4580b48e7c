@@ -1,0 +1,42 @@
+src/daemon.rs
+  s_3205a46db22f88::t_26a809e38b4d28 3513-3514,3519-3521,3523-3525,7024-7048,7053-7081,7083-7085,7087-7097,7117-7118,7149-7159,7167,7177,8997,9016-9056,9074-9084
+  s_dba2635fc71214::t_ff2b7c475040e7 8998-9015,9057-9073
+  s_dba2635fc71214::t_9ca776e85479c3 3515-3518,3936-3937
+  s_dba2635fc71214::t_f0d5639f302745 47,3522,3935,3938-3942,7049-7052,7082,7086
+tests/daemon_mode.rs
+  s_7e719d19471fd9::t_6dfd6a39eae49d 1970,2018
+  s_dba2635fc71214::t_e86560fdf022ba 2019-2076
+  s_dba2635fc71214::t_285bda2df00bd2 1971-2017
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.11",
+  "base_commit_sha": "0df3c52c75a0e1375df18e0e00959f4580b48e7c",
+  "prompts": {},
+  "sessions": {
+    "s_3205a46db22f88": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-19b54c17c50b48829b361a5e73fb1a71",
+        "model": "unknown"
+      },
+      "human_author": "Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>"
+    },
+    "s_7e719d19471fd9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f38e7-aa09-72c3-b383-9aa431d64253",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_dba2635fc71214": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3911-b064-7f93-80fc-85349a3905c2",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}
