@@ -1,0 +1,25 @@
+tests/integration/notes_merge_mixed_fanout.rs
+  c5b6e6dbc097f326 1-258
+tests/integration/main.rs
+  c5b6e6dbc097f326 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "a80d1e609b3587036944b0a6699d658611897c3e",
+  "prompts": {
+    "c5b6e6dbc097f326": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfa78cba-a1ec-46af-bfe4-7b5df10c6735",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 939,
+      "total_deletions": 680,
+      "accepted_lines": 259,
+      "overriden_lines": 0
+    }
+  }
+}

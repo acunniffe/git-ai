@@ -1,0 +1,51 @@
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_a29c067d812b6c::t_4a1413422c9ffe 197,201-207,209-210,214-215
+  s_a29c067d812b6c::t_e2dbacff7bf5cd 552-605,607-635
+  s_a29c067d812b6c::t_8d3e1d6a1d0129 83-89,92-97,103-107
+  s_dc5be3c370687b::t_5752e17a950d39 208
+  s_dc5be3c370687b::t_0d11f3cf45f7b2 606
+  s_dc5be3c370687b::t_02765da44ae06c 198-200,211-213
+  s_dc5be3c370687b::t_94afcd60136ab0 636-662
+src/commands/checkpoint_agent/bash_tool.rs
+  s_a29c067d812b6c::t_14373b6df73ad1 1308-1311
+  s_a29c067d812b6c::t_3defe9e61262c8 361
+src/commands/checkpoint_agent/presets/github_copilot/mod.rs
+  s_dc5be3c370687b::t_10aa25c872f827 161
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_dc5be3c370687b::t_a199cb4e5eeb8e 95
+  s_dc5be3c370687b::t_9bcb523aac15e8 463
+src/commands/checkpoint_agent/presets/droid.rs
+  s_dc5be3c370687b::t_881b2d358c2f2d 68
+  s_dc5be3c370687b::t_20e719b7cf0b9f 66-67
+src/commands/checkpoint_agent/presets/firebender.rs
+  s_dc5be3c370687b::t_86f64b59361fcf 67
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_dc5be3c370687b::t_548efe633b5611 774
+src/commands/checkpoint_agent/presets/parse.rs
+  s_dc5be3c370687b::t_e2de9961d63e29 245-287
+  s_dc5be3c370687b::t_4d36251175d4f2 89-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "1c9c26ab8f262805ca8a2d512f6703ec072183e2",
+  "prompts": {},
+  "sessions": {
+    "s_a29c067d812b6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b76d2654-275a-4359-bd5b-e2351e2189ff",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_dc5be3c370687b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fcf3a8a9-5ba0-49ae-b1ee-06a0c2e2a6ab",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

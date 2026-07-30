@@ -1,0 +1,73 @@
+src/transcripts/agents/continue_cli.rs
+  75b8b35dceb7e11d 1-337
+src/transcripts/agents/mod.rs
+  75b8b35dceb7e11d 1,3-4,8-11,13,15-17,21-24
+tests/integration/windsurf.rs
+  75b8b35dceb7e11d 1-632
+tests/integration/cursor.rs
+  75b8b35dceb7e11d 1-656
+tests/integration/transcripts_e2e.rs
+  75b8b35dceb7e11d 1-250
+src/transcripts/agents/codex.rs
+  75b8b35dceb7e11d 1-382
+src/transcripts/model_extraction.rs
+  75b8b35dceb7e11d 23-29,25-26,28-29
+src/transcripts/sweep.rs
+  75b8b35dceb7e11d 80-86
+tests/integration/amp.rs
+  75b8b35dceb7e11d 1-383
+src/transcripts/agents/opencode.rs
+  75b8b35dceb7e11d 1-196,1-415,198-300,302-415
+tests/integration/claude_code.rs
+  75b8b35dceb7e11d 1-1001
+src/transcripts/agent.rs
+  s_5647f8cfeeb487::t_c4f81552c2af49 18
+  75b8b35dceb7e11d 46-52
+tests/integration/github_copilot.rs
+  75b8b35dceb7e11d 1-853
+src/transcripts/agents/claude.rs
+  75b8b35dceb7e11d 357-360,361-440,488-490,504-508,512,520,526,533,534-586
+  5656d3e616692de7 498-501
+  s_5647f8cfeeb487::t_95384ea63dec1b 494-496
+tests/integration/codex.rs
+  75b8b35dceb7e11d 1-733
+tests/integration/agent_presets_comprehensive.rs
+  75b8b35dceb7e11d 1-1110
+tests/integration/gemini.rs
+  75b8b35dceb7e11d 1-809
+src/transcripts/agents/gemini.rs
+  75b8b35dceb7e11d 1-310
+src/transcripts/agents/windsurf.rs
+  75b8b35dceb7e11d 1-287
+src/transcripts/agents/amp.rs
+  75b8b35dceb7e11d 1-241,1-439,249-439
+tests/integration/droid.rs
+  75b8b35dceb7e11d 1-474
+tests/integration/opencode.rs
+  75b8b35dceb7e11d 1-396
+tests/integration/transcripts_claude_reader.rs
+  75b8b35dceb7e11d 1-226
+tests/integration/continue_cli.rs
+  75b8b35dceb7e11d 1-710
+src/transcripts/agents/pi.rs
+  75b8b35dceb7e11d 1-408
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "4774632e8451f5def0ff711bfc3751ee2f688b5e",
+  "prompts": {
+    "75b8b35dceb7e11d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ffd64922-c64c-40e8-9619-70e9280abcfa",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 29066,
+      "total_deletions": 26403,
+      "accepted_lines": 10968,
+      "overriden_lines": 0
+    }
+  }
+}

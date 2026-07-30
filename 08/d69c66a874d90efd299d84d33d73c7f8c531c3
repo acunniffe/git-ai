@@ -1,0 +1,14 @@
+Taskfile.yml
+  h_dac2ecdcedf37f 99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "08d69c66a874d90efd299d84d33d73c7f8c531c3",
+  "prompts": {},
+  "humans": {
+    "h_dac2ecdcedf37f": {
+      "author": "Sasha Varlamov"
+    }
+  }
+}

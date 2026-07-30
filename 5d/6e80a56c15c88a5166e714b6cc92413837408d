@@ -1,0 +1,24 @@
+src/commands/checkpoint.rs
+  s_3b8401a0cbe012::t_f42bc55a430056 109,170-177
+  s_3b8401a0cbe012::t_b426c31c0a4208 59,99-106
+src/daemon/trace2_listener.rs
+  s_3b8401a0cbe012::t_5b9e6e15e1cf0c 114-115
+src/daemon/service.rs
+  s_3b8401a0cbe012::t_e87c71eab80c81 74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "5d6e80a56c15c88a5166e714b6cc92413837408d",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

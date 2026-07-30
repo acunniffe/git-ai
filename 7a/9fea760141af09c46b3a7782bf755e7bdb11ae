@@ -1,0 +1,23 @@
+docs/superpowers/specs/2026-05-03-checkpoint-rewrite-design.md
+  805abd0f664c09cf 1-223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "7a9fea760141af09c46b3a7782bf755e7bdb11ae",
+  "prompts": {
+    "805abd0f664c09cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95d34781-45d6-4032-834e-108e3d30f164",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 224,
+      "total_deletions": 1,
+      "accepted_lines": 223,
+      "overriden_lines": 0
+    }
+  }
+}

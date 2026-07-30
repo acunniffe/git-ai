@@ -1,0 +1,149 @@
+src/commands/daemon.rs
+  f1a1bc85054cb72a 191,195-217
+tests/integration/windsurf.rs
+  f1a1bc85054cb72a 490-618
+tests/integration/checkpoint_telemetry.rs
+  f1a1bc85054cb72a 1-201
+src/commands/checkpoint_agent/presets/mod.rs
+  f1a1bc85054cb72a 52-53,62-63
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  f1a1bc85054cb72a 91,104,119
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  f1a1bc85054cb72a 71,134,271,286,311
+src/commands/diff.rs
+  f1a1bc85054cb72a 151-152,1256-1262,1272,2640
+scripts/nightly/test-synthetic-checkpoint.sh
+  f1a1bc85054cb72a 63
+agent-support/vscode/package.json
+  f1a1bc85054cb72a 85,87,101
+src/commands/upgrade.rs
+  f1a1bc85054cb72a 53-54,316-320,540-554,570,676
+tests/integration/range_authorship_unit.rs
+  f1a1bc85054cb72a 38,42,87,91,135,139,205,209,250-256,291,295,354,358,431,435,504,508,565,569,1016,1020
+flake.nix
+  f1a1bc85054cb72a 39
+src/commands/install_hooks.rs
+  f1a1bc85054cb72a 302,310-312,334,438,612-614
+tests/windows_install_script.rs
+  f1a1bc85054cb72a 435-460
+src/commands/git_ai_handlers.rs
+  f1a1bc85054cb72a 353
+src/commands/checkpoint_agent/presets/windsurf.rs
+  f1a1bc85054cb72a 157,171
+src/commands/checkpoint_agent/presets/cursor.rs
+  f1a1bc85054cb72a 126-128,131-139,144,151
+scripts/nightly/verify-attribution.sh
+  f1a1bc85054cb72a 95-104,106,115-116,124,140
+src/commands/checkpoint_agent/presets/firebender.rs
+  f1a1bc85054cb72a 27,132,212-213,217,223,227,235,464-500
+src/metrics/attrs.rs
+  f1a1bc85054cb72a 169,254,307,323,330,345,389,414,458
+tests/integration/background_agent_attribution.rs
+  f1a1bc85054cb72a 1-170
+src/commands/checkpoint_agent/presets/claude.rs
+  f1a1bc85054cb72a 103,115
+src/authorship/rebase_authorship.rs
+  f1a1bc85054cb72a 3010-3042
+src/feature_flags.rs
+  f1a1bc85054cb72a 96
+src/git/repo_state.rs
+  f1a1bc85054cb72a 81-82,197,200-213,216
+.github/workflows/e2e-tests.yml
+  f1a1bc85054cb72a 11-12
+src/commands/checkpoint_agent/presets/pi.rs
+  f1a1bc85054cb72a 171,185
+src/commands/checkpoint_agent/presets/amp.rs
+  f1a1bc85054cb72a 339,351
+tests/integration/repos/test_file.rs
+  f1a1bc85054cb72a 20-22
+src/commands/checkpoint_agent/bash_tool.rs
+  f1a1bc85054cb72a 347
+src/commands/checkpoint_agent/presets/droid.rs
+  f1a1bc85054cb72a 176,194
+src/authorship/post_commit.rs
+  f1a1bc85054cb72a 143-177
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  f1a1bc85054cb72a 62,74
+src/utils.rs
+  f1a1bc85054cb72a 148-151
+tests/integration/diff.rs
+  f1a1bc85054cb72a 224-237,264,282,320,1754,2324,2335,2345-2346,2414-2415,2428-2429,2504,2518,2530,2540,2551,2629,2640
+src/commands/checkpoint_agent/presets/codex.rs
+  f1a1bc85054cb72a 151,181,281-299
+.github/workflows/test.yml
+  f1a1bc85054cb72a 32-45,48,52
+src/authorship/mod.rs
+  f1a1bc85054cb72a 5
+tests/integration/fast_reader.rs
+  f1a1bc85054cb72a 1-267
+src/commands/checkpoint_agent/orchestrator.rs
+  f1a1bc85054cb72a 272-275,280,283,303-306,314,381-384,392,423-426,434
+tests/integration/pending_ai_edit_suppression.rs
+  f1a1bc85054cb72a 1-316
+tests/integration/bash_tool_provenance.rs
+  f1a1bc85054cb72a 1251,1256-1259
+src/commands/checkpoint_agent/presets/mock_ai.rs
+  f1a1bc85054cb72a 65
+tests/integration/e2e_user_scenarios.rs
+  f1a1bc85054cb72a 1,1213-1290
+src/git/mod.rs
+  f1a1bc85054cb72a 4
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  f1a1bc85054cb72a 67,101
+src/commands/checkpoint_agent/presets/gemini.rs
+  f1a1bc85054cb72a 68,80
+scripts/benchmarks/checkpoint/benchmark_human_non_ai_checkpoint.py
+  f1a1bc85054cb72a 318,328
+.github/workflows/install-scripts-local.yml
+  f1a1bc85054cb72a 23-28,311-351,447-458,460,462,465-475,480,524-543
+install.ps1
+  f1a1bc85054cb72a 4-21,27,126,128,543-544
+agent-support/intellij/gradle/libs.versions.toml
+  f1a1bc85054cb72a 8
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  f1a1bc85054cb72a 74,83
+src/git/repository.rs
+  f1a1bc85054cb72a 10,528-535,723-730,800-804,834-849,1072-1076,1089-1106,1221-1225,1230,1232-1235,1237-1243,1513,1540-1566
+src/authorship/background_agent.rs
+  f1a1bc85054cb72a 1-170
+tests/integration/agent_usage_repo_url.rs
+  f1a1bc85054cb72a 1-230
+scripts/nightly/verify-synthetic-attribution.sh
+  f1a1bc85054cb72a 80-89,91,97,101,103
+src/git/fast_reader.rs
+  f1a1bc85054cb72a 1-636
+src/commands/checkpoint_agent/presets/opencode.rs
+  f1a1bc85054cb72a 313,325
+src/daemon.rs
+  f1a1bc85054cb72a 61,1361-1377,1382,3857-3859,3888,3900-3931,3952,3987,4019-4042,4113-4125,4135-4177,5826,5839-5899,5964-5969,7976,8402,8416,8427,8435,8439,8443-8444,8449,8634-8635,8637,9118-9138
+tests/integration/git_repository_comprehensive.rs
+  f1a1bc85054cb72a 937,941,945
+src/daemon/checkpoint.rs
+  f1a1bc85054cb72a 4-6,90-124,505-510,655-658
+tests/integration/issue_1204_multi_agent.rs
+  f1a1bc85054cb72a 1-615
+tests/integration/main.rs
+  f1a1bc85054cb72a 10,17,30,54,75,83
+tests/integration/repos/test_repo.rs
+  f1a1bc85054cb72a 207-215,252-254,1258-1298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "6474c0a0ad2194c14a7365958edff810d2c8210d",
+  "prompts": {
+    "f1a1bc85054cb72a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6671f45d-4f5f-45d0-a0b3-1480c9a969b0",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 4096,
+      "total_deletions": 1621,
+      "accepted_lines": 4091,
+      "overriden_lines": 0
+    }
+  }
+}

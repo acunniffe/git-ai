@@ -1,0 +1,131 @@
+.github/workflows/lint-format.yml
+  s_6bf095a97ce489::t_3502cfd43aeb28 40,59,86
+  s_6bf095a97ce489::t_38bbe2f3be68ee 47,76,102
+  s_6bf095a97ce489::t_fd1bede6e1d484 42,61,88
+  s_6bf095a97ce489::t_243e666aab2579 3-5
+  s_6bf095a97ce489::t_f2d85e394875a8 66,92
+.github/workflows/performance-benchmarks.yml
+  s_6bf095a97ce489::t_0ecdc6542d33cd 74,140
+  s_6bf095a97ce489::t_4060b969f31716 92-94
+  s_6bf095a97ce489::t_371dd6a3f27868 36-38
+  s_6bf095a97ce489::t_23d41f5dc8ddc9 41,97
+  s_6bf095a97ce489::t_3efcdb2054a385 3-5
+  s_6bf095a97ce489::t_5460a9b72fb570 31,87
+  s_6bf095a97ce489::t_c4a9d0252ee561 46,102
+.github/workflows/install-scripts-local.yml
+  s_6bf095a97ce489::t_715484b26db88f 174,547
+  s_6bf095a97ce489::t_a22e49d143b9a5 210
+  s_6bf095a97ce489::t_8bd6b5e9a755ab 59,205
+  s_6bf095a97ce489::t_113a552dc2ed76 3-5
+  s_6bf095a97ce489::t_4608f6a4b32d33 64
+  s_6bf095a97ce489::t_caf536850c5f87 71,217
+.github/workflows/intellij-ui-tests.yml
+  s_6bf095a97ce489::t_962066ad647ca9 21-23
+  s_6bf095a97ce489::t_03b70d52925b30 61
+  s_6bf095a97ce489::t_5908c1f09b504c 54
+  s_6bf095a97ce489::t_0076a0f7b88460 73
+  s_6bf095a97ce489::t_1439f3a146d787 50
+.github/workflows/test.yml
+  s_6bf095a97ce489::t_3ae91c32de7237 81
+  s_6bf095a97ce489::t_74b26b716ffcc5 3-5
+  s_6bf095a97ce489::t_3e92b58e0a2fff 65,121
+  s_6bf095a97ce489::t_747add0c38ed90 70,126
+  s_6bf095a97ce489::t_55e6734b1dde4b 59,115
+.github/workflows/git-core-compat.yml
+  s_6bf095a97ce489::t_11d86bc85a0347 43
+  s_6bf095a97ce489::t_18f3969ff5eede 63
+  s_6bf095a97ce489::t_d0be8b4b853f9f 38
+  s_6bf095a97ce489::t_d82386cc321877 48
+  s_6bf095a97ce489::t_6d6f76599f7933 3-5
+.github/workflows/update-changelog.yml
+  s_6bf095a97ce489::t_a172e1829e30ab 56
+  s_6bf095a97ce489::t_a0827aa0d108bb 87
+  s_6bf095a97ce489::t_e32e88260375ae 63
+.github/workflows/coverage.yml
+  s_6bf095a97ce489::t_77d598670064f7 29
+  s_6bf095a97ce489::t_5a9158770a75e4 75,83
+  s_6bf095a97ce489::t_5b09a112694681 3-5
+  s_6bf095a97ce489::t_d93934ee777356 46
+  s_6bf095a97ce489::t_8b21d1a1948298 24
+  s_6bf095a97ce489::t_119b076e4a03f6 35
+.github/workflows/release.yml
+  s_6bf095a97ce489::t_795b64d096cb14 252
+  s_6bf095a97ce489::t_849c07b359d675 262-264,268
+  s_6bf095a97ce489::t_90a57ad92e6bc8 253-256
+  s_6bf095a97ce489::t_4f052880240015 4
+.github/workflows/github-integration-tests.yml
+  s_6bf095a97ce489::t_30fac2142527b4 32
+  s_6bf095a97ce489::t_392cb78e2c36ef 22
+  s_6bf095a97ce489::t_e6a55c61ade42a 12-14
+  s_6bf095a97ce489::t_831992733dc647 27
+.github/workflows/nightly-upgrade.yml
+  s_6bf095a97ce489::t_5a8464d75a44ba 3-5
+  s_6bf095a97ce489::t_17cc74b7f0c88d 22
+.github/workflows/release-intellij-plugin.yml
+  s_6bf095a97ce489::t_82a0e08d39f9f7 51
+  s_6bf095a97ce489::t_3b1d4766126bae 38
+  s_6bf095a97ce489::t_36ba36d212d6c2 31
+  s_6bf095a97ce489::t_ba574847f82847 44
+.github/workflows/opencode-type-check.yml
+  s_6bf095a97ce489::t_4f92d77e53fcbb 24
+  s_6bf095a97ce489::t_7005ef877c9e00 3-5
+  s_6bf095a97ce489::t_439271df472b89 27
+.github/workflows/codeql.yml
+  s_6bf095a97ce489::t_36a2a2dcc0a068 76
+  s_6bf095a97ce489::t_5e25c798c8ec79 109
+  s_6bf095a97ce489::t_d2a8bd603e944d 66
+.github/workflows/e2e-tests.yml
+  s_6bf095a97ce489::t_a46b0efb683323 27
+  s_6bf095a97ce489::t_225332356a5b69 32
+  s_6bf095a97ce489::t_8e76978f9b9196 3-5
+  s_6bf095a97ce489::t_8d3b4f358af637 57
+  s_6bf095a97ce489::t_63a4ad787f33c6 37
+.github/workflows/test-vscode-extension.yml
+  s_6bf095a97ce489::t_6d0183ea76d2db 3-5
+  s_6bf095a97ce489::t_9f1a426ee782bb 27
+  s_6bf095a97ce489::t_461334cbbd22ee 24
+.github/workflows/nightly-agent-integration.yml
+  s_6bf095a97ce489::t_ba7b21a5f6a9cb 150,258
+  s_6bf095a97ce489::t_997ae441487e67 354
+  s_6bf095a97ce489::t_5cb98d12f39162 374
+  s_6bf095a97ce489::t_182923fd9aadc5 310
+  s_6bf095a97ce489::t_02896d3de74cb6 142,250
+  s_6bf095a97ce489::t_cc70e4eff88a57 232,339
+  s_6bf095a97ce489::t_3079ca8d308ef3 146,254
+  s_6bf095a97ce489::t_fbe504c5713fb5 41,164,272
+  s_6bf095a97ce489::t_796d93ebd94a48 24-27
+.github/workflows/release-vscode-extension.yml
+  s_6bf095a97ce489::t_6255f376257b59 32,75,106,144
+  s_6bf095a97ce489::t_957dbfeca6356d 85,116
+  s_6bf095a97ce489::t_44e60abdec6b9d 55
+  s_6bf095a97ce489::t_310cc11288c54c 19-21
+  s_6bf095a97ce489::t_0d5e7b0f9e16ae 30,73,104,140
+.github/workflows/intellij-build.yml
+  s_6bf095a97ce489::t_82f9aeefcb9a5e 46,99,156,193
+  s_6bf095a97ce489::t_0f48645373f4c0 130
+  s_6bf095a97ce489::t_ff1079d4e0c3ee 39,92,149,186
+  s_6bf095a97ce489::t_b114b58dee60ed 57,110,204
+  s_6bf095a97ce489::t_25eada52ea053d 22-24
+  s_6bf095a97ce489::t_c91439d1d3b602 50,103,163,197
+  s_6bf095a97ce489::t_4febe3d33839ae 78,123,217
+  s_6bf095a97ce489::t_d8dd57300a5b5c 170
+  s_6bf095a97ce489::t_1bcbb2b6f140f7 142
+.github/workflows/install-scripts-nightly.yml
+  s_6bf095a97ce489::t_b8b36fe054744d 3-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "c77a053b75dc15f3c5a79fdc9907a269c431b331",
+  "prompts": {},
+  "sessions": {
+    "s_6bf095a97ce489": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "040c7d4d-3fc1-4c2a-8739-66f2d17845ab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

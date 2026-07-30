@@ -1,0 +1,25 @@
+README.md
+  s_28964dc73f5773::t_ba819a3a73f805 100,102-140,142,144-154
+assets/docs/buttons/meet-the-maintainers.svg
+  s_28964dc73f5773::t_751e089919fca1 1,6
+  s_28964dc73f5773::t_23aac4f5cded8c 2-5
+assets/docs/buttons/get-early-access.svg
+  s_28964dc73f5773::t_e109b9f3d5a1d4 1,5
+  s_28964dc73f5773::t_231378d52d0ac0 2-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "9b2ec06ba21bf72728e46e0c54b31dc17e6e614b",
+  "prompts": {},
+  "sessions": {
+    "s_28964dc73f5773": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b7fc2c3-6c72-4214-a422-e0be9aab152b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}
