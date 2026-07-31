@@ -2,19 +2,25 @@
 #[path = "integration/repos/mod.rs"]
 mod repos;
 
+use git_ai::authorship::working_log::AgentId;
 use git_ai::authorship::working_log::CheckpointKind;
-#[cfg(not(windows))]
 use git_ai::commands::checkpoint_agent::orchestrator::{
     BaseCommit, CheckpointFile, CheckpointRequest,
 };
 use git_ai::config::{NotesBackendConfig, NotesBackendKind};
 #[cfg(not(windows))]
+use git_ai::daemon::ControlResponse;
 use git_ai::daemon::checkpoint::PreparedPathRole;
+use git_ai::daemon::send_checkpoint_request_with_timeout;
 use git_ai::daemon::send_control_request_with_timeout;
 use git_ai::daemon::{
     ControlRequest, DaemonConfig, DaemonLock, local_socket_connects_with_timeout,
     open_local_socket_stream_with_timeout, read_daemon_pid, send_control_request,
 };
+#[cfg(not(windows))]
+use git_ai::git::repository::find_repository_in_path;
+use git_ai::metrics::db::MetricsDatabase;
+use git_ai::metrics::{EventAttributes, MetricEvent, PosEncoded, SessionEventValues};
 use repos::test_file::ExpectedLineExt;
 use repos::test_repo::{
     DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS, DaemonTestCompletionLogEntry, DaemonTestScope, TestRepo,
@@ -24,6 +30,8 @@ use serde_json::Value;
 use serde_json::json;
 use serial_test::serial;
 use std::fs;
+#[cfg(not(windows))]
+use std::io::{BufRead, BufReader};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -52,6 +60,18 @@ fn daemon_trace_socket_path(repo: &TestRepo) -> PathBuf {
 
 fn daemon_lock_path(repo: &TestRepo) -> PathBuf {
     DaemonConfig::from_home(&repo.daemon_home_path()).lock_path
+}
+
+#[cfg(not(windows))]
+fn wait_for_daemon_log(repo: &TestRepo, needle: &str) -> String {
+    let started = std::time::Instant::now();
+    loop {
+        let logs = repo.daemon_stderr_contents();
+        if logs.contains(needle) || started.elapsed() >= Duration::from_secs(2) {
+            return logs;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[allow(clippy::zombie_processes)]
@@ -1625,14 +1645,9 @@ fn daemon_stalled_unidentified_trace_connection_does_not_block_checkpoint_contro
         metadata: Default::default(),
     };
 
-    let response = send_control_request_with_timeout(
-        &control_socket,
-        &ControlRequest::CheckpointRun {
-            request: Box::new(request),
-        },
-        Duration::from_millis(500),
-    )
-    .expect("checkpoint control request should not block on unidentified trace sockets");
+    let response =
+        send_checkpoint_request_with_timeout(&control_socket, &request, Duration::from_millis(500))
+            .expect("checkpoint control request should not block on unidentified trace sockets");
 
     assert!(
         response.ok,
@@ -1678,14 +1693,9 @@ fn daemon_checkpoint_resolution_applies_total_content_budget() {
         metadata: Default::default(),
     };
 
-    let response = send_control_request_with_timeout(
-        &control_socket,
-        &ControlRequest::CheckpointRun {
-            request: Box::new(request),
-        },
-        Duration::from_secs(5),
-    )
-    .expect("checkpoint control request should succeed");
+    let response =
+        send_checkpoint_request_with_timeout(&control_socket, &request, Duration::from_secs(5))
+            .expect("checkpoint control request should succeed");
 
     assert!(
         response.ok,
@@ -1705,6 +1715,664 @@ fn daemon_checkpoint_resolution_applies_total_content_budget() {
         "expected daemon resolver to apply aggregate content budget"
     );
     assert_eq!(checkpoint.entries[0].file, "a_kept.txt");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_receipt_rejects_oversized_body_before_receiving_it() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let response = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::CheckpointRun {
+            body_bytes: 64 * 1024 * 1024 + 1,
+        },
+        Duration::from_millis(500),
+    )
+    .expect("daemon should return a quota response without waiting for a body");
+
+    assert!(!response.ok, "oversized checkpoint must be rejected");
+    assert_eq!(
+        response.error.as_deref(),
+        Some("checkpoint ingress busy: byte_limit")
+    );
+    let daemon_logs = wait_for_daemon_log(&repo, "checkpoint ingress quota exhausted");
+    assert!(
+        daemon_logs.contains("reason=\"byte_limit\"")
+            && daemon_logs.contains("requested_bytes=67108865"),
+        "daemon logs did not contain checkpoint overflow context:\n{daemon_logs}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_receipt_logs_body_receive_errors() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let control_socket = daemon_control_socket_path(&repo);
+    let stream = open_local_socket_stream_with_timeout(&control_socket, Duration::from_millis(500))
+        .expect("connect to daemon control socket");
+    let mut reader = BufReader::new(stream);
+    let mut header = serde_json::to_vec(&ControlRequest::CheckpointRun { body_bytes: 4 }).unwrap();
+    header.push(b'\n');
+    reader.get_mut().write_all(&header).unwrap();
+    reader.get_mut().flush().unwrap();
+
+    let mut ready_line = String::new();
+    reader.read_line(&mut ready_line).unwrap();
+    let ready: ControlResponse = serde_json::from_str(ready_line.trim()).unwrap();
+    assert_eq!(
+        ready.data.as_ref().and_then(|data| data.get("ready")),
+        Some(&Value::Bool(true))
+    );
+
+    reader.get_mut().write_all(b"body!").unwrap();
+    reader.get_mut().flush().unwrap();
+    let mut final_line = String::new();
+    assert_eq!(
+        reader.read_line(&mut final_line).unwrap(),
+        0,
+        "invalid body delimiter must close the connection without an acknowledgement"
+    );
+
+    let daemon_logs = wait_for_daemon_log(&repo, "failed receiving checkpoint body");
+    assert!(
+        daemon_logs.contains("reason=\"body_receive_failed\"")
+            && daemon_logs.contains("body_bytes=4"),
+        "daemon logs did not contain checkpoint body receive context:\n{daemon_logs}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn wltrace_captures_daemon_working_log_ops_when_enabled() {
+    let trace_file = tempfile::NamedTempFile::new().expect("wltrace temp file");
+    let trace_path = trace_file.path().to_string_lossy().to_string();
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_WLTRACE", trace_path.as_str())]);
+
+    let file_path = repo.path().join("traced.txt");
+    fs::write(&file_path, "AI content\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "traced.txt"])
+        .unwrap();
+    repo.current_working_logs()
+        .read_all_checkpoints()
+        .expect("checkpoint should be readable");
+
+    let trace = fs::read_to_string(trace_file.path()).expect("read wltrace output");
+    for op in [
+        "op=checkpoint.admission",
+        "op=drain.exec",
+        "op=working_log.append_checkpoint",
+        "op=working_log.write_all_checkpoints.begin",
+        "op=working_log.write_all_checkpoints.end",
+    ] {
+        assert!(trace.contains(op), "wltrace output missing {op}:\n{trace}");
+    }
+}
+
+#[test]
+fn daemon_checkpoint_ack_preserves_order_with_immediate_commit() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+        "slow-checkpoint=2000",
+    )]);
+    let file_path = repo.path().join("slow-checkpoint.txt");
+    fs::write(&file_path, "AI content\n").unwrap();
+    let request = CheckpointRequest {
+        trace_id: "slow-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "slow-checkpoint-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("slow-checkpoint.txt"),
+            content: Some("AI content\n".to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+
+    let started = std::time::Instant::now();
+    let response = send_checkpoint_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &request,
+        Duration::from_millis(500),
+    )
+    .expect("checkpoint receipt acknowledgement must not wait for processing");
+    assert!(response.ok, "checkpoint receipt failed: {response:?}");
+    assert!(
+        response.seq.is_some(),
+        "receipt acknowledgement needs a sequence"
+    );
+    assert!(
+        started.elapsed() < Duration::from_millis(500),
+        "receipt acknowledgement waited for checkpoint processing"
+    );
+
+    repo.git_without_test_sync_for_test(&["add", "."], &[])
+        .unwrap();
+    repo.git_without_test_sync_for_test(
+        &[
+            "commit",
+            "-m",
+            "Commit immediately after checkpoint receipt",
+        ],
+        &[],
+    )
+    .unwrap();
+
+    let mut file = repo.filename("slow-checkpoint.txt");
+    file.assert_committed_lines(lines!["AI content".ai()]);
+
+    let head = repo.git(&["rev-parse", "HEAD"]).unwrap();
+    let note = repo
+        .read_authorship_note(head.trim())
+        .expect("immediate commit should have an authorship note");
+    let log =
+        git_ai::authorship::authorship_log_serialization::AuthorshipLog::deserialize_from_string(
+            &note,
+        )
+        .expect("authorship note should deserialize");
+    assert!(
+        log.metadata
+            .sessions
+            .values()
+            .any(|session| session.agent_id.id == "slow-checkpoint-session"),
+        "immediate commit should retain checkpoint session metadata"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_soft_shutdown_drains_acknowledged_checkpoints() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+        "shutdown-first=1000",
+    )]);
+    let control_socket = daemon_control_socket_path(&repo);
+    let request = |trace_id: &str, path: &str, content: &str| CheckpointRequest {
+        trace_id: trace_id.to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "shutdown-drain-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from(path),
+            content: Some(content.to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+
+    fs::write(repo.path().join("first.txt"), "first\n").unwrap();
+    let first = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &request("shutdown-first", "first.txt", "first\n"),
+        Duration::from_millis(500),
+    )
+    .expect("first checkpoint should be acknowledged");
+    assert!(first.ok, "first checkpoint failed: {first:?}");
+
+    let logs = wait_for_daemon_log(&repo, "checkpoint start");
+    assert!(
+        logs.contains("checkpoint start"),
+        "first checkpoint never started processing:\n{logs}"
+    );
+
+    fs::write(repo.path().join("second.txt"), "second\n").unwrap();
+    let second = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &request("shutdown-second", "second.txt", "second\n"),
+        Duration::from_millis(500),
+    )
+    .expect("second checkpoint should be acknowledged");
+    assert!(second.ok, "second checkpoint failed: {second:?}");
+    assert!(
+        second.seq > first.seq,
+        "checkpoint receipts must preserve acceptance order"
+    );
+
+    let shutdown_socket = control_socket.clone();
+    let shutdown_thread = thread::spawn(move || {
+        send_control_request_with_timeout(
+            &shutdown_socket,
+            &ControlRequest::Shutdown,
+            Duration::from_secs(5),
+        )
+    });
+    let logs = wait_for_daemon_log(&repo, "checkpoint acceptance closed for graceful shutdown");
+    assert!(
+        logs.contains("checkpoint acceptance closed for graceful shutdown"),
+        "daemon never closed checkpoint acceptance:\n{logs}"
+    );
+
+    fs::write(repo.path().join("too-late.txt"), "too late\n").unwrap();
+    let too_late = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &request("shutdown-too-late", "too-late.txt", "too late\n"),
+        Duration::from_millis(500),
+    )
+    .expect("checkpoint submitted during graceful shutdown should receive a response");
+    assert!(
+        !too_late.ok && too_late.error.as_deref() == Some("daemon is shutting down"),
+        "graceful shutdown must stop accepting new checkpoints: {too_late:?}"
+    );
+
+    let shutdown = shutdown_thread
+        .join()
+        .expect("shutdown request thread panicked")
+        .expect("soft shutdown should wait for acknowledged checkpoints");
+    assert!(shutdown.ok, "soft shutdown failed: {shutdown:?}");
+
+    let repository = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let checkpoints = repository
+        .storage
+        .working_log_for_base_commit("initial")
+        .unwrap()
+        .read_all_checkpoints()
+        .unwrap();
+    assert_eq!(
+        checkpoints.len(),
+        2,
+        "soft shutdown must not discard successfully acknowledged checkpoints"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_drains_independent_checkpoint_families_concurrently() {
+    let barrier_dir = tempfile::tempdir().expect("checkpoint side-effect barrier directory");
+    let barrier_path = barrier_dir.path().to_string_lossy().to_string();
+    let first_repo = TestRepo::new_with_daemon_env(&[
+        (
+            "GIT_AI_TEST_DELAY_CHECKPOINT_ADMISSION",
+            "concurrent-family-first=250",
+        ),
+        (
+            "GIT_AI_TEST_CHECKPOINT_SIDE_EFFECT_BARRIER_DIR",
+            barrier_path.as_str(),
+        ),
+    ]);
+    let second_repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket = daemon_control_socket_path(&first_repo);
+    let request = |repo: &TestRepo, trace_id: &str, path: &str| CheckpointRequest {
+        trace_id: trace_id.to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: trace_id.to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from(path),
+            content: Some(format!("{trace_id}\n")),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+
+    fs::write(
+        first_repo.path().join("first.txt"),
+        "concurrent-family-first\n",
+    )
+    .unwrap();
+    fs::write(
+        second_repo.path().join("second.txt"),
+        "concurrent-family-second\n",
+    )
+    .unwrap();
+
+    for checkpoint in [
+        request(&first_repo, "concurrent-family-first", "first.txt"),
+        request(&second_repo, "concurrent-family-second", "second.txt"),
+    ] {
+        let response = send_checkpoint_request_with_timeout(
+            &control_socket,
+            &checkpoint,
+            Duration::from_millis(500),
+        )
+        .expect("checkpoint should be acknowledged before processing");
+        assert!(response.ok, "checkpoint failed: {response:?}");
+    }
+
+    let started = std::time::Instant::now();
+    loop {
+        let checkpoint_count = |repo: &TestRepo| {
+            find_repository_in_path(repo.path().to_str().unwrap())
+                .unwrap()
+                .storage
+                .working_log_for_base_commit("initial")
+                .unwrap()
+                .read_all_checkpoints()
+                .map(|checkpoints| checkpoints.len())
+                .unwrap_or(0)
+        };
+        if checkpoint_count(&first_repo) == 1 && checkpoint_count(&second_repo) == 1 {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "independent checkpoint families did not finish processing"
+        );
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_processing_failure_is_logged_after_receipt_ack() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_FAIL_CHECKPOINT_SIDE_EFFECT",
+        "failing-checkpoint",
+    )]);
+    let file_path = repo.path().join("failing-checkpoint.txt");
+    fs::write(&file_path, "content\n").unwrap();
+    let request = CheckpointRequest {
+        trace_id: "failing-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::Human,
+        agent_id: None,
+        files: vec![CheckpointFile {
+            path: PathBuf::from("failing-checkpoint.txt"),
+            content: Some("content\n".to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+
+    let receipt = send_checkpoint_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &request,
+        Duration::from_millis(500),
+    )
+    .expect("processing failure must happen after receipt acknowledgement");
+    assert!(receipt.ok, "checkpoint receipt failed: {receipt:?}");
+    let receipt_seq = receipt.seq.expect("receipt sequence");
+
+    let sync = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(5),
+    )
+    .expect("sync.family should complete with family error state");
+    assert!(sync.ok, "sync.family request failed: {sync:?}");
+    let last_error = sync
+        .data
+        .as_ref()
+        .and_then(|data| data.get("last_error"))
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    assert!(
+        last_error.contains("synthetic checkpoint processing failure"),
+        "sync.family did not surface checkpoint failure: {sync:?}"
+    );
+
+    let daemon_logs = repo.daemon_stderr_contents();
+    assert!(
+        daemon_logs.contains("side_effect_failed")
+            && daemon_logs.contains("synthetic checkpoint processing failure")
+            && daemon_logs.contains(&format!("receipt_seq={receipt_seq}")),
+        "daemon logs did not contain structured checkpoint failure context:\n{daemon_logs}"
+    );
+}
+
+#[test]
+fn daemon_async_checkpoint_receipts_preserve_file_edit_order_before_commit() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_CHECKPOINT_SIDE_EFFECT",
+        "pre-edit-checkpoint=500",
+    )]);
+    let control_socket = daemon_control_socket_path(&repo);
+    let file_path = repo.path().join("ordered-edit.txt");
+
+    fs::write(
+        &file_path,
+        "committed baseline\nunchanged one\nunchanged two\nunchanged three\n",
+    )
+    .unwrap();
+    repo.stage_all_and_commit("Initial baseline").unwrap();
+    let mut file = repo.filename("ordered-edit.txt");
+    file.assert_committed_lines(lines![
+        "committed baseline".unattributed_human(),
+        "unchanged one".unattributed_human(),
+        "unchanged two".unattributed_human(),
+        "unchanged three".unattributed_human(),
+    ]);
+    let base_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    fs::write(
+        &file_path,
+        "untracked before AI\nunchanged one\nunchanged two\nunchanged three\n",
+    )
+    .unwrap();
+    let pre_edit = CheckpointRequest {
+        trace_id: "pre-edit-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::Human,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "ordered-edit-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("ordered-edit.txt"),
+            content: Some(
+                "untracked before AI\nunchanged one\nunchanged two\nunchanged three\n".to_string(),
+            ),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Sha(base_commit.clone()),
+        }],
+        path_role: PreparedPathRole::WillEdit,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+    let pre_receipt = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &pre_edit,
+        Duration::from_millis(500),
+    )
+    .expect("pre-edit receipt");
+    assert!(pre_receipt.ok && pre_receipt.seq.is_some());
+
+    fs::write(
+        &file_path,
+        "untracked before AI\nunchanged one\nunchanged two\nAI addition\n",
+    )
+    .unwrap();
+    let post_edit = CheckpointRequest {
+        trace_id: "post-edit-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "ordered-edit-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("ordered-edit.txt"),
+            content: Some(
+                "untracked before AI\nunchanged one\nunchanged two\nAI addition\n".to_string(),
+            ),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Sha(base_commit),
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+    let post_receipt = send_checkpoint_request_with_timeout(
+        &control_socket,
+        &post_edit,
+        Duration::from_millis(500),
+    )
+    .expect("post-edit receipt");
+    assert!(post_receipt.ok && post_receipt.seq.is_some());
+    assert!(pre_receipt.seq < post_receipt.seq);
+
+    repo.git_without_test_sync_for_test(&["add", "."], &[])
+        .unwrap();
+    repo.git_without_test_sync_for_test(&["commit", "-m", "Immediate commit after receipts"], &[])
+        .unwrap();
+
+    file.assert_committed_lines(lines![
+        "untracked before AI".unattributed_human(),
+        "unchanged one".unattributed_human(),
+        "unchanged two".unattributed_human(),
+        "AI addition".ai(),
+    ]);
+
+    let head = repo.git(&["rev-parse", "HEAD"]).unwrap();
+    let note = repo
+        .read_authorship_note(head.trim())
+        .expect("immediate commit should have an authorship note");
+    let log =
+        git_ai::authorship::authorship_log_serialization::AuthorshipLog::deserialize_from_string(
+            &note,
+        )
+        .expect("authorship note should deserialize");
+    assert!(
+        log.metadata
+            .sessions
+            .values()
+            .any(|session| session.agent_id.id == "ordered-edit-session"),
+        "immediate commit should retain ordered checkpoint session metadata"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_receipt_releases_quota_when_body_sender_stalls() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let control_socket = daemon_control_socket_path(&repo);
+    let stream = open_local_socket_stream_with_timeout(&control_socket, Duration::from_millis(500))
+        .expect("connect to daemon control socket");
+    let mut stalled_reader = BufReader::new(stream);
+    let mut header = serde_json::to_vec(&ControlRequest::CheckpointRun {
+        body_bytes: 64 * 1024 * 1024,
+    })
+    .unwrap();
+    header.push(b'\n');
+    stalled_reader.get_mut().write_all(&header).unwrap();
+    stalled_reader.get_mut().flush().unwrap();
+
+    let mut ready_line = String::new();
+    stalled_reader.read_line(&mut ready_line).unwrap();
+    let ready: git_ai::daemon::ControlResponse = serde_json::from_str(ready_line.trim()).unwrap();
+    assert!(ready.ok, "daemon should reserve the declared body");
+
+    let blocked = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::CheckpointRun { body_bytes: 1 },
+        Duration::from_millis(500),
+    )
+    .expect("daemon should reject before receiving another body");
+    assert_eq!(
+        blocked.error.as_deref(),
+        Some("checkpoint ingress busy: byte_limit")
+    );
+
+    thread::sleep(Duration::from_millis(2_500));
+    let after_timeout = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::CheckpointRun { body_bytes: 1 },
+        Duration::from_millis(500),
+    )
+    .expect("daemon should release stalled checkpoint quota");
+    assert!(
+        after_timeout.ok,
+        "stalled checkpoint reservation should be released after receive timeout: {after_timeout:?}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_checkpoint_initial_base_does_not_fall_back_to_processing_time_head() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let control_socket = daemon_control_socket_path(&repo);
+    let file_path = repo.path().join("captured-before-initial-commit.txt");
+
+    fs::write(&file_path, "existing after capture\n").unwrap();
+    repo.stage_all_and_commit("Create HEAD after checkpoint capture")
+        .unwrap();
+    let mut file = repo.filename("captured-before-initial-commit.txt");
+    file.assert_committed_lines(lines!["existing after capture".unattributed_human(),]);
+    let processing_time_working_log = repo.current_working_logs();
+    fs::remove_dir_all(&processing_time_working_log.dir).unwrap();
+
+    fs::write(
+        &file_path,
+        "existing after capture\nAI edit from captured initial state\n",
+    )
+    .unwrap();
+    let request = CheckpointRequest {
+        trace_id: "checkpoint-captured-with-initial-base".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "captured-initial-session".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("captured-before-initial-commit.txt"),
+            content: Some(
+                "existing after capture\nAI edit from captured initial state\n".to_string(),
+            ),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+
+    let response =
+        send_checkpoint_request_with_timeout(&control_socket, &request, Duration::from_secs(5))
+            .expect("checkpoint control request should succeed");
+    assert!(response.ok, "checkpoint failed: {response:?}");
+    let sync = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(5),
+    )
+    .expect("sync.family should wait for checkpoint processing");
+    assert!(sync.ok, "sync.family failed: {sync:?}");
+
+    let repository = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let initial_working_log = repository
+        .storage
+        .working_log_for_base_commit("initial")
+        .unwrap();
+    let checkpoints = initial_working_log.read_all_checkpoints().unwrap();
+    assert_eq!(checkpoints.len(), 1);
+    assert_eq!(
+        checkpoints[0].entries[0].line_attributions,
+        vec![
+            git_ai::authorship::attribution_tracker::LineAttribution::new(
+                1,
+                2,
+                checkpoints[0].entries[0].line_attributions[0]
+                    .author_id
+                    .clone(),
+                None,
+            )
+        ],
+        "an explicitly captured initial base must not diff against processing-time HEAD"
+    );
 }
 
 #[test]
@@ -1771,14 +2439,9 @@ fn daemon_partial_trace_line_does_not_block_checkpoint_control_request() {
         metadata: Default::default(),
     };
 
-    let response = send_control_request_with_timeout(
-        &control_socket,
-        &ControlRequest::CheckpointRun {
-            request: Box::new(request),
-        },
-        Duration::from_millis(500),
-    )
-    .expect("checkpoint control request should not block on incomplete trace frames");
+    let response =
+        send_checkpoint_request_with_timeout(&control_socket, &request, Duration::from_millis(500))
+            .expect("checkpoint control request should not block on incomplete trace frames");
 
     assert!(
         response.ok,
@@ -5256,6 +5919,63 @@ fn daemon_debug_logging_does_not_reupload_ureq_logs() {
             .all(|target| *target != "ureq" && !target.starts_with("ureq::")),
         "ureq logs generated by daemon log delivery must not be uploaded: {uploaded_targets:?}"
     );
+}
+
+#[test]
+fn daemon_marks_repository_filtered_session_events_delivered_without_uploading_them() {
+    let mut mock_api = MockApiServer::start();
+    let metrics_db_path = std::env::temp_dir().join(format!(
+        "git-ai-filtered-session-events-{}.db",
+        git_ai::uuid::generate_v4()
+    ));
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+        (
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            metrics_db_path.to_str().unwrap(),
+        ),
+    ]);
+    fs::write(
+        repo.test_home_path().join(".git-ai/config.json"),
+        r#"{"allow_repositories":["https://github.com/acme/*"],"exclude_repositories":["git@github.com:acme/private"]}"#,
+    )
+    .unwrap();
+
+    let session_event = |trace_id: &str, repo_url: &str| {
+        MetricEvent::from_values(
+            SessionEventValues::new(json!({ "marker": trace_id })),
+            EventAttributes::with_version("test")
+                .session_id(trace_id)
+                .trace_id(trace_id)
+                .repo_url(repo_url)
+                .to_sparse(),
+        )
+    };
+    let events = [
+        session_event("allowed-session", "https://github.com/acme/public"),
+        session_event("excluded-session", "https://github.com/acme/private"),
+    ];
+    let serialized_events = events
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    MetricsDatabase::open_at_path(&metrics_db_path)
+        .unwrap()
+        .insert_events(&serialized_events)
+        .unwrap();
+
+    repo.git_ai(&["await", "--timeout", "30"])
+        .expect("await should flush metrics");
+
+    let uploaded_requests = serde_json::to_string(&mock_api.collect_requests()).unwrap();
+    assert!(uploaded_requests.contains("allowed-session"));
+    assert!(!uploaded_requests.contains("excluded-session"));
+
+    let metrics_db = MetricsDatabase::open_at_path(&metrics_db_path).unwrap();
+    let status = metrics_db.status().unwrap();
+    assert_eq!(status.delivered, 2);
 }
 
 #[test]

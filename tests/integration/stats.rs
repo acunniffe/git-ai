@@ -125,13 +125,22 @@ fn test_stats_does_not_wait_for_old_commit_without_authorship_note() {
     )
     .unwrap();
 
-    let started = Instant::now();
-    repo.git_ai_with_env_without_pre_sync_for_test(&["stats", "--json"], &[])
+    let output = repo
+        .git_ai_with_env_without_pre_sync_for_test(
+            &["stats", "--json"],
+            &[("GIT_AI_TEST_FORCE_TTY", "1")],
+        )
         .expect("stats should work without an authorship note");
     assert!(
-        started.elapsed() < Duration::from_secs(2),
-        "stats should not wait for an old commit"
+        !output.contains("Waiting for git-ai to process this commit"),
+        "stats should not wait for an old commit, got:\n{output}"
     );
+    let stats: CommitStats = serde_json::from_str(&extract_json_object(&output)).unwrap();
+    assert_eq!(stats.git_diff_added_lines, 1);
+    assert_eq!(stats.git_diff_deleted_lines, 0);
+    assert_eq!(stats.ai_additions, 0);
+    assert_eq!(stats.human_additions, 0);
+    assert_eq!(stats.unknown_additions, 1);
 }
 
 #[test]
@@ -148,7 +157,6 @@ fn test_stats_range_does_not_wait_for_missing_authorship_note() {
     let second = repo.git_og(&["rev-parse", "HEAD"]).unwrap();
     let range = format!("{}..{}", first.trim(), second.trim());
 
-    let started = Instant::now();
     let output = repo
         .git_ai_with_env_without_pre_sync_for_test(
             &["stats", &range, "--json"],
@@ -156,10 +164,22 @@ fn test_stats_range_does_not_wait_for_missing_authorship_note() {
         )
         .expect("stats range should work without authorship notes");
     assert!(
-        started.elapsed() < Duration::from_secs(2),
-        "stats range should not wait for a missing note"
+        !output.contains("Waiting for git-ai to process this commit"),
+        "stats range should not wait for a missing note, got:\n{output}"
     );
-    assert!(!output.contains("Waiting for git-ai to process this commit"));
+    let stats: git_ai::authorship::range_authorship::RangeAuthorshipStats =
+        serde_json::from_str(&extract_json_object(&output)).unwrap();
+    assert_eq!(stats.authorship_stats.total_commits, 1);
+    assert_eq!(stats.authorship_stats.commits_with_authorship, 0);
+    assert_eq!(
+        stats.authorship_stats.commits_without_authorship,
+        vec![second.trim().to_string()]
+    );
+    assert_eq!(stats.range_stats.git_diff_added_lines, 1);
+    assert_eq!(stats.range_stats.git_diff_deleted_lines, 0);
+    assert_eq!(stats.range_stats.ai_additions, 0);
+    assert_eq!(stats.range_stats.human_additions, 0);
+    assert_eq!(stats.range_stats.unknown_additions, 1);
 }
 
 fn run_git(cwd: &Path, args: &[&str]) {

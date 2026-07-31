@@ -85,10 +85,13 @@ fn gitlab_api_get(
     auth_token: &str,
 ) -> Result<crate::http::Response, String> {
     let agent = crate::http::build_agent(Some(30));
-    let request = agent.get(endpoint).set(auth_header_name, auth_token).set(
-        "User-Agent",
-        &format!("git-ai/{}", env!("CARGO_PKG_VERSION")),
-    );
+    let request = agent
+        .get(endpoint)
+        .header(auth_header_name, auth_token)
+        .header(
+            "User-Agent",
+            &format!("git-ai/{}", env!("CARGO_PKG_VERSION")),
+        );
     crate::http::send(request)
 }
 
@@ -300,8 +303,8 @@ pub fn get_gitlab_ci_context() -> Result<Option<CiContext>, GitAiError> {
         let agent = crate::http::build_agent(Some(30));
         let request = agent
             .get(&source_project_endpoint)
-            .set(auth_header_name, &auth_token)
-            .set(
+            .header(auth_header_name, &auth_token)
+            .header(
                 "User-Agent",
                 &format!("git-ai/{}", env!("CARGO_PKG_VERSION")),
             );

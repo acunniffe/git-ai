@@ -1,9 +1,12 @@
 use crate::authorship::authorship_log_serialization::{AUTHORSHIP_LOG_VERSION, AuthorshipLog};
 use crate::authorship::working_log::Checkpoint;
 use crate::error::GitAiError;
-use crate::git::repository::{Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin};
+use crate::git::repository::{
+    Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin, exec_git_with_stdin_writer,
+};
 use serde_json;
 use std::collections::{HashMap, HashSet};
+use std::io::Write;
 
 // Modern refspecs without force to enable proper merging
 pub const AI_AUTHORSHIP_REFNAME: &str = "ai";
@@ -30,6 +33,72 @@ pub fn notes_path_for_object(oid: &str) -> String {
     } else {
         format!("{}/{}", &oid[..2], &oid[2..])
     }
+}
+
+fn normalize_note_path(path: &mut String) -> Option<usize> {
+    // Notes fanout components are always two hex characters. Collapse a valid
+    // path in place so reads need one lookup entry per object instead of one
+    // entry for every possible fanout depth.
+    let mut component_len = 0;
+    let mut fanout_depth = 0;
+    let mut valid = true;
+    path.retain(|character| {
+        if character == '/' {
+            valid &= component_len == 2;
+            component_len = 0;
+            fanout_depth += 1;
+            false
+        } else {
+            component_len += character.len_utf8();
+            true
+        }
+    });
+
+    (valid && component_len > 0).then_some(fanout_depth)
+}
+
+fn write_note_deletions(writer: &mut (impl Write + ?Sized), oid: &str) -> std::io::Result<()> {
+    // Emit each path directly into fast-import's bounded stdin buffer. Building
+    // one script would retain 20 paths per SHA-1 note and 32 per SHA-256 note.
+    let oid = oid.as_bytes();
+    writer.write_all(b"D ")?;
+    writer.write_all(oid)?;
+    writer.write_all(b"\n")?;
+
+    for prefix_end in (2..oid.len()).step_by(2) {
+        writer.write_all(b"D ")?;
+        for component_start in (0..prefix_end).step_by(2) {
+            writer.write_all(&oid[component_start..component_start + 2])?;
+            writer.write_all(b"/")?;
+        }
+        writer.write_all(&oid[prefix_end..])?;
+        writer.write_all(b"\n")?;
+    }
+
+    Ok(())
+}
+
+fn write_note_path(writer: &mut (impl Write + ?Sized), oid: &str) -> std::io::Result<()> {
+    if oid.len() <= 2 {
+        writer.write_all(oid.as_bytes())
+    } else {
+        let oid = oid.as_bytes();
+        writer.write_all(&oid[..2])?;
+        writer.write_all(b"/")?;
+        writer.write_all(&oid[2..])
+    }
+}
+
+fn dedupe_note_entries(entries: &[(String, String)]) -> Vec<&(String, String)> {
+    let mut deduped_entries = Vec::with_capacity(entries.len());
+    let mut seen = HashSet::with_capacity(entries.len());
+    for entry in entries.iter().rev() {
+        if seen.insert(entry.0.as_str()) {
+            deduped_entries.push(entry);
+        }
+    }
+    deduped_entries.reverse();
+    deduped_entries
 }
 
 #[doc(hidden)]
@@ -206,53 +275,35 @@ pub fn note_blob_oids_for_commits_from_ref(
         return Ok(HashMap::new());
     }
 
-    let mut path_to_commit = HashMap::new();
-    let mut fanout_prefixes = HashSet::new();
+    // Borrow the requested IDs and keep a single slot per unique commit. The
+    // returned tree paths are normalized in place before probing this map.
+    let mut notes_by_commit = HashMap::with_capacity(commit_shas.len());
+    let mut fanout_prefixes = HashSet::with_capacity(commit_shas.len().min(256));
     for commit_sha in commit_shas {
-        let flat_path = commit_sha.clone();
-        path_to_commit.insert(flat_path, commit_sha.clone());
-
-        let fanout_path = notes_path_for_object(commit_sha);
-        path_to_commit.insert(fanout_path, commit_sha.clone());
+        notes_by_commit.insert(commit_sha.as_str(), None);
         if commit_sha.len() > 2 {
             fanout_prefixes.insert(commit_sha[..2].to_string());
         }
     }
 
-    let mut result = HashMap::new();
     let Some(root_entries) = ls_tree_note_entries(repo, notes_ref, false, &[])? else {
         return Ok(HashMap::new());
     };
 
-    for entry in root_entries {
-        if let Some(commit_sha) = path_to_commit.get(&entry.path) {
-            if entry.object_type != "blob" {
-                return Err(GitAiError::Generic(format!(
-                    "authorship note path {} in {} is {}, expected blob",
-                    entry.path, notes_ref, entry.object_type
-                )));
-            }
-            result.entry(commit_sha.clone()).or_insert(entry.oid);
-        }
-    }
+    record_matching_note_entries(root_entries, notes_ref, &mut notes_by_commit)?;
 
     let mut prefixes = fanout_prefixes.into_iter().collect::<Vec<_>>();
     prefixes.sort();
     if let Some(entries) = ls_tree_note_entries(repo, notes_ref, true, &prefixes)? {
-        for entry in entries {
-            if let Some(commit_sha) = path_to_commit.get(&entry.path) {
-                if entry.object_type != "blob" {
-                    return Err(GitAiError::Generic(format!(
-                        "authorship note path {} in {} is {}, expected blob",
-                        entry.path, notes_ref, entry.object_type
-                    )));
-                }
-                result.entry(commit_sha.clone()).or_insert(entry.oid);
-            }
-        }
+        record_matching_note_entries(entries, notes_ref, &mut notes_by_commit)?;
     }
 
-    Ok(result)
+    Ok(notes_by_commit
+        .into_iter()
+        .filter_map(|(commit_sha, note)| {
+            note.map(|(_preference, blob_oid)| (commit_sha.to_string(), blob_oid))
+        })
+        .collect())
 }
 
 #[derive(Debug)]
@@ -260,6 +311,34 @@ struct LsTreeNoteEntry {
     object_type: String,
     oid: String,
     path: String,
+}
+
+fn record_matching_note_entries(
+    entries: Vec<LsTreeNoteEntry>,
+    notes_ref: &str,
+    notes_by_commit: &mut HashMap<&str, Option<(usize, String)>>,
+) -> Result<(), GitAiError> {
+    for mut entry in entries {
+        let Some(preference) = normalize_note_path(&mut entry.path) else {
+            continue;
+        };
+        let Some(current_note) = notes_by_commit.get_mut(entry.path.as_str()) else {
+            continue;
+        };
+        if entry.object_type != "blob" {
+            return Err(GitAiError::Generic(format!(
+                "authorship note path {} in {} is {}, expected blob",
+                entry.path, notes_ref, entry.object_type
+            )));
+        }
+        if current_note
+            .as_ref()
+            .is_none_or(|(current_preference, _)| preference < *current_preference)
+        {
+            *current_note = Some((preference, entry.oid));
+        }
+    }
+    Ok(())
 }
 
 fn ls_tree_note_entries(
@@ -389,53 +468,48 @@ pub(in crate::git) fn notes_add_batch(
         Err(e) => return Err(e),
     };
 
-    let mut deduped_entries: Vec<(String, String)> = Vec::new();
-    let mut seen = HashSet::new();
-    for (commit_sha, note_content) in entries.iter().rev() {
-        if seen.insert(commit_sha.as_str()) {
-            deduped_entries.push((commit_sha.clone(), note_content.clone()));
-        }
-    }
-    deduped_entries.reverse();
+    let deduped_entries = dedupe_note_entries(entries);
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| GitAiError::Generic(format!("System clock before epoch: {}", e)))?
         .as_secs();
 
-    let mut script = Vec::<u8>::new();
-
-    for (idx, (_commit_sha, note_content)) in deduped_entries.iter().enumerate() {
-        script.extend_from_slice(b"blob\n");
-        script.extend_from_slice(format!("mark :{}\n", idx + 1).as_bytes());
-        script.extend_from_slice(format!("data {}\n", note_content.len()).as_bytes());
-        script.extend_from_slice(note_content.as_bytes());
-        script.extend_from_slice(b"\n");
-    }
-
-    script.extend_from_slice(b"commit refs/notes/ai\n");
-    script.extend_from_slice(format!("committer git-ai <git-ai@local> {} +0000\n", now).as_bytes());
-    script.extend_from_slice(b"data 0\n");
-    if let Some(existing_tip) = existing_notes_tip {
-        script.extend_from_slice(format!("from {}\n", existing_tip).as_bytes());
-    }
-
-    for (idx, (commit_sha, _note_content)) in deduped_entries.iter().enumerate() {
-        let fanout_path = notes_path_for_object(commit_sha);
-        let flat_path = commit_sha.clone();
-        if flat_path != fanout_path {
-            script.extend_from_slice(format!("D {}\n", flat_path).as_bytes());
-        }
-        script.extend_from_slice(format!("D {}\n", fanout_path).as_bytes());
-        script.extend_from_slice(format!("M 100644 :{} {}\n", idx + 1, fanout_path).as_bytes());
-    }
-    script.extend_from_slice(b"\n");
-
     let mut fast_import_args = repo.global_args_for_exec();
     fast_import_args.push("fast-import".to_string());
     fast_import_args.push("--quiet".to_string());
-    exec_git_stdin(&fast_import_args, &script)?;
-    crate::authorship::git_ai_hooks::post_notes_updated(repo, &deduped_entries);
+    exec_git_with_stdin_writer(&fast_import_args, |writer| {
+        for (idx, entry) in deduped_entries.iter().enumerate() {
+            let note_content = &entry.1;
+            writer.write_all(b"blob\n")?;
+            writeln!(writer, "mark :{}", idx + 1)?;
+            writeln!(writer, "data {}", note_content.len())?;
+            writer.write_all(note_content.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
+
+        writer.write_all(b"commit refs/notes/ai\n")?;
+        writeln!(writer, "committer git-ai <git-ai@local> {} +0000", now)?;
+        writer.write_all(b"data 0\n")?;
+        if let Some(existing_tip) = existing_notes_tip.as_deref() {
+            writeln!(writer, "from {}", existing_tip)?;
+        }
+
+        for (idx, entry) in deduped_entries.iter().enumerate() {
+            let commit_sha = &entry.0;
+            write_note_deletions(writer, commit_sha)?;
+            write!(writer, "M 100644 :{} ", idx + 1)?;
+            write_note_path(writer, commit_sha)?;
+            writer.write_all(b"\n")?;
+        }
+        writer.write_all(b"\n")
+    })?;
+    crate::authorship::git_ai_hooks::post_notes_updated_refs(
+        repo,
+        deduped_entries
+            .iter()
+            .map(|entry| (entry.0.as_str(), entry.1.as_str())),
+    );
 
     Ok(())
 }
@@ -465,43 +539,33 @@ pub(in crate::git) fn notes_add_blob_batch(
         Err(e) => return Err(e),
     };
 
-    let mut deduped_entries: Vec<(String, String)> = Vec::new();
-    let mut seen = HashSet::new();
-    for (commit_sha, blob_oid) in entries.iter().rev() {
-        if seen.insert(commit_sha.as_str()) {
-            deduped_entries.push((commit_sha.clone(), blob_oid.clone()));
-        }
-    }
-    deduped_entries.reverse();
+    let deduped_entries = dedupe_note_entries(entries);
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| GitAiError::Generic(format!("System clock before epoch: {}", e)))?
         .as_secs();
 
-    let mut script = Vec::<u8>::new();
-    script.extend_from_slice(b"commit refs/notes/ai\n");
-    script.extend_from_slice(format!("committer git-ai <git-ai@local> {} +0000\n", now).as_bytes());
-    script.extend_from_slice(b"data 0\n");
-    if let Some(existing_tip) = existing_notes_tip {
-        script.extend_from_slice(format!("from {}\n", existing_tip).as_bytes());
-    }
-
-    for (commit_sha, blob_oid) in &deduped_entries {
-        let fanout_path = notes_path_for_object(commit_sha);
-        let flat_path = commit_sha.clone();
-        if flat_path != fanout_path {
-            script.extend_from_slice(format!("D {}\n", flat_path).as_bytes());
-        }
-        script.extend_from_slice(format!("D {}\n", fanout_path).as_bytes());
-        script.extend_from_slice(format!("M 100644 {} {}\n", blob_oid, fanout_path).as_bytes());
-    }
-    script.extend_from_slice(b"\n");
-
     let mut fast_import_args = repo.global_args_for_exec();
     fast_import_args.push("fast-import".to_string());
     fast_import_args.push("--quiet".to_string());
-    exec_git_stdin(&fast_import_args, &script)?;
+    exec_git_with_stdin_writer(&fast_import_args, |writer| {
+        writer.write_all(b"commit refs/notes/ai\n")?;
+        writeln!(writer, "committer git-ai <git-ai@local> {} +0000", now)?;
+        writer.write_all(b"data 0\n")?;
+        if let Some(existing_tip) = existing_notes_tip.as_deref() {
+            writeln!(writer, "from {}", existing_tip)?;
+        }
+
+        for entry in &deduped_entries {
+            let (commit_sha, blob_oid) = entry;
+            write_note_deletions(writer, commit_sha)?;
+            write!(writer, "M 100644 {} ", blob_oid)?;
+            write_note_path(writer, commit_sha)?;
+            writer.write_all(b"\n")?;
+        }
+        writer.write_all(b"\n")
+    })?;
 
     let has_post_notes_updated_hooks = crate::config::Config::get()
         .git_ai_hook_commands("post_notes_updated")
@@ -1043,6 +1107,24 @@ pub mod git_backend_for_tests {
 mod tests {
     use super::*;
 
+    #[derive(Default)]
+    struct CountingWriter {
+        bytes_written: usize,
+        max_write_len: usize,
+    }
+
+    impl std::io::Write for CountingWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.bytes_written += buf.len();
+            self.max_write_len = self.max_write_len.max(buf.len());
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
     #[test]
     fn test_parse_batch_check_blob_oid_accepts_sha1_and_sha256() {
         let sha1 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa blob 10";
@@ -1079,6 +1161,53 @@ mod tests {
             ),
             "ab/c1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"
         );
+    }
+
+    #[test]
+    fn test_write_note_deletions_includes_every_fanout_depth() {
+        let mut short_script = Vec::new();
+        write_note_deletions(&mut short_script, "a").unwrap();
+        write_note_deletions(&mut short_script, "ab").unwrap();
+        assert_eq!(String::from_utf8(short_script).unwrap(), "D a\nD ab\n");
+
+        let mut script = Vec::new();
+        write_note_deletions(&mut script, "abcdef").unwrap();
+        assert_eq!(
+            String::from_utf8(script).unwrap(),
+            "D abcdef\nD ab/cdef\nD ab/cd/ef\n"
+        );
+    }
+
+    #[test]
+    fn test_write_note_deletions_keeps_large_batches_streaming() {
+        const NOTE_COUNT: usize = 100_000;
+        const SHA256_DELETION_BYTES: usize = 2_640;
+
+        let oid = "ab".repeat(32);
+        let mut writer = CountingWriter::default();
+        for _ in 0..NOTE_COUNT {
+            write_note_deletions(&mut writer, &oid).unwrap();
+        }
+
+        assert_eq!(writer.bytes_written, NOTE_COUNT * SHA256_DELETION_BYTES);
+        assert!(
+            writer.max_write_len <= oid.len(),
+            "fanout deletion output must be written incrementally"
+        );
+    }
+
+    #[test]
+    fn test_normalize_note_path_in_place() {
+        for (path, expected_depth) in [("abcdef", 0), ("ab/cdef", 1), ("ab/cd/ef", 2)] {
+            let mut path = path.to_string();
+            assert_eq!(normalize_note_path(&mut path), Some(expected_depth));
+            assert_eq!(path, "abcdef");
+        }
+
+        for invalid_path in ["", "/abcdef", "a/bcdef", "ab/", "ab//cdef"] {
+            let mut path = invalid_path.to_string();
+            assert_eq!(normalize_note_path(&mut path), None);
+        }
     }
 
     #[test]

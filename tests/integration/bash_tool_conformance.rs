@@ -564,8 +564,16 @@ fn test_classify_tool_gemini() {
         classify_tool(Agent::Gemini, "write_file"),
         ToolClass::FileEdit
     );
+    assert_eq!(
+        classify_tool(Agent::Gemini, "WriteFile"),
+        ToolClass::FileEdit
+    );
     assert_eq!(classify_tool(Agent::Gemini, "replace"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Gemini, "shell"), ToolClass::Bash);
+    assert_eq!(
+        classify_tool(Agent::Gemini, "run_shell_command"),
+        ToolClass::Bash
+    );
     assert_eq!(classify_tool(Agent::Gemini, "read_file"), ToolClass::Skip);
     assert_eq!(classify_tool(Agent::Gemini, "unknown"), ToolClass::Skip);
 }
@@ -601,6 +609,7 @@ fn test_classify_tool_droid() {
     assert_eq!(classify_tool(Agent::Droid, "Write"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Droid, "Create"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Droid, "Bash"), ToolClass::Bash);
+    assert_eq!(classify_tool(Agent::Droid, "Execute"), ToolClass::Bash);
     assert_eq!(classify_tool(Agent::Droid, "Read"), ToolClass::Skip);
     assert_eq!(classify_tool(Agent::Droid, "unknown"), ToolClass::Skip);
 }
@@ -609,7 +618,18 @@ fn test_classify_tool_droid() {
 fn test_classify_tool_amp() {
     assert_eq!(classify_tool(Agent::Amp, "Write"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Amp, "Edit"), ToolClass::FileEdit);
+    assert_eq!(
+        classify_tool(Agent::Amp, "create_file"),
+        ToolClass::FileEdit
+    );
+    assert_eq!(classify_tool(Agent::Amp, "edit_file"), ToolClass::FileEdit);
+    assert_eq!(
+        classify_tool(Agent::Amp, "apply_patch"),
+        ToolClass::FileEdit
+    );
+    assert_eq!(classify_tool(Agent::Amp, "undo_edit"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Amp, "Bash"), ToolClass::Bash);
+    assert_eq!(classify_tool(Agent::Amp, "shell_command"), ToolClass::Bash);
     assert_eq!(classify_tool(Agent::Amp, "Read"), ToolClass::Skip);
     assert_eq!(classify_tool(Agent::Amp, "unknown"), ToolClass::Skip);
 }

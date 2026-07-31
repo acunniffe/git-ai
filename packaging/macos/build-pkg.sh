@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'USAGE'
-usage: build-pkg.sh --binary <path> --arch <x64|arm64> --version <version> --output <path>
+usage: build-pkg.sh --binary <path> --arch <x64|arm64|universal> --version <version> --output <path>
 USAGE
 }
 
@@ -26,25 +26,27 @@ done
 [ -f "$BINARY" ] || { echo "binary not found: $BINARY" >&2; exit 1; }
 
 case "$ARCH" in
-  x64|arm64) ;;
+  x64|arm64|universal) ;;
   *) echo "unsupported arch: $ARCH" >&2; exit 2 ;;
 esac
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORK_DIR="$ROOT/target/package/pkg-$ARCH"
+PAYLOAD_ROOT="$WORK_DIR/payload"
 SCRIPTS="$WORK_DIR/scripts"
 COMPONENT_PKG="$WORK_DIR/git-ai-component.pkg"
 OUTPUT_ABS="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "$OUTPUT")"
 
 rm -rf "$WORK_DIR"
-mkdir -p "$SCRIPTS" "$(dirname "$OUTPUT_ABS")"
+mkdir -p "$PAYLOAD_ROOT" "$SCRIPTS" "$(dirname "$OUTPUT_ABS")"
+chmod 0755 "$PAYLOAD_ROOT"
 install -m 0755 "$BINARY" "$SCRIPTS/git-ai"
 install -m 0755 "$ROOT/packaging/macos/scripts/preinstall" "$SCRIPTS/preinstall"
 install -m 0755 "$ROOT/packaging/macos/scripts/postinstall" "$SCRIPTS/postinstall"
 xattr -cr "$SCRIPTS" 2>/dev/null || true
 
 pkgbuild \
-  --nopayload \
+  --root "$PAYLOAD_ROOT" \
   --scripts "$SCRIPTS" \
   --identifier "com.git-ai.git-ai" \
   --version "$VERSION" \

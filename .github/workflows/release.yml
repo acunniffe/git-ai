@@ -471,8 +471,14 @@ jobs:
           VERSION="${VERSION#v}"
           mkdir -p release
           chmod +x artifacts/git-ai-macos-arm64 artifacts/git-ai-macos-x64
+          lipo -create artifacts/git-ai-macos-arm64 artifacts/git-ai-macos-x64 -output artifacts/git-ai-macos-universal
+          lipo artifacts/git-ai-macos-universal -verify_arch x86_64 arm64
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            codesign --verify --strict --verbose=2 --all-architectures artifacts/git-ai-macos-universal
+          fi
           packaging/macos/build-pkg.sh --binary artifacts/git-ai-macos-arm64 --arch arm64 --version "$VERSION" --output release/git-ai-macos-arm64.pkg
           packaging/macos/build-pkg.sh --binary artifacts/git-ai-macos-x64 --arch x64 --version "$VERSION" --output release/git-ai-macos-x64.pkg
+          packaging/macos/build-pkg.sh --binary artifacts/git-ai-macos-universal --arch universal --version "$VERSION" --output release/git-ai-macos-universal.pkg
 
       - name: Notarize PKG installers
         if: inputs.dry_run != true
@@ -543,6 +549,27 @@ jobs:
           if (Test-Path (Join-Path $env:LOCALAPPDATA 'Git AI')) { throw 'MSI created the retired LocalAppData runtime' }
           if (Test-Path (Join-Path $env:ProgramFiles 'Git AI')) { throw 'MSI created a system-wide runtime' }
 
+          $binaryVersion = (& $gitAi --version).Trim()
+          $installer = New-Object -ComObject WindowsInstaller.Installer
+          $database = $installer.GetType().InvokeMember(
+            'OpenDatabase', 'InvokeMethod', $null, $installer, @($msi, 0)
+          )
+          $query = "SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = 'ProductCode'"
+          $view = $database.GetType().InvokeMember(
+            'OpenView', 'InvokeMethod', $null, $database, @($query)
+          )
+          $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+          $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+          $productCode = $record.GetType().InvokeMember(
+            'StringData', 'GetProperty', $null, $record, 1
+          )
+          $registeredVersion = $installer.GetType().InvokeMember(
+            'ProductInfo', 'GetProperty', $null, $installer, @($productCode, 'VersionString')
+          )
+          if ($registeredVersion -ne $binaryVersion) {
+            throw "MSI version '$registeredVersion' does not match binary version '$binaryVersion'"
+          }
+
           $uninstall = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart" -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with exit code $($uninstall.ExitCode)" }
 
@@ -570,13 +597,16 @@ jobs:
           console_home="$(/usr/bin/dscl . -read "/Users/$console_user" NFSHomeDirectory | /usr/bin/awk 'NR == 1 { print $2 }')"
           git_ai="$console_home/.git-ai/bin/git-ai"
 
-          if [ "$(uname -m)" = "arm64" ]; then
-            PKG=release/git-ai-macos-arm64.pkg
-          else
-            PKG=release/git-ai-macos-x64.pkg
-          fi
+          PKG=release/git-ai-macos-universal.pkg
           sudo installer -pkg "$PKG" -target /
-          "$git_ai" --version
+          lipo "$git_ai" -verify_arch x86_64 arm64
+          binary_version="$("$git_ai" --version)"
+          receipt_id="com.git-ai.git-ai"
+          receipt_version="$(pkgutil --pkg-info "$receipt_id" | awk -F': ' '$1 == "version" { print $2 }')"
+          if [ "$receipt_version" != "$binary_version" ]; then
+            echo "::error::PKG receipt version '$receipt_version' does not match binary version '$binary_version'"
+            exit 1
+          fi
 
           binary_owner="$(/usr/bin/stat -f%Su "$git_ai")"
           state_owner="$(/usr/bin/stat -f%Su "$console_home/.git-ai")"
@@ -777,6 +807,7 @@ jobs:
             - **macOS (Apple Silicon)**: `git-ai-macos-arm64`
             - **macOS PKG (Intel)**: `git-ai-macos-x64.pkg`
             - **macOS PKG (Apple Silicon)**: `git-ai-macos-arm64.pkg`
+            - **macOS PKG (Universal)**: `git-ai-macos-universal.pkg`
 
             ### SHA256 Checksums
             ```

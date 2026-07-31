@@ -12,11 +12,19 @@ pub struct HeadState {
     pub detached: bool,
 }
 
+/// Check the minimal required marker for a directory-form Git repository.
+///
+/// Using `HEAD` instead of the directory itself rejects empty `.git`
+/// placeholders without adding a filesystem lookup to normal discovery.
+pub fn is_valid_git_dir(path: &Path) -> bool {
+    path.join("HEAD").is_file()
+}
+
 pub fn worktree_root_for_path(path: &Path) -> Option<PathBuf> {
     let mut current = Some(path);
     while let Some(candidate) = current {
         let dot_git = candidate.join(".git");
-        if dot_git.is_dir() || dot_git.is_file() {
+        if is_valid_git_dir(&dot_git) || dot_git.is_file() {
             return Some(candidate.to_path_buf());
         }
         current = candidate.parent();

@@ -18,16 +18,21 @@ impl AgentPreset for GeminiPreset {
         let data: serde_json::Value = serde_json::from_str(hook_input)
             .map_err(|e| GitAiError::PresetError(format!("Invalid JSON in hook_input: {}", e)))?;
 
+        let tool_class = parse::optional_str_multi(&data, &["tool_name", "toolName"])
+            .map(|name| bash_tool::classify_tool(Agent::Gemini, name))
+            // Preserve payloads from older Gemini integrations that omitted tool_name.
+            .unwrap_or(ToolClass::FileEdit);
+        if tool_class == ToolClass::Skip {
+            return Ok(Vec::new());
+        }
+
         let cwd = parse::required_str(&data, "cwd")?;
         let session_id = parse::required_str(&data, "session_id")?.to_string();
         let transcript_path = parse::required_str(&data, "transcript_path")?;
-        let tool_name = parse::optional_str_multi(&data, &["tool_name", "toolName"]);
         let hook_event = parse::optional_str_multi(&data, &["hook_event_name", "hookEventName"]);
         let tool_use_id = parse::str_or_default_multi(&data, &["tool_use_id", "toolUseId"], "bash");
 
-        let is_bash = tool_name
-            .map(|n| bash_tool::classify_tool(Agent::Gemini, n) == ToolClass::Bash)
-            .unwrap_or(false);
+        let is_bash = tool_class == ToolClass::Bash;
         let mut file_paths = parse::file_paths_from_tool_input(&data, cwd);
         let internal_tmp_dir = gemini_config_dir().join("tmp");
         file_paths.retain(|path| !path.starts_with(&internal_tmp_dir));
@@ -191,5 +196,60 @@ mod tests {
         let events = GeminiPreset.parse(&input, "t_test123456789a").unwrap();
         assert_eq!(events.len(), 1);
         assert!(matches!(events[0], ParsedHookEvent::PreFileEdit(_)));
+    }
+
+    #[test]
+    fn test_gemini_ignores_read_only_and_unsupported_tools() {
+        for hook_event in ["BeforeTool", "AfterTool"] {
+            for tool_name in ["read_file", "glob", "grep_search", "unknown_tool"] {
+                let input = make_gemini_hook_input(hook_event, tool_name);
+                let events = GeminiPreset.parse(&input, "t_test123456789a").unwrap();
+                assert!(
+                    events.is_empty(),
+                    "{hook_event} {tool_name} unexpectedly produced events"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_ignored_gemini_hook_produces_no_checkpoint_requests() {
+        let input = make_gemini_hook_input("AfterTool", "read_file");
+        let requests = crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
+            "gemini", &input,
+        )
+        .unwrap();
+        assert!(requests.is_empty());
+    }
+
+    #[test]
+    fn test_gemini_preserves_all_mutating_tools() {
+        for tool_name in ["write_file", "replace", "WriteFile"] {
+            let pre = make_gemini_hook_input("BeforeTool", tool_name);
+            assert!(matches!(
+                GeminiPreset.parse(&pre, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PreFileEdit(_)]
+            ));
+
+            let post = make_gemini_hook_input("AfterTool", tool_name);
+            assert!(matches!(
+                GeminiPreset.parse(&post, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PostFileEdit(_)]
+            ));
+        }
+
+        for tool_name in ["shell", "run_shell_command"] {
+            let pre = make_gemini_hook_input("BeforeTool", tool_name);
+            assert!(matches!(
+                GeminiPreset.parse(&pre, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PreBashCall(_)]
+            ));
+
+            let post = make_gemini_hook_input("AfterTool", tool_name);
+            assert!(matches!(
+                GeminiPreset.parse(&post, "t_test123456789a").unwrap()[..],
+                [ParsedHookEvent::PostBashCall(_)]
+            ));
+        }
     }
 }

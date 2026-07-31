@@ -314,13 +314,13 @@ fn normalize_tool_name(tool_name: &str) -> &str {
 pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
     match agent {
         Agent::Claude => match tool_name {
-            "Write" | "Edit" | "MultiEdit" => ToolClass::FileEdit,
+            "Write" | "Edit" | "MultiEdit" | "NotebookEdit" => ToolClass::FileEdit,
             "Bash" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::Gemini => match tool_name {
-            "write_file" | "replace" => ToolClass::FileEdit,
-            "shell" => ToolClass::Bash,
+            "write_file" | "replace" | "WriteFile" => ToolClass::FileEdit,
+            "shell" | "run_shell_command" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::ContinueCli => match tool_name {
@@ -330,12 +330,14 @@ pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
         },
         Agent::Droid => match tool_name {
             "ApplyPatch" | "Edit" | "Write" | "Create" => ToolClass::FileEdit,
-            "Bash" => ToolClass::Bash,
+            "Bash" | "Execute" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::Amp => match tool_name {
-            "Write" | "Edit" => ToolClass::FileEdit,
-            "Bash" => ToolClass::Bash,
+            "Write" | "Edit" | "create_file" | "edit_file" | "apply_patch" | "undo_edit" => {
+                ToolClass::FileEdit
+            }
+            "Bash" | "shell_command" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::OpenCode => match tool_name {
@@ -1486,7 +1488,15 @@ mod tests {
             classify_tool(Agent::Gemini, "write_file"),
             ToolClass::FileEdit
         );
+        assert_eq!(
+            classify_tool(Agent::Gemini, "WriteFile"),
+            ToolClass::FileEdit
+        );
         assert_eq!(classify_tool(Agent::Gemini, "shell"), ToolClass::Bash);
+        assert_eq!(
+            classify_tool(Agent::Gemini, "run_shell_command"),
+            ToolClass::Bash
+        );
 
         // Continue CLI
         assert_eq!(
@@ -1508,10 +1518,22 @@ mod tests {
             ToolClass::FileEdit
         );
         assert_eq!(classify_tool(Agent::Droid, "Bash"), ToolClass::Bash);
+        assert_eq!(classify_tool(Agent::Droid, "Execute"), ToolClass::Bash);
 
         // Amp
         assert_eq!(classify_tool(Agent::Amp, "Write"), ToolClass::FileEdit);
+        assert_eq!(
+            classify_tool(Agent::Amp, "create_file"),
+            ToolClass::FileEdit
+        );
+        assert_eq!(classify_tool(Agent::Amp, "edit_file"), ToolClass::FileEdit);
+        assert_eq!(
+            classify_tool(Agent::Amp, "apply_patch"),
+            ToolClass::FileEdit
+        );
+        assert_eq!(classify_tool(Agent::Amp, "undo_edit"), ToolClass::FileEdit);
         assert_eq!(classify_tool(Agent::Amp, "Bash"), ToolClass::Bash);
+        assert_eq!(classify_tool(Agent::Amp, "shell_command"), ToolClass::Bash);
 
         // OpenCode
         assert_eq!(classify_tool(Agent::OpenCode, "edit"), ToolClass::FileEdit);

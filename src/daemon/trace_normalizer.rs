@@ -351,6 +351,19 @@ impl<B: GitBackend> TraceNormalizer<B> {
         _sid: &str,
         root_sid: &str,
     ) -> Result<Option<NormalizedCommand>, GitAiError> {
+        // Trace2 numbers a process's repositories: the primary repo is 1;
+        // higher indices are secondary repos git merely peeked into (e.g. an
+        // embedded subrepo opened for a gitlink dirtiness check during
+        // commit/status). Only the primary repo defines the command's
+        // worktree/family — letting a secondary def_repo retarget them makes
+        // the ref cursor enrich the command against the wrong repo's reflog
+        // and silently lose attribution.
+        if def_repo_is_secondary(payload) {
+            if let Some(pending) = self.state.pending.get_mut(root_sid) {
+                merge_reflog_start_offsets_from_payload(pending, payload);
+            }
+            return Ok(None);
+        }
         let payload_worktree = payload_worktree(payload);
         let payload_repo = payload
             .get("repo")
@@ -790,6 +803,18 @@ fn payload_argv(payload: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Trace2 `def_repo` events carry a `repo` index: 1 is the process's primary
+/// repository; higher indices are secondary repositories git opened in
+/// passing (e.g. an embedded subrepo inspected for a gitlink entry). Absent
+/// or non-numeric indices are treated as primary to preserve behavior for
+/// payloads that don't carry the field.
+pub(crate) fn def_repo_is_secondary(payload: &Value) -> bool {
+    payload
+        .get("repo")
+        .and_then(Value::as_u64)
+        .is_some_and(|index| index > 1)
+}
+
 fn payload_worktree(payload: &Value) -> Option<PathBuf> {
     payload
         .get("worktree")
@@ -1216,6 +1241,12 @@ mod tests {
         })
     }
 
+    fn create_git_dir(worktree: &Path) {
+        let git_dir = worktree.join(".git");
+        fs::create_dir_all(&git_dir).expect("create git dir");
+        fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").expect("write HEAD");
+    }
+
     #[test]
     fn payload_timestamp_prefers_stock_trace2_rfc3339_time_over_relative_t_abs() {
         let payload = serde_json::json!({
@@ -1263,6 +1294,65 @@ mod tests {
         assert_eq!(cmd.root_sid, "s1");
         assert_eq!(cmd.primary_command.as_deref(), Some("status"));
         assert_eq!(cmd.exit_code, 0);
+    }
+
+    #[test]
+    fn normalizer_keeps_primary_repo_worktree_when_nested_repo_def_repo_arrives() {
+        // Committing a repo that contains an embedded (gitlink) subrepo makes
+        // git emit def_repo events for BOTH repositories on the root sid:
+        // repo:1 (the primary) and repo:2 (the nested repo it peeked into).
+        // Only repo:1 defines the command's worktree; if repo:2 wins, the
+        // whole command is retargeted at the nested repo and the ref cursor
+        // enriches the commit against the wrong reflog (the nested-subrepo
+        // attribution flake).
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        backend.set_family("/repo/nested", "/repo/nested/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+
+        let start = serde_json::json!({
+            "event":"start",
+            "sid":"s-nested-def-repo",
+            "ts":1,
+            "argv":["git","commit","-m","msg"],
+            "worktree":"/repo"
+        });
+        let def_repo_primary = serde_json::json!({
+            "event":"def_repo",
+            "sid":"s-nested-def-repo",
+            "ts":2,
+            "repo":1,
+            "worktree":"/repo"
+        });
+        let def_repo_nested = serde_json::json!({
+            "event":"def_repo",
+            "sid":"s-nested-def-repo",
+            "ts":3,
+            "repo":2,
+            "worktree":"/repo/nested"
+        });
+        let atexit = atexit_payload("s-nested-def-repo", 4);
+
+        assert!(normalizer.ingest_payload(&start).unwrap().is_none());
+        assert!(
+            normalizer
+                .ingest_payload(&def_repo_primary)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            normalizer
+                .ingest_payload(&def_repo_nested)
+                .unwrap()
+                .is_none()
+        );
+        let cmd = normalizer.ingest_payload(&atexit).unwrap().unwrap();
+
+        assert_eq!(
+            cmd.worktree.as_deref(),
+            Some(Path::new("/repo")),
+            "secondary def_repo (repo:2) must not retarget the command at the nested repo"
+        );
     }
 
     #[test]
@@ -1398,7 +1488,7 @@ mod tests {
         let backend = Arc::new(MockBackend::default());
         let temp = tempfile::tempdir().expect("create tempdir");
         let worktree = temp.path().join("repo");
-        fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+        create_git_dir(&worktree);
         backend.set_alias(worktree.to_str().expect("utf8 worktree"), "ci", "commit");
         let mut normalizer = TraceNormalizer::new(backend);
 
@@ -1432,7 +1522,7 @@ mod tests {
         let backend = Arc::new(MockBackend::default());
         let temp = tempfile::tempdir().expect("create tempdir");
         let worktree = temp.path().join("repo");
-        fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+        create_git_dir(&worktree);
         backend.set_alias(
             worktree.to_str().expect("utf8 worktree"),
             "up",
@@ -1491,7 +1581,7 @@ mod tests {
         let backend = Arc::new(MockBackend::default());
         let temp = tempfile::tempdir().expect("create tempdir");
         let worktree = temp.path().join("repo");
-        fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+        create_git_dir(&worktree);
         backend.set_alias(
             worktree.to_str().expect("utf8 worktree"),
             "up",
@@ -1538,7 +1628,7 @@ mod tests {
         let backend = Arc::new(MockBackend::default());
         let temp = tempfile::tempdir().expect("create tempdir");
         let worktree = temp.path().join("repo");
-        fs::create_dir_all(worktree.join(".git")).expect("create git dir");
+        create_git_dir(&worktree);
         let mut normalizer = TraceNormalizer::new(backend);
 
         let start = serde_json::json!({
@@ -1754,7 +1844,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("create tempdir");
         let outer = temp.path().join("outer");
         let clone_dir = outer.join("nested").join("relative-clone");
-        fs::create_dir_all(clone_dir.join(".git")).expect("create clone git dir");
+        create_git_dir(&clone_dir);
 
         let start = serde_json::json!({
             "event":"start",
@@ -1828,7 +1918,7 @@ mod tests {
         assert!(normalizer.ingest_payload(&cmd_name).unwrap().is_none());
 
         // Simulate repo discoverability only once clone is about to exit.
-        fs::create_dir_all(clone_dir.join(".git")).expect("create clone git dir");
+        create_git_dir(&clone_dir);
 
         assert!(normalizer.ingest_payload(&exit).unwrap().is_none());
         let cmd = normalizer
@@ -1847,8 +1937,8 @@ mod tests {
         let temp = tempfile::tempdir().expect("create tempdir");
         let source_repo = temp.path().join("source-repo");
         let cloned_repo = temp.path().join("cloned-repo");
-        fs::create_dir_all(source_repo.join(".git")).expect("create source git dir");
-        fs::create_dir_all(cloned_repo.join(".git")).expect("create cloned git dir");
+        create_git_dir(&source_repo);
+        create_git_dir(&cloned_repo);
 
         let start = serde_json::json!({
             "event":"start",
@@ -1899,7 +1989,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("create tempdir");
         let cwd = temp.path().join("projects"); // non-repo CWD
         let clone_dest = cwd.join("testing-git"); // the clone destination
-        fs::create_dir_all(clone_dest.join(".git")).expect("create clone git dir");
+        create_git_dir(&clone_dest);
 
         let root_sid = "20260327T000000.000000Z-Hdeadbeef-P00010000";
         let child_sid = format!("{}/20260327T000000.000001Z-Hdeadbeef-P00010001", root_sid);
@@ -1993,8 +2083,8 @@ mod tests {
         let temp = tempfile::tempdir().expect("create tempdir");
         let repo_a = temp.path().join("repo-a");
         let repo_b = temp.path().join("repo-b");
-        fs::create_dir_all(repo_a.join(".git")).expect("create repo-a git dir");
-        fs::create_dir_all(repo_b.join(".git")).expect("create repo-b git dir");
+        create_git_dir(&repo_a);
+        create_git_dir(&repo_b);
 
         let start_a = serde_json::json!({
             "event":"start",
@@ -2115,7 +2205,7 @@ mod tests {
         let mut normalizer = TraceNormalizer::new(backend);
         let temp = tempfile::tempdir().expect("create tempdir");
         let repo = temp.path().join("repo");
-        fs::create_dir_all(repo.join(".git")).expect("create git dir");
+        create_git_dir(&repo);
 
         let start = serde_json::json!({
             "event":"start",
