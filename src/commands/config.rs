@@ -2,7 +2,7 @@ use dirs;
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::config::{AuthorConfig, CodexHooksFormat, NotesBackendKind};
+use crate::config::{AuthorConfig, CodexHooksFormat, MAX_UPGRADE_JITTER_SECONDS, NotesBackendKind};
 use crate::git::repository::find_repository_in_path;
 
 /// Determines the type of pattern value provided
@@ -106,6 +106,13 @@ fn print_config_help() {
     println!("  disable_version_checks       Disable version checks (bool)");
     println!("  disable_auto_updates         Disable auto updates (bool)");
     println!("  update_channel               Update channel (latest/next)");
+    println!(
+        "  upgrade_jitter_seconds       Max stable per-client seconds added to the 24h update check interval (0-{})",
+        MAX_UPGRADE_JITTER_SECONDS
+    );
+    println!(
+        "  minimum_package_upgrade_age_seconds  Minimum release age before upgrading (seconds; requires release created_at metadata)"
+    );
     println!("  feature_flags                Feature flags (object)");
     println!("  api_base_url                 API base URL (default: https://usegitai.com)");
     println!("  api_key                      API key for X-API-Key header");
@@ -147,6 +154,8 @@ fn print_config_help() {
     println!("  git-ai config set disable_auto_updates true");
     println!("  git-ai config set author.name \"Alice Example\"");
     println!("  git-ai config set author.email alice@example.com");
+    println!("  git-ai config set upgrade_jitter_seconds 345600");
+    println!("  git-ai config set minimum_package_upgrade_age_seconds 86400");
     println!("  git-ai config set exclude_repositories \"private/*\"");
     println!("  git-ai config set exclude_repositories .         # Uses current repo's remotes");
     println!("  git-ai config --add exclude_repositories \"temp/*\"");
@@ -305,6 +314,14 @@ fn show_all_config() -> Result<(), String> {
     effective_config.insert(
         "disable_auto_updates".to_string(),
         Value::Bool(runtime_config.auto_updates_disabled()),
+    );
+    effective_config.insert(
+        "upgrade_jitter_seconds".to_string(),
+        Value::Number(runtime_config.upgrade_jitter_seconds().into()),
+    );
+    effective_config.insert(
+        "minimum_package_upgrade_age_seconds".to_string(),
+        Value::Number(runtime_config.minimum_package_upgrade_age_seconds().into()),
     );
 
     // Optional strings
@@ -475,6 +492,12 @@ fn get_config_value(key: &str) -> Result<(), String> {
             }
             "disable_version_checks" => Value::Bool(runtime_config.version_checks_disabled()),
             "disable_auto_updates" => Value::Bool(runtime_config.auto_updates_disabled()),
+            "upgrade_jitter_seconds" => {
+                Value::Number(runtime_config.upgrade_jitter_seconds().into())
+            }
+            "minimum_package_upgrade_age_seconds" => {
+                Value::Number(runtime_config.minimum_package_upgrade_age_seconds().into())
+            }
             "update_channel" => Value::String(runtime_config.update_channel().as_str().to_string()),
             "feature_flags" => {
                 // Show effective flags with defaults applied
@@ -706,6 +729,24 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
                 file_config.disable_auto_updates = Some(bool_value);
                 crate::config::save_file_config(&file_config)?;
                 println!("[disable_auto_updates]: {}", bool_value);
+            }
+            "upgrade_jitter_seconds" => {
+                let seconds = parse_u64(value, "upgrade_jitter_seconds")?;
+                if seconds > MAX_UPGRADE_JITTER_SECONDS {
+                    return Err(format!(
+                        "upgrade_jitter_seconds must be between 0 and {} seconds",
+                        MAX_UPGRADE_JITTER_SECONDS
+                    ));
+                }
+                file_config.upgrade_jitter_seconds = Some(seconds);
+                crate::config::save_file_config(&file_config)?;
+                println!("[upgrade_jitter_seconds]: {}", seconds);
+            }
+            "minimum_package_upgrade_age_seconds" => {
+                let seconds = parse_u64(value, "minimum_package_upgrade_age_seconds")?;
+                file_config.minimum_package_upgrade_age_seconds = Some(seconds);
+                crate::config::save_file_config(&file_config)?;
+                println!("[minimum_package_upgrade_age_seconds]: {}", seconds);
             }
             "update_channel" => {
                 // Validate update channel
@@ -1107,6 +1148,20 @@ fn unset_config_value(key: &str) -> Result<(), String> {
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
                     println!("- [disable_auto_updates]: {}", v);
+                }
+            }
+            "upgrade_jitter_seconds" => {
+                let old_value = file_config.upgrade_jitter_seconds.take();
+                crate::config::save_file_config(&file_config)?;
+                if let Some(v) = old_value {
+                    println!("- [upgrade_jitter_seconds]: {}", v);
+                }
+            }
+            "minimum_package_upgrade_age_seconds" => {
+                let old_value = file_config.minimum_package_upgrade_age_seconds.take();
+                crate::config::save_file_config(&file_config)?;
+                if let Some(v) = old_value {
+                    println!("- [minimum_package_upgrade_age_seconds]: {}", v);
                 }
             }
             "update_channel" => {
@@ -1614,6 +1669,15 @@ fn parse_bool(value: &str) -> Result<bool, String> {
     }
 }
 
+fn parse_u64(value: &str, key: &str) -> Result<u64, String> {
+    value.parse::<u64>().map_err(|_| {
+        format!(
+            "Invalid value for {}: '{}'. Expected a non-negative integer",
+            key, value
+        )
+    })
+}
+
 fn parse_value(value: &str) -> Result<Value, String> {
     // Try to parse as JSON first
     if let Ok(json_value) = serde_json::from_str::<Value>(value) {
@@ -2104,6 +2168,22 @@ mod tests {
     #[test]
     fn test_parse_bool_empty_string() {
         assert!(parse_bool("").is_err());
+    }
+
+    #[test]
+    fn test_parse_u64_valid() {
+        assert_eq!(parse_u64("0", "upgrade_jitter_seconds").unwrap(), 0);
+        assert_eq!(
+            parse_u64("86400", "minimum_package_upgrade_age_seconds").unwrap(),
+            86400
+        );
+    }
+
+    #[test]
+    fn test_parse_u64_invalid() {
+        assert!(parse_u64("-1", "upgrade_jitter_seconds").is_err());
+        assert!(parse_u64("1.5", "upgrade_jitter_seconds").is_err());
+        assert!(parse_u64("abc", "upgrade_jitter_seconds").is_err());
     }
 
     #[test]

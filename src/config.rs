@@ -21,6 +21,9 @@ pub const DEFAULT_API_BASE_URL: &str = "https://usegitai.com";
 pub const DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES: usize = 3 * 1024 * 1024;
 pub const DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES: usize = 32 * 1024 * 1024;
 pub const DEFAULT_MAX_CHECKPOINT_TOTAL_LINES: usize = 500_000;
+/// Jitter is added on top of the 24h update interval. Four days of jitter
+/// keeps checks within the requested 24h..5d window.
+pub const MAX_UPGRADE_JITTER_SECONDS: u64 = 4 * 24 * 60 * 60;
 
 /// Which backend to use for storing authorship notes.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -170,6 +173,8 @@ pub struct Config {
     disable_version_checks: bool,
     disable_auto_updates: bool,
     update_channel: UpdateChannel,
+    upgrade_jitter_seconds: u64,
+    minimum_package_upgrade_age_seconds: u64,
     feature_flags: FeatureFlags,
     api_base_url: String,
     prompt_storage: String,
@@ -242,6 +247,10 @@ pub struct FileConfig {
     pub disable_auto_updates: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub update_channel: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upgrade_jitter_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_package_upgrade_age_seconds: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub feature_flags: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -319,6 +328,10 @@ pub struct ConfigPatch {
     pub disable_version_checks: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub disable_auto_updates: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upgrade_jitter_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minimum_package_upgrade_age_seconds: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_storage: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -533,6 +546,14 @@ impl Config {
 
     pub fn update_channel(&self) -> UpdateChannel {
         self.update_channel
+    }
+
+    pub fn upgrade_jitter_seconds(&self) -> u64 {
+        self.upgrade_jitter_seconds
+    }
+
+    pub fn minimum_package_upgrade_age_seconds(&self) -> u64 {
+        self.minimum_package_upgrade_age_seconds
     }
 
     pub fn feature_flags(&self) -> &FeatureFlags {
@@ -946,6 +967,18 @@ fn author_config_file_fingerprint(path: &Path) -> Option<AuthorConfigFileFingerp
     })
 }
 
+fn normalize_upgrade_jitter_seconds(value: u64) -> u64 {
+    if value > MAX_UPGRADE_JITTER_SECONDS {
+        eprintln!(
+            "Warning: upgrade_jitter_seconds cannot exceed {} seconds; using {}",
+            MAX_UPGRADE_JITTER_SECONDS, MAX_UPGRADE_JITTER_SECONDS
+        );
+        MAX_UPGRADE_JITTER_SECONDS
+    } else {
+        value
+    }
+}
+
 fn build_config() -> Config {
     let file_cfg = load_file_config();
     let exclude_prompts_in_repositories = file_cfg
@@ -1039,6 +1072,16 @@ fn build_config() -> Config {
         .and_then(|c| c.update_channel.as_deref())
         .and_then(UpdateChannel::from_str)
         .unwrap_or_default();
+    let upgrade_jitter_seconds = normalize_upgrade_jitter_seconds(
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.upgrade_jitter_seconds)
+            .unwrap_or(0),
+    );
+    let minimum_package_upgrade_age_seconds = file_cfg
+        .as_ref()
+        .and_then(|c| c.minimum_package_upgrade_age_seconds)
+        .unwrap_or(0);
 
     let git_path = resolve_git_path(&file_cfg);
 
@@ -1224,6 +1267,8 @@ fn build_config() -> Config {
             disable_version_checks,
             disable_auto_updates,
             update_channel,
+            upgrade_jitter_seconds,
+            minimum_package_upgrade_age_seconds,
             feature_flags,
             api_base_url,
             prompt_storage,
@@ -1257,6 +1302,8 @@ fn build_config() -> Config {
         disable_version_checks,
         disable_auto_updates,
         update_channel,
+        upgrade_jitter_seconds,
+        minimum_package_upgrade_age_seconds,
         feature_flags,
         api_base_url,
         prompt_storage,
@@ -1673,6 +1720,14 @@ fn apply_test_config_patch(config: &mut Config) {
         if let Some(disable_auto_updates) = patch.disable_auto_updates {
             config.disable_auto_updates = disable_auto_updates;
         }
+        if let Some(upgrade_jitter_seconds) = patch.upgrade_jitter_seconds {
+            config.upgrade_jitter_seconds =
+                normalize_upgrade_jitter_seconds(upgrade_jitter_seconds);
+        }
+        if let Some(minimum_package_upgrade_age_seconds) = patch.minimum_package_upgrade_age_seconds
+        {
+            config.minimum_package_upgrade_age_seconds = minimum_package_upgrade_age_seconds;
+        }
         if let Some(prompt_storage) = patch.prompt_storage {
             // Validate the value
             if matches!(prompt_storage.as_str(), "default" | "notes" | "local") {
@@ -1756,6 +1811,8 @@ mod tests {
             disable_version_checks: false,
             disable_auto_updates: false,
             update_channel: UpdateChannel::Latest,
+            upgrade_jitter_seconds: 0,
+            minimum_package_upgrade_age_seconds: 0,
             feature_flags: FeatureFlags::default(),
             api_base_url: DEFAULT_API_BASE_URL.to_string(),
             prompt_storage: "default".to_string(),
@@ -2001,6 +2058,8 @@ mod tests {
             disable_version_checks: false,
             disable_auto_updates: false,
             update_channel: UpdateChannel::Latest,
+            upgrade_jitter_seconds: 0,
+            minimum_package_upgrade_age_seconds: 0,
             feature_flags: FeatureFlags::default(),
             api_base_url: DEFAULT_API_BASE_URL.to_string(),
             prompt_storage: "default".to_string(),
@@ -2149,6 +2208,8 @@ mod tests {
             disable_version_checks: false,
             disable_auto_updates: false,
             update_channel: UpdateChannel::Latest,
+            upgrade_jitter_seconds: 0,
+            minimum_package_upgrade_age_seconds: 0,
             feature_flags: FeatureFlags::default(),
             api_base_url: DEFAULT_API_BASE_URL.to_string(),
             prompt_storage: prompt_storage.to_string(),
@@ -2375,6 +2436,13 @@ mod tests {
         let mut config = create_test_config(vec![], vec![]);
         config.quiet = true;
         assert!(config.is_quiet());
+    }
+
+    #[test]
+    fn test_upgrade_timing_defaults_are_disabled() {
+        let config = create_test_config(vec![], vec![]);
+        assert_eq!(config.upgrade_jitter_seconds(), 0);
+        assert_eq!(config.minimum_package_upgrade_age_seconds(), 0);
     }
 
     #[test]
