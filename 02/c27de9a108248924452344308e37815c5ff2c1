@@ -1,0 +1,20 @@
+agent-support/visualstudio/src/GitAiVS/Services/BinaryResolver.cs
+  s_61bbcfe4478210::t_c44294c072b000 116,119
+  s_61bbcfe4478210::t_35b89eeb639a10 155-156,166-167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "02c27de9a108248924452344308e37815c5ff2c1",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

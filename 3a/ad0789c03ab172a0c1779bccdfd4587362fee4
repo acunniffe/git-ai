@@ -1,0 +1,26 @@
+src/commands/checkpoint_agent/opencode_preset.rs
+  bcdf8537b9843382 13,35,39,57-77,93,99,101,110,112,126,128,135,137,175-176,179,182,184,208,242-244,250,257,262,268-274,276,287,291-292,295-300,302-455,461,471-474,476-483,488,500,504,553-557,565-573,576,580,597-603,624,643-646,652,654,667-726,728-743,745-761,765-773
+tests/opencode.rs
+  bcdf8537b9843382 19-26,72-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "3aad0789c03ab172a0c1779bccdfd4587362fee4",
+  "prompts": {
+    "bcdf8537b9843382": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c5d2c-7aba-7d62-86de-9c1d88609153",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 478,
+      "total_deletions": 90,
+      "accepted_lines": 462,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5b0392ed0830a7cfd417b3c0435b8e26ee5dc89e2cc9b50d999bafe98447ea77"
+    }
+  }
+}

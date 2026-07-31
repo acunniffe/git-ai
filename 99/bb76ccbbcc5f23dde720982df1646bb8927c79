@@ -1,0 +1,42 @@
+scripts/benchmarks/checkpoint/benchmark_human_non_ai_checkpoint.py
+  7b74ae39befb0e66 1-341
+scripts/repro_runaway_memory.py
+  98dadc61c0822434 1-501
+specs/runaway-memory-plan.md
+  98dadc61c0822434 1-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.3",
+  "base_commit_sha": "99bb76ccbbcc5f23dde720982df1646bb8927c79",
+  "prompts": {
+    "7b74ae39befb0e66": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c4e40-ca79-77c3-8822-cdcc7c92e0f1",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 341,
+      "total_deletions": 0,
+      "accepted_lines": 341,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/4d4754945f29ed16bdb01adea65a4f77bf944126c4b14b507dd2709964656c5c"
+    },
+    "98dadc61c0822434": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c4dda-855c-7092-bc7e-0a0689b31fa3",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 719,
+      "total_deletions": 54,
+      "accepted_lines": 665,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/e065f9de079b658059d0d423d96106e5053844f58cf9444fa516c3843deedb29"
+    }
+  }
+}

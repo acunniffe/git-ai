@@ -1,0 +1,26 @@
+src/mdm/agents/github_copilot.rs
+  37d35367e8e09339 19-22,55,61-66,305-311,448,491-512,522,538,574,599,633,667
+src/mdm/utils.rs
+  37d35367e8e09339 813,1092,1128,1137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.1",
+  "base_commit_sha": "36f6b449922c5c81ca174284496e75fe95e7c606",
+  "prompts": {
+    "37d35367e8e09339": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5d229bdb-3c45-46b5-9e4a-25a240df2d93",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 52,
+      "total_deletions": 72,
+      "accepted_lines": 52,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/ef7e62af6f1b6ccefd94b5995338b84127ab106ef126f3bcf65f32bd7f7b1c90"
+    }
+  }
+}

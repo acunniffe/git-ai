@@ -1,0 +1,21 @@
+Taskfile.yml
+  s_af2d349a5e032c::t_eb4d7bd12d6f8b 103
+  s_af2d349a5e032c::t_0bd4080fec75a3 152
+  s_af2d349a5e032c::t_645bb1b489b203 58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "e341303f9b6240dc34f5da44a4bd9db1a6b0db68",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

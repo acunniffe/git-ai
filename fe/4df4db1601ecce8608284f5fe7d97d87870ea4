@@ -1,0 +1,20 @@
+tests/integration/codex.rs
+  s_2a0c400f218d7f::t_623ae4e0570f0d 715-921,923-1098,1100-1101,1103-1179,1195-1200
+  s_2a0c400f218d7f::t_fffaa991f4940e 922,1099,1102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "fe4df4db1601ecce8608284f5fe7d97d87870ea4",
+  "prompts": {},
+  "sessions": {
+    "s_2a0c400f218d7f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e0924e12-36cb-4ac0-a984-d2d5fc70c0e6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
