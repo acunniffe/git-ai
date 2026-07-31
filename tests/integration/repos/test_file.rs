@@ -4,24 +4,7 @@ use std::{fs, path::PathBuf};
 
 use insta::assert_debug_snapshot;
 
-/// AI author names that indicate AI-generated content
-const AI_AUTHOR_NAMES: &[&str] = &[
-    "mock_ai",
-    "claude",
-    "continue-cli",
-    "gpt",
-    "copilot",
-    "cursor",
-    "codex",
-    "gemini",
-    "amp",
-    "windsurf",
-    "devin",
-    "cloud-agent",
-    "codex-cloud",
-    "git-ai-cloud-agent",
-    "agent-v1",
-];
+use super::blame_support::{is_ai_blame_author, parse_blame_line};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AuthorType {
@@ -192,43 +175,13 @@ impl<'a> TestFile<'a> {
     }
 
     /// Helper function to check if an author string indicates AI authorship.
-    /// Strips email (angle-bracket portion) before matching to avoid false positives
-    /// like "amp" inside "example.com".
     fn is_ai_author_helper(author: &str) -> bool {
-        let name_only = if let Some(bracket) = author.find('<') {
-            &author[..bracket]
-        } else {
-            author
-        };
-        let name_lower = name_only.to_lowercase();
-        AI_AUTHOR_NAMES
-            .iter()
-            .any(|&ai_name| name_lower.contains(ai_name))
+        is_ai_blame_author(author)
     }
 
     /// Static version of parse_blame_line for use in from_existing_file
     fn parse_blame_line_static(line: &str) -> (String, String) {
-        if let Some(start_paren) = line.find('(')
-            && let Some(end_paren) = line.find(')')
-        {
-            let author_section = &line[start_paren + 1..end_paren];
-            let content = line[end_paren + 1..].trim();
-
-            // Extract author name (everything before the date)
-            let parts: Vec<&str> = author_section.split_whitespace().collect();
-            let mut author_parts = Vec::new();
-            for part in parts {
-                // Stop when we hit what looks like a date (starts with digit)
-                if part.chars().next().unwrap_or('a').is_ascii_digit() {
-                    break;
-                }
-                author_parts.push(part);
-            }
-            let author = author_parts.join(" ");
-
-            return (author, content.to_string());
-        }
-        ("unknown".to_string(), line.to_string())
+        parse_blame_line(line)
     }
 
     fn parse_blame_lines(blame_output: &str) -> Vec<(String, String)> {

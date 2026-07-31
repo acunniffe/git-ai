@@ -20,6 +20,7 @@
 #![allow(dead_code)]
 use std::fs;
 
+use crate::repos::blame_support::is_ai_blame_author;
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::model::authorship_log_serialization::AuthorshipLog;
@@ -197,7 +198,7 @@ fn assert_blame_sample_at_commit(
             .get(&line_num)
             .map(|s| s.as_str())
             .unwrap_or("Test User");
-        let got_ai = is_ai_author(author);
+        let got_ai = is_ai_blame_author(author);
         assert_eq!(
             got_ai,
             *exp_is_ai,
@@ -262,24 +263,6 @@ fn assert_accepted_lines_monotonic(repo: &TestRepo, ctx: &str, chain: &[String])
     }
 }
 
-fn is_ai_author(author: &str) -> bool {
-    const AI_NAMES: &[&str] = &[
-        "mock_ai",
-        "claude",
-        "continue-cli",
-        "gpt",
-        "copilot",
-        "cursor",
-        "codex",
-        "gemini",
-        "amp",
-        "windsurf",
-        "devin",
-    ];
-    let lower = author.to_lowercase();
-    AI_NAMES.iter().any(|name| lower.contains(name))
-}
-
 /// Assert line-level blame at a specific commit SHA.
 /// `expected`: ordered list of (content_substring, is_ai) for every line.
 /// Uses the Rust blame API with `newest_commit` set — content from `git show` and
@@ -321,7 +304,7 @@ fn assert_blame_at_commit(
             .get(&line_num)
             .map(|s| s.as_str())
             .unwrap_or("Test User");
-        let got_ai = is_ai_author(author);
+        let got_ai = is_ai_blame_author(author);
         assert_eq!(
             got_ai,
             *exp_is_ai,

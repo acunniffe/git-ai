@@ -2,9 +2,10 @@ use std::collections::HashMap;
 use std::fmt;
 use std::fs;
 
+use crate::repos::blame_support::parse_blame_line;
 use crate::repos::test_repo::TestRepo;
 
-use super::helpers::{BlameClass, classify_show_prompt_author, parse_blame_line};
+use super::helpers::{BlameClass, classify_show_prompt_author};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LineAttribution {

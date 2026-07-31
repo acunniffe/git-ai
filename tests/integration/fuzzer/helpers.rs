@@ -1,21 +1,6 @@
 use std::collections::HashSet;
 
-const AI_AUTHOR_NAMES: &[&str] = &[
-    "mock_ai",
-    "claude",
-    "continue-cli",
-    "gpt",
-    "copilot",
-    "cursor",
-    "codex",
-    "gemini",
-    "amp",
-    "windsurf",
-    "devin",
-    "cloud-agent",
-    "codex-cloud",
-    "git-ai-cloud-agent",
-];
+use crate::repos::blame_support::is_ai_blame_author;
 
 pub struct PorcelainLineInfo {
     pub commit_sha: String,
@@ -40,39 +25,6 @@ pub fn parse_porcelain_line_info(porcelain: &str) -> Vec<PorcelainLineInfo> {
     result
 }
 
-pub fn parse_blame_line(line: &str) -> (String, String) {
-    if let Some(start_paren) = line.find('(')
-        && let Some(end_paren) = line.find(')')
-    {
-        let author_section = &line[start_paren + 1..end_paren];
-        let content = line[end_paren + 1..].trim();
-
-        let parts: Vec<&str> = author_section.split_whitespace().collect();
-        let mut author_parts = Vec::new();
-        for part in parts {
-            if part.chars().next().unwrap_or('a').is_ascii_digit() {
-                break;
-            }
-            author_parts.push(part);
-        }
-        let author = author_parts.join(" ");
-        return (author, content.to_string());
-    }
-    ("unknown".to_string(), line.to_string())
-}
-
-pub fn is_ai_author_name(author: &str) -> bool {
-    let name_only = if let Some(bracket) = author.find('<') {
-        &author[..bracket]
-    } else {
-        author
-    };
-    let name_lower = name_only.to_lowercase();
-    AI_AUTHOR_NAMES
-        .iter()
-        .any(|&ai_name| name_lower.contains(ai_name))
-}
-
 /// The three attribution classes the fuzzer asserts, derived from a
 /// `git-ai blame --show-prompt` author column. That mode prints:
 ///   - an agent tool name with a session hash for AI lines (e.g. `mock_ai [s_..]`),
@@ -87,9 +39,9 @@ pub enum BlameClass {
 
 /// Classify the author column of one `--show-prompt` blame line into one of the
 /// three attribution classes. `author` is the already-extracted author string
-/// (see `parse_blame_line`).
+/// (see `crate::repos::blame_support::parse_blame_line`).
 pub fn classify_show_prompt_author(author: &str) -> BlameClass {
-    if is_ai_author_name(author) {
+    if is_ai_blame_author(author) {
         return BlameClass::Ai;
     }
     // Known-human attestations surface as the `h_`-prefixed identity hash in
