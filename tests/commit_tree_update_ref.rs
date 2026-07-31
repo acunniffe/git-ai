@@ -1857,6 +1857,69 @@ fn test_update_ref_fast_forward_bounds_committed_hunks_to_final_commit() {
 }
 
 #[test]
+fn test_fast_forward_update_ref_does_not_attribute_remote_commit_to_local_user() {
+    let repo = TestRepo::new();
+    fs::write(repo.path().join("base.txt"), "base\n").expect("write local base");
+    let old_tip = repo
+        .stage_all_and_commit("local base")
+        .expect("commit local base")
+        .commit_sha;
+
+    fs::write(repo.path().join("local-draft.txt"), "local draft\n").expect("write local draft");
+    repo.git_ai(&["checkpoint", "human", "local-draft.txt"])
+        .expect("seed old-tip working log");
+
+    fs::write(repo.path().join("remote.txt"), "remote contribution\n")
+        .expect("write remote contribution");
+    repo.git_og(&["add", "base.txt", "remote.txt"])
+        .expect("stage remote tree");
+    let remote_tree = repo.git_og(&["write-tree"]).expect("write remote tree");
+    let remote_tip = repo
+        .git_og_with_env(
+            &[
+                "commit-tree",
+                remote_tree.trim(),
+                "-p",
+                &old_tip,
+                "-m",
+                "remote contribution",
+            ],
+            &[
+                ("GIT_AUTHOR_NAME", "Remote Contributor"),
+                ("GIT_AUTHOR_EMAIL", "remote@example.com"),
+                ("GIT_COMMITTER_NAME", "Remote Contributor"),
+                ("GIT_COMMITTER_EMAIL", "remote@example.com"),
+            ],
+        )
+        .expect("create remote-authored commit")
+        .trim()
+        .to_string();
+
+    let branch = repo.current_branch();
+    repo.git(&[
+        "update-ref",
+        &format!("refs/heads/{branch}"),
+        &remote_tip,
+        &old_tip,
+    ])
+    .expect("fast-forward update-ref should succeed");
+    repo.sync_daemon_force();
+
+    let note = repo
+        .read_authorship_note(&remote_tip)
+        .expect("fast-forward finalization should write an authorship note");
+    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse authorship note");
+    assert!(
+        log.attestations
+            .iter()
+            .filter(|attestation| attestation.file_path == "remote.txt")
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| !entry.hash.starts_with("h_")),
+        "the remote contributor's lines must not be attributed to the local user"
+    );
+}
+
+#[test]
 fn test_delayed_current_branch_update_ref_trace_preserves_new_commit_attribution() {
     let repo = TestRepo::new();
     setup_initial_commit(&repo);

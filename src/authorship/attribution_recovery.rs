@@ -7,7 +7,7 @@ use crate::commands::checkpoint_agent::bash_tool::StatEntry;
 use crate::daemon::bash_history_db::{BashCheckpointCall, distance_to_call_window};
 use crate::error::GitAiError;
 use crate::git::repo_state::worktree_root_for_path;
-use crate::git::repository::{Repository, exec_git};
+use crate::git::repository::{GitAuthorIdentity, Repository, exec_git};
 use crate::metrics::db::SessionEventRecoveryCandidate;
 use crate::metrics::{CheckpointValues, EventAttributes, MetricEvent, PosEncoded};
 use serde_json::json;
@@ -179,6 +179,7 @@ struct CommitMetadata {
     message: String,
     author_name: String,
     author_email: String,
+    author_identity: String,
 }
 
 #[derive(Clone, Debug)]
@@ -191,6 +192,11 @@ struct CommitMetadataSessionSelection {
     event_ts: Option<u32>,
     repo_url: Option<String>,
     external_tool_use_id: Option<String>,
+}
+
+struct CommitMetadataRecoveryContext<'a> {
+    file_timestamps: Option<&'a FileTimestampsByPath>,
+    metadata: &'a CommitMetadata,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -257,6 +263,11 @@ pub(crate) fn recover_attribution(
         return Ok(());
     }
 
+    let commit_metadata = read_commit_metadata(repo, commit_sha)?;
+    let commit_metadata_context = CommitMetadataRecoveryContext {
+        file_timestamps: context.file_timestamps,
+        metadata: &commit_metadata,
+    };
     if recover_commit_metadata(
         repo,
         parent_sha,
@@ -264,12 +275,18 @@ pub(crate) fn recover_attribution(
         human_author,
         authorship_log,
         &unknown_after_session_events,
-        context.file_timestamps,
+        commit_metadata_context,
     )? {
         return Ok(());
     }
 
-    recover_remaining_as_known_human(authorship_log, human_author, unknown_after_session_events);
+    recover_remaining_as_known_human(
+        authorship_log,
+        human_author,
+        &commit_metadata,
+        repo.cached_git_author_identity(),
+        unknown_after_session_events,
+    );
     Ok(())
 }
 
@@ -530,14 +547,13 @@ fn recover_commit_metadata(
     human_author: &str,
     authorship_log: &mut AuthorshipLog,
     unknown_by_file: &UnknownLinesByFile,
-    captured_file_timestamps: Option<&FileTimestampsByPath>,
+    context: CommitMetadataRecoveryContext<'_>,
 ) -> Result<bool, GitAiError> {
     if unknown_by_file.is_empty() {
         return Ok(true);
     }
 
-    let commit_metadata = read_commit_metadata(repo, commit_sha)?;
-    let detections = detect_commit_metadata_agents(&commit_metadata);
+    let detections = detect_commit_metadata_agents(context.metadata);
     if detections.is_empty() {
         return Ok(false);
     }
@@ -545,7 +561,7 @@ fn recover_commit_metadata(
     let workdir = repo.workdir()?;
     let target_repo_url = crate::repo_url::resolve_repo_url_from_repo(repo);
     let (timestamps_by_file, latest_timestamps) =
-        latest_timestamps_for_unknown_files(&workdir, unknown_by_file, captured_file_timestamps);
+        latest_timestamps_for_unknown_files(&workdir, unknown_by_file, context.file_timestamps);
     let Some(selection) = select_commit_metadata_session(
         authorship_log,
         &detections,
@@ -591,8 +607,8 @@ fn recover_commit_metadata(
             "file_path": file_path.as_str(),
             "unknown_lines": &unknown_lines,
             "detected_agents": &detected_agents,
-            "commit_author_name": commit_metadata.author_name.as_str(),
-            "commit_author_email": commit_metadata.author_email.as_str(),
+            "commit_author_name": context.metadata.author_name.as_str(),
+            "commit_author_email": context.metadata.author_email.as_str(),
             "selection_tier": selection.tier,
             "selected_session_id": selection.session_id.as_str(),
             "selected_tool": selection.agent_id.tool.as_str(),
@@ -633,9 +649,13 @@ fn recover_commit_metadata(
 fn recover_remaining_as_known_human(
     authorship_log: &mut AuthorshipLog,
     human_author: &str,
+    commit_metadata: &CommitMetadata,
+    local_git_author: Option<&GitAuthorIdentity>,
     unknown_by_file: UnknownLinesByFile,
 ) {
-    if !should_recover_remaining_as_known_human(authorship_log) {
+    if !commit_author_matches_local_human(commit_metadata, human_author, local_git_author)
+        || !should_recover_remaining_as_known_human(authorship_log)
+    {
         return;
     }
 
@@ -656,6 +676,20 @@ fn recover_remaining_as_known_human(
             LineRange::compress_lines(&unknown_lines),
         );
     }
+}
+
+fn commit_author_matches_local_human(
+    commit_metadata: &CommitMetadata,
+    human_author: &str,
+    local_git_author: Option<&GitAuthorIdentity>,
+) -> bool {
+    commit_metadata.author_identity == human_author
+        || matches!(
+            local_git_author.map(|author| (&author.name, &author.email)),
+            Some((Some(name), Some(email)))
+                if commit_metadata.author_name == *name
+                    && commit_metadata.author_email.eq_ignore_ascii_case(email)
+        )
 }
 
 fn should_recover_remaining_as_known_human(authorship_log: &AuthorshipLog) -> bool {
@@ -687,11 +721,13 @@ fn read_commit_metadata(repo: &Repository, commit_sha: &str) -> Result<CommitMet
     let author_name = parts.next().unwrap_or_default().trim().to_string();
     let author_email = parts.next().unwrap_or_default().trim().to_string();
     let message = parts.next().unwrap_or_default().to_string();
+    let author_identity = format!("{} <{}>", author_name, author_email);
 
     Ok(CommitMetadata {
         message,
         author_name,
         author_email,
+        author_identity,
     })
 }
 
@@ -739,9 +775,13 @@ fn detect_commit_metadata_agents(metadata: &CommitMetadata) -> Vec<CommitAgentDe
         }
     }
 
-    let author_identity = format!("{} <{}>", metadata.author_name, metadata.author_email);
-    if let Some(kind) = detect_agent_from_identity(&author_identity) {
-        push_commit_agent_detection(&mut detections, kind, "author_identity", &author_identity);
+    if let Some(kind) = detect_agent_from_identity(&metadata.author_identity) {
+        push_commit_agent_detection(
+            &mut detections,
+            kind,
+            "author_identity",
+            &metadata.author_identity,
+        );
     }
 
     detections

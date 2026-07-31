@@ -3,6 +3,7 @@ use crate::repos::test_repo::TestRepo;
 use git_ai::authorship::authorship_log::LineRange;
 use git_ai::authorship::authorship_log_serialization::{AuthorshipLog, generate_session_id};
 use git_ai::authorship::working_log::AgentId;
+use git_ai::config::AuthorConfig;
 use git_ai::daemon::bash_history_db::{BashCallEnd, BashCallStart, BashHistoryDatabase};
 use git_ai::metrics::db::MetricsDatabase;
 use git_ai::metrics::{EventAttributes, MetricEvent, PosEncoded, SessionEventValues};
@@ -433,6 +434,45 @@ fn test_terminal_recovery_marks_fully_unknown_commit_known_human() {
         human_attested_lines(&commit.authorship_log, "manual.txt"),
         vec![1, 2],
         "fully unknown committed lines should receive an h_ attestation"
+    );
+}
+
+#[test]
+fn test_terminal_recovery_accepts_local_git_identity_with_author_override() {
+    let (_metrics_db_dir, _bash_db_dir, mut repo) = terminal_recovery_repo();
+    repo.patch_git_ai_config(|patch| {
+        patch.author = Some(AuthorConfig {
+            name: Some("Configured User".to_string()),
+            email: Some("configured@example.com".to_string()),
+        });
+    });
+
+    fs::write(repo.path().join("manual.txt"), "manual edit\n").unwrap();
+    let commit = repo
+        .stage_all_and_commit_with_env(
+            "Manual edit with authorship override",
+            &[
+                ("GIT_AUTHOR_NAME", "Test User"),
+                ("GIT_AUTHOR_EMAIL", "TEST@EXAMPLE.COM"),
+            ],
+        )
+        .expect("manual commit should succeed");
+
+    let mut file = repo.filename("manual.txt");
+    file.assert_committed_lines(lines!["manual edit".human()]);
+    assert_eq!(
+        human_attested_lines(&commit.authorship_log, "manual.txt"),
+        vec![1],
+        "the raw Git identity should still identify a local commit"
+    );
+    assert!(
+        commit
+            .authorship_log
+            .metadata
+            .humans
+            .values()
+            .any(|human| human.author == "Configured User <configured@example.com>"),
+        "the attestation should retain the configured git-ai identity"
     );
 }
 
@@ -953,13 +993,7 @@ fn test_commit_metadata_recovery_ignores_freeform_message_agent_mentions() {
     fs::write(&file_path, "freeform codex mention falls back to human\n").unwrap();
 
     let commit = repo
-        .stage_all_and_commit_with_env(
-            "codex did things",
-            &[
-                ("GIT_AUTHOR_NAME", "Sasha Varlamov"),
-                ("GIT_AUTHOR_EMAIL", "sasha@sashavarlamov.com"),
-            ],
-        )
+        .stage_all_and_commit("codex did things")
         .expect("freeform mention commit should succeed");
 
     let mut file = repo.filename("metadata-freeform-agent-mention.txt");
