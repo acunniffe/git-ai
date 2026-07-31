@@ -232,7 +232,7 @@ Uses `insta` crate. Snapshots live in `tests/integration/snapshots/` and `tests/
 ## Optimize for Human Review
 
 - Always write code optimized for human review. No code can be merged without a greenlight from a human, so make it easy for humans to review your code. This means clear naming, clear refactors as needed, and, most importantly, minimal and simple code. Clean, DRY, simple, maintainable code is your true north star.
-- Always submit work with Graphite (if `gt` CLI is available) as a stack of pull requests, with each pull request representing a logical, self-contained chunk of the problem. This is how you present your work for human review.
+- Always submit work with GitHub Stacks (if the `gh stack` CLI is available) as a stack of pull requests, with each pull request representing a logical, self-contained chunk of the problem. This is how you present your work for human review.
 - Before stopping, ensure every submitted pull request passes all CI checks and all Devin review feedback has been addressed and resolved.
 
 ## Gotchas
