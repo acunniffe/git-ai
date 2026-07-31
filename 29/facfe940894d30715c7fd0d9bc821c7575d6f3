@@ -1,0 +1,41 @@
+agent-support/vscode/src/blame-lens-manager.ts
+  bb2036586f64b8ac 221,280-284,286,291,359-362,443,446,448,450-463,468-471,474,476,486,491,495,497-510,515-518,521,523,609-611,635-642
+  baad5d78fefd696b 261,308,312-314,318
+agent-support/vscode/tsconfig.json
+  bb2036586f64b8ac 13-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "29facfe940894d30715c7fd0d9bc821c7575d6f3",
+  "prompts": {
+    "baad5d78fefd696b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c05f8d18-9be8-4ca4-821d-c9cfd50e4961",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 8,
+      "accepted_lines": 6,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/6f0cb741ee84f756b4942dec7aab49008770666b948d738d3fded676af647eac"
+    },
+    "bb2036586f64b8ac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f91ba44c-1962-48b5-aacf-7674ba00ce3c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 74,
+      "total_deletions": 26,
+      "accepted_lines": 73,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/871b588d51bde7512fcada385bc7e56f945f1a47ba8c407560c36ac5420d85da"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+src/commands/install_hooks.rs
+  0bd3af93a9f7ff96 125-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "7696f961241d960b2b5a932b0fc169d787a55dae",
+  "prompts": {
+    "0bd3af93a9f7ff96": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "cb486ab4-c97e-41ff-8bcc-4c1ab94020af",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "8688852+Ryan-Adami@users.noreply.github.com",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/f36778070c372742997bc23eb64f12162bda7a7ab8ca39a61ac9f1cd49a4490a"
+    }
+  }
+}

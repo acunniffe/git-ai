@@ -1,0 +1,24 @@
+tests/performance.rs
+  48d87a2257dba127 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "02795270de89096069c58b3fd5d52fc072b43021",
+  "prompts": {
+    "48d87a2257dba127": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cbc33c82-8129-41c2-8253-f075132e20ec",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/fce3885fa7b0df0145a6d5c41593419645e7e198da9e5ff81b14a755998ab387"
+    }
+  }
+}

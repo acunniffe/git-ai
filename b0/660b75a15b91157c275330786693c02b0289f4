@@ -1,0 +1,25 @@
+vendor/sqlite/sqlite3.h
+  ai_agent 1-14335
+vendor/sqlite/PROVENANCE.md
+  ai_agent 1-7
+vendor/sqlite/sqlite3.c
+  ai_agent 1-268860
+.gitignore
+  s_3b8401a0cbe012::t_a34d522d709ca6 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "b0660b75a15b91157c275330786693c02b0289f4",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

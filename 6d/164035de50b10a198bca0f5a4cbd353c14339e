@@ -1,0 +1,22 @@
+src/commands/install_hooks.rs
+  s_f2b9b4d0a5efa6::t_46c51ccf438c30 618
+  s_f2b9b4d0a5efa6::t_8514a5510bdc9e 8
+src/mdm/agents/vscode.rs
+  s_f2b9b4d0a5efa6::t_d6ca9cc2360fe2 183,185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "6d164035de50b10a198bca0f5a4cbd353c14339e",
+  "prompts": {},
+  "sessions": {
+    "s_f2b9b4d0a5efa6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf28d639-11e1-4851-b914-d16eb53d907b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

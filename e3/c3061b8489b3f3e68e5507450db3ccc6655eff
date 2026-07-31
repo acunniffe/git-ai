@@ -1,0 +1,28 @@
+install.ps1
+  713d43d3f8659680 513-514
+tests/hooks_feature_flags.rs
+  713d43d3f8659680 478-513
+src/config.rs
+  713d43d3f8659680 735,738-742,834,1446-1464
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.9",
+  "base_commit_sha": "e3c3061b8489b3f3e68e5507450db3ccc6655eff",
+  "prompts": {
+    "713d43d3f8659680": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cd556-6a7a-70f0-8902-6deff516daaf",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 67,
+      "total_deletions": 4,
+      "accepted_lines": 67,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/2291e0a7b41c1317cf606699af6f0164568ee87a5137d64715bc5a0f0a8296ed"
+    }
+  }
+}

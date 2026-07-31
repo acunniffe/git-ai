@@ -1,0 +1,38 @@
+tests/integration/push_notes_survive_locally.rs
+  2e2bede91ef72345 1-186
+tests/integration/main.rs
+  2e2bede91ef72345 66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.2",
+  "base_commit_sha": "7674a3fc4b28450601addf513fbb75d889e5162c",
+  "prompts": {
+    "2e2bede91ef72345": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb295ee1-62f3-46c3-9baf-1869b220f0bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 187,
+      "total_deletions": 0,
+      "accepted_lines": 187,
+      "overriden_lines": 0
+    },
+    "5eb54567d37645d3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "718654f9-ef19-4ab3-bfa3-66a375ce4ad4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 3,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

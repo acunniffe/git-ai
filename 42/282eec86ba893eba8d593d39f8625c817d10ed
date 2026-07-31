@@ -1,0 +1,23 @@
+installer/homebrew/git-ai.rb
+  s_c07cec28a64ec3::t_887d4cd615e7a5 1-47
+installer/homebrew/update-formula.sh
+  s_c07cec28a64ec3::t_5cb376b5dde9f8 1-67
+installer/homebrew/README.md
+  s_c07cec28a64ec3::t_c65daee40f11f0 1-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "42282eec86ba893eba8d593d39f8625c817d10ed",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

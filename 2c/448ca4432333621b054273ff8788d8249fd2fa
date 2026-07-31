@@ -1,0 +1,163 @@
+tests/integration/session_event_attribution.rs
+  s_8a403007dd162d::t_65da9266eeef49 593-638
+  s_1eeb4f6def9ecf::t_1a6971bf90a00d 659-663
+  s_8a403007dd162d::t_be1e45cd3dcdb4 673-676,681
+  s_1eeb4f6def9ecf::t_fd41efe5502169 712
+  s_1eeb4f6def9ecf::t_448e46811cd528 142-167,420-470,472-499,504-505,507-509,548,686-711
+  s_8a403007dd162d::t_0fa022a4360e65 552-563,566-588,590-592
+  s_8a403007dd162d::t_5d19943e162d23 471,500-503,506,551,589
+  s_cd75f4d4983cd8::t_1fe67f88d8562e 549
+  s_1eeb4f6def9ecf::t_c24f67134aece9 511-531,534-540
+  s_8a403007dd162d::t_27a0cdc5b6f0f9 510,541-544,547
+  s_1eeb4f6def9ecf::t_0e1caab9eb48e7 532-533,545-546
+  s_1eeb4f6def9ecf::t_2201cffba6fdb7 550,639-658,664-672,677-680,682-685
+  s_8a403007dd162d::t_fdeb74594191fc 564-565
+tests/integration/gemini.rs
+  s_1eeb4f6def9ecf::t_2f2eee35a610e6 4,17-32,373
+src/daemon/bash_history_db.rs
+  s_8a403007dd162d::t_e8d30db24e0b73 6-9,96,156,177-178
+  s_b0e77478c0079b::t_6425acffdb2c26 179-180
+tests/integration/cold_trace2_repo.rs
+  s_1eeb4f6def9ecf::t_0483b8600027a2 135-137
+src/metrics/db.rs
+  s_8a403007dd162d::t_e8d30db24e0b73 15-18,99,184,195-196
+  s_b0e77478c0079b::t_003b20989f0ca7 197-198
+tests/integration/squash_merge.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 562-563,565
+tests/integration/pull_rebase_ff.rs
+  s_8a403007dd162d::t_368a168c8f4784 1,542,544
+  s_93ad1369d7e6f1::t_c6f1660200e309 643-644
+  s_8a403007dd162d::t_38f4035f18c221 16-21
+  s_8a403007dd162d::t_65da9266eeef49 2,4,512-539,543,545-559,565-566,568,580-586,610-631,637,642
+  s_8a403007dd162d::t_beaef526df329a 540-541
+  s_8a403007dd162d::t_41bdaa60b708bf 560-564,638-641
+  s_b880de3a5e6407::t_ec42f7cdb12c17 645
+  s_8a403007dd162d::t_fd7501c965810d 3,7-8,567,569-579,587-609,632-636
+tests/integration/continue_cli.rs
+  s_1eeb4f6def9ecf::t_86578240b8a7ee 4,16-31,406
+tests/integration/simple_additions.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 4,10-23,245-249,1014-1016
+tests/integration/windsurf.rs
+  s_1eeb4f6def9ecf::t_6a923ebe1e1b82 3,19-34,341
+src/authorship/attribution_recovery.rs
+  s_8a403007dd162d::t_7c156fc15d0d06 182,188-200,564,575,671,700-703,727,759,770-772,774,781-784,886,891-897,903
+  s_8a403007dd162d::t_6b54abf11e6a30 292,762,780,788,794-795,799,815-816,820,855
+  s_8a403007dd162d::t_e8d30db24e0b73 1160,1173,1177-1179,2670,2686
+  s_362a9c73a1ff77::t_d62aee1396279d 664-668
+  s_8a403007dd162d::t_26314ca72af7e2 1141-1153,1158,1161
+  s_8a403007dd162d::t_6b2f0dee1340cd 1474
+  s_f5625e539bdb2a::t_eb4001bcc57679 1995
+  s_8a403007dd162d::t_65da9266eeef49 2384,2568,2638-2645,2647-2655,2687-2688
+  s_8a403007dd162d::t_61d6ec2e4e8af6 339,454,568,675,763
+  s_8a403007dd162d::t_be9851203a3b60 2379-2383
+  s_8a403007dd162d::t_036bfac3d8f693 2281,2296-2297,2302,2307,2310-2321
+  s_8a403007dd162d::t_41bdaa60b708bf 785,1930,1966,2583,2587,2610,2646,2662-2664,2667-2669,2673-2675
+  s_8a403007dd162d::t_e3a0df15a42bf5 3,1981
+  s_8a403007dd162d::t_ecf184f34162d3 706-708,1109-1116
+  s_8a403007dd162d::t_c40b375fd17ba4 832
+  s_8a403007dd162d::t_2fa29d4dfbe56c 236,238-247,249-255,257-279,283-291,293-308,2283,2285-2292
+  s_8a403007dd162d::t_fb2923971fdc16 1996-2009,2015,2021,2028
+  s_8a403007dd162d::t_d306f476fa80b0 2308-2309,2322-2367
+  s_8a403007dd162d::t_69a6e8901cad81 1924,1927,1946,1948,1951-1955,1964-1965,1967-1978
+  s_8a403007dd162d::t_aa9db8d99ecc8c 2387-2402
+  s_8a403007dd162d::t_913cfffe645aab 2569
+  s_8a403007dd162d::t_fdeb74594191fc 2593,2616
+  s_8a403007dd162d::t_276aa385e721c2 778,789-793,796-798,800-814,817-819
+  s_1eeb4f6def9ecf::t_9c884d532253fa 769,2551,2557,2567
+  s_8a403007dd162d::t_b679051ced12ad 237,248
+  s_1eeb4f6def9ecf::t_448e46811cd528 1,23,162,232,669-670,672-674,676-699,704-705,709-710,720-726,728-731,752-758,760-761,764,768,836-837,847-854,1101-1108,1117-1140,1154-1157,1164,1166,1168-1169,1187-1188,1883-1923,1925-1926,1928-1929,1931-1945,1947,1949-1950,1956-1963,1979-1980,2041-2078,2223-2238,2273,2526-2550,2552-2556,2558-2566
+  s_1eeb4f6def9ecf::t_48ce2dfb09a167 765-767,775,777,779,786-787,821-824,830
+  s_8a403007dd162d::t_4189239e2549e6 424,426-442,537,539-555,645-663,733,735-751,857-875,1510,1512-1528
+  s_8a403007dd162d::t_31b66bec421206 2241-2261
+  s_8a403007dd162d::t_f3371c428e98d0 2412
+  s_8a403007dd162d::t_d75b5dded29f3a 2588-2590,2592,2594-2595,2611-2613,2615,2617-2618
+  s_8a403007dd162d::t_592d3a1251e44f 2403-2411,2413-2426
+  s_1eeb4f6def9ecf::t_d788bbca897938 1982-1986
+  s_8a403007dd162d::t_6295212ed7b4cf 1987-1993,2010-2014,2016-2020,2022-2027,2029-2040
+  s_8a403007dd162d::t_4ae0300acf4a02 17,1159,1162-1163,1165,1167,1170-1172,1174-1176,1180-1186
+  s_8a403007dd162d::t_119114a1806fd6 773,776,825-829,831,833-835
+  s_8a403007dd162d::t_8181bb42050bd0 281-282
+  s_8a403007dd162d::t_a8bd8dc60a0751 711-719,838-846
+  s_8a403007dd162d::t_0ffd02545c4d1a 732
+  s_8a403007dd162d::t_856262ef14ff14 1994,2239,2279-2280,2282,2293-2295,2298-2301,2303-2304
+  s_8a403007dd162d::t_093ea1fae54f13 2378,2386,2570-2582,2584-2586,2591,2596-2609,2614,2619-2637,2656-2661,2665-2666,2671-2672,2676-2685
+  s_cd75f4d4983cd8::t_ddfbed8f31f0ba 2240,2385
+tests/integration/fuzzer/operations.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 188-189,215-216,262-263,318-319
+tests/integration/fuzzer/model.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 269-333
+tests/integration/post_commit_unit.rs
+  s_1eeb4f6def9ecf::t_057cbc64924c0f 4-19,79,81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "2c448ca4432333621b054273ff8788d8249fd2fa",
+  "prompts": {},
+  "sessions": {
+    "s_1eeb4f6def9ecf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24a5-539f-7dd3-9793-1f096a58ff70",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_362a9c73a1ff77": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19dd-d615-7bf1-86ee-d496ac6d02e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_8a403007dd162d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb56c-a2e6-7223-942f-05519301449c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_93ad1369d7e6f1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1994-05a5-7f83-80be-8f99134d0c9c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b0e77478c0079b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb58f-c784-7353-8bc4-2d4463541970",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b880de3a5e6407": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19db-47e2-7340-a92b-59658d9d09e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_cd75f4d4983cd8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb395-75ee-75c3-ae47-bb8bd3e752e1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f5625e539bdb2a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb611-50e1-7002-b32d-c055ac3eb311",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,43 @@
+tests/integration/fuzzer/operations.rs
+  s_af2d349a5e032c::t_3dd9c79d0a5731 99,118,122,125-126,131,134
+  s_af2d349a5e032c::t_d10a18dd445e0a 137,140,144-145,147-148,154-155,159,163,167,171-172,177,180,184,189-190,195,197,200,206,220,223,230,241-243,248,253-254,259,261,264,270,273,281,285,289,296-297
+  s_af2d349a5e032c::t_367a690dc475c9 298
+  s_af2d349a5e032c::t_dcdd1194ecc346 2-4,21-22,40-41,49,57-58,66,70-71,76-77,96,100,103-104,109,112,303
+  s_af2d349a5e032c::t_6575c4dba813bd 9-15
+  s_af2d349a5e032c::t_9ff4487de9e22b 98
+  s_af2d349a5e032c::t_9011d3ceb03a52 115
+  s_af2d349a5e032c::t_39bd84d1da28e2 6
+  s_af2d349a5e032c::t_f4551548ae85f3 279
+tests/integration/main.rs
+  s_af2d349a5e032c::t_7682680423b422 138
+tests/integration/fuzzer/engine.rs
+  s_af2d349a5e032c::t_fc3abf7cb3e659 3-5,8-12,15-21,24-30,33-38,190
+  s_af2d349a5e032c::t_9e60b25200805f 44
+  s_af2d349a5e032c::t_2c8059c01fbd65 188
+  s_af2d349a5e032c::t_6e18bba50dba81 13,155
+  s_af2d349a5e032c::t_935cc3c7593335 168-169
+  s_af2d349a5e032c::t_21048b214ea18c 54
+  s_af2d349a5e032c::t_780c4dc118fa98 59,159,189
+tests/integration/fuzzer/mod.rs
+  s_af2d349a5e032c::t_f61ef45893f380 2,9-10
+  s_af2d349a5e032c::t_e73ca8c28c3abb 22,25-27,30-32,35
+  s_af2d349a5e032c::t_d1c606f04ddf2b 11-12,15-17,20-21
+  s_af2d349a5e032c::t_005c436e8dc3bd 36-37,40-42,45-47,50-52,59
+  s_af2d349a5e032c::t_87f4f1b40cfe36 1,3,5,7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "f858d1f7b5e8311e317cbc93b124d7625dfe6193",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

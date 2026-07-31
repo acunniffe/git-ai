@@ -1,0 +1,27 @@
+src/notes/mod.rs
+  e3a7a33f80c88f72 5-8,11
+src/commands/git_ai_handlers.rs
+  e3a7a33f80c88f72 235-240,259-299
+src/notes/reference_server.rs
+  e3a7a33f80c88f72 1-514
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "b470ca8b4ba7584951a42f6aae0c1cceb2ce5c06",
+  "prompts": {
+    "e3a7a33f80c88f72": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5819c448-80df-4da5-bab5-96f14f3821e3",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 574,
+      "total_deletions": 5,
+      "accepted_lines": 569,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,24 @@
+docs/superpowers/specs/2026-04-20-sessions-and-trace-ids-design.md
+  617049f94f0d2a17 1-328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "a86e7bc65f56b869cd886852cc5a4e5eca04f485",
+  "prompts": {
+    "617049f94f0d2a17": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cec6ec9-6015-41ad-a344-5a78f9d31c75",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 329,
+      "total_deletions": 1,
+      "accepted_lines": 328,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/f35834a7ac9890965409d7fd8664519e3aee7bde48b0cbd24f9ecc942d67bee7"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+tests/cursor.rs
+  4a4e798fbba1e5e4 79,116,149
+src/commands/git_ai_handlers.rs
+  4a4e798fbba1e5e4 7,9-14
+src/authorship/prompt_utils.rs
+  4a4e798fbba1e5e4 4-9
+tests/github_copilot.rs
+  4a4e798fbba1e5e4 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.1",
+  "base_commit_sha": "3dab6adb87b09553f459f7e1d2de6e25b0df63bc",
+  "prompts": {
+    "4a4e798fbba1e5e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a115fadf-3916-49c6-a6dc-9db44b4d4b15",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 17,
+      "accepted_lines": 17,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/c133c1a6c4e018e18117337d4b242f9cc271c23ecfef7c70c41ae00e00b0ad23"
+    }
+  }
+}

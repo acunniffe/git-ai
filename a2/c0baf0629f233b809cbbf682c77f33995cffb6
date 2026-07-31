@@ -1,0 +1,19 @@
+src/daemon/bash_checkpoints_db.rs
+  s_50c8cc07abd384::t_34003e94ef0fe8 168-173,175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "a2c0baf0629f233b809cbbf682c77f33995cffb6",
+  "prompts": {},
+  "sessions": {
+    "s_50c8cc07abd384": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1e4e321-1caf-47bf-b232-0be284c09477",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
