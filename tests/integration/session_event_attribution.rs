@@ -139,6 +139,33 @@ fn assert_session_attests_lines(
     );
 }
 
+fn human_attested_lines(authorship_log: &AuthorshipLog, file_path: &str) -> Vec<u32> {
+    let mut lines = authorship_log
+        .attestations
+        .iter()
+        .filter(|attestation| attestation.file_path == file_path)
+        .flat_map(|attestation| &attestation.entries)
+        .filter(|entry| entry.hash.starts_with("h_"))
+        .flat_map(|entry| entry.line_ranges.iter().flat_map(LineRange::expand))
+        .collect::<Vec<_>>();
+    lines.sort_unstable();
+    lines.dedup();
+    lines
+}
+
+fn terminal_recovery_repo() -> (tempfile::TempDir, tempfile::TempDir, TestRepo) {
+    let (metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let (bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
+    let env = [
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        ("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str()),
+    ];
+    let repo = TestRepo::new_with_daemon_env(&env);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+    (metrics_db_dir, bash_db_dir, repo)
+}
+
 fn session_ids_for_tool(authorship_log: &AuthorshipLog, tool: &str) -> Vec<String> {
     let mut session_ids = authorship_log
         .metadata
@@ -392,6 +419,108 @@ fn test_session_event_recovery_does_not_override_known_human_checkpoint() {
 }
 
 #[test]
+fn test_terminal_recovery_marks_fully_unknown_commit_known_human() {
+    let (_metrics_db_dir, _bash_db_dir, repo) = terminal_recovery_repo();
+
+    fs::write(repo.path().join("manual.txt"), "manual one\nmanual two\n").unwrap();
+    let commit = repo
+        .stage_all_and_commit("Manual edit")
+        .expect("manual commit should succeed");
+
+    let mut file = repo.filename("manual.txt");
+    file.assert_committed_lines(lines!["manual one".human(), "manual two".human()]);
+    assert_eq!(
+        human_attested_lines(&commit.authorship_log, "manual.txt"),
+        vec![1, 2],
+        "fully unknown committed lines should receive an h_ attestation"
+    );
+}
+
+#[test]
+fn test_terminal_recovery_extends_known_human_across_commit() {
+    let (_metrics_db_dir, _bash_db_dir, repo) = terminal_recovery_repo();
+
+    fs::write(repo.path().join("known.txt"), "known human\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "known.txt"])
+        .expect("known-human checkpoint should succeed");
+    fs::write(repo.path().join("unknown.txt"), "uncheckpointed human\n").unwrap();
+    fs::write(repo.path().join("ai.txt"), "AI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "ai.txt"])
+        .expect("AI checkpoint should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Mixed known human, unknown, and AI")
+        .expect("mixed commit should succeed");
+
+    let mut known = repo.filename("known.txt");
+    known.assert_committed_lines(lines!["known human".human()]);
+    let mut unknown = repo.filename("unknown.txt");
+    unknown.assert_committed_lines(lines!["uncheckpointed human".human()]);
+    assert_eq!(
+        human_attested_lines(&commit.authorship_log, "unknown.txt"),
+        vec![1],
+        "a known-human attestation anywhere in the commit should cover remaining unknown files"
+    );
+    let mut ai = repo.filename("ai.txt");
+    ai.assert_committed_lines(lines!["AI line".ai()]);
+}
+
+#[test]
+fn test_terminal_recovery_keeps_unknown_when_only_ai_is_present() {
+    let (_metrics_db_dir, _bash_db_dir, repo) = terminal_recovery_repo();
+
+    fs::write(repo.path().join("unknown.txt"), "uncheckpointed line\n").unwrap();
+    fs::write(repo.path().join("ai.txt"), "AI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "ai.txt"])
+        .expect("AI checkpoint should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Mixed unknown and AI")
+        .expect("mixed commit should succeed");
+
+    let mut unknown = repo.filename("unknown.txt");
+    unknown.assert_committed_lines(lines!["uncheckpointed line".unattributed_human()]);
+    assert!(
+        human_attested_lines(&commit.authorship_log, "unknown.txt").is_empty(),
+        "AI-only commits must retain unknown holes"
+    );
+    let mut ai = repo.filename("ai.txt");
+    ai.assert_committed_lines(lines!["AI line".ai()]);
+}
+
+#[test]
+fn test_terminal_recovery_ignores_unattested_known_human_metadata() {
+    let (_metrics_db_dir, _bash_db_dir, repo) = terminal_recovery_repo();
+
+    let removed_path = repo.path().join("removed-human.txt");
+    fs::write(&removed_path, "known human that will not land\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "removed-human.txt"])
+        .expect("known-human checkpoint should succeed");
+    fs::remove_file(&removed_path).unwrap();
+    fs::write(repo.path().join("unknown.txt"), "uncheckpointed line\n").unwrap();
+    fs::write(repo.path().join("ai.txt"), "AI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "ai.txt"])
+        .expect("AI checkpoint should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Unattested human metadata with AI")
+        .expect("mixed commit should succeed");
+
+    assert!(
+        !commit.authorship_log.metadata.humans.is_empty(),
+        "the non-landing checkpoint should leave human metadata behind"
+    );
+    let mut unknown = repo.filename("unknown.txt");
+    unknown.assert_committed_lines(lines!["uncheckpointed line".unattributed_human()]);
+    assert!(
+        human_attested_lines(&commit.authorship_log, "unknown.txt").is_empty(),
+        "unreferenced human metadata must not count as a known-human attestation"
+    );
+    let mut ai = repo.filename("ai.txt");
+    ai.assert_committed_lines(lines!["AI line".ai()]);
+}
+
+#[test]
 fn test_session_event_recovery_ignores_events_outside_window() {
     let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
     let repo =
@@ -411,11 +540,15 @@ fn test_session_event_recovery_ignores_events_outside_window() {
     );
 
     let commit = repo
-        .stage_all_and_commit("Outside window stays unknown")
+        .stage_all_and_commit("Outside window falls back to human")
         .expect("commit should succeed");
 
     let mut file = repo.filename("outside.txt");
-    file.assert_committed_lines(lines!["outside the window".unattributed_human()]);
+    file.assert_committed_lines(lines!["outside the window".human()]);
+    assert_eq!(
+        human_attested_lines(&commit.authorship_log, "outside.txt"),
+        vec![1]
+    );
     assert!(
         !commit
             .authorship_log
@@ -446,11 +579,15 @@ fn test_session_event_recovery_rejects_time_only_sessions() {
     );
 
     let commit = repo
-        .stage_all_and_commit("Time-only session stays unknown")
+        .stage_all_and_commit("Time-only session falls back to human")
         .expect("commit should succeed");
 
     let mut file = repo.filename("time-only.txt");
-    file.assert_committed_lines(lines!["time only".unattributed_human()]);
+    file.assert_committed_lines(lines!["time only".human()]);
+    assert_eq!(
+        human_attested_lines(&commit.authorship_log, "time-only.txt"),
+        vec![1]
+    );
     assert!(
         !commit
             .authorship_log
@@ -473,7 +610,7 @@ fn test_commit_metadata_recovery_uses_existing_matching_session_after_edge_expan
     repo.stage_all_and_commit("Initial base")
         .expect("initial commit should succeed");
     let mut file = repo.filename("metadata-existing.txt");
-    file.assert_committed_lines(lines!["base".unattributed_human()]);
+    file.assert_committed_lines(lines!["base".human()]);
 
     let external_session_id = "codex-existing-metadata-session";
     codex_checkpoint(
@@ -515,7 +652,7 @@ unknown 6
         .expect("commit should succeed");
 
     file.assert_committed_lines(lines![
-        "base".unattributed_human(),
+        "base".human(),
         "codex line".ai(),
         "unknown 1".ai(),
         "unknown 2".ai(),
@@ -545,7 +682,7 @@ fn test_commit_metadata_recovery_skips_when_edge_expansion_recovers_all_unknown_
     repo.stage_all_and_commit("Initial base")
         .expect("initial commit should succeed");
     let mut file = repo.filename("metadata-edge-skip.txt");
-    file.assert_committed_lines(lines!["base".unattributed_human()]);
+    file.assert_committed_lines(lines!["base".human()]);
 
     let external_session_id = "codex-edge-skip-session";
     codex_checkpoint(
@@ -584,7 +721,7 @@ edge 3
         .expect("commit should succeed");
 
     file.assert_committed_lines(lines![
-        "base".unattributed_human(),
+        "base".human(),
         "codex line".ai(),
         "edge 1".ai(),
         "edge 2".ai(),
@@ -813,7 +950,7 @@ fn test_commit_metadata_recovery_ignores_freeform_message_agent_mentions() {
     let repo = TestRepo::new();
 
     let file_path = repo.path().join("metadata-freeform-agent-mention.txt");
-    fs::write(&file_path, "freeform codex mention should stay unknown\n").unwrap();
+    fs::write(&file_path, "freeform codex mention falls back to human\n").unwrap();
 
     let commit = repo
         .stage_all_and_commit_with_env(
@@ -826,9 +963,14 @@ fn test_commit_metadata_recovery_ignores_freeform_message_agent_mentions() {
         .expect("freeform mention commit should succeed");
 
     let mut file = repo.filename("metadata-freeform-agent-mention.txt");
-    file.assert_committed_lines(lines![
-        "freeform codex mention should stay unknown".unattributed_human()
-    ]);
+    file.assert_committed_lines(lines!["freeform codex mention falls back to human".human()]);
+    assert_eq!(
+        human_attested_lines(
+            &commit.authorship_log,
+            "metadata-freeform-agent-mention.txt"
+        ),
+        vec![1]
+    );
     assert!(
         commit.authorship_log.metadata.sessions.is_empty(),
         "freeform message text mentioning Codex should not synthesize an AI session"
@@ -846,7 +988,11 @@ fn test_commit_metadata_recovery_ignores_ambiguous_identity_markers() {
         .expect("amp trailer commit should succeed");
 
     let mut amp_file = repo.filename("metadata-ambiguous-amp.txt");
-    amp_file.assert_committed_lines(lines!["ambiguous amp trailer".unattributed_human()]);
+    amp_file.assert_committed_lines(lines!["ambiguous amp trailer".human()]);
+    assert_eq!(
+        human_attested_lines(&amp_commit.authorship_log, "metadata-ambiguous-amp.txt"),
+        vec![1]
+    );
     assert!(
         amp_commit.authorship_log.metadata.sessions.is_empty(),
         "ambiguous AMP identity should not synthesize an AI session"
@@ -861,7 +1007,14 @@ fn test_commit_metadata_recovery_ignores_ambiguous_identity_markers() {
         .expect("continue trailer commit should succeed");
 
     let mut continue_file = repo.filename("metadata-ambiguous-continue.txt");
-    continue_file.assert_committed_lines(lines!["ambiguous continue trailer".unattributed_human()]);
+    continue_file.assert_committed_lines(lines!["ambiguous continue trailer".human()]);
+    assert_eq!(
+        human_attested_lines(
+            &continue_commit.authorship_log,
+            "metadata-ambiguous-continue.txt"
+        ),
+        vec![1]
+    );
     assert!(
         continue_commit.authorship_log.metadata.sessions.is_empty(),
         "ambiguous Continue identity should not synthesize an AI session"
@@ -876,9 +1029,14 @@ fn test_commit_metadata_recovery_ignores_ambiguous_identity_markers() {
         .expect("generic OpenAI noreply trailer commit should succeed");
 
     let mut openai_file = repo.filename("metadata-ambiguous-openai.txt");
-    openai_file.assert_committed_lines(lines![
-        "generic openai noreply trailer".unattributed_human()
-    ]);
+    openai_file.assert_committed_lines(lines!["generic openai noreply trailer".human()]);
+    assert_eq!(
+        human_attested_lines(
+            &openai_commit.authorship_log,
+            "metadata-ambiguous-openai.txt"
+        ),
+        vec![1]
+    );
     assert!(
         openai_commit.authorship_log.metadata.sessions.is_empty(),
         "generic OpenAI noreply identity should not synthesize a Codex session"
@@ -913,7 +1071,11 @@ fn test_commit_metadata_recovery_ignores_ambiguous_identity_markers() {
             .expect("ambiguous human identity commit should succeed");
 
         let mut file = repo.filename(file_name);
-        file.assert_committed_lines(lines![line.unattributed_human()]);
+        file.assert_committed_lines(lines![line.human()]);
+        assert_eq!(
+            human_attested_lines(&commit.authorship_log, file_name),
+            vec![1]
+        );
         assert!(
             commit.authorship_log.metadata.sessions.is_empty(),
             "{message}"

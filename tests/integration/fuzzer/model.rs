@@ -266,6 +266,35 @@ impl FileModel {
         }
     }
 
+    pub fn apply_terminal_human_recovery_for_added_lines(
+        &mut self,
+        registry: &mut AttrRegistry,
+        added_lines: &[u32],
+    ) {
+        let added_indices = added_lines
+            .iter()
+            .filter_map(|line| line.checked_sub(1).map(|idx| idx as usize))
+            .filter(|&idx| idx < self.resolved_attrs.len())
+            .collect::<Vec<_>>();
+        let has_known_human = added_indices
+            .iter()
+            .any(|&idx| self.resolved_attrs[idx] == LineAttribution::KnownHuman);
+        let has_ai = added_indices
+            .iter()
+            .any(|&idx| self.resolved_attrs[idx] == LineAttribution::Ai);
+
+        if !has_known_human && has_ai {
+            return;
+        }
+
+        for idx in added_indices {
+            if self.resolved_attrs[idx] == LineAttribution::Untracked {
+                self.resolved_attrs[idx] = LineAttribution::KnownHuman;
+                registry.register(self.lines[idx], LineAttribution::KnownHuman);
+            }
+        }
+    }
+
     fn pending_record_at_index(&self, idx: usize) -> Option<AttrRecord> {
         self.lines
             .get(idx)

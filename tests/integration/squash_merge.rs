@@ -559,13 +559,10 @@ fn test_prepare_working_log_squash_multiple_sessions_standard_human() {
     );
     assert_eq!(stats.ai_accepted, 3, "3 AI lines accepted without edits");
     assert_eq!(
-        stats.human_additions, 0,
-        "0 KnownHuman-attested lines (unattributed human via checkpoint --)"
+        stats.human_additions, 1,
+        "1 recovered KnownHuman-attested line"
     );
-    assert_eq!(
-        stats.unknown_additions, 1,
-        "1 unattested line (// Human addition)"
-    );
+    assert_eq!(stats.unknown_additions, 0, "no unattested lines remain");
 }
 
 crate::reuse_tests_in_worktree!(

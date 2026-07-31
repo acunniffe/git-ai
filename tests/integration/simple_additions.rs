@@ -227,8 +227,15 @@ fn test_simple_ai_then_human_deletion() {
 
     let commit = repo.stage_all_and_commit("Human deletes AI line").unwrap();
 
-    // The authorship log should have no attestations since we only deleted lines
-    assert_eq!(commit.authorship_log.attestations.len(), 0);
+    // With no AI attribution remaining, recovery marks the affected lines known human.
+    assert!(
+        commit
+            .authorship_log
+            .attestations
+            .iter()
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash.starts_with("h_"))
+    );
 
     file.assert_lines_and_blame(crate::lines![
         "Line 1".human(),
@@ -992,10 +999,14 @@ diff --git a/aidanwashere.md b/aidanwashere.md
     .unwrap();
 
     let first_commit = repo.commit("Commit human top section").unwrap();
-    assert_eq!(
-        first_commit.authorship_log.attestations.len(),
-        0,
-        "first commit should only contain human top insertion"
+    assert!(
+        first_commit
+            .authorship_log
+            .attestations
+            .iter()
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash.starts_with("h_")),
+        "first commit should only contain known-human top insertion"
     );
 
     repo.git(&["add", "."]).unwrap();

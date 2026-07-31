@@ -56,16 +56,20 @@ fn test_post_commit_empty_repo_no_checkpoint() {
         .trim()
         .to_string();
 
-    // With no checkpoints, authorship log should have empty attestations
+    // With no checkpoints, attribution recovery should mark the commit known human.
     let note = repo.read_authorship_note(&head_sha);
     assert!(note.is_some(), "Should have authorship note");
 
-    // No checkpoints = no AI attribution, so note should have empty attestations
+    // No checkpoints = no AI attribution, so every attestation should be known human.
     let log = AuthorshipLog::deserialize_from_string(&note.unwrap()).unwrap();
     assert!(
-        log.attestations.is_empty(),
-        "Should have empty attestations when no checkpoints exist"
+        log.attestations
+            .iter()
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash.starts_with("h_")),
+        "Should only have known-human attestations when no checkpoints exist"
     );
+    assert!(!log.attestations.is_empty());
 }
 
 #[test]

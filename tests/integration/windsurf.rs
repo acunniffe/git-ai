@@ -321,9 +321,13 @@ fn test_windsurf_e2e_human_checkpoint() {
         "const y = 2;".human(),
     ]);
 
-    assert_eq!(
-        commit.authorship_log.attestations.len(),
-        0,
+    assert!(
+        commit
+            .authorship_log
+            .attestations
+            .iter()
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash.starts_with("h_")),
         "Human checkpoint should not create AI attestations"
     );
 }
