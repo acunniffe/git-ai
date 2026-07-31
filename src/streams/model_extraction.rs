@@ -1,8 +1,13 @@
 use crate::streams::sweep::StreamFormat;
 use crate::streams::types::StreamError;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+
+const MAX_JSONL_SCAN_BYTES: u64 = 50 * 1024;
+const MAX_JSONL_HEAD_SCAN_BYTES: usize = 1024 * 1024;
+const MAX_JSONL_HEAD_LINES: usize = 20;
+const MAX_CODEX_CONFIG_BYTES: u64 = 1024 * 1024;
 
 pub fn extract_model(
     path: &Path,
@@ -13,6 +18,7 @@ pub fn extract_model(
         StreamFormat::ClaudeJsonl
         | StreamFormat::CopilotEventStreamJsonl
         | StreamFormat::GeminiJsonl => extract_model_from_jsonl_tail(path),
+        StreamFormat::CodexJsonl => extract_model_from_codex_jsonl(path),
         StreamFormat::CopilotSessionJson => extract_model_from_copilot_session_json(path),
         StreamFormat::AmpThreadJson => extract_model_from_amp_thread_json(path),
         StreamFormat::OpenCodeSqlite => extract_model_from_opencode_sqlite(path, session_id),
@@ -41,47 +47,188 @@ pub fn extract_model_from_droid_settings(
 }
 
 fn extract_model_from_jsonl_tail(path: &Path) -> Result<Option<String>, StreamError> {
+    let (model, tail_was_truncated) =
+        extract_model_from_jsonl_tail_with(path, extract_model_from_jsonl_line)?;
+    if model.is_some() {
+        return Ok(model);
+    }
+
+    // Tail didn't contain the model — check the head (Copilot CLI emits
+    // session.model_change only at session start, which may fall outside the tail window).
+    if tail_was_truncated
+        && let Some(model) = extract_model_from_jsonl_head_with(path, extract_model_from_jsonl_line)
+    {
+        return Ok(Some(model));
+    }
+
+    Ok(None)
+}
+
+fn extract_model_from_jsonl_tail_with(
+    path: &Path,
+    extract_from_line: fn(&str) -> Option<String>,
+) -> Result<(Option<String>, bool), StreamError> {
     let mut file = match File::open(path) {
         Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return Ok(None),
-        Err(_) => return Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((None, false)),
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Ok((None, false));
+        }
+        Err(_) => return Ok((None, false)),
     };
 
     let file_size = match file.metadata() {
         Ok(m) => m.len(),
-        Err(_) => return Ok(None),
+        Err(_) => return Ok((None, false)),
     };
 
     if file_size == 0 {
-        return Ok(None);
+        return Ok((None, false));
     }
 
-    let read_size = std::cmp::min(51200, file_size);
+    let read_size = std::cmp::min(MAX_JSONL_SCAN_BYTES, file_size);
     let seek_pos = file_size - read_size;
 
     if file.seek(SeekFrom::Start(seek_pos)).is_err() {
-        return Ok(None);
+        return Ok((None, false));
     }
 
     let reader = BufReader::new(file);
     let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
 
     for line in lines.iter().rev() {
-        if let Some(model) = extract_model_from_jsonl_line(line) {
-            return Ok(Some(model));
+        if let Some(model) = extract_from_line(line) {
+            return Ok((Some(model), seek_pos > 0));
         }
     }
 
-    // Tail didn't contain the model — check the head (Copilot CLI emits
-    // session.model_change only at session start, which may fall outside the tail window).
-    if seek_pos > 0
-        && let Some(model) = extract_model_from_jsonl_head(path)
+    Ok((None, seek_pos > 0))
+}
+
+fn extract_model_from_codex_jsonl(path: &Path) -> Result<Option<String>, StreamError> {
+    let (model, _) = extract_model_from_jsonl_tail_with(path, extract_model_from_codex_jsonl_line)?;
+    if model.is_some() {
+        return Ok(model);
+    }
+
+    if let Some(model) =
+        extract_model_from_jsonl_head_with(path, extract_model_from_codex_jsonl_line)
     {
         return Ok(Some(model));
     }
 
-    Ok(None)
+    Ok(extract_model_from_codex_config(path))
+}
+
+fn extract_model_from_jsonl_head_with(
+    path: &Path,
+    extract_from_line: fn(&str) -> Option<String>,
+) -> Option<String> {
+    let file = File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let mut line = Vec::new();
+    let mut line_is_oversized = false;
+    let mut lines_scanned = 0;
+    let mut bytes_scanned = 0;
+
+    while lines_scanned < MAX_JSONL_HEAD_LINES && bytes_scanned < MAX_JSONL_HEAD_SCAN_BYTES {
+        let bytes_remaining = MAX_JSONL_HEAD_SCAN_BYTES - bytes_scanned;
+        let (consumed, reached_newline) = {
+            let buffer = reader.fill_buf().ok()?;
+            if buffer.is_empty() {
+                if !line_is_oversized
+                    && let Ok(line) = std::str::from_utf8(&line)
+                    && let Some(model) = extract_from_line(line)
+                {
+                    return Some(model);
+                }
+                break;
+            }
+
+            let searchable = &buffer[..buffer.len().min(bytes_remaining)];
+            let newline = searchable.iter().position(|byte| *byte == b'\n');
+            let consumed = newline.map_or(searchable.len(), |index| index + 1);
+
+            if !line_is_oversized {
+                if line.len() + consumed <= MAX_JSONL_SCAN_BYTES as usize {
+                    line.extend_from_slice(&searchable[..consumed]);
+                } else {
+                    line.clear();
+                    line_is_oversized = true;
+                }
+            }
+
+            (consumed, newline.is_some())
+        };
+
+        reader.consume(consumed);
+        bytes_scanned += consumed;
+
+        if reached_newline {
+            lines_scanned += 1;
+            if !line_is_oversized
+                && let Ok(line) = std::str::from_utf8(&line)
+                && let Some(model) = extract_from_line(line)
+            {
+                return Some(model);
+            }
+            line.clear();
+            line_is_oversized = false;
+        }
+    }
+
+    None
+}
+
+fn extract_model_from_codex_jsonl_line(line: &str) -> Option<String> {
+    let json = serde_json::from_str::<serde_json::Value>(line.trim()).ok()?;
+    if !matches!(
+        json.get("type").and_then(|v| v.as_str()),
+        Some("session_meta" | "turn_context")
+    ) {
+        return None;
+    }
+
+    let payload = json.get("payload")?;
+    string_candidate(payload.get("model"))
+        .or_else(|| string_candidate(payload.get("model_id")))
+        .or_else(|| string_candidate(payload.get("modelId")))
+}
+
+fn extract_model_from_codex_config(path: &Path) -> Option<String> {
+    let codex_home = codex_home_from_transcript_path(path)?;
+    let config_path = codex_home.join("config.toml");
+    let file = File::open(config_path).ok()?;
+    let mut content = String::new();
+    file.take(MAX_CODEX_CONFIG_BYTES + 1)
+        .read_to_string(&mut content)
+        .ok()?;
+    if content.len() as u64 > MAX_CODEX_CONFIG_BYTES {
+        return None;
+    }
+    let config: toml::Value = toml::from_str(&content).ok()?;
+
+    config
+        .get("profile")
+        .and_then(toml::Value::as_str)
+        .and_then(|profile| config.get("profiles")?.get(profile)?.get("model"))
+        .and_then(|model| toml_string_candidate(Some(model)))
+        .or_else(|| toml_string_candidate(config.get("model")))
+}
+
+fn codex_home_from_transcript_path(path: &Path) -> Option<PathBuf> {
+    let configured_home = crate::mdm::utils::codex_home_dir();
+    if path.starts_with(&configured_home) {
+        return Some(configured_home);
+    }
+
+    for ancestor in path.ancestors() {
+        if ancestor.file_name().and_then(|name| name.to_str()) == Some(".codex") {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+
+    None
 }
 
 fn extract_model_from_jsonl_line(line: &str) -> Option<String> {
@@ -106,24 +253,23 @@ fn extract_model_from_jsonl_line(line: &str) -> Option<String> {
         .and_then(|v| v.as_str())
         .or_else(|| json.get("model").and_then(|v| v.as_str()));
 
-    if let Some(model) = candidate
-        && model != "<synthetic>"
-    {
-        return Some(model.to_string());
-    }
-
-    None
+    candidate.and_then(normalize_model)
 }
 
-fn extract_model_from_jsonl_head(path: &Path) -> Option<String> {
-    let file = File::open(path).ok()?;
-    let reader = BufReader::new(file);
-    for line in reader.lines().map_while(Result::ok).take(20) {
-        if let Some(model) = extract_model_from_jsonl_line(&line) {
-            return Some(model);
-        }
+fn string_candidate(value: Option<&serde_json::Value>) -> Option<String> {
+    normalize_model(value?.as_str()?)
+}
+
+fn toml_string_candidate(value: Option<&toml::Value>) -> Option<String> {
+    normalize_model(value?.as_str()?)
+}
+
+fn normalize_model(model: &str) -> Option<String> {
+    let model = model.trim();
+    if model.is_empty() || model == "<synthetic>" {
+        return None;
     }
-    None
+    Some(model.to_string())
 }
 
 /// Extracts the model from VS Code Copilot's `models.json` debug log.
@@ -374,6 +520,23 @@ mod tests {
             .join(name)
     }
 
+    fn extract_codex_model_with_config(config: &str) -> Option<String> {
+        let dir = tempfile::TempDir::new().unwrap();
+        let codex_home = dir.path().join(".codex");
+        let session_dir = codex_home.join("sessions/2026/06/30");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(codex_home.join("config.toml"), config).unwrap();
+
+        let transcript = session_dir.join("rollout-test.jsonl");
+        std::fs::write(
+            &transcript,
+            r#"{"type":"session_meta","payload":{"model":null}}"#,
+        )
+        .unwrap();
+
+        extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap()
+    }
+
     fn create_copilot_otel_db(path: &Path) -> rusqlite::Connection {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).unwrap();
@@ -489,6 +652,261 @@ mod tests {
         let path = fixture_path("gemini-session-simple.jsonl");
         let result = extract_model(&path, StreamFormat::GeminiJsonl, None).unwrap();
         assert_eq!(result, Some("gemini-2.5-flash".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_session_meta_model() {
+        use std::io::Write;
+
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"session_meta","payload":{{"model":"gpt-5.3-codex","model_provider":"openai_https"}}}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(file.path(), StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("gpt-5.3-codex".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_turn_context_model() {
+        let path = fixture_path("codex-session-simple.jsonl");
+        let result = extract_model(&path, StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("gpt-5-codex".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_latest_turn_context_model_wins() {
+        use std::io::Write;
+
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"turn_context","payload":{{"model":"initial-model"}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"turn_context","payload":{{"model":"switched-model"}}}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(file.path(), StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("switched-model".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_head_skips_oversized_record() {
+        use std::io::Write;
+
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let oversized_record = serde_json::json!({ "padding": "x".repeat(51_200) });
+        writeln!(file, "{oversized_record}").unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"turn_context","payload":{{"model":"model-after-limit"}}}}"#
+        )
+        .unwrap();
+        writeln!(file, "{oversized_record}").unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(file.path(), StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("model-after-limit".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_jsonl_head_skips_oversized_record() {
+        use std::io::Write;
+
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let oversized_record = serde_json::json!({ "padding": "x".repeat(51_200) });
+        writeln!(file, "{oversized_record}").unwrap();
+        writeln!(file, r#"{{"model":"model-after-limit"}}"#).unwrap();
+        writeln!(file, "{oversized_record}").unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(file.path(), StreamFormat::ClaudeJsonl, None).unwrap();
+        assert_eq!(result, Some("model-after-limit".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_jsonl_bounds_total_head_scan() {
+        use std::io::Write;
+
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let oversized_record =
+            serde_json::json!({ "padding": "x".repeat(MAX_JSONL_HEAD_SCAN_BYTES) });
+        writeln!(file, "{oversized_record}").unwrap();
+        writeln!(file, r#"{{"model":"model-after-total-limit"}}"#).unwrap();
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({ "padding": "x".repeat(51_200) })
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(file.path(), StreamFormat::ClaudeJsonl, None).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_model_codex_rejects_oversized_config() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let codex_home = dir.path().join(".codex");
+        let session_dir = codex_home.join("sessions/2026/06/30");
+        std::fs::create_dir_all(&session_dir).unwrap();
+
+        let mut config = String::from("model = \"oversized-config-model\"\n# ");
+        config.push_str(&"x".repeat(1024 * 1024));
+        std::fs::write(codex_home.join("config.toml"), config).unwrap();
+
+        let transcript = session_dir.join("rollout-test.jsonl");
+        std::fs::write(
+            &transcript,
+            r#"{"type":"session_meta","payload":{"model":null}}"#,
+        )
+        .unwrap();
+
+        let result = extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_extract_model_codex_config_fallback_respects_codex_home() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let codex_home = dir.path().join("custom-codex-home");
+        let session_dir = codex_home.join("sessions/2026/06/30");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(
+            codex_home.join("config.toml"),
+            r#"model = "custom-home-model""#,
+        )
+        .unwrap();
+
+        let transcript = session_dir.join("rollout-test.jsonl");
+        std::fs::write(
+            &transcript,
+            r#"{"type":"session_meta","payload":{"model":null}}"#,
+        )
+        .unwrap();
+
+        let previous_codex_home = std::env::var_os("CODEX_HOME");
+        unsafe {
+            std::env::set_var("CODEX_HOME", &codex_home);
+        }
+        let result = extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap();
+        unsafe {
+            match previous_codex_home {
+                Some(value) => std::env::set_var("CODEX_HOME", value),
+                None => std::env::remove_var("CODEX_HOME"),
+            }
+        }
+
+        assert_eq!(result, Some("custom-home-model".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_skips_session_meta_without_payload() {
+        use std::io::Write;
+
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        writeln!(file, r#"{{"type":"session_meta"}}"#).unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"session_meta","payload":{{"model":"gpt-5.3-codex"}}}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(file.path(), StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("gpt-5.3-codex".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_config_fallback_when_session_model_missing() {
+        use std::io::Write;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let codex_home = dir.path().join(".codex");
+        let session_dir = codex_home.join("sessions/2026/06/30");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(
+            codex_home.join("config.toml"),
+            r#"model = "gpt-5.5"
+model_provider = "openai_https"
+
+[profiles.default]
+model = "wrong-profile-model"
+"#,
+        )
+        .unwrap();
+
+        let transcript = session_dir.join("rollout-test.jsonl");
+        let mut file = File::create(&transcript).unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"session_meta","payload":{{"session_id":"sess-1","model":null,"model_provider":"openai_https"}}}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("gpt-5.5".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_selected_profile_overrides_root_model() {
+        let result = extract_codex_model_with_config(
+            r#"model = "root-model"
+profile = "work"
+
+[profiles.work]
+model = "profile-model"
+"#,
+        );
+
+        assert_eq!(result, Some("profile-model".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_selected_profile_can_supply_model() {
+        let result = extract_codex_model_with_config(
+            r#"profile = "work"
+
+[profiles.work]
+model = "profile-only-model"
+"#,
+        );
+
+        assert_eq!(result, Some("profile-only-model".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_codex_prefers_transcript_model_over_config() {
+        use std::io::Write;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let codex_home = dir.path().join(".codex");
+        let session_dir = codex_home.join("sessions/2026/06/30");
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(codex_home.join("config.toml"), r#"model = "config-model""#).unwrap();
+
+        let transcript = session_dir.join("rollout-test.jsonl");
+        let mut file = File::create(&transcript).unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"session_meta","payload":{{"model":"transcript-model"}}}}"#
+        )
+        .unwrap();
+        file.flush().unwrap();
+
+        let result = extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap();
+        assert_eq!(result, Some("transcript-model".to_string()));
     }
 
     #[test]
