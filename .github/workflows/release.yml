@@ -550,13 +550,24 @@ jobs:
           if (Test-Path (Join-Path $env:ProgramFiles 'Git AI')) { throw 'MSI created a system-wide runtime' }
 
           $binaryVersion = (& $gitAi --version).Trim()
-          $registration = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' |
-            Get-ItemProperty |
-            Where-Object { $_.DisplayName -eq 'Git AI' } |
-            Select-Object -First 1
-          if ($null -eq $registration) { throw 'MSI did not register Git AI for the installing user' }
-          if ($registration.DisplayVersion -ne $binaryVersion) {
-            throw "MSI version '$($registration.DisplayVersion)' does not match binary version '$binaryVersion'"
+          $installer = New-Object -ComObject WindowsInstaller.Installer
+          $database = $installer.GetType().InvokeMember(
+            'OpenDatabase', 'InvokeMethod', $null, $installer, @($msi, 0)
+          )
+          $query = "SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = 'ProductCode'"
+          $view = $database.GetType().InvokeMember(
+            'OpenView', 'InvokeMethod', $null, $database, @($query)
+          )
+          $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+          $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+          $productCode = $record.GetType().InvokeMember(
+            'StringData', 'GetProperty', $null, $record, 1
+          )
+          $registeredVersion = $installer.GetType().InvokeMember(
+            'ProductInfo', 'GetProperty', $null, $installer, @($productCode, 'VersionString')
+          )
+          if ($registeredVersion -ne $binaryVersion) {
+            throw "MSI version '$registeredVersion' does not match binary version '$binaryVersion'"
           }
 
           $uninstall = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart" -Wait -PassThru
