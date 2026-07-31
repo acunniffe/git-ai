@@ -1,0 +1,24 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/VfsRefreshListener.kt
+  e5838a9be99fc56e 16-62,83-85,93-97,116-118,121,124-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.13",
+  "base_commit_sha": "403a357f96432bc61907e8e0868f493d6e28559a",
+  "prompts": {
+    "e5838a9be99fc56e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cf416-b63c-7831-90b9-54b0f2052e96",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 69,
+      "total_deletions": 25,
+      "accepted_lines": 65,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/d025efc9242820b8948f2132b2c74753e45537d12de8b215672e6c5dbcb1d65c"
+    }
+  }
+}

@@ -1,0 +1,79 @@
+src/git/repo_storage.rs
+  s_f4f2b364dfcace::t_0dc32cd6953b2a 147
+  s_f4f2b364dfcace::t_f53c6b724d38fd 68
+src/daemon.rs
+  s_f4f2b364dfcace::t_7939d266949066 3665
+  s_f4f2b364dfcace::t_af9a4d971e1130 1877
+src/authorship/post_commit.rs
+  s_f4f2b364dfcace::t_92c150b343ae58 20
+  s_f4f2b364dfcace::t_4093ac9e4eb1b6 32
+  s_f4f2b364dfcace::t_083fb14c8b7641 344
+  s_f4f2b364dfcace::t_81e6a8e8bdc9ca 26
+  s_f4f2b364dfcace::t_ee1ae775ebe117 36
+  s_f4f2b364dfcace::t_2afa426c4d4d9e 423
+  s_f4f2b364dfcace::t_d7b513c5ca169d 23
+src/authorship/prompt_utils.rs
+  s_f4f2b364dfcace::t_2b782891eaa0b3 264
+  s_f4f2b364dfcace::t_c8a18bae579ab3 401
+  s_f4f2b364dfcace::t_6fdbf5b70678ec 646
+  s_f4f2b364dfcace::t_dbaa1291cbf7b1 191
+  s_f4f2b364dfcace::t_22f365cafcf0c3 354
+  s_f4f2b364dfcace::t_a632bf1f6bd800 444
+  s_f4f2b364dfcace::t_b165a53be986ca 309
+src/git/repository.rs
+  s_f4f2b364dfcace::t_d1e74c1deedae7 74
+  s_f4f2b364dfcace::t_21f28d768c208a 253
+  s_f4f2b364dfcace::t_c2965b7c62df73 2560
+  s_f4f2b364dfcace::t_67830c2a7273e8 3414
+  s_f4f2b364dfcace::t_e8db7625d30694 2593
+  s_f4f2b364dfcace::t_b8b9312aad70e8 3340
+src/authorship/stats.rs
+  s_f4f2b364dfcace::t_efef56f1afc4d3 582
+  s_f4f2b364dfcace::t_4598f4e87921e4 645
+  s_f4f2b364dfcace::t_6f4e9c3666698a 700
+src/authorship/rebase_authorship.rs
+  s_f4f2b364dfcace::t_62fb311df360ff 2279
+  s_f4f2b364dfcace::t_1c8c0cadba2345 4031
+  s_f4f2b364dfcace::t_8630e34af32ff4 4422
+  s_f4f2b364dfcace::t_adeb825396d47e 3253
+  s_f4f2b364dfcace::t_b8333c7582b514 2160
+  s_f4f2b364dfcace::t_bd90967f5bdbfa 32
+  s_f4f2b364dfcace::t_a31404263561bd 3843
+  s_f4f2b364dfcace::t_975ba139938aaf 20
+  s_f4f2b364dfcace::t_4c66c8b64ed6e5 3486
+src/commands/checkpoint.rs
+  s_f4f2b364dfcace::t_cff51cb5a8afae 260
+  s_f4f2b364dfcace::t_969828749a8567 2150
+  s_f4f2b364dfcace::t_6994b0be6dab38 369
+  s_f4f2b364dfcace::t_c49569cc6c9771 1581
+  s_f4f2b364dfcace::t_35ebe30142e6eb 34
+  s_f4f2b364dfcace::t_5afaeae801e962 110
+src/git/refs.rs
+  s_f4f2b364dfcace::t_d99d8bd56eeb67 38
+  s_f4f2b364dfcace::t_24216c9a7d35c2 43
+  s_f4f2b364dfcace::t_71f6b15ab11255 33
+  s_f4f2b364dfcace::t_60e385fe3d5704 517
+  s_f4f2b364dfcace::t_cb67e8a5241120 24
+src/ci/ci_context.rs
+  s_f4f2b364dfcace::t_bd324cf0eea4b3 268
+src/authorship/range_authorship.rs
+  s_f4f2b364dfcace::t_5e909a09f8f73e 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "fb3200dccf7f25d901bb057c24479b65dea9f2c0",
+  "prompts": {},
+  "sessions": {
+    "s_f4f2b364dfcace": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/703451899103d419f9adbbfb658091393571dbc53b33c7cb0c9fb02d86652978"
+    }
+  }
+}

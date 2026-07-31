@@ -1,0 +1,23 @@
+src/mdm/agents/codex.rs
+  s_35316d81430638::t_ae7b6cac21e79d 1741-1743,1770-1779
+  s_35316d81430638::t_13ccdb5af8d966 271-272,755,757,770,807,819,842-843,845,847-849
+  s_35316d81430638::t_76d8b8cac5dd97 1699,1735-1740,1756
+  s_35316d81430638::t_9aa1f7a098de83 1747-1754,1760-1767
+  s_35316d81430638::t_428dff297e523d 164-270,273-274,744-754,756,758-766,769,799,802-806,808,810,813-815,817-818,820,846
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "a1c42e76ab260ae8a4457836385c0d1f58d60989",
+  "prompts": {},
+  "sessions": {
+    "s_35316d81430638": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb3b3-9313-79f2-99ce-4491801e0a40",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

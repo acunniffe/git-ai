@@ -1,0 +1,37 @@
+src/utils.rs
+  s_64e8f27d934849::t_1546c9eee6bf34 257,262-264,271-273
+  s_64e8f27d934849::t_3418985e2aca29 1213,1216-1217,1224,1226,1228,1230,1232,1235-1236
+  s_64e8f27d934849::t_1825ecf29fa07f 154-164,195,197-200,202-204,208-211,213-256,258-261,265-270,274-296
+  s_64e8f27d934849::t_1cef104f5d9eb3 165-194,196,201,205-207,212
+  s_64e8f27d934849::t_82f8311fb34102 1205-1212,1214-1215,1218-1223,1225,1227,1229,1231,1233-1234,1237-1245
+src/main.rs
+  s_64e8f27d934849::t_bc65c5d18a7be3 71-74,85
+  s_64e8f27d934849::t_036a42660b156d 3,15-31,35-36
+  s_64e8f27d934849::t_1d8cb7ce8aea9c 75-84
+  s_64e8f27d934849::t_795e2686a683d2 32-34
+tests/integration/main.rs
+  s_64e8f27d934849::t_3000183ada4ef1 126
+tests/integration/superuser_guard.rs
+  s_64e8f27d934849::t_14af69ead7dcc7 43
+  s_64e8f27d934849::t_7f43525c6e3887 3-42,44-76,78-97,99-109
+  s_64e8f27d934849::t_795e2686a683d2 1
+  s_64e8f27d934849::t_18cc3959963fa6 77
+  s_64e8f27d934849::t_52f5972a3065f1 98
+  s_64e8f27d934849::t_c7f99255e385ab 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "1d03abb659770afed491f7dc5607f4413e0cfeee",
+  "prompts": {},
+  "sessions": {
+    "s_64e8f27d934849": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51f34527-8189-47ce-b809-a328bd6d1639",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

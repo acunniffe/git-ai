@@ -1,0 +1,9 @@
+src/commands/git_ai_handlers.rs
+  601fa7cb531db267 1553,2035
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "4b2939da44dae382ae4330932bf10f9dae9182ed",
+  "prompts": {}
+}

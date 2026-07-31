@@ -1,0 +1,24 @@
+agent-support/vscode/src/blame-lens-manager.ts
+  3858ce964e227c75 213-226,343-348,355,360,365,540,545,553-557,691-695
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "2b5c8596e0e70469444cd19dcc75fb9412dba6bc",
+  "prompts": {
+    "3858ce964e227c75": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "69c3c93b-fdf6-4635-959d-eb78a8383931",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 45,
+      "total_deletions": 31,
+      "accepted_lines": 35,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/09a2b29725ab20a5733af300d794f91a5e8ef5cf6b1a23fabb9c36df21ade0b5"
+    }
+  }
+}

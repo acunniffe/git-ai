@@ -1,0 +1,24 @@
+src/commands/checkpoint.rs
+  44baadcab6b8658a 2012-2070
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "ea4926e82bb6a7216294ab236dd70ae611bd449b",
+  "prompts": {
+    "44baadcab6b8658a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cb6c2-e9fa-7c50-bad3-338dccf97881",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 59,
+      "total_deletions": 0,
+      "accepted_lines": 59,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/c2ec468c0d07503ca81f157992defe10e00c046a427f718f9a3ed10f52d0b831"
+    }
+  }
+}

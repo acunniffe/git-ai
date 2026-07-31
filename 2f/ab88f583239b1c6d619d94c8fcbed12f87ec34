@@ -1,0 +1,19 @@
+tests/integration/worktrees.rs
+  s_122f961aa46a22::t_3f18af6c44185d 276-279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.5",
+  "base_commit_sha": "2fab88f583239b1c6d619d94c8fcbed12f87ec34",
+  "prompts": {},
+  "sessions": {
+    "s_122f961aa46a22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c99dd480-07a1-4da6-8ad5-4bc2483187aa",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

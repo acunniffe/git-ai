@@ -1,0 +1,29 @@
+tests/integration/bash_attribution.rs
+  s_5822efdedb26cc::t_2c2795daca0b0f 496,553,555
+src/daemon/stream_worker.rs
+  s_5822efdedb26cc::t_1b253aedbbb249 149
+  s_5822efdedb26cc::t_da474f15d729c3 148,150-161,210-211,213-214
+  s_5822efdedb26cc::t_5c0ee7582bcbbc 1534-1554
+  s_5822efdedb26cc::t_e73bc663f92ec2 1533
+docs/session-event-attribution-recovery-plan.md
+  s_5822efdedb26cc::t_17fa8c265b98c0 29-30,182
+src/authorship/attribution_recovery.rs
+  s_5822efdedb26cc::t_82d7dea349e34d 457,494,503,512,521,524,530,534,537
+  s_5822efdedb26cc::t_81ddc467dc61f7 1176,1182-1183,1185-1187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.1",
+  "base_commit_sha": "8aa1796e98e9c4d3e4156c2140de5e7048f3b2a1",
+  "prompts": {},
+  "sessions": {
+    "s_5822efdedb26cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efcbc-8f48-7602-a00f-b20b39b170ef",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
