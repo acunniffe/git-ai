@@ -1,0 +1,24 @@
+src/config.rs
+  2de4ed9274e38630 1694,1696,1698
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "2e48c59d7f1a5947834e367e8de5cb4173c40658",
+  "prompts": {
+    "2de4ed9274e38630": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ba8b128a-03da-4815-b476-b148f4ab0621",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 3,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/0f8f7b7250270d19bfca5d4edfb7481eb1c52bd3d4113682622952afda567450"
+    }
+  }
+}

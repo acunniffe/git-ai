@@ -1,0 +1,24 @@
+assets/docs/agents/bake_gray.py
+  90e0c15acf03f624 37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "3104a408d346a2a391e247bd1f1a9854700a6bb7",
+  "prompts": {
+    "90e0c15acf03f624": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "188ca393-e574-4939-b565-869a1f66d9d9",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 26,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e54973cecc03f121f8a25c4419e62a3c8933e52d2092876657947b6457074d31"
+    }
+  }
+}

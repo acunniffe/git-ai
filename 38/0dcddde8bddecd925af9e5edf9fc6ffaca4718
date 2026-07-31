@@ -1,0 +1,34 @@
+src/daemon.rs
+  s_7d470640a960b2::t_47649553f37b45 9180-9182
+  s_88e09c7ec5c2e7::t_c35070c1824e59 23,52,987-1024,1028-1033,2743,3397-3400,3402-3403,3405-3408,4104-4109,4559-4561,4797-4803,4807-4811,9167-9179
+  s_88e09c7ec5c2e7::t_d6c0bd0215eaa6 4781-4789,4843
+  s_88e09c7ec5c2e7::t_9d6f2b4b3bc3cb 97,2835,3404
+tests/daemon_mode.rs
+  s_88e09c7ec5c2e7::t_c5173a14da35e8 1980-1981,1988-1989,2025-2026
+  s_88e09c7ec5c2e7::t_594265a378f203 1977-1978
+  s_88e09c7ec5c2e7::t_832a1109b5e3eb 1979,1982-1987,1990-2024,2027-2059
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "380dcddde8bddecd925af9e5edf9fc6ffaca4718",
+  "prompts": {},
+  "sessions": {
+    "s_7d470640a960b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa51d-4cb8-7471-ad38-ead1f195155b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_88e09c7ec5c2e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fabf9-ca63-7101-9454-7282f9548df6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

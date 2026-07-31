@@ -1,0 +1,26 @@
+src/authorship/rewrite_stash.rs
+  s_228121b431534d::t_602ce5e32a2da4 306
+tests/integration/stash_attribution.rs
+  s_228121b431534d::t_f80b2e1f80c261 1358-1425
+tests/integration/repo_storage_unit.rs
+  s_228121b431534d::t_26dc88d3053b38 212-240
+src/git/repo_storage.rs
+  s_228121b431534d::t_78bc3ecec991ed 600,610,623-628
+  s_228121b431534d::t_1d9a96a35f8e20 11,15-19,338,350-353,474-494,500-504,508-509,514,575-599,601-609,611-622,629-631,665-666,669-670,673
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.9",
+  "base_commit_sha": "53f60080dab477491f43aabb29ee52724f7e8c1a",
+  "prompts": {},
+  "sessions": {
+    "s_228121b431534d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24ef-6da2-7f20-aecb-47074f52d00b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

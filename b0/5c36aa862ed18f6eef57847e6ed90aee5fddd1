@@ -1,0 +1,24 @@
+tests/integration/simple_additions.rs
+  b8f8aac7de3cda16 1971-1973,1975-1979,1983-1984,1986-1987,2008-2030,2032-2033,2036-2037,2039-2040,2066-2067,2070-2072,2078-2079,2082-2085,2087,2090,2097-2098
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "b05c36aa862ed18f6eef57847e6ed90aee5fddd1",
+  "prompts": {
+    "b8f8aac7de3cda16": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "23f6824b-23b2-4af6-9209-d6e36a71c100",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 57,
+      "total_deletions": 63,
+      "accepted_lines": 57,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/8a0b48808ca16d5fa9b6dd486f947a61a0fa4132135e61aed1a87ccdde67aaca"
+    }
+  }
+}

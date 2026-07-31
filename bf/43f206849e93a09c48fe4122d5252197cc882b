@@ -1,0 +1,26 @@
+src/authorship/internal_db.rs
+  8439784fda8aeec3 264-267,283-297
+src/commands/git_ai_handlers.rs
+  8439784fda8aeec3 3,43-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.28",
+  "base_commit_sha": "bf43f206849e93a09c48fe4122d5252197cc882b",
+  "prompts": {
+    "8439784fda8aeec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "461c22f1-5afa-43fd-a172-40f93615ea57",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 0,
+      "accepted_lines": 28,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/cd5c975044ed0ea5146210401a1acc6a16cc392f28de107dbd6cef16ff9a7617"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+agent-support/visualstudio/src/GitAiVS/Detection/CopilotEditDetector.cs
+  s_61bbcfe4478210::t_0f4f1203643e2c 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "c59b54ef46b0c5a00843cf9623f3f70423653476",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

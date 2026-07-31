@@ -1,0 +1,19 @@
+tests/git-compat/whitelist.csv
+  s_3ee5d562502033::t_79d650104b5e07 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "c4727707f548b5efef98ca049e5d3802dd571623",
+  "prompts": {},
+  "sessions": {
+    "s_3ee5d562502033": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019edcbd-2231-74b0-a8d9-53959e4f692e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

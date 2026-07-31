@@ -1,0 +1,26 @@
+tests/integration/main.rs
+  ffd77ec9e20d18d4 94
+tests/integration/stale_prompt_carry.rs
+  ffd77ec9e20d18d4 69-74,96-101,160-163,171-173,187-192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.1",
+  "base_commit_sha": "97548a9e22140384e29bf92db5afd4c40e90540a",
+  "prompts": {
+    "ffd77ec9e20d18d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41aaaa88-5ac0-41e3-a0a4-a5333a5c47fc",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 26,
+      "total_deletions": 7,
+      "accepted_lines": 26,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/b374b87939541894ab8a949cc5ba7690d9fdd5c851da3f795c12e31653153be1"
+    }
+  }
+}

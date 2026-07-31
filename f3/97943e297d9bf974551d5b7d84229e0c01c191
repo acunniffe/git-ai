@@ -1,0 +1,22 @@
+src/authorship/virtual_attribution.rs
+  s_265a605c5598a3::t_f818a27358ed05 1238-1245,2140-2145,2149,2175
+tests/commit_tree_update_ref.rs
+  s_265a605c5598a3::t_028697f6eb9e2e 73-94,1780-1857
+  s_265a605c5598a3::t_16c46df0eeb3e5 1858
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.5",
+  "base_commit_sha": "f397943e297d9bf974551d5b7d84229e0c01c191",
+  "prompts": {},
+  "sessions": {
+    "s_265a605c5598a3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1ad2-b684-7bb2-9cdb-ace8798b8812",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+src/git/cli_parser.rs
+  s_944d199f213f02::t_a56905d8debe47 859-888
+  s_944d199f213f02::t_27c731a5f5240a 199-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.11",
+  "base_commit_sha": "924bc768ecf057f4f8d76207cb865061ae6cc373",
+  "prompts": {},
+  "sessions": {
+    "s_944d199f213f02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1be3334c-4956-4f59-aa13-fffb04db4f6a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

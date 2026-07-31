@@ -1,0 +1,250 @@
+src/git/repo_storage.rs
+  0f78f176dc2b60ac 91-107
+  2390650340f732a1 3,349-394
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "9327d23e05fe178818c8f80243b64fa0b2488783",
+  "prompts": {
+    "0f78f176dc2b60ac": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "30aaeafd-4221-4b9c-a956-e4e5cfff581e",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "When in debug mode, move checkpoints to old-{sha} instead of deleting them",
+          "timestamp": "2025-11-30T21:10:23.848Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Searching for checkpoint deletion logic and debug mode handling.",
+          "timestamp": "2025-11-30T21:10:25.519Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "delete checkpoint debug mode",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-i": true,
+            "pattern": "delete.*checkpoint|remove.*checkpoint|checkpoint.*delete"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-i": true,
+            "pattern": "debug.*mode|DEBUG|is_debug"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Examining `repo_storage.rs` for checkpoint deletion logic:",
+          "timestamp": "2025-11-30T21:10:26.823Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "delete checkpoint file remove checkpoint directory",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Searching for where checkpoints are deleted:",
+          "timestamp": "2025-11-30T21:10:28.262Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-i": true,
+            "pattern": "delete_working_log|remove_dir_all.*checkpoint|remove.*working_log"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "where are checkpoints deleted when base commit changes rebase reset",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking how `delete_working_log_for_base_commit` is used:",
+          "timestamp": "2025-11-30T21:10:30.090Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/authorship/post_commit.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 160,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/hooks/reset_hooks.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating `delete_working_log_for_base_commit` to move checkpoints to `old-{sha}` in debug mode instead of deleting them:",
+          "timestamp": "2025-11-30T21:10:31.362Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 20,
+            "offset": 85,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating `delete_working_log_for_base_commit` to move checkpoints to `old-{sha}` in debug mode:",
+          "timestamp": "2025-11-30T21:10:32.201Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linting errors:",
+          "timestamp": "2025-11-30T21:10:34.851Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Verifying the change:",
+          "timestamp": "2025-11-30T21:10:38.469Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 25,
+            "offset": 87,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Verifying the code compiles:",
+          "timestamp": "2025-11-30T21:10:39.350Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && cargo check --lib 2>&1 | head -50",
+            "is_background": false
+          }
+        }
+      ],
+      "total_additions": 22,
+      "total_deletions": 1,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    },
+    "2390650340f732a1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "55b39a6b-b7c3-4271-855b-3d7fd202de42",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "which function loads checkpoints in off the filesystem",
+          "timestamp": "2025-11-30T21:00:38.280Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Searching the codebase for checkpoint loading functions.",
+          "timestamp": "2025-11-30T21:00:39.718Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "load checkpoints from filesystem",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-i": true,
+            "pattern": "load.*checkpoint|checkpoint.*load|read.*checkpoint|checkpoint.*read"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Found the function. Showing the implementation:",
+          "timestamp": "2025-11-30T21:00:40.805Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 32,
+            "offset": 311,
+            "target_file": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The function that loads checkpoints from the filesystem is **`read_all_checkpoints()`** in `src/git/repo_storage.rs`.\n\nIt:\n1. Reads from `checkpoints.jsonl` in the repo storage directory\n2. Parses each line as a JSON checkpoint object (JSONL format)\n3. Filters out checkpoints with incompatible API versions\n4. Returns a `Vec<Checkpoint>`\n\nLocated at **lines 311-342** in `src/git/repo_storage.rs`, it's a method on the `RepoStorage` struct. It's called from multiple places, including `checkpoint.rs`, `virtual_attribution.rs`, and `post_commit.rs`.",
+          "timestamp": "2025-11-30T21:00:41.212Z"
+        },
+        {
+          "type": "user",
+          "text": "Update read_all_checkpoints to regenerate all of the prompt hashes in each checkpoint.\n\n\n\nYou have to hit EVERYWHERE that we have  prompt IDs/hashes.",
+          "timestamp": "2025-11-30T21:02:54.584Z"
+        }
+      ],
+      "total_additions": 266,
+      "total_deletions": 220,
+      "accepted_lines": 53,
+      "overriden_lines": 0
+    }
+  }
+}

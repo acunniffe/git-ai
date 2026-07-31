@@ -1,0 +1,26 @@
+assets/docs/agents/pi.svg
+  43e6dc3a18c4d129 4,21
+README.md
+  43e6dc3a18c4d129 45,49-51,56,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "ffd16bc4a90de7120e1d8fd1ce220813c68a138f",
+  "prompts": {
+    "43e6dc3a18c4d129": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "54fb2d87-fee9-4072-83c8-8295884e9c19",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 12,
+      "accepted_lines": 8,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/3f8606512af9f7cafda78d41aa4b9ec80562f07f4014bb6568c886c8e038d0b2"
+    }
+  }
+}
