@@ -334,6 +334,10 @@ impl Agent for OpenCodeAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operations::streams::agents::test_support::{
+        StreamAdapterContractCapabilities, StreamAdapterFixture, assert_stream_adapter_contract,
+        drain_stream,
+    };
 
     #[test]
     fn test_sweep_strategy() {
@@ -345,6 +349,9 @@ mod tests {
     }
 
     fn create_test_db(path: &std::path::Path, message_count: usize) {
+        if path.exists() {
+            std::fs::remove_file(path).unwrap();
+        }
         let conn = crate::model::repository::sqlite::open_with_memory_limits(path).unwrap();
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS message (
@@ -364,7 +371,11 @@ mod tests {
             );",
         )
         .unwrap();
-        for i in 0..message_count {
+        append_test_records(&conn, 0, message_count);
+    }
+
+    fn append_test_records(conn: &rusqlite::Connection, first_record: usize, record_count: usize) {
+        for i in first_record..first_record + record_count {
             let ts = 1000 + (i as i64) * 1000;
             conn.execute(
                 "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -390,128 +401,33 @@ mod tests {
         }
     }
 
-    fn drain_all(
-        agent: &OpenCodeAgent,
-        path: &std::path::Path,
-    ) -> (Vec<serde_json::Value>, Box<dyn WatermarkStrategy>) {
+    #[test]
+    fn test_stream_adapter_contract() {
         use chrono::{DateTime, Utc};
-        let mut all = Vec::new();
-        let mut wm: Box<dyn WatermarkStrategy> =
-            Box::new(TimestampWatermark::new(DateTime::<Utc>::UNIX_EPOCH));
-        loop {
-            let batch = agent.read_incremental(path, wm, "test-session").unwrap();
-            if batch.events.is_empty() {
-                wm = batch.new_watermark;
-                break;
-            }
-            all.extend(batch.events);
-            wm = batch.new_watermark;
-        }
-        (all, wm)
-    }
 
-    #[test]
-    fn test_batch_resume_no_loss_or_repeat() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("test.db");
-        create_test_db(&db_path, 5);
-
-        let agent = OpenCodeAgent::with_batch_size(2);
-        let (events, _) = drain_all(&agent, &db_path);
-
-        assert_eq!(events.len(), 5);
-        let ids: Vec<u64> = events
-            .iter()
-            .map(|e| e["message"]["data"]["id"].as_u64().unwrap())
-            .collect();
-        assert_eq!(ids, vec![0, 1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn test_append_one_record_after_full_read() {
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("test.db");
-        create_test_db(&db_path, 3);
-
-        let agent = OpenCodeAgent::with_batch_size(2);
-        let (all, wm) = drain_all(&agent, &db_path);
-        assert_eq!(all.len(), 3);
-
-        // Insert one more record with a later timestamp
-        let conn = crate::model::repository::sqlite::open_with_memory_limits(&db_path).unwrap();
-        let ts = 1000 + 3 * 1000i64;
-        conn.execute(
-            "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params!["msg-3", "test-session", ts, ts, r#"{"role":"user","id":3}"#],
-        ).unwrap();
-        conn.execute(
-            "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params!["prt-3", "msg-3", "test-session", ts+1, ts+1, r#"{"type":"text","text":"part-3"}"#],
-        ).unwrap();
-        drop(conn);
-
-        let batch = agent
-            .read_incremental(&db_path, wm, "test-session")
-            .unwrap();
-        assert_eq!(batch.events.len(), 1);
-        assert_eq!(
-            batch.events[0]["message"]["data"]["id"].as_u64().unwrap(),
-            3
+        let reset_path = db_path.clone();
+        let append_path = db_path.clone();
+        let mut fixture = StreamAdapterFixture::new(
+            &db_path,
+            move |record_count| create_test_db(&reset_path, record_count),
+            move |first_new_record, record_count| {
+                let conn = crate::model::repository::sqlite::open_with_memory_limits(&append_path)
+                    .unwrap();
+                append_test_records(&conn, first_new_record, record_count);
+            },
         );
-    }
-
-    #[test]
-    fn test_append_several_records_after_full_read() {
-        let dir = tempfile::tempdir().unwrap();
-        let db_path = dir.path().join("test.db");
-        create_test_db(&db_path, 3);
-
         let agent = OpenCodeAgent::with_batch_size(2);
-        let (_, mut wm) = drain_all(&agent, &db_path);
-
-        // Insert 3 more records
-        let conn = crate::model::repository::sqlite::open_with_memory_limits(&db_path).unwrap();
-        for i in 3..6usize {
-            let ts = 1000 + (i as i64) * 1000;
-            conn.execute(
-                "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?1, ?2, ?3, ?4, ?5)",
-                rusqlite::params![
-                    format!("msg-{}", i),
-                    "test-session",
-                    ts, ts,
-                    format!(r#"{{"role":"user","id":{}}}"#, i),
-                ],
-            ).unwrap();
-            conn.execute(
-                "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                rusqlite::params![
-                    format!("prt-{}", i),
-                    format!("msg-{}", i),
-                    "test-session",
-                    ts+1, ts+1,
-                    format!(r#"{{"type":"text","text":"part-{}"}}"#, i),
-                ],
-            ).unwrap();
-        }
-        drop(conn);
-
-        let mut new_events = Vec::new();
-        loop {
-            let batch = agent
-                .read_incremental(&db_path, wm, "test-session")
-                .unwrap();
-            wm = batch.new_watermark;
-            if batch.events.is_empty() {
-                break;
-            }
-            new_events.extend(batch.events);
-        }
-        assert_eq!(new_events.len(), 3);
-        let ids: Vec<u64> = new_events
-            .iter()
-            .map(|e| e["message"]["data"]["id"].as_u64().unwrap())
-            .collect();
-        assert_eq!(ids, vec![3, 4, 5]);
+        assert_stream_adapter_contract(
+            &agent,
+            &mut fixture,
+            || Box::new(TimestampWatermark::new(DateTime::<Utc>::UNIX_EPOCH)),
+            |event| event["message"]["data"]["id"].as_u64().unwrap().to_string(),
+            2,
+            "test-session",
+            StreamAdapterContractCapabilities::APPEND_ALL,
+        );
     }
 
     #[test]
@@ -533,13 +449,21 @@ mod tests {
 
     #[test]
     fn test_limit_caps_memory_and_watermark_still_drains_all() {
+        use chrono::{DateTime, Utc};
+
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("test.db");
         create_test_db(&db_path, 20);
 
         // batch_size=3 forces multiple iterations to drain 20 messages
         let agent = OpenCodeAgent::with_batch_size(3);
-        let (events, _) = drain_all(&agent, &db_path);
+        let (events, _) = drain_stream(
+            &agent,
+            &db_path,
+            Box::new(TimestampWatermark::new(DateTime::<Utc>::UNIX_EPOCH)),
+            3,
+            "test-session",
+        );
 
         assert_eq!(
             events.len(),

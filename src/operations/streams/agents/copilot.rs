@@ -469,6 +469,10 @@ fn read_session_json(
 mod tests {
     use super::*;
     use crate::model::stream_watermark::{ByteOffsetWatermark, RecordIndexWatermark};
+    use crate::operations::streams::agents::test_support::{
+        StreamAdapterContractCapabilities, assert_stream_adapter_contract, jsonl_fixture,
+        rewritten_file_fixture,
+    };
 
     #[test]
     fn test_sweep_strategy() {
@@ -503,104 +507,22 @@ mod tests {
         )
     }
 
-    fn drain_event_stream(
-        agent: &CopilotAgent,
-        path: &Path,
-    ) -> (Vec<serde_json::Value>, Box<dyn WatermarkStrategy>) {
-        let mut all = Vec::new();
-        let mut wm: Box<dyn WatermarkStrategy> = Box::new(ByteOffsetWatermark::new(0));
-        loop {
-            let batch = agent.read_incremental(path, wm, "test").unwrap();
-            if batch.events.is_empty() {
-                wm = batch.new_watermark;
-                break;
-            }
-            all.extend(batch.events);
-            wm = batch.new_watermark;
-        }
-        (all, wm)
-    }
-
     #[test]
-    fn test_event_stream_batch_resume_no_loss_or_repeat() {
-        use std::io::Write;
+    fn test_event_stream_contract() {
         use tempfile::NamedTempFile;
 
-        let mut file = NamedTempFile::with_suffix(".jsonl").unwrap();
-        for i in 0..5 {
-            writeln!(file, "{}", make_event_stream_line(i)).unwrap();
-        }
-        file.flush().unwrap();
-
+        let file = NamedTempFile::with_suffix(".jsonl").unwrap();
+        let mut fixture = jsonl_fixture(file.path(), make_event_stream_line);
         let agent = CopilotAgent::with_batch_size(2);
-        let (events, _) = drain_event_stream(&agent, file.path());
-
-        assert_eq!(events.len(), 5);
-        let ids: Vec<u64> = events.iter().map(|e| e["id"].as_u64().unwrap()).collect();
-        assert_eq!(ids, vec![0, 1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn test_event_stream_append_one_after_full_read() {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-
-        let mut file = NamedTempFile::with_suffix(".jsonl").unwrap();
-        for i in 0..3 {
-            writeln!(file, "{}", make_event_stream_line(i)).unwrap();
-        }
-        file.flush().unwrap();
-
-        let agent = CopilotAgent::with_batch_size(2);
-        let (all, wm) = drain_event_stream(&agent, file.path());
-        assert_eq!(all.len(), 3);
-
-        let mut f = OpenOptions::new().append(true).open(file.path()).unwrap();
-        writeln!(f, "{}", make_event_stream_line(3)).unwrap();
-        f.flush().unwrap();
-
-        let batch = agent.read_incremental(file.path(), wm, "test").unwrap();
-        assert_eq!(batch.events.len(), 1);
-        assert_eq!(batch.events[0]["id"].as_u64().unwrap(), 3);
-    }
-
-    #[test]
-    fn test_event_stream_append_several_after_full_read() {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-
-        let mut file = NamedTempFile::with_suffix(".jsonl").unwrap();
-        for i in 0..3 {
-            writeln!(file, "{}", make_event_stream_line(i)).unwrap();
-        }
-        file.flush().unwrap();
-
-        let agent = CopilotAgent::with_batch_size(2);
-        let (_, mut wm) = drain_event_stream(&agent, file.path());
-
-        let mut f = OpenOptions::new().append(true).open(file.path()).unwrap();
-        for i in 3..6 {
-            writeln!(f, "{}", make_event_stream_line(i)).unwrap();
-        }
-        f.flush().unwrap();
-
-        let mut new_events = Vec::new();
-        loop {
-            let batch = agent.read_incremental(file.path(), wm, "test").unwrap();
-            wm = batch.new_watermark;
-            if batch.events.is_empty() {
-                break;
-            }
-            new_events.extend(batch.events);
-        }
-        assert_eq!(new_events.len(), 3);
-        let ids: Vec<u64> = new_events
-            .iter()
-            .map(|e| e["id"].as_u64().unwrap())
-            .collect();
-        assert_eq!(ids, vec![3, 4, 5]);
+        assert_stream_adapter_contract(
+            &agent,
+            &mut fixture,
+            || Box::new(ByteOffsetWatermark::new(0)),
+            |event| event["id"].as_u64().unwrap().to_string(),
+            2,
+            "test",
+            StreamAdapterContractCapabilities::APPEND_ALL,
+        );
     }
 
     // -- Session JSON (RecordIndex) batch-resume tests --
@@ -617,89 +539,22 @@ mod tests {
         format!(r#"{{"requests":[{}]}}"#, requests.join(","))
     }
 
-    fn drain_session_json(
-        agent: &CopilotAgent,
-        path: &Path,
-    ) -> (Vec<serde_json::Value>, Box<dyn WatermarkStrategy>) {
-        let mut all = Vec::new();
-        let mut wm: Box<dyn WatermarkStrategy> = Box::new(RecordIndexWatermark::new(0));
-        loop {
-            let batch = agent.read_incremental(path, wm, "test").unwrap();
-            if batch.events.is_empty() {
-                wm = batch.new_watermark;
-                break;
-            }
-            all.extend(batch.events);
-            wm = batch.new_watermark;
-        }
-        (all, wm)
-    }
-
     #[test]
-    fn test_session_json_batch_resume_no_loss_or_repeat() {
+    fn test_session_json_contract() {
         use tempfile::NamedTempFile;
 
-        let mut file = NamedTempFile::with_suffix(".json").unwrap();
-        std::io::Write::write_all(&mut file, make_session_json(5).as_bytes()).unwrap();
-        std::io::Write::flush(&mut file).unwrap();
-
+        let file = NamedTempFile::with_suffix(".json").unwrap();
+        let mut fixture = rewritten_file_fixture(file.path(), make_session_json);
         let agent = CopilotAgent::with_batch_size(2);
-        let (events, _) = drain_session_json(&agent, file.path());
-
-        assert_eq!(events.len(), 5);
-        let ids: Vec<u64> = events.iter().map(|e| e["id"].as_u64().unwrap()).collect();
-        assert_eq!(ids, vec![0, 1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn test_session_json_append_one_after_full_read() {
-        use tempfile::NamedTempFile;
-
-        let mut file = NamedTempFile::with_suffix(".json").unwrap();
-        std::io::Write::write_all(&mut file, make_session_json(3).as_bytes()).unwrap();
-        std::io::Write::flush(&mut file).unwrap();
-
-        let agent = CopilotAgent::with_batch_size(2);
-        let (all, wm) = drain_session_json(&agent, file.path());
-        assert_eq!(all.len(), 3);
-
-        // Rewrite file with 4 requests (simulating append in JSON format)
-        std::fs::write(file.path(), make_session_json(4)).unwrap();
-
-        let batch = agent.read_incremental(file.path(), wm, "test").unwrap();
-        assert_eq!(batch.events.len(), 1);
-        assert_eq!(batch.events[0]["id"].as_u64().unwrap(), 3);
-    }
-
-    #[test]
-    fn test_session_json_append_several_after_full_read() {
-        use tempfile::NamedTempFile;
-
-        let mut file = NamedTempFile::with_suffix(".json").unwrap();
-        std::io::Write::write_all(&mut file, make_session_json(3).as_bytes()).unwrap();
-        std::io::Write::flush(&mut file).unwrap();
-
-        let agent = CopilotAgent::with_batch_size(2);
-        let (_, mut wm) = drain_session_json(&agent, file.path());
-
-        // Rewrite file with 6 requests
-        std::fs::write(file.path(), make_session_json(6)).unwrap();
-
-        let mut new_events = Vec::new();
-        loop {
-            let batch = agent.read_incremental(file.path(), wm, "test").unwrap();
-            wm = batch.new_watermark;
-            if batch.events.is_empty() {
-                break;
-            }
-            new_events.extend(batch.events);
-        }
-        assert_eq!(new_events.len(), 3);
-        let ids: Vec<u64> = new_events
-            .iter()
-            .map(|e| e["id"].as_u64().unwrap())
-            .collect();
-        assert_eq!(ids, vec![3, 4, 5]);
+        assert_stream_adapter_contract(
+            &agent,
+            &mut fixture,
+            || Box::new(RecordIndexWatermark::new(0)),
+            |event| event["id"].as_u64().unwrap().to_string(),
+            2,
+            "test",
+            StreamAdapterContractCapabilities::APPEND_ALL,
+        );
     }
 
     #[test]

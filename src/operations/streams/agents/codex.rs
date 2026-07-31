@@ -279,6 +279,9 @@ impl Agent for CodexAgent {
 mod tests {
     use super::*;
     use crate::model::stream_watermark::ByteOffsetWatermark;
+    use crate::operations::streams::agents::test_support::{
+        StreamAdapterContractCapabilities, assert_stream_adapter_contract, jsonl_fixture,
+    };
 
     #[test]
     fn test_sweep_strategy() {
@@ -296,104 +299,22 @@ mod tests {
         )
     }
 
-    fn drain_all(
-        agent: &CodexAgent,
-        path: &Path,
-    ) -> (Vec<serde_json::Value>, Box<dyn WatermarkStrategy>) {
-        let mut all = Vec::new();
-        let mut wm: Box<dyn WatermarkStrategy> = Box::new(ByteOffsetWatermark::new(0));
-        loop {
-            let batch = agent.read_incremental(path, wm, "test").unwrap();
-            if batch.events.is_empty() {
-                wm = batch.new_watermark;
-                break;
-            }
-            all.extend(batch.events);
-            wm = batch.new_watermark;
-        }
-        (all, wm)
-    }
-
     #[test]
-    fn test_batch_resume_no_loss_or_repeat() {
-        use std::io::Write;
+    fn test_stream_adapter_contract() {
         use tempfile::NamedTempFile;
 
-        let mut file = NamedTempFile::new().unwrap();
-        for i in 0..5 {
-            writeln!(file, "{}", make_jsonl_line(i)).unwrap();
-        }
-        file.flush().unwrap();
-
+        let file = NamedTempFile::new().unwrap();
+        let mut fixture = jsonl_fixture(file.path(), make_jsonl_line);
         let agent = CodexAgent::with_batch_size(2);
-        let (events, _) = drain_all(&agent, file.path());
-
-        assert_eq!(events.len(), 5);
-        let ids: Vec<u64> = events.iter().map(|e| e["id"].as_u64().unwrap()).collect();
-        assert_eq!(ids, vec![0, 1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn test_append_one_record_after_full_read() {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-
-        let mut file = NamedTempFile::new().unwrap();
-        for i in 0..3 {
-            writeln!(file, "{}", make_jsonl_line(i)).unwrap();
-        }
-        file.flush().unwrap();
-
-        let agent = CodexAgent::with_batch_size(2);
-        let (all, wm) = drain_all(&agent, file.path());
-        assert_eq!(all.len(), 3);
-
-        let mut f = OpenOptions::new().append(true).open(file.path()).unwrap();
-        writeln!(f, "{}", make_jsonl_line(3)).unwrap();
-        f.flush().unwrap();
-
-        let batch = agent.read_incremental(file.path(), wm, "test").unwrap();
-        assert_eq!(batch.events.len(), 1);
-        assert_eq!(batch.events[0]["id"].as_u64().unwrap(), 3);
-    }
-
-    #[test]
-    fn test_append_several_records_after_full_read() {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-
-        let mut file = NamedTempFile::new().unwrap();
-        for i in 0..3 {
-            writeln!(file, "{}", make_jsonl_line(i)).unwrap();
-        }
-        file.flush().unwrap();
-
-        let agent = CodexAgent::with_batch_size(2);
-        let (_, mut wm) = drain_all(&agent, file.path());
-
-        let mut f = OpenOptions::new().append(true).open(file.path()).unwrap();
-        for i in 3..6 {
-            writeln!(f, "{}", make_jsonl_line(i)).unwrap();
-        }
-        f.flush().unwrap();
-
-        let mut new_events = Vec::new();
-        loop {
-            let batch = agent.read_incremental(file.path(), wm, "test").unwrap();
-            wm = batch.new_watermark;
-            if batch.events.is_empty() {
-                break;
-            }
-            new_events.extend(batch.events);
-        }
-        assert_eq!(new_events.len(), 3);
-        let ids: Vec<u64> = new_events
-            .iter()
-            .map(|e| e["id"].as_u64().unwrap())
-            .collect();
-        assert_eq!(ids, vec![3, 4, 5]);
+        assert_stream_adapter_contract(
+            &agent,
+            &mut fixture,
+            || Box::new(ByteOffsetWatermark::new(0)),
+            |event| event["id"].as_u64().unwrap().to_string(),
+            2,
+            "test",
+            StreamAdapterContractCapabilities::APPEND_ALL,
+        );
     }
 
     #[test]

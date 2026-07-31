@@ -167,6 +167,9 @@ impl Agent for CopilotCliAgent {
 mod tests {
     use super::*;
     use crate::model::stream_watermark::ByteOffsetWatermark;
+    use crate::operations::streams::agents::test_support::{
+        StreamAdapterContractCapabilities, assert_stream_adapter_contract, jsonl_fixture,
+    };
 
     #[test]
     fn test_sweep_strategy() {
@@ -184,83 +187,22 @@ mod tests {
         )
     }
 
-    fn drain_all(
-        agent: &CopilotCliAgent,
-        path: &Path,
-    ) -> (Vec<serde_json::Value>, Box<dyn WatermarkStrategy>) {
-        let mut all = Vec::new();
-        let mut wm: Box<dyn WatermarkStrategy> = Box::new(ByteOffsetWatermark::new(0));
-        loop {
-            let batch = agent.read_incremental(path, wm, "test").unwrap();
-            if batch.events.is_empty() {
-                wm = batch.new_watermark;
-                break;
-            }
-            all.extend(batch.events);
-            wm = batch.new_watermark;
-        }
-        (all, wm)
-    }
-
     #[test]
-    fn test_batch_resume_no_loss_or_repeat() {
-        use std::io::Write;
+    fn test_stream_adapter_contract() {
         use tempfile::NamedTempFile;
 
-        let mut file = NamedTempFile::with_suffix(".jsonl").unwrap();
-        for i in 0..5 {
-            writeln!(file, "{}", make_event_line(i)).unwrap();
-        }
-        file.flush().unwrap();
-
+        let file = NamedTempFile::with_suffix(".jsonl").unwrap();
+        let mut fixture = jsonl_fixture(file.path(), make_event_line);
         let agent = CopilotCliAgent::with_batch_size(2);
-        let (events, _) = drain_all(&agent, file.path());
-
-        assert_eq!(events.len(), 5);
-        let ids: Vec<String> = events
-            .iter()
-            .map(|e| e["id"].as_str().unwrap().to_string())
-            .collect();
-        assert_eq!(ids, vec!["evt-0", "evt-1", "evt-2", "evt-3", "evt-4"]);
-    }
-
-    #[test]
-    fn test_append_after_full_read() {
-        use std::fs::OpenOptions;
-        use std::io::Write;
-        use tempfile::NamedTempFile;
-
-        let mut file = NamedTempFile::with_suffix(".jsonl").unwrap();
-        for i in 0..3 {
-            writeln!(file, "{}", make_event_line(i)).unwrap();
-        }
-        file.flush().unwrap();
-
-        let agent = CopilotCliAgent::with_batch_size(2);
-        let (all, wm) = drain_all(&agent, file.path());
-        assert_eq!(all.len(), 3);
-
-        let mut f = OpenOptions::new().append(true).open(file.path()).unwrap();
-        writeln!(f, "{}", make_event_line(3)).unwrap();
-        writeln!(f, "{}", make_event_line(4)).unwrap();
-        f.flush().unwrap();
-
-        let mut new_events = Vec::new();
-        let mut wm = wm;
-        loop {
-            let batch = agent.read_incremental(file.path(), wm, "test").unwrap();
-            wm = batch.new_watermark;
-            if batch.events.is_empty() {
-                break;
-            }
-            new_events.extend(batch.events);
-        }
-        assert_eq!(new_events.len(), 2);
-        let ids: Vec<String> = new_events
-            .iter()
-            .map(|e| e["id"].as_str().unwrap().to_string())
-            .collect();
-        assert_eq!(ids, vec!["evt-3", "evt-4"]);
+        assert_stream_adapter_contract(
+            &agent,
+            &mut fixture,
+            || Box::new(ByteOffsetWatermark::new(0)),
+            |event| event["id"].as_str().unwrap().to_string(),
+            2,
+            "test",
+            StreamAdapterContractCapabilities::APPEND_ALL,
+        );
     }
 
     #[test]

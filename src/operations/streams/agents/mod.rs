@@ -11,6 +11,8 @@ mod gemini;
 pub mod opencode;
 mod opencode_checkpoint;
 mod pi;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod windsurf;
 
 pub use amp::AmpAgent;
