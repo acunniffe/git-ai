@@ -1,0 +1,26 @@
+src/daemon/telemetry_worker.rs
+  s_59382cac373d67::t_f6d876186831cd 1499-1507
+tests/integration/daemon_notes_flush_memory.rs
+  s_59382cac373d67::t_f6d876186831cd 1-22,24-54
+  s_59382cac373d67::t_03c639eb9c5e74 23
+src/daemon.rs
+  s_59382cac373d67::t_ea5bdad0c31034 2620-2635,2712,2808,6315-6321
+tests/integration/main.rs
+  s_59382cac373d67::t_f6d876186831cd 67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "6b9666a6b8351f143debc3e8b3c90c0168ec74d3",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

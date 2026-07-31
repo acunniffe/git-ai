@@ -1,0 +1,82 @@
+src/commands/install_hooks.rs
+  s_567dab71b64423::t_0121452b0a2ed7 24-28
+  s_567dab71b64423::t_20da1293d61476 16,18
+  s_567dab71b64423::t_f478b76a68087c 17,29-35,365-367
+  s_567dab71b64423::t_5e3abf0afe5afd 1070-1086
+src/commands/git_ai_handlers.rs
+  s_567dab71b64423::t_20da1293d61476 170-171
+  s_567dab71b64423::t_fce061db240146 1284-1289,1292-1293
+  s_567dab71b64423::t_0121452b0a2ed7 38,165-169
+  s_567dab71b64423::t_c5ac468fab6e59 62
+  s_567dab71b64423::t_db9f6410d5e1bc 1290-1291
+  s_567dab71b64423::t_1b869c9172ab4e 19-37,39-41
+install.ps1
+  s_567dab71b64423::t_0121452b0a2ed7 574,576-579,583-584
+  s_567dab71b64423::t_f478b76a68087c 555-556,558-570
+  s_567dab71b64423::t_413418ec9ea09b 259-363,571,573,575,580-582
+  s_567dab71b64423::t_a0e044df5cc6d7 572
+install.sh
+  s_6defe6c356c429::t_d2893f29cbb7e1 403-404
+  s_567dab71b64423::t_0121452b0a2ed7 398-401
+  s_567dab71b64423::t_f478b76a68087c 392
+  s_567dab71b64423::t_f6f97c8b9830e3 128-238,402
+tests/windows_install_script.rs
+  s_567dab71b64423::t_e9a3cd8acf0c72 530-573
+  s_567dab71b64423::t_fc158abb2e9816 518-521,523-529
+  s_567dab71b64423::t_db9f6410d5e1bc 522
+src/main.rs
+  s_567dab71b64423::t_0121452b0a2ed7 31
+tests/integration/install_hooks_comprehensive.rs
+  s_567dab71b64423::t_4d96053e33fb6a 442
+  s_567dab71b64423::t_954ee5e5eaab0f 447
+  s_567dab71b64423::t_db9f6410d5e1bc 460-461,511,543-548,550-552,558-562,564
+  s_567dab71b64423::t_f045a6d5d1de23 453-456
+  s_567dab71b64423::t_fc158abb2e9816 458-459,462,468-469,472-478,484,498-510,512-542,549,553-557
+  s_567dab71b64423::t_3a2d5a87e3a498 479-483
+  s_ff458449afcecc::t_41513bf0642ee6 497
+  s_567dab71b64423::t_5e3abf0afe5afd 464-467
+  s_567dab71b64423::t_24ff399ba93d49 495
+  s_567dab71b64423::t_b54581bff4db14 486-488,493-494
+  s_567dab71b64423::t_fdec45045ba8a2 496
+  s_567dab71b64423::t_f870547c06999a 457
+src/commands/install_hooks/shell_env.rs
+  s_567dab71b64423::t_954ee5e5eaab0f 192
+  s_567dab71b64423::t_81b431f0f90e6a 180-185,218-219,349-365
+  s_567dab71b64423::t_b52adfa8fdfbdd 179
+  s_567dab71b64423::t_1a02be2d229778 227,239-240,258,263,344
+  s_567dab71b64423::t_20da1293d61476 67-74,161-177,193-198,208-217,220-226,228-238,241-257,259-262,264-265,267
+  s_6defe6c356c429::t_395343a6e22602 178,268
+  s_567dab71b64423::t_fc158abb2e9816 266,345-348,366-378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "8fb7d9d8c24f29dd4c1a7a352193d6f776be27d2",
+  "prompts": {},
+  "sessions": {
+    "s_567dab71b64423": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8f7c-ba9b-7112-8d11-3570848d66bb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_6defe6c356c429": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa19b-6f20-70b1-9dfb-25d8f73e7730",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_ff458449afcecc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f82f6-e087-7823-ae3f-5dd68a452c41",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

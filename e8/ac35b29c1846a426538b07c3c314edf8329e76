@@ -1,0 +1,30 @@
+src/commands/git_ai_handlers.rs
+  ea255cb6c68cbe3e 1893-1894
+src/authorship/prompt_utils.rs
+  ea255cb6c68cbe3e 224,226,230-252,254-255
+tests/integration/cursor.rs
+  ea255cb6c68cbe3e 5,8-9,11-14,16-17,19-21,23-24,26-42,46-47,49-71,75,78-92,94-98,100-101,103-105,107-109,112-120,122-123,128,131-134,136-147,149,151-152,157,160-163,165-170,172-180,182-185,190,192-193,195-197,199-201,203-205,207-211,213-221,225-226,416-417,434,441-442,447,486,489,492,495-496,499,502,509,514,516-520,537,544-545,550,555,557-563,565,568,603,609,620-621,660-661,666,723-725
+src/commands/checkpoint_agent/agent_presets.rs
+  ea255cb6c68cbe3e 1463-1467,1469-1478,1480-1484,1499-1502,1576-1587,1589-1593,1595-1599,1601-1677,1680-1681,1684-1692,1695-1704,1708-1719,1721-1726,1731,1734-1765
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "e8ac35b29c1846a426538b07c3c314edf8329e76",
+  "prompts": {
+    "ea255cb6c68cbe3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "60326fda-bbff-4026-9fc9-fec8ca639b0e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 561,
+      "total_deletions": 649,
+      "accepted_lines": 471,
+      "overriden_lines": 11,
+      "messages_url": "https://usegitai.com/cas/02d92441a6a3a892a038ec3d2ec59205eb0fd3d05e3fea8df978491812814da0"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+scripts/nightly/verify-hook-wiring.sh
+  s_6b9d6b50d80194::t_c9239baaa7b3c3 31-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "6f58816ce7fbc0944c334589da333729576299b1",
+  "prompts": {},
+  "sessions": {
+    "s_6b9d6b50d80194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c8c6857-e890-4537-bcdc-82e2500571f4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

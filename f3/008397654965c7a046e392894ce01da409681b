@@ -1,0 +1,23 @@
+src/commands/checkpoint_agent/orchestrator.rs
+  s_a5f4b12640a58f::t_686d1ae08dd5bf 1-194
+src/commands/checkpoint_agent/mod.rs
+  s_a5f4b12640a58f::t_74a00a8888e4e6 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "f3008397654965c7a046e392894ce01da409681b",
+  "prompts": {},
+  "sessions": {
+    "s_a5f4b12640a58f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cede33a-f5a5-4d2d-8694-f7b2f0278d54",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/e74ff5ba55b40660786113f2ad0fabeabdb669ea18fb43a21969937e683f4f16"
+    }
+  }
+}
