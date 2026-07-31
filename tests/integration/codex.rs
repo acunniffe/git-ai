@@ -881,6 +881,85 @@ fn test_codex_e2e_apply_patch_file_edit_full_cycle() {
 }
 
 #[test]
+fn test_codex_e2e_model_falls_back_to_config() {
+    use crate::repos::test_repo::TestRepo;
+
+    let repo = TestRepo::new();
+    let repo_root = repo.canonical_path();
+    let file_path = repo_root.join("lib.rs");
+    fs::write(&file_path, "fn old() {}\n").unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+
+    let mut tracked_file = repo.filename("lib.rs");
+    tracked_file.assert_committed_lines(crate::lines!["fn old() {}".unattributed_human(),]);
+
+    let codex_home = repo.test_home_path().join(".codex");
+    let rollout_dir = codex_home.join("sessions/2026/07/30");
+    fs::create_dir_all(&rollout_dir).unwrap();
+    fs::write(
+        codex_home.join("config.toml"),
+        "model = \"config-derived-model\"\n",
+    )
+    .unwrap();
+
+    let transcript_path = rollout_dir.join("rollout-config-fallback.jsonl");
+    let transcript = fs::read_to_string(fixture_path("codex-session-simple.jsonl"))
+        .unwrap()
+        .replace("\"model\":\"gpt-5-codex\"", "\"model\":null");
+    fs::write(&transcript_path, transcript).unwrap();
+
+    let pre_hook_input = json!({
+        "session_id": "codex-config-model-session",
+        "cwd": repo_root.to_string_lossy().to_string(),
+        "hook_event_name": "PreToolUse",
+        "tool_name": "apply_patch",
+        "tool_use_id": "patch-config-model-1",
+        "tool_input": {
+            "patch": format!("*** Update File: {}\n@@ fn old() {{}}\n+fn configured_model() {{}}\n", file_path.to_string_lossy())
+        },
+        "transcript_path": transcript_path.to_string_lossy().to_string()
+    })
+    .to_string();
+
+    repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
+        .expect("apply_patch pre-hook should succeed");
+
+    fs::write(&file_path, "fn configured_model() {}\n").unwrap();
+
+    let post_hook_input = json!({
+        "session_id": "codex-config-model-session",
+        "cwd": repo_root.to_string_lossy().to_string(),
+        "hook_event_name": "PostToolUse",
+        "tool_name": "apply_patch",
+        "tool_use_id": "patch-config-model-1",
+        "tool_input": {
+            "patch": format!("*** Update File: {}\n@@ fn old() {{}}\n+fn configured_model() {{}}\n", file_path.to_string_lossy())
+        },
+        "transcript_path": transcript_path.to_string_lossy().to_string()
+    })
+    .to_string();
+
+    repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
+        .expect("apply_patch post-hook should succeed");
+
+    let commit = repo
+        .stage_all_and_commit("Codex config model edit")
+        .expect("commit should succeed");
+    let session = commit
+        .authorship_log
+        .metadata
+        .sessions
+        .values()
+        .next()
+        .expect("session record should exist");
+
+    assert_eq!(session.agent_id.tool, "codex");
+    assert_eq!(session.agent_id.id, "codex-config-model-session");
+    assert_eq!(session.agent_id.model, "config-derived-model");
+    tracked_file.assert_committed_lines(crate::lines!["fn configured_model() {}".ai()]);
+}
+
+#[test]
 fn test_codex_e2e_apply_patch_scoped_to_edited_file_only() {
     use crate::repos::test_repo::TestRepo;
 
