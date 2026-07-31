@@ -1,0 +1,31 @@
+src/commands/git_handlers.rs
+  71f132d171c301c4 14,103-104,229,439,441,536-541,622
+tests/integration/main.rs
+  71f132d171c301c4 73
+src/commands/hooks/mod.rs
+  71f132d171c301c4 11
+tests/integration/revert_attribution.rs
+  71f132d171c301c4 1-127
+src/commands/hooks/revert_hooks.rs
+  71f132d171c301c4 1-313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "689d1132d5616b57360fe906cd929ec6f25070af",
+  "prompts": {
+    "71f132d171c301c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5597a7ef-171b-4c73-b5b4-da83540f06d5",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 482,
+      "total_deletions": 12,
+      "accepted_lines": 455,
+      "overriden_lines": 1
+    }
+  }
+}

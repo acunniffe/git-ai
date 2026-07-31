@@ -1,0 +1,51 @@
+src/commands/hooks/fetch_hooks.rs
+  caf6877fc7e1cb0d 2
+src/commands/hooks/switch_hooks.rs
+  caf6877fc7e1cb0d 1-114,117-123,125-128,130-136
+src/git/cli_parser.rs
+  1cb7ec3516cd4fda 97-111
+src/commands/git_handlers.rs
+  caf6877fc7e1cb0d 2,12,215-220,305-310
+src/authorship/virtual_attribution.rs
+  caf6877fc7e1cb0d 1420-1524
+tests/checkout_switch.rs
+  caf6877fc7e1cb0d 1-420
+src/commands/hooks/mod.rs
+  caf6877fc7e1cb0d 1,11
+src/commands/hooks/checkout_hooks.rs
+  caf6877fc7e1cb0d 1-102,104-186
+  1cb7ec3516cd4fda 103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.32",
+  "base_commit_sha": "eb2e9fafa1bdb220a31c0b3ca1816a27e16aaaaf",
+  "prompts": {
+    "1cb7ec3516cd4fda": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5aa9b8cf-00e9-4fed-b42a-e7747a421e59",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 11,
+      "accepted_lines": 16,
+      "overriden_lines": 0
+    },
+    "caf6877fc7e1cb0d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "25027714-3a45-4554-91fa-461f42f73936",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1220,
+      "total_deletions": 416,
+      "accepted_lines": 859,
+      "overriden_lines": 0
+    }
+  }
+}

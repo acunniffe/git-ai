@@ -1,0 +1,24 @@
+.github/workflows/install-scripts-local.yml
+  1619739f239dab40 102-105,265-266,268-270
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "e49fc86beabedfece8e36f5ed264321cebd8875c",
+  "prompts": {
+    "1619739f239dab40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6b7ce61-ad7c-4e92-b418-78d9857c187b",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 4,
+      "accepted_lines": 9,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e51c5ad0d47537b454e9ce06af844ea4351113de6693ddb3a01bfb0d84d5233a"
+    }
+  }
+}

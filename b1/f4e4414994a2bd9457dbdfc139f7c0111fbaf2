@@ -1,0 +1,32 @@
+src/commands/checkpoint_agent/orchestrator.rs
+  s_e1beca86e01012::t_65ef8d104fc141 67
+  s_e1beca86e01012::t_e948b94fb9e96f 146-170
+  s_e1beca86e01012::t_12f58b5c4913e8 7
+src/commands/checkpoint_agent/presets/mod.rs
+  s_e1beca86e01012::t_c96358ca29c9a2 46
+  s_e1beca86e01012::t_281ffafc3e4cbf 74-79
+  s_e1beca86e01012::t_20b10be80325ec 14
+  s_e1beca86e01012::t_a8a5b83a74a53c 143
+src/commands/git_ai_handlers.rs
+  s_e1beca86e01012::t_46c8d67ce4b7a8 258,263
+  s_e1beca86e01012::t_f010a2993c5fb6 1784
+src/commands/checkpoint_agent/presets/human.rs
+  s_e1beca86e01012::t_33c4b40d90e1e5 1-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "b1f4e4414994a2bd9457dbdfc139f7c0111fbaf2",
+  "prompts": {},
+  "sessions": {
+    "s_e1beca86e01012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "487d1aea-0650-42da-8d5c-193e33493c89",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": []
+    }
+  }
+}

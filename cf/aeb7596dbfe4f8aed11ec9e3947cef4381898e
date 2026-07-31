@@ -1,0 +1,19 @@
+src/ci/github.rs
+  s_1073b58daf9856::t_ae42406109a489 203,211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "cfaeb7596dbfe4f8aed11ec9e3947cef4381898e",
+  "prompts": {},
+  "sessions": {
+    "s_1073b58daf9856": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e985f-ce37-7b40-8aac-d1d7f1e07e71",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

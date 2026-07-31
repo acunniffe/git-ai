@@ -1,0 +1,26 @@
+src/commands/exchange_nonce.rs
+  9d9f421e51acbaec 1,3-5,8-9,21,32-45,54,59-68,70-71,80-88
+src/auth/client.rs
+  9d9f421e51acbaec 234-245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.11",
+  "base_commit_sha": "4b03e16f5b168d7466416d4c22cabc1bee192e04",
+  "prompts": {
+    "9d9f421e51acbaec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38d3b3e8-fb85-41b5-92bf-e18435de865f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 59,
+      "total_deletions": 19,
+      "accepted_lines": 58,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/a77b2bf16af3513072374ceaa976d14c8b37e9b7bb94dbbd8bee95126699d566"
+    }
+  }
+}

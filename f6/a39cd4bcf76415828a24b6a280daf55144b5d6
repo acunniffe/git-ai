@@ -1,0 +1,19 @@
+src/daemon/sweep_coordinator.rs
+  s_395f5898107085::t_d9a9eb23cb716c 1-2,6,10-14,30,51-52,55-63,71-73,75-77,79-84,87-113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "f6a39cd4bcf76415828a24b6a280daf55144b5d6",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

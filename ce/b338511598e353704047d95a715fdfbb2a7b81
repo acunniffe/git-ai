@@ -1,0 +1,30 @@
+src/authorship/stats.rs
+  617049f94f0d2a17 631-641,643
+src/commands/blame.rs
+  617049f94f0d2a17 2,64-65,425,555
+src/authorship/authorship_log_serialization.rs
+  617049f94f0d2a17 273-303
+src/authorship/diff_ai_accepted.rs
+  617049f94f0d2a17 4,8,62-63,66-77,81-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "ceb338511598e353704047d95a715fdfbb2a7b81",
+  "prompts": {
+    "617049f94f0d2a17": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cec6ec9-6015-41ad-a344-5a78f9d31c75",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 146,
+      "total_deletions": 74,
+      "accepted_lines": 85,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/9212d96606282524ab757933fefc3c365cfda3c1f9b67411041b37273648a0e5"
+    }
+  }
+}

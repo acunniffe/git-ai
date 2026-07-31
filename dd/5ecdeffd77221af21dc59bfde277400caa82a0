@@ -1,0 +1,27 @@
+src/config.rs
+  cbedf5b17c199fec 45-46,52-53,889-923
+docs/enterprise-configuration.mdx
+  cbedf5b17c199fec 27,46,54
+src/commands/upgrade.rs
+  cbedf5b17c199fec 807,817,841,853
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.33",
+  "base_commit_sha": "dd5ecdeffd77221af21dc59bfde277400caa82a0",
+  "prompts": {
+    "cbedf5b17c199fec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cda2a9f7-9ca9-4ca2-a0e3-17b4d796e843",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 46,
+      "total_deletions": 11,
+      "accepted_lines": 46,
+      "overriden_lines": 0
+    }
+  }
+}
