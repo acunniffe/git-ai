@@ -1,14 +1,16 @@
 use super::parse::parse_key_path;
 use super::pattern::log_array_removals;
+use super::spec::resolve_key;
 use crate::config::NotesBackendKind;
 
 pub(super) fn unset_config_value(key: &str) -> Result<(), String> {
     let mut file_config = crate::config::load_file_config_public()?;
+    let resolved = resolve_key(key)?;
     let key_path = parse_key_path(key);
 
     // Handle top-level keys
     if key_path.len() == 1 {
-        match key_path[0].as_str() {
+        match resolved.spec.name {
             "git_path" => {
                 let old_value = file_config.git_path.take();
                 crate::config::save_file_config(&file_config)?;
@@ -202,7 +204,7 @@ pub(super) fn unset_config_value(key: &str) -> Result<(), String> {
     }
 
     // Handle nested keys (dot notation) - only for feature_flags
-    if key_path[0] == "feature_flags" {
+    if resolved.root() == "feature_flags" {
         if key_path.len() < 2 {
             return Err(
                 "feature_flags requires a nested key (e.g., feature_flags.some_flag)".to_string(),
@@ -255,7 +257,7 @@ pub(super) fn unset_config_value(key: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    if key_path[0] == "git_ai_hooks" {
+    if resolved.root() == "git_ai_hooks" {
         if key_path.len() != 2 {
             return Err(
                 "git_ai_hooks requires a hook name (e.g., git_ai_hooks.post_notes_updated)"
@@ -283,7 +285,7 @@ pub(super) fn unset_config_value(key: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    if key_path[0] == "notes_backend" {
+    if resolved.root() == "notes_backend" {
         if key_path.len() != 2 {
             return Err(
                 "notes_backend requires a field name (notes_backend.kind or notes_backend.backend_url)"
@@ -316,7 +318,7 @@ pub(super) fn unset_config_value(key: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    if key_path[0] == "author" {
+    if resolved.root() == "author" {
         if key_path.len() != 2 {
             return Err("author requires a field name (author.name or author.email)".to_string());
         }
@@ -340,7 +342,7 @@ pub(super) fn unset_config_value(key: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    if key_path[0] == "custom_attributes" {
+    if resolved.root() == "custom_attributes" {
         if key_path.len() != 2 {
             return Err(
                 "custom_attributes requires an attribute name (e.g., custom_attributes.team)"

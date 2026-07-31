@@ -1,5 +1,6 @@
 use super::parse::*;
 use super::pattern::*;
+use super::spec::{ConfigMutation, ConfigNesting, ConfigValueKind, config_key_specs, resolve_key};
 use serde_json::Value;
 
 #[test]
@@ -457,4 +458,53 @@ fn test_pattern_type_custom_protocols() {
         detect_pattern_type("ftp://host/path"),
         PatternType::UrlOrGitProtocol
     );
+}
+
+#[test]
+fn test_config_key_registry_resolves_canonical_names_and_aliases() {
+    let canonical = resolve_key("allowed_repositories").unwrap();
+    assert_eq!(canonical.spec.name, "allowed_repositories");
+    assert_eq!(canonical.spec.nesting, ConfigNesting::None);
+
+    let alias = resolve_key("allow_repositories").unwrap();
+    assert_eq!(alias.spec.name, "allowed_repositories");
+
+    // `telemetry_oss` is the persisted legacy key. The effective read name is
+    // retained as an alias so the registry documents the compatibility bridge.
+    let legacy = resolve_key("telemetry_oss_disabled").unwrap();
+    assert_eq!(legacy.spec.name, "telemetry_oss");
+}
+
+#[test]
+fn test_config_key_registry_records_sensitivity_and_mutation_metadata() {
+    let api_key = resolve_key("api_key").unwrap();
+    assert!(api_key.spec.sensitive);
+    assert_eq!(api_key.spec.value_kind, ConfigValueKind::Secret);
+    assert_eq!(api_key.spec.mutation, ConfigMutation::Replace);
+
+    let feature_flag = resolve_key("feature_flags.transcript_sweep").unwrap();
+    assert_eq!(feature_flag.spec.name, "feature_flags");
+    assert_eq!(feature_flag.spec.nesting, ConfigNesting::Dynamic);
+    assert_eq!(feature_flag.spec.mutation, ConfigMutation::ReplaceOrAdd);
+}
+
+#[test]
+fn test_config_key_registry_rejects_unknown_roots() {
+    let error = resolve_key("not_a_config_key").unwrap_err();
+    assert!(error.contains("Unknown config key"));
+    assert!(resolve_key("not_a_config_key.value").is_err());
+}
+
+#[test]
+fn test_config_key_registry_help_entries_include_legacy_and_nested_keys() {
+    let names = config_key_specs()
+        .iter()
+        .filter(|spec| spec.show_in_help)
+        .map(|spec| spec.name)
+        .collect::<Vec<_>>();
+
+    assert!(names.contains(&"telemetry_oss"));
+    assert!(names.contains(&"author.name"));
+    assert!(names.contains(&"notes_backend.kind"));
+    assert!(names.iter().all(|name| !name.is_empty()));
 }

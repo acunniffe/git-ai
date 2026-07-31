@@ -276,6 +276,48 @@ fn test_config_patch_preserves_unpatched_fields() {
     );
 }
 
+#[test]
+fn test_config_registry_preserves_sensitive_alias_and_help_behavior() {
+    let repo = TestRepo::new();
+    let secret = "api-key-registry-test-secret";
+
+    let set_output = repo
+        .git_ai(&["config", "set", "api_key", secret])
+        .expect("setting api_key should succeed");
+    assert!(set_output.contains("api-...cret"));
+    assert!(!set_output.contains(secret));
+
+    let get_output = repo
+        .git_ai(&["config", "api_key"])
+        .expect("reading api_key should succeed");
+    assert!(get_output.contains("api-...cret"));
+    assert!(!get_output.contains(secret));
+
+    repo.git_ai(&["config", "set", "telemetry_oss", "off"])
+        .expect("setting the legacy telemetry key should succeed");
+    assert_eq!(get_json(&repo, "telemetry_oss"), Value::Bool(true));
+    assert_eq!(get_json(&repo, "telemetry_oss_disabled"), Value::Bool(true));
+
+    let help = repo
+        .git_ai(&["config", "--help"])
+        .expect("config help should succeed");
+    assert!(help.contains("telemetry_oss                Legacy OSS telemetry setting"));
+    assert!(help.contains("author.name                  git-ai author display name override"));
+    assert!(help.contains("notes_backend.kind           Notes backend kind"));
+}
+
+#[test]
+fn test_config_registry_rejects_unknown_key() {
+    let repo = TestRepo::new();
+    let error = repo
+        .git_ai(&["config", "not_a_real_config_key"])
+        .expect_err("unknown config key should fail");
+    assert!(
+        error.contains("Unknown config key"),
+        "unexpected error: {error}"
+    );
+}
+
 /// Map a `FileConfig` field name to the CLI key used to read it back, when the
 /// two differ. Most fields share a name with their CLI key; the exceptions are
 /// enumerated here so the divergence stays explicit and reviewed.

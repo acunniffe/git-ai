@@ -3,6 +3,7 @@ mod help;
 mod parse;
 mod pattern;
 mod set;
+mod spec;
 mod unset;
 
 #[cfg(test)]

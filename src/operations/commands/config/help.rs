@@ -1,3 +1,5 @@
+use super::spec::config_key_specs;
+
 pub(super) fn print_config_help() {
     println!("git-ai config - View and manage git-ai configuration");
     println!();
@@ -10,39 +12,9 @@ pub(super) fn print_config_help() {
     println!("  git-ai config unset <key>    Remove config value (reverts to default)");
     println!();
     println!("Configuration Keys:");
-    println!("  git_path                     Path to git binary");
-    println!("  exclude_prompts_in_repositories  Repos to exclude prompts from (array)");
-    println!(
-        "  allowed_repositories         Repositories where collection is enabled (array; empty = collect nothing)"
-    );
-    println!("  exclude_repositories         Excluded repos (array)");
-    println!("  telemetry                    Master telemetry switch (on/off; default off)");
-    println!("  telemetry_oss                Legacy OSS telemetry setting (on/off)");
-    println!("  telemetry_enterprise_dsn     Enterprise telemetry DSN");
-    println!("  disable_version_checks       Disable version checks (bool)");
-    println!("  disable_auto_updates         Disable auto updates (bool)");
-    println!("  update_channel               Update channel (latest/next)");
-    println!("  feature_flags                Feature flags (object)");
-    println!("  api_base_url                 API base URL (default: https://usegitai.com)");
-    println!("  api_key                      API key for X-API-Key header");
-    println!("  author.name                  git-ai author display name override");
-    println!("  author.email                 git-ai author email override");
-    println!("  prompt_storage               Prompt storage mode (default/notes/local)");
-    println!("  include_prompts_in_repositories  Repos to include for prompt storage (array)");
-    println!("  default_prompt_storage       Fallback storage mode for non-included repos");
-    println!("  quiet                        Suppress chart output after commits (bool)");
-    println!("  allow_superuser              Allow running git-ai as root/superuser (bool)");
-    println!(
-        "  transcript_streaming_lookback_days  Days to look back when sweeping transcripts (0 = unlimited)"
-    );
-    println!("  max_checkpoint_file_size_bytes      Per-file checkpoint content limit in bytes");
-    println!("  max_checkpoint_total_size_bytes     Per-checkpoint content limit in bytes");
-    println!("  max_checkpoint_total_lines          Per-checkpoint content limit in lines");
-    println!("  custom_attributes            Custom telemetry attributes, string->string (object)");
-    println!("  git_ai_hooks                 Hook name -> shell commands map (object)");
-    println!("  codex_hooks_format           Codex hook install format (config_toml/hooks_json)");
-    println!("  notes_backend.kind           Notes backend kind (git_notes/http)");
-    println!("  notes_backend.backend_url    Notes backend base URL. Required when kind=http.");
+    for spec in config_key_specs().iter().filter(|spec| spec.show_in_help) {
+        println!("  {}", spec.help);
+    }
     println!(
         "                               May include a path prefix; endpoints are appended to it."
     );

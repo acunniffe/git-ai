@@ -1,4 +1,5 @@
 use super::parse::{mask_api_key, parse_key_path};
+use super::spec::resolve_key;
 use serde_json::Value;
 
 pub(super) fn show_all_config() -> Result<(), String> {
@@ -199,12 +200,13 @@ pub(super) fn show_all_config() -> Result<(), String> {
 pub(super) fn get_config_value(key: &str) -> Result<(), String> {
     let file_config = crate::config::load_file_config_public()?;
     let runtime_config = crate::config::Config::get();
+    let resolved = resolve_key(key)?;
 
     let key_path = parse_key_path(key);
 
     // Handle top-level keys
     if key_path.len() == 1 {
-        let value = match key_path[0].as_str() {
+        let value = match resolved.spec.name {
             "git_path" => Value::String(runtime_config.git_cmd().to_string()),
             "exclude_prompts_in_repositories" => {
                 if let Some(ref repos) = file_config.exclude_prompts_in_repositories {
@@ -232,7 +234,7 @@ pub(super) fn get_config_value(key: &str) -> Result<(), String> {
             } else {
                 "off".to_string()
             }),
-            "telemetry_oss_disabled" => Value::Bool(runtime_config.is_telemetry_oss_disabled()),
+            "telemetry_oss" => Value::Bool(runtime_config.is_telemetry_oss_disabled()),
             "telemetry_enterprise_dsn" => {
                 if let Some(ref dsn) = file_config.telemetry_enterprise_dsn {
                     Value::String(dsn.clone())
@@ -319,8 +321,8 @@ pub(super) fn get_config_value(key: &str) -> Result<(), String> {
     }
 
     // Handle nested keys (dot notation)
-    if key_path[0] == "feature_flags" || key_path[0] == "git_ai_hooks" {
-        let root = if key_path[0] == "feature_flags" {
+    if resolved.root() == "feature_flags" || resolved.root() == "git_ai_hooks" {
+        let root = if resolved.root() == "feature_flags" {
             serde_json::to_value(runtime_config.get_feature_flags())
                 .unwrap_or_else(|_| Value::Object(serde_json::Map::new()))
         } else {
@@ -341,7 +343,7 @@ pub(super) fn get_config_value(key: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    if key_path[0] == "notes_backend" {
+    if resolved.root() == "notes_backend" {
         if key_path.len() != 2 {
             return Err(
                 "notes_backend requires a field name (notes_backend.kind or notes_backend.backend_url)"
@@ -364,7 +366,7 @@ pub(super) fn get_config_value(key: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    if key_path[0] == "author" {
+    if resolved.root() == "author" {
         if key_path.len() != 2 {
             return Err("author requires a field name (author.name or author.email)".to_string());
         }
@@ -388,7 +390,7 @@ pub(super) fn get_config_value(key: &str) -> Result<(), String> {
         return Ok(());
     }
 
-    if key_path[0] == "custom_attributes" {
+    if resolved.root() == "custom_attributes" {
         if key_path.len() != 2 {
             return Err(
                 "custom_attributes requires an attribute name (e.g., custom_attributes.team)"

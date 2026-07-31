@@ -4,15 +4,17 @@ use super::parse::{
     parse_key_path, parse_notes_backend_kind, parse_value, validate_prompt_storage_value,
 };
 use super::pattern::{log_array_changes, resolve_repository_value, set_repository_array_field};
+use super::spec::resolve_key;
 use serde_json::Value;
 
 pub(super) fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String> {
     let mut file_config = crate::config::load_file_config_public()?;
+    let resolved = resolve_key(key)?;
     let key_path = parse_key_path(key);
 
     // Handle top-level keys
     if key_path.len() == 1 {
-        match key_path[0].as_str() {
+        match resolved.spec.name {
             "git_path" => {
                 file_config.git_path = Some(value.to_string());
                 crate::config::save_file_config(&file_config)?;
@@ -255,7 +257,7 @@ pub(super) fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result
     }
 
     // Handle nested keys (dot notation) - only for feature_flags
-    if key_path[0] == "feature_flags" {
+    if resolved.root() == "feature_flags" {
         if key_path.len() < 2 {
             return Err(
                 "feature_flags requires a nested key (e.g., feature_flags.some_flag)".to_string(),
@@ -304,7 +306,7 @@ pub(super) fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result
         return Ok(());
     }
 
-    if key_path[0] == "git_ai_hooks" {
+    if resolved.root() == "git_ai_hooks" {
         if key_path.len() != 2 {
             return Err(
                 "git_ai_hooks requires a hook name (e.g., git_ai_hooks.post_notes_updated)"
@@ -338,7 +340,7 @@ pub(super) fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result
         return Ok(());
     }
 
-    if key_path[0] == "notes_backend" {
+    if resolved.root() == "notes_backend" {
         if key_path.len() != 2 {
             return Err(
                 "notes_backend requires a field name (notes_backend.kind or notes_backend.backend_url)"
@@ -366,7 +368,7 @@ pub(super) fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result
         return Ok(());
     }
 
-    if key_path[0] == "author" {
+    if resolved.root() == "author" {
         if add_mode {
             return Err("Cannot use --add with author fields".to_string());
         }
@@ -391,7 +393,7 @@ pub(super) fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result
         return Ok(());
     }
 
-    if key_path[0] == "custom_attributes" {
+    if resolved.root() == "custom_attributes" {
         if key_path.len() != 2 {
             return Err(
                 "custom_attributes requires an attribute name (e.g., custom_attributes.team)"
