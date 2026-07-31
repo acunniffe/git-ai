@@ -386,10 +386,13 @@ fn test_continue_cli_e2e_human_checkpoint() {
         "console.log('human edit');".human(),
     ]);
 
-    assert_eq!(
-        commit.authorship_log.attestations.len(),
-        0,
-        "Human checkpoint should not create AI attestations"
+    assert!(
+        commit
+            .authorship_log
+            .attestations
+            .iter()
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash.starts_with("h_"))
     );
 }
 

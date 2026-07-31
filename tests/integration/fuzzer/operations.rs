@@ -185,6 +185,7 @@ pub fn commit(
 
     op_log.push(format!("commit(\"{}\")", msg));
     model.apply_edge_recovery_for_added_lines(registry, &added_lines);
+    model.apply_terminal_human_recovery_for_added_lines(registry, &added_lines);
     model.reconcile(repo);
     model.assert_blame(repo, op_log, seed);
     model.clear_pending_attestations();
@@ -210,6 +211,7 @@ pub fn amend(
     op_log.push("amend".to_string());
     model.sync_from_disk(repo, registry);
     model.apply_edge_recovery_for_added_lines(registry, &added_lines);
+    model.apply_terminal_human_recovery_for_added_lines(registry, &added_lines);
     model.reconcile(repo);
     model.assert_blame(repo, op_log, seed);
     model.clear_pending_attestations();

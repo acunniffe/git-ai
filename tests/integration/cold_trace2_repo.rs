@@ -132,8 +132,9 @@ fn assert_note_has_no_ai_authorship(commit_sha: &str, note: &str) {
     assert!(
         log.attestations
             .iter()
-            .all(|attestation| attestation.entries.is_empty()),
-        "cold raw setup should not create attestations for {}: {:?}",
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash == "human" || entry.hash.starts_with("h_")),
+        "cold raw setup should not create AI attestations for {}: {:?}",
         commit_sha,
         log.attestations
     );

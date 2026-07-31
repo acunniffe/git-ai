@@ -353,7 +353,14 @@ fn test_gemini_e2e_human_checkpoint() {
         "console.log('human edit');".human(),
     ]);
 
-    assert_eq!(commit.authorship_log.attestations.len(), 0);
+    assert!(
+        commit
+            .authorship_log
+            .attestations
+            .iter()
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash.starts_with("h_"))
+    );
 }
 
 #[test]
