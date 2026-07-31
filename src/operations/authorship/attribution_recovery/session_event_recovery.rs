@@ -8,9 +8,10 @@ use crate::operations::git::repository::Repository;
 use serde_json::json;
 use std::collections::HashMap;
 
+use super::timestamp_collection::collect_unknown_file_timestamps;
 use super::{
     FileTimestampsByPath, RecoveryMetricInput, SESSION_EVENT_RECOVERY_WINDOW_NS, add_attestation,
-    file_timestamps_ns, record_recovery_metric, unknown_lines_by_file,
+    record_recovery_metric, unknown_lines_by_file,
 };
 
 const NS_PER_SECOND: u128 = 1_000_000_000;
@@ -57,28 +58,15 @@ pub(super) fn recover_session_event_mtime(
         return Ok(());
     }
 
-    let mut timestamps_by_file = HashMap::new();
-    let mut all_timestamps = Vec::new();
-    for file_path in unknown_by_file.keys() {
-        let timestamps = captured_file_timestamps
-            .and_then(|timestamps| timestamps.get(file_path))
-            .filter(|timestamps| !timestamps.is_empty())
-            .cloned()
-            .unwrap_or_else(|| file_timestamps_ns(&workdir, file_path));
-        if !timestamps.is_empty() {
-            all_timestamps.extend(timestamps.iter().copied());
-            timestamps_by_file.insert(file_path.clone(), timestamps);
-        }
-    }
-    if all_timestamps.is_empty() {
+    let timestamp_collection =
+        collect_unknown_file_timestamps(&workdir, unknown_by_file, captured_file_timestamps);
+    if timestamp_collection.unique_timestamps.is_empty() {
         return Ok(());
     }
-    all_timestamps.sort_unstable();
-    all_timestamps.dedup();
 
     let candidates = match stores.metrics.and_then(|db| db.lock().ok()) {
         Some(db) => db.session_event_candidates_near_timestamps(
-            &all_timestamps,
+            &timestamp_collection.unique_timestamps,
             SESSION_EVENT_RECOVERY_WINDOW_NS,
         )?,
         None => Vec::new(),
@@ -90,8 +78,8 @@ pub(super) fn recover_session_event_mtime(
     let Some(target_repo_url) = crate::repo_url::resolve_repo_url_from_repo(repo) else {
         return Ok(());
     };
-    for (file_path, unknown_lines) in unknown_by_file {
-        let Some(timestamps) = timestamps_by_file.get(&file_path) else {
+    for (file_path, unknown_lines) in timestamp_collection.unknown_by_file {
+        let Some(timestamps) = timestamp_collection.timestamps_by_file.get(&file_path) else {
             continue;
         };
         let Some(selection) =

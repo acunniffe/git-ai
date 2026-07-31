@@ -9,9 +9,10 @@ use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use super::timestamp_collection::collect_unknown_file_timestamps;
 use super::{
     FileTimestampsByPath, RecoveryMetricInput, add_attestation, existing_commit_session_ids,
-    file_timestamps_ns, record_recovery_metric, repo_worktree_key, unknown_lines_by_file,
+    record_recovery_metric, repo_worktree_key, unknown_lines_by_file,
 };
 
 const BASH_RECOVERY_WINDOW_NS: u128 = 3_000_000_000;
@@ -69,28 +70,18 @@ pub(super) fn recover_bash_mtime(
         return Ok(());
     }
 
-    let mut timestamps_by_file = HashMap::new();
-    let mut all_timestamps = Vec::new();
-    for file_path in unknown_by_file.keys() {
-        let timestamps = captured_file_timestamps
-            .and_then(|timestamps| timestamps.get(file_path))
-            .filter(|timestamps| !timestamps.is_empty())
-            .cloned()
-            .unwrap_or_else(|| file_timestamps_ns(&workdir, file_path));
-        if !timestamps.is_empty() {
-            all_timestamps.extend(timestamps.iter().copied());
-            timestamps_by_file.insert(file_path.clone(), timestamps);
-        }
-    }
-    if all_timestamps.is_empty() {
+    let timestamp_collection =
+        collect_unknown_file_timestamps(&workdir, unknown_by_file, captured_file_timestamps);
+    if timestamp_collection.unique_timestamps.is_empty() {
         return Ok(());
     }
-    all_timestamps.sort_unstable();
-    all_timestamps.dedup();
 
     let candidates: Vec<BashCandidate> = match stores.bash_history.and_then(|db| db.lock().ok()) {
         Some(db) => db
-            .candidates_near_timestamps(&all_timestamps, BASH_RECOVERY_WINDOW_NS)?
+            .candidates_near_timestamps(
+                &timestamp_collection.unique_timestamps,
+                BASH_RECOVERY_WINDOW_NS,
+            )?
             .into_iter()
             .map(BashCandidate::from)
             .collect(),
@@ -101,8 +92,8 @@ pub(super) fn recover_bash_mtime(
     }
 
     let existing_commit_sessions = existing_commit_session_ids(authorship_log);
-    for (file_path, unknown_lines) in unknown_by_file {
-        let Some(timestamps) = timestamps_by_file.get(&file_path) else {
+    for (file_path, unknown_lines) in timestamp_collection.unknown_by_file {
+        let Some(timestamps) = timestamp_collection.timestamps_by_file.get(&file_path) else {
             continue;
         };
         let Some(selection) = select_best_bash_candidate(

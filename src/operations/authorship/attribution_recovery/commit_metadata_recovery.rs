@@ -12,9 +12,10 @@ use super::commit_agent_metadata::{
     CommitAgentDetection, CommitAgentKind, CommitMetadata, detect_commit_metadata_agents,
 };
 use super::session_event_recovery::{session_event_distance, session_event_model};
+use super::timestamp_collection::collect_unknown_file_timestamps;
 use super::{
     FileTimestampsByPath, RecoveryMetricInput, SESSION_EVENT_RECOVERY_WINDOW_NS, add_attestation,
-    ai_session_key, file_timestamps_ns, record_recovery_metric, unknown_lines_by_file,
+    ai_session_key, record_recovery_metric, unknown_lines_by_file,
 };
 
 #[derive(Clone, Debug)]
@@ -53,8 +54,9 @@ pub(super) fn recover_commit_metadata(
 
     let workdir = repo.workdir()?;
     let target_repo_url = crate::repo_url::resolve_repo_url_from_repo(repo);
-    let (timestamps_by_file, latest_timestamps) =
-        latest_timestamps_for_unknown_files(&workdir, &unknown_by_file, captured_file_timestamps);
+    let timestamp_collection =
+        collect_unknown_file_timestamps(&workdir, unknown_by_file, captured_file_timestamps);
+    let latest_timestamps = latest_cohort_timestamps(&timestamp_collection.timestamps_by_file);
     let Some(selection) = select_commit_metadata_session(
         authorship_log,
         &detections,
@@ -87,12 +89,13 @@ pub(super) fn recover_commit_metadata(
         })
         .collect::<Vec<_>>();
 
-    for (file_path, unknown_lines) in unknown_by_file {
+    for (file_path, unknown_lines) in timestamp_collection.unknown_by_file {
         let trace_id = generate_trace_id();
         let author_id = format!("{}::{}", selection.session_id, trace_id);
         add_attestation(authorship_log, &file_path, &author_id, &unknown_lines);
 
-        let file_timestamps = timestamps_by_file
+        let file_timestamps = timestamp_collection
+            .timestamps_by_file
             .get(&file_path)
             .cloned()
             .unwrap_or_default();
@@ -162,28 +165,11 @@ fn read_commit_metadata(repo: &Repository, commit_sha: &str) -> Result<CommitMet
     })
 }
 
-fn latest_timestamps_for_unknown_files(
-    workdir: &std::path::Path,
-    unknown_by_file: &super::UnknownLinesByFile,
-    captured_file_timestamps: Option<&FileTimestampsByPath>,
-) -> (HashMap<String, Vec<u128>>, Vec<u128>) {
-    let mut timestamps_by_file = HashMap::new();
-    let mut latest_timestamp = None;
-    for file_path in unknown_by_file.keys() {
-        let timestamps = captured_file_timestamps
-            .and_then(|timestamps| timestamps.get(file_path))
-            .filter(|timestamps| !timestamps.is_empty())
-            .cloned()
-            .unwrap_or_else(|| file_timestamps_ns(workdir, file_path));
-        if let Some(file_latest) = timestamps.iter().copied().max() {
-            latest_timestamp = Some(
-                latest_timestamp.map_or(file_latest, |current: u128| current.max(file_latest)),
-            );
-            timestamps_by_file.insert(file_path.clone(), timestamps);
-        }
-    }
-
-    let latest_timestamps = latest_timestamp
+fn latest_cohort_timestamps(timestamps_by_file: &FileTimestampsByPath) -> Vec<u128> {
+    timestamps_by_file
+        .values()
+        .filter_map(|timestamps| timestamps.iter().copied().max())
+        .max()
         .map(|latest| {
             let mut timestamps = timestamps_by_file
                 .values()
@@ -194,9 +180,7 @@ fn latest_timestamps_for_unknown_files(
             timestamps.dedup();
             timestamps
         })
-        .unwrap_or_default();
-
-    (timestamps_by_file, latest_timestamps)
+        .unwrap_or_default()
 }
 
 pub(super) fn select_commit_metadata_session(
@@ -474,4 +458,34 @@ pub(super) fn agent_kind_matches_tool(kind: &CommitAgentKind, tool: &str) -> boo
     kind.tools
         .iter()
         .any(|candidate| candidate.eq_ignore_ascii_case(tool))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn latest_cohort_keeps_every_timestamp_from_files_at_the_latest_time() {
+        let unknown_by_file = BTreeMap::from([
+            ("alpha.rs".to_string(), vec![1]),
+            ("beta.rs".to_string(), vec![2]),
+            ("older.rs".to_string(), vec![3]),
+        ]);
+        let captured_timestamps = HashMap::from([
+            ("alpha.rs".to_string(), vec![9, 1]),
+            ("beta.rs".to_string(), vec![3, 9, 3]),
+            ("older.rs".to_string(), vec![7]),
+        ]);
+
+        let timestamp_collection = collect_unknown_file_timestamps(
+            std::path::Path::new("/definitely-missing-workdir"),
+            unknown_by_file,
+            Some(&captured_timestamps),
+        );
+
+        assert_eq!(timestamp_collection.timestamps_by_file.len(), 3);
+        let latest_timestamps = latest_cohort_timestamps(&timestamp_collection.timestamps_by_file);
+        assert_eq!(latest_timestamps, vec![1, 3, 9]);
+    }
 }

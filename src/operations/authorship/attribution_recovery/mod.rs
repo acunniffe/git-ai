@@ -2,6 +2,7 @@ mod bash_recovery;
 mod commit_agent_metadata;
 mod commit_metadata_recovery;
 mod session_event_recovery;
+mod timestamp_collection;
 
 use crate::error::GitAiError;
 use crate::metrics::{CheckpointValues, EventAttributes, MetricEvent, PosEncoded};
