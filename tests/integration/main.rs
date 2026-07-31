@@ -52,6 +52,7 @@ mod continue_cli;
 mod cross_repo_cwd_attribution;
 mod cursor;
 mod daemon_commit_carryover;
+mod daemon_runtime_memory;
 mod debug_diagnostics;
 mod diff;
 mod diff_comprehensive;
