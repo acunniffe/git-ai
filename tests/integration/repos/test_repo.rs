@@ -760,6 +760,45 @@ fn shared_daemon_pool_size() -> usize {
         .unwrap_or(8)
 }
 
+fn default_test_config_patch() -> ConfigPatch {
+    // Collection is opt-in (empty allowlist = collect nothing), so allow the
+    // OS temp root: every TestRepo, worktree variant, and mirror lives under
+    // it. Canonicalized because repo roots are matched symlink-resolved
+    // (macOS: /var/folders -> /private/var/folders).
+    let temp_root = std::env::temp_dir();
+    let temp_root = temp_root.canonicalize().unwrap_or(temp_root);
+
+    // Pin the git-notes backend: the production default is sqlite, but the
+    // bulk of the suite asserts against refs/notes/ai directly.
+    // Sqlite-backend behavior is covered by dedicated tests.
+    ConfigPatch {
+        allowed_repositories: Some(vec![temp_root.to_string_lossy().replace('\\', "/")]),
+        exclude_prompts_in_repositories: Some(vec![]), // No exclusions = share everywhere
+        prompt_storage: Some("notes".to_string()),     // Use notes mode for tests
+        notes_backend: Some(git_ai::config::NotesBackendConfig {
+            kind: git_ai::config::NotesBackendKind::GitNotes,
+            backend_url: None,
+        }),
+        ..ConfigPatch::default()
+    }
+}
+
+fn write_config_patch_to_home(patch: &ConfigPatch, home: &Path) {
+    let config = patch
+        .to_file_config()
+        .expect("failed to project test config patch into file config");
+
+    let config_dir = home.join(".git-ai");
+    fs::create_dir_all(&config_dir).expect("failed to create test HOME config directory");
+    let config_path = config_dir.join("config.json");
+    let serialized = serde_json::to_string(&config).expect("failed to serialize test config");
+    fs::write(&config_path, serialized).expect("failed to write test HOME config");
+}
+
+fn dedicated_test_db_path(test_home: &Path) -> PathBuf {
+    test_home.join("dedicated-daemon-db")
+}
+
 extern "C" fn shutdown_shared_daemon_at_process_exit() {
     if let Some(daemon) = SHARED_DAEMON_PROCESS.get() {
         daemon.shutdown();
@@ -808,6 +847,7 @@ fn start_shared_daemon_process(repo_path: &Path, shard: Option<usize>) -> Daemon
         .unwrap_or_default();
     let daemon_home = base.join(format!("git-ai-shared-daemon-{}{}-home", n, shard_suffix));
     let test_db_path = base.join(format!("git-ai-shared-daemon-{}{}-db", n, shard_suffix));
+    write_config_patch_to_home(&default_test_config_patch(), &daemon_home);
     DaemonProcess::start(repo_path, &daemon_home, &test_db_path)
 }
 
@@ -1278,49 +1318,39 @@ impl TestRepo {
     }
 
     fn write_test_config_to_home(&self, home: &Path) {
-        let Some(patch) = &self.config_patch else {
-            return;
-        };
-
-        let config = patch
-            .to_file_config()
-            .expect("failed to project test config patch into file config");
-
-        let config_dir = home.join(".git-ai");
-        fs::create_dir_all(&config_dir).expect("failed to create test HOME config directory");
-        let config_path = config_dir.join("config.json");
-        let serialized = serde_json::to_string(&config).expect("failed to serialize test config");
-        fs::write(&config_path, serialized).expect("failed to write test HOME config");
+        if let Some(patch) = &self.config_patch {
+            write_config_patch_to_home(patch, home);
+        }
     }
 
     fn sync_test_home_config(&self) {
         self.write_test_config_to_home(&self.test_home);
-        if let Some(daemon) = &self.daemon_process
-            && daemon.daemon_home != self.test_home
-        {
-            self.write_test_config_to_home(&daemon.daemon_home);
-        }
     }
 
     fn apply_default_config_patch(&mut self) {
-        // Collection is opt-in (empty allowlist = collect nothing), so allow the
-        // OS temp root: every TestRepo, worktree variant, and mirror lives under
-        // it. Canonicalized because repo roots are matched symlink-resolved
-        // (macOS: /var/folders -> /private/var/folders).
-        let temp_root = std::env::temp_dir();
-        let temp_root = temp_root.canonicalize().unwrap_or(temp_root);
-        self.patch_git_ai_config(|patch| {
-            patch.allowed_repositories = Some(vec![temp_root.to_string_lossy().replace('\\', "/")]);
-            patch.exclude_prompts_in_repositories = Some(vec![]); // No exclusions = share everywhere
-            patch.prompt_storage = Some("notes".to_string()); // Use notes mode for tests
-            // Pin the git-notes backend: the production default is sqlite, but
-            // the bulk of the suite asserts against refs/notes/ai directly.
-            // Sqlite-backend behavior is covered by dedicated tests.
-            patch.notes_backend = Some(git_ai::config::NotesBackendConfig {
-                kind: git_ai::config::NotesBackendKind::GitNotes,
-                backend_url: None,
-            });
-        });
+        self.config_patch = Some(default_test_config_patch());
+        self.sync_test_home_config();
+    }
+
+    fn promote_shared_daemon_for_config_patch(&mut self) -> bool {
+        if self.daemon_scope != DaemonTestScope::Shared {
+            return false;
+        }
+
+        // Shared daemons intentionally own an immutable baseline config. A
+        // custom fixture must use a daemon whose HOME and database belong only
+        // to that fixture, otherwise Config::fresh() can read another test's
+        // patch while asynchronously processing trace2 side effects.
+        let shared_test_db_path = self.test_db_path.clone();
+        if self._base_test_db_path.as_ref() == Some(&shared_test_db_path) {
+            // Worktree-mode fixtures inherit the shared DB path solely for the
+            // shared daemon. Do not remove that pool-owned directory on drop.
+            self._base_test_db_path = None;
+        }
+        self.daemon_process = None;
+        self.daemon_scope = DaemonTestScope::Dedicated;
+        self.test_db_path = dedicated_test_db_path(&self.test_home);
+        true
     }
 
     pub fn new() -> Self {
@@ -2459,10 +2489,14 @@ impl TestRepo {
     where
         F: FnOnce(&mut ConfigPatch),
     {
+        let starts_dedicated_daemon = self.promote_shared_daemon_for_config_patch();
         let mut patch = self.config_patch.take().unwrap_or_default();
         f(&mut patch);
         self.config_patch = Some(patch);
         self.sync_test_home_config();
+        if starts_dedicated_daemon {
+            self.setup_daemon_mode();
+        }
     }
 
     /// Restrict attribution collection to this exact repository or worktree.

@@ -338,6 +338,23 @@ fn test_default_test_allowlist_allows_collection_via_path() {
 }
 
 #[test]
+fn test_shared_daemon_config_isolated_from_custom_fixture() {
+    let repo = TestRepo::new();
+    let mut config_mutator = TestRepo::new();
+    config_mutator.patch_git_ai_config(|patch| {
+        patch.allowed_repositories = Some(vec![]);
+    });
+
+    let mut file = repo.filename("shared-config.txt");
+    file.set_contents(lines!["AI line".ai()]);
+    repo.stage_all_and_commit("shared daemon configuration isolation")
+        .expect("another fixture's config must not disable collection");
+    file.assert_committed_lines(lines!["AI line".ai()]);
+}
+
+crate::reuse_tests_in_worktree!(test_shared_daemon_config_isolated_from_custom_fixture,);
+
+#[test]
 fn test_reallowing_repo_restores_collection() {
     let mut repo = TestRepo::new_dedicated_daemon();
     repo.patch_git_ai_config(|patch| {
