@@ -1,5 +1,6 @@
 //! Windsurf agent implementation with sweep discovery.
 
+use super::discovery::stem_session_binding;
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
 use crate::operations::streams::agent::{Agent, StreamDescriptor};
@@ -54,7 +55,7 @@ impl Agent for WindsurfAgent {
                 ) {
                     return None;
                 }
-                Some((path.file_stem()?.to_str()?.to_string(), None))
+                stem_session_binding(path)
             },
         )
     }

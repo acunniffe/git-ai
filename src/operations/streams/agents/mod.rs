@@ -6,6 +6,7 @@ mod copilot;
 mod copilot_cli;
 pub mod copilot_otel;
 mod cursor;
+mod discovery;
 mod droid;
 mod gemini;
 pub mod opencode;

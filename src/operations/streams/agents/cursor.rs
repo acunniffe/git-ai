@@ -1,12 +1,12 @@
 //! Cursor agent implementation with sweep discovery.
 
+use super::discovery::{collect_files_recursively, stem_session_binding};
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
 use crate::operations::streams::agent::{Agent, StreamDescriptor, discover_path_sessions};
 use crate::operations::streams::reader::read_jsonl_byte_stream;
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::operations::streams::timestamp::file_time_fallback;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -39,31 +39,11 @@ impl CursorAgent {
 
     /// Scan for Cursor conversation files in standard locations.
     fn scan_conversation_files() -> Vec<PathBuf> {
-        let mut paths = Vec::new();
-
-        for dir in Self::conversation_roots() {
-            if dir.exists() {
-                Self::scan_jsonl_recursive(&dir, &mut paths);
-            }
-        }
-
-        paths
-    }
-
-    fn scan_jsonl_recursive(dir: &Path, paths: &mut Vec<PathBuf>) {
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                Self::scan_jsonl_recursive(&path, paths);
-            } else if path.is_file() && path.extension().map(|ext| ext == "jsonl").unwrap_or(false)
-            {
-                paths.push(path);
-            }
-        }
+        collect_files_recursively(Self::conversation_roots(), |path| {
+            path.extension()
+                .map(|extension| extension == "jsonl")
+                .unwrap_or(false)
+        })
     }
 }
 
@@ -93,7 +73,7 @@ impl Agent for CursorAgent {
                 ) {
                     return None;
                 }
-                Some((path.file_stem()?.to_str()?.to_string(), None))
+                stem_session_binding(path)
             },
         )
     }
@@ -111,7 +91,7 @@ impl Agent for CursorAgent {
         Ok(discover_path_sessions(
             "cursor",
             Self::scan_conversation_files(),
-            |path| Some((path.file_stem()?.to_str()?.to_string(), None)),
+            stem_session_binding,
         ))
     }
 

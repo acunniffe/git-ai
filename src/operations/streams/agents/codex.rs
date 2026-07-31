@@ -1,5 +1,6 @@
 //! Codex agent implementation with sweep discovery.
 
+use super::discovery::{collect_files_recursively, transcript_file_stem};
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
 use crate::operations::mdm::paths::codex_home_dir;
@@ -7,7 +8,7 @@ use crate::operations::streams::agent::{Agent, StreamDescriptor, discover_path_s
 use crate::operations::streams::reader::read_jsonl_byte_stream;
 use crate::operations::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::operations::streams::timestamp::event_timestamp_or_file_time;
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -86,37 +87,16 @@ impl CodexAgent {
     }
 
     fn scan_session_files() -> Vec<PathBuf> {
-        let mut paths = Vec::new();
-
-        for search_dir in Self::session_roots() {
-            if search_dir.exists() {
-                Self::scan_rollout_recursive(&search_dir, &mut paths);
-            }
-        }
-
-        paths
-    }
-
-    fn scan_rollout_recursive(dir: &Path, paths: &mut Vec<PathBuf>) {
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                Self::scan_rollout_recursive(&path, paths);
-            } else if path.is_file()
-                && path.extension().map(|ext| ext == "jsonl").unwrap_or(false)
+        collect_files_recursively(Self::session_roots(), |path| {
+            path.extension()
+                .map(|extension| extension == "jsonl")
+                .unwrap_or(false)
                 && path
                     .file_name()
-                    .and_then(|n| n.to_str())
-                    .map(|n| n.starts_with("rollout-"))
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.starts_with("rollout-"))
                     .unwrap_or(false)
-            {
-                paths.push(path);
-            }
-        }
+        })
     }
 
     /// Detect if a Codex JSONL file is a subagent transcript by reading its first line.
@@ -177,7 +157,7 @@ impl Agent for CodexAgent {
                 ) {
                     return None;
                 }
-                let stem = path.file_stem()?.to_str()?;
+                let stem = transcript_file_stem(path)?;
                 if !stem.starts_with("rollout-") || stem.len() < 36 {
                     return None;
                 }
@@ -203,7 +183,7 @@ impl Agent for CodexAgent {
             Self::scan_session_files(),
             |path| {
                 // The hook payload sends the UUID suffix from the rollout filename.
-                let stem = path.file_stem()?.to_str()?;
+                let stem = transcript_file_stem(path)?;
                 if stem.len() < 36 {
                     return None;
                 }

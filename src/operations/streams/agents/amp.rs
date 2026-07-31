@@ -1,5 +1,6 @@
 //! Amp agent implementation with sweep discovery.
 
+use super::discovery::stem_session_binding;
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
 use crate::operations::streams::agent::{Agent, StreamDescriptor, discover_path_sessions};
@@ -97,7 +98,7 @@ impl Agent for AmpAgent {
                 {
                     return None;
                 }
-                Some((path.file_stem()?.to_str()?.to_string(), None))
+                stem_session_binding(path)
             },
         )
     }
@@ -129,9 +130,7 @@ impl Agent for AmpAgent {
             path.is_file()
                 && path.extension().and_then(|extension| extension.to_str()) == Some("json")
         });
-        Ok(discover_path_sessions("amp", paths, |path| {
-            Some((path.file_stem()?.to_str()?.to_string(), None))
-        }))
+        Ok(discover_path_sessions("amp", paths, stem_session_binding))
     }
 
     fn read_incremental(

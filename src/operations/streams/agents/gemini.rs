@@ -1,5 +1,6 @@
 //! Gemini agent implementation with sweep discovery.
 
+use super::discovery::stem_session_binding;
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::WatermarkStrategy;
 use crate::operations::mdm::paths::gemini_config_dir;
@@ -103,7 +104,7 @@ impl Agent for GeminiAgent {
                 if !name.starts_with("session-") {
                     return None;
                 }
-                Some((path.file_stem()?.to_str()?.to_string(), None))
+                stem_session_binding(path)
             },
         )
     }
@@ -120,7 +121,7 @@ impl Agent for GeminiAgent {
         Ok(discover_path_sessions(
             "gemini",
             Self::scan_session_files(),
-            |path| Some((path.file_stem()?.to_str()?.to_string(), None)),
+            stem_session_binding,
         ))
     }
 

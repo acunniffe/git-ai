@@ -1,5 +1,6 @@
 //! GitHub Copilot agent implementation with sweep discovery.
 
+use super::discovery::stem_session_binding;
 use crate::model::stream_types::{StreamBatch, StreamError};
 use crate::model::stream_watermark::{WatermarkStrategy, WatermarkType};
 use crate::operations::streams::agent::{
@@ -268,7 +269,7 @@ impl Agent for CopilotAgent {
                 ) {
                     return None;
                 }
-                Some((path.file_stem()?.to_str()?.to_string(), None))
+                stem_session_binding(path)
             },
         )
     }
@@ -286,7 +287,7 @@ impl Agent for CopilotAgent {
         Ok(discover_path_sessions(
             "github-copilot",
             Self::scan_transcript_files(),
-            |path| Some((path.file_stem()?.to_str()?.to_string(), None)),
+            stem_session_binding,
         ))
     }
 
