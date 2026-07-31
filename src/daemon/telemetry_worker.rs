@@ -34,6 +34,7 @@ const MAX_DAEMON_LOG_BUFFER_EVENTS: usize = 5000;
 
 static METRICS_UPLOAD_AVAILABLE: AtomicBool = AtomicBool::new(false);
 static METRICS_METADATA_BACKFILL_STARTED: AtomicBool = AtomicBool::new(false);
+static DAEMON_RUN_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static DAEMON_LOG_UPLOAD_IN_FLIGHT: std::sync::OnceLock<Arc<AtomicBool>> =
     std::sync::OnceLock::new();
 
@@ -439,7 +440,7 @@ pub fn spawn_telemetry_worker() -> DaemonTelemetryWorkerHandle {
         buffer: buffer.clone(),
         flush_tx,
     };
-    let daemon_id = crate::uuid::generate_v4();
+    let daemon_id = daemon_run_id().to_string();
 
     spawn_metrics_metadata_backfill();
 
@@ -939,6 +940,10 @@ fn daemon_log_upload_enabled() -> bool {
     Config::fresh().get_feature_flags().daemon_log_upload
 }
 
+fn daemon_run_id() -> &'static str {
+    DAEMON_RUN_ID.get_or_init(crate::uuid::generate_v4).as_str()
+}
+
 fn daemon_heartbeat_event(uptime: std::time::Duration) -> DaemonLogEvent {
     let mut fields = BTreeMap::new();
     fields.insert(
@@ -1058,6 +1063,58 @@ fn flush_daemon_logs(events: Vec<DaemonLogEvent>, daemon_id: &str, install_id: &
     upload_daemon_log_chunk(events, daemon_id, install_id, |request| {
         client.upload_daemon_logs(request).map(|_| ())
     })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum EmergencyLogUploadStatus {
+    Completed,
+    TimedOut,
+    ThreadUnavailable,
+}
+
+/// Give one emergency diagnostic a bounded chance to reach the log endpoint.
+///
+/// Normal daemon-log delivery is deliberately fire-and-forget. Memory-limit
+/// shutdown cannot rely on that worker surviving process exit, so this path
+/// waits briefly for its own upload without allowing a stuck network request to
+/// keep an unhealthy daemon alive.
+pub(super) fn upload_emergency_daemon_log(
+    event: DaemonLogEvent,
+    timeout: std::time::Duration,
+) -> EmergencyLogUploadStatus {
+    upload_emergency_daemon_log_with(event, timeout, |event| {
+        let install_id = get_or_create_distinct_id();
+        let _ = flush_daemon_logs(vec![event], daemon_run_id(), &install_id);
+    })
+}
+
+fn upload_emergency_daemon_log_with<Upload>(
+    event: DaemonLogEvent,
+    timeout: std::time::Duration,
+    upload: Upload,
+) -> EmergencyLogUploadStatus
+where
+    Upload: FnOnce(DaemonLogEvent) + Send + 'static,
+{
+    let (completion_tx, completion_rx) = std::sync::mpsc::sync_channel(0);
+    let spawn_result = std::thread::Builder::new()
+        .name("git-ai-emergency-log-upload".to_string())
+        .spawn(move || {
+            upload(event);
+            let _ = completion_tx.send(());
+        });
+
+    if spawn_result.is_err() {
+        return EmergencyLogUploadStatus::ThreadUnavailable;
+    }
+
+    match completion_rx.recv_timeout(timeout) {
+        Ok(()) => EmergencyLogUploadStatus::Completed,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => EmergencyLogUploadStatus::TimedOut,
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            EmergencyLogUploadStatus::ThreadUnavailable
+        }
+    }
 }
 
 fn upload_daemon_log_chunk<Upload>(
@@ -2208,6 +2265,45 @@ mod tests {
             std::thread::sleep(Duration::from_millis(1));
         }
         assert!(!in_flight.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn emergency_daemon_log_upload_waits_for_completion() {
+        let (uploaded_tx, uploaded_rx) = std::sync::mpsc::channel();
+
+        let status = upload_emergency_daemon_log_with(
+            sample_daemon_log_event("memory emergency"),
+            Duration::from_secs(1),
+            move |event| uploaded_tx.send(event.message).unwrap(),
+        );
+
+        assert_eq!(status, EmergencyLogUploadStatus::Completed);
+        assert_eq!(uploaded_rx.recv().unwrap(), "memory emergency");
+    }
+
+    #[test]
+    fn emergency_daemon_log_upload_reuses_the_daemon_run_id() {
+        let run_id = daemon_run_id().to_string();
+
+        assert_eq!(daemon_run_id(), run_id);
+    }
+
+    #[test]
+    fn emergency_daemon_log_upload_has_a_hard_wait_bound() {
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let started_at = std::time::Instant::now();
+
+        let status = upload_emergency_daemon_log_with(
+            sample_daemon_log_event("memory emergency"),
+            Duration::from_millis(10),
+            move |_event| {
+                let _ = release_rx.recv_timeout(Duration::from_secs(1));
+            },
+        );
+
+        assert_eq!(status, EmergencyLogUploadStatus::TimedOut);
+        assert!(started_at.elapsed() < Duration::from_millis(500));
+        release_tx.send(()).unwrap();
     }
 
     #[test]
