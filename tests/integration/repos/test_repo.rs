@@ -1266,6 +1266,12 @@ impl TestRepo {
                 serde_json::Value::Number(serde_json::Number::from(max_lines as u64)),
             );
         }
+        if let Some(limit_mb) = patch.daemon_memory_limit_mb {
+            config.insert(
+                "daemon_memory_limit_mb".to_string(),
+                serde_json::Value::Number(serde_json::Number::from(limit_mb)),
+            );
+        }
 
         let config_dir = home.join(".git-ai");
         fs::create_dir_all(&config_dir).expect("failed to create test HOME config directory");
