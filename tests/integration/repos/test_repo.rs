@@ -71,6 +71,110 @@ const TEST_SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(120);
 #[cfg(not(windows))]
 const TEST_SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// A test-only real-Git process with explicit command setup.
+///
+/// Keep this separate from [`TestRepo::git`] and [`TestRepo::git_og`]: callers
+/// use it when they must control low-level Git invocation details without
+/// daemon synchronization or git-ai proxy behavior.
+pub(crate) struct RawGitCommand<'a> {
+    command: Command,
+    args: &'a [&'a str],
+    stdin_data: Option<&'a [u8]>,
+}
+
+impl<'a> RawGitCommand<'a> {
+    pub(crate) fn in_working_dir(workdir: &Path, args: &'a [&'a str]) -> Self {
+        let mut command = Command::new(real_git_executable());
+        command.current_dir(workdir);
+        Self {
+            command,
+            args,
+            stdin_data: None,
+        }
+    }
+
+    pub(crate) fn with_git_c(repo_path: &Path, args: &'a [&'a str]) -> Self {
+        let mut command = Command::new(real_git_executable());
+        command.arg("-C").arg(repo_path);
+        Self {
+            command,
+            args,
+            stdin_data: None,
+        }
+    }
+
+    pub(crate) fn with_config(mut self, key: &str, value: &str) -> Self {
+        self.command.arg("-c").arg(format!("{key}={value}"));
+        self
+    }
+
+    pub(crate) fn without_hooks(self) -> Self {
+        self.with_config("core.hooksPath", "/dev/null")
+    }
+
+    pub(crate) fn env(
+        mut self,
+        key: impl AsRef<std::ffi::OsStr>,
+        value: impl AsRef<std::ffi::OsStr>,
+    ) -> Self {
+        self.command.env(key, value);
+        self
+    }
+
+    pub(crate) fn configure(mut self, configure: impl FnOnce(&mut Command)) -> Self {
+        configure(&mut self.command);
+        self
+    }
+
+    pub(crate) fn with_stdin(mut self, stdin_data: &'a [u8]) -> Self {
+        self.stdin_data = Some(stdin_data);
+        self
+    }
+
+    pub(crate) fn output(mut self) -> Result<Output, String> {
+        self.command.args(self.args);
+        let label = format!("raw git {:?}", self.args);
+        if let Some(stdin_data) = self.stdin_data {
+            run_command_output_with_stdin(&mut self.command, &label, stdin_data)
+        } else {
+            run_command_output(&mut self.command, &label)
+        }
+    }
+}
+
+/// Run real Git plumbing with a deterministic test identity and hooks disabled.
+///
+/// This preserves the low-level behavior needed by tests that construct Git
+/// objects directly while sharing process setup and captured-output handling.
+pub(crate) fn run_raw_git_plumbing(
+    repo_path: &Path,
+    args: &[&str],
+    stdin_data: Option<&[u8]>,
+) -> String {
+    let command = RawGitCommand::with_git_c(repo_path, args)
+        .without_hooks()
+        .with_config("user.name", "Test")
+        .with_config("user.email", "test@test.com");
+    let command = if let Some(stdin_data) = stdin_data {
+        command.with_stdin(stdin_data)
+    } else {
+        command
+    };
+    let output = command
+        .output()
+        .expect("failed to run raw git plumbing command");
+    assert!(
+        output.status.success(),
+        "git {:?} failed: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout)
+        .expect("non-utf8 git output")
+        .trim()
+        .to_string()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DaemonTestScope {
     Shared,
@@ -3919,6 +4023,92 @@ pub fn get_binary_path() -> &'static PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn raw_git_command_supports_common_test_plumbing() {
+        let temp_dir = tempfile::tempdir().expect("temporary repo directory should be created");
+        let repo_path = temp_dir.path();
+
+        let init_output = RawGitCommand::in_working_dir(repo_path, &["init"])
+            .output()
+            .expect("raw git init should run");
+        assert!(init_output.status.success());
+
+        let workdir_output =
+            RawGitCommand::in_working_dir(repo_path, &["rev-parse", "--show-toplevel"])
+                .output()
+                .expect("raw git command should run");
+        assert!(workdir_output.status.success());
+        assert_eq!(
+            String::from_utf8(workdir_output.stdout)
+                .expect("git output should be utf-8")
+                .trim(),
+            repo_path
+                .canonicalize()
+                .expect("repo path should canonicalize")
+                .to_str()
+                .expect("repo path should be utf-8")
+        );
+
+        let stdin_output = RawGitCommand::in_working_dir(repo_path, &["hash-object", "--stdin"])
+            .with_stdin(b"raw git test input")
+            .output()
+            .expect("raw git command with stdin should run");
+        assert!(stdin_output.status.success());
+        assert!(!stdin_output.stdout.is_empty());
+
+        let failed_output =
+            RawGitCommand::in_working_dir(repo_path, &["rev-parse", "--verify", "missing-ref"])
+                .output()
+                .expect("failed raw git command should still return its output");
+        assert!(!failed_output.status.success());
+        assert!(!failed_output.stderr.is_empty());
+
+        let plumbing_output = run_raw_git_plumbing(
+            repo_path,
+            &["hash-object", "--stdin"],
+            Some(b"raw git plumbing test input"),
+        );
+        assert!(!plumbing_output.is_empty());
+
+        let configured_output =
+            RawGitCommand::in_working_dir(repo_path, &["config", "--get", "user.name"])
+                .with_config("user.name", "Raw Git Test")
+                .output()
+                .expect("configured raw git command should run");
+        assert!(configured_output.status.success());
+        assert_eq!(
+            String::from_utf8(configured_output.stdout)
+                .expect("git output should be utf-8")
+                .trim(),
+            "Raw Git Test"
+        );
+
+        let hooks_output =
+            RawGitCommand::in_working_dir(repo_path, &["config", "--get", "core.hooksPath"])
+                .without_hooks()
+                .output()
+                .expect("raw git command with hooks disabled should run");
+        assert!(hooks_output.status.success());
+        assert_eq!(
+            String::from_utf8(hooks_output.stdout)
+                .expect("git output should be utf-8")
+                .trim(),
+            "/dev/null"
+        );
+
+        let author_output = RawGitCommand::in_working_dir(repo_path, &["var", "GIT_AUTHOR_IDENT"])
+            .env("GIT_AUTHOR_NAME", "Raw Git Author")
+            .env("GIT_AUTHOR_EMAIL", "raw-git@example.com")
+            .output()
+            .expect("raw git command with environment should run");
+        assert!(author_output.status.success());
+        assert!(
+            String::from_utf8(author_output.stdout)
+                .expect("git output should be utf-8")
+                .starts_with("Raw Git Author <raw-git@example.com>")
+        );
+    }
 
     #[test]
     fn test_configure_test_home_env_isolates_notes_database() {

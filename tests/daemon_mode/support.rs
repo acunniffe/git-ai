@@ -48,8 +48,8 @@ use git_ai::operations::daemon::{
 };
 use repos::test_file::ExpectedLineExt;
 use repos::test_repo::{
-    DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS, DaemonTestCompletionLogEntry, DaemonTestScope, TestRepo,
-    get_binary_path, is_windows_loader_init_failure, real_git_executable,
+    DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS, DaemonTestCompletionLogEntry, DaemonTestScope,
+    RawGitCommand, TestRepo, get_binary_path, is_windows_loader_init_failure, real_git_executable,
 };
 use serde_json::Value;
 use serde_json::json;
@@ -737,10 +737,8 @@ impl WorkdirRaceHarness {
     }
 
     fn run_traced_git(&self, workdir: &Path, args: &[&str]) {
-        let mut command = Command::new(real_git_executable());
-        command.args(args).current_dir(workdir);
-        configure_test_home_env(&mut command, &self.test_home);
-        let output = command
+        let output = RawGitCommand::in_working_dir(workdir, args)
+            .configure(|command| configure_test_home_env(command, &self.test_home))
             .env("GIT_AI_TEST_DB_PATH", &self.test_db_path)
             .env("GITAI_TEST_DB_PATH", &self.test_db_path)
             .env(

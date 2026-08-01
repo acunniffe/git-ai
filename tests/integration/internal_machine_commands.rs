@@ -1,8 +1,6 @@
-use crate::repos::test_repo::{TestRepo, real_git_executable};
+use crate::repos::test_repo::{TestRepo, run_raw_git_plumbing};
 use serde_json::json;
 use std::fs;
-use std::io::Write;
-use std::process::{Command, Stdio};
 
 #[test]
 fn test_effective_ignore_patterns_internal_command_json() {
@@ -195,48 +193,6 @@ fn test_fetch_authorship_notes_fails_when_local_notes_ref_cannot_update() {
     );
 }
 
-/// Helper to run a raw git command with stdin piped, returning trimmed stdout.
-fn git_plumbing(repo_path: &std::path::Path, args: &[&str], stdin_data: Option<&[u8]>) -> String {
-    let git = real_git_executable();
-    let mut cmd = Command::new(git);
-    cmd.arg("-C")
-        .arg(repo_path)
-        .arg("-c")
-        .arg("core.hooksPath=/dev/null")
-        .arg("-c")
-        .arg("user.name=Test")
-        .arg("-c")
-        .arg("user.email=test@test.com")
-        .args(args);
-    if stdin_data.is_some() {
-        cmd.stdin(Stdio::piped());
-    }
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-    let mut child = cmd.spawn().expect("failed to spawn git plumbing command");
-
-    if let Some(data) = stdin_data {
-        child
-            .stdin
-            .take()
-            .unwrap()
-            .write_all(data)
-            .expect("failed to write stdin");
-    }
-
-    let output = child.wait_with_output().expect("failed to wait for git");
-    assert!(
-        output.status.success(),
-        "git {:?} failed: {}",
-        args,
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout)
-        .expect("non-utf8 git output")
-        .trim()
-        .to_string()
-}
-
 /// Reproduces a bug where `git notes merge -s ours` crashes with:
 ///   Assertion failed: (is_null_oid(&mp->remote)), function diff_tree_remote,
 ///   file notes-merge.c, line 170.
@@ -268,7 +224,7 @@ fn test_push_authorship_notes_survives_corrupted_remote_notes_tree() {
     let rest = &commit_sha[2..];
 
     // Create a note blob on upstream (independent of mirror's notes)
-    let note_blob = git_plumbing(
+    let note_blob = run_raw_git_plumbing(
         upstream.path(),
         &["hash-object", "-w", "--stdin"],
         Some(br#"{"author":"remote"}"#),
@@ -276,7 +232,7 @@ fn test_push_authorship_notes_survives_corrupted_remote_notes_tree() {
 
     // Build inner tree (fanout: prefix/rest -> blob)
     let inner_tree_input = format!("100644 blob {}\t{}\n", note_blob, rest);
-    let inner_tree = git_plumbing(
+    let inner_tree = run_raw_git_plumbing(
         upstream.path(),
         &["mktree"],
         Some(inner_tree_input.as_bytes()),
@@ -287,7 +243,7 @@ fn test_push_authorship_notes_survives_corrupted_remote_notes_tree() {
         "100644 blob {}\t{}\n040000 tree {}\t{}\n",
         note_blob, commit_sha, inner_tree, prefix
     );
-    let mixed_tree = git_plumbing(
+    let mixed_tree = run_raw_git_plumbing(
         upstream.path(),
         &["mktree"],
         Some(mixed_tree_input.as_bytes()),
@@ -295,7 +251,7 @@ fn test_push_authorship_notes_survives_corrupted_remote_notes_tree() {
 
     // Create a root commit (NO parent) — this ensures no common merge base
     // with the mirror's notes ref, which is what triggers the assertion.
-    let corrupted_commit = git_plumbing(
+    let corrupted_commit = run_raw_git_plumbing(
         upstream.path(),
         &[
             "commit-tree",
@@ -305,7 +261,7 @@ fn test_push_authorship_notes_survives_corrupted_remote_notes_tree() {
         ],
         None,
     );
-    git_plumbing(
+    run_raw_git_plumbing(
         upstream.path(),
         &["update-ref", "refs/notes/ai", &corrupted_commit],
         None,
@@ -336,7 +292,7 @@ fn test_push_authorship_notes_survives_corrupted_remote_notes_tree() {
     );
 
     // 6. Verify both notes are present on upstream after push
-    let notes_list = git_plumbing(upstream.path(), &["notes", "--ref=ai", "list"], None);
+    let notes_list = run_raw_git_plumbing(upstream.path(), &["notes", "--ref=ai", "list"], None);
     assert!(
         notes_list.contains(&commit_sha),
         "upstream should have note for first commit"
@@ -368,7 +324,7 @@ fn test_push_authorship_notes_retries_on_concurrent_push() {
     // branch push can already push authorship notes through the normal push
     // path, so set the bare fixture ref directly instead of racing remote
     // receive policy during test setup.
-    git_plumbing(
+    run_raw_git_plumbing(
         upstream.path(),
         &[
             "fetch",
@@ -381,7 +337,7 @@ fn test_push_authorship_notes_retries_on_concurrent_push() {
     // 3. Create a second clone that simulates the concurrent pusher
     let clone2_path = mirror.path().with_extension("concurrent-clone");
     let _ = fs::remove_dir_all(&clone2_path);
-    git_plumbing(
+    run_raw_git_plumbing(
         mirror.path(),
         &[
             "clone",
@@ -391,13 +347,13 @@ fn test_push_authorship_notes_retries_on_concurrent_push() {
         None,
     );
     // Configure clone2 and fetch notes
-    git_plumbing(
+    run_raw_git_plumbing(
         &clone2_path,
         &["config", "user.email", "other@test.com"],
         None,
     );
-    git_plumbing(&clone2_path, &["config", "user.name", "Other"], None);
-    git_plumbing(
+    run_raw_git_plumbing(&clone2_path, &["config", "user.name", "Other"], None);
+    run_raw_git_plumbing(
         &clone2_path,
         &["fetch", "origin", "+refs/notes/ai:refs/notes/ai"],
         None,
@@ -406,10 +362,10 @@ fn test_push_authorship_notes_retries_on_concurrent_push() {
     // 4. Other clone makes a commit with a note and pushes notes to upstream.
     //    This advances remote refs/notes/ai beyond what mirror has fetched.
     fs::write(clone2_path.join("b.txt"), "b\n").expect("write b");
-    git_plumbing(&clone2_path, &["add", "b.txt"], None);
-    git_plumbing(&clone2_path, &["commit", "-m", "other commit"], None);
-    let other_sha = git_plumbing(&clone2_path, &["rev-parse", "HEAD"], None);
-    git_plumbing(
+    run_raw_git_plumbing(&clone2_path, &["add", "b.txt"], None);
+    run_raw_git_plumbing(&clone2_path, &["commit", "-m", "other commit"], None);
+    let other_sha = run_raw_git_plumbing(&clone2_path, &["rev-parse", "HEAD"], None);
+    run_raw_git_plumbing(
         &clone2_path,
         &[
             "notes",
@@ -421,7 +377,7 @@ fn test_push_authorship_notes_retries_on_concurrent_push() {
         ],
         None,
     );
-    git_plumbing(
+    run_raw_git_plumbing(
         &clone2_path,
         &["push", "origin", "refs/notes/ai:refs/notes/ai"],
         None,
@@ -454,7 +410,7 @@ fn test_push_authorship_notes_retries_on_concurrent_push() {
     );
 
     // 7. Verify all notes are present on upstream
-    let notes_list = git_plumbing(upstream.path(), &["notes", "--ref=ai", "list"], None);
+    let notes_list = run_raw_git_plumbing(upstream.path(), &["notes", "--ref=ai", "list"], None);
     assert!(
         notes_list.contains(&commit1.commit_sha),
         "upstream should have note for mirror's first commit"

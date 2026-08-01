@@ -1,49 +1,4 @@
-use crate::repos::test_repo::{TestRepo, real_git_executable};
-use std::io::Write;
-use std::process::{Command, Stdio};
-
-/// Run a raw git command against a repo path, bypassing hooks.
-/// Returns trimmed stdout. Panics on failure.
-fn git_plumbing(repo_path: &std::path::Path, args: &[&str], stdin_data: Option<&[u8]>) -> String {
-    let git = real_git_executable();
-    let mut cmd = Command::new(git);
-    cmd.arg("-C")
-        .arg(repo_path)
-        .arg("-c")
-        .arg("core.hooksPath=/dev/null")
-        .arg("-c")
-        .arg("user.name=Test")
-        .arg("-c")
-        .arg("user.email=test@test.com")
-        .args(args);
-    if stdin_data.is_some() {
-        cmd.stdin(Stdio::piped());
-    }
-    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-    let mut child = cmd.spawn().expect("failed to spawn git plumbing command");
-
-    if let Some(data) = stdin_data {
-        child
-            .stdin
-            .take()
-            .unwrap()
-            .write_all(data)
-            .expect("failed to write stdin");
-    }
-
-    let output = child.wait_with_output().expect("failed to wait for git");
-    assert!(
-        output.status.success(),
-        "git {:?} failed: {}",
-        args,
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8(output.stdout)
-        .expect("non-utf8 git output")
-        .trim()
-        .to_string()
-}
+use crate::repos::test_repo::{TestRepo, run_raw_git_plumbing};
 
 /// Reproduces a real-world failure from a large monorepo (~1000 engineers) where
 /// users with a locally corrupted notes tree are permanently blocked from syncing.
@@ -91,8 +46,8 @@ fn test_fetch_notes_with_locally_corrupted_mixed_fanout_tree() {
     // This simulates another developer's commit on the monorepo that this user
     // hasn't fetched to their working copy. Commit C's note will only exist on
     // the remote side of the merge.
-    let upstream_tree = git_plumbing(upstream.path(), &["rev-parse", "HEAD^{tree}"], None);
-    let sha_c = git_plumbing(
+    let upstream_tree = run_raw_git_plumbing(upstream.path(), &["rev-parse", "HEAD^{tree}"], None);
+    let sha_c = run_raw_git_plumbing(
         upstream.path(),
         &[
             "commit-tree",
@@ -109,17 +64,17 @@ fn test_fetch_notes_with_locally_corrupted_mixed_fanout_tree() {
     let rest_c = &sha_c[2..];
 
     // -- Step 3: Create note blobs on upstream. --
-    let blob_base = git_plumbing(
+    let blob_base = run_raw_git_plumbing(
         upstream.path(),
         &["hash-object", "-w", "--stdin"],
         Some(b"note-base"),
     );
-    let blob_fixed = git_plumbing(
+    let blob_fixed = run_raw_git_plumbing(
         upstream.path(),
         &["hash-object", "-w", "--stdin"],
         Some(b"note-fixed"),
     );
-    let blob_local = git_plumbing(
+    let blob_local = run_raw_git_plumbing(
         upstream.path(),
         &["hash-object", "-w", "--stdin"],
         Some(b"note-local"),
@@ -161,7 +116,7 @@ M 100644 {blob_local} {prefix_a}/{rest_a}\n\
 \n\
 done\n"
     );
-    git_plumbing(
+    run_raw_git_plumbing(
         upstream.path(),
         &["fast-import", "--quiet", "--done"],
         Some(fi_stream.as_bytes()),
@@ -169,16 +124,18 @@ done\n"
 
     // -- Step 5: Set up the refs. --
     // Upstream refs/notes/ai = fixed remote (what the remote looks like now).
-    let fixed_commit = git_plumbing(upstream.path(), &["rev-parse", "refs/notes/ai-fixed"], None);
-    git_plumbing(
+    let fixed_commit =
+        run_raw_git_plumbing(upstream.path(), &["rev-parse", "refs/notes/ai-fixed"], None);
+    run_raw_git_plumbing(
         upstream.path(),
         &["update-ref", "refs/notes/ai", &fixed_commit],
         None,
     );
 
     // Transfer corrupted local notes to mirror via a temp ref.
-    let local_commit = git_plumbing(upstream.path(), &["rev-parse", "refs/notes/ai-local"], None);
-    git_plumbing(
+    let local_commit =
+        run_raw_git_plumbing(upstream.path(), &["rev-parse", "refs/notes/ai-local"], None);
+    run_raw_git_plumbing(
         upstream.path(),
         &["update-ref", "refs/heads/tmp-local-notes", &local_commit],
         None,
@@ -186,13 +143,13 @@ done\n"
     mirror
         .git_og(&["fetch", "origin", "refs/heads/tmp-local-notes"])
         .expect("fetch local notes objects");
-    let fetched_local = git_plumbing(mirror.path(), &["rev-parse", "FETCH_HEAD"], None);
-    git_plumbing(
+    let fetched_local = run_raw_git_plumbing(mirror.path(), &["rev-parse", "FETCH_HEAD"], None);
+    run_raw_git_plumbing(
         mirror.path(),
         &["update-ref", "refs/notes/ai", &fetched_local],
         None,
     );
-    git_plumbing(
+    run_raw_git_plumbing(
         upstream.path(),
         &["update-ref", "-d", "refs/heads/tmp-local-notes"],
         None,
@@ -205,7 +162,8 @@ done\n"
         "precondition failed: mirror should NOT have commit C as a git object"
     );
     // Mirror's local notes tree should be corrupted (both flat and fanout for A).
-    let tree_listing = git_plumbing(mirror.path(), &["ls-tree", "-r", "refs/notes/ai"], None);
+    let tree_listing =
+        run_raw_git_plumbing(mirror.path(), &["ls-tree", "-r", "refs/notes/ai"], None);
     assert!(
         tree_listing.contains(&sha_a) && tree_listing.contains(&format!("{}/{}", prefix_a, rest_a)),
         "precondition failed: local notes tree should have mixed fanout for commit A\n\
@@ -237,7 +195,7 @@ done\n"
     // an assertion failure (or error) in git's notes-merge.c diff_tree_remote.
     // We save the local notes ref before the attempt so we can restore it after,
     // since a failed merge may leave the ref in a dirty state.
-    let pre_merge_tip = git_plumbing(mirror.path(), &["rev-parse", "refs/notes/ai"], None);
+    let pre_merge_tip = run_raw_git_plumbing(mirror.path(), &["rev-parse", "refs/notes/ai"], None);
     let native_merge_result = mirror.git_og(&[
         "notes",
         "--ref=ai",
@@ -255,7 +213,7 @@ done\n"
     );
     // Restore refs/notes/ai to its pre-merge state in case the failed merge
     // left behind a dirty .git/NOTES_MERGE_* worktree.
-    git_plumbing(
+    run_raw_git_plumbing(
         mirror.path(),
         &["update-ref", "refs/notes/ai", &pre_merge_tip],
         None,
@@ -285,7 +243,7 @@ done\n"
     //   - The fallback uses `M` (filemodify) instead of `N` (notemodify), so it
     //     doesn't require the annotated object to exist locally
     //   - All notes (including commit C's) are written successfully
-    let final_notes = git_plumbing(mirror.path(), &["notes", "--ref=ai", "list"], None);
+    let final_notes = run_raw_git_plumbing(mirror.path(), &["notes", "--ref=ai", "list"], None);
     assert!(
         final_notes.contains(&sha_c),
         "commit C's note should be present after merge (merged from remote).\n\n\
