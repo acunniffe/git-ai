@@ -4039,15 +4039,22 @@ mod tests {
                 .output()
                 .expect("raw git command should run");
         assert!(workdir_output.status.success());
-        assert_eq!(
+
+        // Git emits a normal absolute path on Windows, while canonicalize()
+        // uses the equivalent verbatim-path form. Compare canonical locations
+        // so the assertion checks the repository root rather than its spelling.
+        let git_workdir = PathBuf::from(
             String::from_utf8(workdir_output.stdout)
                 .expect("git output should be utf-8")
                 .trim(),
+        )
+        .canonicalize()
+        .expect("git-reported worktree should canonicalize");
+        assert_eq!(
+            git_workdir,
             repo_path
                 .canonicalize()
                 .expect("repo path should canonicalize")
-                .to_str()
-                .expect("repo path should be utf-8")
         );
 
         let stdin_output = RawGitCommand::in_working_dir(repo_path, &["hash-object", "--stdin"])
