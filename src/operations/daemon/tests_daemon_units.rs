@@ -8,6 +8,7 @@ use crate::operations::daemon::cherry_pick_helpers::{
     rebase_new_tip_from_command, revert_source_args_for_side_effect,
 };
 use crate::operations::daemon::revert_rebase_helpers::strict_rebase_original_head_from_command;
+use crate::operations::daemon::side_effect_helpers::commit_parent_pairs_from_log;
 use serial_test::serial;
 use std::collections::HashMap;
 use std::ffi::OsString;
@@ -232,6 +233,17 @@ fn revert_side_effect_source_named_like_command_is_not_dropped() {
     assert_eq!(
         revert_source_args_for_side_effect(&command),
         vec!["revert".to_string()]
+    );
+}
+
+#[test]
+fn parent_diff_batch_ignores_root_and_missing_parent_log_entries() {
+    assert_eq!(
+        commit_parent_pairs_from_log("root\nchild root\nmissing-parent\nmerge first second\n"),
+        vec![
+            ("child".to_string(), "root".to_string()),
+            ("merge".to_string(), "first".to_string()),
+        ]
     );
 }
 

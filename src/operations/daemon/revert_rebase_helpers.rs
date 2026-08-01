@@ -1,8 +1,10 @@
 use crate::error::GitAiError;
 use crate::model::domain::RewriteEvent;
+use crate::operations::daemon::parent_diff_batch::{
+    ParentDiffBatch, rewrite_metric_commits_with_parent_diffs,
+};
 use crate::operations::git::cli_parser::explicit_rebase_branch_arg;
 use crate::operations::git::oid::is_non_zero_oid;
-use std::collections::HashMap;
 
 fn revert_destination_changes(
     cmd: &crate::model::domain::NormalizedCommand,
@@ -81,53 +83,25 @@ pub(crate) fn apply_cherry_pick_complete_rewrite(
         commit_parent_pairs.push((commit_sha.clone(), parent.clone()));
         parent = commit_sha.clone();
     }
-    let qualifying: Vec<&(String, String)> = commit_parent_pairs
-        .iter()
-        .filter(|(_, parent_sha)| repo.storage.has_working_log(parent_sha))
-        .collect();
-    let diff_pairs: Vec<(String, String)> = qualifying
-        .iter()
-        .map(|(commit_sha, parent_sha)| (parent_sha.clone(), commit_sha.clone()))
-        .collect();
-    let diff_results = if diff_pairs.is_empty() {
-        Vec::new()
-    } else {
-        crate::operations::authorship::rewrite::compute_diff_trees_batch(repo, &diff_pairs)?
-    };
-    let diff_by_commit: HashMap<&str, &crate::operations::authorship::rewrite::DiffTreeResult> =
-        qualifying
-            .iter()
-            .zip(diff_results.iter())
-            .map(|((commit_sha, _), result)| (commit_sha.as_str(), result))
-            .collect();
-
-    super::flush_pending_note_writes(
-        repo,
-        &commit_parent_pairs,
-        &existing_notes,
-        author,
-        &diff_by_commit,
-    )?;
+    let parent_diff_batch = ParentDiffBatch::compute(repo, commit_parent_pairs)?;
+    {
+        let diff_by_commit = parent_diff_batch.borrowed_diffs_by_commit();
+        super::flush_pending_note_writes(
+            repo,
+            parent_diff_batch.commit_parent_pairs(),
+            &existing_notes,
+            author,
+            &diff_by_commit,
+        )?;
+    }
 
     let rewrite_metric_commits = if rewrite_metric_commits.is_empty() {
         rewrite_metric_commits
     } else {
-        let parent_by_commit: HashMap<&str, &str> = commit_parent_pairs
-            .iter()
-            .map(|(commit_sha, parent_sha)| (commit_sha.as_str(), parent_sha.as_str()))
-            .collect();
-        rewrite_metric_commits
-            .into_iter()
-            .map(|mut commit| {
-                if let Some(parent_sha) = parent_by_commit.get(commit.new_sha.as_str()) {
-                    commit = commit.with_parent_sha((*parent_sha).to_string());
-                }
-                if let Some(diff) = diff_by_commit.get(commit.new_sha.as_str()) {
-                    commit = commit.with_parent_diff((*diff).clone());
-                }
-                commit
-            })
-            .collect()
+        rewrite_metric_commits_with_parent_diffs(
+            rewrite_metric_commits,
+            parent_diff_batch.into_owned_by_commit(),
+        )
     };
     crate::operations::daemon::rewrite_metrics::spawn_rewrite_commit_metrics(
         repo,

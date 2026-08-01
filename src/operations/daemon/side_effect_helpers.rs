@@ -1,3 +1,6 @@
+use super::parent_diff_batch::{
+    ParentDiffBatch, ParentDiffsByCommit, rewrite_metric_commits_with_parent_diffs,
+};
 use crate::checkpoint_content_budget::CheckpointContentBudget;
 use crate::config;
 use crate::error::GitAiError;
@@ -35,13 +38,22 @@ pub fn stash_base_head(repo: &Repository, stash_sha: &str) -> Option<String> {
         .map(|parent| parent.id().to_string())
 }
 
+pub(crate) fn commit_parent_pairs_from_log(log_output: &str) -> Vec<(String, String)> {
+    log_output
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            Some((parts.next()?.to_string(), parts.next()?.to_string()))
+        })
+        .collect()
+}
+
 /// After a rebase completes, check if any newly-rebased commits were created
 /// from conflict resolution with AI checkpoints. If so, merge those resolution
 /// checkpoints into the already-shifted source authorship note for the new commit.
 #[derive(Default)]
 pub struct RewriteMetricContext {
-    parent_by_commit: HashMap<String, String>,
-    parent_diff_by_commit: HashMap<String, crate::operations::authorship::rewrite::DiffTreeResult>,
+    parent_diffs_by_commit: ParentDiffsByCommit,
 }
 
 pub fn process_conflict_resolution_working_logs(
@@ -64,29 +76,12 @@ pub fn process_conflict_resolution_working_logs(
     let output = crate::clients::git_cli::exec_git(&args)?;
     let log_output = String::from_utf8_lossy(&output.stdout);
 
-    let commit_parent_pairs = log_output
-        .lines()
-        .filter_map(|line| {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            (parts.len() >= 2).then(|| (parts[0].to_string(), parts[1].to_string()))
-        })
-        .collect::<Vec<_>>();
+    let commit_parent_pairs = commit_parent_pairs_from_log(&log_output);
     let commit_shas = commit_parent_pairs
         .iter()
         .map(|(commit_sha, _)| commit_sha.clone())
         .collect::<Vec<_>>();
     let collect_metric_context = crate::operations::authorship::rewrite::rewrite_metrics_enabled();
-    let mut metric_context = if collect_metric_context {
-        RewriteMetricContext {
-            parent_by_commit: commit_parent_pairs
-                .iter()
-                .map(|(commit_sha, parent_sha)| (commit_sha.clone(), parent_sha.clone()))
-                .collect(),
-            parent_diff_by_commit: HashMap::new(),
-        }
-    } else {
-        RewriteMetricContext::default()
-    };
     let existing_notes = crate::operations::git::notes_api::read_notes_batch(repo, &commit_shas)?;
     let author = repo.effective_author_identity().formatted_or_unknown();
 
@@ -94,59 +89,32 @@ pub fn process_conflict_resolution_working_logs(
     // attribution reconstruction; restrict the (expensive) parent->commit diffs
     // to those. Compute ALL of them in ONE batched diff-tree so the per-commit
     // loop below performs no per-commit git spawns.
-    let qualifying: Vec<&(String, String)> = commit_parent_pairs
-        .iter()
-        .filter(|(_, parent_sha)| repo.storage.has_working_log(parent_sha))
-        .collect();
-    let diff_pairs: Vec<(String, String)> = qualifying
-        .iter()
-        .map(|(commit_sha, parent_sha)| (parent_sha.clone(), commit_sha.clone()))
-        .collect();
-    let diff_results = if diff_pairs.is_empty() {
-        Vec::new()
-    } else {
-        crate::operations::authorship::rewrite::compute_diff_trees_batch(repo, &diff_pairs)?
-    };
-    let diff_by_commit: HashMap<&str, &crate::operations::authorship::rewrite::DiffTreeResult> =
-        qualifying
-            .iter()
-            .zip(diff_results.iter())
-            .map(|((commit_sha, _), result)| (commit_sha.as_str(), result))
-            .collect();
-    if collect_metric_context {
-        metric_context.parent_diff_by_commit = qualifying
-            .iter()
-            .zip(diff_results.iter())
-            .map(|((commit_sha, _), result)| (commit_sha.clone(), result.clone()))
-            .collect();
+    let parent_diff_batch = ParentDiffBatch::compute(repo, commit_parent_pairs)?;
+    {
+        let diff_by_commit = parent_diff_batch.borrowed_diffs_by_commit();
+        flush_pending_note_writes(
+            repo,
+            parent_diff_batch.commit_parent_pairs(),
+            &existing_notes,
+            author,
+            &diff_by_commit,
+        )?;
     }
 
-    flush_pending_note_writes(
-        repo,
-        &commit_parent_pairs,
-        &existing_notes,
-        author,
-        &diff_by_commit,
-    )?;
-    Ok(metric_context)
+    Ok(if collect_metric_context {
+        RewriteMetricContext {
+            parent_diffs_by_commit: parent_diff_batch.into_owned_by_commit(),
+        }
+    } else {
+        RewriteMetricContext::default()
+    })
 }
 
 pub(crate) fn rewrite_metric_commits_with_context(
     metric_commits: Vec<crate::operations::authorship::rewrite::RewriteMetricCommit>,
     context: RewriteMetricContext,
 ) -> Vec<crate::operations::authorship::rewrite::RewriteMetricCommit> {
-    metric_commits
-        .into_iter()
-        .map(|mut commit| {
-            if let Some(parent_sha) = context.parent_by_commit.get(&commit.new_sha) {
-                commit = commit.with_parent_sha(parent_sha.clone());
-            }
-            if let Some(diff) = context.parent_diff_by_commit.get(&commit.new_sha) {
-                commit = commit.with_parent_diff(diff.clone());
-            }
-            commit
-        })
-        .collect()
+    rewrite_metric_commits_with_parent_diffs(metric_commits, context.parent_diffs_by_commit)
 }
 
 /// Collect deferred note-writes for conflict-resolved commits and flush them in a
