@@ -8,6 +8,9 @@ use crate::git::repository::Repository;
 #[derive(Debug, Default)]
 pub struct DiffAiAcceptedStats {
     pub total_ai_accepted: u32,
+    /// Lines carrying an `h_`-prefixed KnownHuman attestation. Counted from the
+    /// same blame pass as the AI lines, so this costs no extra git work.
+    pub total_known_human_accepted: u32,
     pub per_tool_model: BTreeMap<String, u32>,
     pub per_prompt: BTreeMap<String, u32>,
 }
@@ -64,14 +67,20 @@ pub fn diff_ai_accepted_stats(
         }
 
         for line in &lines {
-            if let Some(author_hash) = line_authors.get(line)
-                && prompt_records.contains_key(author_hash)
-            {
+            let Some(author_hash) = line_authors.get(line) else {
+                continue;
+            };
+            if prompt_records.contains_key(author_hash) {
                 stats.total_ai_accepted += 1;
                 *stats.per_prompt.entry(author_hash.clone()).or_insert(0) += 1;
                 if let Some(tool_model) = author_tool_map.get(author_hash) {
                     *stats.per_tool_model.entry(tool_model.clone()).or_insert(0) += 1;
                 }
+            } else if author_hash.starts_with("h_") {
+                // KnownHuman attestation: blame reports the `h_` hash as the author
+                // when `use_prompt_hashes_as_names` is set, and it is never a prompt
+                // record. Without this branch these lines fall through to "unknown".
+                stats.total_known_human_accepted += 1;
             }
         }
     }
@@ -173,6 +182,7 @@ mod tests {
     fn test_diff_ai_accepted_stats_default() {
         let stats = DiffAiAcceptedStats::default();
         assert_eq!(stats.total_ai_accepted, 0);
+        assert_eq!(stats.total_known_human_accepted, 0);
         assert_eq!(stats.per_tool_model.len(), 0);
         assert_eq!(stats.per_prompt.len(), 0);
     }
@@ -181,8 +191,7 @@ mod tests {
     fn test_diff_ai_accepted_stats_debug() {
         let stats = DiffAiAcceptedStats {
             total_ai_accepted: 10,
-            per_tool_model: BTreeMap::new(),
-            per_prompt: BTreeMap::new(),
+            ..Default::default()
         };
         let debug_str = format!("{:?}", stats);
         assert!(debug_str.contains("DiffAiAcceptedStats"));

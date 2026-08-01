@@ -423,7 +423,7 @@ fn calculate_range_stats_direct(
         git_diff_added_lines,
         git_diff_deleted_lines,
         diff_ai_stats.total_ai_accepted,
-        0,
+        diff_ai_stats.total_known_human_accepted,
         &diff_ai_stats.per_tool_model,
     );
 

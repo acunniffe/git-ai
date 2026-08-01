@@ -223,9 +223,9 @@ fn test_range_authorship_mixed_commits() {
     // Range authorship merges attributions from start to end, filtering to commits in range
     // The exact AI/human split depends on the merge attribution logic
     assert_eq!(stats.range_stats.ai_additions, 2);
-    // range_authorship passes known_human_accepted=0, so human lines appear as unknown_additions
-    assert_eq!(stats.range_stats.human_additions, 0);
-    assert_eq!(stats.range_stats.unknown_additions, 1);
+    // KnownHuman lines are attested, so they land in human_additions, not unknown_additions
+    assert_eq!(stats.range_stats.human_additions, 1);
+    assert_eq!(stats.range_stats.unknown_additions, 0);
     assert_eq!(stats.range_stats.git_diff_added_lines, 3);
 }
 
@@ -449,10 +449,9 @@ fn test_range_authorship_mixed_lockfile_and_source() {
     assert_eq!(stats.range_stats.git_diff_added_lines, 3); // Only lib.rs, package-lock.json excluded
     // Verify the total is much less than 3003 (if lockfile was included)
     assert!(stats.range_stats.git_diff_added_lines < 100);
-    // Verify that some AI work is detected and unattested lines exist
+    // Verify that some AI work is detected and the KnownHuman line is attested as human
     assert!(stats.range_stats.ai_additions > 0);
-    // range_authorship passes known_human_accepted=0, so human lines show as unknown_additions
-    assert!(stats.range_stats.unknown_additions > 0);
+    assert!(stats.range_stats.human_additions > 0);
 }
 
 #[test]
@@ -1032,4 +1031,108 @@ fn test_range_authorship_with_glob_patterns() {
     // Should only count the 1 line in main.rs, ignoring 1700 lines in lockfiles and generated files
     assert_eq!(stats.range_stats.git_diff_added_lines, 1);
     assert_eq!(stats.range_stats.ai_additions, 1);
+}
+
+/// Regression test for https://github.com/git-ai-project/git-ai/issues/1875
+///
+/// A range query must attribute KnownHuman lines the same way a per-commit
+/// query does. Before the fix, `calculate_range_stats_direct` passed a
+/// hard-coded `known_human_accepted = 0`, so every `h_`-attested line fell
+/// through into `unknown_additions` and `human_additions` was always zero for
+/// ranges. The sum of the per-commit stats is the ground truth the range has to
+/// agree with.
+#[test]
+fn test_range_stats_match_sum_of_per_commit_stats_for_known_human_lines() {
+    use crate::repos::test_file::ExpectedLineExt;
+    use git_ai::authorship::stats::stats_for_commit_stats;
+
+    let repo = TestRepo::new();
+
+    // Base commit: one untracked line, so the range starts from real content.
+    std::fs::write(repo.path().join("test.txt"), "base\n").unwrap();
+    repo.git(&["add", "test.txt"]).unwrap();
+    repo.stage_all_and_commit("Base commit").unwrap();
+    let base_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+    let mut file = repo.filename("test.txt");
+    file.assert_committed_lines(lines!["base".unattributed_human()]);
+
+    // Commit A: AI writes two lines.
+    std::fs::write(repo.path().join("test.txt"), "base\nai one\nai two\n").unwrap();
+    repo.git(&["add", "test.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "test.txt"]).unwrap();
+    repo.stage_all_and_commit("AI commit").unwrap();
+    let ai_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+    file.assert_committed_lines(lines![
+        "base".unattributed_human(),
+        "ai one".ai(),
+        "ai two".ai(),
+    ]);
+
+    // Commit B: a known human writes one line.
+    std::fs::write(
+        repo.path().join("test.txt"),
+        "base\nai one\nai two\nhuman one\n",
+    )
+    .unwrap();
+    repo.git(&["add", "test.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "test.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Known human commit").unwrap();
+    file.assert_committed_lines(lines![
+        "base".unattributed_human(),
+        "ai one".ai(),
+        "ai two".ai(),
+        "human one".human(),
+    ]);
+    let human_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+
+    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let ignore_patterns: Vec<String> = vec![];
+
+    // Ground truth: the per-commit numbers each commit reports for itself.
+    let ai_commit_stats = stats_for_commit_stats(&gitai_repo, &ai_sha, &ignore_patterns).unwrap();
+    let human_commit_stats =
+        stats_for_commit_stats(&gitai_repo, &human_sha, &ignore_patterns).unwrap();
+
+    assert_eq!(ai_commit_stats.ai_additions, 2);
+    assert_eq!(ai_commit_stats.human_additions, 0);
+    assert_eq!(human_commit_stats.ai_additions, 0);
+    assert_eq!(human_commit_stats.human_additions, 1);
+
+    let commit_range = CommitRange::new_infer_refname(
+        &gitai_repo,
+        base_sha.clone(),
+        human_sha.clone(),
+        Some("HEAD".to_string()),
+    )
+    .unwrap();
+    let range = range_authorship(commit_range, false, &ignore_patterns, None).unwrap();
+
+    assert_eq!(
+        range.range_stats.ai_additions,
+        ai_commit_stats.ai_additions + human_commit_stats.ai_additions,
+    );
+    assert_eq!(
+        range.range_stats.human_additions,
+        ai_commit_stats.human_additions + human_commit_stats.human_additions,
+        "range dropped the KnownHuman line that the per-commit query reports",
+    );
+    assert_eq!(
+        range.range_stats.unknown_additions,
+        ai_commit_stats.unknown_additions + human_commit_stats.unknown_additions,
+        "KnownHuman lines leaked into unknown_additions",
+    );
+    assert_eq!(range.range_stats.git_diff_added_lines, 3);
 }
