@@ -2,6 +2,7 @@ use super::carryover_merge::{
     carryover_merge_content, checkout_merge_rebased_content, diff_hunks_between_contents,
     merged_carryover_content_pure,
 };
+use crate::model::imara_diff_utils::split_lines_with_terminators;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[test]
@@ -213,5 +214,14 @@ fn carryover_merge_does_not_treat_crlf_only_observed_chunk_as_change() {
     assert_eq!(
         carryover_merge_content(parent, committed, observed),
         "A\nb\nD\r\n"
+    );
+}
+
+#[test]
+fn shared_line_splitter_preserves_empty_and_crlf_input() {
+    assert_eq!(split_lines_with_terminators(""), Vec::<&str>::new());
+    assert_eq!(
+        split_lines_with_terminators("line1\r\nline2"),
+        vec!["line1\r\n", "line2"]
     );
 }
