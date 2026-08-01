@@ -255,18 +255,9 @@ mod tests {
     }
 
     #[cfg(unix)]
-    const RETRY_THEN_SUCCEED_SCRIPT: &str = r#"#!/bin/sh
-count=0
-if [ -f "$GIT_AI_TEST_EDITOR_CLI_ATTEMPTS" ]; then
-    IFS= read -r count < "$GIT_AI_TEST_EDITOR_CLI_ATTEMPTS"
-fi
-count=$((count + 1))
-printf '%s' "$count" > "$GIT_AI_TEST_EDITOR_CLI_ATTEMPTS"
+    const SUCCESS_SCRIPT: &str = r#"#!/bin/sh
+printf '1' > "$GIT_AI_TEST_EDITOR_CLI_ATTEMPTS"
 printf '%s' "$*" > "$GIT_AI_TEST_EDITOR_CLI_ARGS"
-if [ "$count" -lt 3 ]; then
-    printf 'failure-%s\n' "$count" >&2
-    exit 1
-fi
 if [ "$1" = "--list-extensions" ]; then
     printf 'git-ai.git-ai-vscode\n'
 fi
@@ -275,13 +266,7 @@ exit 0
 
     #[cfg(unix)]
     const ALWAYS_FAIL_SCRIPT: &str = r#"#!/bin/sh
-count=0
-if [ -f "$GIT_AI_TEST_EDITOR_CLI_ATTEMPTS" ]; then
-    IFS= read -r count < "$GIT_AI_TEST_EDITOR_CLI_ATTEMPTS"
-fi
-count=$((count + 1))
-printf '%s' "$count" > "$GIT_AI_TEST_EDITOR_CLI_ATTEMPTS"
-printf 'failure-%s\n' "$count" >&2
+printf 'failure\n' >&2
 exit 1
 "#;
 
@@ -307,33 +292,58 @@ exit 1
 "#;
 
     #[test]
-    #[cfg(unix)]
-    fn list_extensions_retries_three_times_with_two_300ms_delays() {
-        let (_temp_dir, cli, attempts_path, args_path) = scripted_cli(RETRY_THEN_SUCCEED_SCRIPT);
+    fn editor_cli_retry_retries_twice_before_succeeding() {
+        let mut attempts = 0;
         let mut delays = Vec::new();
 
-        assert!(
-            is_vsc_editor_extension_installed_with_sleeper(
-                &cli,
-                GIT_AI_VSCODE_EXTENSION_ID,
-                |delay| delays.push(delay),
-            )
-            .unwrap(),
-            "the third attempt should observe the extension"
-        );
+        run_editor_cli_with_retry(
+            || {
+                attempts += 1;
+                if attempts < 3 {
+                    Err(format!("failure-{attempts}"))
+                } else {
+                    Ok(())
+                }
+            },
+            || "unexpected fallback".to_string(),
+            |delay| delays.push(delay),
+        )
+        .unwrap();
 
         assert_eq!(
             delays,
             [Duration::from_millis(300), Duration::from_millis(300),]
         );
-        assert_eq!(fs::read_to_string(attempts_path).unwrap(), "3");
-        assert_eq!(fs::read_to_string(args_path).unwrap(), "--list-extensions");
+        assert_eq!(attempts, 3);
+    }
+
+    #[test]
+    fn editor_cli_retry_returns_the_last_error() {
+        let mut attempts = 0;
+        let mut delays = Vec::new();
+
+        let error = run_editor_cli_with_retry(
+            || {
+                attempts += 1;
+                Err::<(), _>(format!("failure-{attempts}"))
+            },
+            || "unexpected fallback".to_string(),
+            |delay| delays.push(delay),
+        )
+        .unwrap_err();
+
+        assert_eq!(error.to_string(), "Generic error: failure-3");
+        assert_eq!(
+            delays,
+            [Duration::from_millis(300), Duration::from_millis(300),]
+        );
+        assert_eq!(attempts, 3);
     }
 
     #[test]
     #[cfg(unix)]
-    fn list_extensions_reports_the_last_failed_attempt() {
-        let (_temp_dir, cli, attempts_path, _args_path) = scripted_cli(ALWAYS_FAIL_SCRIPT);
+    fn list_extensions_reports_the_cli_stderr_after_retries() {
+        let (_temp_dir, cli, _attempts_path, _args_path) = scripted_cli(ALWAYS_FAIL_SCRIPT);
 
         let error = is_vsc_editor_extension_installed_with_sleeper(
             &cli,
@@ -342,26 +352,38 @@ exit 1
         )
         .unwrap_err();
 
-        assert_eq!(error.to_string(), "Generic error: failure-3\n");
-        assert_eq!(fs::read_to_string(attempts_path).unwrap(), "3");
+        assert_eq!(error.to_string(), "Generic error: failure\n");
     }
 
     #[test]
     #[cfg(unix)]
-    fn install_extension_retries_three_times_with_two_300ms_delays() {
-        let (_temp_dir, cli, attempts_path, args_path) = scripted_cli(RETRY_THEN_SUCCEED_SCRIPT);
-        let mut delays = Vec::new();
+    fn list_extensions_reads_a_successful_cli_response() {
+        let (_temp_dir, cli, attempts_path, args_path) = scripted_cli(SUCCESS_SCRIPT);
+
+        assert!(
+            is_vsc_editor_extension_installed_with_sleeper(
+                &cli,
+                GIT_AI_VSCODE_EXTENSION_ID,
+                |delay| panic!("successful CLI must not retry: {delay:?}"),
+            )
+            .unwrap()
+        );
+
+        assert_eq!(fs::read_to_string(attempts_path).unwrap(), "1");
+        assert_eq!(fs::read_to_string(args_path).unwrap(), "--list-extensions");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn install_extension_invokes_the_cli_once_with_expected_arguments() {
+        let (_temp_dir, cli, attempts_path, args_path) = scripted_cli(SUCCESS_SCRIPT);
 
         install_vsc_editor_extension_with_sleeper(&cli, GIT_AI_VSCODE_EXTENSION_ID, |delay| {
-            delays.push(delay)
+            panic!("successful CLI must not retry: {delay:?}")
         })
         .unwrap();
 
-        assert_eq!(
-            delays,
-            [Duration::from_millis(300), Duration::from_millis(300),]
-        );
-        assert_eq!(fs::read_to_string(attempts_path).unwrap(), "3");
+        assert_eq!(fs::read_to_string(attempts_path).unwrap(), "1");
         assert_eq!(
             fs::read_to_string(args_path).unwrap(),
             "--install-extension git-ai.git-ai-vscode --force"
@@ -371,7 +393,7 @@ exit 1
     #[test]
     #[cfg(unix)]
     fn install_extension_reports_the_existing_nonzero_status_message() {
-        let (_temp_dir, cli, attempts_path, _args_path) = scripted_cli(ALWAYS_FAIL_SCRIPT);
+        let (_temp_dir, cli, _attempts_path, _args_path) = scripted_cli(ALWAYS_FAIL_SCRIPT);
         let expected = format!("Generic error: {} extension install failed", cli.program);
 
         let error =
@@ -379,7 +401,6 @@ exit 1
                 .unwrap_err();
 
         assert_eq!(error.to_string(), expected);
-        assert_eq!(fs::read_to_string(attempts_path).unwrap(), "3");
     }
 
     #[test]
