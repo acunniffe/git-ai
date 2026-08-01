@@ -19,7 +19,7 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::diff::parse_git_version;
+use super::diff::probe_configured_git_version;
 
 #[derive(Debug, Clone)]
 pub struct Repository {
@@ -376,10 +376,7 @@ impl Repository {
     /// Get the git version as a tuple (major, minor, patch).
     /// Returns None if the version cannot be parsed.
     pub fn git_version(&self) -> Option<(u32, u32, u32)> {
-        let args = vec!["--version".to_string()];
-        let output = exec_git(&args).ok()?;
-        let version_str = String::from_utf8(output.stdout).ok()?;
-        parse_git_version(&version_str)
+        probe_configured_git_version()
     }
 
     /// Check if the current git version supports --ignore-revs-file flag for blame.

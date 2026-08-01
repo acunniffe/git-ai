@@ -1,29 +1,13 @@
 use crate::model::hunk_shift::DiffHunk;
-use crate::model::imara_diff_utils::{content_eq_ignoring_line_endings, normalize_line_endings};
-
-pub(super) fn split_lines_preserving_terminators(s: &str) -> Vec<&str> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-
-    for (idx, ch) in s.char_indices() {
-        if ch == '\n' {
-            lines.push(&s[start..idx + 1]);
-            start = idx + 1;
-        }
-    }
-
-    if start < s.len() {
-        lines.push(&s[start..]);
-    }
-
-    lines
-}
+use crate::model::imara_diff_utils::{
+    content_eq_ignoring_line_endings, normalize_line_endings, split_lines_with_terminators,
+};
 
 pub(super) fn diff_hunks_between_contents(old_content: &str, new_content: &str) -> Vec<DiffHunk> {
     let normalized_old = normalize_line_endings(old_content);
     let normalized_new = normalize_line_endings(new_content);
-    let old_lines = split_lines_preserving_terminators(&normalized_old);
-    let new_lines = split_lines_preserving_terminators(&normalized_new);
+    let old_lines = split_lines_with_terminators(&normalized_old);
+    let new_lines = split_lines_with_terminators(&normalized_new);
     crate::model::imara_diff_utils::capture_diff_slices(&old_lines, &new_lines)
         .into_iter()
         .filter_map(|op| match op {
@@ -66,13 +50,13 @@ pub(super) fn diff_hunks_between_contents(old_content: &str, new_content: &str) 
 fn line_sequence_contains(needle: &str, haystack: &str) -> bool {
     let normalized_needle = normalize_line_endings(needle);
     let normalized_haystack = normalize_line_endings(haystack);
-    let needle_lines = split_lines_preserving_terminators(&normalized_needle);
+    let needle_lines = split_lines_with_terminators(&normalized_needle);
     if needle_lines.is_empty() {
         return true;
     }
 
     let mut next_needle = 0;
-    for haystack_line in split_lines_preserving_terminators(&normalized_haystack) {
+    for haystack_line in split_lines_with_terminators(&normalized_haystack) {
         if haystack_line == needle_lines[next_needle] {
             next_needle += 1;
             if next_needle == needle_lines.len() {
@@ -130,15 +114,15 @@ pub(super) fn carryover_merge_content(parent: &str, committed: &str, observed: &
         return committed.to_string();
     }
 
-    let base_lines = split_lines_preserving_terminators(parent);
-    let committed_lines = split_lines_preserving_terminators(committed);
-    let observed_lines = split_lines_preserving_terminators(observed);
+    let base_lines = split_lines_with_terminators(parent);
+    let committed_lines = split_lines_with_terminators(committed);
+    let observed_lines = split_lines_with_terminators(observed);
     let normalized_parent = normalize_line_endings(parent);
     let normalized_committed = normalize_line_endings(committed);
     let normalized_observed = normalize_line_endings(observed);
-    let base_cmp_lines = split_lines_preserving_terminators(&normalized_parent);
-    let committed_cmp_lines = split_lines_preserving_terminators(&normalized_committed);
-    let observed_cmp_lines = split_lines_preserving_terminators(&normalized_observed);
+    let base_cmp_lines = split_lines_with_terminators(&normalized_parent);
+    let committed_cmp_lines = split_lines_with_terminators(&normalized_committed);
+    let observed_cmp_lines = split_lines_with_terminators(&normalized_observed);
 
     // For each side, map every base line index to its aligned index on that
     // side (None if the base line was changed/deleted on that side). Also record
@@ -413,9 +397,9 @@ pub(crate) fn checkout_merge_rebased_content(
         return target_content.to_string();
     }
 
-    let base_lines = split_lines_preserving_terminators(base_content);
-    let target_lines = split_lines_preserving_terminators(target_content);
-    let observed_lines = split_lines_preserving_terminators(observed_content);
+    let base_lines = split_lines_with_terminators(base_content);
+    let target_lines = split_lines_with_terminators(target_content);
+    let observed_lines = split_lines_with_terminators(observed_content);
 
     let mut base_to_target = vec![None; base_lines.len()];
     let mut target_changes = Vec::new();

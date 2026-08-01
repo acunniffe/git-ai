@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use super::diff_engine::{data_is_whitespace, ranges_intersect};
+use super::diff_engine::{data_is_whitespace, merge_ranges, ranges_intersect};
 use super::tracker::AttributionTracker;
 use super::types::{Insertion, MoveMapping};
 use crate::model::attribution::Attribution;
@@ -168,25 +168,7 @@ impl AttributionTracker {
                 ByteDiffOp::Insert => {
                     // Check if this insertion is from a detected move
                     if let Some(ranges) = insertion_move_ranges.remove(&insertion_idx) {
-                        let mut covered = ranges;
-                        covered.sort_by_key(|r| r.0);
-
-                        let mut merged: Vec<(usize, usize)> = Vec::new();
-                        for (start, end) in covered {
-                            if start >= end {
-                                continue;
-                            }
-
-                            if let Some(last) = merged.last_mut() {
-                                if start <= last.1 {
-                                    last.1 = last.1.max(end);
-                                } else {
-                                    merged.push((start, end));
-                                }
-                            } else {
-                                merged.push((start, end));
-                            }
-                        }
+                        let merged = merge_ranges(ranges);
 
                         let mut cursor = 0usize;
                         for (start, end) in merged {

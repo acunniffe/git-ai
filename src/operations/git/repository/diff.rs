@@ -1,6 +1,6 @@
 //! `impl Repository` diff methods plus the unified-diff parsing helpers they
-//! rely on. Also hosts `parse_git_version` (used by `Repository::git_version`)
-//! and the public `parse_diff_added_lines_with_insertions` entry point.
+//! rely on. Also hosts Git version and numstat parsing shared by Git-facing
+//! callers, and the public `parse_diff_added_lines_with_insertions` entry point.
 
 use super::core::Repository;
 use crate::clients::git_cli::{InternalGitProfile, exec_git, exec_git_with_profile};
@@ -205,6 +205,40 @@ pub fn parse_git_version(version_str: &str) -> Option<(u32, u32, u32)> {
         .unwrap_or(0);
 
     Some((major, minor, patch))
+}
+
+/// Probe the configured Git executable for its version.
+pub(crate) fn probe_configured_git_version() -> Option<(u32, u32, u32)> {
+    let output = exec_git(&["--version".to_string()]).ok()?;
+    let version_str = String::from_utf8(output.stdout).ok()?;
+    parse_git_version(&version_str)
+}
+
+/// One parsed row from `git diff --numstat` output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct NumstatLine<'a> {
+    pub(crate) added: Option<u32>,
+    pub(crate) deleted: Option<u32>,
+    pub(crate) path: &'a str,
+}
+
+/// Parse one `git diff --numstat` row while preserving callers' binary and
+/// malformed-count behavior.
+pub(crate) fn parse_numstat_line(line: &str) -> Option<NumstatLine<'_>> {
+    if line.trim().is_empty() {
+        return None;
+    }
+
+    let mut parts = line.split('\t');
+    let added = parts.next()?;
+    let deleted = parts.next()?;
+    let path = parts.next()?;
+
+    Some(NumstatLine {
+        added: added.parse().ok(),
+        deleted: deleted.parse().ok(),
+        path,
+    })
 }
 
 /// Parse git diff output to extract added line numbers per file
@@ -432,5 +466,35 @@ mod tests {
         assert_eq!(parse_git_version("not a version"), None);
         assert_eq!(parse_git_version("git version"), None);
         assert_eq!(parse_git_version("git version x.y.z"), None);
+    }
+
+    #[test]
+    fn test_parse_numstat_line_preserves_binary_and_malformed_count_semantics() {
+        assert_eq!(
+            parse_numstat_line("12\t7\tsrc/lib.rs"),
+            Some(NumstatLine {
+                added: Some(12),
+                deleted: Some(7),
+                path: "src/lib.rs",
+            })
+        );
+        assert_eq!(
+            parse_numstat_line("-\t-\tassets/logo.png"),
+            Some(NumstatLine {
+                added: None,
+                deleted: None,
+                path: "assets/logo.png",
+            })
+        );
+        assert_eq!(
+            parse_numstat_line("not-a-number\t3\tbroken-added.rs"),
+            Some(NumstatLine {
+                added: None,
+                deleted: Some(3),
+                path: "broken-added.rs",
+            })
+        );
+        assert_eq!(parse_numstat_line("\t\t"), None);
+        assert_eq!(parse_numstat_line("1\t2"), None);
     }
 }

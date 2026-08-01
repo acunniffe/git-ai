@@ -383,3 +383,24 @@ pub(super) fn data_is_whitespace(data: &[u8]) -> bool {
         .map(|s| s.chars().all(|c| c.is_whitespace()))
         .unwrap_or(false)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::merge_ranges;
+
+    #[test]
+    fn merge_ranges_sorts_merges_adjacent_and_discards_empty_ranges() {
+        assert_eq!(
+            merge_ranges(vec![
+                (8, 10),
+                (2, 5),
+                (5, 8),
+                (3, 4),
+                (9, 9),
+                (12, 11),
+                (13, 15)
+            ]),
+            vec![(2, 10), (13, 15)]
+        );
+    }
+}

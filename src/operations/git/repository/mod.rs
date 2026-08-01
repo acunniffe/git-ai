@@ -23,6 +23,7 @@ mod policy;
 pub use commits::{Commit, CommitRange, CommitRangeIterator, Object, Parents};
 pub use core::Repository;
 pub use diff::{parse_diff_added_lines_with_insertions, parse_git_version};
+pub(crate) use diff::{parse_numstat_line, probe_configured_git_version};
 pub(crate) use discovery::batch_read_paths_at_treeishes;
 pub use discovery::{
     find_repository, find_repository_for_file, find_repository_in_path, group_files_by_repository,

@@ -14,7 +14,7 @@ use crate::operations::authorship::stats::{
     CommitStats, stats_for_commit_stats, stats_from_authorship_log,
 };
 use crate::operations::git::notes_api::{CommitAuthorship, filter_commits_with_notes};
-use crate::operations::git::repository::{CommitRange, Repository};
+use crate::operations::git::repository::{CommitRange, Repository, parse_numstat_line};
 use std::io::IsTerminal;
 
 /// The git empty tree hash - represents an empty repository state
@@ -363,33 +363,18 @@ fn get_git_diff_stats_for_range(
     let mut deleted_lines = 0u32;
     let ignore_matcher = build_ignore_matcher(ignore_patterns);
 
-    // Parse numstat output
     for line in stdout.lines() {
-        if line.trim().is_empty() {
+        let Some(numstat) = parse_numstat_line(line) else {
+            continue;
+        };
+
+        // Check if this file should be ignored and skip it.
+        if should_ignore_file_with_matcher(numstat.path, &ignore_matcher) {
             continue;
         }
 
-        // Parse numstat format: "added\tdeleted\tfilename"
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() >= 3 {
-            // Check if this file should be ignored and skip it
-            let filename = parts[2];
-            if should_ignore_file_with_matcher(filename, &ignore_matcher) {
-                continue;
-            }
-
-            // Parse added lines
-            if let Ok(added) = parts[0].parse::<u32>() {
-                added_lines += added;
-            }
-
-            // Parse deleted lines (handle "-" for binary files)
-            if parts[1] != "-"
-                && let Ok(deleted) = parts[1].parse::<u32>()
-            {
-                deleted_lines += deleted;
-            }
-        }
+        added_lines += numstat.added.unwrap_or_default();
+        deleted_lines += numstat.deleted.unwrap_or_default();
     }
 
     Ok((added_lines, deleted_lines))

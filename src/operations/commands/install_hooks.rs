@@ -2,6 +2,7 @@ use crate::config;
 use crate::error::GitAiError;
 use crate::operations::commands::install_manifest::{InstallManifest, TRACE2_GIT_CONFIG_KEYS};
 use crate::operations::daemon::DaemonConfig;
+use crate::operations::git::repository::probe_configured_git_version;
 use crate::operations::mdm::agents::get_all_installers;
 use crate::operations::mdm::hook_installer::HookInstallerParams;
 use crate::operations::mdm::paths::{get_current_binary_path, home_dir};
@@ -770,36 +771,9 @@ async fn async_run_install(
 /// and trace2 event logging used by git-ai for attribution.
 const MIN_GIT_VERSION: (u32, u32, u32) = (2, 22, 0);
 
-/// Parse a git version string like "git version 2.39.1" into (major, minor, patch).
-fn parse_git_version(output: &str) -> Option<(u32, u32, u32)> {
-    // Strip the "git version " prefix and any platform suffix (e.g. "(Apple Git-140)")
-    let version_str = output.trim().strip_prefix("git version ")?;
-    let version_str = version_str.split_whitespace().next()?;
-    let mut parts = version_str.split('.');
-    let major: u32 = parts.next()?.parse().ok()?;
-    let minor: u32 = parts.next()?.parse().ok()?;
-    let patch: u32 = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
-    Some((major, minor, patch))
-}
-
 /// Print a loud warning if the installed git version is older than MIN_GIT_VERSION.
 fn warn_if_git_version_too_old() {
-    let mut command = Command::new("git");
-    command
-        .args(["--version"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    crate::clients::git_cli::apply_internal_git_env(&mut command);
-
-    let output = command.output();
-
-    let version = match output {
-        Ok(o) => {
-            let text = String::from_utf8_lossy(&o.stdout).into_owned();
-            parse_git_version(&text)
-        }
-        Err(_) => None,
-    };
+    let version = probe_configured_git_version();
 
     if let Some(v) = version {
         let (maj, min, patch) = MIN_GIT_VERSION;
@@ -1253,16 +1227,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_git_version_variants() {
-        assert_eq!(parse_git_version("git version 2.39.1"), Some((2, 39, 1)));
-        assert_eq!(
-            parse_git_version("git version 2.39.3 (Apple Git-146)"),
-            Some((2, 39, 3))
+    fn minimum_git_version_is_compared_against_the_canonical_parser() {
+        assert!(
+            crate::operations::git::repository::parse_git_version("git version 2.17.1").unwrap()
+                < MIN_GIT_VERSION
         );
-        assert_eq!(parse_git_version("git version 2.22"), Some((2, 22, 0)));
-        assert!(parse_git_version("git version 2.17.1").unwrap() < MIN_GIT_VERSION);
-        assert!(parse_git_version("git version 2.22.0").unwrap() >= MIN_GIT_VERSION);
-        assert_eq!(parse_git_version("not a git version"), None);
-        assert_eq!(parse_git_version(""), None);
+        assert!(
+            crate::operations::git::repository::parse_git_version("git version 2.22.0").unwrap()
+                >= MIN_GIT_VERSION
+        );
     }
 }

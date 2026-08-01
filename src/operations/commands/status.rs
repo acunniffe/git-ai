@@ -9,7 +9,7 @@ use crate::operations::authorship::stats::{
 };
 use crate::operations::authorship::virtual_attribution::VirtualAttributions;
 use crate::operations::git::find_repository;
-use crate::operations::git::repository::Repository;
+use crate::operations::git::repository::{Repository, parse_numstat_line};
 use crate::operations::git::status::MAX_PATHSPEC_ARGS;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
@@ -274,40 +274,25 @@ fn get_working_dir_diff_stats(
     let mut added_lines = 0u32;
     let mut deleted_lines = 0u32;
 
-    // Parse numstat output
     for line in stdout.lines() {
-        if line.trim().is_empty() {
+        let Some(numstat) = parse_numstat_line(line) else {
+            continue;
+        };
+
+        // Post-filter by pathspec when we couldn't pass them as CLI args.
+        if needs_post_filter
+            && let Some(paths) = pathspecs
+            && !paths.contains(numstat.path)
+        {
             continue;
         }
 
-        // Parse numstat format: "added\tdeleted\tfilename"
-        let parts: Vec<&str> = line.split('\t').collect();
-        if parts.len() >= 3 {
-            // Post-filter by pathspec when we couldn't pass them as CLI args
-            if needs_post_filter
-                && let Some(paths) = pathspecs
-                && !paths.contains(parts[2])
-            {
-                continue;
-            }
-
-            let file_path = parts[2];
-            if should_ignore_file_with_matcher(file_path, ignore_matcher) {
-                continue;
-            }
-
-            // Parse added lines
-            if let Ok(added) = parts[0].parse::<u32>() {
-                added_lines += added;
-            }
-
-            // Parse deleted lines (handle "-" for binary files)
-            if parts[1] != "-"
-                && let Ok(deleted) = parts[1].parse::<u32>()
-            {
-                deleted_lines += deleted;
-            }
+        if should_ignore_file_with_matcher(numstat.path, ignore_matcher) {
+            continue;
         }
+
+        added_lines += numstat.added.unwrap_or_default();
+        deleted_lines += numstat.deleted.unwrap_or_default();
     }
 
     Ok((added_lines, deleted_lines))

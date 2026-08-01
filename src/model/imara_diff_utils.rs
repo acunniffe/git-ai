@@ -296,7 +296,7 @@ pub(crate) fn content_eq_ignoring_line_endings(a: &str, b: &str) -> bool {
 }
 
 /// Splits a string into lines, preserving line terminators.
-fn split_lines_with_terminators(s: &str) -> Vec<&str> {
+pub(crate) fn split_lines_with_terminators(s: &str) -> Vec<&str> {
     let mut lines = Vec::new();
     let mut start = 0;
 
@@ -535,6 +535,12 @@ mod tests {
         let s_trailing = "line1\nline2\n";
         let lines_trailing = split_lines_with_terminators(s_trailing);
         assert_eq!(lines_trailing, vec!["line1\n", "line2\n"]);
+
+        assert_eq!(split_lines_with_terminators(""), Vec::<&str>::new());
+        assert_eq!(
+            split_lines_with_terminators("line1\r\nline2"),
+            vec!["line1\r\n", "line2"]
+        );
     }
 
     // ====================================================================
