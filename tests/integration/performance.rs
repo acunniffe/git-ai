@@ -15,6 +15,7 @@ fn setup() {
 
     // Test that we can override feature flags
     let test_flags = FeatureFlags {
+        lite_mode: false,
         auth_keyring: false,
         transcript_streaming: true,
         transcript_sweep: true,

@@ -5374,6 +5374,24 @@ impl ActorDaemonCoordinator {
                 .or_insert((&rc.old, &rc.new));
         }
 
+        // Lite mode keeps working logs aligned with the final ref tips, but does not
+        // inspect the commit graph or migrate authorship notes. Everything needed for
+        // this bookkeeping comes from the already-normalized trace2/ref transition.
+        if config::Config::get().get_feature_flags().lite_mode {
+            if let Some((original_head, _)) = pending_original_head.as_ref()
+                && let Some(new_tip) = rebase_new_tip_from_command(cmd, original_head)
+            {
+                repo.storage.rename_working_log(original_head, &new_tip)?;
+                return Ok(());
+            }
+            for (old_tip, new_tip) in collapsed.values() {
+                if old_tip != new_tip {
+                    repo.storage.rename_working_log(old_tip, new_tip)?;
+                }
+            }
+            return Ok(());
+        }
+
         // Extract "onto" hint from HEAD ref changes for rebases.
         // During a rebase, the first HEAD change target is the onto commit.
         let onto_hint: Option<String> = cmd
@@ -5512,6 +5530,12 @@ impl ActorDaemonCoordinator {
     fn start_commit_file_timestamp_snapshots_for_command(
         command: &crate::daemon::domain::NormalizedCommand,
     ) -> CommitFileTimestampSnapshotHandles {
+        if config::Config::get().get_feature_flags().lite_mode
+            && command.primary_command.as_deref() == Some("commit")
+            && command.invoked_args.iter().any(|arg| arg == "--amend")
+        {
+            return HashMap::new();
+        }
         let Some(worktree) = command.worktree.clone() else {
             return HashMap::new();
         };
@@ -5625,6 +5649,7 @@ impl ActorDaemonCoordinator {
         let events = &applied.analysis.events;
 
         let primary = cmd.primary_command.as_deref().unwrap_or("unknown");
+        let lite_mode = config::Config::get().get_feature_flags().lite_mode;
 
         #[cfg(feature = "test-support")]
         if let Ok(spec) = std::env::var("GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND") {
@@ -5824,7 +5849,7 @@ impl ActorDaemonCoordinator {
                 if cmd.invoked_args.iter().any(|arg| arg == "--abort") {
                     self.clear_pending_cherry_pick_sources_for_worktree(worktree)?;
                     self.clear_pending_cherry_pick_no_commit_for_worktree(worktree)?;
-                } else if cmd.exit_code != 0 {
+                } else if !lite_mode && cmd.exit_code != 0 {
                     let new_commits = cherry_pick_destination_commits(cmd);
                     let is_continue = cherry_pick_command_has_flag(cmd, "--continue");
                     let is_skip = cherry_pick_command_has_flag(cmd, "--skip");
@@ -5951,7 +5976,9 @@ impl ActorDaemonCoordinator {
                         source_commits,
                         new_commits,
                     } => {
-                        if !new_head.is_empty() {
+                        if lite_mode {
+                            self.clear_pending_cherry_pick_sources_for_worktree(worktree.as_ref())?;
+                        } else if !new_head.is_empty() {
                             let repo = find_repository_in_path(&worktree)?;
                             let mut sources = source_commits.clone();
                             let is_skip = cherry_pick_command_has_flag(cmd, "--skip");
@@ -6004,18 +6031,21 @@ impl ActorDaemonCoordinator {
                         source_commits,
                         head,
                     } => {
-                        let mut sources = source_commits.clone();
-                        if sources.is_empty() {
-                            let repo = find_repository_in_path(&worktree)?;
-                            sources =
-                                resolve_explicit_cherry_pick_sources_for_side_effect(&repo, cmd)?;
-                        }
-                        if !head.is_empty() && !sources.is_empty() {
-                            self.set_pending_cherry_pick_no_commit_for_worktree(
-                                worktree.as_ref(),
-                                sources,
-                                head.clone(),
-                            )?;
+                        if !lite_mode {
+                            let mut sources = source_commits.clone();
+                            if sources.is_empty() {
+                                let repo = find_repository_in_path(&worktree)?;
+                                sources = resolve_explicit_cherry_pick_sources_for_side_effect(
+                                    &repo, cmd,
+                                )?;
+                            }
+                            if !head.is_empty() && !sources.is_empty() {
+                                self.set_pending_cherry_pick_no_commit_for_worktree(
+                                    worktree.as_ref(),
+                                    sources,
+                                    head.clone(),
+                                )?;
+                            }
                         }
                     }
                     crate::daemon::domain::SemanticEvent::MergeSquash { source_head, onto } => {
@@ -6148,6 +6178,10 @@ impl ActorDaemonCoordinator {
                             && cmd.primary_command.as_deref() == Some("revert")
                         {
                             if !handled_revert_commits {
+                                handled_revert_commits = true;
+                                if lite_mode {
+                                    continue;
+                                }
                                 // A single `git revert A B` creates one commit per source.
                                 // Reconstruct each destination from the matching HEAD transition
                                 // instead of treating the command as one final CommitCreated event.
@@ -6159,7 +6193,6 @@ impl ActorDaemonCoordinator {
                                     )?;
                                 }
                                 apply_revert_complete_rewrite(&repo, cmd, &source_oids)?;
-                                handled_revert_commits = true;
                             }
                         } else if !new_head.is_empty() {
                             let repo = find_repository_in_path(&worktree)?;
@@ -6204,7 +6237,8 @@ impl ActorDaemonCoordinator {
                                 )
                             })?;
 
-                            if cmd.primary_command.as_deref() == Some("commit")
+                            if !lite_mode
+                                && cmd.primary_command.as_deref() == Some("commit")
                                 && let Some(pending) = self
                                     .take_pending_cherry_pick_no_commit_for_worktree(
                                         worktree.as_ref(),
@@ -6228,7 +6262,8 @@ impl ActorDaemonCoordinator {
                         }
                     }
                     crate::daemon::domain::SemanticEvent::CommitAmended { old_head, new_head } => {
-                        if !old_head.is_empty()
+                        if !lite_mode
+                            && !old_head.is_empty()
                             && !new_head.is_empty()
                             && old_head != new_head
                             && is_valid_oid(old_head)
@@ -6300,7 +6335,7 @@ impl ActorDaemonCoordinator {
                                     // commit): carry the working log to the new base,
                                     // matching the pull fast-forward side effect.
                                     repo.storage.rename_working_log(old_head, new_head)?;
-                                } else {
+                                } else if !lite_mode {
                                     let outcome =
                                         crate::authorship::rewrite::handle_rewrite_event_with_metrics(
                                         &repo,
@@ -6372,6 +6407,9 @@ impl ActorDaemonCoordinator {
                         || is_zero_oid(new)
                         || old == new
                     {
+                        continue;
+                    }
+                    if lite_mode {
                         continue;
                     }
                     let repo = find_repository_in_path(&worktree.to_string_lossy())?;

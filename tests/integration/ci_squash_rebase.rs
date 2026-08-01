@@ -405,7 +405,12 @@ fn test_ci_local_sync_skips_non_rebase_force_push() {
 fn test_ci_local_open_pr_rebase_single_commit() {
     use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 
-    let repo = direct_test_repo();
+    let mut repo = direct_test_repo();
+    // `git-ai ci` is explicit rewrite processing, so daemon lite mode must not
+    // change its behavior.
+    repo.patch_git_ai_config(|patch| {
+        patch.feature_flags = Some(serde_json::json!({ "lite_mode": true }));
+    });
 
     let mut base_file = repo.filename("base.txt");
     base_file.set_contents(crate::lines!["base content"]);

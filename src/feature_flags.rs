@@ -78,6 +78,7 @@ macro_rules! define_feature_flags {
 // Define all feature flags in one place
 // Format: struct_field: file_and_env_name, debug = <bool>, release = <bool>
 define_feature_flags!(
+    lite_mode: lite_mode, debug = false, release = false,
     auth_keyring: auth_keyring, debug = false, release = false,
     transcript_streaming: transcript_streaming, debug = true, release = true,
     transcript_sweep: transcript_sweep, debug = true, release = true,
@@ -134,6 +135,7 @@ mod tests {
         let flags = FeatureFlags::default();
         #[cfg(debug_assertions)]
         {
+            assert!(!flags.lite_mode);
             assert!(!flags.auth_keyring);
             assert!(flags.transcript_streaming);
             assert!(flags.transcript_sweep);
@@ -144,6 +146,7 @@ mod tests {
         }
         #[cfg(not(debug_assertions))]
         {
+            assert!(!flags.lite_mode);
             assert!(!flags.auth_keyring);
             assert!(flags.transcript_streaming);
             assert!(flags.transcript_sweep);
@@ -151,6 +154,37 @@ mod tests {
             assert!(!flags.bash_checkpoints_v2);
             assert!(flags.daemon_log_upload);
             assert!(!flags.rewrite_metrics_events);
+        }
+    }
+
+    #[test]
+    fn test_lite_mode_file_override() {
+        let deserializable = DeserializableFeatureFlags {
+            lite_mode: Some(true),
+            ..Default::default()
+        };
+
+        let flags = FeatureFlags::from_deserializable(deserializable);
+        assert!(flags.lite_mode);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_lite_mode_env_overrides_file() {
+        unsafe {
+            std::env::set_var("GIT_AI_LITE_MODE", "true");
+        }
+
+        let file_flags = DeserializableFeatureFlags {
+            lite_mode: Some(false),
+            ..Default::default()
+        };
+
+        let flags = FeatureFlags::from_env_and_file(Some(file_flags));
+        assert!(flags.lite_mode);
+
+        unsafe {
+            std::env::remove_var("GIT_AI_LITE_MODE");
         }
     }
 
@@ -233,6 +267,7 @@ mod tests {
     #[test]
     fn test_serialization() {
         let flags = FeatureFlags {
+            lite_mode: true,
             auth_keyring: true,
             transcript_streaming: true,
             transcript_sweep: true,
@@ -243,6 +278,7 @@ mod tests {
         };
 
         let serialized = serde_json::to_string(&flags).unwrap();
+        assert!(serialized.contains("lite_mode"));
         assert!(serialized.contains("auth_keyring"));
         assert!(serialized.contains("transcript_streaming"));
         assert!(serialized.contains("transcript_sweep"));
@@ -255,6 +291,7 @@ mod tests {
     #[test]
     fn test_clone_trait() {
         let flags = FeatureFlags {
+            lite_mode: true,
             auth_keyring: true,
             transcript_streaming: true,
             transcript_sweep: true,
@@ -264,6 +301,7 @@ mod tests {
             rewrite_metrics_events: true,
         };
         let cloned = flags.clone();
+        assert_eq!(cloned.lite_mode, flags.lite_mode);
         assert_eq!(cloned.auth_keyring, flags.auth_keyring);
         assert_eq!(cloned.transcript_streaming, flags.transcript_streaming);
         assert_eq!(cloned.transcript_sweep, flags.transcript_sweep);
