@@ -70,51 +70,42 @@ fn daemon_failed_rebase_does_not_consume_later_continue_reflog_entry() {
     let rebase_session_arg = format!("git-ai.testSyncSession={rebase_session}");
     let continue_session_arg = format!("git-ai.testSyncSession={continue_session}");
 
-    send_trace_frames(
-        &trace_socket,
+    let mut frames = TraceCommandFrames::new(
+        "failed-rebase-start",
         &[
-            json!({
-                "event": "start",
-                "sid": "failed-rebase-start",
-                "argv": ["git", "-c", rebase_session_arg, "-C", worktree, "rebase", default_branch],
-                "time_ns": 1_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "failed-rebase-start",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 1_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "failed-rebase-start",
-                "code": 1,
-                "time_ns": 1_100u64,
-            }),
-            trace_atexit_frame("failed-rebase-start", 1, 1_101u64),
-            json!({
-                "event": "start",
-                "sid": "rebase-continue",
-                "argv": ["git", "-c", continue_session_arg, "-C", worktree, "rebase", "--continue"],
-                "time_ns": 2_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "rebase-continue",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 2_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "rebase-continue",
-                "code": 0,
-                "time_ns": 2_100u64,
-            }),
-            trace_atexit_frame("rebase-continue", 0, 2_101u64),
+            "git",
+            "-c",
+            rebase_session_arg.as_str(),
+            "-C",
+            worktree.as_str(),
+            "rebase",
+            default_branch.as_str(),
         ],
+        worktree.as_str(),
+        git_dir.as_str(),
+        1_000,
+    )
+    .with_exit_code(1)
+    .into_frames();
+    frames.extend(
+        TraceCommandFrames::new(
+            "rebase-continue",
+            &[
+                "git",
+                "-c",
+                continue_session_arg.as_str(),
+                "-C",
+                worktree.as_str(),
+                "rebase",
+                "--continue",
+            ],
+            worktree.as_str(),
+            git_dir.as_str(),
+            2_000,
+        )
+        .into_frames(),
     );
+    send_trace_frames(&trace_socket, &frames);
     repo.sync_daemon_external_completion_sessions(&[rebase_session, continue_session]);
 
     assert!(
@@ -290,51 +281,42 @@ fn daemon_failed_rebase_does_not_consume_later_skip_reflog_entry() {
     let rebase_session_arg = format!("git-ai.testSyncSession={rebase_session}");
     let skip_session_arg = format!("git-ai.testSyncSession={skip_session}");
 
-    send_trace_frames(
-        &trace_socket,
+    let mut frames = TraceCommandFrames::new(
+        "failed-rebase-before-skip",
         &[
-            json!({
-                "event": "start",
-                "sid": "failed-rebase-before-skip",
-                "argv": ["git", "-c", rebase_session_arg, "-C", worktree, "rebase", default_branch],
-                "time_ns": 1_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "failed-rebase-before-skip",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 1_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "failed-rebase-before-skip",
-                "code": 1,
-                "time_ns": 1_100u64,
-            }),
-            trace_atexit_frame("failed-rebase-before-skip", 1, 1_101u64),
-            json!({
-                "event": "start",
-                "sid": "rebase-skip",
-                "argv": ["git", "-c", skip_session_arg, "-C", worktree, "rebase", "--skip"],
-                "time_ns": 2_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "rebase-skip",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 2_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "rebase-skip",
-                "code": 0,
-                "time_ns": 2_100u64,
-            }),
-            trace_atexit_frame("rebase-skip", 0, 2_101u64),
+            "git",
+            "-c",
+            rebase_session_arg.as_str(),
+            "-C",
+            worktree.as_str(),
+            "rebase",
+            default_branch.as_str(),
         ],
+        worktree.as_str(),
+        git_dir.as_str(),
+        1_000,
+    )
+    .with_exit_code(1)
+    .into_frames();
+    frames.extend(
+        TraceCommandFrames::new(
+            "rebase-skip",
+            &[
+                "git",
+                "-c",
+                skip_session_arg.as_str(),
+                "-C",
+                worktree.as_str(),
+                "rebase",
+                "--skip",
+            ],
+            worktree.as_str(),
+            git_dir.as_str(),
+            2_000,
+        )
+        .into_frames(),
     );
+    send_trace_frames(&trace_socket, &frames);
     repo.sync_daemon_external_completion_sessions(&[rebase_session, skip_session]);
 
     assert!(

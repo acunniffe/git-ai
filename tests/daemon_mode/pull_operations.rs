@@ -439,51 +439,43 @@ fn daemon_delayed_pull_rebase_autostash_does_not_consume_later_commit() {
     let pull_session_arg = format!("git-ai.testSyncSession={pull_session}");
     let commit_session_arg = format!("git-ai.testSyncSession={commit_session}");
 
-    send_trace_frames(
-        &trace_socket,
+    let mut frames = TraceCommandFrames::new(
+        "delayed-pull-autostash",
         &[
-            json!({
-                "event": "start",
-                "sid": "delayed-pull-autostash",
-                "argv": ["git", "-c", pull_session_arg, "-C", worktree, "pull", "--rebase", "--autostash"],
-                "time_ns": 1_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "delayed-pull-autostash",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 1_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "delayed-pull-autostash",
-                "code": 0,
-                "time_ns": 1_100u64,
-            }),
-            trace_atexit_frame("delayed-pull-autostash", 0, 1_101u64),
-            json!({
-                "event": "start",
-                "sid": "delayed-commit-after-pull",
-                "argv": ["git", "-c", commit_session_arg, "-C", worktree, "commit", "-m", "commit uncommitted AI work"],
-                "time_ns": 2_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "delayed-commit-after-pull",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 2_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "delayed-commit-after-pull",
-                "code": 0,
-                "time_ns": 2_100u64,
-            }),
-            trace_atexit_frame("delayed-commit-after-pull", 0, 2_101u64),
+            "git",
+            "-c",
+            pull_session_arg.as_str(),
+            "-C",
+            worktree.as_str(),
+            "pull",
+            "--rebase",
+            "--autostash",
         ],
+        worktree.as_str(),
+        git_dir.as_str(),
+        1_000,
+    )
+    .into_frames();
+    frames.extend(
+        TraceCommandFrames::new(
+            "delayed-commit-after-pull",
+            &[
+                "git",
+                "-c",
+                commit_session_arg.as_str(),
+                "-C",
+                worktree.as_str(),
+                "commit",
+                "-m",
+                "commit uncommitted AI work",
+            ],
+            worktree.as_str(),
+            git_dir.as_str(),
+            2_000,
+        )
+        .into_frames(),
     );
+    send_trace_frames(&trace_socket, &frames);
     local.sync_daemon_external_completion_sessions(&[pull_session, commit_session]);
 
     assert!(
@@ -599,71 +591,61 @@ fn daemon_delayed_failed_rebase_continue_does_not_consume_final_continue() {
     let first_continue_session_arg = format!("git-ai.testSyncSession={first_continue_session}");
     let final_continue_session_arg = format!("git-ai.testSyncSession={final_continue_session}");
 
-    send_trace_frames(
-        &trace_socket,
+    let mut frames = TraceCommandFrames::new(
+        "delayed-rebase-start",
         &[
-            json!({
-                "event": "start",
-                "sid": "delayed-rebase-start",
-                "argv": ["git", "-c", initial_session_arg, "-C", worktree, "rebase", main_branch],
-                "time_ns": 1_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "delayed-rebase-start",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 1_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "delayed-rebase-start",
-                "code": 1,
-                "time_ns": 1_100u64,
-            }),
-            trace_atexit_frame("delayed-rebase-start", 1, 1_101u64),
-            json!({
-                "event": "start",
-                "sid": "delayed-first-rebase-continue",
-                "argv": ["git", "-c", first_continue_session_arg, "-C", worktree, "rebase", "--continue"],
-                "time_ns": 2_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "delayed-first-rebase-continue",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 2_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "delayed-first-rebase-continue",
-                "code": 1,
-                "time_ns": 2_100u64,
-            }),
-            trace_atexit_frame("delayed-first-rebase-continue", 1, 2_101u64),
-            json!({
-                "event": "start",
-                "sid": "delayed-final-rebase-continue",
-                "argv": ["git", "-c", final_continue_session_arg, "-C", worktree, "rebase", "--continue"],
-                "time_ns": 3_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": "delayed-final-rebase-continue",
-                "worktree": worktree,
-                "repo": git_dir,
-                "time_ns": 3_001u64,
-            }),
-            json!({
-                "event": "exit",
-                "sid": "delayed-final-rebase-continue",
-                "code": 0,
-                "time_ns": 3_100u64,
-            }),
-            trace_atexit_frame("delayed-final-rebase-continue", 0, 3_101u64),
+            "git",
+            "-c",
+            initial_session_arg.as_str(),
+            "-C",
+            worktree.as_str(),
+            "rebase",
+            main_branch.as_str(),
         ],
+        worktree.as_str(),
+        git_dir.as_str(),
+        1_000,
+    )
+    .with_exit_code(1)
+    .into_frames();
+    frames.extend(
+        TraceCommandFrames::new(
+            "delayed-first-rebase-continue",
+            &[
+                "git",
+                "-c",
+                first_continue_session_arg.as_str(),
+                "-C",
+                worktree.as_str(),
+                "rebase",
+                "--continue",
+            ],
+            worktree.as_str(),
+            git_dir.as_str(),
+            2_000,
+        )
+        .with_exit_code(1)
+        .into_frames(),
     );
+    frames.extend(
+        TraceCommandFrames::new(
+            "delayed-final-rebase-continue",
+            &[
+                "git",
+                "-c",
+                final_continue_session_arg.as_str(),
+                "-C",
+                worktree.as_str(),
+                "rebase",
+                "--continue",
+            ],
+            worktree.as_str(),
+            git_dir.as_str(),
+            3_000,
+        )
+        .into_frames(),
+    );
+    send_trace_frames(&trace_socket, &frames);
     repo.sync_daemon_external_completion_sessions(&[
         initial_rebase_session,
         first_continue_session,
