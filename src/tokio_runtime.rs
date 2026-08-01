@@ -9,6 +9,67 @@ const HELPER_RUNTIME_WORKER_THREADS: usize = 2;
 // their high-water memory across those arenas. Queue excess blocking tasks on a
 // small pool instead; this work is downstream of trace ingestion.
 const HELPER_RUNTIME_MAX_BLOCKING_THREADS: usize = 4;
+// The daemon's own queues already bound useful async concurrency. Keeping this
+// runtime small prevents CPU-count-sized worker and allocator arena growth.
+const DAEMON_RUNTIME_WORKER_THREADS: usize = 4;
+const DAEMON_RUNTIME_MAX_BLOCKING_THREADS: usize = 16;
+const BLOCKING_THREAD_KEEP_ALIVE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// Constrain glibc's per-thread allocation arenas before the daemon creates
+/// worker threads. Large checkpoint buffers otherwise leave hundreds of MiB
+/// resident in arenas that glibc keeps for the lifetime of the daemon.
+pub(crate) fn configure_daemon_allocator() -> Result<(), String> {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        const DEFAULT_ARENA_MAX: i32 = 2;
+        let arena_max = std::env::var("MALLOC_ARENA_MAX")
+            .ok()
+            .and_then(|value| value.parse::<i32>().ok())
+            .filter(|value| *value > 0)
+            .map_or(DEFAULT_ARENA_MAX, |value| value.min(DEFAULT_ARENA_MAX));
+
+        // SAFETY: mallopt is process-global and this runs before either Tokio
+        // runtime creates worker threads. M_ARENA_MAX accepts a positive int.
+        if unsafe { libc::mallopt(libc::M_ARENA_MAX, arena_max) } == 0 {
+            return Err("failed to configure glibc allocator arena limit".to_string());
+        }
+
+        #[cfg(feature = "test-support")]
+        if let Some(path) = std::env::var_os("GIT_AI_TEST_ALLOCATOR_POLICY_LOG") {
+            use std::io::Write;
+
+            let mut log = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .expect("failed opening test allocator policy log");
+            writeln!(log, "arena_max={arena_max}")
+                .expect("failed writing test allocator policy log");
+        }
+    }
+
+    Ok(())
+}
+
+fn build_bounded_runtime(
+    worker_threads: usize,
+    max_blocking_threads: usize,
+) -> Result<tokio::runtime::Runtime, String> {
+    tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(worker_threads)
+        .max_blocking_threads(max_blocking_threads)
+        .thread_keep_alive(BLOCKING_THREAD_KEEP_ALIVE)
+        .enable_all()
+        .build()
+        .map_err(|err| err.to_string())
+}
+
+pub(crate) fn build_daemon_runtime() -> Result<tokio::runtime::Runtime, String> {
+    build_bounded_runtime(
+        DAEMON_RUNTIME_WORKER_THREADS,
+        DAEMON_RUNTIME_MAX_BLOCKING_THREADS,
+    )
+}
 
 // Post-commit attribution calls this helper from inside the daemon runtime.
 // Recreating a CPU-sized runtime for every call leaves allocator arenas at
@@ -28,13 +89,11 @@ fn runtime() -> &'static tokio::runtime::Runtime {
             writeln!(log, "runtime").expect("failed writing test Tokio runtime build log");
         }
 
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(HELPER_RUNTIME_WORKER_THREADS)
-            .max_blocking_threads(HELPER_RUNTIME_MAX_BLOCKING_THREADS)
-            .thread_keep_alive(std::time::Duration::from_secs(60))
-            .enable_all()
-            .build()
-            .expect("failed to create Tokio runtime")
+        build_bounded_runtime(
+            HELPER_RUNTIME_WORKER_THREADS,
+            HELPER_RUNTIME_MAX_BLOCKING_THREADS,
+        )
+        .expect("failed to create Tokio runtime")
     })
 }
 
@@ -134,6 +193,24 @@ mod tests {
             peak_blocking_concurrency(runtime(), 8, 4),
             4,
             "helper runtime must activate exactly four blocking threads under load"
+        );
+    }
+
+    #[test]
+    fn daemon_runtime_worker_pool_is_bounded() {
+        assert_eq!(
+            build_daemon_runtime().unwrap().metrics().num_workers(),
+            DAEMON_RUNTIME_WORKER_THREADS
+        );
+    }
+
+    #[test]
+    fn daemon_runtime_blocking_pool_is_memory_bounded() {
+        let runtime = build_daemon_runtime().unwrap();
+        assert_eq!(
+            peak_blocking_concurrency(&runtime, 20, DAEMON_RUNTIME_MAX_BLOCKING_THREADS),
+            DAEMON_RUNTIME_MAX_BLOCKING_THREADS,
+            "daemon runtime must enforce the shared blocking-thread policy"
         );
     }
 }
