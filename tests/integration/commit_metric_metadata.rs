@@ -1,11 +1,11 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+use crate::test_utils::{CodexHookInput, checkpoint_codex};
 use git_ai::metrics::MetricEvent;
 use git_ai::metrics::attrs::attr_pos;
 use git_ai::metrics::events::committed_pos;
 use git_ai::metrics::types::{MetricEventId, SparseArray};
 use git_ai::model::repository::metrics_db::MetricsDatabase;
-use serde_json::json;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -14,30 +14,6 @@ fn isolated_metrics_db_path() -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().expect("failed to create isolated metrics db dir");
     let path = dir.path().join("metrics.db");
     (dir, path.to_string_lossy().to_string())
-}
-
-fn codex_checkpoint(
-    repo: &TestRepo,
-    file_path: &Path,
-    session_id: &str,
-    hook_event_name: &str,
-    tool_use_id: &str,
-) {
-    let hook_input = json!({
-        "session_id": session_id,
-        "cwd": repo.canonical_path().to_string_lossy().to_string(),
-        "hook_event_name": hook_event_name,
-        "tool_name": "apply_patch",
-        "tool_use_id": tool_use_id,
-        "model": "gpt-5",
-        "tool_input": {
-            "patch": format!("*** Update File: {}\n", file_path.to_string_lossy())
-        },
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &hook_input)
-        .expect("codex checkpoint should succeed");
 }
 
 fn sparse_str(values: &SparseArray, pos: usize) -> Option<&str> {
@@ -88,20 +64,26 @@ fn committed_metric_includes_git_author_commit_timestamps_and_patch_id() {
     repo.stage_all_and_commit("Initial commit")
         .expect("initial commit should succeed");
 
-    codex_checkpoint(
+    checkpoint_codex(
         &repo,
-        &file_path,
-        "metric-metadata-session",
-        "PreToolUse",
-        "tool-use-metric-metadata",
+        CodexHookInput::pre_file_edit(
+            "metric-metadata-session",
+            repo.canonical_path(),
+            "tool-use-metric-metadata",
+            &file_path,
+        )
+        .with_model("gpt-5"),
     );
     fs::write(&file_path, "base\nai line\n").unwrap();
-    codex_checkpoint(
+    checkpoint_codex(
         &repo,
-        &file_path,
-        "metric-metadata-session",
-        "PostToolUse",
-        "tool-use-metric-metadata",
+        CodexHookInput::post_file_edit(
+            "metric-metadata-session",
+            repo.canonical_path(),
+            "tool-use-metric-metadata",
+            &file_path,
+        )
+        .with_model("gpt-5"),
     );
 
     let commit = repo

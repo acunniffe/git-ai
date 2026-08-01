@@ -1,7 +1,208 @@
 #![allow(dead_code)]
 
+use crate::repos::test_repo::TestRepo;
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+/// Builds the stable, valid Codex hook-input shapes used by integration tests.
+///
+/// Keep parser-boundary cases as raw JSON so they can exercise aliases,
+/// malformed values, missing fields, and forward-compatible payloads directly.
+#[derive(Serialize)]
+pub struct CodexHookInput {
+    session_id: String,
+    cwd: String,
+    hook_event_name: &'static str,
+    tool_name: &'static str,
+    tool_use_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model: Option<String>,
+    tool_input: CodexToolInput,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    transcript_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_response: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum CodexToolInput {
+    Patch { patch: String },
+    Command { command: String },
+}
+
+impl CodexHookInput {
+    /// Builds a valid pre-edit `apply_patch` hook input for `file_path`.
+    pub fn pre_file_edit(
+        session_id: impl Into<String>,
+        cwd: impl AsRef<Path>,
+        tool_use_id: impl Into<String>,
+        file_path: impl AsRef<Path>,
+    ) -> Self {
+        Self::file_edit("PreToolUse", session_id, cwd, tool_use_id, file_path)
+    }
+
+    /// Builds a valid post-edit `apply_patch` hook input for `file_path`.
+    pub fn post_file_edit(
+        session_id: impl Into<String>,
+        cwd: impl AsRef<Path>,
+        tool_use_id: impl Into<String>,
+        file_path: impl AsRef<Path>,
+    ) -> Self {
+        Self::file_edit("PostToolUse", session_id, cwd, tool_use_id, file_path)
+    }
+
+    /// Builds a valid pre-tool `Bash` hook input.
+    pub fn pre_bash(
+        session_id: impl Into<String>,
+        cwd: impl AsRef<Path>,
+        tool_use_id: impl Into<String>,
+        command: impl Into<String>,
+    ) -> Self {
+        Self::bash("PreToolUse", "Bash", session_id, cwd, tool_use_id, command)
+    }
+
+    /// Builds a valid post-tool `Bash` hook input.
+    pub fn post_bash(
+        session_id: impl Into<String>,
+        cwd: impl AsRef<Path>,
+        tool_use_id: impl Into<String>,
+        command: impl Into<String>,
+    ) -> Self {
+        Self::bash("PostToolUse", "Bash", session_id, cwd, tool_use_id, command)
+    }
+
+    /// Builds a valid pre-tool `exec_command` hook input.
+    pub fn pre_exec_command(
+        session_id: impl Into<String>,
+        cwd: impl AsRef<Path>,
+        tool_use_id: impl Into<String>,
+        command: impl Into<String>,
+    ) -> Self {
+        Self::bash(
+            "PreToolUse",
+            "exec_command",
+            session_id,
+            cwd,
+            tool_use_id,
+            command,
+        )
+    }
+
+    /// Builds a valid post-tool `exec_command` hook input.
+    pub fn post_exec_command(
+        session_id: impl Into<String>,
+        cwd: impl AsRef<Path>,
+        tool_use_id: impl Into<String>,
+        command: impl Into<String>,
+    ) -> Self {
+        Self::bash(
+            "PostToolUse",
+            "exec_command",
+            session_id,
+            cwd,
+            tool_use_id,
+            command,
+        )
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
+    }
+
+    pub fn with_transcript_path(mut self, transcript_path: impl AsRef<Path>) -> Self {
+        self.transcript_path = Some(transcript_path.as_ref().to_string_lossy().into_owned());
+        self
+    }
+
+    pub fn with_tool_response(mut self, response: impl Into<String>) -> Self {
+        self.tool_response = Some(response.into());
+        self
+    }
+
+    /// Replaces an `apply_patch` payload while retaining the typed common fields.
+    pub fn with_patch(mut self, patch: impl Into<String>) -> Self {
+        self.tool_input = CodexToolInput::Patch {
+            patch: patch.into(),
+        };
+        self
+    }
+
+    pub fn build(self) -> String {
+        serde_json::to_string(&self).expect("Codex hook input should serialize")
+    }
+
+    fn file_edit(
+        hook_event_name: &'static str,
+        session_id: impl Into<String>,
+        cwd: impl AsRef<Path>,
+        tool_use_id: impl Into<String>,
+        file_path: impl AsRef<Path>,
+    ) -> Self {
+        let patch = format!(
+            "*** Update File: {}\n",
+            file_path.as_ref().to_string_lossy()
+        );
+        Self::new(
+            hook_event_name,
+            "apply_patch",
+            session_id,
+            cwd,
+            tool_use_id,
+            CodexToolInput::Patch { patch },
+        )
+    }
+
+    fn bash(
+        hook_event_name: &'static str,
+        tool_name: &'static str,
+        session_id: impl Into<String>,
+        cwd: impl AsRef<Path>,
+        tool_use_id: impl Into<String>,
+        command: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            hook_event_name,
+            tool_name,
+            session_id,
+            cwd,
+            tool_use_id,
+            CodexToolInput::Command {
+                command: command.into(),
+            },
+        )
+    }
+
+    fn new(
+        hook_event_name: &'static str,
+        tool_name: &'static str,
+        session_id: impl Into<String>,
+        cwd: impl AsRef<Path>,
+        tool_use_id: impl Into<String>,
+        tool_input: CodexToolInput,
+    ) -> Self {
+        Self {
+            session_id: session_id.into(),
+            cwd: cwd.as_ref().to_string_lossy().into_owned(),
+            hook_event_name,
+            tool_name,
+            tool_use_id: tool_use_id.into(),
+            model: None,
+            tool_input,
+            transcript_path: None,
+            tool_response: None,
+        }
+    }
+}
+
+/// Runs a normal Codex checkpoint built by [`CodexHookInput`].
+pub fn checkpoint_codex(repo: &TestRepo, hook_input: CodexHookInput) {
+    let hook_input = hook_input.build();
+    repo.checkpoint_with_hook_input("codex", &hook_input)
+        .expect("Codex checkpoint should succeed");
+}
 
 /// Get the path to a test fixture file
 ///

@@ -1,4 +1,5 @@
 use crate::repos::test_repo::TestRepo;
+use crate::test_utils::CodexHookInput;
 use git_ai::model::working_log::{AgentId, CheckpointKind};
 use git_ai::operations::commands::checkpoint_agent::orchestrator::{
     BaseCommit, CheckpointFile, CheckpointRequest,
@@ -7,7 +8,7 @@ use git_ai::operations::daemon::checkpoint::PreparedPathRole;
 use git_ai::operations::git::find_repository_in_path;
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 fn build_scoped_human_checkpoint_request(
@@ -166,5 +167,85 @@ fn test_apply_default_checkpoint_scope_preserves_existing_explicit_scope() {
     assert_eq!(
         applied.files[0].repo_work_dir,
         original.files[0].repo_work_dir
+    );
+}
+
+#[test]
+fn codex_hook_input_builder_serializes_the_stable_file_edit_shape() {
+    let hook_input = CodexHookInput::pre_file_edit(
+        "session-123",
+        Path::new("/tmp/repo"),
+        "patch-1",
+        Path::new("/tmp/repo/src/lib.rs"),
+    )
+    .with_model("gpt-5")
+    .with_transcript_path(Path::new("/tmp/codex-session.jsonl"))
+    .build();
+
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&hook_input).unwrap(),
+        serde_json::json!({
+            "session_id": "session-123",
+            "cwd": "/tmp/repo",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "apply_patch",
+            "tool_use_id": "patch-1",
+            "model": "gpt-5",
+            "tool_input": {
+                "patch": "*** Update File: /tmp/repo/src/lib.rs\n"
+            },
+            "transcript_path": "/tmp/codex-session.jsonl"
+        })
+    );
+}
+
+#[test]
+fn codex_hook_input_builder_serializes_bash_commands_and_responses() {
+    let hook_input = CodexHookInput::post_bash(
+        "session-123",
+        Path::new("/tmp/repo"),
+        "bash-1",
+        "echo hello",
+    )
+    .with_tool_response("hello\n")
+    .build();
+
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&hook_input).unwrap(),
+        serde_json::json!({
+            "session_id": "session-123",
+            "cwd": "/tmp/repo",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Bash",
+            "tool_use_id": "bash-1",
+            "tool_input": { "command": "echo hello" },
+            "tool_response": "hello\n"
+        })
+    );
+}
+
+#[test]
+fn codex_hook_input_builder_preserves_explicit_patch_content() {
+    let hook_input = CodexHookInput::post_file_edit(
+        "session-123",
+        Path::new("/tmp/repo"),
+        "patch-1",
+        Path::new("/tmp/repo/src/lib.rs"),
+    )
+    .with_patch("*** Update File: /tmp/repo/src/lib.rs\n+fn added() {}\n")
+    .build();
+
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&hook_input).unwrap(),
+        serde_json::json!({
+            "session_id": "session-123",
+            "cwd": "/tmp/repo",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "apply_patch",
+            "tool_use_id": "patch-1",
+            "tool_input": {
+                "patch": "*** Update File: /tmp/repo/src/lib.rs\n+fn added() {}\n"
+            }
+        })
     );
 }

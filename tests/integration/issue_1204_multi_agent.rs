@@ -1,6 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::fixture_path;
+use crate::test_utils::{CodexHookInput, checkpoint_codex, fixture_path};
 use serde_json::json;
 use std::fs;
 
@@ -37,21 +37,16 @@ fn test_codex_exec_command_produces_attribution() {
     fs::copy(&simple_fixture, &transcript_path).unwrap();
 
     // Pre-hook: Codex fires PreToolUse with tool_name "exec_command"
-    let pre_hook_input = json!({
-        "session_id": "codex-exec-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PreToolUse",
-        "tool_name": "exec_command",
-        "tool_use_id": "exec-1",
-        "tool_input": {
-            "command": "sed -i 's/original/updated/' service.py"
-        },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
-        .expect("exec_command pre-hook should succeed (not be rejected)");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::pre_exec_command(
+            "codex-exec-session",
+            &repo_root,
+            "exec-1",
+            "sed -i 's/original/updated/' service.py",
+        )
+        .with_transcript_path(&transcript_path),
+    );
 
     // Codex edits file via exec_command
     fs::write(
@@ -61,21 +56,16 @@ fn test_codex_exec_command_produces_attribution() {
     .unwrap();
 
     // Post-hook: Codex fires PostToolUse with tool_name "exec_command"
-    let post_hook_input = json!({
-        "session_id": "codex-exec-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PostToolUse",
-        "tool_name": "exec_command",
-        "tool_use_id": "exec-1",
-        "tool_input": {
-            "command": "sed -i 's/original/updated/' service.py"
-        },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &post_hook_input)
-        .expect("exec_command post-hook should succeed (not be rejected)");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::post_exec_command(
+            "codex-exec-session",
+            &repo_root,
+            "exec-1",
+            "sed -i 's/original/updated/' service.py",
+        )
+        .with_transcript_path(&transcript_path),
+    );
 
     let commit = repo
         .stage_all_and_commit("Codex exec_command edit")
@@ -423,41 +413,34 @@ fn test_multi_agent_codex_apply_patch_not_stolen_by_active_claude() {
         .expect("claude pre-hook should succeed");
 
     // Codex fires PreToolUse (apply_patch)
-    let codex_pre = json!({
-        "session_id": "codex-patch-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PreToolUse",
-        "tool_name": "apply_patch",
-        "tool_use_id": "patch-2",
-        "tool_input": {
-            "patch": format!("*** Update File: {}\n@@ fn handler() {{}}\n+fn new_handler() {{}}\n", file_path.to_string_lossy())
-        },
-        "transcript_path": codex_transcript.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &codex_pre)
-        .expect("codex pre-hook should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::pre_file_edit("codex-patch-session", &repo_root, "patch-2", &file_path)
+            .with_patch(format!(
+                "*** Update File: {}\n@@ fn handler() {{}}\n+fn new_handler() {{}}\n",
+                file_path.to_string_lossy()
+            ))
+            .with_transcript_path(&codex_transcript),
+    );
 
     // Codex apply_patch modifies file
     fs::write(&file_path, "fn new_handler() {}\nfn helper() {}\n").unwrap();
 
     // Codex fires PostToolUse (apply_patch)
-    let codex_post = json!({
-        "session_id": "codex-patch-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PostToolUse",
-        "tool_name": "apply_patch",
-        "tool_use_id": "patch-2",
-        "tool_input": {
-            "patch": format!("*** Update File: {}\n@@ fn handler() {{}}\n+fn new_handler() {{}}\n+fn helper() {{}}\n", file_path.to_string_lossy())
-        },
-        "transcript_path": codex_transcript.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &codex_post)
-        .expect("codex post-hook should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::post_file_edit(
+            "codex-patch-session",
+            &repo_root,
+            "patch-2",
+            &file_path,
+        )
+        .with_patch(format!(
+            "*** Update File: {}\n@@ fn handler() {{}}\n+fn new_handler() {{}}\n+fn helper() {{}}\n",
+            file_path.to_string_lossy()
+        ))
+        .with_transcript_path(&codex_transcript),
+    );
 
     // Claude fires PostToolUse (its bash didn't edit the file)
     let claude_post = json!({

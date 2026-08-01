@@ -1,6 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::isolated_bash_history_db_path;
+use crate::test_utils::{CodexHookInput, checkpoint_codex, isolated_bash_history_db_path};
 use git_ai::metrics::{EventAttributes, MetricEvent, PosEncoded, SessionEventValues};
 use git_ai::model::authorship_log::LineRange;
 use git_ai::model::authorship_log_serialization::{AuthorshipLog, generate_session_id};
@@ -83,30 +83,6 @@ fn insert_session_event_for_tool(
         .expect("session event should insert");
 
     session_id
-}
-
-fn codex_checkpoint(
-    repo: &TestRepo,
-    file_path: &Path,
-    session_id: &str,
-    hook_event_name: &str,
-    tool_use_id: &str,
-) {
-    let hook_input = json!({
-        "session_id": session_id,
-        "cwd": repo.canonical_path().to_string_lossy().to_string(),
-        "hook_event_name": hook_event_name,
-        "tool_name": "apply_patch",
-        "tool_use_id": tool_use_id,
-        "model": "gpt-5",
-        "tool_input": {
-            "patch": format!("*** Update File: {}\n", file_path.to_string_lossy())
-        },
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &hook_input)
-        .expect("codex checkpoint should succeed");
 }
 
 fn attested_lines_for_session(
@@ -471,21 +447,27 @@ fn test_commit_metadata_recovery_uses_existing_matching_session_after_edge_expan
     file.assert_committed_lines(lines!["base".unattributed_human()]);
 
     let external_session_id = "codex-existing-metadata-session";
-    codex_checkpoint(
+    checkpoint_codex(
         &repo,
-        &file_path,
-        external_session_id,
-        "PreToolUse",
-        "metadata-existing-tool",
+        CodexHookInput::pre_file_edit(
+            external_session_id,
+            repo.canonical_path(),
+            "metadata-existing-tool",
+            &file_path,
+        )
+        .with_model("gpt-5"),
     );
 
     fs::write(&file_path, "base\ncodex line\n").unwrap();
-    codex_checkpoint(
+    checkpoint_codex(
         &repo,
-        &file_path,
-        external_session_id,
-        "PostToolUse",
-        "metadata-existing-tool",
+        CodexHookInput::post_file_edit(
+            external_session_id,
+            repo.canonical_path(),
+            "metadata-existing-tool",
+            &file_path,
+        )
+        .with_model("gpt-5"),
     );
 
     fs::write(
@@ -543,21 +525,27 @@ fn test_commit_metadata_recovery_skips_when_edge_expansion_recovers_all_unknown_
     file.assert_committed_lines(lines!["base".unattributed_human()]);
 
     let external_session_id = "codex-edge-skip-session";
-    codex_checkpoint(
+    checkpoint_codex(
         &repo,
-        &file_path,
-        external_session_id,
-        "PreToolUse",
-        "metadata-edge-skip-tool",
+        CodexHookInput::pre_file_edit(
+            external_session_id,
+            repo.canonical_path(),
+            "metadata-edge-skip-tool",
+            &file_path,
+        )
+        .with_model("gpt-5"),
     );
 
     fs::write(&file_path, "base\ncodex line\n").unwrap();
-    codex_checkpoint(
+    checkpoint_codex(
         &repo,
-        &file_path,
-        external_session_id,
-        "PostToolUse",
-        "metadata-edge-skip-tool",
+        CodexHookInput::post_file_edit(
+            external_session_id,
+            repo.canonical_path(),
+            "metadata-edge-skip-tool",
+            &file_path,
+        )
+        .with_model("gpt-5"),
     );
 
     fs::write(

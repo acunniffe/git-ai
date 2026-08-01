@@ -1,6 +1,8 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::{fixture_path, isolated_bash_history_db_path};
+use crate::test_utils::{
+    CodexHookInput, checkpoint_codex, fixture_path, isolated_bash_history_db_path,
+};
 use git_ai::model::repository::bash_history_db::BashHistoryDatabase;
 use git_ai::model::working_log::AgentId;
 use git_ai::operations::commands::checkpoint_agent::bash_tool::{
@@ -128,19 +130,11 @@ fn test_codex_preset_bash_recovery_minimizes_dirty_untracked_attribution() {
     let transcript_path = repo_root.join("codex-transcript.jsonl");
     fs::copy(&simple_fixture, &transcript_path).unwrap();
 
-    let pre_hook_input = json!({
-        "session_id": "attr-pre-sess",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "attr-bash-1",
-        "tool_input": { "command": "echo hello" },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
-        .expect("codex pre-hook checkpoint should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::pre_bash("attr-pre-sess", &repo_root, "attr-bash-1", "echo hello")
+            .with_transcript_path(&transcript_path),
+    );
 
     // AI bash tool edits the file.
     fs::write(
@@ -149,19 +143,11 @@ fn test_codex_preset_bash_recovery_minimizes_dirty_untracked_attribution() {
     )
     .unwrap();
 
-    let post_hook_input = json!({
-        "session_id": "attr-pre-sess",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PostToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "attr-bash-1",
-        "tool_input": { "command": "echo hello" },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &post_hook_input)
-        .expect("codex post-hook checkpoint should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::post_bash("attr-pre-sess", &repo_root, "attr-bash-1", "echo hello")
+            .with_transcript_path(&transcript_path),
+    );
 
     repo.stage_all_and_commit("After codex bash").unwrap();
     file.assert_committed_lines(lines![
@@ -192,35 +178,29 @@ fn test_bash_checkpoints_v2_records_for_recovery_without_working_log_checkpoints
     let transcript_path = repo_root.join("codex-transcript.jsonl");
     fs::copy(&simple_fixture, &transcript_path).unwrap();
 
-    let pre_hook_input = json!({
-        "session_id": "bash-v2-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "bash-v2-tool",
-        "tool_input": { "command": "printf 'written by bash\\n' >> example.txt" },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
-        .expect("codex pre-hook checkpoint should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::pre_bash(
+            "bash-v2-session",
+            &repo_root,
+            "bash-v2-tool",
+            "printf 'written by bash\\n' >> example.txt",
+        )
+        .with_transcript_path(&transcript_path),
+    );
 
     fs::write(&file_path, "original line\nwritten by bash\n").unwrap();
 
-    let post_hook_input = json!({
-        "session_id": "bash-v2-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PostToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "bash-v2-tool",
-        "tool_input": { "command": "printf 'written by bash\\n' >> example.txt" },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &post_hook_input)
-        .expect("codex post-hook checkpoint should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::post_bash(
+            "bash-v2-session",
+            &repo_root,
+            "bash-v2-tool",
+            "printf 'written by bash\\n' >> example.txt",
+        )
+        .with_transcript_path(&transcript_path),
+    );
 
     let checkpoints = repo.current_working_logs().read_all_checkpoints().unwrap();
     assert!(

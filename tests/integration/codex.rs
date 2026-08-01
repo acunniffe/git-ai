@@ -1,5 +1,5 @@
 use crate::repos::test_file::ExpectedLineExt;
-use crate::test_utils::fixture_path;
+use crate::test_utils::{CodexHookInput, checkpoint_codex, fixture_path};
 use git_ai::error::GitAiError;
 use git_ai::model::stream_watermark::ByteOffsetWatermark;
 use git_ai::operations::commands::checkpoint_agent::presets::{ParsedHookEvent, resolve_preset};
@@ -204,21 +204,16 @@ fn test_codex_commit_inside_bash_inflight_is_attributed_to_codex() {
     let transcript_path = repo_root.join("codex-bash-rollout.jsonl");
     fs::copy(&simple_fixture, &transcript_path).unwrap();
 
-    let pre_hook_input = json!({
-        "session_id": "codex-bash-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "bash-use-commit",
-        "tool_input": {
-            "command": "python - <<'PY'\nprint('commit from codex bash')\nPY"
-        },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
-        .expect("pre-hook checkpoint should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::pre_bash(
+            "codex-bash-session",
+            &repo_root,
+            "bash-use-commit",
+            "python - <<'PY'\nprint('commit from codex bash')\nPY",
+        )
+        .with_transcript_path(&transcript_path),
+    );
 
     fs::write(
         &file_path,
@@ -226,21 +221,16 @@ fn test_codex_commit_inside_bash_inflight_is_attributed_to_codex() {
     )
     .unwrap();
 
-    let post_hook_input = json!({
-        "session_id": "codex-bash-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PostToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "bash-use-commit",
-        "tool_input": {
-            "command": "python - <<'PY'\nprint('commit from codex bash')\nPY"
-        },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &post_hook_input)
-        .expect("post-hook checkpoint should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::post_bash(
+            "codex-bash-session",
+            &repo_root,
+            "bash-use-commit",
+            "python - <<'PY'\nprint('commit from codex bash')\nPY",
+        )
+        .with_transcript_path(&transcript_path),
+    );
 
     let commit = repo
         .stage_all_and_commit("Apply codex bash refactor")
@@ -801,39 +791,37 @@ fn test_codex_e2e_apply_patch_file_edit_full_cycle() {
     let transcript_path = repo_root.join("codex-apply-patch.jsonl");
     fs::copy(&simple_fixture, &transcript_path).unwrap();
 
-    let pre_hook_input = json!({
-        "session_id": "codex-apply-patch-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PreToolUse",
-        "tool_name": "apply_patch",
-        "tool_use_id": "patch-1",
-        "tool_input": {
-            "patch": format!("*** Update File: {}\n@@ fn old() {{}}\n+fn new_func() {{}}\n", file_path.to_string_lossy())
-        },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &pre_hook_input)
-        .expect("apply_patch pre-hook should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::pre_file_edit(
+            "codex-apply-patch-session",
+            &repo_root,
+            "patch-1",
+            &file_path,
+        )
+        .with_patch(format!(
+            "*** Update File: {}\n@@ fn old() {{}}\n+fn new_func() {{}}\n",
+            file_path.to_string_lossy()
+        ))
+        .with_transcript_path(&transcript_path),
+    );
 
     fs::write(&file_path, "fn new_func() {}\nfn helper() {}\n").unwrap();
 
-    let post_hook_input = json!({
-        "session_id": "codex-apply-patch-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PostToolUse",
-        "tool_name": "apply_patch",
-        "tool_use_id": "patch-1",
-        "tool_input": {
-            "patch": format!("*** Update File: {}\n@@ fn old() {{}}\n+fn new_func() {{}}\n+fn helper() {{}}\n", file_path.to_string_lossy())
-        },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &post_hook_input)
-        .expect("apply_patch post-hook should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::post_file_edit(
+            "codex-apply-patch-session",
+            &repo_root,
+            "patch-1",
+            &file_path,
+        )
+        .with_patch(format!(
+            "*** Update File: {}\n@@ fn old() {{}}\n+fn new_func() {{}}\n+fn helper() {{}}\n",
+            file_path.to_string_lossy()
+        ))
+        .with_transcript_path(&transcript_path),
+    );
 
     let commit = repo
         .stage_all_and_commit("Codex apply_patch edit")
@@ -942,68 +930,60 @@ fn test_codex_e2e_bash_then_apply_patch_in_same_session() {
     let transcript_path = repo_root.join("codex-mixed.jsonl");
     fs::copy(&simple_fixture, &transcript_path).unwrap();
 
-    let bash_pre = json!({
-        "session_id": "codex-mixed-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "bash-mixed-1",
-        "tool_input": { "command": "echo 'setup step'" },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::pre_bash(
+            "codex-mixed-session",
+            &repo_root,
+            "bash-mixed-1",
+            "echo 'setup step'",
+        )
+        .with_transcript_path(&transcript_path),
+    );
 
-    repo.checkpoint_with_hook_input("codex", &bash_pre)
-        .expect("bash pre-hook should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::post_bash(
+            "codex-mixed-session",
+            &repo_root,
+            "bash-mixed-1",
+            "echo 'setup step'",
+        )
+        .with_tool_response("setup step\n")
+        .with_transcript_path(&transcript_path),
+    );
 
-    let bash_post = json!({
-        "session_id": "codex-mixed-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PostToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "bash-mixed-1",
-        "tool_input": { "command": "echo 'setup step'" },
-        "tool_response": "setup step\n",
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &bash_post)
-        .expect("bash post-hook should succeed");
-
-    let patch_pre = json!({
-        "session_id": "codex-mixed-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PreToolUse",
-        "tool_name": "apply_patch",
-        "tool_use_id": "patch-mixed-1",
-        "tool_input": {
-            "patch": format!("*** Update File: {}\n@@ # starter\n+# updated by codex\n", file_path.to_string_lossy())
-        },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &patch_pre)
-        .expect("apply_patch pre-hook should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::pre_file_edit(
+            "codex-mixed-session",
+            &repo_root,
+            "patch-mixed-1",
+            &file_path,
+        )
+        .with_patch(format!(
+            "*** Update File: {}\n@@ # starter\n+# updated by codex\n",
+            file_path.to_string_lossy()
+        ))
+        .with_transcript_path(&transcript_path),
+    );
 
     fs::write(&file_path, "# updated by codex\ndef main(): pass\n").unwrap();
 
-    let patch_post = json!({
-        "session_id": "codex-mixed-session",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PostToolUse",
-        "tool_name": "apply_patch",
-        "tool_use_id": "patch-mixed-1",
-        "tool_input": {
-            "patch": format!("*** Update File: {}\n@@ # starter\n+# updated by codex\n+def main(): pass\n", file_path.to_string_lossy())
-        },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
-
-    repo.checkpoint_with_hook_input("codex", &patch_post)
-        .expect("apply_patch post-hook should succeed");
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::post_file_edit(
+            "codex-mixed-session",
+            &repo_root,
+            "patch-mixed-1",
+            &file_path,
+        )
+        .with_patch(format!(
+            "*** Update File: {}\n@@ # starter\n+# updated by codex\n+def main(): pass\n",
+            file_path.to_string_lossy()
+        ))
+        .with_transcript_path(&transcript_path),
+    );
 
     let commit = repo
         .stage_all_and_commit("Mixed codex edit")
