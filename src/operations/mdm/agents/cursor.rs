@@ -1,7 +1,8 @@
 use crate::error::GitAiError;
 use crate::operations::mdm::editor_cli::resolve_editor_cli;
 use crate::operations::mdm::editor_extension::{
-    ExtensionInstallOutcome, GIT_AI_VSCODE_EXTENSION_ID, ensure_vsc_editor_extension,
+    ExtensionInstallPresentation, GIT_AI_VSCODE_EXTENSION_ID, ensure_vsc_editor_extension,
+    extension_install_result,
 };
 use crate::operations::mdm::hook_installer::{
     HookCheckResult, HookInstaller, HookInstallerParams, InstallResult,
@@ -23,6 +24,11 @@ use std::path::PathBuf;
 
 const CURSOR_PRE_TOOL_USE_CMD: &str = "checkpoint cursor --hook-input stdin";
 const CURSOR_HOOK_NAMES: &[&str] = &["preToolUse", "postToolUse"];
+const CURSOR_EXTENSION_PRESENTATION: ExtensionInstallPresentation = ExtensionInstallPresentation {
+    product_name: "Cursor",
+    installed_message: "\tExtension 'git-ai.git-ai-vscode' was successfully installed.",
+    install_failure_instructions: "Unable to automatically install extension. Please cmd+click on the following link to install: cursor:extension/git-ai.git-ai-vscode (or search for 'git-ai-vscode' in the Cursor extensions tab)",
+};
 
 pub struct CursorInstaller;
 
@@ -51,46 +57,6 @@ impl CursorInstaller {
         for message in Self::extension_install_announcements() {
             println!("{message}");
         }
-    }
-
-    fn extension_result(outcome: ExtensionInstallOutcome) -> Option<InstallResult> {
-        let result = match outcome {
-            ExtensionInstallOutcome::CliUnavailable => return None,
-            ExtensionInstallOutcome::AlreadyInstalled => InstallResult {
-                changed: false,
-                diff: None,
-                message: "Cursor: Extension already installed".to_string(),
-            },
-            ExtensionInstallOutcome::PendingInstall => InstallResult {
-                changed: true,
-                diff: None,
-                message: "Cursor: Pending extension install".to_string(),
-            },
-            ExtensionInstallOutcome::Installed => InstallResult {
-                changed: true,
-                diff: None,
-                message: "\tExtension 'git-ai.git-ai-vscode' was successfully installed."
-                    .to_string(),
-            },
-            ExtensionInstallOutcome::CheckFailed(error) => InstallResult {
-                changed: false,
-                diff: None,
-                message: format!("Cursor: Failed to check extension: {}", error),
-            },
-            ExtensionInstallOutcome::InstallFailed(error) => {
-                tracing::debug!(
-                    "Cursor: Error automatically installing extension: {}",
-                    error
-                );
-                InstallResult {
-                    changed: false,
-                    diff: None,
-                    message: "Cursor: Unable to automatically install extension. Please cmd+click on the following link to install: cursor:extension/git-ai.git-ai-vscode (or search for 'git-ai-vscode' in the Cursor extensions tab)".to_string(),
-                }
-            }
-        };
-
-        Some(result)
     }
 }
 
@@ -231,7 +197,9 @@ impl HookInstaller for CursorInstaller {
             dry_run,
             Self::announce_extension_install,
         );
-        if let Some(result) = Self::extension_result(extension_outcome) {
+        if let Some(result) =
+            extension_install_result(extension_outcome, &CURSOR_EXTENSION_PRESENTATION)
+        {
             results.push(result);
         }
 
@@ -251,46 +219,16 @@ mod tests {
         PathBuf::from("/usr/local/bin/git-ai")
     }
 
-    fn assert_extension_result(
-        outcome: ExtensionInstallOutcome,
-        expected_changed: bool,
-        expected_message: &str,
-    ) {
-        let result = CursorInstaller::extension_result(outcome).expect("expected a result");
-        assert_eq!(result.changed, expected_changed);
-        assert!(result.diff.is_none());
-        assert_eq!(result.message, expected_message);
-    }
-
     #[test]
-    fn extension_outcomes_keep_cursor_messages() {
-        assert!(
-            CursorInstaller::extension_result(ExtensionInstallOutcome::CliUnavailable).is_none()
-        );
-        assert_extension_result(
-            ExtensionInstallOutcome::AlreadyInstalled,
-            false,
-            "Cursor: Extension already installed",
-        );
-        assert_extension_result(
-            ExtensionInstallOutcome::PendingInstall,
-            true,
-            "Cursor: Pending extension install",
-        );
-        assert_extension_result(
-            ExtensionInstallOutcome::Installed,
-            true,
+    fn cursor_extension_presentation_keeps_messages() {
+        assert_eq!(CURSOR_EXTENSION_PRESENTATION.product_name, "Cursor");
+        assert_eq!(
+            CURSOR_EXTENSION_PRESENTATION.installed_message,
             "\tExtension 'git-ai.git-ai-vscode' was successfully installed.",
         );
-        assert_extension_result(
-            ExtensionInstallOutcome::CheckFailed(GitAiError::Generic("boom".to_string())),
-            false,
-            "Cursor: Failed to check extension: Generic error: boom",
-        );
-        assert_extension_result(
-            ExtensionInstallOutcome::InstallFailed(GitAiError::Generic("boom".to_string())),
-            false,
-            "Cursor: Unable to automatically install extension. Please cmd+click on the following link to install: cursor:extension/git-ai.git-ai-vscode (or search for 'git-ai-vscode' in the Cursor extensions tab)",
+        assert_eq!(
+            CURSOR_EXTENSION_PRESENTATION.install_failure_instructions,
+            "Unable to automatically install extension. Please cmd+click on the following link to install: cursor:extension/git-ai.git-ai-vscode (or search for 'git-ai-vscode' in the Cursor extensions tab)",
         );
     }
 

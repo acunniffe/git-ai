@@ -1,5 +1,6 @@
 use crate::error::GitAiError;
 use crate::operations::mdm::editor_cli::EditorCliCommand;
+use crate::operations::mdm::hook_installer::InstallResult;
 use std::time::Duration;
 
 const EDITOR_CLI_RETRY_ATTEMPTS: usize = 3;
@@ -112,6 +113,59 @@ pub(crate) enum ExtensionInstallOutcome {
     InstallFailed(GitAiError),
 }
 
+pub(crate) struct ExtensionInstallPresentation {
+    pub(crate) product_name: &'static str,
+    pub(crate) installed_message: &'static str,
+    pub(crate) install_failure_instructions: &'static str,
+}
+
+pub(crate) fn extension_install_result(
+    outcome: ExtensionInstallOutcome,
+    presentation: &ExtensionInstallPresentation,
+) -> Option<InstallResult> {
+    Some(match outcome {
+        ExtensionInstallOutcome::CliUnavailable => return None,
+        ExtensionInstallOutcome::AlreadyInstalled => InstallResult {
+            changed: false,
+            diff: None,
+            message: format!("{}: Extension already installed", presentation.product_name),
+        },
+        ExtensionInstallOutcome::PendingInstall => InstallResult {
+            changed: true,
+            diff: None,
+            message: format!("{}: Pending extension install", presentation.product_name),
+        },
+        ExtensionInstallOutcome::Installed => InstallResult {
+            changed: true,
+            diff: None,
+            message: presentation.installed_message.to_string(),
+        },
+        ExtensionInstallOutcome::CheckFailed(error) => InstallResult {
+            changed: false,
+            diff: None,
+            message: format!(
+                "{}: Failed to check extension: {}",
+                presentation.product_name, error
+            ),
+        },
+        ExtensionInstallOutcome::InstallFailed(error) => {
+            tracing::debug!(
+                "{}: Error automatically installing extension: {}",
+                presentation.product_name,
+                error
+            );
+            InstallResult {
+                changed: false,
+                diff: None,
+                message: format!(
+                    "{}: {}",
+                    presentation.product_name, presentation.install_failure_instructions
+                ),
+            }
+        }
+    })
+}
+
 fn ensure_vsc_editor_extension_with_sleeper(
     cli: Option<&EditorCliCommand>,
     id_or_vsix: &str,
@@ -159,6 +213,7 @@ pub(crate) fn ensure_vsc_editor_extension(
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[cfg(unix)]
     use std::cell::Cell;
     #[cfg(unix)]
