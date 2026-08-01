@@ -1792,9 +1792,6 @@ fn wltrace_captures_daemon_working_log_ops_when_enabled() {
     fs::write(&file_path, "AI content\n").unwrap();
     repo.git_ai(&["checkpoint", "mock_ai", "traced.txt"])
         .unwrap();
-    repo.current_working_logs()
-        .read_all_checkpoints()
-        .expect("checkpoint should be readable");
 
     let trace = fs::read_to_string(trace_file.path()).expect("read wltrace output");
     for op in [
@@ -1806,6 +1803,14 @@ fn wltrace_captures_daemon_working_log_ops_when_enabled() {
     ] {
         assert!(trace.contains(op), "wltrace output missing {op}:\n{trace}");
     }
+    assert_eq!(
+        trace
+            .lines()
+            .filter(|line| line.contains("op=working_log.read_checkpoints "))
+            .count(),
+        1,
+        "one checkpoint must deserialize the working log only once:\n{trace}"
+    );
 }
 
 #[test]
