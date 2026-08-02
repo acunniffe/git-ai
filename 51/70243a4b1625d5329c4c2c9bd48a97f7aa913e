@@ -1,0 +1,26 @@
+src/mdm/agents/visual_studio.rs
+  s_61bbcfe4478210::t_efcb126db0cdc5 295
+  s_61bbcfe4478210::t_1f5ef5b04ef458 260-261,263
+agent-support/visualstudio/src/GitAiVS/Services/BinaryResolver.cs
+  s_61bbcfe4478210::t_2089626e555d6a 185
+agent-support/visualstudio/src/GitAiVS/Services/CheckpointService.cs
+  s_61bbcfe4478210::t_73aaa0f6a03308 125-127,136-137
+agent-support/visualstudio/DESIGN.md
+  s_61bbcfe4478210::t_dae053f4e7ba41 187,192-193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "5170243a4b1625d5329c4c2c9bd48a97f7aa913e",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

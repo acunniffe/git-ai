@@ -1,0 +1,50 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "114bcdba255a6d63c3b36f3f61e47ee24dd3c05b",
+  "prompts": {
+    "5b5c6da": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8b66a5a6-c1d7-41a1-948a-f850335bcdf5",
+        "model": "gpt-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@ai_tab.rs (341-342) fix",
+          "timestamp": "2025-11-07T12:15:50.682Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll open `tests/ai_tab.rs` to inspect lines around 341-342 and identify what's broken before making a precise edit.",
+          "timestamp": "2025-11-07T12:16:02.300Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/ai_tab.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I'll open `tests/repos/test_repo.rs` to confirm the `filename` method signature and determine the correct argument type to pass from `ai_tab.rs`.",
+          "timestamp": "2025-11-07T12:16:12.157Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/tests/repos/test_repo.rs"
+          }
+        }
+      ],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

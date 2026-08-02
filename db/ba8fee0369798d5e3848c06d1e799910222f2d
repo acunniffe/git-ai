@@ -1,0 +1,21 @@
+tests/integration/simple_additions.rs
+  s_acbbcc77bb9da5::t_dd856cc7842eaa 2030-2031
+  s_acbbcc77bb9da5::t_cf6e7e7c02e509 2065
+  s_acbbcc77bb9da5::t_f786c651022b9e 1977-1981
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "dbba8fee0369798d5e3848c06d1e799910222f2d",
+  "prompts": {},
+  "sessions": {
+    "s_acbbcc77bb9da5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebbc887-2ebd-47b6-8edf-b19158eee095",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

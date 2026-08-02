@@ -1,0 +1,31 @@
+src/mdm/spinner.rs
+  s_1f01c1e29e012a::t_bb106a95bcd766 27-30
+tests/integration/repos/test_repo.rs
+  s_1f01c1e29e012a::t_1f8fc8abb89bdb 2508-2532,2936
+tests/integration/stats.rs
+  s_1f01c1e29e012a::t_1f8fc8abb89bdb 6,10,26,29-30,39-52,55-66,76-77,99-103
+  s_1f01c1e29e012a::t_dec76ab07841a2 164
+  s_1f01c1e29e012a::t_c88a3cbff6c709 37-38,53-54
+  s_1f01c1e29e012a::t_a86bc3f47c4c49 11,27-28,31-36,67-75,78-98,104-163
+src/authorship/stats.rs
+  s_1f01c1e29e012a::t_8521cf552d11fd 105-107
+  s_1f01c1e29e012a::t_bb106a95bcd766 5-7,10-15,76-82,94-104,108-112,122-158
+  s_1f01c1e29e012a::t_f65e5d3bd0768b 113-121
+  s_1f01c1e29e012a::t_5cec43371946ad 159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "8eec7634d058a5cd336378adf2e17df878fbf1ff",
+  "prompts": {},
+  "sessions": {
+    "s_1f01c1e29e012a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f86c4-3f87-7321-8b45-8a1940cf6e28",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

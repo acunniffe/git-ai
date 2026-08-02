@@ -1,0 +1,31 @@
+packaging/windows/build-msi.ps1
+  s_2740b0b2a8bdc6::t_c7550d8411243e 19,27,40
+packaging/windows/git-ai-login.cmd
+  s_2740b0b2a8bdc6::t_c7550d8411243e 1-10
+tests/package_login_startup.rs
+  s_2740b0b2a8bdc6::t_c7550d8411243e 1-38
+packaging/macos/build-pkg.sh
+  s_2740b0b2a8bdc6::t_c7550d8411243e 41-43,45-46
+packaging/macos/launchagents/git-ai-daemon-launcher
+  s_2740b0b2a8bdc6::t_c7550d8411243e 1-8
+packaging/windows/git-ai.wxs
+  s_2740b0b2a8bdc6::t_c7550d8411243e 21,30-36
+packaging/macos/launchagents/com.git-ai.daemon.plist
+  s_2740b0b2a8bdc6::t_c7550d8411243e 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "d99e6b8c9b6f6f7d9e968af27357d506f28e7590",
+  "prompts": {},
+  "sessions": {
+    "s_2740b0b2a8bdc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6cfb-8eed-7430-8509-7cb0df96f1ba",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

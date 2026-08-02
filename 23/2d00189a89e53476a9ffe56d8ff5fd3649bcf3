@@ -1,0 +1,43 @@
+src/streams/agents/copilot_otel.rs
+  s_06f7e3a37b8bfd::t_cf898a1dde9f95 779
+  s_06f7e3a37b8bfd::t_fe0f8b00ce281d 79-80
+  s_06f7e3a37b8bfd::t_b81795168908b2 103,119,137
+  s_06f7e3a37b8bfd::t_6aee0a560a5075 287-288
+  s_06f7e3a37b8bfd::t_a3f961ca6fcd68 413
+src/daemon/stream_worker.rs
+  s_06f7e3a37b8bfd::t_476c53e429c8bf 191
+  s_06f7e3a37b8bfd::t_6306aad87d8562 479-486
+  s_06f7e3a37b8bfd::t_f19ddc214f3fb8 674,678
+  s_06f7e3a37b8bfd::t_bcb405e43e36e5 1034,1038
+  s_06f7e3a37b8bfd::t_1bf4025b03dade 803-806
+  s_06f7e3a37b8bfd::t_134107077930e1 1065,1067-1073
+  s_06f7e3a37b8bfd::t_de46c73183e605 1144,1146
+  s_06f7e3a37b8bfd::t_2fd41b0b7e2ec4 150,164
+  s_06f7e3a37b8bfd::t_aa30117e2eddac 719
+  s_06f7e3a37b8bfd::t_5ffa65d0494b96 140
+  s_06f7e3a37b8bfd::t_762505d7f4ff45 22
+src/commands/daemon.rs
+  s_06f7e3a37b8bfd::t_fde6dc1aee0720 586-588,599-603
+  s_06f7e3a37b8bfd::t_79a9cc4bfd28c5 680-704
+src/streams/watermark.rs
+  s_06f7e3a37b8bfd::t_71ea1fba48d829 248
+  s_06f7e3a37b8bfd::t_95642dcbaee63b 621,625-630,634-641,648,655-663
+  s_06f7e3a37b8bfd::t_a2fc14cc849472 203,208,217
+  s_06f7e3a37b8bfd::t_22c288dc54d7c0 201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "232d00189a89e53476a9ffe56d8ff5fd3649bcf3",
+  "prompts": {},
+  "sessions": {
+    "s_06f7e3a37b8bfd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e9b740ed-58dd-431f-a5c0-1fc57d383fb1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

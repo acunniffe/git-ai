@@ -1,0 +1,22 @@
+src/authorship/stats.rs
+  f4f2b364dfcacebb 434,507
+  s_f4f2b364dfcace::t_6f4e9c3666698a 433,506
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "06fdd54281b2f745751b1959c9f0ee9f54137b35",
+  "prompts": {},
+  "sessions": {
+    "s_f4f2b364dfcace": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/703451899103d419f9adbbfb658091393571dbc53b33c7cb0c9fb02d86652978"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+install.ps1
+  s_64e8f27d934849::t_109e0ac915ec1f 377-378
+install.sh
+  s_64e8f27d934849::t_b56abfacb293f7 203-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "0080c311337d2bf8e93e4dbeab695145e2840eb1",
+  "prompts": {},
+  "sessions": {
+    "s_64e8f27d934849": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51f34527-8189-47ce-b809-a328bd6d1639",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

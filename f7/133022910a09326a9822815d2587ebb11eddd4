@@ -1,0 +1,23 @@
+install.sh
+  s_61bbcfe4478210::t_5f3b316b933836 409-441
+tests/integration/install_script_chown.rs
+  s_61bbcfe4478210::t_1954ee32fec7a4 1-142
+tests/integration/main.rs
+  s_61bbcfe4478210::t_7f6709c0f05db1 80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.4",
+  "base_commit_sha": "f7133022910a09326a9822815d2587ebb11eddd4",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

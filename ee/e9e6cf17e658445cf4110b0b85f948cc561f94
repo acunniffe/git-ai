@@ -1,0 +1,49 @@
+tests/integration/checkpoint_perf.rs
+  s_69a54df0345dbf::t_4279cb365ba09f 46,163
+tests/integration/repos/test_repo.rs
+  s_69a54df0345dbf::t_b1d2f56b5d0c17 545-546,548
+  s_69a54df0345dbf::t_0ee3fb24f740c4 1814
+  s_69a54df0345dbf::t_06f9186729d314 51,59,64,68
+tests/notes_sync_regression.rs
+  s_69a54df0345dbf::t_126126f9514b50 436-440
+tests/integration/worktrees.rs
+  s_69a54df0345dbf::t_f861b9ae04423b 276
+  s_69a54df0345dbf::t_b8d88ce6ddce4a 252
+  s_69a54df0345dbf::t_6972edbd857f5d 234
+  s_69a54df0345dbf::t_e0fd66fc72b4ca 295
+tests/commit_tree_update_ref.rs
+  s_69a54df0345dbf::t_126fe85f5e8a54 130,179,247,296,365
+tests/daemon_mode.rs
+  s_69a54df0345dbf::t_9152d32ac2d508 1010,1062,1130,1196,1712,1772,1811,1913,2050,2107,2230,2351,2512,2820,2933,3003,3124,3239,3292,3350,3462,3583,3716,3758,3834,3889,4067,4126,4170,4312,4353,4397,4432,4456,4513,4641,4730
+tests/integration/repos/mod.rs
+  s_69a54df0345dbf::t_64847b8ae475e7 328,336
+  s_69a54df0345dbf::t_3bd02a21b25cac 345
+tests/async_mode.rs
+  s_69a54df0345dbf::t_f5e3f51a9d2879 229,250,272,292,330,361,441-442,466-467,514,695
+tests/integration/ci_partial_clone.rs
+  s_69a54df0345dbf::t_b9f5416801195e 7
+tests/windows_install_script.rs
+  s_69a54df0345dbf::t_a62edb16532d77 329,373,396
+tests/integration/ci_squash_rebase.rs
+  s_69a54df0345dbf::t_3d17b856d05aff 7
+tests/integration/graphite.rs
+  s_69a54df0345dbf::t_0b8ee31359bca7 388-389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "eee9e6cf17e658445cf4110b0b85f948cc561f94",
+  "prompts": {},
+  "sessions": {
+    "s_69a54df0345dbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a46a182e-c0bb-4405-9496-ba072ce77795",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/efb92c281d8b6404343baaf0a7b4cb551798e6659f30c6ba4163835c7552f430"
+    }
+  }
+}

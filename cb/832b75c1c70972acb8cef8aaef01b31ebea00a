@@ -1,0 +1,34 @@
+src/commands/diff.rs
+  a5bb0570bf2faa11 1,5-6,19-23,42-63,89-90,99,102-106,112-114,124,133-134,159-166,168-169,462-488,490-575,577,579-650,875,877,888,890
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "cb832b75c1c70972acb8cef8aaef01b31ebea00a",
+  "prompts": {
+    "a5bb0570bf2faa11": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "39051aea-e60b-4cac-bf46-cff169d5ff67",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/diff.rs:40-43 \n\ni'm building out the --json mode. \n\nHere's the format I want\n\nFor the annotations array use the structs for line ranges we have in @src/authorship/authorship_log_serialization.rs but serialize them to json tuples. \n\nYou'll also need to put the unified diff for each file into the diff object (so that needs to be split by file)\n\nand basecontent has to be an object read I think @src/git/repository.rs should have a helper for that. \n\nprompt records is a struct we already have in the project, just serialize it\n\n{\n  files: {\n    \"<file>\": {\n        \"annotations\": [\n          \"<prompt>_hash\":[[1,5], 9],\n        ],\n        \"diff\": \"\",\n        \"base_content: \"\",\n   },\n   prompts: {\n      \"<prompt>_hash\" <PromptRecord>\n   }\n}",
+          "timestamp": "2025-12-13T12:49:05.491Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you build out the `--json` mode for the diff command. Let me first explore the relevant files to understand the existing structs and helpers.",
+          "timestamp": "2025-12-13T12:49:11.437Z"
+        }
+      ],
+      "total_additions": 334,
+      "total_deletions": 59,
+      "accepted_lines": 286,
+      "overriden_lines": 2
+    }
+  }
+}
