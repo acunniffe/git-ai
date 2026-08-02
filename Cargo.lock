@@ -1076,7 +1076,6 @@ dependencies = [
  "mockito",
  "named_pipe",
  "native-tls",
- "once_cell",
  "openssl",
  "paste",
  "rand 0.10.1",

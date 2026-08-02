@@ -2,8 +2,8 @@ use crate::error::GitAiError;
 use crate::operations::mdm::hook_installer::{
     HookCheckResult, HookInstaller, HookInstallerParams, InstallResult, UninstallResult,
 };
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 pub struct VisualStudioInstaller;
 
@@ -17,7 +17,7 @@ const MAX_EXTENSION_MANIFEST_DEPTH: usize = 3;
 const MARKETPLACE_URL: &str =
     "https://marketplace.visualstudio.com/items?itemName=git-ai.git-ai-visualstudio";
 
-static VSIX_IDENTITY_RE: Lazy<Regex> = Lazy::new(|| {
+static VSIX_IDENTITY_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
         r#"<Identity\b[^>]*\bId\s*=\s*["']{}["']"#,
         regex::escape(VSIX_IDENTITY_ID)

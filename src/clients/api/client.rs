@@ -2,14 +2,13 @@ use crate::clients::auth::{CredentialStore, OAuthClient};
 use crate::clients::http;
 use crate::config;
 use crate::error::GitAiError;
-use once_cell::sync::Lazy;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use url::Url;
 
 /// Global mutex to prevent multiple threads from refreshing simultaneously.
 /// This provides in-process synchronization to avoid thundering herd issues.
 /// Note: Cross-process races are acceptable - both processes get valid tokens.
-static REFRESH_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+static REFRESH_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 /// Attempt to load stored credentials and refresh if needed.
 /// Returns None on any failure (not logged in, expired, refresh failed).
@@ -298,8 +297,6 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     // ============= ApiContext Tests =============
 
@@ -474,28 +471,23 @@ mod tests {
     }
 
     #[test]
-    fn test_concurrent_access_to_mutex() {
-        // Test that multiple threads can safely contend for the mutex
-        let counter = Arc::new(AtomicUsize::new(0));
-        let mut handles = vec![];
+    fn test_refresh_lock_reuses_one_mutex() {
+        assert!(std::ptr::eq(&*REFRESH_LOCK, &*REFRESH_LOCK));
+    }
 
-        for _ in 0..5 {
-            let counter_clone = counter.clone();
-            let handle = std::thread::spawn(move || {
-                if let Ok(_guard) = REFRESH_LOCK.lock() {
-                    counter_clone.fetch_add(1, Ordering::SeqCst);
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
-            });
-            handles.push(handle);
-        }
+    #[test]
+    fn test_refresh_lock_serializes_access() {
+        let guard = REFRESH_LOCK.lock().unwrap();
+        let handle = std::thread::spawn(|| {
+            assert!(matches!(
+                REFRESH_LOCK.try_lock(),
+                Err(std::sync::TryLockError::WouldBlock)
+            ));
+        });
 
-        for handle in handles {
-            handle.join().unwrap();
-        }
+        handle.join().unwrap();
+        drop(guard);
 
-        // All threads should have acquired the lock sequentially
-        let final_count = counter.load(Ordering::SeqCst);
-        assert_eq!(final_count, 5);
+        assert!(REFRESH_LOCK.lock().is_ok());
     }
 }
