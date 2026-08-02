@@ -346,14 +346,16 @@ fn needs_quoting(path: &str) -> bool {
     path.contains(' ') || path.contains('\t') || path.contains('\n')
 }
 
-/// Generate a short hash (16 characters) from agent_id and tool
-pub fn generate_short_hash(agent_id: &str, tool: &str) -> String {
+fn tool_agent_hash_hex(agent_id: &str, tool: &str) -> String {
     let combined = format!("{}:{}", tool, agent_id);
     let mut hasher = Sha256::new();
     hasher.update(combined.as_bytes());
-    let result = hasher.finalize();
-    // Take first 16 characters of the hex representation
-    format!("{:x}", result)[..16].to_string()
+    format!("{:x}", hasher.finalize())
+}
+
+/// Generate a short hash (16 characters) from agent_id and tool
+pub fn generate_short_hash(agent_id: &str, tool: &str) -> String {
+    tool_agent_hash_hex(agent_id, tool)[..16].to_string()
 }
 
 /// Generate a short hash identifying a known human author from their git committer identity.
@@ -370,10 +372,7 @@ pub fn generate_human_short_hash(author_identity: &str) -> String {
 /// Uses the same hash base as `generate_short_hash` but with a prefix and shorter hash portion.
 /// The "s_" prefix distinguishes session IDs from legacy prompt hashes throughout the system.
 pub fn generate_session_id(agent_id: &str, tool: &str) -> String {
-    let combined = format!("{}:{}", tool, agent_id);
-    let mut hasher = Sha256::new();
-    hasher.update(combined.as_bytes());
-    let hex = format!("{:x}", hasher.finalize());
+    let hex = tool_agent_hash_hex(agent_id, tool);
     format!("s_{}", &hex[..14])
 }
 
