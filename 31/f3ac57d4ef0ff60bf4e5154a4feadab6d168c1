@@ -1,0 +1,25 @@
+src/transcripts/agents/opencode.rs
+  759815a68a4f7264 32-33,41,52-56,64-67,69,75-83,89-93,96,100-103,111-112,114-118,126-129,131-142,191-192,195-200,202-206,209,250-254
+tests/integration/opencode.rs
+  759815a68a4f7264 39,42,47,50-54,58-67,71,74-77,82-89,93-103,109-110,115,117,119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "31f3ac57d4ef0ff60bf4e5154a4feadab6d168c1",
+  "prompts": {
+    "759815a68a4f7264": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9b8122a-6f33-4fcb-a981-7260b993c9a7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 142,
+      "total_deletions": 92,
+      "accepted_lines": 122,
+      "overriden_lines": 0
+    }
+  }
+}

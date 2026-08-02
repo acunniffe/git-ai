@@ -1,0 +1,29 @@
+src/commands/checkpoint_agent/presets/mod.rs
+  52e0337472fe7d8f 145-146
+src/commands/checkpoint_agent/orchestrator.rs
+  52e0337472fe7d8f 17-23,29,265
+src/commands/checkpoint_agent/presets/github_copilot.rs
+  52e0337472fe7d8f 290
+src/commands/checkpoint_agent/presets/codex.rs
+  52e0337472fe7d8f 175-178,188-189,192-194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "d3e4b8d1b69c8bde67684e6884fa6a5e25778e71",
+  "prompts": {
+    "52e0337472fe7d8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f9931c2-b988-437f-8537-64a1ed799b25",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 82,
+      "total_deletions": 97,
+      "accepted_lines": 73,
+      "overriden_lines": 0
+    }
+  }
+}

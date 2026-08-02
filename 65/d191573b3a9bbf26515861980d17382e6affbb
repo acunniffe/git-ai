@@ -1,0 +1,40 @@
+tests/hook_contract_all_hooks.rs
+  c6b94fe2ded43cdf 1-225
+tests/repos/mod.rs
+  c6b94fe2ded43cdf 1
+src/commands/core_hooks.rs
+  c6b94fe2ded43cdf 1532-1547,1601-1605,1612-1616,1623-1626,1634,1643,1648
+tests/hook_ecosystem_husky.rs
+  c6b94fe2ded43cdf 1-310
+tests/repos/ecosystem.rs
+  c6b94fe2ded43cdf 1-645
+.github/workflows/hook-ecosystem-compat.yml
+  c6b94fe2ded43cdf 1-218
+tests/hook_ecosystem_lefthook.rs
+  c6b94fe2ded43cdf 1-108
+tests/hook_ecosystem_pre_commit.rs
+  c6b94fe2ded43cdf 1-133
+tests/hook_ecosystem_pre_commit_ci_style.rs
+  c6b94fe2ded43cdf 1-108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "65d191573b3a9bbf26515861980d17382e6affbb",
+  "prompts": {
+    "c6b94fe2ded43cdf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c624a-1d4f-72b3-b7a8-50a0be077998",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1783,
+      "total_deletions": 1719,
+      "accepted_lines": 1783,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/c691cb3170ecfc6837297394c28587835321d49b0bcdbb5903773cf7f57df283"
+    }
+  }
+}

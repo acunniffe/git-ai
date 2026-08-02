@@ -1,0 +1,28 @@
+agent-support/xcode/Sources/git-ai-xcode-watcher/main.swift
+  73a492d33da4b1eb 8,18-22,25,31-40,53-54,56-63,65-66,68-79,82,92-94,100-110,113,115
+src/mdm/agents/mod.rs
+  73a492d33da4b1eb 13,28,48
+src/mdm/agents/xcode.rs
+  73a492d33da4b1eb 49,55-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "2cf27f1bf8c5f74e8ff602762da61c76c9832b43",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 69,
+      "total_deletions": 54,
+      "accepted_lines": 69,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/3cb279e89c8c149108e20c6f30be3b08c4804946c255d4fa940fadf3eccdec3a"
+    }
+  }
+}

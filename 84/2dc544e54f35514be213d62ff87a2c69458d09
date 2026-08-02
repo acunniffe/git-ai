@@ -1,0 +1,20 @@
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_c948664c4dfc38::t_8b3c6271e43353 59
+  s_c948664c4dfc38::t_ff5cdd524d2f06 200
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.7",
+  "base_commit_sha": "842dc544e54f35514be213d62ff87a2c69458d09",
+  "prompts": {},
+  "sessions": {
+    "s_c948664c4dfc38": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca3b6018-0bf4-4f44-96d5-67eff7d002f3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

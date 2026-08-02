@@ -1,0 +1,35 @@
+src/commands/daemon.rs
+  s_f5625e539bdb2a::t_b2f625bff773d6 194
+  s_f5625e539bdb2a::t_fb9b1a9dfb492a 183
+tests/integration/daemon_runtime_memory.rs
+  s_f5625e539bdb2a::t_830c7b4d3adc6f 10-14,22-27,91-92
+  s_f5625e539bdb2a::t_02fc4b312bc97e 4,28-33,35,37-38,40-68,73-90
+  s_f5625e539bdb2a::t_4521bc5b866ee9 15-21
+  s_f5625e539bdb2a::t_60571a3b4f261e 34,36,39
+  s_f5625e539bdb2a::t_1bbc5b8539136b 69-72
+src/tokio_runtime.rs
+  s_f5625e539bdb2a::t_c734e0af4acfd3 17
+  s_f5625e539bdb2a::t_fb9b1a9dfb492a 18-53
+  s_f5625e539bdb2a::t_b2f625bff773d6 12-16,54-72,92-95,198-215
+  s_f5625e539bdb2a::t_e4343007cbe024 96
+src/daemon/checkpoint.rs
+  s_f5625e539bdb2a::t_cbd89f274fecac 597-600,602-603
+  s_f5625e539bdb2a::t_b8bc604345f929 596
+  s_f5625e539bdb2a::t_54588c42281213 601
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "39aec1822eca0d303dd4d51032e279695af7ec19",
+  "prompts": {},
+  "sessions": {
+    "s_f5625e539bdb2a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb611-50e1-7002-b32d-c055ac3eb311",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,32 @@
+src/commands/hooks/push_hooks.rs
+  human 7
+  35eb637 3,18
+src/commands/git_handlers.rs
+  35eb637 177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "5dba92cc3db212c24a4ba03a741faceef6b05d12",
+  "prompts": {
+    "dea3b6d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3710ba64-1632-4ca1-b73a-b667b0628e07",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/hooks/push_hooks.rs:8-11 now that we've changed how push_pre_command_hook works we don't need to return the option anymore or wait for it in post_command\n\n\n\nhonestly we can get rid of the entire push_post_command hook\n\n\n\ngo to @src/commands/git_ai_handlers.rs and clean up",
+          "timestamp": "2025-11-21T21:47:47.824Z"
+        }
+      ],
+      "total_additions": 5,
+      "total_deletions": 34,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}

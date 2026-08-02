@@ -1,0 +1,28 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  53c510710fb3d25e 352,469,1954
+src/daemon/family_actor.rs
+  53c510710fb3d25e 328-335
+src/mdm/agents/claude_code.rs
+  53c510710fb3d25e 395
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "afc757ce0a9f528ebd137d81b7870dc3cc3874c9",
+  "prompts": {
+    "53c510710fb3d25e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b93935d-0343-456c-ac35-2d34c68929f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 8,
+      "accepted_lines": 13,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/de556fba4cdba582123cb3739d28ee048bdfac26912e2ddf0af9214d18bbac29"
+    }
+  }
+}

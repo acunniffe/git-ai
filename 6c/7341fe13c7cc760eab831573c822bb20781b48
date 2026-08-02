@@ -1,0 +1,25 @@
+src/daemon/analyzers/history.rs
+  s_f00ef7c0f45b07::t_a91d2810b7dfe5 32-36,48,53-57
+  s_f00ef7c0f45b07::t_2f68c278f8becf 702-788
+  s_f00ef7c0f45b07::t_3677b12632ccec 195-198,200-207,209-238
+  s_f00ef7c0f45b07::t_0a3715c9325a4a 49-52,199,208
+tests/commit_tree_update_ref.rs
+  s_f00ef7c0f45b07::t_e94a0f45e3b06a 12-13,34-75,171-202,204
+  s_f00ef7c0f45b07::t_0a3715c9325a4a 203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "6c7341fe13c7cc760eab831573c822bb20781b48",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

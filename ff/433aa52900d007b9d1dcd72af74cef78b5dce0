@@ -1,0 +1,19 @@
+src/mdm/agents/claude_code.rs
+  s_11a9624189e6f0::t_5380a6627f50ae 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "ff433aa52900d007b9d1dcd72af74cef78b5dce0",
+  "prompts": {},
+  "sessions": {
+    "s_11a9624189e6f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "18035003-f57b-4b50-8b74-4497f2914e92",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
