@@ -153,16 +153,19 @@ fn parse_linguist_generated_patterns(contents: &str) -> Vec<String> {
 }
 
 fn load_root_gitattributes_contents(repo: &Repository) -> Option<String> {
+    load_root_text_file_contents(repo, ".gitattributes")
+}
+
+fn load_root_text_file_contents(repo: &Repository, relative_name: &str) -> Option<String> {
     if repo.is_bare_repository().unwrap_or(false) {
         return repo
-            .get_file_content(".gitattributes", "HEAD")
+            .get_file_content(relative_name, "HEAD")
             .ok()
             .and_then(|bytes| String::from_utf8(bytes).ok());
     }
 
     let workdir = repo.workdir().ok()?;
-    let gitattributes_path = workdir.join(".gitattributes");
-    fs::read_to_string(gitattributes_path).ok()
+    fs::read_to_string(workdir.join(relative_name)).ok()
 }
 
 /// Load ignore patterns from a `.git-ai-ignore` file at the repository root.
@@ -191,16 +194,7 @@ fn parse_git_ai_ignore_patterns(contents: &str) -> Vec<String> {
 }
 
 fn load_root_git_ai_ignore_contents(repo: &Repository) -> Option<String> {
-    if repo.is_bare_repository().unwrap_or(false) {
-        return repo
-            .get_file_content(".git-ai-ignore", "HEAD")
-            .ok()
-            .and_then(|bytes| String::from_utf8(bytes).ok());
-    }
-
-    let workdir = repo.workdir().ok()?;
-    let ignore_path = workdir.join(".git-ai-ignore");
-    fs::read_to_string(ignore_path).ok()
+    load_root_text_file_contents(repo, ".git-ai-ignore")
 }
 
 /// Load `.git-ai-ignore` patterns from a repo root path directly (no Repository object needed).

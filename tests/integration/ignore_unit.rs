@@ -51,8 +51,8 @@ fn make_bare_repo(
 }
 
 fn make_bare_repo_with_ignore(
-    root_gitattributes: Option<&str>,
-    git_ai_ignore: Option<&str>,
+    root_gitattributes: Option<&[u8]>,
+    git_ai_ignore: Option<&[u8]>,
 ) -> (
     tempfile::TempDir,
     git_ai::operations::git::repository::Repository,
@@ -147,6 +147,77 @@ generated/** linguist-generated=true
 
     assert!(patterns.contains(&"generated/**".to_string()));
     assert!(!patterns.contains(&"[attr]generated".to_string()));
+}
+
+#[test]
+fn root_text_loaders_preserve_worktree_acquisition_contract() {
+    let repo = TestRepo::new();
+    fs::write(
+        repo.path().join(".gitattributes"),
+        "committed-generated/** linguist-generated=true\n",
+    )
+    .unwrap();
+    fs::write(repo.path().join(".git-ai-ignore"), "committed-ignore/**\n").unwrap();
+    repo.stage_all_and_commit("add root text files").unwrap();
+
+    fs::write(
+        repo.path().join(".gitattributes"),
+        "live-generated/** linguist-generated=true\n",
+    )
+    .unwrap();
+    fs::write(repo.path().join(".git-ai-ignore"), "live-ignore/**\n").unwrap();
+
+    let gitai_repo =
+        git_ai::operations::git::repository::find_repository_in_path(repo.path().to_str().unwrap())
+            .unwrap();
+
+    assert_eq!(
+        load_linguist_generated_patterns_from_root_gitattributes(&gitai_repo),
+        vec!["live-generated/**".to_string()]
+    );
+    assert_eq!(
+        load_git_ai_ignore_patterns(&gitai_repo),
+        vec!["live-ignore/**".to_string()]
+    );
+
+    fs::remove_file(repo.path().join(".gitattributes")).unwrap();
+    fs::remove_file(repo.path().join(".git-ai-ignore")).unwrap();
+    assert!(load_linguist_generated_patterns_from_root_gitattributes(&gitai_repo).is_empty());
+    assert!(load_git_ai_ignore_patterns(&gitai_repo).is_empty());
+
+    fs::create_dir(repo.path().join(".gitattributes")).unwrap();
+    fs::create_dir(repo.path().join(".git-ai-ignore")).unwrap();
+    assert!(load_linguist_generated_patterns_from_root_gitattributes(&gitai_repo).is_empty());
+    assert!(load_git_ai_ignore_patterns(&gitai_repo).is_empty());
+
+    fs::remove_dir(repo.path().join(".gitattributes")).unwrap();
+    fs::remove_dir(repo.path().join(".git-ai-ignore")).unwrap();
+    fs::write(repo.path().join(".gitattributes"), [0xff]).unwrap();
+    fs::write(repo.path().join(".git-ai-ignore"), [0xff]).unwrap();
+    assert!(load_linguist_generated_patterns_from_root_gitattributes(&gitai_repo).is_empty());
+    assert!(load_git_ai_ignore_patterns(&gitai_repo).is_empty());
+
+    fs::write(
+        repo.path().join(".gitattributes"),
+        "fallback-generated/** linguist-generated=true\n",
+    )
+    .unwrap();
+    fs::write(repo.path().join(".git-ai-ignore"), "fallback-ignore/**\n").unwrap();
+    let git_metadata = repo.path().join(".git");
+    if git_metadata.is_dir() {
+        fs::remove_dir_all(git_metadata).unwrap();
+    } else {
+        fs::remove_file(git_metadata).unwrap();
+    }
+
+    assert_eq!(
+        load_linguist_generated_patterns_from_root_gitattributes(&gitai_repo),
+        vec!["fallback-generated/**".to_string()]
+    );
+    assert_eq!(
+        load_git_ai_ignore_patterns(&gitai_repo),
+        vec!["fallback-ignore/**".to_string()]
+    );
 }
 
 #[test]
@@ -360,11 +431,41 @@ fn bare_repo_does_not_read_parent_directory_gitattributes() {
 
 #[test]
 fn loads_git_ai_ignore_from_bare_repo_head() {
-    let (_tmp, bare_repo) = make_bare_repo_with_ignore(None, Some("docs/**\n*.pdf\n"));
+    let (_tmp, bare_repo) = make_bare_repo_with_ignore(None, Some(b"docs/**\n*.pdf\n"));
 
     let patterns = load_git_ai_ignore_patterns(&bare_repo);
     assert!(patterns.contains(&"docs/**".to_string()));
     assert!(patterns.contains(&"*.pdf".to_string()));
+}
+
+#[test]
+fn root_text_loaders_preserve_bare_head_acquisition_contract() {
+    let (_tmp, bare_repo) = make_bare_repo_with_ignore(
+        Some(b"generated/** linguist-generated=true\n"),
+        Some(b"docs/**\n"),
+    );
+
+    assert_eq!(
+        load_linguist_generated_patterns_from_root_gitattributes(&bare_repo),
+        vec!["generated/**".to_string()]
+    );
+    assert_eq!(
+        load_git_ai_ignore_patterns(&bare_repo),
+        vec!["docs/**".to_string()]
+    );
+
+    fs::write(bare_repo.path().join("HEAD"), "ref: refs/heads/missing\n").unwrap();
+
+    assert!(load_linguist_generated_patterns_from_root_gitattributes(&bare_repo).is_empty());
+    assert!(load_git_ai_ignore_patterns(&bare_repo).is_empty());
+}
+
+#[test]
+fn root_text_loaders_reject_non_utf8_bare_head_files() {
+    let (_tmp, bare_repo) = make_bare_repo_with_ignore(Some(&[0xff]), Some(&[0xff]));
+
+    assert!(load_linguist_generated_patterns_from_root_gitattributes(&bare_repo).is_empty());
+    assert!(load_git_ai_ignore_patterns(&bare_repo).is_empty());
 }
 
 #[test]
@@ -378,8 +479,8 @@ fn bare_repo_returns_empty_when_git_ai_ignore_missing() {
 #[test]
 fn bare_repo_effective_patterns_union_gitattributes_and_git_ai_ignore() {
     let (_tmp, bare_repo) = make_bare_repo_with_ignore(
-        Some("generated/** linguist-generated=true\n"),
-        Some("docs/**\n"),
+        Some(b"generated/** linguist-generated=true\n"),
+        Some(b"docs/**\n"),
     );
 
     let patterns = effective_ignore_patterns(&bare_repo, &[], &[]);
@@ -392,6 +493,7 @@ crate::reuse_tests_in_worktree!(
     // TestRepo tests
     loads_positive_linguist_generated_only,
     ignores_gitattributes_macro_definitions,
+    root_text_loaders_preserve_worktree_acquisition_contract,
     loads_git_ai_ignore_patterns_from_workdir,
     git_ai_ignore_skips_comments_and_blank_lines,
     git_ai_ignore_deduplicates_patterns,
@@ -405,6 +507,8 @@ crate::reuse_tests_in_worktree!(
     loads_linguist_generated_from_bare_repo_head,
     bare_repo_does_not_read_parent_directory_gitattributes,
     loads_git_ai_ignore_from_bare_repo_head,
+    root_text_loaders_preserve_bare_head_acquisition_contract,
+    root_text_loaders_reject_non_utf8_bare_head_files,
     bare_repo_returns_empty_when_git_ai_ignore_missing,
     bare_repo_effective_patterns_union_gitattributes_and_git_ai_ignore,
 );
