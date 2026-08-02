@@ -127,6 +127,7 @@ jobs:
           git init
           git config user.email "e2e-test@example.com"
           git config user.name "E2E Test"
+          git remote add origin https://github.com/git-ai-project/git-ai.git
           echo "# E2E Test Repo" > README.md
           git add README.md
           # The proxy symlink doesn't exist yet, so 'git' here is still the real system git
@@ -295,6 +296,7 @@ jobs:
           git init
           git config user.email "e2e-test@example.com"
           git config user.name "E2E Test"
+          git remote add origin https://github.com/git-ai-project/git-ai.git
           Set-Content -Path "README.md" -Value "# E2E Test Repo"
           git add README.md
           git commit -m "Initial commit"
