@@ -1,0 +1,19 @@
+tests/async_mode.rs
+  s_1a73b70d67568e::t_d69a6bd420eefe 89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "e3e1e5f609d10cddb0c614b28069aa3830d2c7cf",
+  "prompts": {},
+  "sessions": {
+    "s_1a73b70d67568e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "838b5d97-b595-494a-8181-ffdf9a8ef7c7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

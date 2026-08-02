@@ -1,0 +1,48 @@
+agent-support/visualstudio/src/GitAiVS/Detection/CopilotEditDetector.cs
+  s_61bbcfe4478210::t_3d632c554353d4 1-162
+agent-support/visualstudio/src/GitAiVS/Models/CheckpointInput.cs
+  s_61bbcfe4478210::t_b02ab9caa8c8b8 1-109
+src/mdm/agents/visual_studio.rs
+  s_61bbcfe4478210::t_d04c6e96f7ea4a 1-420
+agent-support/visualstudio/src/GitAiVS/Listeners/TextBufferListener.cs
+  s_61bbcfe4478210::t_40fc847004de65 1-192
+agent-support/visualstudio/README.md
+  s_61bbcfe4478210::t_429e69f045209b 2,4,6,13-16,21,25,30-35,37-39,41,43-47,49,51
+  s_61bbcfe4478210::t_718fd344020244 1,3,5,7-12,17-20,22-24,26-29,36,40,42,48,50,52
+agent-support/visualstudio/src/GitAiVS/Services/BinaryResolver.cs
+  s_61bbcfe4478210::t_89ee270bf77a33 1-159
+agent-support/visualstudio/src/GitAiVS/Services/GitRepoResolver.cs
+  s_61bbcfe4478210::t_8d64a6dfd07782 1-40
+agent-support/visualstudio/src/GitAiVS/Listeners/DocumentSaveListener.cs
+  s_61bbcfe4478210::t_dfcc1dfca61c01 1-125
+agent-support/visualstudio/src/GitAiVS/Detection/TabCompletionFilter.cs
+  s_61bbcfe4478210::t_5850ca9af4b7ca 1-57
+agent-support/visualstudio/src/GitAiVS/Services/CheckpointService.cs
+  s_61bbcfe4478210::t_786bac7ee9d338 1-128
+agent-support/visualstudio/DESIGN.md
+  s_61bbcfe4478210::t_2f2e3b613d0d4d 1-622
+src/mdm/agents/mod.rs
+  s_61bbcfe4478210::t_f687c7c67c7ffa 12,27,48
+agent-support/visualstudio/src/GitAiVS/source.extension.vsixmanifest
+  s_61bbcfe4478210::t_5a4be57da9fcd6 1-34
+agent-support/visualstudio/src/GitAiVS/GitAiVS.csproj
+  s_61bbcfe4478210::t_8b1e6c61405cbd 1-32
+agent-support/visualstudio/src/GitAiVS/GitAiPackage.cs
+  s_61bbcfe4478210::t_1a13f6136c4d27 1-213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "50dc870b19611e48d86b8584d53b7310951b6b00",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

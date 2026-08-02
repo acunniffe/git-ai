@@ -1,0 +1,40 @@
+tests/integration/install_hooks_comprehensive.rs
+  s_567dab71b64423::t_eff7c7b977a545 289,385,410,461
+  s_567dab71b64423::t_d4dc0d9c58192f 13,56-61,76-77,504-511,546-551,556-561,581-586
+  s_567dab71b64423::t_33506f6891e1c8 69
+  s_567dab71b64423::t_d710d92fbf7d8a 50-51
+  s_567dab71b64423::t_167f715077ac1e 12,21-49,52-55,290,312,314-317,319-331,333-358,360-384,386,388-396,398-404,411-412
+  s_567dab71b64423::t_fdec45045ba8a2 446-460,462-464,466-486,488-502
+  s_567dab71b64423::t_73d7a395c203ea 405-409,413-442
+  s_567dab71b64423::t_3a64080ee3dfb3 14-15,62-68,70-75,292,332,359,387,397,465,487
+  s_567dab71b64423::t_334e383988e640 503
+Cargo.toml
+  s_567dab71b64423::t_46ace3405e64e0 50
+install.sh
+  s_567dab71b64423::t_cca7b7ff008ef4 280
+src/commands/install_hooks/shell_env.rs
+  s_567dab71b64423::t_46ace3405e64e0 1-22,27-45,49,54,56-71,73,75-158,161-171,217-246,256-263,267-270,272-277,281-314,316-391,393-418,431-432
+  s_567dab71b64423::t_867d03a4e139a4 50-53,55
+  s_567dab71b64423::t_eff7c7b977a545 159-160,264-266
+  s_567dab71b64423::t_d710d92fbf7d8a 278-279,315,392
+  s_567dab71b64423::t_fdec45045ba8a2 247-255,271,280,419-430
+  s_567dab71b64423::t_9558b261227007 23-26,46-48,72,74,172-216
+src/commands/install_hooks.rs
+  s_567dab71b64423::t_46ace3405e64e0 14-15,350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "0f9ca8fc19d9f4a21a92184772c06a672a77a24c",
+  "prompts": {},
+  "sessions": {
+    "s_567dab71b64423": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8f7c-ba9b-7112-8d11-3570848d66bb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,45 @@
+src/commands/blame.rs
+  2f0f32c 2,153,237,240,273,537,539,572,574,578,607
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "c60a0d241a250c005a46d56cb7746c932469eb55",
+  "prompts": {
+    "2f0f32c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "48d4196c-95e1-42c1-94ce-f98781230381",
+        "model": "default"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "For the code present, we get this error:\n```\nborrow of moved value: `prompt_hash`\nvalue borrowed here after move\n```\nHow can I resolve this? If you propose a fix, please make it concise.",
+          "timestamp": "2025-10-20T18:11:44.549Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Looking at the error and the code, the issue is on line 577 where `prompt_hash.clone().unwrap()` is used, but `prompt_hash` was already moved on line 573 when it was used in the `if let Some((author, prompt_hash, prompt))` pattern.\n\nThe fix is to clone `prompt_hash` before using it in the `if let` pattern:",
+          "timestamp": "2025-10-20T18:11:44.574Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/commands/blame.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The fix extracts the `prompt_hash` value early by calling `unwrap()` and storing it in a local variable, then reusing that variable instead of trying to clone the moved value. This resolves the borrow checker error.",
+          "timestamp": "2025-10-20T18:12:18.402Z"
+        }
+      ],
+      "total_additions": 11,
+      "total_deletions": 7,
+      "accepted_lines": 1176,
+      "overriden_lines": 0
+    }
+  }
+}

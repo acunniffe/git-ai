@@ -1,0 +1,24 @@
+tests/daemon_mode.rs
+  s_f00ef7c0f45b07::t_2e02e15fec33be 856-859,862-867
+  s_f00ef7c0f45b07::t_bb1daaaa7587ae 860-861
+tests/integration/cold_trace2_repo.rs
+  s_f00ef7c0f45b07::t_43aa7e1a173c6c 317
+tests/integration/repos/test_repo.rs
+  s_f00ef7c0f45b07::t_593ad9568474de 842-858,1713-1724
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "8ea61ecb35fb256083bd4e8506436a09241a44ae",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

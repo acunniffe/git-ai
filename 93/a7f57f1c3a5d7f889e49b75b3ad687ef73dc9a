@@ -1,0 +1,43 @@
+src/commands/install_hooks.rs
+  423d0b9 656-657,664,694-696,698-700
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "51be7584b52f6718f51f3d4b2c127f96698f1ed6",
+  "prompts": {
+    "423d0b9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8e106d40-30fe-46b7-9a09-e0c3be1cb122",
+        "model": "gpt-5-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "On windows, even though I can run the `code` cli from cmd prompt/powershell, I'm getting this error when I run install-hooks:\n\n✗ VS Code: Failed to check extension\n  Error: Generic error: program not found"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll locate where `install-hooks` checks for VS Code and where the \"program not found\" error originates to diagnose why the `code` CLI isn't being detected on Windows."
+        },
+        {
+          "type": "assistant",
+          "text": "I'll update our understanding by opening the relevant section of `install_hooks.rs` to implement a Windows-safe way to invoke the VS Code CLI via `cmd /C`, and adjust the detection to account for `code.cmd` or `code.exe`."
+        },
+        {
+          "type": "assistant",
+          "text": "I'll add a Windows-safe wrapper to invoke the VS Code CLI using cmd.exe in `is_vscode_extension_installed` and `install_vscode_extension`, then build to confirm."
+        },
+        {
+          "type": "assistant",
+          "text": "Found the failure point: we were spawning the VS Code CLI directly as code, which works in shells but not from Rust on Windows because .cmd files aren’t executed via CreateProcess. I updated the VS Code checks to invoke the CLI through cmd.exe on Windows.\n\n- What changed: `is_vscode_extension_installed` and `install_vscode_extension` now call cmd /C code ... on Windows, fixing “Generic error: program not found”.\n\nTry this:\n- Update git-ai to latest main and rebuild, then re-run install-hooks.\n- Or manually install the extension now:\n```powershell\ncode --install-extension git-ai.git-ai-vscode --force\n```\n- Quick check that the CLI will work with the new code path:\n```powershell\ncmd /C code --list-extensions\n```\n\nIf you still hit issues, please share the outputs of:\n- cmd /C where code\n- cmd /C echo %PATHEXT%\n\n- Edits: Updated `src/commands/install_hooks.rs` to wrap VS Code CLI invocations with cmd.exe on Windows, avoiding direct execution of .cmd."
+        }
+      ],
+      "total_additions": 17,
+      "total_deletions": 5,
+      "accepted_lines": 14,
+      "overriden_lines": 3
+    }
+  }
+}

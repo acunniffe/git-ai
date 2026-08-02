@@ -1,0 +1,26 @@
+tests/daemon_mode.rs
+  s_7d470640a960b2::t_bdb356bbfe76b7 6,20
+  s_7d470640a960b2::t_e9074f46ef3139 5,1716-1726,1730-1766
+  s_7d470640a960b2::t_fdebdd7f62ffde 1728-1729
+  s_7d470640a960b2::t_88be3d5e775fe7 1788-1789
+  s_7d470640a960b2::t_41d38a19ed2153 1727,1767,1776-1785
+  s_7d470640a960b2::t_b4ec661c2a7600 21,1768-1775,1786-1787
+src/daemon/checkpoint.rs
+  s_7d470640a960b2::t_ada1ec1767a7cd 863-871
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "169e2e3c6e2b4f5abb958a1541c0dd036a2dc4ed",
+  "prompts": {},
+  "sessions": {
+    "s_7d470640a960b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa51d-4cb8-7471-ad38-ead1f195155b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

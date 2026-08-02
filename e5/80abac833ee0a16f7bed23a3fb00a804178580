@@ -1,0 +1,19 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  s_4d604bdd40c765::t_f41e1f05e298a8 723-724,731
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "e580abac833ee0a16f7bed23a3fb00a804178580",
+  "prompts": {},
+  "sessions": {
+    "s_4d604bdd40c765": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee61a-3160-7480-af4b-dd94e5be48f4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

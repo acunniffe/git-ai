@@ -1,0 +1,37 @@
+src/commands/hooks/commit_hooks.rs
+  3800fef055e223b0 71-80,98-118,124-131,133-143,150-152,157-158,163-224,145,147-149
+  0e1ddad37c6297ec 119-123,144,146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "911243ee350259a92c55ec58ac3dc122c5b4d44d",
+  "prompts": {
+    "0e1ddad37c6297ec": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14851b1b-af52-4229-9f27-546ebd97f1e6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 2,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    },
+    "3800fef055e223b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6eb5fa7d-e90c-414f-96d0-923f058e7998",
+        "model": "<synthetic>"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>",
+      "messages": [],
+      "total_additions": 188,
+      "total_deletions": 17,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}

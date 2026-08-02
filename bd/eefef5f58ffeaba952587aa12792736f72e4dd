@@ -1,0 +1,22 @@
+tests/integration/transcripts_e2e.rs
+  s_395f5898107085::t_492a938dedf260 492-600,602-606,608,621-623,631-642
+  s_395f5898107085::t_8154689e9f4a5c 601,607,609-620,625-630
+  s_395f5898107085::t_a0ae6829cc2742 8
+  s_395f5898107085::t_fc999bc465bf77 624
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "bdeefef5f58ffeaba952587aa12792736f72e4dd",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
