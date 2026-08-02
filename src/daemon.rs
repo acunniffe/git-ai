@@ -5381,7 +5381,9 @@ impl ActorDaemonCoordinator {
             if let Some((original_head, _)) = pending_original_head.as_ref()
                 && let Some(new_tip) = rebase_new_tip_from_command(cmd, original_head)
             {
-                repo.storage.rename_working_log(original_head, &new_tip)?;
+                if original_head != &new_tip {
+                    repo.storage.rename_working_log(original_head, &new_tip)?;
+                }
                 return Ok(());
             }
             for (old_tip, new_tip) in collapsed.values() {
@@ -5977,6 +5979,13 @@ impl ActorDaemonCoordinator {
                         new_commits,
                     } => {
                         if lite_mode {
+                            if !original_head.is_empty()
+                                && !new_head.is_empty()
+                                && original_head != new_head
+                            {
+                                let repo = find_repository_in_path(&worktree)?;
+                                repo.storage.rename_working_log(original_head, new_head)?;
+                            }
                             self.clear_pending_cherry_pick_sources_for_worktree(worktree.as_ref())?;
                         } else if !new_head.is_empty() {
                             let repo = find_repository_in_path(&worktree)?;
@@ -6180,6 +6189,14 @@ impl ActorDaemonCoordinator {
                             if !handled_revert_commits {
                                 handled_revert_commits = true;
                                 if lite_mode {
+                                    if let Some(base) = base.as_deref()
+                                        && let Some(destination) =
+                                            revert_destination_changes(cmd).last()
+                                        && base != destination.new
+                                    {
+                                        let repo = find_repository_in_path(&worktree)?;
+                                        repo.storage.rename_working_log(base, &destination.new)?;
+                                    }
                                     continue;
                                 }
                                 // A single `git revert A B` creates one commit per source.
@@ -6262,8 +6279,7 @@ impl ActorDaemonCoordinator {
                         }
                     }
                     crate::daemon::domain::SemanticEvent::CommitAmended { old_head, new_head } => {
-                        if !lite_mode
-                            && !old_head.is_empty()
+                        if !old_head.is_empty()
                             && !new_head.is_empty()
                             && old_head != new_head
                             && is_valid_oid(old_head)
@@ -6272,6 +6288,10 @@ impl ActorDaemonCoordinator {
                             && !is_zero_oid(new_head)
                         {
                             let repo = find_repository_in_path(&worktree)?;
+                            if lite_mode {
+                                repo.storage.rename_working_log(old_head, new_head)?;
+                                continue;
+                            }
                             let author = repo.effective_author_identity().formatted_or_unknown();
                             let recovery_file_timestamps = Self::take_commit_file_timestamps(
                                 commit_file_timestamp_snapshots,

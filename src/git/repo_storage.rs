@@ -190,6 +190,9 @@ impl RepoStorage {
     /// If the destination already has checkpoints, preserve the old-base entries first and
     /// append the destination entries after them.
     pub fn rename_working_log(&self, old_sha: &str, new_sha: &str) -> Result<(), GitAiError> {
+        if old_sha == new_sha {
+            return Ok(());
+        }
         let old_dir = self.working_logs.join(old_sha);
         let new_dir = self.working_logs.join(new_sha);
         if !old_dir.exists() {
@@ -989,5 +992,36 @@ mod tests {
         // Both sides' unique entries survive.
         assert!(merged.files.contains_key("old_only.txt"));
         assert!(merged.files.contains_key("new_only.txt"));
+    }
+
+    #[test]
+    fn test_rename_working_log_to_same_sha_preserves_log() {
+        let tmp = TempDir::new().unwrap();
+        let workdir = tmp.path().join("workdir");
+        fs::create_dir_all(&workdir).unwrap();
+        let ai_dir = tmp.path().join("ai");
+        let storage = RepoStorage::for_repo_path(&ai_dir, &workdir).unwrap();
+        let sha = "1111111111111111111111111111111111111111";
+
+        let log = storage.working_log_for_base_commit(sha).unwrap();
+        let mut initial = InitialAttributions::default();
+        initial
+            .files
+            .insert("pending.txt".into(), attr("ai_PENDING"));
+        log.write_initial(initial).unwrap();
+
+        storage.rename_working_log(sha, sha).unwrap();
+
+        let preserved = storage
+            .working_log_for_base_commit(sha)
+            .unwrap()
+            .read_initial_attributions();
+        assert_eq!(
+            preserved
+                .files
+                .get("pending.txt")
+                .map(|attrs| attrs[0].author_id.as_str()),
+            Some("ai_PENDING")
+        );
     }
 }

@@ -68,6 +68,27 @@ fn test_lite_mode_skips_amend_notes() {
 }
 
 #[test]
+fn test_lite_mode_preserves_uncommitted_ai_attribution_through_amend() {
+    let repo = lite_repo();
+    let mut committed = repo.filename("committed.txt");
+    committed.set_contents(crate::lines!["committed"]);
+    repo.stage_all_and_commit("base").unwrap();
+    committed.assert_committed_lines(crate::lines!["committed".human()]);
+
+    let mut pending = repo.filename("pending.txt");
+    pending.set_contents_no_stage(crate::lines!["pending AI".ai()]);
+    committed.insert_at(1, crate::lines!["amended"]);
+    repo.git(&["add", "committed.txt"]).unwrap();
+    repo.git(&["commit", "--amend", "--no-edit"]).unwrap();
+
+    let amended = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert!(repo.read_authorship_note(&amended).is_none());
+
+    repo.stage_all_and_commit("commit pending work").unwrap();
+    pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
+}
+
+#[test]
 fn test_lite_mode_skips_cherry_pick_notes() {
     let repo = lite_repo();
     let mut base = repo.filename("base.txt");
@@ -97,6 +118,37 @@ fn test_lite_mode_skips_cherry_pick_notes() {
 }
 
 #[test]
+fn test_lite_mode_preserves_uncommitted_ai_attribution_through_cherry_pick() {
+    let repo = lite_repo();
+    let mut base = repo.filename("base.txt");
+    base.set_contents(crate::lines!["base"]);
+    repo.stage_all_and_commit("base").unwrap();
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    let main = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "source"]).unwrap();
+    let mut picked = repo.filename("picked.txt");
+    picked.set_contents(crate::lines!["picked"]);
+    let source = repo.stage_all_and_commit("source").unwrap().commit_sha;
+    picked.assert_committed_lines(crate::lines!["picked".human()]);
+
+    repo.git(&["checkout", &main]).unwrap();
+    let mut main_file = repo.filename("main.txt");
+    main_file.set_contents(crate::lines!["main"]);
+    repo.stage_all_and_commit("advance main").unwrap();
+    main_file.assert_committed_lines(crate::lines!["main".human()]);
+
+    let mut pending = repo.filename("pending.txt");
+    pending.set_contents_no_stage(crate::lines!["pending AI".ai()]);
+    repo.git(&["cherry-pick", &source]).unwrap();
+    let destination = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert!(repo.read_authorship_note(&destination).is_none());
+
+    repo.stage_all_and_commit("commit pending work").unwrap();
+    pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
+}
+
+#[test]
 fn test_lite_mode_skips_revert_notes() {
     let repo = lite_repo();
     let path = repo.path().join("revert.txt");
@@ -118,6 +170,27 @@ fn test_lite_mode_skips_revert_notes() {
     let reverted = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
     assert!(repo.read_authorship_note(&reverted).is_none());
     file.assert_committed_lines(crate::lines!["keep".ai(), "restored AI".human(),]);
+}
+
+#[test]
+fn test_lite_mode_preserves_uncommitted_ai_attribution_through_revert() {
+    let repo = lite_repo();
+    let mut reverted = repo.filename("reverted.txt");
+    reverted.set_contents(crate::lines!["restore me"]);
+    repo.stage_all_and_commit("base").unwrap();
+    reverted.assert_committed_lines(crate::lines!["restore me".human()]);
+
+    fs::remove_file(repo.path().join("reverted.txt")).unwrap();
+    let deletion = repo.stage_all_and_commit("delete file").unwrap().commit_sha;
+
+    let mut pending = repo.filename("pending.txt");
+    pending.set_contents_no_stage(crate::lines!["pending AI".ai()]);
+    repo.git(&["revert", "--no-edit", &deletion]).unwrap();
+    let destination = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert!(repo.read_authorship_note(&destination).is_none());
+
+    repo.stage_all_and_commit("commit pending work").unwrap();
+    pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
 }
 
 #[test]
