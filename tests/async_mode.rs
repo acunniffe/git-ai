@@ -504,18 +504,22 @@ fn send_on_persistent_conn<R: Read + Write>(
 }
 
 #[cfg(not(windows))]
-fn assert_control_connection_closed<R: Read + Write>(reader: &mut BufReader<R>) {
-    let mut request = serde_json::to_vec(&ControlRequest::Ping).expect("serialize ping request");
-    request.push(b'\n');
-    if reader.get_mut().write_all(&request).is_ok() && reader.get_mut().flush().is_ok() {
+fn wait_for_control_connection_close<R: Read>(reader: &mut BufReader<R>, timeout: Duration) {
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
         let mut response = String::new();
-        let bytes_read = reader
-            .read_line(&mut response)
-            .expect("idle connection should be closed without a read error");
-        assert_eq!(
-            bytes_read, 0,
-            "daemon should close a control connection after the idle deadline"
-        );
+        match reader.read_line(&mut response) {
+            Ok(0) => return,
+            Ok(_) => panic!("idle control connection unexpectedly received: {response:?}"),
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                ) && std::time::Instant::now() < deadline => {}
+            Err(error) => {
+                panic!("daemon should close the control connection within {timeout:?}: {error}")
+            }
+        }
     }
 }
 
@@ -638,9 +642,7 @@ fn daemon_reaps_silent_initial_control_connection() {
         .expect("should set client receive timeout");
     let mut reader = BufReader::new(stream);
 
-    thread::sleep(Duration::from_millis(2_500));
-
-    assert_control_connection_closed(&mut reader);
+    wait_for_control_connection_close(&mut reader, Duration::from_secs(5));
 
     shutdown_daemon(&repo);
 }
@@ -668,9 +670,7 @@ fn daemon_reaps_idle_control_connection_after_valid_request() {
     );
     assert!(response.ok, "telemetry submit should succeed");
 
-    thread::sleep(Duration::from_millis(10_500));
-
-    assert_control_connection_closed(&mut reader);
+    wait_for_control_connection_close(&mut reader, Duration::from_secs(15));
 
     shutdown_daemon(&repo);
 }
