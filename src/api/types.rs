@@ -225,6 +225,18 @@ impl From<bool> for DaemonLogFieldValue {
     }
 }
 
+impl DaemonLogFieldValue {
+    /// Create a numeric field from an `f64`.
+    ///
+    /// Returns `Null` for non-finite values (NaN / Infinity) since those
+    /// are not representable in JSON.
+    pub fn from_f64(value: f64) -> Self {
+        serde_json::Number::from_f64(value)
+            .map(Self::Number)
+            .unwrap_or(Self::Null)
+    }
+}
+
 /// Single daemon diagnostic event.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DaemonLogEvent {
@@ -596,6 +608,27 @@ mod tests {
         assert_eq!(value["events"][0]["level"], "info");
         assert_eq!(value["events"][0]["fields"]["uptime_seconds"], 900);
         assert_eq!(value["events"][0]["fields"]["healthy"], true);
+    }
+
+    #[test]
+    fn daemon_log_field_value_from_f64_finite() {
+        let val = DaemonLogFieldValue::from_f64(12.5);
+        assert_eq!(
+            val,
+            DaemonLogFieldValue::Number(serde_json::Number::from_f64(12.5).unwrap())
+        );
+    }
+
+    #[test]
+    fn daemon_log_field_value_from_f64_nan_is_null() {
+        let val = DaemonLogFieldValue::from_f64(f64::NAN);
+        assert_eq!(val, DaemonLogFieldValue::Null);
+    }
+
+    #[test]
+    fn daemon_log_field_value_from_f64_infinity_is_null() {
+        let val = DaemonLogFieldValue::from_f64(f64::INFINITY);
+        assert_eq!(val, DaemonLogFieldValue::Null);
     }
 
     #[test]

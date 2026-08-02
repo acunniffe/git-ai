@@ -95,6 +95,10 @@ pub fn spawn_family_actor(family_key: FamilyKey) -> FamilyActorHandle {
     };
 
     tokio::spawn(async move {
+        crate::daemon::storage_sampler::register_ai_dir(
+            std::path::PathBuf::from(&family_key.0).join("ai"),
+        );
+
         let analyzers = AnalyzerRegistry::new();
         let mut state = FamilyState {
             family_key: family_key.clone(),
@@ -194,6 +198,25 @@ mod tests {
             ref_changes: Vec::new(),
             confidence: Confidence::Low,
         }
+    }
+
+    #[tokio::test]
+    async fn actor_registers_family_storage() {
+        let tmp = tempfile::tempdir().unwrap();
+        let family_dir = tmp.path().join(".git");
+        let ai_dir = family_dir.join("ai");
+        let actor = spawn_family_actor(FamilyKey::new(family_dir.to_string_lossy()));
+
+        for _ in 0..100 {
+            if crate::daemon::storage_sampler::is_ai_dir_registered(&ai_dir) {
+                actor.shutdown().await.unwrap();
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        actor.shutdown().await.unwrap();
+        panic!("family storage was not registered");
     }
 
     #[tokio::test]
