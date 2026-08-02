@@ -1,0 +1,39 @@
+tests/integration/worktrees.rs
+  0865555e784d5159 6,19-24,489-538
+src/commands/git_ai_handlers.rs
+  0865555e784d5159 1840-1841,1858,1908-1927,1929
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "61408073459050a90491165c9b18c9cf5ec908df",
+  "prompts": {
+    "0865555e784d5159": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce62dae9-c20b-4b39-9e64-f3e2d0e86684",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 115,
+      "total_deletions": 158,
+      "accepted_lines": 85,
+      "overriden_lines": 0
+    },
+    "58b3b2434bae6228": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e48f21a-04f8-4c82-8b8c-97375a3ea863",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 608,
+      "total_deletions": 204,
+      "accepted_lines": 69,
+      "overriden_lines": 105,
+      "messages_url": "https://usegitai.com/cas/ffbc32fa4e59ddc03bcfff4b2a0a09a6a81d318541629488095de23f850f9fd0"
+    }
+  }
+}

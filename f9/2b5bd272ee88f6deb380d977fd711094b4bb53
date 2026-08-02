@@ -1,0 +1,37 @@
+src/git/sync_authorship.rs
+  7ee5d6109d6ee4e8 238-248
+src/daemon/telemetry_handle.rs
+  7ee5d6109d6ee4e8 247-254
+src/commands/hooks/push_hooks.rs
+  7ee5d6109d6ee4e8 2,10-15
+src/daemon/control_api.rs
+  7ee5d6109d6ee4e8 21-23
+src/git/notes_api.rs
+  7ee5d6109d6ee4e8 1-7,9-10,12-21,26-28,36-40,46-48,62-64,78-79,105-108,117-122,143-148,197-202,204-628
+src/daemon.rs
+  7ee5d6109d6ee4e8 2059,7320-7329
+src/daemon/telemetry_worker.rs
+  7ee5d6109d6ee4e8 299-301,534-618
+src/commands/log.rs
+  7ee5d6109d6ee4e8 1,142-147,157-173,179-181,198-201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "f92b5bd272ee88f6deb380d977fd711094b4bb53",
+  "prompts": {
+    "7ee5d6109d6ee4e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dfb718b9-3e94-482a-bffa-deaa4d9e5fcc",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 922,
+      "total_deletions": 196,
+      "accepted_lines": 726,
+      "overriden_lines": 0
+    }
+  }
+}

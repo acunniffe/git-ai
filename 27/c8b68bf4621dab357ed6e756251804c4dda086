@@ -1,0 +1,30 @@
+tests/integration/repos/test_repo.rs
+  c1970e7fa3ca2e03 376-412,1069-1071,2777-2896,2898-2899
+src/config.rs
+  c1970e7fa3ca2e03 799-811,813-814,828-832,1009-1015
+src/commands/daemon.rs
+  c1970e7fa3ca2e03 301,340-343,366
+tests/git-compat/run-core-tests.py
+  c1970e7fa3ca2e03 42-82,89,93,107,111-112,298-304,306-311,313-316,318-321,323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "27c8b68bf4621dab357ed6e756251804c4dda086",
+  "prompts": {
+    "c1970e7fa3ca2e03": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5772698e-67e6-4639-a483-cbb8405da325",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test User",
+      "messages": [],
+      "total_additions": 271,
+      "total_deletions": 27,
+      "accepted_lines": 267,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/6a0617a37fa23722a56725c3c88cd62e236cce36e2fdc8a995a1aef51013e638"
+    }
+  }
+}

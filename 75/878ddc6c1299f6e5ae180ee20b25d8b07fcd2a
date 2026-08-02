@@ -1,0 +1,22 @@
+src/transcripts/agents/droid.rs
+  5656d3e616692de7 45-46,234
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "75878ddc6c1299f6e5ae180ee20b25d8b07fcd2a",
+  "prompts": {
+    "5656d3e616692de7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4dcd8876-36f8-4b9b-8519-b9760521da54",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 113,
+      "total_deletions": 44,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}

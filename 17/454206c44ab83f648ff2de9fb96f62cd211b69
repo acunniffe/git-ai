@@ -1,0 +1,20 @@
+src/metrics/events.rs
+  s_0ff51778e01eac::t_91cf8162696351 348
+  s_0ff51778e01eac::t_ecf8471a9ff0da 890
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "17454206c44ab83f648ff2de9fb96f62cd211b69",
+  "prompts": {},
+  "sessions": {
+    "s_0ff51778e01eac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01067a8a-347e-4fb5-a6ef-e77af6998333",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

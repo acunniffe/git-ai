@@ -1,0 +1,24 @@
+.github/workflows/release.yml
+  91a4b0313563a01c 104-116,150-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "1a9beec8dca5a72fba7d8eb4defc3f93f713546d",
+  "prompts": {
+    "91a4b0313563a01c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "93bcbf75-87e6-44b4-84c5-7ea49bf46f7e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 25,
+      "total_deletions": 2,
+      "accepted_lines": 25,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/bfe5df3d9d208f14278275fe22b4fa7549583be4b2cc05c44923a977df652ed5"
+    }
+  }
+}

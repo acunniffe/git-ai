@@ -1,0 +1,308 @@
+tests/prompt_hash_migration.rs
+  2390650340f732a1 1-328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "6c2d1af9c8558ac6909211fdd0bcb06007b9ad4b",
+  "prompts": {
+    "2390650340f732a1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "55b39a6b-b7c3-4271-855b-3d7fd202de42",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "which function loads checkpoints in off the filesystem",
+          "timestamp": "2025-11-30T21:00:38.280Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Searching the codebase for checkpoint loading functions.",
+          "timestamp": "2025-11-30T21:00:39.718Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "load checkpoints from filesystem",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-i": true,
+            "pattern": "load.*checkpoint|checkpoint.*load|read.*checkpoint|checkpoint.*read"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Found the function. Showing the implementation:",
+          "timestamp": "2025-11-30T21:00:40.805Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 32,
+            "offset": 311,
+            "target_file": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The function that loads checkpoints from the filesystem is **`read_all_checkpoints()`** in `src/git/repo_storage.rs`.\n\nIt:\n1. Reads from `checkpoints.jsonl` in the repo storage directory\n2. Parses each line as a JSON checkpoint object (JSONL format)\n3. Filters out checkpoints with incompatible API versions\n4. Returns a `Vec<Checkpoint>`\n\nLocated at **lines 311-342** in `src/git/repo_storage.rs`, it's a method on the `RepoStorage` struct. It's called from multiple places, including `checkpoint.rs`, `virtual_attribution.rs`, and `post_commit.rs`.",
+          "timestamp": "2025-11-30T21:00:41.212Z"
+        },
+        {
+          "type": "user",
+          "text": "Update read_all_checkpoints to regenerate all of the 7-char long prompt hashes in each checkpoint. The reason for this is that we recently migrated from 7 to 16-char long ids.\n\n1. Read through all of the checkpoints to find each agent_id and generate the new prompt hash and store this in a variable\n\n2. Iterate through each checkpoints' line attributions and and attributions. Replace any author_id where the len is 7 and those 7 chars match the first 7 chars of any of our new 16-char prompt ids.\n\n3. Return the new cleaned up checkpoints",
+          "timestamp": "2025-11-30T21:09:45.969Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Examining the checkpoint structure and related code to understand how prompt hashes are generated and stored.",
+          "timestamp": "2025-11-30T21:09:47.709Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 311,
+            "target_file": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "Checkpoint struct definition with agent_id prompt hash",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "generate prompt hash 16 char from agent_id",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-i": true,
+            "pattern": "struct Checkpoint|agent_id|prompt.*hash|author_id"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking the Attribution and LineAttribution structures:",
+          "timestamp": "2025-11-30T21:09:50.727Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "src/authorship",
+            "pattern": "struct Attribution|struct LineAttribution|pub author_id"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 10,
+            "offset": 628,
+            "target_file": "src/authorship/authorship_log_serialization.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 1,
+            "target_file": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking the Attribution and LineAttribution structures:",
+          "timestamp": "2025-11-30T21:09:51.853Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 25,
+            "offset": 21,
+            "target_file": "src/authorship/attribution_tracker.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 25,
+            "offset": 10,
+            "target_file": "src/authorship/working_log.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating `read_all_checkpoints` to migrate 7-char prompt hashes to 16-char ones:",
+          "timestamp": "2025-11-30T21:09:52.715Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 75,
+            "offset": 290,
+            "target_file": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking imports at the top of the file:",
+          "timestamp": "2025-11-30T21:09:53.511Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 15,
+            "offset": 1,
+            "target_file": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating `read_all_checkpoints` to migrate 7-char prompt hashes to 16-char ones:",
+          "timestamp": "2025-11-30T21:09:54.040Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for lint errors:",
+          "timestamp": "2025-11-30T21:09:58.816Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Fixing the lint error: removing unnecessary mutability:",
+          "timestamp": "2025-11-30T21:10:01.706Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 80,
+            "offset": 311,
+            "target_file": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Removing unnecessary mutability:",
+          "timestamp": "2025-11-30T21:10:02.518Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Verifying the implementation by reading the updated function:",
+          "timestamp": "2025-11-30T21:10:08.865Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 70,
+            "offset": 311,
+            "target_file": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking if `overrode` in `LineAttribution` also needs migration:",
+          "timestamp": "2025-11-30T21:10:10.163Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 10,
+            "offset": 35,
+            "target_file": "src/authorship/attribution_tracker.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating the code to also migrate the `overrode` field in `LineAttribution`, which can contain an author_id:",
+          "timestamp": "2025-11-30T21:10:11.029Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the final implementation:",
+          "timestamp": "2025-11-30T21:10:16.371Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 40,
+            "offset": 342,
+            "target_file": "src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "## Summary\n\nUpdated `read_all_checkpoints` in `src/git/repo_storage.rs` to migrate 7-char prompt hashes to 16-char hashes.\n\n1. **Added import**: Imported `generate_short_hash` from `authorship_log_serialization`.\n\n2. **Build hash mapping**: For each checkpoint with an `agent_id`, generate the new 16-char prompt hash and map the first 7 chars to the full 16-char hash.\n\n3. **Migrate author_ids**: Iterate through all checkpoints and replace 7-char `author_id` values in:\n   - `attributions` (in each `WorkingLogEntry`)\n   - `line_attributions` (in each `WorkingLogEntry`)\n   - `overrode` field in `LineAttribution` (if present)\n\n4. **Return migrated checkpoints**: Return the updated checkpoints with 16-char hashes.\n\nThe function now automatically migrates old 7-char prompt hashes to 16-char hashes when loading checkpoints from the filesystem. The migration only affects `author_id` values that are exactly 7 characters long and match the first 7 characters of any new 16-char prompt hash generated from checkpoint `agent_id`s.",
+          "timestamp": "2025-11-30T21:10:17.475Z"
+        },
+        {
+          "type": "user",
+          "text": "Create a new unit test for this. Use the @tests/repos/test_repo.rs harness ref @tests/simple_additions.rs \n\n\n\nTo create 3 variations of new unit tests in a new new file in tests/ where you will replicate a multi-commit flow (can just copy something from simple additions directly) but you will manually replace the 16-char long prompt hashes with 7-char long prompt hashes, then run more checkpoints/commits. You will have the same assertions as the versions you copy from simple additions. You will also verify that post running checkpoint the prompt ids are all 16 chars long and you will also verify that the authorship logs contain ONLY 16-char long prompt IDs.",
+          "timestamp": "2025-11-30T21:20:52.855Z"
+        }
+      ],
+      "total_additions": 351,
+      "total_deletions": 23,
+      "accepted_lines": 328,
+      "overriden_lines": 0
+    }
+  }
+}

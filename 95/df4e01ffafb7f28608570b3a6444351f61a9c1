@@ -1,0 +1,30 @@
+src/commands/core_hooks.rs
+  b05b818d679016df 66,1712-1721,1942,1977,2016,2105,2147,2208,2265,2434,2436,2638-2650
+src/commands/core_hook_trampoline.rs
+  b05b818d679016df 131-132,398-400
+src/commands/install_hooks.rs
+  b05b818d679016df 3,812,826,840
+src/git/repo_storage.rs
+  b05b818d679016df 555-558,937-965
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "95df4e01ffafb7f28608570b3a6444351f61a9c1",
+  "prompts": {
+    "b05b818d679016df": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c62da-942d-7633-843b-f1fcd525e819",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 87,
+      "total_deletions": 7,
+      "accepted_lines": 85,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/ad0f7370b552e6ab17052d9b37c7470adb1315951de0d90a5b8560137040bf6d"
+    }
+  }
+}

@@ -1,0 +1,59 @@
+src/authorship/attribution_tracker.rs
+  s_59382cac373d67::t_99ceda522de83c 73-75
+src/authorship/virtual_attribution.rs
+  s_59382cac373d67::t_a9db70ed7d73a8 2357-2358
+  s_59382cac373d67::t_e1bb57bebc6abb 2263-2265,2267,2313,2319,2339-2341,2353,2355-2356,2359,2994-2995,2997-2998,3008,3010-3011
+src/authorship/conflict_resolution.rs
+  s_59382cac373d67::t_0d881bfecdcf44 7,11
+tests/integration/daemon_line_range_memory.rs
+  s_59382cac373d67::t_3575ea58c33487 1-87
+src/authorship/background_agent.rs
+  s_59382cac373d67::t_e1bb57bebc6abb 122-131
+  s_59382cac373d67::t_a9db70ed7d73a8 1
+  s_59382cac373d67::t_4044bebc3b97ef 6,132,134-135,137,141,144-146,148,151-155,157
+  s_59382cac373d67::t_ca1ccbc5ae43d0 133
+src/authorship/authorship_log_serialization.rs
+  s_59382cac373d67::t_61d236e3b5264b 13-17,352-354,356-359,362-363,365-383,585,589-596
+  s_59382cac373d67::t_4ac0f549da1cdf 586-588,597-600
+  s_59382cac373d67::t_917ed224e000a9 2,170-172,218-220,351,355,360-361,364,384-386
+  s_59382cac373d67::t_ac143de866dd8f 387-388
+src/authorship/authorship_log.rs
+  s_59382cac373d67::t_4ac0f549da1cdf 437-441
+  s_59382cac373d67::t_61d236e3b5264b 442-469
+  s_59382cac373d67::t_dc3af3ea4698fd 125-136,138-142,144
+  s_59382cac373d67::t_e1bb57bebc6abb 121-124,137,143,145-155
+  s_59382cac373d67::t_66a4dff5acfccd 19-20,22-69,81,117,119-120,240,266-269
+  s_59382cac373d67::t_a5f904a89df0fb 70-80,82-116,118
+src/authorship/rewrite_revert.rs
+  s_59382cac373d67::t_c347aa2ea55dce 334,336-337
+src/daemon/checkpoint.rs
+  s_59382cac373d67::t_e1bb57bebc6abb 694-697
+src/authorship/attribution_recovery.rs
+  s_59382cac373d67::t_e1bb57bebc6abb 1515,1522-1525,1535,1538,1540,1542,1545-1546
+  s_59382cac373d67::t_78f9f47e03d6c9 950
+  s_59382cac373d67::t_a9db70ed7d73a8 1518-1521
+  s_59382cac373d67::t_94d8b40820f80a 948-949,951
+  s_59382cac373d67::t_76faa486b2a3ee 1547
+src/git/repo_storage.rs
+  s_59382cac373d67::t_78f9f47e03d6c9 1123
+  s_59382cac373d67::t_4ac0f549da1cdf 1119-1122,1124-1128
+  s_59382cac373d67::t_ff225e441db8cf 2-4,976-1004,1030-1036
+tests/integration/main.rs
+  s_59382cac373d67::t_3575ea58c33487 62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "503fa2ecf1d8bc1e9a5ca0fbf9765e1edda9916d",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

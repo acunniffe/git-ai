@@ -1,0 +1,39 @@
+tests/integration/simple_additions.rs
+  fd39e537552a385f 258-261,263
+tests/integration/amend.rs
+  fd39e537552a385f 343-348,356-357,451-456,464-465
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "d071dbdd226c911649b038ef0c5f1527a889d068",
+  "prompts": {
+    "1e9c333a25b3d95f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bba54458-9c9c-4f70-9b68-f3922d7e7f40",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "fd39e537552a385f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2447e4fe-b9ce-405b-8c68-96bcd1bfdca5",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 24,
+      "total_deletions": 7,
+      "accepted_lines": 21,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/7a5147a6185dff0dc9b253162981d159799b3f8e30264770d11ffaaf6308d23f"
+    }
+  }
+}

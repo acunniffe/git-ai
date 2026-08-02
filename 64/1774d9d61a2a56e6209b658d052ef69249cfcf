@@ -1,0 +1,24 @@
+src/auth/credentials.rs
+  78b996e39b4b2d3b 76-79,82,509,512,528,557,581,597,616
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "641774d9d61a2a56e6209b658d052ef69249cfcf",
+  "prompts": {
+    "78b996e39b4b2d3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "096db0be-ede0-4292-8dee-251a94159623",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 21,
+      "total_deletions": 16,
+      "accepted_lines": 12,
+      "overriden_lines": 1,
+      "messages_url": "http://localhost:4000/cas/b74d0c93397169594c7aa68200991617e47824cb3b9706f254fba708468e2fab"
+    }
+  }
+}
