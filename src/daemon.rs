@@ -5386,8 +5386,16 @@ impl ActorDaemonCoordinator {
                 }
                 return Ok(());
             }
+            let command_moves_checked_out_history =
+                matches!(cmd.primary_command.as_deref(), Some("rebase" | "pull"));
             for (old_tip, new_tip) in collapsed.values() {
-                if old_tip != new_tip {
+                let moves_head = command_moves_checked_out_history
+                    || cmd.ref_changes.iter().any(|change| {
+                        change.reference == "HEAD"
+                            && change.old.as_str() == *old_tip
+                            && change.new.as_str() == *new_tip
+                    });
+                if old_tip != new_tip && moves_head {
                     repo.storage.rename_working_log(old_tip, new_tip)?;
                 }
             }

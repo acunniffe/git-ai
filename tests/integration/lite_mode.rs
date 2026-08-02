@@ -237,6 +237,43 @@ fn test_lite_mode_skips_update_ref_restack_notes() {
 }
 
 #[test]
+fn test_lite_mode_does_not_move_working_log_for_unrelated_branch_update() {
+    let repo = lite_repo();
+    let mut base = repo.filename("base.txt");
+    base.set_contents(crate::lines!["base"]);
+    let shared_tip = repo.stage_all_and_commit("base").unwrap().commit_sha;
+    base.assert_committed_lines(crate::lines!["base".human()]);
+
+    repo.git(&["checkout", "-b", "work"]).unwrap();
+    let mut pending = repo.filename("pending.txt");
+    pending.set_contents_no_stage(crate::lines!["pending AI".ai()]);
+
+    let tree = repo
+        .git(&["rev-parse", &format!("{shared_tip}^{{tree}}")])
+        .unwrap()
+        .trim()
+        .to_string();
+    let advanced_main = repo
+        .git(&[
+            "commit-tree",
+            &tree,
+            "-p",
+            &shared_tip,
+            "-m",
+            "advance main",
+        ])
+        .unwrap()
+        .trim()
+        .to_string();
+    repo.git(&["update-ref", "refs/heads/main", &advanced_main, &shared_tip])
+        .unwrap();
+    assert_eq!(repo.git(&["rev-parse", "HEAD"]).unwrap().trim(), shared_tip);
+
+    repo.stage_all_and_commit("commit pending work").unwrap();
+    pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
+}
+
+#[test]
 fn test_lite_mode_preserves_regular_squash_notes() {
     let repo = lite_repo();
     let mut base = repo.filename("base.txt");
