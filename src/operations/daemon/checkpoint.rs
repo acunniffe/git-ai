@@ -12,7 +12,7 @@ use crate::model::imara_diff_utils::{
 };
 use crate::model::working_log::CheckpointKind;
 use crate::model::working_log::{Checkpoint, WorkingLogEntry};
-use crate::operations::git::repo_storage::PersistedWorkingLog;
+use crate::operations::git::repo_storage::{PersistedWorkingLog, persist_file_version_to_blob_dir};
 use crate::operations::git::repository::Repository;
 use futures::stream::{self, StreamExt};
 use sha2::{Digest, Sha256};
@@ -457,17 +457,8 @@ fn save_current_file_states(
                 })?;
 
                 crate::tokio_runtime::spawn_blocking_result(move || {
-                    // Create SHA256 hash of the content
-                    let mut hasher = Sha256::new();
-                    hasher.update(content.as_bytes());
-                    let sha = format!("{:x}", hasher.finalize());
-
-                    // Ensure blobs directory exists
-                    std::fs::create_dir_all(&*blobs_dir)?;
-
-                    // Write content to blob file
-                    let blob_path = blobs_dir.join(&sha);
-                    std::fs::write(blob_path, content.as_bytes())?;
+                    let sha =
+                        persist_file_version_to_blob_dir(blobs_dir.as_ref(), content.as_ref())?;
 
                     Ok::<(String, String), GitAiError>((file_path, sha))
                 })

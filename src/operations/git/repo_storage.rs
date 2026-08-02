@@ -253,6 +253,20 @@ fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), GitAiError> {
     Ok(())
 }
 
+pub(crate) fn persist_file_version_to_blob_dir(
+    blobs_dir: &Path,
+    content: &str,
+) -> Result<String, GitAiError> {
+    let mut hasher = Sha256::new();
+    hasher.update(content.as_bytes());
+    let sha = format!("{:x}", hasher.finalize());
+
+    fs::create_dir_all(blobs_dir)?;
+    fs::write(blobs_dir.join(&sha), content.as_bytes())?;
+
+    Ok(sha)
+}
+
 #[derive(Clone)]
 pub struct PersistedWorkingLog {
     pub dir: PathBuf,
@@ -332,20 +346,8 @@ impl PersistedWorkingLog {
 
     #[allow(dead_code)]
     pub fn persist_file_version(&self, content: &str) -> Result<String, GitAiError> {
-        // Create SHA256 hash of the content
-        let mut hasher = Sha256::new();
-        hasher.update(content.as_bytes());
-        let sha = format!("{:x}", hasher.finalize());
-
-        // Ensure blobs directory exists
         let blobs_dir = self.dir.join("blobs");
-        fs::create_dir_all(&blobs_dir)?;
-
-        // Write content to blob file
-        let blob_path = blobs_dir.join(&sha);
-        fs::write(blob_path, content)?;
-
-        Ok(sha)
+        persist_file_version_to_blob_dir(&blobs_dir, content)
     }
 
     pub fn to_repo_absolute_path(&self, file_path: &str) -> String {

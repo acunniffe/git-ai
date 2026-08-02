@@ -1,4 +1,5 @@
 use crate::repos::test_repo::TestRepo;
+use git_ai::error::GitAiError;
 use git_ai::model::attribution_tracker::LineAttribution;
 use git_ai::model::working_log::{AgentId, CHECKPOINT_API_VERSION, Checkpoint, CheckpointKind};
 use git_ai::operations::git::repo_storage::{InitialAttributions, RepoStorage};
@@ -76,12 +77,13 @@ fn test_persisted_working_log_blob_storage() {
         .working_log_for_base_commit("test-commit-sha")
         .unwrap();
 
-    let content = "Hello, World!\nThis is a test file.";
+    let content = "abc";
+    let expected_sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
     let sha = working_log
         .persist_file_version(content)
         .expect("Failed to persist file version");
 
-    assert!(!sha.is_empty(), "SHA should not be empty");
+    assert_eq!(sha, expected_sha, "blob name should be lowercase SHA-256");
 
     let retrieved_content = working_log
         .get_file_version(&sha)
@@ -95,12 +97,54 @@ fn test_persisted_working_log_blob_storage() {
     let blob_path = working_log.dir.join("blobs").join(&sha);
     assert!(blob_path.exists(), "Blob file should exist");
     assert!(blob_path.is_file(), "Blob should be a file");
+    assert_eq!(
+        fs::read(&blob_path).unwrap(),
+        content.as_bytes(),
+        "Blob should preserve the exact input bytes"
+    );
 
+    fs::write(&blob_path, b"stale").unwrap();
     let sha2 = working_log
         .persist_file_version(content)
         .expect("Failed to persist file version again");
 
     assert_eq!(sha, sha2, "Same content should produce same SHA");
+    assert_eq!(
+        fs::read(&blob_path).unwrap(),
+        content.as_bytes(),
+        "Repeated persistence should unconditionally rewrite the blob"
+    );
+    assert_eq!(
+        fs::read_dir(working_log.dir.join("blobs")).unwrap().count(),
+        1,
+        "Repeated persistence should keep one content-addressed blob"
+    );
+}
+
+#[test]
+fn test_persisted_working_log_blob_storage_preserves_io_error() {
+    let repo = TestRepo::new();
+    let repo_storage = storage_for(&repo);
+    let working_log = repo_storage
+        .working_log_for_base_commit("test-commit-sha")
+        .unwrap();
+    let blobs_dir = working_log.dir.join("blobs");
+    fs::write(&blobs_dir, b"blocker").unwrap();
+
+    let expected = fs::create_dir_all(&blobs_dir).unwrap_err();
+    let error = working_log
+        .persist_file_version("abc")
+        .expect_err("a file at the blobs path should prevent persistence");
+
+    match &error {
+        GitAiError::IoError(actual) => {
+            assert_eq!(actual.kind(), expected.kind());
+            assert_eq!(actual.to_string(), expected.to_string());
+        }
+        other => panic!("expected lossless IO error, got {other:?}"),
+    }
+    assert_eq!(error.to_string(), format!("IO error: {expected}"));
+    assert_eq!(fs::read(&blobs_dir).unwrap(), b"blocker");
 }
 
 // ---------------------------------------------------------------------------

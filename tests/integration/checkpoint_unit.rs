@@ -1,3 +1,4 @@
+use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::model::working_log::{AgentId, Checkpoint, CheckpointKind, WorkingLogEntry};
 use git_ai::operations::commands::checkpoint_agent::orchestrator::{
@@ -30,6 +31,65 @@ fn setup_repo_with_base_commit() -> (TestRepo, String, String) {
     repo.stage_all_and_commit("initial commit").unwrap();
 
     (repo, "lines.md".to_string(), "alphabet.md".to_string())
+}
+
+#[test]
+fn test_checkpoint_identical_multi_file_content_shares_one_blob() {
+    const SHARED_CONTENT: &str = "shared AI line\n";
+    const SHARED_SHA: &str = "8103ca83e93b5ec9b0206005fe93af428048450769bca7216501f8f00a251f31";
+
+    let repo = TestRepo::new();
+    std::fs::write(repo.path().join("a.txt"), "base line\n").unwrap();
+    std::fs::write(repo.path().join("b.txt"), "base line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "a.txt", "b.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("initial content").unwrap();
+
+    let mut file_a = repo.filename("a.txt");
+    let mut file_b = repo.filename("b.txt");
+    file_a.assert_committed_lines(crate::lines!["base line".human()]);
+    file_b.assert_committed_lines(crate::lines!["base line".human()]);
+
+    repo.git_ai(&["checkpoint", "human", "a.txt", "b.txt"])
+        .unwrap();
+    let blobs_before = std::fs::read_dir(repo.current_working_logs().dir.join("blobs"))
+        .map(|entries| entries.count())
+        .unwrap_or(0);
+
+    std::fs::write(repo.path().join("a.txt"), SHARED_CONTENT).unwrap();
+    std::fs::write(repo.path().join("b.txt"), SHARED_CONTENT).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "a.txt", "b.txt"])
+        .unwrap();
+
+    let working_log = repo.current_working_logs();
+    let checkpoints = working_log.read_all_checkpoints().unwrap();
+    let checkpoint = checkpoints
+        .iter()
+        .rev()
+        .find(|checkpoint| checkpoint.kind.is_ai())
+        .expect("AI checkpoint should be present");
+    let mut entries = checkpoint
+        .entries
+        .iter()
+        .map(|entry| (entry.file.as_str(), entry.blob_sha.as_str()))
+        .collect::<Vec<_>>();
+    entries.sort_unstable_by(|left, right| left.0.cmp(right.0));
+
+    assert_eq!(entries, vec![("a.txt", SHARED_SHA), ("b.txt", SHARED_SHA)]);
+    let blobs_dir = working_log.dir.join("blobs");
+    assert_eq!(
+        std::fs::read(blobs_dir.join(SHARED_SHA)).unwrap(),
+        SHARED_CONTENT.as_bytes()
+    );
+    assert_eq!(
+        std::fs::read_dir(blobs_dir).unwrap().count(),
+        blobs_before + 1,
+        "two identical file states should add exactly one blob"
+    );
+
+    repo.stage_all_and_commit("shared AI content").unwrap();
+    file_a.assert_committed_lines(crate::lines!["shared AI line".ai()]);
+    file_b.assert_committed_lines(crate::lines!["shared AI line".ai()]);
 }
 
 #[test]
