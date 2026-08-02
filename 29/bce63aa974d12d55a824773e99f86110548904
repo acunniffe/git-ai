@@ -1,0 +1,25 @@
+agent-support/vscode/src/blame-service.ts
+  cb7ea62ca17026c9 70,74,79,82-105,256-257,259-260
+agent-support/vscode/src/ai-edit-manager.ts
+  cb7ea62ca17026c9 133-155,329-333,337,342-347
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.42",
+  "base_commit_sha": "29bce63aa974d12d55a824773e99f86110548904",
+  "prompts": {
+    "cb7ea62ca17026c9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "58e57e15-489a-4813-b5b1-4899d087d408",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Christina0215 <1532706870@qq.com>",
+      "messages": [],
+      "total_additions": 70,
+      "total_deletions": 11,
+      "accepted_lines": 66,
+      "overriden_lines": 0
+    }
+  }
+}

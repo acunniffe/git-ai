@@ -1,0 +1,144 @@
+docs/agent-support/cursor.mdx
+  7581c61 25,30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "500f67bb769c9301721762bd99ecae86c79d0b2f",
+  "prompts": {
+    "7581c61": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "eb7e21fc-4cc0-4098-96ca-8b2cac452df3",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "assistant",
+          "text": "I'll update both documentation files to match the current hook implementation in [install_hooks.rs](src/commands/install_hooks.rs).",
+          "timestamp": "2025-10-14T22:04:48.070Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Edit",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/agent-support/claude-code.mdx",
+            "new_string": "```json\n{\n  \"hooks\": {\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"git-ai checkpoint claude --hook-input stdin\",\n            \"type\": \"command\"\n          }\n        ],\n        \"matcher\": \"Write|Edit|MultiEdit\"\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"git-ai checkpoint claude --hook-input stdin\",\n            \"type\": \"command\"\n          }\n        ],\n        \"matcher\": \"Write|Edit|MultiEdit\"\n      }\n    ]\n  }\n}\n```",
+            "old_string": "```json\n{\n  \"hooks\": {\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"git-ai checkpoint claude --hook-input \\\"$(cat)\\\" 2>/dev/null || true\",\n            \"type\": \"command\"\n          }\n        ],\n        \"matcher\": \"Write|Edit|MultiEdit\"\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"git-ai checkpoint 2>/dev/null || true\",\n            \"type\": \"command\"\n          }\n        ],\n        \"matcher\": \"Write|Edit|MultiEdit\"\n      }\n    ]\n  }\n}\n```"
+          },
+          "timestamp": "2025-10-14T22:04:51.555Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Edit",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/agent-support/cursor.mdx",
+            "new_string": "```json\n{\n  \"hooks\": {\n    \"afterFileEdit\": [\n      {\n        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n      }\n    ],\n    \"beforeSubmitPrompt\": [\n      {\n        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n      }\n    ]\n  },\n  \"version\": 1\n}\n```",
+            "old_string": "```json\n{\n  \"hooks\": {\n    \"afterFileEdit\": [\n      {\n        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n      }\n    ],\n    \"beforeSubmitPrompt\": [\n      {\n        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n      }\n    ]\n  },\n  \"version\": 1\n}\n```"
+          },
+          "timestamp": "2025-10-14T22:04:53.972Z"
+        },
+        {
+          "type": "user",
+          "text": "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>",
+          "timestamp": "2025-10-14T22:04:54.042Z"
+        },
+        {
+          "type": "user",
+          "text": "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>",
+          "timestamp": "2025-10-14T22:04:54.072Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/agent-support/claude-code.mdx"
+          },
+          "timestamp": "2025-10-14T22:04:57.029Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Edit",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/agent-support/cursor.mdx",
+            "new_string": "```json\n{\n  \"hooks\": {\n    \"afterFileEdit\": [\n      {\n        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n      }\n    ],\n    \"beforeSubmitPrompt\": [\n      {\n        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n      }\n    ]\n  },\n  \"version\": 1\n}\n```",
+            "old_string": "```json\n{\n  \"hooks\": {\n    \"afterFileEdit\": [\n      {\n        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n      }\n    ],\n    \"beforeSubmitPrompt\": [\n      {\n        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n      }\n    ]\n  },\n  \"version\": 1\n}\n```"
+          },
+          "timestamp": "2025-10-14T22:04:59.446Z"
+        },
+        {
+          "type": "user",
+          "text": "     1→---\n     2→title: Claude Code\n     3→---\n     4→\n     5→# Using Claude Code with `git-ai`\n     6→\n     7→`git-ai` fully supports both authorship and prompt tracking for Claude Code. To use `git-ai` with Claude Code, run `git-ai install-hooks`.\n     8→\n     9→## How it works\n    10→\n    11→`git-ai` adds hooks to your user-level Claude Code Settings [`~/.claude/settings.json`](https://docs.anthropic.com/en/docs/claude-code/hooks). These hooks automatically call `git-ai` before and after file edit tool calls to ensure accurate AI authorship tracking.\n    12→\n    13→```json\n    14→{\n    15→  \"hooks\": {\n    16→    \"PostToolUse\": [\n    17→      {\n    18→        \"hooks\": [\n    19→          {\n    20→            \"command\": \"git-ai checkpoint claude --hook-input \\\"$(cat)\\\" 2>/dev/null || true\",\n    21→            \"type\": \"command\"\n    22→          }\n    23→        ],\n    24→        \"matcher\": \"Write|Edit|MultiEdit\"\n    25→      }\n    26→    ],\n    27→    \"PreToolUse\": [\n    28→      {\n    29→        \"hooks\": [\n    30→          {\n    31→            \"command\": \"git-ai checkpoint 2>/dev/null || true\",\n    32→            \"type\": \"command\"\n    33→          }\n    34→        ],\n    35→        \"matcher\": \"Write|Edit|MultiEdit\"\n    36→      }\n    37→    ]\n    38→  }\n    39→}\n    40→```\n    41→\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>\n",
+          "timestamp": "2025-10-14T22:04:59.503Z"
+        },
+        {
+          "type": "user",
+          "text": "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>",
+          "timestamp": "2025-10-14T22:04:59.533Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Edit",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/agent-support/claude-code.mdx",
+            "new_string": "```json\n{\n  \"hooks\": {\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"git-ai checkpoint claude --hook-input stdin\",\n            \"type\": \"command\"\n          }\n        ],\n        \"matcher\": \"Write|Edit|MultiEdit\"\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"git-ai checkpoint claude --hook-input stdin\",\n            \"type\": \"command\"\n          }\n        ],\n        \"matcher\": \"Write|Edit|MultiEdit\"\n      }\n    ]\n  }\n}\n```",
+            "old_string": "```json\n{\n  \"hooks\": {\n    \"PostToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"git-ai checkpoint claude --hook-input \\\"$(cat)\\\" 2>/dev/null || true\",\n            \"type\": \"command\"\n          }\n        ],\n        \"matcher\": \"Write|Edit|MultiEdit\"\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"hooks\": [\n          {\n            \"command\": \"git-ai checkpoint 2>/dev/null || true\",\n            \"type\": \"command\"\n          }\n        ],\n        \"matcher\": \"Write|Edit|MultiEdit\"\n      }\n    ]\n  }\n}\n```"
+          },
+          "timestamp": "2025-10-14T22:05:05.445Z"
+        },
+        {
+          "type": "user",
+          "text": "The file /Users/svarlamov/projects/git-ai/docs/agent-support/claude-code.mdx has been updated. Here's the result of running `cat -n` on a snippet of the edited file:\n     9→## How it works\n    10→\n    11→`git-ai` adds hooks to your user-level Claude Code Settings [`~/.claude/settings.json`](https://docs.anthropic.com/en/docs/claude-code/hooks). These hooks automatically call `git-ai` before and after file edit tool calls to ensure accurate AI authorship tracking.\n    12→\n    13→```json\n    14→{\n    15→  \"hooks\": {\n    16→    \"PostToolUse\": [\n    17→      {\n    18→        \"hooks\": [\n    19→          {\n    20→            \"command\": \"git-ai checkpoint claude --hook-input stdin\",\n    21→            \"type\": \"command\"\n    22→          }\n    23→        ],\n    24→        \"matcher\": \"Write|Edit|MultiEdit\"\n    25→      }\n    26→    ],\n    27→    \"PreToolUse\": [\n    28→      {\n    29→        \"hooks\": [\n    30→          {\n    31→            \"command\": \"git-ai checkpoint claude --hook-input stdin\",\n    32→            \"type\": \"command\"\n    33→          }\n    34→        ],\n    35→        \"matcher\": \"Write|Edit|MultiEdit\"\n    36→      }\n    37→    ]\n    38→  }\n    39→}\n    40→```\n    41→",
+          "timestamp": "2025-10-14T22:05:16.577Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Edit",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/agent-support/cursor.mdx",
+            "new_string": "```json\n{\n  \"hooks\": {\n    \"afterFileEdit\": [\n      {\n        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n      }\n    ],\n    \"beforeSubmitPrompt\": [\n      {\n        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n      }\n    ]\n  },\n  \"version\": 1\n}\n```",
+            "old_string": "```json\n{\n  \"hooks\": {\n    \"afterFileEdit\": [\n      {\n        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n      }\n    ],\n    \"beforeSubmitPrompt\": [\n      {\n        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n      }\n    ]\n  },\n  \"version\": 1\n}\n```"
+          },
+          "timestamp": "2025-10-14T22:05:21.960Z"
+        },
+        {
+          "type": "user",
+          "text": "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>",
+          "timestamp": "2025-10-14T22:05:22.056Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/agent-support/cursor.mdx"
+          },
+          "timestamp": "2025-10-14T22:05:25.492Z"
+        },
+        {
+          "type": "user",
+          "text": "     1→---\n     2→title: Cursor\n     3→---\n     4→\n     5→# Using Cursor with `git-ai`\n     6→\n     7→`git-ai` fully supports both authorship and prompt tracking for Cursor (IDE and CLI agent). To use `git-ai` with Cursor, just run `git-ai install-hooks`.\n     8→\n     9→If you'd like to verify that Cursor has picked up your hooks: \n    10→\n    11→1. Cmd+Shift+P to open Cursor command input\n    12→2. In the input box, type `Output: Show Output Channels`\n    13→3. From the dropdown, select or type `Hooks`\n    14→4. You should see in the logs a message like `Loaded 2 user hook(s) for steps: afterFileEdit, beforeSubmitPrompt` indicating that Cursor has loaded the hooks.\n    15→\n    16→## How it works\n    17→\n    18→`git-ai` adds hooks to your user-level Cursor Settings [`~/.cursor/hooks.json`](https://cursor.com/docs/agent/hooks). These hooks automatically call `git-ai` before and after file edit tool calls to ensure accurate AI authorship tracking.\n    19→\n    20→```json\n    21→{\n    22→  \"hooks\": {\n    23→    \"afterFileEdit\": [\n    24→      {\n    25→        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n    26→      }\n    27→    ],\n    28→    \"beforeSubmitPrompt\": [\n    29→      {\n    30→        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n    31→      }\n    32→    ]\n    33→  },\n    34→  \"version\": 1\n    35→}\n    36→```\n    37→\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>\n",
+          "timestamp": "2025-10-14T22:05:25.564Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Edit",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/agent-support/cursor.mdx",
+            "new_string": "```json\n{\n  \"hooks\": {\n    \"afterFileEdit\": [\n      {\n        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n      }\n    ],\n    \"beforeSubmitPrompt\": [\n      {\n        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n      }\n    ]\n  },\n  \"version\": 1\n}\n```",
+            "old_string": "```json\n{\n  \"hooks\": {\n    \"afterFileEdit\": [\n      {\n        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n      }\n    ],\n    \"beforeSubmitPrompt\": [\n      {\n        \"command\": \"/Users/svarlamov/projects/git-ai/target/debug/git-ai checkpoint cursor --hook-input \\\"$(cat)\\\"\"\n      }\n    ]\n  },\n  \"version\": 1\n}\n```"
+          },
+          "timestamp": "2025-10-14T22:05:30.612Z"
+        },
+        {
+          "type": "user",
+          "text": "The file /Users/svarlamov/projects/git-ai/docs/agent-support/cursor.mdx has been updated. Here's the result of running `cat -n` on a snippet of the edited file:\n    16→## How it works\n    17→\n    18→`git-ai` adds hooks to your user-level Cursor Settings [`~/.cursor/hooks.json`](https://cursor.com/docs/agent/hooks). These hooks automatically call `git-ai` before and after file edit tool calls to ensure accurate AI authorship tracking.\n    19→\n    20→```json\n    21→{\n    22→  \"hooks\": {\n    23→    \"afterFileEdit\": [\n    24→      {\n    25→        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n    26→      }\n    27→    ],\n    28→    \"beforeSubmitPrompt\": [\n    29→      {\n    30→        \"command\": \"/absolute/path/to/git-ai checkpoint cursor --hook-input stdin\"\n    31→      }\n    32→    ]\n    33→  },\n    34→  \"version\": 1\n    35→}\n    36→```\n    37→",
+          "timestamp": "2025-10-14T22:06:34.343Z"
+        }
+      ],
+      "total_additions": 37,
+      "total_deletions": 2,
+      "accepted_lines": 37,
+      "overriden_lines": 0
+    }
+  }
+}

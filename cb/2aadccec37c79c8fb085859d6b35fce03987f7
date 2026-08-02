@@ -1,0 +1,60 @@
+src/authorship/rewrite.rs
+  s_af2d349a5e032c::t_71a6e7df570730 887
+tests/integration/fuzzer/operations.rs
+  s_af2d349a5e032c::t_593de33667993b 2789,2791
+tests/integration/fuzzer/workflows.rs
+  s_af2d349a5e032c::t_a3121506d136ac 119-126,128-147
+  s_af2d349a5e032c::t_6fe3410e0779ed 113
+  s_af2d349a5e032c::t_f7fad63d4a2c2f 18-19,28,32,35-39,41-59
+src/daemon.rs
+  s_af2d349a5e032c::t_f1c5b940cec611 5569-5572
+  s_af2d349a5e032c::t_f884f86507f2a5 871-874
+  s_af2d349a5e032c::t_d897a0e05f5d5b 870,875-876
+  s_af2d349a5e032c::t_c26b36f5cc5fe6 5487,5492
+  s_af2d349a5e032c::t_f6e76fdb373fe3 5478-5486,5488-5491,5493-5496
+src/authorship/rewrite_cherry_pick.rs
+  s_af2d349a5e032c::t_5a5f8fcf117a6a 223,238
+  s_af2d349a5e032c::t_d8e4f5c3d1e9ad 204-222,224,229-235,239-246,248-250,255-257,261-262,266-267,271-276,278-308
+  s_af2d349a5e032c::t_b36f4bcdbf22b9 225-228
+  s_af2d349a5e032c::t_5154b22647d1c9 236-237,254
+  s_af2d349a5e032c::t_e26fa2e6ce66d7 5-7,9-10
+  s_af2d349a5e032c::t_a9fb6c7541e2f0 247,251-253,258-260,263-265,268-270
+  s_af2d349a5e032c::t_e893914faa402e 277
+tests/integration/rewrite_ops_attribution.rs
+  s_af2d349a5e032c::t_5959c8daad6b20 448
+  s_af2d349a5e032c::t_c795ef8375a95a 1342-1368,1370-1377,1381-1391
+  s_af2d349a5e032c::t_9dba194313426f 1181-1185,1248,1251
+  s_af2d349a5e032c::t_a9fb6c7541e2f0 1369,1433
+  s_af2d349a5e032c::t_6929a3bcd43032 1378-1380
+  s_af2d349a5e032c::t_af61f3d26b3b71 1392-1432,1434-1445
+  s_af2d349a5e032c::t_71a6e7df570730 1138-1180,1186-1247,1249-1250,1252-1341
+tests/integration/fuzzer/oracle.rs
+  s_af2d349a5e032c::t_54cf84b8f62de6 108-112
+  s_af2d349a5e032c::t_af24d748a2cacc 431,433-440,444-450,455-456,460,476-480
+  s_af2d349a5e032c::t_9dba194313426f 643-644
+src/daemon/analyzers/history.rs
+  s_af2d349a5e032c::t_17334ad75887c3 106-117
+  s_af2d349a5e032c::t_6e1e54eb2dcf67 118
+  s_af2d349a5e032c::t_a9fb6c7541e2f0 105
+src/daemon/domain.rs
+  s_af2d349a5e032c::t_7604401c9a8a32 142-145
+src/authorship/rewrite_reset.rs
+  s_af2d349a5e032c::t_9dba194313426f 4,73-75
+  s_af2d349a5e032c::t_71a6e7df570730 5,27-64,72,76-79,133,135,142,149,152-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "cb2aadccec37c79c8fb085859d6b35fce03987f7",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

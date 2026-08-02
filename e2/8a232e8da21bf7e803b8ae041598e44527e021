@@ -1,0 +1,10 @@
+src/commands/git_handlers.rs
+  s_8d9d36585aec71::t_1d893406d13789 7
+  s_8d9d36585aec71::t_34675c6684f5d3 71,73-84,88-89,91,96-108,110,120-121,123-126,128-130,134-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "e28a232e8da21bf7e803b8ae041598e44527e021",
+  "prompts": {}
+}

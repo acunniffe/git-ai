@@ -1,0 +1,29 @@
+src/mdm/utils.rs
+  s_0ba1e51f829972::t_96b72081359048 1351-1402
+  s_0ba1e51f829972::t_a1566c7efdd8d2 439-449
+src/commands/checkpoint_agent/presets/codex.rs
+  s_0ba1e51f829972::t_60cbd451bfb857 11,42
+src/mdm/agents/codex.rs
+  s_0ba1e51f829972::t_e22cec5bbfcb0f 996,1444-1493
+  s_0ba1e51f829972::t_f371464f954c16 5,21,25,682,972,978,993-995
+  s_0ba1e51f829972::t_e7c7ab57cb1171 1441-1443
+  s_0ba1e51f829972::t_1fca9432eacac4 1435-1440
+src/streams/agents/codex.rs
+  s_0ba1e51f829972::t_ee955709d71675 4,82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.5",
+  "base_commit_sha": "a9d32dae1449842e47d004a8ec07a677dfedae94",
+  "prompts": {},
+  "sessions": {
+    "s_0ba1e51f829972": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19fd-406e-78e3-a828-931bfd0e5914",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

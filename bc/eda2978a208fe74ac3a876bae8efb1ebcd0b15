@@ -1,0 +1,31 @@
+src/config.rs
+  s_add8f52fac813d::t_a33ee5c85266d9 707
+  s_add8f52fac813d::t_06b3d51d90f21e 324-327
+  s_add8f52fac813d::t_22f298a199c446 1677-1706
+  s_add8f52fac813d::t_c8410331de6be1 698-706,708-714
+tests/integration/repos/test_repo.rs
+  s_add8f52fac813d::t_7c9eaf5e2fac27 1242-1261
+src/daemon/stream_worker_tests.rs
+  s_add8f52fac813d::t_a33ee5c85266d9 28-31
+  s_add8f52fac813d::t_56436bf3bdeee6 1-2,4-5,8-27,32-96
+src/daemon/stream_worker.rs
+  s_add8f52fac813d::t_51bad6055fa6e8 43-55,57-68
+  s_add8f52fac813d::t_586da3df4a8bc9 967-981
+  s_add8f52fac813d::t_d88b17c6ada89d 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.12",
+  "base_commit_sha": "bceda2978a208fe74ac3a876bae8efb1ebcd0b15",
+  "prompts": {},
+  "sessions": {
+    "s_add8f52fac813d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9abff084-e4f1-4fff-89a9-883e2af4c02e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ubuntu <ubuntu@ip-172-31-38-209.ap-south-1.compute.internal>"
+    }
+  }
+}

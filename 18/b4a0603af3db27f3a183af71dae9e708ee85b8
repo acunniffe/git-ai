@@ -1,0 +1,257 @@
+src/git/repository.rs
+  adeebfb 9,811-812,1795,1818
+src/commands/blame.rs
+  67ec47f 14,17,21-22
+  e2f06b6 130,372-375,377-378,1358-1364,1371-1374
+  human 376,1366
+  8a0fb47 1365,1367-1370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.19",
+  "base_commit_sha": "18b4a0603af3db27f3a183af71dae9e708ee85b8",
+  "prompts": {
+    "67ec47f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "66c2b2a6-a200-4391-9ba4-1a08901c0285",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@blame.rs (15-18) make a const that's july 4th 2025",
+          "timestamp": "2025-11-13T15:52:59.183Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I can see that there's already a constant `OLDEST_AI_BLAME_DATE` set to July 4th, 2025 at those lines. Let me read a bit more context to understand if you want to create a different constant or modify this one:",
+          "timestamp": "2025-11-13T15:53:09.003Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/blame.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The constant `OLDEST_AI_BLAME_DATE` is already set to July 4th, 2025! \n\nThe values `with_ymd_and_hms(2025, 7, 4, 0, 0, 0)` represent:\n- Year: 2025\n- Month: 7 (July)\n- Day: 4\n- Time: 00:00:00 (midnight UTC)\n\nThis is exactly July 4th, 2025. Is there something specific you'd like me to change about this constant, or did you want to create a different constant with this date?",
+          "timestamp": "2025-11-13T15:53:15.796Z"
+        },
+        {
+          "type": "user",
+          "text": "it oesn't compile though",
+          "timestamp": "2025-11-13T15:53:48.977Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check the linter errors to see what's wrong with the compilation:",
+          "timestamp": "2025-11-13T15:53:59.594Z"
+        }
+      ],
+      "total_additions": 7,
+      "total_deletions": 4,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "8a0fb47": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d232cb3a-d473-4a76-8d45-aef611729b69",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@blame.rs (1365-1366) make this safe if it parses wrong. no unwrap",
+          "timestamp": "2025-11-13T15:59:45.030Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll make this code safe by properly handling the parse error instead of using `unwrap()`. Let me first check the context around this code to see how errors are handled in this function.",
+          "timestamp": "2025-11-13T15:59:51.356Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 40,
+            "offset": 1350,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/blame.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I can see this is in an argument parsing function that returns `Result<_, GitAiError>`. I'll replace the `unwrap()` with proper error handling that matches the pattern used elsewhere in the function.",
+          "timestamp": "2025-11-13T15:59:57.768Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/blame.rs"
+          }
+        }
+      ],
+      "total_additions": 7,
+      "total_deletions": 2,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    },
+    "92c1bc6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ec720e54-6b1f-4195-a273-5ed4e0ce1c73",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@blame.rs (52-53) this needs to be an option date instead. we're going to switch from oldest_commit to the git blame --since flag",
+          "timestamp": "2025-11-13T15:26:41.146Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you change the `oldest_commit` field to use a date type",
+          "timestamp": "2025-11-13T15:26:46.819Z"
+        }
+      ],
+      "total_additions": 16,
+      "total_deletions": 22,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "adeebfb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8166b3ec-b51c-486c-b38f-0f370f49b3e1",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@repository.rs (1354-1427) ok new plan! we can't save the sha, we need to save the date in RFC 3339 \n\nuse git log refs/notes/ai --reverse --format=\"%H %ad\" --date=iso-strict | head -n1\n\nif it's empty (no notes) return July 4th 2025",
+          "timestamp": "2025-11-13T15:39:45.871Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll update the implementation to save the date in RFC 3339 format instead of the SHA, and use the new git command you specified.",
+          "timestamp": "2025-11-13T15:39:54.688Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/repository.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/git",
+            "pattern": "first_note_sha"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src",
+            "pattern": "get_first_commit_with_authorship"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 30,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/virtual_attribution.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 30,
+            "offset": 455,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/commands/checkpoint.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 30,
+            "offset": 800,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/repository.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-A": 15,
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/commands/checkpoint.rs",
+            "pattern": "first_commit_with_authorship"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/git/repo_storage.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll update the implementation to use the new git command and store/return dates in RFC 3339 format:",
+          "timestamp": "2025-11-13T15:40:14.506Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/git/repository.rs"
+          }
+        }
+      ],
+      "total_additions": 104,
+      "total_deletions": 62,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "e2f06b6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ba97a893-b3a8-4030-8085-30609d463b96",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@blame.rs (52-53) ok add one more option to git ai blame\n\n\n\noldest_date: Option< Date (type tbd)>\n\n\n\nand then pass it into blame with the --since flag  \n\n\n\nthis will control how far back we go. \n\n\n\noldest commit is still useful for cetain situations when we want to contrain it further, but oldest_date will mop up the absolute lower lower bound of how far back we want to look",
+          "timestamp": "2025-11-13T15:33:17.314Z"
+        }
+      ],
+      "total_additions": 39,
+      "total_deletions": 13,
+      "accepted_lines": 39,
+      "overriden_lines": 2
+    }
+  }
+}
