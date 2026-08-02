@@ -290,3 +290,20 @@ impl DaemonLock {
         Ok(Self { _lock: lock })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_completion_log_path_has_stable_family_hash() {
+        let config = DaemonConfig::from_home(Path::new("test-home"));
+
+        assert_eq!(
+            config.test_completion_log_path_for_family("family-key"),
+            PathBuf::from("test-home")
+                .join(".git-ai/internal/daemon/test-completions")
+                .join("02e15fa3779eb41b.jsonl")
+        );
+    }
+}
