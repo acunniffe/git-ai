@@ -8,6 +8,15 @@ use crate::operations::git::repository::Repository;
 use serde_json;
 use std::collections::{HashMap, HashSet};
 
+mod note_fanout;
+
+use note_fanout::{append_note_deletions, normalize_note_path};
+#[doc(hidden)]
+pub use note_fanout::{
+    fanout_note_pathspec_for_commit, fanout_note_pathspec_for_ref, flat_note_pathspec_for_commit,
+    flat_note_pathspec_for_ref, notes_path_for_object,
+};
+
 // Modern refspecs without force to enable proper merging
 pub const AI_AUTHORSHIP_REFNAME: &str = "ai";
 pub const AI_AUTHORSHIP_FULL_REF: &str = "refs/notes/ai";
@@ -39,35 +48,6 @@ pub(in crate::operations::git) fn notes_add(
     // leading to mixed-fanout trees that trigger assertion failures in
     // `git notes merge` (notes-merge.c diff_tree_remote).
     notes_add_batch(repo, &[(commit_sha.to_string(), note_content.to_string())])
-}
-
-#[doc(hidden)]
-pub fn notes_path_for_object(oid: &str) -> String {
-    if oid.len() <= 2 {
-        oid.to_string()
-    } else {
-        format!("{}/{}", &oid[..2], &oid[2..])
-    }
-}
-
-#[doc(hidden)]
-pub fn flat_note_pathspec_for_commit(commit_sha: &str) -> String {
-    flat_note_pathspec_for_ref(AI_AUTHORSHIP_FULL_REF, commit_sha)
-}
-
-#[doc(hidden)]
-pub fn fanout_note_pathspec_for_commit(commit_sha: &str) -> String {
-    fanout_note_pathspec_for_ref(AI_AUTHORSHIP_FULL_REF, commit_sha)
-}
-
-#[doc(hidden)]
-pub fn flat_note_pathspec_for_ref(notes_ref: &str, commit_sha: &str) -> String {
-    format!("{}:{}", notes_ref, commit_sha)
-}
-
-#[doc(hidden)]
-pub fn fanout_note_pathspec_for_ref(notes_ref: &str, commit_sha: &str) -> String {
-    format!("{}:{}", notes_ref, notes_path_for_object(commit_sha))
 }
 
 #[doc(hidden)]
@@ -139,47 +119,33 @@ pub fn note_blob_oids_for_commits_from_ref(
         return Ok(HashMap::new());
     }
 
-    let mut path_to_commit = HashMap::new();
-    let mut fanout_prefixes = HashSet::new();
+    let mut notes_by_commit = HashMap::with_capacity(commit_shas.len());
+    let mut fanout_prefixes = HashSet::with_capacity(commit_shas.len().min(256));
     for commit_sha in commit_shas {
-        let flat_path = commit_sha.clone();
-        path_to_commit.insert(flat_path, commit_sha.clone());
-
-        let fanout_path = notes_path_for_object(commit_sha);
-        path_to_commit.insert(fanout_path, commit_sha.clone());
+        notes_by_commit.insert(commit_sha.as_str(), None);
         if commit_sha.len() > 2 {
             fanout_prefixes.insert(commit_sha[..2].to_string());
         }
     }
 
-    let mut result = HashMap::new();
     let Some(root_entries) = ls_tree_note_entries(repo, notes_ref, false, &[])? else {
         return Ok(HashMap::new());
     };
 
-    for entry in root_entries {
-        if let Some(commit_sha) = path_to_commit.get(&entry.path) {
-            if entry.object_type != "blob" {
-                return Err(unexpected_note_object_type(&entry, notes_ref));
-            }
-            result.entry(commit_sha.clone()).or_insert(entry.oid);
-        }
-    }
+    record_matching_note_entries(root_entries, notes_ref, &mut notes_by_commit)?;
 
     let mut prefixes = fanout_prefixes.into_iter().collect::<Vec<_>>();
     prefixes.sort();
     if let Some(entries) = ls_tree_note_entries(repo, notes_ref, true, &prefixes)? {
-        for entry in entries {
-            if let Some(commit_sha) = path_to_commit.get(&entry.path) {
-                if entry.object_type != "blob" {
-                    return Err(unexpected_note_object_type(&entry, notes_ref));
-                }
-                result.entry(commit_sha.clone()).or_insert(entry.oid);
-            }
-        }
+        record_matching_note_entries(entries, notes_ref, &mut notes_by_commit)?;
     }
 
-    Ok(result)
+    Ok(notes_by_commit
+        .into_iter()
+        .filter_map(|(commit_sha, note)| {
+            note.map(|(_preference, blob_oid)| (commit_sha.to_string(), blob_oid))
+        })
+        .collect())
 }
 
 #[derive(Debug)]
@@ -187,6 +153,31 @@ struct LsTreeNoteEntry {
     object_type: String,
     oid: String,
     path: String,
+}
+
+fn record_matching_note_entries(
+    entries: Vec<LsTreeNoteEntry>,
+    notes_ref: &str,
+    notes_by_commit: &mut HashMap<&str, Option<(usize, String)>>,
+) -> Result<(), GitAiError> {
+    for mut entry in entries {
+        let Some(preference) = normalize_note_path(&mut entry.path) else {
+            continue;
+        };
+        let Some(current_note) = notes_by_commit.get_mut(entry.path.as_str()) else {
+            continue;
+        };
+        if entry.object_type != "blob" {
+            return Err(unexpected_note_object_type(&entry, notes_ref));
+        }
+        if current_note
+            .as_ref()
+            .is_none_or(|(current_preference, _)| preference < *current_preference)
+        {
+            *current_note = Some((preference, entry.oid));
+        }
+    }
+    Ok(())
 }
 
 fn ls_tree_note_entries(
@@ -364,11 +355,7 @@ pub(in crate::operations::git) fn notes_add_batch(
 
     for (idx, (commit_sha, _note_content)) in deduped_entries.iter().enumerate() {
         let fanout_path = notes_path_for_object(commit_sha);
-        let flat_path = commit_sha.clone();
-        if flat_path != fanout_path {
-            script.extend_from_slice(format!("D {}\n", flat_path).as_bytes());
-        }
-        script.extend_from_slice(format!("D {}\n", fanout_path).as_bytes());
+        append_note_deletions(&mut script, commit_sha);
         script.extend_from_slice(format!("M 100644 :{} {}\n", idx + 1, fanout_path).as_bytes());
     }
     script.extend_from_slice(b"\n");
@@ -405,11 +392,7 @@ pub(in crate::operations::git) fn notes_add_blob_batch(
 
     for (commit_sha, blob_oid) in &deduped_entries {
         let fanout_path = notes_path_for_object(commit_sha);
-        let flat_path = commit_sha.clone();
-        if flat_path != fanout_path {
-            script.extend_from_slice(format!("D {}\n", flat_path).as_bytes());
-        }
-        script.extend_from_slice(format!("D {}\n", fanout_path).as_bytes());
+        append_note_deletions(&mut script, commit_sha);
         script.extend_from_slice(format!("M 100644 {} {}\n", blob_oid, fanout_path).as_bytes());
     }
     script.extend_from_slice(b"\n");

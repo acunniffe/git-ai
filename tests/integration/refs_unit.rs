@@ -1,3 +1,4 @@
+use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::clients::git_cli::{exec_git, exec_git_stdin};
 use git_ai::error::GitAiError;
@@ -48,6 +49,63 @@ fn git_stdin_stdout(
         .expect("git stdout utf8")
         .trim()
         .to_string()
+}
+
+fn commit_unattributed_file(
+    repo: &TestRepo,
+    filename: &str,
+    content: &str,
+    message: &str,
+) -> String {
+    fs::write(repo.path().join(filename), content).unwrap();
+    repo.git_og(&["add", filename]).expect("add test file");
+    repo.git_og(&["commit", "-m", message])
+        .expect("commit test file");
+
+    let mut file = repo.filename(filename);
+    file.assert_committed_lines(crate::lines![
+        content.trim_end_matches('\n').unattributed_human()
+    ]);
+    head_sha(repo)
+}
+
+fn install_note_at_paths(
+    repo: &git_ai::operations::git::repository::Repository,
+    paths: &[String],
+    content: &str,
+) {
+    let mut stream = format!(
+        "blob\nmark :1\ndata {}\n{}\ncommit refs/notes/ai\ncommitter Test <test@test.com> 1000000000 +0000\ndata 0\ndeleteall\n",
+        content.len(),
+        content
+    );
+    for path in paths {
+        stream.push_str(&format!("M 100644 :1 {path}\n"));
+    }
+    stream.push_str("\ndone\n");
+
+    git_stdin_stdout(
+        repo,
+        &["fast-import", "--quiet", "--done"],
+        stream.as_bytes(),
+    );
+}
+
+fn note_tree_paths(repo: &TestRepo) -> Vec<String> {
+    repo.git_og(&["ls-tree", "-r", "--name-only", "refs/notes/ai"])
+        .expect("list authorship note paths")
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
+fn deepest_note_path(commit_sha: &str) -> String {
+    commit_sha
+        .as_bytes()
+        .chunks(2)
+        .map(|chunk| std::str::from_utf8(chunk).unwrap())
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 #[test]
@@ -105,6 +163,39 @@ fn test_notes_add_batch_writes_multiple_notes() {
 }
 
 #[test]
+fn test_notes_add_batch_replaces_notes_at_every_legacy_fanout_depth() {
+    let (repo, gitai_repo) = repo_with_handle();
+    let commit_sha =
+        commit_unattributed_file(&repo, "legacy.txt", "legacy\n", "Legacy note target");
+    let canonical_path = format!("{}/{}", &commit_sha[..2], &commit_sha[2..]);
+    let legacy_paths = vec![
+        commit_sha.clone(),
+        canonical_path.clone(),
+        format!(
+            "{}/{}/{}",
+            &commit_sha[..2],
+            &commit_sha[2..4],
+            &commit_sha[4..]
+        ),
+        deepest_note_path(&commit_sha),
+    ];
+    install_note_at_paths(&gitai_repo, &legacy_paths, "{}");
+    assert_eq!(note_tree_paths(&repo).len(), legacy_paths.len());
+
+    let mut replacement = AuthorshipLog::new();
+    replacement.metadata.base_commit_sha = commit_sha.clone();
+    let replacement = replacement
+        .serialize_to_string()
+        .expect("serialize replacement note");
+    notes_add_batch(&gitai_repo, &[(commit_sha.clone(), replacement)])
+        .expect("replace mixed-fanout note");
+
+    assert_eq!(note_tree_paths(&repo), vec![canonical_path]);
+    let parsed = read_authorship_v3(&gitai_repo, &commit_sha).expect("parse replacement note");
+    assert_eq!(parsed.metadata.base_commit_sha, commit_sha);
+}
+
+#[test]
 fn test_notes_add_blob_batch_reuses_existing_note_blob() {
     let (repo, gitai_repo) = repo_with_handle();
 
@@ -137,6 +228,62 @@ fn test_notes_add_blob_batch_reuses_existing_note_blob() {
 
     let parsed_note_b = read_authorship_v3(&gitai_repo, &commit_b).expect("parse B");
     assert_eq!(parsed_note_b.metadata.base_commit_sha, commit_b);
+}
+
+#[test]
+fn test_notes_add_blob_batch_replaces_notes_at_every_legacy_fanout_depth() {
+    let (repo, gitai_repo) = repo_with_handle();
+    let commit_sha = commit_unattributed_file(
+        &repo,
+        "legacy-blob.txt",
+        "legacy\n",
+        "Legacy blob note target",
+    );
+    let canonical_path = format!("{}/{}", &commit_sha[..2], &commit_sha[2..]);
+    let legacy_paths = vec![
+        commit_sha.clone(),
+        format!(
+            "{}/{}/{}",
+            &commit_sha[..2],
+            &commit_sha[2..4],
+            &commit_sha[4..]
+        ),
+        deepest_note_path(&commit_sha),
+    ];
+    install_note_at_paths(&gitai_repo, &legacy_paths, "stale");
+    assert_eq!(note_tree_paths(&repo).len(), legacy_paths.len());
+
+    let replacement_blob = git_stdin_stdout(
+        &gitai_repo,
+        &["hash-object", "-w", "--stdin"],
+        b"replacement",
+    );
+    notes_add_blob_batch(&gitai_repo, &[(commit_sha.clone(), replacement_blob)])
+        .expect("replace mixed-fanout blob note");
+
+    assert_eq!(note_tree_paths(&repo), vec![canonical_path]);
+    assert_eq!(
+        read_note(&gitai_repo, &commit_sha).as_deref(),
+        Some("replacement")
+    );
+}
+
+#[test]
+fn test_read_notes_batch_finds_deeply_fanned_out_note() {
+    let (repo, gitai_repo) = repo_with_handle();
+    let commit_sha = commit_unattributed_file(&repo, "deep-note.txt", "deep\n", "Deep note target");
+    install_note_at_paths(
+        &gitai_repo,
+        &[deepest_note_path(&commit_sha)],
+        "deeply fanned out",
+    );
+
+    let notes = notes_api::read_notes_batch(&gitai_repo, std::slice::from_ref(&commit_sha))
+        .expect("batch-read deeply fanned-out note");
+    assert_eq!(
+        notes.get(&commit_sha).map(String::as_str),
+        Some("deeply fanned out")
+    );
 }
 
 #[test]
