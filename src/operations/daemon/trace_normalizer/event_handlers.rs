@@ -3,7 +3,8 @@ use crate::model::domain::{CommandScope, Confidence, FamilyKey, NormalizedComman
 use crate::observability;
 use crate::operations::daemon::git_backend::GitBackend;
 use crate::operations::daemon::trace_helpers::{
-    daemon_worktree_from_repo_path, trace_argv_primary_command, trace_payload_argv,
+    daemon_worktree_from_repo_path, def_repo_is_secondary, trace_argv_primary_command,
+    trace_payload_argv,
 };
 use crate::operations::git::repo_state::{
     common_dir_for_repo_path, common_dir_for_worktree, worktree_root_for_path,
@@ -112,6 +113,13 @@ impl<B: GitBackend> TraceNormalizer<B> {
         _sid: &str,
         root_sid: &str,
     ) -> Result<Option<NormalizedCommand>, GitAiError> {
+        if def_repo_is_secondary(payload) {
+            if let Some(pending) = self.state.pending.get_mut(root_sid) {
+                merge_reflog_start_offsets_from_payload(pending, payload);
+            }
+            return Ok(None);
+        }
+
         let payload_worktree = payload_worktree(payload);
         let payload_repo = payload
             .get("repo")

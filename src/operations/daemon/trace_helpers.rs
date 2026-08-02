@@ -39,6 +39,16 @@ pub fn rfc3339_to_unix_nanos(value: &str) -> Option<u128> {
         .and_then(|timestamp| u128::try_from(timestamp.timestamp_nanos_opt()?).ok())
 }
 
+/// Trace2 assigns repo index 1 to the command's primary repository. Higher
+/// indices represent repositories Git only inspected while executing it, such
+/// as an embedded subrepo checked for gitlink dirtiness during a commit.
+pub fn def_repo_is_secondary(payload: &Value) -> bool {
+    payload
+        .get("repo")
+        .and_then(Value::as_u64)
+        .is_some_and(|index| index > 1)
+}
+
 pub fn trace_payload_worktree_hint(payload: &Value) -> Option<PathBuf> {
     let normalize = |path: PathBuf| worktree_root_for_path(&path).unwrap_or(path);
     let argv = trace_payload_argv(payload);
@@ -47,6 +57,9 @@ pub fn trace_payload_worktree_hint(payload: &Value) -> Option<PathBuf> {
         .and_then(Value::as_str)
         .unwrap_or_default();
     if event == "def_repo" {
+        if def_repo_is_secondary(payload) {
+            return None;
+        }
         if let Some(path) = payload
             .get("worktree")
             .or_else(|| payload.get("repo_working_dir"))
@@ -451,6 +464,26 @@ mod tests {
         .expect("write gitdir");
 
         assert_eq!(daemon_worktree_from_repo_path(&repo_dir), Some(worktree));
+    }
+
+    #[test]
+    fn secondary_def_repo_does_not_hint_a_worktree() {
+        let primary = serde_json::json!({
+            "event": "def_repo",
+            "repo": 1,
+            "worktree": "/repo",
+        });
+        assert_eq!(
+            trace_payload_worktree_hint(&primary),
+            Some(PathBuf::from("/repo"))
+        );
+
+        let secondary = serde_json::json!({
+            "event": "def_repo",
+            "repo": 2,
+            "worktree": "/repo/nested",
+        });
+        assert_eq!(trace_payload_worktree_hint(&secondary), None);
     }
 
     #[test]

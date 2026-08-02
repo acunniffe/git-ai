@@ -17,6 +17,8 @@ mod tests_clone;
 mod tests_frame_primitives;
 #[cfg(test)]
 pub(super) mod tests_lifecycle;
+#[cfg(test)]
+mod tests_nested_repo;
 
 #[derive(Debug, Clone)]
 pub struct PendingTraceCommand {
