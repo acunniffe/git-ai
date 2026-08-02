@@ -1,6 +1,9 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use git_ai::model::authorship_log_serialization::AuthorshipLog;
+use crate::test_utils::{CodexHookInput, checkpoint_codex};
+use git_ai::model::authorship_log_serialization::{
+    AuthorshipLog, generate_session_id, generate_short_hash,
+};
 use std::fs;
 
 // Task 11: Old format regression tests
@@ -318,6 +321,78 @@ fn test_old_session_with_messages_deserializes_without_them() {
 }
 
 // Task 13: End-to-end session flow tests
+
+#[test]
+fn test_persisted_tool_agent_identifier_vectors() {
+    const EXTERNAL_SESSION_ID: &str = "session_123";
+    const EXPECTED_PROMPT_ID: &str = "ab6b5c531519d1b2";
+    const EXPECTED_SESSION_ID: &str = "s_ab6b5c531519d1";
+
+    assert_eq!(
+        generate_short_hash(EXTERNAL_SESSION_ID, "codex"),
+        EXPECTED_PROMPT_ID
+    );
+    assert_eq!(
+        generate_session_id(EXTERNAL_SESSION_ID, "codex"),
+        EXPECTED_SESSION_ID
+    );
+
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("test.txt");
+    let mut file = repo.filename("test.txt");
+
+    fs::write(&file_path, "Base line\n").unwrap();
+    repo.stage_all_and_commit("Base commit").unwrap();
+    file.assert_committed_lines(crate::lines!["Base line".unattributed_human()]);
+
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::pre_file_edit(
+            EXTERNAL_SESSION_ID,
+            repo.canonical_path(),
+            "tool-use-hash-base",
+            &file_path,
+        ),
+    );
+    fs::write(&file_path, "Base line\nAI line\n").unwrap();
+    checkpoint_codex(
+        &repo,
+        CodexHookInput::post_file_edit(
+            EXTERNAL_SESSION_ID,
+            repo.canonical_path(),
+            "tool-use-hash-base",
+            &file_path,
+        ),
+    );
+
+    let commit = repo.stage_all_and_commit("AI commit").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "Base line".unattributed_human(),
+        "AI line".ai(),
+    ]);
+
+    assert_eq!(commit.authorship_log.metadata.sessions.len(), 1);
+    assert!(
+        commit
+            .authorship_log
+            .metadata
+            .sessions
+            .contains_key(EXPECTED_SESSION_ID)
+    );
+
+    let attestation = commit
+        .authorship_log
+        .attestations
+        .iter()
+        .find(|attestation| attestation.file_path == "test.txt")
+        .and_then(|attestation| attestation.entries.first())
+        .expect("persisted note should contain the edited-file attestation");
+    let (session_id, _) = attestation
+        .hash
+        .split_once("::")
+        .expect("new-format attestation should contain a trace ID");
+    assert_eq!(session_id, EXPECTED_SESSION_ID);
+}
 
 #[test]
 fn test_new_session_checkpoint_to_commit_to_blame() {
