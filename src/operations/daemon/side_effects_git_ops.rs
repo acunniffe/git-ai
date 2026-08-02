@@ -179,7 +179,9 @@ impl ActorDaemonCoordinator {
                     crate::operations::authorship::rewrite_reset::reconstruct_working_log_after_backward_reset(
                         &repo, old_head, new_head,
                     )?;
-                } else if !is_ancestor_commit(&repo, old_head, new_head) {
+                } else if is_ancestor_commit(&repo, old_head, new_head) {
+                    repo.storage.rename_working_log(old_head, new_head)?;
+                } else {
                     let outcome =
                         crate::operations::authorship::rewrite::handle_rewrite_event_with_metrics(
                             &repo,

@@ -845,6 +845,65 @@ fn test_blame_identical_content_shift_attribution() {
     ]);
 }
 
+fn assert_forward_reset_preserves_uncommitted_ai_attribution(reset_mode: &str) {
+    let repo = TestRepo::new();
+    let feature_path = repo.path().join("feature.txt");
+    let upstream_path = repo.path().join("upstream.txt");
+
+    fs::write(&feature_path, "human line\n").unwrap();
+    fs::write(&upstream_path, "upstream v1\n").unwrap();
+    let base = repo.stage_all_and_commit("Base commit").unwrap();
+
+    let mut feature = repo.filename("feature.txt");
+    feature.assert_committed_lines(crate::lines!["human line".unattributed_human()]);
+    let mut upstream_file = repo.filename("upstream.txt");
+    upstream_file.assert_committed_lines(crate::lines!["upstream v1".unattributed_human()]);
+
+    fs::write(&upstream_path, "upstream v2\n").unwrap();
+    let upstream = repo.stage_all_and_commit("Upstream commit").unwrap();
+
+    feature.assert_committed_lines(crate::lines!["human line".unattributed_human()]);
+    upstream_file.assert_committed_lines(crate::lines!["upstream v2".unattributed_human()]);
+
+    repo.git(&["reset", "--hard", &base.commit_sha]).unwrap();
+    feature.assert_committed_lines(crate::lines!["human line".unattributed_human()]);
+    upstream_file.assert_committed_lines(crate::lines!["upstream v1".unattributed_human()]);
+
+    // Model an AI agent's before/after checkpoints while HEAD is on the old base.
+    repo.git_ai(&["checkpoint", "human", "feature.txt"])
+        .unwrap();
+    fs::write(&feature_path, "human line\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+        .unwrap();
+
+    // The upstream commit changes another file, so --keep can safely advance HEAD.
+    repo.git(&["reset", reset_mode, &upstream.commit_sha])
+        .unwrap();
+
+    repo.git(&["add", "feature.txt"]).unwrap();
+    repo.commit(&format!("Commit AI work after forward reset {reset_mode}"))
+        .unwrap();
+
+    feature.assert_committed_lines(crate::lines![
+        "human line".unattributed_human(),
+        "AI line".ai(),
+    ]);
+}
+
+/// A non-hard reset onto a descendant must carry uncommitted AI attribution to
+/// the new base commit instead of leaving the working log at the old base.
+#[test]
+fn test_forward_mixed_reset_preserves_uncommitted_ai_attribution() {
+    assert_forward_reset_preserves_uncommitted_ai_attribution("--mixed");
+}
+
+/// `reset --keep` is Graphite's forward-restack path. It must carry a
+/// non-conflicting uncommitted AI edit to the newer base commit.
+#[test]
+fn test_forward_keep_reset_preserves_uncommitted_ai_attribution() {
+    assert_forward_reset_preserves_uncommitted_ai_attribution("--keep");
+}
+
 crate::reuse_tests_in_worktree!(
     test_reset_hard_deletes_working_log,
     test_reset_soft_reconstructs_working_log,
@@ -862,4 +921,6 @@ crate::reuse_tests_in_worktree!(
     test_reset_mixed_pathspec_multiple_commits,
     test_reset_with_directory_pathspec,
     test_reset_large_commit_preserves_attribution,
+    test_forward_mixed_reset_preserves_uncommitted_ai_attribution,
+    test_forward_keep_reset_preserves_uncommitted_ai_attribution,
 );
