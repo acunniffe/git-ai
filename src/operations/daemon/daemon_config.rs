@@ -117,6 +117,13 @@ pub struct DaemonConfig {
     pub control_socket_path: PathBuf,
 }
 
+pub(super) fn test_completion_log_path(dir: &Path, family_key: &str) -> PathBuf {
+    let mut hasher = Sha256::new();
+    hasher.update(family_key.as_bytes());
+    let digest = format!("{:x}", hasher.finalize());
+    dir.join(format!("{}.jsonl", &digest[..16]))
+}
+
 impl DaemonConfig {
     fn from_internal_dir(internal_dir: PathBuf) -> Self {
         let daemon_dir = internal_dir.join("daemon");
@@ -217,11 +224,7 @@ impl DaemonConfig {
     }
 
     pub fn test_completion_log_path_for_family(&self, family_key: &str) -> PathBuf {
-        let mut hasher = Sha256::new();
-        hasher.update(family_key.as_bytes());
-        let digest = format!("{:x}", hasher.finalize());
-        self.test_completion_log_dir()
-            .join(format!("{}.jsonl", &digest[..16]))
+        test_completion_log_path(&self.test_completion_log_dir(), family_key)
     }
 
     pub fn trace2_event_target_for_path(path: &Path) -> String {

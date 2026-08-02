@@ -1,10 +1,10 @@
+use super::daemon_config::test_completion_log_path;
 #[allow(unused_imports)]
 use super::*;
 use crate::error::GitAiError;
 use crate::model::repository::error::PersistenceError;
 use crate::operations::git::repo_state::common_dir_for_worktree;
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -368,10 +368,7 @@ impl ActorDaemonCoordinator {
                 })?;
 
         fs::create_dir_all(dir)?;
-        let mut hasher = Sha256::new();
-        hasher.update(family.as_bytes());
-        let digest = format!("{:x}", hasher.finalize());
-        let path = dir.join(format!("{}.jsonl", &digest[..16]));
+        let path = test_completion_log_path(dir, family);
         let mut file = OpenOptions::new().create(true).append(true).open(path)?;
         let line = serde_json::to_string(entry).map_err(GitAiError::from)?;
         file.write_all(line.as_bytes())?;
