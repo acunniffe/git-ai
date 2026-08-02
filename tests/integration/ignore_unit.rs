@@ -1,7 +1,7 @@
 use crate::repos::test_repo::TestRepo;
 use crate::test_utils::raw_git;
 use git_ai::operations::authorship::ignore::{
-    effective_ignore_patterns, load_git_ai_ignore_patterns,
+    effective_ignore_patterns, load_git_ai_ignore_patterns, load_git_ai_ignore_patterns_from_path,
     load_linguist_generated_patterns_from_root_gitattributes,
 };
 use git_ai::operations::git::repository::from_bare_repository;
@@ -220,6 +220,32 @@ docs/**
 }
 
 #[test]
+fn git_ai_ignore_loaders_preserve_parser_contract() {
+    let repo = TestRepo::new();
+    std::fs::write(
+        repo.path().join(".git-ai-ignore"),
+        "\r\n \t\r\n  # indented comment\r\n  docs/**  \r\n assets/#literal/** \r\ndocs/**\r\n *.pdf \r\nassets/#literal/**\r\n",
+    )
+    .unwrap();
+
+    let gitai_repo =
+        git_ai::operations::git::repository::find_repository_in_path(repo.path().to_str().unwrap())
+            .unwrap();
+    let expected = vec![
+        "docs/**".to_string(),
+        "assets/#literal/**".to_string(),
+        "*.pdf".to_string(),
+    ];
+
+    let repository_patterns = load_git_ai_ignore_patterns(&gitai_repo);
+    let path_patterns = load_git_ai_ignore_patterns_from_path(repo.path());
+
+    assert_eq!(repository_patterns, expected);
+    assert_eq!(path_patterns, expected);
+    assert_eq!(repository_patterns, path_patterns);
+}
+
+#[test]
 fn git_ai_ignore_returns_empty_when_file_missing() {
     let repo = TestRepo::new();
     std::fs::write(repo.path().join("README.md"), "# repo\n").unwrap();
@@ -231,6 +257,20 @@ fn git_ai_ignore_returns_empty_when_file_missing() {
             .unwrap();
     let patterns = load_git_ai_ignore_patterns(&gitai_repo);
     assert!(patterns.is_empty());
+    assert!(load_git_ai_ignore_patterns_from_path(repo.path()).is_empty());
+}
+
+#[test]
+fn git_ai_ignore_loaders_return_empty_when_path_is_unreadable() {
+    let repo = TestRepo::new();
+    std::fs::create_dir(repo.path().join(".git-ai-ignore")).unwrap();
+
+    let gitai_repo =
+        git_ai::operations::git::repository::find_repository_in_path(repo.path().to_str().unwrap())
+            .unwrap();
+
+    assert!(load_git_ai_ignore_patterns(&gitai_repo).is_empty());
+    assert!(load_git_ai_ignore_patterns_from_path(repo.path()).is_empty());
 }
 
 #[test]
@@ -355,7 +395,9 @@ crate::reuse_tests_in_worktree!(
     loads_git_ai_ignore_patterns_from_workdir,
     git_ai_ignore_skips_comments_and_blank_lines,
     git_ai_ignore_deduplicates_patterns,
+    git_ai_ignore_loaders_preserve_parser_contract,
     git_ai_ignore_returns_empty_when_file_missing,
+    git_ai_ignore_loaders_return_empty_when_path_is_unreadable,
     effective_patterns_include_git_ai_ignore,
     effective_patterns_union_gitattributes_and_git_ai_ignore,
     effective_patterns_union_git_ai_ignore_and_user_patterns,

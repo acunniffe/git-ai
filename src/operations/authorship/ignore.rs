@@ -173,6 +173,10 @@ pub fn load_git_ai_ignore_patterns(repo: &Repository) -> Vec<String> {
         return Vec::new();
     };
 
+    parse_git_ai_ignore_patterns(&contents)
+}
+
+fn parse_git_ai_ignore_patterns(contents: &str) -> Vec<String> {
     let mut patterns = Vec::new();
 
     for raw_line in contents.lines() {
@@ -206,15 +210,7 @@ pub fn load_git_ai_ignore_patterns_from_path(repo_root: &Path) -> Vec<String> {
         Ok(s) => s,
         Err(_) => return Vec::new(),
     };
-    let mut patterns = Vec::new();
-    for raw_line in contents.lines() {
-        let line = raw_line.trim();
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        patterns.push(line.to_string());
-    }
-    dedupe_patterns(patterns)
+    parse_git_ai_ignore_patterns(&contents)
 }
 
 /// Load linguist-generated patterns from `.gitattributes` at a repo root path directly.
