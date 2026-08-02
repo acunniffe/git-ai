@@ -1,0 +1,24 @@
+src/daemon.rs
+  s_f00ef7c0f45b07::t_5a2bba86b8790e 3252-3254,3302
+  s_f00ef7c0f45b07::t_b353b0dd91499e 818
+  s_f00ef7c0f45b07::t_2c875551b5ecb1 5059
+  s_f00ef7c0f45b07::t_aad22c3a6279df 1682,1686-1722
+tests/integration/daemon_commit_carryover.rs
+  s_f00ef7c0f45b07::t_6695814f64401e 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "9aa66a59614eeb18fd3876c7825a7d652756af9b",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

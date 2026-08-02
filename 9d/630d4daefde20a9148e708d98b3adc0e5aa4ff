@@ -1,0 +1,10 @@
+src/ci/github.rs
+  b414720 7
+src/commands/ci_handlers.rs
+  b414720 2,59-60,62,64,193-195,205-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "cb0198084f7da364f550b082129bafac96953b3d",
+  "prompts": {}
+}

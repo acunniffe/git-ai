@@ -1,0 +1,57 @@
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  1cefd91c81a15b12 74,83
+src/commands/checkpoint_agent/orchestrator.rs
+  1cefd91c81a15b12 272-275,283,303-306,314,381-384,392,423-426,434
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  1cefd91c81a15b12 71,134,271,286,311
+src/commands/checkpoint_agent/presets/windsurf.rs
+  1cefd91c81a15b12 157,171
+src/commands/checkpoint_agent/presets/opencode.rs
+  1cefd91c81a15b12 313,325
+src/commands/checkpoint_agent/presets/codex.rs
+  1cefd91c81a15b12 151,181
+src/commands/checkpoint_agent/presets/cursor.rs
+  1cefd91c81a15b12 126-128,131-139,144,151
+src/commands/checkpoint_agent/presets/claude.rs
+  1cefd91c81a15b12 103,115
+src/commands/checkpoint_agent/presets/pi.rs
+  1cefd91c81a15b12 171,185
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  1cefd91c81a15b12 62,74
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  1cefd91c81a15b12 91,104,119
+src/commands/checkpoint_agent/presets/mock_ai.rs
+  1cefd91c81a15b12 65
+src/commands/checkpoint_agent/presets/droid.rs
+  1cefd91c81a15b12 176,194
+src/commands/checkpoint_agent/presets/mod.rs
+  1cefd91c81a15b12 52-53,62-63
+src/commands/checkpoint_agent/presets/firebender.rs
+  1cefd91c81a15b12 219,231
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  1cefd91c81a15b12 67,101
+src/commands/checkpoint_agent/presets/gemini.rs
+  1cefd91c81a15b12 68,80
+src/commands/checkpoint_agent/presets/amp.rs
+  1cefd91c81a15b12 339,351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "0339e23d6996a60ed7816f5ce6ed01dd5f72500c",
+  "prompts": {
+    "1cefd91c81a15b12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d39fdb4-c7ca-44db-9b0d-6a87a01ad4ee",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 73,
+      "total_deletions": 25,
+      "accepted_lines": 71,
+      "overriden_lines": 0
+    }
+  }
+}

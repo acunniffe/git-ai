@@ -1,0 +1,24 @@
+tests/integration/ci_squash_rebase.rs
+  9948271debc84f23 694-701,856-867,944-946,958-960,972-974
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "d2fcde8efbff4c9f06c9ed130390c229f2754569",
+  "prompts": {
+    "9948271debc84f23": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "281715b5-ce5d-428c-b47b-3676e1fc0aee",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 29,
+      "total_deletions": 8,
+      "accepted_lines": 29,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5894b15603d6fa28a69853e009aafec18791e7585453b1e11c547391f7364245"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+src/commands/upgrade.rs
+  349771e 6,387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "39ae7d03b764348a7640b485b9362ac080a92533",
+  "prompts": {}
+}

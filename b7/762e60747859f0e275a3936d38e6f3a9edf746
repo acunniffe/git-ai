@@ -1,0 +1,23 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  6bbe72c632bd0e79 2377-2382,2584-2637
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "b7762e60747859f0e275a3936d38e6f3a9edf746",
+  "prompts": {
+    "6bbe72c632bd0e79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fe1fb639-387b-4313-b69f-d3fb8d250412",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 60,
+      "overriden_lines": 0
+    }
+  }
+}

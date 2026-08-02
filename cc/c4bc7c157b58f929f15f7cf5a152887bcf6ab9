@@ -1,0 +1,49 @@
+tests/integration/repos/test_repo.rs
+  c1970e7fa3ca2e03 376-412,1072-1074,2811-2858,2860-2927,2929-2930
+  149e5177af994123 2623-2641
+  3ad40239590f7bcf 875-884
+  44302110b27842e1 3097
+  601fa7cb531db267 689-690
+  c1ef32d59864d3e2 61-63,75-76
+  135e62a7897b4309 1126-1127,1208-1209,1267,1310,1358-1359,1366-1367,2807-2808,2934-3031
+  f7d298b540ab887f 1698,2327-2332,2439
+  107bc20d2ae424fb 2030-2035,2069,2073,2076,2115
+  fdfb34b2f0ba986d 705
+  4c36c13fe6537f7d 1341,1360-1364,1369
+  5b8e5820a895f4f7 2301-2305,2310-2312,2314-2321,2342-2359,2368-2370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "ccc4bc7c157b58f929f15f7cf5a152887bcf6ab9",
+  "prompts": {
+    "c1970e7fa3ca2e03": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5772698e-67e6-4639-a483-cbb8405da325",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test User",
+      "messages": [],
+      "total_additions": 74,
+      "total_deletions": 15,
+      "accepted_lines": 158,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/151025fa0d2d6860ba4a8ec53a1c8c315272dd4b85444269f78342f87d5882ff"
+    },
+    "f7d298b540ab887f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aeb4828a-dc79-4e25-b262-f5f71032b4eb",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 6,
+      "accepted_lines": 8,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/58ec859e71e612130336797c75572b0035694a7a358273b6e2031d79532b31ce"
+    }
+  }
+}

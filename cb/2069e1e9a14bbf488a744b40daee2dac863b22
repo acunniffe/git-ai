@@ -1,0 +1,50 @@
+src/commands/activity.rs
+  s_8d2579124116c6::t_013c07475d8e43 2,4-23,25-30,37,39-42,44-49,51-59,61-72,74,76-77,81-85,87-91,96,98-99,101-102,105,140,142,150,225-245,203,211,222-223,171-172,113,116-117,120-121,124-125,128,134
+  s_0db412aeb21ffe::t_2ef1519d60bafe 50
+  s_8d2579124116c6::t_db261437049fa4 100
+  s_8d2579124116c6::t_0eb1eee25d93c6 107
+  s_8d2579124116c6::t_67c993cba3b848 138,179,188,204,224,173
+  s_27ed236e4270d9::t_436e8b1ed547d2 31,36
+  s_8d2579124116c6::t_d48e77ad90e6bc 174-175,177-178,182,184,189-190,193-197,199,202,208-210,212-221
+  s_0db412aeb21ffe::t_e609464cbae1fc 176,153
+  s_8d2579124116c6::t_e099179db31883 180,186,201
+  s_8d2579124116c6::t_6c4ed39d09f324 181,183,185,187,198,200
+  s_8d2579124116c6::t_a80b5a10ec4988 191-192
+  s_8d2579124116c6::t_92bab4562f9ad2 151-152,154,156-158,160-161,163-170
+  s_8d2579124116c6::t_06062f0672e5e8 97,110,112,119,122-123,126-127,129-130,132,139,141,143-144,147-148
+  s_27ed236e4270d9::t_5506e4e39d0b32 111
+  s_8d2579124116c6::t_e37c75b4a32551 104
+  s_8d2579124116c6::t_9aee7757149415 135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "cb2069e1e9a14bbf488a744b40daee2dac863b22",
+  "prompts": {},
+  "sessions": {
+    "s_0db412aeb21ffe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfef8749-d442-403d-b447-4d2895852996",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

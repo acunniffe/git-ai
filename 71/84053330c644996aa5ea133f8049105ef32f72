@@ -1,0 +1,29 @@
+tests/integration/agent_v1.rs
+  dacf127c97d5a34b 33-40,74-81,102,129,163-176
+tests/integration/agent_presets_comprehensive.rs
+  dacf127c97d5a34b 840-846
+tests/integration/ai_tab.rs
+  dacf127c97d5a34b 55-58,93-95
+tests/integration/github_copilot.rs
+  dacf127c97d5a34b 129-132,154,315,345,386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "7184053330c644996aa5ea133f8049105ef32f72",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 721,
+      "total_deletions": 113,
+      "accepted_lines": 54,
+      "overriden_lines": 0
+    }
+  }
+}

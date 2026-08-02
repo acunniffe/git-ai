@@ -1,0 +1,116 @@
+tests/checkpoint_size.rs
+  b77f01911b3f590e 1-9,11-15,21-50,52,55-74,76-78,80-92
+tests/subdirs.rs
+  c6927867d8c2a69c 488,496-497,501-527,529-532
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.24",
+  "base_commit_sha": "0e8d6efde52da5eda5f46dd61cce11f4e31e3a92",
+  "prompts": {
+    "03e9b926aea899f5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b387d301-92e8-40b5-a025-d67d33437069",
+        "model": "gpt-5.1-codex-max"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/authorship/attribution_tracker.rs:293-349 Add benchmark logs (similer to how we do it in @src/commands/checkpoint.rs )",
+          "timestamp": "2025-12-11T23:01:20.693Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Added benchmark timings to `compute_diffs`, mirroring checkpoint-style logs by timing metadata collection, diff capture, and overall processing. Also wired in `debug_log`/`Instant` imports to support the new measurements.\n\n```295:336:src/authorship/attribution_tracker.rs\n    fn compute_diffs(\n        &self,\n        old_content: &str,\n        new_content: &str,\n    ) -> Result<DiffComputation, GitAiError> {\n        let compute_start = Instant::now();\n        let line_metadata_start = Instant::now();\n        let old_lines = collect_line_metadata(old_content);\n        let new_lines = collect_line_metadata(new_content);\n        debug_log(&format!(\n            \"[BENCHMARK] collect_line_metadata (old/new) took {:?}\",\n            line_metadata_start.elapsed()\n        ));\n\n        let capture_start = Instant::now();\n        let old_line_slices: Vec<&str> = old_lines\n            .iter()\n            .map(|line| &old_content[line.start..line.end])\n            .collect();\n        let new_line_slices: Vec<&str> = new_lines\n            .iter()\n            .map(|line| &new_content[line.start..line.end])\n            .collect();\n\n        let line_ops = capture_diff_slices(&old_line_slices, &new_line_slices);\n        let line_ops_len = line_ops.len();\n        debug_log(&format!(\n            \"[BENCHMARK] capture_diff_slices produced {} ops in {:?}\",\n            line_ops_len,\n            capture_start.elapsed()\n        ));\n\n        let mut computation = DiffComputation::default();\n        let mut pending_changed: Vec<DiffOp> = Vec::new();\n        let process_start = Instant::now();\n```\n\nNotes: `read_lints` still reports existing unused-code warnings in this file from before the change.",
+          "timestamp": "2025-12-11T23:02:08.827Z"
+        }
+      ],
+      "total_additions": 23,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "111dd185bba5d1c8": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3265f3dc-638d-45e9-aad2-618f5009b3a8",
+        "model": "gpt-5.1-codex-max"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/authorship/attribution_tracker.rs:941-953 In merge_attributions, don't just de-dupe literal exact, but also create the shortest list possible. For example, merge all contiguous attributions that have the same metadata, etc.",
+          "timestamp": "2025-12-11T22:27:37.749Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Merged contiguous/overlapping attributions with identical metadata so the tracker returns the minimal list instead of only deduping exact duplicates, preserving author/timestamp ranges while compressing adjacent spans.\n\n```940:969:src/authorship/attribution_tracker.rs\n    fn merge_attributions(&self, mut attributions: Vec<Attribution>) -> Vec<Attribution> {\n        if attributions.is_empty() {\n            return attributions;\n        }\n\n        attributions.sort_by_key(|a| (a.start, a.end, a.author_id.clone(), a.ts));\n        attributions.dedup();\n\n        let mut merged: Vec<Attribution> = Vec::with_capacity(attributions.len());\n        let mut current = attributions[0].clone();\n\n        for attr in attributions.into_iter().skip(1) {\n            let same_metadata = attr.author_id == current.author_id && attr.ts == current.ts;\n            let touches_or_overlaps = attr.start <= current.end;\n\n            if same_metadata && touches_or_overlaps {\n                current.end = current.end.max(attr.end);\n            } else {\n                merged.push(current);\n                current = attr;\n            }\n        }\n\n        merged.push(current);\n        merged\n    }\n```\n\nPotential follow-up: run `cargo test --package git-ai --test checkpoint_size -- test_checkpoint_size_logging_large_ai_rewrites --exact --nocapture` to verify the updated merging behavior doesn’t affect expectations elsewhere.",
+          "timestamp": "2025-12-11T22:28:30.026Z"
+        }
+      ],
+      "total_additions": 20,
+      "total_deletions": 5,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "7d3149862855cc2c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "faaaffc4-8ed0-4db8-8092-1a4b2fc98ef0",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 226,
+      "total_deletions": 9,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "b77f01911b3f590e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7667af46-407e-4e3f-b709-d5a01141e385",
+        "model": "gpt-5.1-codex-max"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Write a test that will use the testing harness (ref @tests/simple_additions.rs) to do the following in a test repo:\n\n1. Autogenerate a large file with stuff of each line. At least like a 2k lines file. Use a loop to rewrite the file with random stuff on each line (so fully rewrite the 2k line file each turn) with a AI for each line. Each line should be authored by AI.\n2. Track the median and max duration for each iteration of the loop\n3. Print out the size of the checkpoints.jsonl file in the working log (since it's the first commit the dir should be something like .git/ai/working_logs/initial/chekcpoints.jsonl but look up exactly what it will be)\n\nNo assertions yet, just write the logic I defined for you.",
+          "timestamp": "2025-12-11T22:19:05.973Z"
+        }
+      ],
+      "total_additions": 135,
+      "total_deletions": 54,
+      "accepted_lines": 81,
+      "overriden_lines": 3
+    },
+    "c6927867d8c2a69c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f2db7893-87e8-4ca0-9f9c-a2b7aeed9f6d",
+        "model": "gpt-5.1-codex-max"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/subdirs.rs:487-541 Rewrite the subdirs version of the test to replicate the same logic as @tests/rebase.rs:500-538 the original in rebase.rs",
+          "timestamp": "2025-12-11T23:59:12.608Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updated the subdir rebase test to mirror the root `rebase.rs` flow: it now sets up `old_base`, rebases `feature` onto `new_base` from a nested working directory, and asserts AI authorship is preserved after the `--onto` rebase.\n\n```486:533:tests/subdirs.rs\nsubdir_test_variants! {\n    fn rebase_with_conflicts() {\n        // Test rebase --onto from a subdirectory; ensure authorship preserved\n        let repo = TestRepo::new();\n        // Create subdirectory structure\n        let working_dir = repo.path().join(\"src\").join(\"lib\");\n        fs::create_dir_all(&working_dir).unwrap();\n        // Create initial commit\n        let mut base_file = repo.filename(\"base.txt\");\n        base_file.set_contents(lines![\"base content\"]);\n        repo.stage_all_and_commit(\"Initial commit\").unwrap();\n        let default_branch = repo.current_branch();\n        // Create old_base branch and commit\n        repo.git(&[\"checkout\", \"-b\", \"old_base\"]).unwrap();\n        let mut old_file = repo.filename(\"old.txt\");\n        old_file.set_contents(lines![\"old base\"]);\n        repo.stage_all_and_commit(\"Old base commit\").unwrap();\n        let old_base_sha = repo.git(&[\"rev-parse\", \"HEAD\"]).unwrap().trim().to_string();\n        // Create feature branch from old_base with AI commit\n        repo.git(&[\"checkout\", \"-b\", \"feature\"]).unwrap();\n        let mut feature_file = repo.filename(\"feature.txt\");\n        feature_file.set_contents(lines![\"// AI feature\".ai()]);\n        repo.stage_all_and_commit(\"AI feature\").unwrap();\n        // Create new_base branch from default branch\n        repo.git(&[\"checkout\", &default_branch]).unwrap();\n        repo.git(&[\"checkout\", \"-b\", \"new_base\"]).unwrap();\n        let mut new_file = repo.filename(\"new.txt\");\n        new_file.set_contents(lines![\"new base\"]);\n        repo.stage_all_and_commit(\"New base commit\").unwrap();\n        let new_base_sha = repo.git(&[\"rev-parse\", \"HEAD\"]).unwrap().trim().to_string();\n        // Rebase feature --onto new_base old_base from the subdirectory\n        repo.git(&[\"checkout\", \"feature\"]).unwrap();\n        repo.git_from_working_dir(\n            &working_dir,\n            &[\"rebase\", \"--onto\", &new_base_sha, &old_base_sha]\n        )\n        .expect(\"Rebase --onto should succeed\");\n        // Verify authorship preserved after rebase\n        feature_file.assert_lines_and_blame(lines![\"// AI feature\".ai()]);\n    }\n}\n```\n\nTests not run; consider `cargo test rebase_with_conflicts --test subdirs`.",
+          "timestamp": "2025-12-11T23:59:53.279Z"
+        }
+      ],
+      "total_additions": 45,
+      "total_deletions": 53,
+      "accepted_lines": 37,
+      "overriden_lines": 0
+    }
+  }
+}

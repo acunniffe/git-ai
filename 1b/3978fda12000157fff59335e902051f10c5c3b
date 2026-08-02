@@ -1,0 +1,20 @@
+src/commands/whoami.rs
+  s_4bc25a9d71eb98::t_be3aff5056db36 341,344,374,379
+  s_4bc25a9d71eb98::t_4614bda2595922 80,113-139,141,144,340,342-343,373,375,378
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "1b3978fda12000157fff59335e902051f10c5c3b",
+  "prompts": {},
+  "sessions": {
+    "s_4bc25a9d71eb98": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eeffe-c0c4-7822-8a64-4c50e006500e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+agent-support/vscode/src/blame-service.ts
+  3820a37709e5b26a 5,231-233,239,243-245,310-311,332-333,398,401
+agent-support/vscode/src/extension.ts
+  3820a37709e5b26a 11,24-26
+agent-support/vscode/src/utils/binary-path.ts
+  3820a37709e5b26a 1-77
+agent-support/vscode/src/blame-lens-manager.ts
+  3820a37709e5b26a 5,229-240
+agent-support/vscode/src/ai-edit-manager.ts
+  3820a37709e5b26a 6,403
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "e2fb6a39f0c52b9a49c9bc777c3163b5fb990d59",
+  "prompts": {
+    "3820a37709e5b26a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78d064ed-86eb-43d9-9613-827d307a62f6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 138,
+      "total_deletions": 23,
+      "accepted_lines": 110,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/0d3f7826afd36792806ffb5db5f23679b66a52a080ccae5732171445aca01a2a"
+    }
+  }
+}
