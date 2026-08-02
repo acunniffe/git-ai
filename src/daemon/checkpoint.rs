@@ -293,15 +293,12 @@ fn execute_resolved_checkpoint(
         entries.len(),
         entries_start.elapsed()
     );
+    let entry_count = entries.len();
 
     if !entries.is_empty() {
         let checkpoint_create_start = Instant::now();
-        let mut checkpoint = Checkpoint::new(
-            kind,
-            combined_hash.clone(),
-            author.to_string(),
-            entries.clone(),
-        );
+        let mut checkpoint =
+            Checkpoint::new(kind, combined_hash.clone(), author.to_string(), entries);
         checkpoint.timestamp = (resolved.ts / 1000) as u64;
         checkpoint.line_stats = compute_line_stats(&file_stats)?;
         checkpoint.trace_id = Some(trace_id.clone());
@@ -344,12 +341,14 @@ fn execute_resolved_checkpoint(
         );
 
         let append_start = Instant::now();
-        working_log.append_checkpoint(&checkpoint)?;
+        working_log.append_checkpoint_to(&mut checkpoints, checkpoint)?;
         tracing::debug!(
             "[BENCHMARK] Appending checkpoint to working log took {:?}",
             append_start.elapsed()
         );
-        checkpoints.push(checkpoint.clone());
+        let checkpoint = checkpoints
+            .last()
+            .expect("the appended checkpoint must remain in the working log");
 
         let mut attrs =
             build_checkpoint_attrs(repo, &resolved.base_commit, checkpoint.agent_id.as_ref());
@@ -372,7 +371,7 @@ fn execute_resolved_checkpoint(
             .get("edit_kind")
             .map(|s| s.as_str());
 
-        for (entry, file_stat) in entries.iter().zip(file_stats.iter()) {
+        for (entry, file_stat) in checkpoint.entries.iter().zip(file_stats.iter()) {
             let mut values = crate::metrics::CheckpointValues::new()
                 .checkpoint_ts(checkpoint.timestamp)
                 .kind(checkpoint.kind.to_str().to_string())
@@ -403,7 +402,7 @@ fn execute_resolved_checkpoint(
         None
     };
 
-    let label = if entries.len() > 1 {
+    let label = if entry_count > 1 {
         "checkpoint"
     } else {
         "commit"
@@ -411,7 +410,7 @@ fn execute_resolved_checkpoint(
 
     if !quiet {
         let log_author = agent_tool.unwrap_or(author);
-        let files_with_entries = entries.len();
+        let files_with_entries = entry_count;
         let total_uncommitted_files = resolved.files.len();
 
         if files_with_entries == total_uncommitted_files {
@@ -439,7 +438,7 @@ fn execute_resolved_checkpoint(
         "[BENCHMARK] Total checkpoint run took {:?}",
         checkpoint_start.elapsed()
     );
-    Ok((entries.len(), resolved.files.len(), checkpoints.len()))
+    Ok((entry_count, resolved.files.len(), checkpoints.len()))
 }
 
 fn save_current_file_states(

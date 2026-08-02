@@ -461,23 +461,30 @@ impl PersistedWorkingLog {
 
     /* append checkpoint */
     pub fn append_checkpoint(&self, checkpoint: &Checkpoint) -> Result<(), GitAiError> {
-        crate::wltrace::wltrace("working_log.append_checkpoint", &self.dir, String::new);
-        // Read existing checkpoints
         let mut checkpoints = self.read_all_checkpoints().unwrap_or_default();
+        self.append_checkpoint_to(&mut checkpoints, checkpoint.clone())
+    }
 
-        // Create a copy, potentially without transcript to reduce storage size.
-        //
-        // Tools that DON'T support refetch (transcript must be kept):
-        // - "mock_ai" - test preset, transcript not stored externally
-        // - Any other agent-v1 custom tools (detected by lack of tool-specific metadata)
-        checkpoints.push(checkpoint.clone());
+    /// Append to a checkpoint collection that the caller has already loaded.
+    ///
+    /// Checkpoint execution needs the prior collection to calculate attribution.
+    /// Reusing it here avoids deserializing the entire working log a second time
+    /// and avoids cloning the new checkpoint's attribution payload.
+    pub fn append_checkpoint_to(
+        &self,
+        checkpoints: &mut Vec<Checkpoint>,
+        checkpoint: Checkpoint,
+    ) -> Result<(), GitAiError> {
+        crate::wltrace::wltrace("working_log.append_checkpoint", &self.dir, String::new);
+
+        checkpoints.push(checkpoint);
 
         // Prune char-level attributions from older checkpoints for the same files
         // Only the most recent checkpoint per file needs char-level precision
-        self.prune_old_char_attributions(&mut checkpoints);
+        self.prune_old_char_attributions(checkpoints);
 
         // Write all checkpoints back
-        self.write_all_checkpoints(&checkpoints)
+        self.write_all_checkpoints(checkpoints)
     }
 
     pub fn read_all_checkpoints(&self) -> Result<Vec<Checkpoint>, GitAiError> {
@@ -501,6 +508,7 @@ impl PersistedWorkingLog {
         &self,
         max_bytes: u64,
     ) -> Result<Vec<Checkpoint>, GitAiError> {
+        crate::wltrace::wltrace("working_log.read_checkpoints", &self.dir, String::new);
         let checkpoints_file = self.checkpoints_file();
 
         if !checkpoints_file.exists() {
