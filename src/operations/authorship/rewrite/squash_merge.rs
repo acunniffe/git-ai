@@ -29,7 +29,9 @@ pub(super) fn handle_squash_merge(
         source_commits
     };
 
-    crate::operations::git::sync_authorship::fetch_missing_notes_for_commits(repo, &sources)?;
+    crate::operations::git::sync_authorship::fetch_missing_notes_for_commits_best_effort(
+        repo, &sources,
+    );
 
     // Batch-read all source notes in O(1) git calls
     let source_notes_map = notes_api::read_notes_batch(repo, &sources)?;

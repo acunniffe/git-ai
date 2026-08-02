@@ -136,6 +136,25 @@ pub fn fetch_missing_notes_for_commits(
         return Ok(());
     }
 
+    // Fetch and cache specific HTTP-backend misses before trying Git remotes,
+    // which may require separate credentials.
+    if crate::config::Config::fresh().notes_backend_enabled() {
+        let missing_owned: Vec<String> = missing.iter().map(|sha| sha.to_string()).collect();
+        if let Err(error) =
+            crate::operations::git::notes_api::read_notes_batch(repository, &missing_owned)
+        {
+            tracing::debug!(%error, "HTTP backend fetch for missing source notes failed");
+        }
+
+        let noted_after_http_fetch = noted_commits(repository, source_commits);
+        if missing_owned
+            .iter()
+            .all(|sha| noted_after_http_fetch.contains(sha))
+        {
+            return Ok(());
+        }
+    }
+
     tracing::debug!(
         "Source commits missing notes: {:?}, trying to fetch from remotes",
         missing
@@ -164,6 +183,8 @@ pub fn fetch_missing_notes_for_commits(
             .filter(|sha| !noted_after_fetch.contains(sha.as_str()))
             .collect();
         if !still_missing.is_empty() {
+            // This exact completion-log text is asserted by existing rewrite
+            // regressions, so retain the legacy Generic wrapper at this site.
             return Err(GitAiError::Generic(format!(
                 "failed to fetch authorship notes for source commits {:?}: {}",
                 still_missing, error
@@ -172,6 +193,20 @@ pub fn fetch_missing_notes_for_commits(
     }
 
     Ok(())
+}
+
+/// Fetch rewrite source notes without losing notes already available locally
+/// when a remaining source cannot be recovered.
+pub fn fetch_missing_notes_for_commits_best_effort(
+    repository: &Repository,
+    source_commits: &[String],
+) {
+    if let Err(error) = fetch_missing_notes_for_commits(repository, source_commits) {
+        tracing::warn!(
+            %error,
+            "source-note fetch failed; shifting the notes that are available locally"
+        );
+    }
 }
 
 // for use with post-fetch and post-pull and post-clone hooks
