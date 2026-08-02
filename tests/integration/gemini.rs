@@ -1,6 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::fixture_path;
+use crate::test_utils::{fixture_path, read_jsonl_fixture};
 use git_ai::error::GitAiError;
 use git_ai::model::stream_watermark::ByteOffsetWatermark;
 use git_ai::operations::commands::checkpoint_agent::presets::{ParsedHookEvent, resolve_preset};
@@ -25,12 +25,7 @@ fn test_gemini_raw_event_fidelity() {
         .read_incremental(fixture.as_path(), watermark, "test")
         .unwrap();
 
-    let content = std::fs::read_to_string(&fixture).unwrap();
-    let expected: Vec<serde_json::Value> = content
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
+    let expected = read_jsonl_fixture(&fixture).unwrap();
 
     assert_eq!(result.events.len(), expected.len());
     assert_eq!(result.events, expected);

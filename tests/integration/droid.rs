@@ -1,4 +1,4 @@
-use crate::test_utils::fixture_path;
+use crate::test_utils::{fixture_path, read_jsonl_fixture};
 use git_ai::error::GitAiError;
 use git_ai::model::stream_watermark::HybridWatermark;
 use git_ai::operations::commands::checkpoint_agent::presets::{ParsedHookEvent, resolve_preset};
@@ -24,11 +24,9 @@ fn test_droid_raw_event_fidelity() {
         .expect("Failed to parse JSONL");
 
     // Independently parse the fixture, applying the same "message"-only filter the Droid agent uses.
-    let expected: Vec<serde_json::Value> = std::fs::read_to_string(&fixture)
+    let expected: Vec<serde_json::Value> = read_jsonl_fixture(&fixture)
         .unwrap()
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+        .into_iter()
         .filter(|v| v["type"].as_str() == Some("message"))
         .collect();
 

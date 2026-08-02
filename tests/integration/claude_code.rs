@@ -1,4 +1,4 @@
-use crate::test_utils::fixture_path;
+use crate::test_utils::{fixture_path, read_jsonl_fixture};
 use git_ai::model::stream_watermark::ByteOffsetWatermark;
 use git_ai::operations::commands::checkpoint_agent::presets::{ParsedHookEvent, resolve_preset};
 use git_ai::operations::streams::agent::Agent;
@@ -16,12 +16,7 @@ fn test_claude_code_raw_event_fidelity() {
         .read_incremental(fixture.as_path(), watermark, "test")
         .expect("Failed to parse JSONL");
 
-    let expected: Vec<serde_json::Value> = std::fs::read_to_string(&fixture)
-        .unwrap()
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
+    let expected = read_jsonl_fixture(&fixture).unwrap();
 
     assert_eq!(result.events, expected);
 }
@@ -257,12 +252,7 @@ fn test_claude_code_thinking_raw_event_fidelity() {
         .read_incremental(fixture.as_path(), watermark, "test")
         .expect("Failed to parse JSONL");
 
-    let expected: Vec<serde_json::Value> = std::fs::read_to_string(&fixture)
-        .unwrap()
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
+    let expected = read_jsonl_fixture(&fixture).unwrap();
 
     assert_eq!(result.events, expected);
 }
@@ -276,12 +266,7 @@ fn test_claude_code_plan_raw_event_fidelity() {
         .read_incremental(fixture.as_path(), watermark, "test")
         .expect("Failed to parse JSONL");
 
-    let expected: Vec<serde_json::Value> = std::fs::read_to_string(&fixture)
-        .unwrap()
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| serde_json::from_str(l).unwrap())
-        .collect();
+    let expected = read_jsonl_fixture(&fixture).unwrap();
 
     assert_eq!(result.events, expected);
 }

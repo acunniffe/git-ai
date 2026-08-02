@@ -2,8 +2,106 @@
 
 use crate::repos::test_repo::TestRepo;
 use serde::Serialize;
+use serde_json::Value;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
+
+/// Shared descriptive statistics for integration-test duration samples.
+///
+/// The helper retains the sorted samples so benchmark-specific wrappers can
+/// preserve their existing percentile conventions and output schemas.
+#[derive(Debug, Clone)]
+pub struct DurationStatistics {
+    sorted_samples: Vec<Duration>,
+    average: Option<Duration>,
+}
+
+impl DurationStatistics {
+    pub fn from_durations(durations: &[Duration]) -> Self {
+        let mut sorted_samples = durations.to_vec();
+        sorted_samples.sort();
+
+        let average = (!sorted_samples.is_empty())
+            .then(|| sorted_samples.iter().sum::<Duration>() / sorted_samples.len() as u32);
+
+        Self {
+            sorted_samples,
+            average,
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.sorted_samples.len()
+    }
+
+    pub fn sorted_samples(&self) -> &[Duration] {
+        &self.sorted_samples
+    }
+
+    pub fn min(&self) -> Option<Duration> {
+        self.sorted_samples.first().copied()
+    }
+
+    pub fn max(&self) -> Option<Duration> {
+        self.sorted_samples.last().copied()
+    }
+
+    pub fn average(&self) -> Option<Duration> {
+        self.average
+    }
+
+    /// Uses the one-indexed nearest-rank convention used by bash benchmarks.
+    pub fn percentile_nearest_rank(&self, percentile: f64) -> Option<Duration> {
+        self.assert_valid_percentile(percentile);
+
+        let count = self.count();
+        if count == 0 {
+            return None;
+        }
+
+        let index = ((count as f64 * percentile).ceil() as usize)
+            .saturating_sub(1)
+            .min(count - 1);
+        Some(self.sorted_samples[index])
+    }
+
+    /// Uses the zero-indexed upper-sample convention used by checkpoint benchmarks.
+    pub fn percentile_upper_index(&self, percentile: f64) -> Option<Duration> {
+        self.assert_valid_percentile(percentile);
+
+        let count = self.count();
+        if count == 0 {
+            return None;
+        }
+
+        let index = ((count as f64 * percentile) as usize).min(count - 1);
+        Some(self.sorted_samples[index])
+    }
+
+    pub fn std_dev_ms(&self) -> Option<f64> {
+        let average = self.average?;
+        let average_ms = average.as_secs_f64() * 1000.0;
+        let variance = self
+            .sorted_samples
+            .iter()
+            .map(|duration| {
+                let duration_ms = duration.as_secs_f64() * 1000.0;
+                (duration_ms - average_ms).powi(2)
+            })
+            .sum::<f64>()
+            / self.count() as f64;
+
+        Some(variance.sqrt())
+    }
+
+    fn assert_valid_percentile(&self, percentile: f64) {
+        assert!(
+            (0.0..=1.0).contains(&percentile),
+            "percentile must be between 0.0 and 1.0, got {percentile}"
+        );
+    }
+}
 
 /// Builds the stable, valid Codex hook-input shapes used by integration tests.
 ///
@@ -232,6 +330,24 @@ pub fn fixture_path(filename: &str) -> PathBuf {
 pub fn load_fixture(filename: &str) -> String {
     std::fs::read_to_string(fixture_path(filename))
         .unwrap_or_else(|_| panic!("Failed to read fixture: {}", filename))
+}
+
+/// Read a JSONL fixture into its non-blank JSON values.
+///
+/// Malformed JSONL is surfaced as an [`std::io::ErrorKind::InvalidData`] error
+/// so raw-event fidelity tests can distinguish invalid fixture data from I/O
+/// failures.
+pub fn read_jsonl_fixture(path: impl AsRef<Path>) -> std::io::Result<Vec<Value>> {
+    let contents = std::fs::read_to_string(path)?;
+
+    contents
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str(line)
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+        })
+        .collect()
 }
 
 /// Get the path to a transcript fixture file under `tests/transcripts/fixtures/`.

@@ -1,4 +1,5 @@
 use crate::repos::test_repo::{DaemonTestScope, TestRepo};
+use crate::test_utils::DurationStatistics;
 use git_ai::model::working_log::CheckpointKind;
 use std::fs;
 use std::time::{Duration, Instant};
@@ -15,17 +16,16 @@ struct DurationStats {
 
 impl DurationStats {
     fn from_durations(durations: &mut [Duration]) -> Self {
-        let count = durations.len();
-        assert!(count > 0);
-        durations.sort();
-        let total: Duration = durations.iter().sum();
+        let stats = DurationStatistics::from_durations(durations);
+        assert!(stats.count() > 0);
+
         Self {
-            count,
-            average: total / count as u32,
-            min: durations[0],
-            max: durations[count - 1],
-            p50: durations[count / 2],
-            p95: durations[(count as f64 * 0.95) as usize],
+            count: stats.count(),
+            average: stats.average().unwrap(),
+            min: stats.min().unwrap(),
+            max: stats.max().unwrap(),
+            p50: stats.percentile_upper_index(0.5).unwrap(),
+            p95: stats.percentile_upper_index(0.95).unwrap(),
         }
     }
 

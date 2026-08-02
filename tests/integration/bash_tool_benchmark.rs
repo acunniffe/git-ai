@@ -14,6 +14,7 @@
 //!
 //! Run with: cargo test bash_tool_benchmark --release -- --nocapture --ignored
 
+use crate::test_utils::DurationStatistics;
 use git_ai::model::working_log::AgentId;
 use git_ai::operations::commands::checkpoint_agent::bash_tool;
 use git_ai::operations::daemon::control_api::ControlRequest;
@@ -145,39 +146,16 @@ struct DurationStats {
 
 impl DurationStats {
     fn from_durations(durations: &[Duration]) -> Self {
-        let count = durations.len();
-        assert!(count > 0, "cannot compute stats from empty slice");
-
-        let total: Duration = durations.iter().sum();
-        let average = total / count as u32;
-        let min = *durations.iter().min().unwrap();
-        let max = *durations.iter().max().unwrap();
-
-        // P95: sort and pick the value at the 95th-percentile index.
-        let mut sorted: Vec<Duration> = durations.to_vec();
-        sorted.sort();
-        let p95_index = ((count as f64) * 0.95).ceil() as usize - 1;
-        let p95 = sorted[p95_index.min(count - 1)];
-
-        // Standard deviation in milliseconds.
-        let avg_ms = average.as_secs_f64() * 1000.0;
-        let variance: f64 = durations
-            .iter()
-            .map(|d| {
-                let ms = d.as_secs_f64() * 1000.0;
-                (ms - avg_ms).powi(2)
-            })
-            .sum::<f64>()
-            / count as f64;
-        let std_dev_ms = variance.sqrt();
+        let stats = DurationStatistics::from_durations(durations);
+        assert!(stats.count() > 0, "cannot compute stats from empty slice");
 
         Self {
-            count,
-            min,
-            max,
-            average,
-            p95,
-            std_dev_ms,
+            count: stats.count(),
+            min: stats.min().unwrap(),
+            max: stats.max().unwrap(),
+            average: stats.average().unwrap(),
+            p95: stats.percentile_nearest_rank(0.95).unwrap(),
+            std_dev_ms: stats.std_dev_ms().unwrap(),
         }
     }
 

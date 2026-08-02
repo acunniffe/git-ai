@@ -8,6 +8,7 @@
 //! The benchmark uses realistic data sizes based on actual Claude Code transcripts
 //! (~329KB of text across 92 messages).
 
+use crate::test_utils::DurationStatistics;
 use git_ai::operations::authorship::secrets::{
     extract_tokens, is_random, p_random, redact_secrets_in_text,
 };
@@ -25,39 +26,14 @@ struct DurationStats {
 
 impl DurationStats {
     fn from_durations(durations: &[Duration]) -> Self {
-        let count = durations.len();
-        if count == 0 {
-            return Self {
-                count: 0,
-                average: Duration::ZERO,
-                min: Duration::ZERO,
-                max: Duration::ZERO,
-                std_dev_ms: 0.0,
-            };
-        }
-
-        let total: Duration = durations.iter().sum();
-        let average = total / count as u32;
-        let min = *durations.iter().min().unwrap();
-        let max = *durations.iter().max().unwrap();
-
-        let avg_ms = average.as_secs_f64() * 1000.0;
-        let variance: f64 = durations
-            .iter()
-            .map(|d| {
-                let ms = d.as_secs_f64() * 1000.0;
-                (ms - avg_ms).powi(2)
-            })
-            .sum::<f64>()
-            / count as f64;
-        let std_dev_ms = variance.sqrt();
+        let stats = DurationStatistics::from_durations(durations);
 
         Self {
-            count,
-            average,
-            min,
-            max,
-            std_dev_ms,
+            count: stats.count(),
+            average: stats.average().unwrap_or(Duration::ZERO),
+            min: stats.min().unwrap_or(Duration::ZERO),
+            max: stats.max().unwrap_or(Duration::ZERO),
+            std_dev_ms: stats.std_dev_ms().unwrap_or(0.0),
         }
     }
 

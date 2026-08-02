@@ -1,5 +1,5 @@
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::CodexHookInput;
+use crate::test_utils::{CodexHookInput, DurationStatistics, read_jsonl_fixture};
 use git_ai::model::working_log::{AgentId, CheckpointKind};
 use git_ai::operations::commands::checkpoint_agent::orchestrator::{
     BaseCommit, CheckpointFile, CheckpointRequest,
@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 fn build_scoped_human_checkpoint_request(
     repo_path: &str,
@@ -248,4 +249,95 @@ fn codex_hook_input_builder_preserves_explicit_patch_content() {
             }
         })
     );
+}
+
+#[test]
+fn duration_statistics_handles_empty_and_single_samples() {
+    let empty = DurationStatistics::from_durations(&[]);
+    assert_eq!(empty.count(), 0);
+    assert_eq!(empty.min(), None);
+    assert_eq!(empty.max(), None);
+    assert_eq!(empty.average(), None);
+    assert_eq!(empty.percentile_nearest_rank(0.95), None);
+    assert_eq!(empty.percentile_upper_index(0.95), None);
+    assert_eq!(empty.std_dev_ms(), None);
+
+    let single_duration = Duration::from_millis(7);
+    let single = DurationStatistics::from_durations(&[single_duration]);
+    assert_eq!(single.count(), 1);
+    assert_eq!(single.min(), Some(single_duration));
+    assert_eq!(single.max(), Some(single_duration));
+    assert_eq!(single.average(), Some(single_duration));
+    assert_eq!(single.percentile_nearest_rank(0.95), Some(single_duration));
+    assert_eq!(single.percentile_upper_index(0.95), Some(single_duration));
+    assert_eq!(single.std_dev_ms(), Some(0.0));
+}
+
+#[test]
+fn duration_statistics_sorts_samples_and_preserves_percentile_boundaries() {
+    let stats = DurationStatistics::from_durations(&[
+        Duration::from_millis(40),
+        Duration::from_millis(10),
+        Duration::from_millis(30),
+        Duration::from_millis(20),
+    ]);
+
+    assert_eq!(
+        stats.sorted_samples(),
+        &[
+            Duration::from_millis(10),
+            Duration::from_millis(20),
+            Duration::from_millis(30),
+            Duration::from_millis(40),
+        ],
+    );
+    assert_eq!(stats.min(), Some(Duration::from_millis(10)));
+    assert_eq!(stats.max(), Some(Duration::from_millis(40)));
+    assert_eq!(stats.average(), Some(Duration::from_millis(25)));
+    assert_eq!(
+        stats.percentile_nearest_rank(0.0),
+        Some(Duration::from_millis(10))
+    );
+    assert_eq!(
+        stats.percentile_nearest_rank(1.0),
+        Some(Duration::from_millis(40))
+    );
+    assert_eq!(
+        stats.percentile_upper_index(0.5),
+        Some(Duration::from_millis(30))
+    );
+    assert_eq!(
+        stats.percentile_upper_index(1.0),
+        Some(Duration::from_millis(40))
+    );
+    assert!((stats.std_dev_ms().unwrap() - 125.0_f64.sqrt()).abs() < 1e-12);
+}
+
+#[test]
+fn read_jsonl_fixture_treats_empty_input_as_no_values() {
+    let fixture = tempfile::NamedTempFile::new().unwrap();
+
+    assert!(read_jsonl_fixture(fixture.path()).unwrap().is_empty());
+}
+
+#[test]
+fn read_jsonl_fixture_skips_blank_lines_and_rejects_malformed_jsonl() {
+    let fixture = tempfile::NamedTempFile::new().unwrap();
+    fs::write(
+        fixture.path(),
+        "\n  \n{\"event\":\"first\"}\n\t\n{\"event\":\"second\"}\n",
+    )
+    .unwrap();
+
+    assert_eq!(
+        read_jsonl_fixture(fixture.path()).unwrap(),
+        vec![
+            serde_json::json!({ "event": "first" }),
+            serde_json::json!({ "event": "second" }),
+        ],
+    );
+
+    fs::write(fixture.path(), "{\"event\":\"valid\"}\nnot-json\n").unwrap();
+    let error = read_jsonl_fixture(fixture.path()).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
 }
