@@ -1,0 +1,19 @@
+.github/workflows/release.yml
+  s_c07cec28a64ec3::t_cd1193fb175e47 452-728,731
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "8b2561900197fddf50253a76cd2c155484d33fc6",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "unknown"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

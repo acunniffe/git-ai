@@ -1,0 +1,332 @@
+tests/stats.rs
+  0d51fa3 267-278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.17",
+  "base_commit_sha": "881819b1978f25a4296325ca7b80ae033a6ea065",
+  "prompts": {
+    "0d51fa3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ec94f70b-cb00-4a2f-b139-274a05f339fe",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@stats.rs (262-283) ok now let's add a details section using GH flavored markdown. This should be added to every single markdown block we generate\n\n<details>\n\n<summary>More stats</summary>\n\n- 4.2 lines generated for every 1 accepted\n\n- [mins] time waiting for AI\n\n- Top model <model name> <x accepted lines> <x generated lines (ai additions)\n\n\n\n</details>",
+          "timestamp": "2025-11-09T18:06:13.315Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you add a details section to the markdown output. Let me first read the current implementation of the `write_stats_to_markdown` function.",
+          "timestamp": "2025-11-09T18:06:19.116Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I'll modify the `write_stats_to_markdown` function to add a GitHub-flavored markdown details section with the additional stats. Let me update the function:",
+          "timestamp": "2025-11-09T18:06:25.181Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's run the test to see the updated output:",
+          "timestamp": "2025-11-09T18:06:42.533Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test test_markdown_stats_formatting --lib -- --nocapture",
+            "explanation": "Running the specific test to see the new markdown output with the details section",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test test_markdown_stats_formatting --test stats -- --nocapture",
+            "explanation": "Running the test from the tests directory to see the markdown output",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! The details section is being added. Now let's review and accept the snapshot changes:",
+          "timestamp": "2025-11-09T18:07:04.744Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo insta review",
+            "explanation": "Reviewing the snapshot changes to accept the new markdown format with details section",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me accept the snapshots:",
+          "timestamp": "2025-11-09T18:07:16.823Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo insta accept",
+            "explanation": "Accepting all the snapshot changes with the new details section",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's run all the markdown stats tests to ensure they all work with the new details section:",
+          "timestamp": "2025-11-09T18:07:24.013Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test test_markdown_stats_display --test stats",
+            "explanation": "Running all markdown stats tests to update their snapshots with the details section",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me run all stats tests to update all the snapshots:",
+          "timestamp": "2025-11-09T18:07:28.466Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --test stats 2>&1 | head -100",
+            "explanation": "Running all stats tests to see which ones need snapshot updates",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --test stats 2>&1 | grep -A 50 \"running\"",
+            "explanation": "Running tests and filtering to see test results",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me accept all the new snapshots:",
+          "timestamp": "2025-11-09T18:08:08.441Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo insta accept",
+            "explanation": "Accepting all snapshot changes for all markdown stats tests",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now let's run all the tests again to make sure they pass:",
+          "timestamp": "2025-11-09T18:08:18.515Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --test stats --no-fail-fast",
+            "explanation": "Running all stats tests to verify they all pass with the new details section",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Great! All the tests are passing. Now let's also check the tests in the main stats.rs file to make sure those pass too:",
+          "timestamp": "2025-11-09T18:08:27.723Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --lib stats::tests --no-fail-fast",
+            "explanation": "Running the unit tests in the stats module to see if they need updates",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me accept these snapshots as well:",
+          "timestamp": "2025-11-09T18:08:39.165Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo insta accept",
+            "explanation": "Accepting the snapshot changes for the lib tests",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --lib stats::tests --no-fail-fast",
+            "explanation": "Running the lib tests again to verify they all pass",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo insta accept",
+            "explanation": "Accepting more snapshots",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --lib stats::tests --no-fail-fast 2>&1 | grep -E \"(test |running |FAILED|ok)\" | head -20",
+            "explanation": "Running lib tests to check if there are more snapshots to accept",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --lib authorship::stats::tests::test_markdown_stats_display -- --nocapture 2>&1 | tail -40",
+            "explanation": "Getting the full output of the failing test",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo insta test --lib --accept -- authorship::stats::tests::test_markdown_stats_display",
+            "explanation": "Running and accepting all snapshots at once",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --lib stats::tests",
+            "explanation": "Running all lib tests to verify they pass",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! All tests are passing now. Let me verify one of the snapshots to show you what the output looks like:",
+          "timestamp": "2025-11-09T18:09:52.697Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/snapshots/stats__markdown_stats_formatting.snap"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check another snapshot to see the output for different scenarios:",
+          "timestamp": "2025-11-09T18:10:03.060Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/snapshots/stats__markdown_stats_all_ai.snap"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/snapshots/stats__markdown_stats_all_human.snap"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/snapshots/git_ai__authorship__stats__tests__markdown_stats_display.snap"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! Let me run a comprehensive test to ensure everything is working:",
+          "timestamp": "2025-11-09T18:10:33.327Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test --all-targets 2>&1 | grep -E \"(test result:|running)\" | tail -20",
+            "explanation": "Running all tests to ensure nothing is broken",
+            "is_background": false
+          }
+        },
+        {
+          "type": "user",
+          "text": "make one of these tests have a tool model breakdown so we can see that generate too",
+          "timestamp": "2025-11-09T18:11:00.759Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll modify one of the tests to include a tool model breakdown so we can see that part of the details section being generated. Let me read the test file first:",
+          "timestamp": "2025-11-09T18:11:07.008Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/tests/stats.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I'll modify the `test_markdown_stats_formatting` test to include a tool model breakdown:",
+          "timestamp": "2025-11-09T18:11:11.497Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/tests/stats.rs"
+          }
+        }
+      ],
+      "total_additions": 15,
+      "total_deletions": 2,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}

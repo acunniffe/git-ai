@@ -1,0 +1,76 @@
+src/mdm/agents/mod.rs
+  1eb927e237c908e4 10,24,44
+src/commands/checkpoint_agent/agent_presets.rs
+  1eb927e237c908e4 4329-4341,4353-4362,4372,4376-4422,4430,4433,4437-4555
+src/mdm/agents/kimi_code.rs
+  1eb927e237c908e4 1-499
+src/commands/checkpoint_agent/bash_tool.rs
+  1eb927e237c908e4 465-469,484,1916-1928
+src/commands/git_ai_handlers.rs
+  1eb927e237c908e4 263
+tests/integration/kimi_code.rs
+  1eb927e237c908e4 499-704,720-724
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.8",
+  "base_commit_sha": "4d6110d6df8a6d96324e596bd20a784571c849ea",
+  "prompts": {
+    "1eb927e237c908e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0ea1543f-04c3-4861-b478-4f306e02630a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 968,
+      "total_deletions": 30,
+      "accepted_lines": 945,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/ab96689684a36751c39589d2aa11564f9b9afdb2a450e4c655ec433f255a7bad"
+    },
+    "57d0f0ed9eded560": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc7fecd1-008b-4b63-b78c-11da6e5206ed",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 65,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/49809ca9fb69eec9807f4bde26989bb5a26aacf496e0ee49fb0929c8ad93f3ba"
+    },
+    "7ab300f83765924d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0bb9cc67-237b-44c2-9ff6-745eb98d6a61",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 8,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5ef3c647a228ae13450fb4588692c659045d37e5dc0150fa9f30b3813e25713c"
+    },
+    "96dc56a590b8bd34": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a6077c66-6026-4026-8dc5-ffee062f3173",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 17,
+      "accepted_lines": 0,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/6d081e672f80e9e7c9ca19f48253135a5e4ac2e1fa831aa7f041444829689b4a"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+src/utils.rs
+  8e31365e0a86e4e6 133-149,151-157,159-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.39",
+  "base_commit_sha": "c6e05de8b387a1049a9f71db38f91bba511fca59",
+  "prompts": {
+    "8e31365e0a86e4e6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "508c0e98-9435-4e3c-a603-dfc65d7071a8",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 32,
+      "total_deletions": 0,
+      "accepted_lines": 28,
+      "overriden_lines": 2,
+      "messages_url": "https://usegitai.com/cas/f256db9fa63c32117840d84d5aafb988d3c33cb5d54729384b9255b98bdb8680"
+    }
+  }
+}

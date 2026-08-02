@@ -1,0 +1,28 @@
+assets/docs/solo-player.svg
+  723e0b9ce99ca6e5 1-40
+assets/docs/for-teams.svg
+  723e0b9ce99ca6e5 1-39
+README.md
+  723e0b9ce99ca6e5 69-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "232fd402a96ea805fe79c2ba3bb8e35da5cacdd3",
+  "prompts": {
+    "723e0b9ce99ca6e5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4573e94f-a2d9-4bfb-b678-e402687695eb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 219,
+      "total_deletions": 108,
+      "accepted_lines": 111,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/33009590615dd36aa5bd563919bde39eb8c0a05a16c2ccb075d9bba3d70a138b"
+    }
+  }
+}

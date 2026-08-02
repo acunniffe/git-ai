@@ -1,0 +1,57 @@
+scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py
+  s_b3918a71142a3e::t_e643d65d071aae 406
+  s_b3918a71142a3e::t_e5ece21a857b15 756
+  s_b3918a71142a3e::t_39b5fce768d609 601-604,606
+  s_b3918a71142a3e::t_f0379cf1ac2d3f 532,537-538
+  s_b3918a71142a3e::t_e688957e8085d8 684,689
+  s_b3918a71142a3e::t_0bfaaa1fe86028 434,436-437,441,445-446
+  s_b3918a71142a3e::t_e7fd1ca3964504 452,455,459
+scripts/benchmarks/git/benchmark_modes_vs_main.py
+  s_b3918a71142a3e::t_cff950c3b636f2 797-806,814-815,823,831-833,841-842,850,858,866,874
+  s_b3918a71142a3e::t_64c1046ead5342 3,6-11
+  s_b3918a71142a3e::t_a2e9d9ec64a573 38-43
+  s_b3918a71142a3e::t_adebbe6a2a9ce9 1275-1280,1284-1291
+  s_b3918a71142a3e::t_06405519ae6913 460-509
+  s_b3918a71142a3e::t_1930d30af2e3f8 1225-1228,1230
+  s_b3918a71142a3e::t_b736942509f2a3 1312,1317
+  s_b3918a71142a3e::t_aacde89f41c818 1007,1009,1013,1019,1022,1025,1027,1030,1034-1035,1051
+  s_b3918a71142a3e::t_5946ef69cd809d 1344
+  s_b3918a71142a3e::t_d464198568d6fc 131,142
+  s_b3918a71142a3e::t_970e01cd26d225 1113
+  s_b3918a71142a3e::t_1ed10262d477fe 64-68
+  s_b3918a71142a3e::t_a95dca5a3e24d1 1166,1171-1172
+  s_b3918a71142a3e::t_ccd36add062045 975
+  s_b3918a71142a3e::t_5d2121c3787815 368-382,387-391,402-403,405,407-408,410,414-415,418-419
+.github/workflows/performance-benchmarks.yml
+  s_b3918a71142a3e::t_0e67888cd3dbb6 135
+  s_b3918a71142a3e::t_a4d24de21b5670 120
+  s_b3918a71142a3e::t_81cfbfeebcbabf 69
+scripts/benchmarks/git/benchmark_nasty_rebases.sh
+  s_b3918a71142a3e::t_5deddc14a3d07a 349-357,367-373,389-392,404-406
+  s_b3918a71142a3e::t_418e9af3e4cdec 243-248,254-259
+  s_b3918a71142a3e::t_6937b7232a852b 170-171,173-174
+  s_b3918a71142a3e::t_8af0fc64388bbe 167-169,172,176-230,237-242,252-253,260-263,270-271,273-281,283-284
+  s_b3918a71142a3e::t_4c17427baecbe1 152-166,175
+  s_b3918a71142a3e::t_db5d8c256adbea 264
+  s_b3918a71142a3e::t_ff4fbb97933aba 265-266,269,272
+  s_b3918a71142a3e::t_80ac437bca7035 282
+  s_b3918a71142a3e::t_3fdd4165664c16 231-236
+  s_b3918a71142a3e::t_a8be58944b82b9 249-251,267-268
+  s_b3918a71142a3e::t_78229c00c9af2c 593-598
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "80a0830ee0ffe98ec0fec60246fc39a74fdb6ba6",
+  "prompts": {},
+  "sessions": {
+    "s_b3918a71142a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de268d2e-4705-4c20-86ca-d1dc04eda164",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+src/mdm/git_clients/fork_app.rs
+  s_1e909c66cd7db7::t_5d9406fc5848b8 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "65396f231190d748d59b8033d8a7bc05b147505e",
+  "prompts": {},
+  "sessions": {
+    "s_1e909c66cd7db7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61dc231c-45fe-4c3d-a859-0775945a306e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

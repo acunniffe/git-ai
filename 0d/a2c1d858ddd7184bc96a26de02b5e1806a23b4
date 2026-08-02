@@ -1,0 +1,29 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  50e6c8e0d3485101 347
+tests/integration/issue_1204_multi_agent.rs
+  50e6c8e0d3485101 1-615
+tests/integration/main.rs
+  50e6c8e0d3485101 72
+src/commands/checkpoint_agent/presets/codex.rs
+  50e6c8e0d3485101 280-300
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "0da2c1d858ddd7184bc96a26de02b5e1806a23b4",
+  "prompts": {
+    "50e6c8e0d3485101": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6882dc02-09cb-4dc4-b795-254bc89bd766",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 669,
+      "total_deletions": 31,
+      "accepted_lines": 638,
+      "overriden_lines": 0
+    }
+  }
+}

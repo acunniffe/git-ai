@@ -1,0 +1,32 @@
+src/daemon/checkpoint.rs
+  s_27d32ef2995132::t_d1aebd619abd2e 352-356,370-371
+src/commands/checkpoint_agent/orchestrator.rs
+  s_27d32ef2995132::t_61614db9253216 433-435
+  s_27d32ef2995132::t_830130495bc738 307-309
+src/metrics/events.rs
+  s_27d32ef2995132::t_15d90a71f9c8dd 420
+  s_27d32ef2995132::t_090685c76aa239 439,450
+  s_27d32ef2995132::t_450ce248762b0e 545-555
+  s_27d32ef2995132::t_b9085e567122df 617
+  s_27d32ef2995132::t_f900846f9f2577 1096-1134,1136-1187
+  s_27d32ef2995132::t_d0dee5809f9ed7 598-602
+  s_27d32ef2995132::t_70ac354d8c6ef8 1135
+tests/integration/checkpoint_telemetry.rs
+  s_27d32ef2995132::t_bf0f6223f4f57d 138-268
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.5",
+  "base_commit_sha": "99b48d4451e6d56fc354d6470c859fd3470b9bb4",
+  "prompts": {},
+  "sessions": {
+    "s_27d32ef2995132": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf6bae2e-d8b9-4cc8-8f47-98171ee28b4c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

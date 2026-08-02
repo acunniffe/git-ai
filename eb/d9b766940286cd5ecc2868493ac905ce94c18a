@@ -1,0 +1,19 @@
+tests/integration/stash_attribution.rs
+  s_122f961aa46a22::t_4f136333dbb5fb 1146-1149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.5",
+  "base_commit_sha": "ebd9b766940286cd5ecc2868493ac905ce94c18a",
+  "prompts": {},
+  "sessions": {
+    "s_122f961aa46a22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c99dd480-07a1-4da6-8ad5-4bc2483187aa",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

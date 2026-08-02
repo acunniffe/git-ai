@@ -1,0 +1,26 @@
+tests/daemon_mode.rs
+  s_88e09c7ec5c2e7::t_0b0c93c55bbd8d 1876-1877
+  s_88e09c7ec5c2e7::t_2f6b698fbcd08a 1878-1930,1943,1946,1957-1972
+  s_88e09c7ec5c2e7::t_f916f9a4c01faa 1931-1942,1944-1945,1947-1956
+src/daemon.rs
+  s_88e09c7ec5c2e7::t_9f367d5b4bb545 7262-7268,7455-7456,7471
+  s_88e09c7ec5c2e7::t_e18a904382c176 9032-9038
+  s_88e09c7ec5c2e7::t_f0df41985a7742 9031
+  s_88e09c7ec5c2e7::t_e03489759f1884 2715,2809,6530-6545,7005-7014,7399-7421,7423-7435,7438-7442,8402
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "9ece9cacf97cd1beffc5973bff0d5b89f9e7b356",
+  "prompts": {},
+  "sessions": {
+    "s_88e09c7ec5c2e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fabf9-ca63-7101-9454-7282f9548df6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

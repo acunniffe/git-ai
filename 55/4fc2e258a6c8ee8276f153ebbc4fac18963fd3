@@ -1,0 +1,29 @@
+src/utils.rs
+  c471073 84-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "554fc2e258a6c8ee8276f153ebbc4fac18963fd3",
+  "prompts": {
+    "c471073": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f100f8c0-aa02-4316-afaf-ec88f633dcd6",
+        "model": "composer-1"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Write a utility function to check if we're running in WSL on a windows machine. \n\n\n\nUse  compiler macros ie #[not(windows)] to set it to false automatically and save the check. \n\n\n\nThis should run once, lazzily if its value is checked",
+          "timestamp": "2025-11-19T18:37:25.763Z"
+        }
+      ],
+      "total_additions": 49,
+      "total_deletions": 4,
+      "accepted_lines": 45,
+      "overriden_lines": 0
+    }
+  }
+}

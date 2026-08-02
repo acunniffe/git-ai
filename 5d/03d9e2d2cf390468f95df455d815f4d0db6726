@@ -1,0 +1,52 @@
+src/commands/hooks/cherry_pick_hooks.rs
+  ed21d89ff0de1bea 380-381
+src/commands/hooks/rebase_hooks.rs
+  ed21d89ff0de1bea 305-306
+src/commands/git_hook_handlers.rs
+  ed21d89ff0de1bea 1943-1944,1948,2107-2108,2266-2267,2271,2367-2368
+src/commands/git_ai_handlers.rs
+  ed21d89ff0de1bea 138-140
+tests/repos/mod.rs
+  ed21d89ff0de1bea 5-84
+tests/performance.rs
+  ed21d89ff0de1bea 24
+src/feature_flags.rs
+  ed21d89ff0de1bea 48-66,77,103,122,129-135,152,159,179,185,200,209,215,226,234,244,250,255-272,281,288,297,303
+src/utils.rs
+  ed21d89ff0de1bea 161-164
+src/commands/hooks/merge_hooks.rs
+  ed21d89ff0de1bea 37-38
+src/commands/hooks/fetch_hooks.rs
+  ed21d89ff0de1bea 357-358
+src/commands/mod.rs
+  ed21d89ff0de1bea 1
+tests/async_rewrite_hooks.rs
+  ed21d89ff0de1bea 1-139,166-190
+src/commands/async_rewrite.rs
+  ed21d89ff0de1bea 1-95,98-119,121-426
+Cargo.toml
+  ed21d89ff0de1bea 35
+src/commands/hooks/commit_hooks.rs
+  ed21d89ff0de1bea 74-75,77,82-83,85,91-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "5d03d9e2d2cf390468f95df455d815f4d0db6726",
+  "prompts": {
+    "ed21d89ff0de1bea": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cb789-1ab0-7da1-96af-e927a5083094",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 787,
+      "total_deletions": 18,
+      "accepted_lines": 769,
+      "overriden_lines": 2,
+      "messages_url": "http://localhost:4000/cas/d4ca9dc3b8e5c27e111ec12d794c15ba6ccd70ad9dd2b2c0694d628d1d16ec0e"
+    }
+  }
+}

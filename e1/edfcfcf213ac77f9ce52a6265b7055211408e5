@@ -1,0 +1,56 @@
+src/authorship/post_commit.rs
+  s_f00ef7c0f45b07::t_c56270868d0468 76-81,83-96,180-181
+  s_f00ef7c0f45b07::t_10f419d674ab51 82
+src/authorship/conflict_resolution.rs
+  s_f00ef7c0f45b07::t_057a28bc9e200f 1-258,260-269
+  s_f00ef7c0f45b07::t_10f419d674ab51 259
+tests/integration/pull_rebase_ff.rs
+  s_f00ef7c0f45b07::t_1f7717d6c6193a 1184
+  s_f00ef7c0f45b07::t_f55d27cc8bcd5d 853-906,1127-1128,1163,1247-1248
+  s_f00ef7c0f45b07::t_e4d94ecfd7af12 5,795-796,835-839,848,907-926,1003-1126,1129-1162,1164-1183,1185-1246,1249-1283,1340-1343
+tests/integration/checkpoint_explicit_paths.rs
+  s_f00ef7c0f45b07::t_26111d7f931054 52,87,93-95,97-101
+src/authorship/mod.rs
+  s_f00ef7c0f45b07::t_02a6c6980f9004 6
+src/authorship/rewrite.rs
+  s_f00ef7c0f45b07::t_5961a00285d2fc 43,59-78
+  s_032cf4fb6d69d7::t_7101673be6a57a 79
+  s_032cf4fb6d69d7::t_2ed0b9b92796ef 80-82
+src/commands/checkpoint_agent/orchestrator.rs
+  s_f00ef7c0f45b07::t_cfd3a48d36c6f2 10,104
+tests/integration/checkpoint_unit.rs
+  s_f00ef7c0f45b07::t_618ccf612ee8b5 325
+  s_f00ef7c0f45b07::t_498193ee90261c 377-378,380-388,564-565,582,584-595
+src/daemon.rs
+  s_f00ef7c0f45b07::t_8325e936a25ca9 800
+  s_f00ef7c0f45b07::t_5398204ecbc33a 812-813,819-820
+  s_f00ef7c0f45b07::t_64f7a048b83b1a 803,826
+  s_f00ef7c0f45b07::t_90b685e1a0f9c5 3743,3745-3747,3750-3755,3770,3772-3774
+  s_f00ef7c0f45b07::t_39c30037c3bba6 1,748-749,802,804-808,810-811,815-816,818,821-822,824-825,827-828
+  s_f00ef7c0f45b07::t_edee8bb51d767d 750-755,773-776,801,814,817
+  s_f00ef7c0f45b07::t_d7db6ba4eb757a 809
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "e1edfcfcf213ac77f9ce52a6265b7055211408e5",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}
