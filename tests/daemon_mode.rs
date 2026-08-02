@@ -826,6 +826,85 @@ fn claude_fixture_path() -> PathBuf {
         .join("example-claude-code.jsonl")
 }
 
+#[test]
+fn daemon_ignores_temporary_repositories_until_they_have_a_remote_url() {
+    const ENABLE_TEMP_REPO_FILTER: (&str, &str) = ("GIT_AI_TEST_ENABLE_TEMP_REPO_FILTER", "1");
+
+    let repo = TestRepo::new_with_daemon_env(&[ENABLE_TEMP_REPO_FILTER]);
+    let file_path = repo.path().join("temporary-repo.txt");
+    fs::write(&file_path, "ignored AI line\n").expect("failed to write ignored AI edit");
+
+    let checkpoint_output = repo
+        .git_ai_with_env(
+            &[
+                "checkpoint",
+                "mock_ai",
+                file_path.to_str().expect("test path should be UTF-8"),
+            ],
+            &[ENABLE_TEMP_REPO_FILTER],
+        )
+        .expect("ignored checkpoint should exit successfully");
+    assert!(
+        checkpoint_output
+            .contains("Skipping checkpoint for temporary repository without a remote URL"),
+        "checkpoint should explain why it was skipped: {checkpoint_output}"
+    );
+
+    repo.git_without_test_sync_for_test(&["add", "temporary-repo.txt"], &[])
+        .expect("staging ignored edit should succeed");
+    repo.git_without_test_sync_for_test(&["commit", "-m", "Ignored temporary commit"], &[])
+        .expect("committing ignored edit should succeed");
+    repo.sync_daemon_force();
+
+    let mut file = repo.filename("temporary-repo.txt");
+    file.assert_committed_lines(lines!["ignored AI line".unattributed_human()]);
+    assert!(
+        repo.daemon_completion_entries().iter().all(|entry| {
+            entry.primary_command.as_deref() != Some("commit")
+                && entry.primary_command.as_deref() != Some("checkpoint")
+        }),
+        "the daemon should not process the temporary local-only repository"
+    );
+
+    repo.git_without_test_sync_for_test(
+        &[
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/acme/temporary-repo.git",
+        ],
+        &[],
+    )
+    .expect("adding a remote should succeed");
+    repo.sync_daemon_force();
+
+    fs::write(&file_path, "ignored AI line\ntracked AI line\n")
+        .expect("failed to write tracked AI edit");
+    let checkpoint_output = repo
+        .git_ai_with_env(
+            &[
+                "checkpoint",
+                "mock_ai",
+                file_path.to_str().expect("test path should be UTF-8"),
+            ],
+            &[ENABLE_TEMP_REPO_FILTER],
+        )
+        .expect("checkpoint should run after adding a remote");
+    assert!(
+        checkpoint_output.contains("checkpoint_requests=1"),
+        "checkpoint should be sent after adding a remote: {checkpoint_output}"
+    );
+
+    repo.git(&["add", "temporary-repo.txt"])
+        .expect("staging tracked edit should succeed");
+    repo.commit("Tracked remote-backed commit")
+        .expect("committing tracked edit should succeed");
+    file.assert_committed_lines(lines![
+        "ignored AI line".unattributed_human(),
+        "tracked AI line".ai(),
+    ]);
+}
+
 fn assert_post_commit_uploads_prompt_cas() {
     let mock_api = MockApiServer::start();
     let _api_base_url = ScopedEnvVar::set("GIT_AI_API_BASE_URL", mock_api.base_url());

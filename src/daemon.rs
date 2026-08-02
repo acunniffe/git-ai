@@ -106,6 +106,7 @@ const CHECKPOINT_FAMILY_DRAIN_CONCURRENCY: usize = 2;
 #[cfg(not(windows))]
 const TRACE_SOCKET_RECV_BUFFER_BYTES: usize = 512 * 1024;
 const TRACE_INGEST_QUEUE_CAPACITY: usize = 16_384;
+const TEMP_REPO_FILTER_CACHE_CAPACITY: usize = 1_024;
 #[cfg(not(windows))]
 const TRACE_CONNECTION_BOOTSTRAP_READ_TIMEOUT: Duration = Duration::from_millis(100);
 #[cfg(windows)]
@@ -476,6 +477,25 @@ fn trace_root_sid(sid: &str) -> &str {
 
 fn is_terminal_root_trace_event(event: &str, sid: &str, root: &str) -> bool {
     sid == root && event == "atexit"
+}
+
+fn trace_payload_explicit_worktree(payload: &Value) -> Option<PathBuf> {
+    payload
+        .get(TRACE_ROOT_WORKTREE_FIELD)
+        .or_else(|| payload.get("worktree"))
+        .or_else(|| payload.get("repo_working_dir"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
+}
+
+fn trace_payload_may_change_remote_config(payload: &Value) -> bool {
+    let argv = trace_payload_effective_argv(payload);
+    matches!(
+        trace_payload_primary_command(payload)
+            .or_else(|| trace_argv_primary_command(&argv))
+            .as_deref(),
+        Some("config" | "remote")
+    )
 }
 
 fn daemon_worktree_from_repo_path(repo_path: &Path) -> Option<PathBuf> {
@@ -2720,6 +2740,13 @@ struct TraceIngressState {
     root_close_markers_enqueued: HashSet<String>,
 }
 
+#[derive(Debug, Clone)]
+struct TraceRepoFilterRoot {
+    repo_path: PathBuf,
+    ignored: bool,
+    invalidates_cache: bool,
+}
+
 #[doc(hidden)]
 pub struct ActorDaemonCoordinator {
     backend: Arc<crate::daemon::git_backend::SystemGitBackend>,
@@ -2770,6 +2797,8 @@ pub struct ActorDaemonCoordinator {
     processed_trace_ingest_seq: AtomicUsize,
     trace_ingest_progress_notify: Notify,
     trace_ingress_state: Mutex<TraceIngressState>,
+    temp_repo_filter_cache: Mutex<HashMap<PathBuf, bool>>,
+    temp_repo_filter_roots: Mutex<HashMap<String, TraceRepoFilterRoot>>,
     shutting_down: AtomicBool,
     shutdown_action: AtomicU8,
     shutdown_notify: Notify,
@@ -2872,6 +2901,8 @@ impl ActorDaemonCoordinator {
             processed_trace_ingest_seq: AtomicUsize::new(0),
             trace_ingest_progress_notify: Notify::new(),
             trace_ingress_state: Mutex::new(TraceIngressState::default()),
+            temp_repo_filter_cache: Mutex::new(HashMap::new()),
+            temp_repo_filter_roots: Mutex::new(HashMap::new()),
             shutting_down: AtomicBool::new(false),
             shutdown_action: AtomicU8::new(DaemonExitAction::Stop.as_u8()),
             shutdown_notify: Notify::new(),
@@ -6473,8 +6504,135 @@ impl ActorDaemonCoordinator {
         Ok(outcome)
     }
 
+    async fn should_ignore_trace_payload(&self, payload: &Value) -> Result<bool, GitAiError> {
+        if !crate::git::repository::temporary_repo_filter_enabled() {
+            return Ok(false);
+        }
+        #[cfg(feature = "test-support")]
+        if trace_payload_effective_argv(payload)
+            .iter()
+            .any(|arg| arg == "git-ai.test-readiness-probe")
+        {
+            return Ok(false);
+        }
+
+        let Some(root_sid) = Self::trace_payload_root_sid(payload) else {
+            return Ok(false);
+        };
+        let event = payload
+            .get("event")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let terminal = event == TRACE_CONNECTION_CLOSED_EVENT
+            || is_terminal_root_trace_event(
+                event,
+                payload
+                    .get("sid")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                &root_sid,
+            );
+
+        let tracked_root = {
+            let mut roots = self.temp_repo_filter_roots.lock().map_err(|_| {
+                GitAiError::Generic("temporary repository root cache lock poisoned".to_string())
+            })?;
+            if terminal {
+                roots.remove(&root_sid)
+            } else {
+                roots.get(&root_sid).cloned()
+            }
+        };
+        if let Some(tracked_root) = tracked_root {
+            if terminal && tracked_root.invalidates_cache {
+                self.temp_repo_filter_cache
+                    .lock()
+                    .map_err(|_| {
+                        GitAiError::Generic(
+                            "temporary repository decision cache lock poisoned".to_string(),
+                        )
+                    })?
+                    .remove(&tracked_root.repo_path);
+            }
+            return Ok(tracked_root.ignored);
+        }
+
+        if event != "def_repo" || crate::daemon::trace_normalizer::def_repo_is_secondary(payload) {
+            return Ok(false);
+        }
+        let Some(repo_path) = trace_payload_explicit_worktree(payload) else {
+            return Ok(false);
+        };
+
+        let cached = self
+            .temp_repo_filter_cache
+            .lock()
+            .map_err(|_| {
+                GitAiError::Generic("temporary repository decision cache lock poisoned".to_string())
+            })?
+            .get(&repo_path)
+            .copied();
+        let ignored = if let Some(ignored) = cached {
+            ignored
+        } else {
+            let repo_path_for_check = repo_path.clone();
+            let ignored = crate::tokio_runtime::spawn_blocking_result(move || {
+                let repo = discover_repository_in_path_no_git_exec(&repo_path_for_check)?;
+                repo.is_temporary_without_remote_url()
+            })
+            .await
+            .unwrap_or(false);
+            let mut cache = self.temp_repo_filter_cache.lock().map_err(|_| {
+                GitAiError::Generic("temporary repository decision cache lock poisoned".to_string())
+            })?;
+            if cache.len() >= TEMP_REPO_FILTER_CACHE_CAPACITY
+                && let Some(evicted) = cache.keys().next().cloned()
+            {
+                cache.remove(&evicted);
+            }
+            cache.insert(repo_path.clone(), ignored);
+            ignored
+        };
+
+        let invalidates_cache = trace_payload_may_change_remote_config(payload);
+        if ignored || invalidates_cache {
+            self.temp_repo_filter_roots
+                .lock()
+                .map_err(|_| {
+                    GitAiError::Generic("temporary repository root cache lock poisoned".to_string())
+                })?
+                .insert(
+                    root_sid.clone(),
+                    TraceRepoFilterRoot {
+                        repo_path,
+                        ignored,
+                        invalidates_cache,
+                    },
+                );
+        }
+
+        if ignored {
+            {
+                let mut normalizer = self.normalizer.lock().await;
+                let _ = normalizer.sweep_orphans_for_roots(std::slice::from_ref(&root_sid));
+            }
+            if let Some(family) = self
+                .replace_pending_root_entry(&root_sid, FamilySequencerEntry::Canceled)
+                .await?
+            {
+                self.drain_ready_family_sequencers_after_root_cleared(Some(family))
+                    .await?;
+            }
+        }
+
+        Ok(ignored)
+    }
+
     async fn ingest_trace_payload_fast(self: Arc<Self>, payload: Value) -> Result<(), GitAiError> {
         if !is_trace_payload(&payload) {
+            return Ok(());
+        }
+        if self.should_ignore_trace_payload(&payload).await? {
             return Ok(());
         }
         match self.apply_trace_payload_to_state(payload).await? {
