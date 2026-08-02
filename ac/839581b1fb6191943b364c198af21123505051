@@ -1,0 +1,9 @@
+src/transcripts/agents/droid.rs
+  5656d3e616692de7 38-39,187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ac839581b1fb6191943b364c198af21123505051",
+  "prompts": {}
+}

@@ -1,0 +1,26 @@
+scripts/ci-test-with-retry.ps1
+  s_b68bc7c89e9a4c::t_eda1dd044b08a3 12-13
+  s_b68bc7c89e9a4c::t_f090dfa2fb1097 18,25
+  s_b68bc7c89e9a4c::t_eaaa0412f31f97 30-31,59-64
+  s_b68bc7c89e9a4c::t_7b9e5fc5a25f32 14
+scripts/ci-test-with-retry.sh
+  s_b68bc7c89e9a4c::t_e1659ec3fecae9 58-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "4c33c68e8ada90b374f9f602851e73394956c5e1",
+  "prompts": {},
+  "sessions": {
+    "s_b68bc7c89e9a4c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "271d4ab5-c5bd-45c9-b73b-dcfac340ace7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/9fec9a1ad5c0b16825d6235ca8fdcbda4804fce0dc5da95d212cbe696cfd93af"
+    }
+  }
+}

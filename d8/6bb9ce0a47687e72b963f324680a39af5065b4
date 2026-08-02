@@ -1,0 +1,19 @@
+src/daemon.rs
+  s_07677fd01e3e28::t_78c68e2aa98c8b 4164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.1",
+  "base_commit_sha": "d86bb9ce0a47687e72b963f324680a39af5065b4",
+  "prompts": {},
+  "sessions": {
+    "s_07677fd01e3e28": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efb48-8e12-7d70-a214-35a5fff40000",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

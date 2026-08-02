@@ -1,0 +1,232 @@
+agent-support/vscode/src/ai-edit-manager.ts
+  3820a37709e5b26a 6,403
+src/commands/blame.rs
+  6255cb8a3c5c6e00 142-144,192,274-277,400,1052,1314,1351-1354,1409-1412,1501-1533,1861-1866
+  4ad6ad1e46ab1a56 1051,1053,1055
+  819cbf69de318fdc 1,371,936-942,948,993,1072-1090,1094-1097
+  e85ad12fcf6f76d5 4
+src/authorship/internal_db.rs
+  819cbf69de318fdc 13,72-79,989-1018,1138,1682-1716
+  efc6c64a58d5577f 389-392
+agent-support/vscode/src/utils/binary-path.ts
+  3820a37709e5b26a 1-77
+src/commands/show_prompt.rs
+  819cbf69de318fdc 3,44-48,50-54,57,66,70-73,75-77
+  1a9dd4a8e529759c 1-2,37,41-42,58,60,63-65,67,78-80,100,103-106
+  efc6c64a58d5577f 6,38-40,43,49,55-56,59,61-62,68-69,74,81-99,101-102
+agent-support/vscode/src/extension.ts
+  3820a37709e5b26a 11,24-26
+agent-support/vscode/src/blame-lens-manager.ts
+  819cbf69de318fdc 2,4,34-36,256-257,262,267,272,529-532,610-613,989,1154-1166,1208,1210-1220,1222-1231,1233-1237,1515-1570,1572-1576,1590
+  3820a37709e5b26a 5,229-240
+  efc6c64a58d5577f 1571
+  3858ce964e227c75 214-227,356-361,368,373,378,553,558,566-570,704-708
+src/authorship/prompt_utils.rs
+  e85ad12fcf6f76d5 14,541-542,544-547,549-571
+  1a9dd4a8e529759c 540,543,548
+src/api/cas.rs
+  1dd2b73441343021 3,59-72,74-100
+  efc6c64a58d5577f 73
+agent-support/vscode/src/blame-service.ts
+  efc6c64a58d5577f 412,414
+  819cbf69de318fdc 7-11,16,37,50,355,390-397,399-400,402-411,413,415-438
+  3820a37709e5b26a 5,231-233,239,243-245,310-311,332-333,398,401
+src/api/types.rs
+  1dd2b73441343021 120-138
+skills/ask/SKILL.md
+  b3613db36ea30b2b 10,12,14,44,46,53-54,62,65-69,71-73,77-79,81-86,88-92,99-106,119,121-123,125-128,131-152
+  048e2a905c935593 1-2,5-9,11,13,15,17,23,25,27,35,37,39,45,47,50-52,57-61,75-76,87,93,98,107-110,115-118,120,124,129-130,153
+  22f99c63b573ad5a 36,38
+  5cdb541a68f544ad 26,28
+src/mdm/skills_installer.rs
+  048e2a905c935593 18-19,24-25,27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "2ac2f79fef73d6ad5562db99d014e68d3fcdb467",
+  "prompts": {
+    "048e2a905c935593": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2714cc07-94a0-4c88-b94f-26d0d0fa50bb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 147,
+      "total_deletions": 4,
+      "accepted_lines": 50,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/a19329bf93803e1124b3a742670930dba650e8c2d0c1c57bec9dc12abe3ca2ec"
+    },
+    "1a9dd4a8e529759c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bbb6e8bb-a2c0-4c88-8986-5d7aabe24321",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 29,
+      "total_deletions": 66,
+      "accepted_lines": 22,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/5c2190e1ec0c35a23b53b3420794215ccbb06d47fe7c42ddd7df0ed6773917f4"
+    },
+    "1dd2b73441343021": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a377345b-8a4e-4b65-a347-8b89d31bd645",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 128,
+      "total_deletions": 3,
+      "accepted_lines": 61,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/9793744290a5894195a018fca320a6b04d703481fac50b902a23648955d886f8"
+    },
+    "22f99c63b573ad5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9f877c5-7750-4f21-8c7c-47e0238fb692",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/b3a10f9a9aa977f82bf4dd108030574c8ad6e94fce82b4642f8252688bae9a7f"
+    },
+    "3820a37709e5b26a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78d064ed-86eb-43d9-9613-827d307a62f6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 138,
+      "total_deletions": 23,
+      "accepted_lines": 110,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/0d3f7826afd36792806ffb5db5f23679b66a52a080ccae5732171445aca01a2a"
+    },
+    "3858ce964e227c75": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "69c3c93b-fdf6-4635-959d-eb78a8383931",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 45,
+      "total_deletions": 31,
+      "accepted_lines": 35,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/09a2b29725ab20a5733af300d794f91a5e8ef5cf6b1a23fabb9c36df21ade0b5"
+    },
+    "4ad6ad1e46ab1a56": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fd120e40-7230-4551-a19d-bf8db8dc7f4f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 34,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/4486e960772588ddfccf0b5a5bc82918b37a972da31b143d5125bb00860dfb8c"
+    },
+    "5cdb541a68f544ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "481da4b9-6909-4d22-865b-fdf57f3765a6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 21,
+      "total_deletions": 6,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/79e47ccaecbdb8a5d2201f616fc56b6b5be0182ffb83426e260adb8dd63730e7"
+    },
+    "6255cb8a3c5c6e00": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c6dbd57f-0885-4c08-a0e8-4af8ab587390",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 105,
+      "total_deletions": 30,
+      "accepted_lines": 58,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/b7367b05d4c6da1bb425ef5bf3545aa2b80d6f9e8903fd5572a271a50afd266a"
+    },
+    "819cbf69de318fdc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a02c2eaf-38d0-4569-a276-c2268bb81686",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 333,
+      "total_deletions": 24,
+      "accepted_lines": 304,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/86d76f6aa3531cc64eaedb334703369971406d33f03e0faa0ace0cb16b55468d"
+    },
+    "b3613db36ea30b2b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c232d22-2ff4-4fde-9016-1bbb22a463e5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 64,
+      "total_deletions": 114,
+      "accepted_lines": 68,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/8435d193dd981f55977992cc40996fda18ba72ecbe147b1b16c8fbf3ef7bb704"
+    },
+    "e85ad12fcf6f76d5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "836bc47f-3368-40c3-89b7-3b28ec8dc1bd",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 29,
+      "accepted_lines": 31,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/44acd034359242074ae3d3ea29f2c54d1e703cd10c1863defa5b2eebb3e65d02"
+    },
+    "efc6c64a58d5577f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4493ed45-520e-4580-b967-c35aee97cbd2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 122,
+      "total_deletions": 104,
+      "accepted_lines": 43,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/6ba8b427b1484de075982daadba3e78747b462d61dd7a9006275862eb38e0e88"
+    }
+  }
+}

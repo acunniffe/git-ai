@@ -1,0 +1,28 @@
+src/api/client.rs
+  1869dfcc0dd7127e 254
+src/ci/gitlab.rs
+  1869dfcc0dd7127e 77-80
+src/commands/upgrade.rs
+  1869dfcc0dd7127e 363-364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "12ad329b8289d489ba03a7d2b22cdc905bc41a7e",
+  "prompts": {
+    "1869dfcc0dd7127e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa1bc3bc-c768-48d8-a4ed-35be4c4cc996",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 11,
+      "accepted_lines": 7,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e4bf9e48361ade65f78f73f2ef6ebb0a25353e9b4c3f1cdbf2793903930b6cf3"
+    }
+  }
+}

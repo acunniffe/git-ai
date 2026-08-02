@@ -1,0 +1,28 @@
+Taskfile.yml
+  4fc8bc60fc3c5663 20-28
+tests/integration/repos/test_repo.rs
+  4fc8bc60fc3c5663 35-45,114-196,249
+Cargo.toml
+  4fc8bc60fc3c5663 66-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "02c4a451072f669e36f6881680964b65789c0c36",
+  "prompts": {
+    "4fc8bc60fc3c5663": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbd15-693a-7153-af8b-b3d304655878",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Codex",
+      "messages": [],
+      "total_additions": 110,
+      "total_deletions": 4,
+      "accepted_lines": 290,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e2e9ca5f9ee677bc4295326074cc1a101efdd36463dcdd7ab605e819af9adb51"
+    }
+  }
+}

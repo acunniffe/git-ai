@@ -1,0 +1,19 @@
+src/git/refs.rs
+  s_e3836b44d0f71e::t_50baa577f92674 793-794,798-872,875-886
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "448dd95be96404128b1132cba278711a863182ae",
+  "prompts": {},
+  "sessions": {
+    "s_e3836b44d0f71e": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-2b84bc4394b54b0ab425ed72f4f9dbed",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

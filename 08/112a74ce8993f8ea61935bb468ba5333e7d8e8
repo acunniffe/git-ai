@@ -1,0 +1,83 @@
+src/daemon.rs
+  s_50c8cc07abd384::t_606f9febaf2ae4 3728-3735
+  s_50c8cc07abd384::t_85e3f52852fb1e 5081-5082,5084-5106,5111,5121,5123-5135
+src/commands/checkpoint_agent/presets/windsurf.rs
+  s_50c8cc07abd384::t_5100ed37483086 135-140,146,153
+tests/integration/bash_tool_conformance.rs
+  s_50c8cc07abd384::t_4ae85d244ad2e4 59
+tests/integration/bash_tool_benchmark.rs
+  s_50c8cc07abd384::t_85b22d822bd8c4 341,626
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_50c8cc07abd384::t_eac9aa05d4ab28 257-258,264
+  s_50c8cc07abd384::t_9d6878700ea34d 308
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_50c8cc07abd384::t_6a4605b4f47509 144-145,150,156
+src/daemon/control_api.rs
+  s_50c8cc07abd384::t_3a207523f2ab39 37-42,48-50
+tests/integration/bash_tool_provenance.rs
+  s_50c8cc07abd384::t_4ae85d244ad2e4 58
+src/commands/checkpoint_agent/presets/amp.rs
+  s_50c8cc07abd384::t_5a6d172eb708a0 266-273
+  s_50c8cc07abd384::t_3b8e23d8214f75 356
+  s_50c8cc07abd384::t_1dd6ce8a8eae63 344
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  s_50c8cc07abd384::t_7ed3331bf39dff 72
+  s_50c8cc07abd384::t_9e60ef606f73a2 54,60
+src/daemon/bash_checkpoints_db.rs
+  s_50c8cc07abd384::t_22c5e2baaf0419 369-382
+src/commands/checkpoint_agent/presets/gemini.rs
+  s_50c8cc07abd384::t_18003fa266addf 60,66
+  s_50c8cc07abd384::t_105f87ec3fd9a3 78
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_50c8cc07abd384::t_68ae4fadc6cfe5 88-89,94,100
+src/commands/checkpoint_agent/presets/droid.rs
+  s_50c8cc07abd384::t_185e47d7cf9525 159-160,167
+  s_50c8cc07abd384::t_df360489523dd1 184
+src/commands/checkpoint_agent/presets/firebender.rs
+  s_50c8cc07abd384::t_da397dcd658a27 201-206,211
+  s_50c8cc07abd384::t_6adc42fa91bebe 223
+src/commands/checkpoint_agent/orchestrator.rs
+  s_50c8cc07abd384::t_976cb3c3617209 409
+src/commands/checkpoint_agent/presets/pi.rs
+  s_50c8cc07abd384::t_31b57c1190d562 193,199
+src/commands/checkpoint_agent/presets/codex.rs
+  s_50c8cc07abd384::t_69d4653cc35859 141-142,149
+  s_50c8cc07abd384::t_72ce597074ce17 171
+src/commands/checkpoint_agent/bash_tool.rs
+  s_50c8cc07abd384::t_03b5a325cdab08 801-808
+  s_50c8cc07abd384::t_fa7dc4e59f2255 904
+  s_50c8cc07abd384::t_26b5e7119359bd 963-964
+  s_50c8cc07abd384::t_2b1a3d72d8796b 926
+src/commands/checkpoint_agent/presets/claude.rs
+  s_50c8cc07abd384::t_d1cb43505f5e74 107
+  s_50c8cc07abd384::t_96948bbbca0d1f 119
+  s_50c8cc07abd384::t_e236446c6c2081 69-70
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_50c8cc07abd384::t_e2c1ebb19a7add 322
+  s_50c8cc07abd384::t_96073f59349903 264-269
+  s_50c8cc07abd384::t_f51d87b696865f 310
+src/commands/checkpoint_agent/presets/parse.rs
+  s_50c8cc07abd384::t_4a11d14d50c62d 169-182
+  s_50c8cc07abd384::t_cbe9c37389bab9 16-25
+tests/integration/bash_tool_timeouts.rs
+  s_50c8cc07abd384::t_4ae85d244ad2e4 142,172
+  s_50c8cc07abd384::t_85b22d822bd8c4 88,111
+src/commands/checkpoint_agent/presets/mod.rs
+  s_50c8cc07abd384::t_a0f21af4921ed5 86-88,96-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "08112a74ce8993f8ea61935bb468ba5333e7d8e8",
+  "prompts": {},
+  "sessions": {
+    "s_50c8cc07abd384": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1e4e321-1caf-47bf-b232-0be284c09477",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

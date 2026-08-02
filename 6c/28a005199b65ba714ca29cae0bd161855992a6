@@ -1,0 +1,25 @@
+src/daemon.rs
+  s_032cf4fb6d69d7::t_aa91d6c598f4db 5469,5479
+  s_032cf4fb6d69d7::t_d4782bea0b5a92 5487
+  s_032cf4fb6d69d7::t_991a758643ac61 847-852,863-864,870
+  s_032cf4fb6d69d7::t_9f0f732df0206c 865-869,871
+  s_032cf4fb6d69d7::t_47b83c1c054b1e 5465,5475,5484
+  s_032cf4fb6d69d7::t_a42799b77763eb 833-846,853-855,878-880
+  s_032cf4fb6d69d7::t_c7cf437e51d04b 856-862,872-877
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "6c28a005199b65ba714ca29cae0bd161855992a6",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null
+    }
+  }
+}

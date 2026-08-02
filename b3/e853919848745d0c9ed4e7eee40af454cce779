@@ -1,0 +1,39 @@
+src/authorship/rebase_types.rs
+  s_902a0f1d196d58::t_698d1d365fec8c 67
+tests/integration/main.rs
+  s_902a0f1d196d58::t_941a24688e3c14 104
+src/authorship/mod.rs
+  s_902a0f1d196d58::t_4d90ebac8c6ffc 19
+  s_902a0f1d196d58::t_9c39a7c2849218 18
+  s_902a0f1d196d58::t_67da576f00a156 17
+src/authorship/rebase_authorship.rs
+  s_902a0f1d196d58::t_dcd4bc0efc4030 3266
+  s_902a0f1d196d58::t_a19b5c34c7344d 2421
+  s_902a0f1d196d58::t_a304931b1fc30a 2423
+  s_902a0f1d196d58::t_379afceb5bc76e 3863
+  s_902a0f1d196d58::t_7fa4005a82c59e 4,7
+  s_902a0f1d196d58::t_293debf944d4e7 3,8-10
+  s_902a0f1d196d58::t_c6683368cd9189 5-6
+  s_902a0f1d196d58::t_bc378cfbbf4aa2 860
+  s_902a0f1d196d58::t_c0984fe5ce58c3 1040-1054
+src/commands/mod.rs
+  s_902a0f1d196d58::t_8e91e32ced16e5 20
+src/commands/git_ai_handlers.rs
+  s_902a0f1d196d58::t_81796dac822fb7 176-190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "b3e853919848745d0c9ed4e7eee40af454cce779",
+  "prompts": {},
+  "sessions": {
+    "s_902a0f1d196d58": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27060e1d-e308-41df-8e3e-99989a51b65d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null
+    }
+  }
+}

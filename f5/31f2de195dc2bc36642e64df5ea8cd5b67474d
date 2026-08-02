@@ -1,0 +1,31 @@
+Taskfile.yml
+  s_af2d349a5e032c::t_d66171a6445b46 121-128
+tests/integration/fuzzer/engine.rs
+  s_af2d349a5e032c::t_aaccd4b759fed0 204-221
+  s_af2d349a5e032c::t_cb4315df1d14df 33-39
+  s_af2d349a5e032c::t_db49503adcdae2 1331-1430
+tests/integration/fuzzer/mod.rs
+  s_af2d349a5e032c::t_d1c606f04ddf2b 353-395
+tests/integration/fuzzer/operations.rs
+  s_af2d349a5e032c::t_9756f62cc11def 4597-4701,4710-4719,4728-4764,4767-4821,4830-4963,4966-4972,4981-5009,5011-5164,5173-5213
+  s_af2d349a5e032c::t_d9e14f9b064016 4702-4709,4720-4727,4765-4766,4822-4829,4964-4965,4973-4980,5010,5165-5172
+tests/integration/fuzzer/generators.rs
+  s_af2d349a5e032c::t_1c5e3d5841fda8 248,280-288
+  s_af2d349a5e032c::t_bea6a86837196c 119-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "f531f2de195dc2bc36642e64df5ea8cd5b67474d",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

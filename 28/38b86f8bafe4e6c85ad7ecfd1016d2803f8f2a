@@ -1,0 +1,65 @@
+src/daemon/sweep_coordinator.rs
+  s_59382cac373d67::t_771962ee094ecc 74-75
+  s_59382cac373d67::t_d60f2841c307ab 10-11,70-73,76,102-104,125,239
+  s_59382cac373d67::t_302a0a921ec2fa 251-252
+  s_59382cac373d67::t_911f480ddedd38 232-238,240-250,253-318
+src/streams/agents/codex.rs
+  s_59382cac373d67::t_771962ee094ecc 58-59,61-62,65-68
+  s_59382cac373d67::t_7518fe059431db 6-8,11,40,63-64,69-70,74,77-92,144-145
+src/streams/agents/droid.rs
+  s_59382cac373d67::t_7518fe059431db 5-7,29,31-41,61-62
+src/streams/agents/copilot_cli.rs
+  s_59382cac373d67::t_771962ee094ecc 3
+  s_59382cac373d67::t_209f5b7689733f 46,60,72-73,75-79
+src/streams/sweep.rs
+  s_59382cac373d67::t_7afece554a8476 10-11,73,80-82,85-91,97-101,108,110-111
+  s_59382cac373d67::t_d60f2841c307ab 3-9,12-72,74-79,83-84,92-96,102-107,109,112-116,199-247
+src/streams/agent.rs
+  s_59382cac373d67::t_d60f2841c307ab 88,90-92
+src/streams/agents/claude.rs
+  s_59382cac373d67::t_7518fe059431db 5-7,29,45-47,86-87,374-376
+src/streams/agents/continue_cli.rs
+  s_59382cac373d67::t_7518fe059431db 5-7,33-38,57-58
+src/streams/agents/windsurf.rs
+  s_59382cac373d67::t_fe03d6a48c1204 43
+src/streams/agents/gemini.rs
+  s_59382cac373d67::t_771962ee094ecc 6
+  s_59382cac373d67::t_562cc11f561846 34-35,40,66,85-86,288-290
+src/streams/agents/cursor.rs
+  s_59382cac373d67::t_7518fe059431db 5-7,29,36-40,60-61
+tests/integration/main.rs
+  s_59382cac373d67::t_ab5fe3f70f2f58 143
+src/streams/agents/pi.rs
+  s_59382cac373d67::t_fe03d6a48c1204 43
+src/streams/agents/copilot.rs
+  s_59382cac373d67::t_771962ee094ecc 5
+  s_59382cac373d67::t_1d80bbef2d7d6e 33-34,84,228-229
+src/streams/agents/amp.rs
+  s_59382cac373d67::t_771962ee094ecc 5
+  s_59382cac373d67::t_a3c2cedc9db7ef 87,102,109-110,112-113,123,129
+src/daemon/stream_worker.rs
+  s_59382cac373d67::t_771962ee094ecc 815-818,1819-1821
+  s_59382cac373d67::t_911f480ddedd38 1775-1799
+  s_59382cac373d67::t_764c55e0cae853 30-33,382-383,413-414,541-543,545,551-565,567,574-601,617-620,673-675,811-812,814,832
+  s_59382cac373d67::t_e135ce569b4176 1800-1818,1822-1823
+src/streams/agents/opencode.rs
+  s_59382cac373d67::t_fe03d6a48c1204 207
+tests/integration/transcript_discovery_memory.rs
+  s_59382cac373d67::t_ab5fe3f70f2f58 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "2838b86f8bafe4e6c85ad7ecfd1016d2803f8f2a",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

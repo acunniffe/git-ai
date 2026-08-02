@@ -1,0 +1,75 @@
+src/authorship/rewrite.rs
+  s_f00ef7c0f45b07::t_83fe5d2d1d8352 219-232,277,283-289,301-303,328
+src/authorship/rewrite_stash.rs
+  s_f00ef7c0f45b07::t_13e36a69ec6243 9,217,267,293-303,373-397,405-406,431-465,467-478
+  s_f00ef7c0f45b07::t_e554fcc3b77f05 409-413
+  s_f00ef7c0f45b07::t_c393792068bb76 398-404,407-408,414-430
+  s_f00ef7c0f45b07::t_212f385fd55cfe 466
+  s_f00ef7c0f45b07::t_2e5eb231fa3051 112-117
+tests/integration/cherry_pick.rs
+  s_f00ef7c0f45b07::t_2e5eb231fa3051 841
+  s_f00ef7c0f45b07::t_0ecfb85e7e2e51 8,830-840,842-861,876
+src/daemon/ref_cursor.rs
+  s_f00ef7c0f45b07::t_8cde40f2564034 142
+  s_f00ef7c0f45b07::t_b8ca33ad31e53a 1850
+  s_f00ef7c0f45b07::t_2e5eb231fa3051 1248-1251
+  s_f00ef7c0f45b07::t_803f9a539257ed 1063-1247,1252-1271
+  s_f00ef7c0f45b07::t_065b186e00014a 665-666
+  s_f00ef7c0f45b07::t_4406ea82297c01 320,874-875,880-902
+  s_f00ef7c0f45b07::t_ed0f0c00bff91b 7,17,82
+  s_f00ef7c0f45b07::t_66696f22bbdcd2 1306-1324
+  s_f00ef7c0f45b07::t_8dee37754d1454 174-242,572,577,604,610,612-614,626-636,643-664,667-690
+  s_f00ef7c0f45b07::t_4016c486f9c939 491,511,905-908
+src/daemon/coordinator.rs
+  s_f00ef7c0f45b07::t_1987bbdf2853de 169,190
+src/daemon/domain.rs
+  s_f00ef7c0f45b07::t_860a10f1403cd1 55,132-133,136
+src/daemon/trace_normalizer.rs
+  s_f00ef7c0f45b07::t_1987bbdf2853de 653
+src/daemon/analyzers/workspace.rs
+  s_f00ef7c0f45b07::t_1987bbdf2853de 137
+src/daemon/analyzers/transport.rs
+  s_f00ef7c0f45b07::t_1987bbdf2853de 143
+src/daemon/analyzers/history.rs
+  s_f00ef7c0f45b07::t_a7d9aab9e4217d 65,72-73,300-306
+  s_f00ef7c0f45b07::t_793998a4bcd870 909-910
+  s_f00ef7c0f45b07::t_1987bbdf2853de 417
+src/daemon.rs
+  s_f00ef7c0f45b07::t_5127b274ef9496 4286-4292,4294-4296,4298-4306
+  s_f00ef7c0f45b07::t_bf3eede668af4c 3926
+  s_f00ef7c0f45b07::t_2e5eb231fa3051 1338,1358-1359,1853,3455,3480,3494,4293
+  s_f00ef7c0f45b07::t_e6d0cefea5cec7 8,1436
+  s_f00ef7c0f45b07::t_fc729ebcc73ed1 1807-1811,1939
+  s_f00ef7c0f45b07::t_7ed9b32aa2fe97 4297
+  s_f00ef7c0f45b07::t_c418e141f8ac5f 3445-3454,3456-3479,3481-3493,3495-3498
+  s_f00ef7c0f45b07::t_eeff5695624d1f 1334-1337,1339-1357,1360-1361,1363-1370,1373-1386
+  s_f00ef7c0f45b07::t_be58f0fe2627d1 3956,3958-3973
+  s_f00ef7c0f45b07::t_0e20cd165912a8 4045-4046,4050,4060-4066,4069,4075,4078-4083
+tests/integration/stash_attribution.rs
+  s_f00ef7c0f45b07::t_2e5eb231fa3051 1193-1194
+  s_f00ef7c0f45b07::t_d59b48ba14929f 3,1174-1192,1195-1212,1234
+src/daemon/family_actor.rs
+  s_f00ef7c0f45b07::t_1987bbdf2853de 184
+src/daemon/analyzers/generic.rs
+  s_f00ef7c0f45b07::t_1987bbdf2853de 117
+src/daemon/global_actor.rs
+  s_f00ef7c0f45b07::t_1987bbdf2853de 82
+src/daemon/reducer.rs
+  s_f00ef7c0f45b07::t_1987bbdf2853de 123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "ddd2e9141e4de1f4ce084fceaee1d68d1acefeca",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

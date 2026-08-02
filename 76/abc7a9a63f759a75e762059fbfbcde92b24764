@@ -1,0 +1,56 @@
+install.ps1
+  93e7363b64ca5023 375-383,385
+  672df556dabd2c09 364-374,384,386-389
+src/mdm/git_clients/sublime_merge.rs
+  97f93a3bac59bfa3 128-129,134,160-161,205,210
+src/mdm/utils.rs
+  672df556dabd2c09 319-326
+src/mdm/ensure_git_symlinks.rs
+  672df556dabd2c09 32,34-42,50-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.34",
+  "base_commit_sha": "76abc7a9a63f759a75e762059fbfbcde92b24764",
+  "prompts": {
+    "672df556dabd2c09": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ce8deaf7-ba13-4638-8729-f9eab0ee7f8e",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Your Name <you@example.com>",
+      "messages": [],
+      "total_additions": 1093,
+      "total_deletions": 1032,
+      "accepted_lines": 300,
+      "overriden_lines": 0
+    },
+    "93e7363b64ca5023": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9f9d6891-edc9-43e8-a45a-588fc227e9a8",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Your Name <you@example.com>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 1,
+      "accepted_lines": 10,
+      "overriden_lines": 0
+    },
+    "97f93a3bac59bfa3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2e935985-650b-4fdc-a3a7-c46761836cf5",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Your Name <you@example.com>",
+      "messages": [],
+      "total_additions": 400,
+      "total_deletions": 398,
+      "accepted_lines": 71,
+      "overriden_lines": 0
+    }
+  }
+}
