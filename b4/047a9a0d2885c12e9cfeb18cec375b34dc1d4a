@@ -1,0 +1,88 @@
+src/commands/checkpoint_agent/agent_preset.rs
+  59fb82a 395,417,422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "958bbe6722143686e5691dec7b09410c3562c1cb",
+  "prompts": {
+    "59fb82a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "00812842-49fe-4699-afae-bb22cda3f6e1",
+        "model": "gpt-5-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Give me the queries used in the cursor sqlite storage db",
+          "timestamp": "2025-10-07T18:28:55.045Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll look for where the Cursor extension uses SQLite and extract the SQL statements. Now I'll search the extension code and scan for SQL query strings.",
+          "timestamp": "2025-10-07T18:29:13.057Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll scan the docs and codebase for any mention of Cursor's SQLite storage or query examples, including paths like storage.sqlite and references like VSCDB.",
+          "timestamp": "2025-10-07T18:29:36.095Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll search the Rust codebase for any interaction with Cursor's SQLite (vscdb) to extract the actual SQL statements used.",
+          "timestamp": "2025-10-07T18:29:54.706Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll pull the exact SQL strings from the Cursor integration by scanning `agent_preset.rs` for prepared statements and any inline SQL used. Then I'll list them succinctly.",
+          "timestamp": "2025-10-07T18:30:01.650Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll quickly scan for all Cursor-related SQL snippets to ensure I list every query. Then I'll present the exact SQL strings.",
+          "timestamp": "2025-10-07T18:30:11.944Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll grab the exact SQL strings from `agent_preset.rs` to quote them precisely.",
+          "timestamp": "2025-10-07T18:30:37.092Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll scan the Rust codebase for all SQLite query strings to ensure I list every SQL used against Cursor's vscdb.",
+          "timestamp": "2025-10-07T18:30:46.146Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I searched the code for where we read Cursor’s vscdb and pulled the exact SQL strings.\n\n```327:333:/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_preset.rs\n// Look for the composer data in cursorDiskKV\nlet key_pattern = format!(\"composerData:{}\", composer_id);\nlet mut stmt = conn\n    .prepare(\"SELECT value FROM cursorDiskKV WHERE key = ?\")\n    .map_err(|e| GitAiError::Generic(format!(\"Query failed: {}\", e)))?;\n```\n\n```447:451:/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_preset.rs\n// Look for bubble data in cursorDiskKV with pattern bubbleId:composerId:bubbleId\nlet bubble_pattern = format!(\"bubbleId:{}:{}\", composer_id, bubble_id);\nlet mut stmt = conn\n    .prepare(\"SELECT value FROM cursorDiskKV WHERE key = ?\")\n    .map_err(|e| GitAiError::Generic(format!(\"Query failed: {}\", e)))?;\n```\n\n```1810:1814:/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_preset.rs\n//             \"SELECT json_extract(value, '$.composerId') FROM cursorDiskKV\n//              WHERE key LIKE 'composerData:%'\n//              AND json_extract(value, '$.fullConversationHeadersOnly') IS NOT NULL\n//              AND json_array_length(json_extract(value, '$.fullConversationHeadersOnly')) > 0\n//              LIMIT 1\",\n```\n\n- Parameters used with the prepared statements:\n  - composer payload: key = \"composerData:{composer_id}\"\n  - bubble payload: key = \"bubbleId:{composer_id}:{bubble_id}\"\n\nStatus: I scanned the repository for SQLite usage in the Cursor integration and extracted all query strings used against `state.vscdb`.",
+          "timestamp": "2025-10-07T18:31:06.798Z"
+        },
+        {
+          "type": "user",
+          "text": "For the code present, we get this error:\n```\nuse of moved value: `bubble_created_at`\nvalue used here after move\n```\nHow can I resolve this? If you propose a fix, please make it concise.",
+          "timestamp": "2025-10-07T19:01:48.283Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll open the transcript type to check the `Message` signatures and confirm why `bubble_created_at` (an Option<String>) is moved and how to clone or borrow it properly. Then I'll implement the minimal fix.",
+          "timestamp": "2025-10-07T19:01:55.187Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll fix the move error by cloning `bubble_created_at` before each use where it's passed into `Message::user` or `Message::assistant`, then check for linter issues.",
+          "timestamp": "2025-10-07T19:02:26.628Z"
+        },
+        {
+          "type": "assistant",
+          "text": "- Root cause: `bubble_created_at` is an Option<String> moved into the first `Message::user/assistant` call, so subsequent uses error.\n\n- Fix: clone it at each use site.\n\n```412:415:/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_preset.rs\n                                                transcript.add_message(Message::assistant(\n                                                    trimmed.to_string(),\n                                                    bubble_created_at.clone(),\n                                                ));\n```\n\nAlso cloned in the two earlier additions in the same function for the top-level `text` and for the `\"text\"` items in `content`.\n\nStatus: Applied minimal clones; no linter errors.",
+          "timestamp": "2025-10-07T19:02:37.243Z"
+        }
+      ],
+      "total_additions": 4,
+      "total_deletions": 4,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}

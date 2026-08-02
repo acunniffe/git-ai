@@ -1,0 +1,159 @@
+src/commands/checkpoint_agent/presets/codex.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 141,148,169,222,234,248,264
+tests/integration/rebase.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 789-842
+src/git/repository.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 2986-3001,3003,3005,3011,3014,3018-3024,3026-3032,3034-3039,3049-3052,3054-3058,3070-3071,3101,3145
+src/commands/checkpoint_agent/orchestrator.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 398-400,402-426,428,430-438,473-475,477-501,503,505-513
+src/daemon/control_api.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 32,38-40,44-45,48-52,61-86
+tests/integration/ci_squash_rebase.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 1227,1229-1238,1249-1250,1254,1465,1485,1490,1504-1505,1510,1534,1548,1570-1571,1574
+tests/integration/ci_fork_notes.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 29-38,55-56
+src/daemon.rs
+  s_2b4d7885542a22::t_72447c61a450b4 1103
+  s_2b4d7885542a22::t_4843c5ea5a8769 9-14,53,773,957-975,1079-1080,1084-1092,1111-1112,1114-1123,1132,1406-1409,1453,1467-1770,1790,1799,2305-2310,2375-2376,2461,3808-3810,3816,4213-4228,4471-4474,4532-4627,4632,4834-4856,4867,4871-4882,4962-4965,4968-4975,4979-4985,5012-5018,5021,5155-5161,5168-5172,5174,5180,5216-5226,5431,5440,5468-5469,5471-5475,5648,5654-5656,5658-5678,5680,5683,5686-5690,5694-5695,5698-5702,5705-5823,6803-6804,7446-7482
+  s_2b4d7885542a22::t_de86473beaeaf1 1126,1133
+tests/integration/stash_attribution.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 261-264,790-793,867-870
+tests/notes_sync_regression.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 5-7,466-554,1169-1295
+tests/integration/diff.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 1991-1994
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 196,263,306
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 55,60,71
+tests/commit_tree_update_ref.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 855,1060,1194
+tests/commit_hunks.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 360-363,366,373,393,396,400
+src/metrics/db.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 9,11,13,18,22,50-67,105-126,296-298,340-391,441-460,463-494,837-839,845,851-852,883-890,894-901,931-1041,1093,1097-1104,1110-1198,1251-1332,1357,1366-1376,1388-1395,1437,1476,1519,1528-1538,1545-1614,1632-1957,2272-2313,2337-2358,2381-2404
+src/commands/checkpoint_agent/presets/mod.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 86-87,94-95
+tests/integration/repository_unit.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 202-218
+tests/integration/rewrite_ops_attribution.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 159-192
+src/commands/checkpoint_agent/presets/parse.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 89-112,255-286
+src/daemon/bash_sessions.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 13-15,19-30,46,49,51-57
+src/git/sync_authorship.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 293-298
+flake.nix
+  s_2b4d7885542a22::t_4843c5ea5a8769 39
+src/git/notes_api.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 616-621
+tests/integration/bash_attribution.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 4-9,12-19,22,33-34,38,46,92,97,105,113-115,117-120,130-131,152-156,175,179-774
+Cargo.toml
+  s_2b4d7885542a22::t_4843c5ea5a8769 3
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 88-89,94,99,223-226,250
+tests/integration/rebase_attribution_remaining.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 16-21
+tests/integration/daemon_commit_carryover.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 113-114
+src/authorship/post_commit.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 1,6,88-113,118-124,146,186-212,262,279,320-338,517-546,554-569,677-687
+src/authorship/rewrite.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 30,265,934,955,959,966,969,978,980-994,998-1002,1005
+src/daemon/telemetry_worker.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 11,24,320-321,329-364
+tests/integration/bash_tool_conformance.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 58-61,63-72,76-85
+src/metrics/events.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 455-456,476-477,489-490,596-617,665-674,690-694,1226-1253
+src/commands/checkpoint_agent/presets/gemini.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 61,66,77
+.github/workflows/test.yml
+  s_2b4d7885542a22::t_4843c5ea5a8769 44,46,50,107-108,113-191,196-208
+src/commands/checkpoint_agent/presets/windsurf.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 134-140,147,153
+tests/integration/bash_tool_timeouts.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 38-41,92-93,116-117,125-133,156-165,170-178,202-211,215-224
+src/commands/checkpoint_agent/presets/pi.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 33-36,100-101,141-144,203,208
+tests/integration/sessions_cutover.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 532,535-537,541-542,547,550,567-571,574,600,658-661,670,673,690-694,697,1674-1677,1686,1689,1706-1710,1713,1789-1792,1801,1804,1821-1825,1828,1903-1906,1915,1918,1935-1939,1942,2125-2128,2137,2140,2157-2161,2164
+tests/integration/simple_additions.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 901-905,1126-1127
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 144,149,154,503,531
+src/commands/checkpoint_agent/presets/droid.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 159-160,167,183
+src/commands/checkpoint_agent/bash_tool.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 885-979,981,989-997,1019-1020,1022-1042,1051-1056,1078-1082,1084-1086,1103-1106,1108-1128,1131,1133-1134,1153-1163,1170,1187-1192,1224-1234,1243-1253
+src/daemon/ref_cursor.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 438,442-443,459-463,525,529-530,536-540,2234,2237,2241-2244,2250,2272,2280,2318,2322-2325,2374-2384,3431-3461
+src/authorship/attribution_recovery.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 1-991
+tests/integration/bash_tool_benchmark.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 341-342,353-362,635-636,671-679
+src/commands/checkpoint_agent/presets/claude.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 101,106,117
+tests/integration/fuzzer/operations.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 5,46,58,68,73,80,89-91,103,125,127-129,134,152-154,159,175,182,187,190,196,202-206,212,215,237,255,257-258,308,311-312,411-474
+tests/integration/fuzzer/engine.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 66,90,109,128,145
+tests/integration/fuzzer/model.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 36-57,64-65,72,77-81,85-88,92-98,113-114,123-124,140,149-155,161,164-167,170,173-281,367-370
+src/authorship/virtual_attribution.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 1185,1191-1195
+tests/integration/github_copilot_integration.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 102-105,107
+tests/integration/reset.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 302-303,307
+tests/integration/rebase_realworld.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 10191-10197,10254-10261,10638-10644,10662-10669,11227-11233,11289-11296,11868-11870,11897-11900,11980-11986,12011-12018,12340-12346,12403-12410,12759-12765,12783-12790,13306-13312,13368-13375
+docs/bash-attribution-recovery-plan.md
+  s_2b4d7885542a22::t_4843c5ea5a8769 1-287
+tests/integration/cherry_pick.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 831-1118,1242-1243
+tests/integration/codex.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 282-285
+tests/integration/subdirs.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 813-814,818
+src/daemon/bash_history_db.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 1-941
+src/commands/checkpoint_agent/presets/firebender.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 200-206,212,223
+tests/integration/prompt_across_commit.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 68-69,104,106-118
+tests/integration/worktrees.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 225-228,244-247,265-268,292-295
+src/authorship/mod.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 2
+tests/integration/graphite.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 615-618,621,777-780,783
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 264-274,315,326
+specs/metrics-db-timestamps-plan.md
+  s_2b4d7885542a22::t_4843c5ea5a8769 1-184
+src/commands/checkpoint_agent/presets/amp.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 332-343,348,359
+tests/integration/bash_tool_provenance.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 57-60,62-71,75-84
+tests/integration/internal_spawn_safety.rs
+  s_2b4d7885542a22::t_4843c5ea5a8769 119-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.13",
+  "base_commit_sha": "bd4f7d0924955063f56a0082dd3f2b4ef875fc58",
+  "prompts": {},
+  "sessions": {
+    "s_2b4d7885542a22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9f18331-3aac-41a9-b9db-111250000f97",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Siddhant Khare <Siddhant-K-code@users.noreply.github.com>"
+    }
+  }
+}

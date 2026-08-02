@@ -1,0 +1,21 @@
+tests/integration/show_prompt.rs
+  s_0f5afcece6b40d::t_9c4c67d7ae3acf 174-220,227-274,288
+  s_0f5afcece6b40d::t_ca928f1f61d2ae 221-226
+  s_0f5afcece6b40d::t_41fcc0f469bf91 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "06172b3eb22b91367368e601ca572f35340f409b",
+  "prompts": {},
+  "sessions": {
+    "s_0f5afcece6b40d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9de248a2-5a01-4bd6-835d-4edb6c46bbe8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ubuntu <ubuntu@ip-172-31-38-209.ap-south-1.compute.internal>"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+src/mdm/skills_installer.rs
+  efa8a791612f410d 48-52,175-182,234-244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "140ea68d93583f51c92578a57cbb7fa7931f6ce6",
+  "prompts": {
+    "efa8a791612f410d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c52f008-f1c6-4c18-bafc-c8094076b9bd",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 24,
+      "total_deletions": 0,
+      "accepted_lines": 24,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/c4ae7890cc43d3ae606f7f1e4d62f208835df0ae2bf709509d32329a98a5f653"
+    }
+  }
+}

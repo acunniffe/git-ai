@@ -1,0 +1,48 @@
+src/commands/analyze/cube.rs
+  s_392c380bbdc435::t_daf25c2fd72575 90-91,102
+src/daemon/telemetry_worker.rs
+  s_392c380bbdc435::t_daf25c2fd72575 1250,1502-1503
+src/ci/gitlab.rs
+  s_392c380bbdc435::t_daf25c2fd72575 88
+  s_392c380bbdc435::t_c6be21aacecaff 89-94,306-307
+src/auth/client.rs
+  s_392c380bbdc435::t_daf25c2fd72575 63,101,145
+tests/integration/http_proxy.rs
+  s_392c380bbdc435::t_8c5b879016822a 99-100,103-104,106-108,111
+  s_392c380bbdc435::t_6e3e68a22e0cac 84
+  s_392c380bbdc435::t_b61ca89954ca4f 2-7,9-14,28-39,47-83,85-98,101-102,112-127,129-131
+  s_392c380bbdc435::t_887b52bd4e59fe 8,105,128
+  s_392c380bbdc435::t_fbdcd32433df9a 1
+  s_392c380bbdc435::t_c18f00441d843b 15-27,40-46,109-110
+Cargo.toml
+  s_392c380bbdc435::t_6e3e68a22e0cac 25
+src/http.rs
+  s_392c380bbdc435::t_6e3e68a22e0cac 2-4,25,28,53-57,64-68,72-79
+  s_392c380bbdc435::t_887b52bd4e59fe 6-7,13-15
+  s_392c380bbdc435::t_daf25c2fd72575 17-22
+src/api/client.rs
+  s_392c380bbdc435::t_daf25c2fd72575 325,328,330,334,348,350,354
+  s_392c380bbdc435::t_6e3e68a22e0cac 191-197,201,205,212-215,219,223
+tests/integration/tls_native_certs.rs
+  s_392c380bbdc435::t_7e868d006d6506 26
+Cargo.lock
+  s_392c380bbdc435::t_74145951a5249c 146-151,660-669,2442-2450,2981-2989,3788,3790,3793,3796-3812,3827-3832,4017-4025
+tests/integration/main.rs
+  s_392c380bbdc435::t_4f8b1ca8258898 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "6fb44738d94ed4c820d095b1f17f43af93db8cff",
+  "prompts": {},
+  "sessions": {
+    "s_392c380bbdc435": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9098-8bf0-76c0-8ee4-d18f747f9401",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

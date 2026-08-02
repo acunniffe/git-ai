@@ -1,0 +1,28 @@
+scripts/nightly/start-async-daemon.sh
+  s_d46277b929576d::t_6c05da227de402 15
+  s_d46277b929576d::t_9de4569b451317 7
+src/commands/daemon.rs
+  s_d46277b929576d::t_200c44801d8e0f 221-222
+  s_d46277b929576d::t_5bea6d1c5a660c 214-220
+tests/git-compat/run-core-tests.py
+  s_d46277b929576d::t_a29af843dd60f2 48,106-107,346,349,355-356
+  s_d46277b929576d::t_2f640c8591aafc 102,104-105
+  s_d46277b929576d::t_5c60572e072a8d 330-332
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "a8c7608ddfd1fa8f351a3ee04765f867bd5e2f25",
+  "prompts": {},
+  "sessions": {
+    "s_d46277b929576d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7d963b3-678f-4ed0-8566-d90a0d657703",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": []
+    }
+  }
+}
