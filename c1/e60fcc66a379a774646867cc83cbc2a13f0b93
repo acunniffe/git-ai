@@ -1,0 +1,19 @@
+src/metrics/db.rs
+  s_31b447d16e21cf::t_5da90b21425ff6 214-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "c1e60fcc66a379a774646867cc83cbc2a13f0b93",
+  "prompts": {},
+  "sessions": {
+    "s_31b447d16e21cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66093f0b-52af-4448-b87a-0255bfb1a244",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

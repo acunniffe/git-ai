@@ -1,0 +1,46 @@
+src/transcripts/agents/amp.rs
+  s_395f5898107085::t_2b76c1650b3920 233
+src/transcripts/agents/continue_cli.rs
+  s_395f5898107085::t_2b76c1650b3920 191
+src/transcripts/agents/codex.rs
+  s_395f5898107085::t_2b76c1650b3920 344
+src/transcripts/agents/copilot_cli.rs
+  s_395f5898107085::t_2b76c1650b3920 165
+src/transcripts/agents/pi.rs
+  s_395f5898107085::t_2b76c1650b3920 164
+src/transcripts/agents/copilot.rs
+  s_395f5898107085::t_bc8a5e61e0436b 274-280,289
+src/transcripts/agents/droid.rs
+  s_395f5898107085::t_2b76c1650b3920 270
+src/transcripts/agents/claude.rs
+  s_395f5898107085::t_2b76c1650b3920 316
+src/transcripts/agent.rs
+  s_395f5898107085::t_65da079341ebe2 20,23,39-40
+  s_395f5898107085::t_6d2b1f7377fc0f 64-71
+src/transcripts/agents/cursor.rs
+  s_395f5898107085::t_2b76c1650b3920 232
+src/transcripts/agents/windsurf.rs
+  s_395f5898107085::t_2b76c1650b3920 162
+src/transcripts/agents/opencode.rs
+  s_395f5898107085::t_2b76c1650b3920 341
+src/daemon/transcript_worker.rs
+  s_395f5898107085::t_4c5a3fa9739c1f 494
+src/transcripts/agents/gemini.rs
+  s_395f5898107085::t_2b76c1650b3920 235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "e0457636150128c748c2beb55a4573d4c83c38a1",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

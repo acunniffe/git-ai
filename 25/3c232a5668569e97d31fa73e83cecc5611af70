@@ -1,0 +1,129 @@
+tests/integration/squash_merge.rs
+  e7b08d3d24eb79a9 4-5,475-558
+src/authorship/post_commit.rs
+  e7b08d3d24eb79a9 228-244
+src/authorship/rebase_authorship.rs
+  e7b08d3d24eb79a9 377-383,392-395,460-462,471-472
+tests/integration/ci_partial_clone.rs
+  e7b08d3d24eb79a9 187-189,191,193,195-196
+src/git/repo_storage.rs
+  e7b08d3d24eb79a9 667-678
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "253c232a5668569e97d31fa73e83cecc5611af70",
+  "prompts": {
+    "683893e581d89224": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33efe9ce-d7fc-43f4-ae30-d5f9756a5551",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 176,
+      "total_deletions": 8,
+      "accepted_lines": 81,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/518db17bdb52771d42b83676e0af8944242b6c91f71a6ff174a8e4af05164c87"
+    },
+    "784dc7b4246d9110": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1634253-41ef-4e4d-83e1-1ad3da02a25c",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/804e3a1348a0b9615491609f3e550bc59d30603e53db99e3725e71edddfd3154"
+    },
+    "933ec7748db846c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "448be9a9-e186-4aca-bdf6-07f6acf13c94",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 6,
+      "accepted_lines": 280,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/77fd1408aec13499d752d95136f0c892b13b355f24806980c8544eac9401608f"
+    },
+    "a569505178fc3783": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "be354490-7d39-4263-b7cc-213dc0fd206c",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 4,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/75631db3976d55c2c103ee5f5b8c852ee29da2a8439afef586cc8d5c1b619a85"
+    },
+    "c1970e7fa3ca2e03": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5772698e-67e6-4639-a483-cbb8405da325",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test User",
+      "messages": [],
+      "total_additions": 74,
+      "total_deletions": 15,
+      "accepted_lines": 158,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/151025fa0d2d6860ba4a8ec53a1c8c315272dd4b85444269f78342f87d5882ff"
+    },
+    "e3256c1bc244f994": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f13bcceb-b0cc-4ed9-994f-8940572d2785",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 20,
+      "total_deletions": 3,
+      "accepted_lines": 301,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/dcb6e5672ae45945e8c3fb16e25762142dc4e9caf76be8a1144d544b2f140353"
+    },
+    "e7b08d3d24eb79a9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f68e98e9-51e1-4549-bc4a-9bb6db7e5ca7",
+        "model": "unknown"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 324,
+      "total_deletions": 193,
+      "accepted_lines": 140,
+      "overriden_lines": 0
+    },
+    "fc8d58929d25589c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7b006590-9945-4a1c-aa7b-8bc2a779091c",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 103,
+      "total_deletions": 17,
+      "accepted_lines": 14,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/b1ef8d885731973192a806d55480ee72c04aeabf239720eac52513418959f6ed"
+    }
+  }
+}

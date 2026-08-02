@@ -1,0 +1,15 @@
+Cargo.lock
+  ai_agent 1091,1098,1932,1934,3335,3337,4367,4369
+agent-support/vscode/yarn.lock
+  ai_agent 388-398,598-601,617-620,622-625,637-640,642-643,654-657,659-660,667-670,688-691,708-711,713-716,741-744,746,1654-1656,2706-2709,2711
+tests/integration/performance.rs
+  ai_agent 23
+src/feature_flags.rs
+  ai_agent 85-86,98,143,151-152,211,221,232,244
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "16a0d308cfd0836628ff3579a6b7b71d6868d106",
+  "prompts": {}
+}

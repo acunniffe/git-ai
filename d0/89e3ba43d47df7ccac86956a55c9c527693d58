@@ -1,0 +1,21 @@
+docs/daemon-trace2-ingestion-spec.md
+  s_ca3493cd5ff580::t_b281491ac0cfc0 50
+docs/rewrite-ops-spec.md
+  s_ca3493cd5ff580::t_d7379c41b07811 103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "d089e3ba43d47df7ccac86956a55c9c527693d58",
+  "prompts": {},
+  "sessions": {
+    "s_ca3493cd5ff580": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "30a076c6-8e2e-42a4-aafc-a0f557fd1930",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

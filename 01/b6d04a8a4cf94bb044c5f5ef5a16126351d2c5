@@ -1,0 +1,43 @@
+src/commands/checkpoint_agent/amp_preset.rs
+  7c44422c356af7cc 7-10,158-169,220-241,243-247,249-250,263,273-277
+src/commands/checkpoint_agent/opencode_preset.rs
+  7c44422c356af7cc 7-10,225-234
+src/authorship/pre_commit.rs
+  7c44422c356af7cc 2,5,8-9,13,15,21-41,124-162
+src/mdm/agents/codex.rs
+  7c44422c356af7cc 3-6,9,12-14,22-23,26-27,30,32,35,47-49,52-57,61,70-71,90-95,98-110,115-125,130,146-371,401-403,405,407-411,413-417,432,437,441,446-450,452-457,459,463,466-481,484-489,492,501-502,506-514,516-530,532,535-550,553-558,561,618-630,643-644,646-647,652-656,660,664,671,693-717,719-759,761-795,797-806,816,831,833-837,840-843,855,860-868,875-877,879-913,919,924-931,938,940,942-943,945-985,987-1003,1025,1045-1048,1059,1081-1084,1090,1095,1104-1118,1127,1130-1133,1135-1146,1148-1157,1164,1169,1174-1175,1179-1188,1200,1202-1204,1206-1210,1212-1213
+tests/integration/bash_tool_conformance.rs
+  7c44422c356af7cc 629-635,1210,1246
+src/commands/checkpoint_agent/bash_tool.rs
+  7c44422c356af7cc 226-230,282-287,294-404,458,475,768,1338,1353-1363,1430,1434,1465-1471,1473-1475,1477-1487,1490,1493-1495,1497-1514,1516-1537,1539-1581,1743,1752,1768,1791,1838,1848,1961,2453-2491
+scripts/nightly/verify-hook-wiring.sh
+  7c44422c356af7cc 30,32-37
+tests/integration/codex.rs
+  7c44422c356af7cc 1,8-9,12-13,146-197,199-311,352,357,414-463,465-740,747-749,752-756
+src/commands/checkpoint_agent/agent_presets.rs
+  7c44422c356af7cc 41-105,207-210,230-239,928-931,945-954,1115-1124,1362-1378,1381,1388-1469,3247-3256,4280-4289
+src/commands/checkpoint.rs
+  7c44422c356af7cc 629-630,635
+src/commands/git_ai_handlers.rs
+  7c44422c356af7cc 912,922-935
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "01b6d04a8a4cf94bb044c5f5ef5a16126351d2c5",
+  "prompts": {
+    "7c44422c356af7cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d3117-4717-7b43-a5db-3235fb8aadaf",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Test Runner",
+      "messages": [],
+      "total_additions": 3221,
+      "total_deletions": 1635,
+      "accepted_lines": 2145,
+      "overriden_lines": 0
+    }
+  }
+}

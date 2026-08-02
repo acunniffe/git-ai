@@ -1,0 +1,14 @@
+src/commands/activity.rs
+  h_5e32efc4aad69a 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "ad2e34b224201a8f8786c03956dbab7f8d7ef27a",
+  "prompts": {},
+  "humans": {
+    "h_5e32efc4aad69a": {
+      "author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

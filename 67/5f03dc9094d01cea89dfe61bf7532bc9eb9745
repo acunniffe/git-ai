@@ -1,0 +1,27 @@
+src/mdm/git_clients/fork_app.rs
+  48814b236d9482a0 6,18,20,38-40,43,45-47,84-86,96-97,109,113,117-119,123-124,142-143,161-164,169-170,182-183
+src/mdm/git_clients/mac_prefs.rs
+  48814b236d9482a0 1-188
+src/mdm/git_clients/mod.rs
+  48814b236d9482a0 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.38",
+  "base_commit_sha": "675f03dc9094d01cea89dfe61bf7532bc9eb9745",
+  "prompts": {
+    "48814b236d9482a0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5ea0105d-8f42-48ee-a3eb-37f72724f1bb",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 229,
+      "total_deletions": 120,
+      "accepted_lines": 224,
+      "overriden_lines": 1
+    }
+  }
+}

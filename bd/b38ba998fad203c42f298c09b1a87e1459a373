@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-05-08-daemon-privilege-mismatch-design.md
+  s_1946ff3ec655a6::t_90672b5f3374cb 1-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.4",
+  "base_commit_sha": "bdb38ba998fad203c42f298c09b1a87e1459a373",
+  "prompts": {},
+  "sessions": {
+    "s_1946ff3ec655a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c7c4393-fb5b-4f09-b279-1a660e430da3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

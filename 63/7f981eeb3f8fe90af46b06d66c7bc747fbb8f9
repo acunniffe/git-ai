@@ -1,0 +1,26 @@
+src/daemon.rs
+  7cb497240c3524af 1580-1604
+src/commands/hooks/cherry_pick_hooks.rs
+  7cb497240c3524af 208-210,214,217-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "637f981eeb3f8fe90af46b06d66c7bc747fbb8f9",
+  "prompts": {
+    "7cb497240c3524af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "824c14ec-df6d-4a75-ba4a-256448ada43e",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 6,
+      "accepted_lines": 33,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/ea5496aa528aaa41ed7ecef7575f1ac02ab39f4b261eba77014c1fc874c40aff"
+    }
+  }
+}
