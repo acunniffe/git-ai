@@ -163,7 +163,7 @@ fn test_notes_add_batch_writes_multiple_notes() {
 }
 
 #[test]
-fn test_notes_add_batch_replaces_notes_at_every_legacy_fanout_depth() {
+fn test_eng_214_notes_add_batch_replaces_notes_at_every_legacy_fanout_depth() {
     let (repo, gitai_repo) = repo_with_handle();
     let commit_sha =
         commit_unattributed_file(&repo, "legacy.txt", "legacy\n", "Legacy note target");
@@ -231,7 +231,7 @@ fn test_notes_add_blob_batch_reuses_existing_note_blob() {
 }
 
 #[test]
-fn test_notes_add_blob_batch_replaces_notes_at_every_legacy_fanout_depth() {
+fn test_eng_214_notes_add_blob_batch_replaces_notes_at_every_legacy_fanout_depth() {
     let (repo, gitai_repo) = repo_with_handle();
     let commit_sha = commit_unattributed_file(
         &repo,
@@ -269,7 +269,7 @@ fn test_notes_add_blob_batch_replaces_notes_at_every_legacy_fanout_depth() {
 }
 
 #[test]
-fn test_read_notes_batch_finds_deeply_fanned_out_note() {
+fn test_eng_214_read_notes_batch_finds_deeply_fanned_out_note() {
     let (repo, gitai_repo) = repo_with_handle();
     let commit_sha = commit_unattributed_file(&repo, "deep-note.txt", "deep\n", "Deep note target");
     install_note_at_paths(
