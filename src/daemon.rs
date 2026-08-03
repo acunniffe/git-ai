@@ -3796,6 +3796,25 @@ impl ActorDaemonCoordinator {
         })
     }
 
+    /// As [`Self::has_open_trace_roots_that_may_mutate_refs`], but scoped to
+    /// one family: roots already attributed to a DIFFERENT family (via their
+    /// `def_repo` worktree) cannot mutate this family's refs and are ignored.
+    /// Roots with no family attribution yet fail closed and block everyone.
+    fn has_open_trace_roots_that_may_mutate_family(&self, family: &str) -> bool {
+        let Ok(ingress) = self.trace_ingress_state.lock() else {
+            return false;
+        };
+        ingress.root_open_connections.iter().any(|(root, count)| {
+            *count > 0
+                && !ingress.root_definitely_read_only.contains(root)
+                && ingress.root_mutating.get(root).copied().unwrap_or(true)
+                && ingress
+                    .root_families
+                    .get(root)
+                    .is_none_or(|root_family| root_family == family)
+        })
+    }
+
     fn next_trace_ingest_seq(&self) -> u64 {
         // Relaxed: we only need fetch_add atomicity (unique monotone values),
         // not ordering w.r.t. any other atomic.
@@ -4358,6 +4377,32 @@ impl ActorDaemonCoordinator {
             }
             tokio::select! {
                 _ = progress => {}
+                _ = self.wait_for_shutdown() => return,
+            }
+        }
+    }
+
+    /// As [`Self::wait_for_trace_ingest_processed_through`], but scoped to one
+    /// family: open mutating roots already attributed to a different family do
+    /// not hold this fence, so a long-running git command in one repository no
+    /// longer delays `sync.family` for every other repository. Unattributed
+    /// roots still fail closed and block until their `def_repo` arrives.
+    async fn wait_for_trace_ingest_processed_through_family(&self, family: &str) {
+        loop {
+            let target = self.next_trace_ingest_seq.load(Ordering::Acquire) as u64;
+            self.wait_for_trace_ingest_seq(target).await;
+
+            // Enroll before checking (see wait_for_trace_ingest_seq): the
+            // notify_waiters fired by the root's close/def_repo must not race
+            // the condition load.
+            let progress = self.trace_ingest_progress_notify.notified();
+            tokio::pin!(progress);
+            progress.as_mut().enable();
+            if !self.has_open_trace_roots_that_may_mutate_family(family) {
+                return;
+            }
+            tokio::select! {
+                _ = &mut progress => {}
                 _ = self.wait_for_shutdown() => return,
             }
         }
@@ -6590,7 +6635,8 @@ impl ActorDaemonCoordinator {
             .await;
         self.wait_for_no_unadmitted_checkpoints().await;
         let family = self.backend.resolve_family(Path::new(&repo_working_dir))?;
-        self.wait_for_trace_ingest_processed_through().await;
+        self.wait_for_trace_ingest_processed_through_family(&family.0)
+            .await;
 
         let exec_lock = self.side_effect_exec_lock(&family.0)?;
         loop {
@@ -9922,6 +9968,74 @@ mod tests {
         )
         .await
         .expect("checkpoint fence should pass once the mutating trace root closes");
+    }
+
+    #[tokio::test]
+    async fn family_fence_ignores_open_mutating_roots_of_other_families() {
+        let coord = Arc::new(ActorDaemonCoordinator::new());
+        let temp = tempfile::tempdir().unwrap();
+        let other_repo = temp.path().join("other-repo");
+        std::fs::create_dir_all(other_repo.join(".git")).unwrap();
+        std::fs::write(
+            other_repo.join(".git").join("HEAD"),
+            "ref: refs/heads/main\n",
+        )
+        .unwrap();
+
+        let sid = "20260411T120000.000000-Psid1";
+        coord.trace_root_connection_opened(sid).unwrap();
+        let mut start = make_start_payload(&["git", "commit", "-m", "other repo commit"]);
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+
+        // Before the root is attributed to a repository, it must block every
+        // family (fail closed: it could belong to any of them).
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(50),
+                coord.wait_for_trace_ingest_processed_through_family("/some/unrelated/family")
+            )
+            .await
+            .is_err(),
+            "an unattributed mutating root must block all family fences"
+        );
+
+        // def_repo attributes the root to other-repo's family; unrelated
+        // families must no longer wait on it.
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "worktree": other_repo.to_string_lossy(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+
+        tokio::time::timeout(
+            Duration::from_millis(250),
+            coord.wait_for_trace_ingest_processed_through_family("/some/unrelated/family"),
+        )
+        .await
+        .expect("a mutating root attributed to another family must not block this fence");
+
+        // The root's own family still waits until the connection closes.
+        let own_family = coord.backend.resolve_family(&other_repo).unwrap().0;
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(50),
+                coord.wait_for_trace_ingest_processed_through_family(&own_family)
+            )
+            .await
+            .is_err(),
+            "the root's own family fence must still wait for the open root"
+        );
+
+        coord
+            .record_trace_connection_close(&[sid.to_string()])
+            .unwrap();
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            coord.wait_for_trace_ingest_processed_through_family(&own_family),
+        )
+        .await
+        .expect("own family fence should pass once the root closes");
     }
 
     #[tokio::test]
