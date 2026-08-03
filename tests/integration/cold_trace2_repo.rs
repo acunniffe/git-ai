@@ -365,8 +365,10 @@ fn test_traced_cherry_pick_after_untraced_cherry_pick_preserves_source_ai_attrib
     raw_git(&repo, &["cherry-pick", &missed_source]);
     let missed_pick = raw_head(&repo);
     assert_no_authorship_note(&repo, &missed_pick);
+    missed_file.assert_committed_lines(crate::lines!["missed pick ai".human()]);
 
     run_traced_git(&repo, &["cherry-pick", &traced_source]);
+    missed_file.assert_committed_lines(crate::lines!["missed pick ai".human()]);
     traced_file.assert_committed_lines(crate::lines!["traced pick ai".ai()]);
 }
 
@@ -428,6 +430,7 @@ fn test_traced_revert_after_untraced_revert_restores_source_ai_attribution() {
     raw_git(&repo, &["revert", "--no-edit", &missed_delete]);
     let missed_revert = raw_head(&repo);
     assert_no_authorship_note(&repo, &missed_revert);
+    missed_file.assert_committed_lines(crate::lines!["missed ai".human()]);
 
     run_traced_git(&repo, &["revert", "--no-edit", &traced_delete]);
     missed_file.assert_committed_lines(crate::lines!["missed ai".human()]);
