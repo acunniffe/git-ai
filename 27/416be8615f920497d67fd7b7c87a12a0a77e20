@@ -1,0 +1,23 @@
+flake.nix
+  1e8c42007da14a80 213-238,248,269-378,397-402,423-446,456,467-554,556-576,581-583,586
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.35",
+  "base_commit_sha": "27416be8615f920497d67fd7b7c87a12a0a77e20",
+  "prompts": {
+    "1e8c42007da14a80": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48641bdf-7626-4380-a199-a5588a53690b",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "John Wiegley <jwiegley@positron.ai>",
+      "messages": [],
+      "total_additions": 283,
+      "total_deletions": 20,
+      "accepted_lines": 281,
+      "overriden_lines": 0
+    }
+  }
+}

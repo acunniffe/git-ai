@@ -1,0 +1,19 @@
+src/commands/mod.rs
+  s_f00ef7c0f45b07::t_1dea6c68cdb62e 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "178818bbf656f8412aa44ae9a7e895f4fe978c05",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

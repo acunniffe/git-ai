@@ -1,0 +1,53 @@
+src/daemon.rs
+  s_c3aa905e9dfee2::t_306fd38176efc9 7528-7533
+  s_c3aa905e9dfee2::t_ce56d316ce760b 7534-7535
+src/observability/mod.rs
+  s_c3aa905e9dfee2::t_744f26b16e1221 30-31
+  s_c3aa905e9dfee2::t_4c679c52557abe 6
+  s_c3aa905e9dfee2::t_87cd7f12453131 4,35-37,49,55-56,61-65,67-68
+  s_c3aa905e9dfee2::t_b1f3c756376f08 16
+  s_c3aa905e9dfee2::t_eb8a7c3fd32b83 22-23,28-29
+  s_c3aa905e9dfee2::t_c6190062974949 18-21,24-27
+src/daemon/test_sync.rs
+  s_c3aa905e9dfee2::t_dc190ec0aaa4f3 236-280,284,294
+src/daemon/telemetry_worker.rs
+  s_c3aa905e9dfee2::t_fbb23672225cab 1003,1052
+  s_c3aa905e9dfee2::t_18a27dec378c02 175,177-180
+  s_c3aa905e9dfee2::t_c80d0cd67e2fc3 153-160,165-167,182-183,186-196,205-216,218,260-273
+  s_c3aa905e9dfee2::t_89f7b43919f567 9-10,387-390,393-398,420,422,431,434-439,441-445,448-528,531-535,538
+  s_c3aa905e9dfee2::t_5578aff491ac9d 149-152,161-164
+  s_c3aa905e9dfee2::t_1cc9c574c88cb7 404-419,427-428
+  s_c3aa905e9dfee2::t_d3b9e051740659 322-324,330-334
+  s_c3aa905e9dfee2::t_8aefed445b8edd 204,219-221
+  s_c3aa905e9dfee2::t_b94ef4b30484c4 254
+  s_c3aa905e9dfee2::t_cafb6c967e2d78 948-1002,1004-1051,1053-1082
+src/metrics/local_stats.rs
+  s_c3aa905e9dfee2::t_fbb23672225cab 1156-1162,1240-1243
+  s_c3aa905e9dfee2::t_5bbafa8543c8c7 1115-1130,1136-1155,1163-1216,1218-1239,1244-1261,1263-1282
+  s_c3aa905e9dfee2::t_f294b5c7969cbd 1131-1135
+  s_c3aa905e9dfee2::t_a9e76e62719dde 1217,1262
+src/metrics/db.rs
+  s_c3aa905e9dfee2::t_485118458d5bab 128-143
+src/git/repository.rs
+  s_c3aa905e9dfee2::t_8efec5d1497d35 2284-2290,2292-2293,2296-2302,2304-2309,2312-2317,2320-2325,2327-2329,2333-2334,2337-2340,2342
+  s_c3aa905e9dfee2::t_19486f8c2ccf05 2330-2332
+  s_c3aa905e9dfee2::t_9825d7c98c7139 2234-2240,2282-2283,2291,2294-2295,2303,2310-2311,2318-2319,2326,2335-2336,2341
+src/daemon/telemetry_handle.rs
+  s_c3aa905e9dfee2::t_a73efb9489aa1d 226-228,230,233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "474442e42d52e9eb9a1714597c9369a95ba9d4f5",
+  "prompts": {},
+  "sessions": {
+    "s_c3aa905e9dfee2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e953b-a3d6-78c1-ab12-b3623076acea",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

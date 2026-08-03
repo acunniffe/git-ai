@@ -1,0 +1,21 @@
+src/commands/daemon.rs
+  s_d46277b929576d::t_94d4be898beec9 195-197,209
+  s_d46277b929576d::t_a9f4d0c45bd213 203-208,212-213,223-228,230-241,221-222
+  s_d46277b929576d::t_39a483519fc932 270
+  s_d46277b929576d::t_e0e1a2f2350fb8 298
+  s_d46277b929576d::t_e7dfd992625be8 7,10,18,293
+  s_d46277b929576d::t_95dbe22d3712a5 13-15
+  s_d46277b929576d::t_5bea6d1c5a660c 215-217,219-220
+  s_d46277b929576d::t_c0f30ce18758ab 214,218
+tests/git-compat/run-core-tests.py
+  s_d46277b929576d::t_2f640c8591aafc 102,104-105
+  s_d46277b929576d::t_5c60572e072a8d 330,332
+  s_d46277b929576d::t_2a1d22d293bfe3 48,106-107,331,353-354
+  s_d46277b929576d::t_178b1a1af8ec67 345-349
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "2ff8cebaa0ca82861793e2066e892ea098fead0f",
+  "prompts": {}
+}

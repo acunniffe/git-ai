@@ -1,0 +1,34 @@
+src/authorship/virtual_attribution.rs
+  7cb497240c3524af 2006-2019,2033-2034,2074,2076-2089,2092,2094-2102,2109,2114-2116,2118-2120,2123-2124
+tests/integration/squash_merge.rs
+  7cb497240c3524af 447-449,451-452,454-455,458-472
+tests/integration/merge_rebase.rs
+  7cb497240c3524af 273-279,284,290,296,302,304-336,339-341
+tests/integration/cherry_pick.rs
+  7cb497240c3524af 643-648,669-671,673-675,677-678,680-685,687,689-693,696-703,712,728-729,731-732,734-756,759-765,768,770-771,773,781-782,784-789,798-803,807-809,811-813,815-820,834-836
+src/commands/hooks/checkout_hooks.rs
+  7cb497240c3524af 88-93,121-124,141-167
+tests/integration/checkout_switch.rs
+  7cb497240c3524af 420-426,431-432,434,438,440-441,443-444,447,450-451,454-458,460-464,466,468-477,479,494
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "e80e811e5ce57edfbe6f2e02228ad4600fe00d4a",
+  "prompts": {
+    "7cb497240c3524af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "824c14ec-df6d-4a75-ba4a-256448ada43e",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 364,
+      "total_deletions": 231,
+      "accepted_lines": 306,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/8fbda363fb358914a20de33cf1f2a2c9b77701f44794a54f2e87214b4c2c5802"
+    }
+  }
+}

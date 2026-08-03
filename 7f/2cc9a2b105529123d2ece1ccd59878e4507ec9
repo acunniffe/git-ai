@@ -1,0 +1,26 @@
+README.md
+  162e2f3e62c2da02 40
+scripts/badge_config.json
+  162e2f3e62c2da02 11-12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.6",
+  "base_commit_sha": "7f2cc9a2b105529123d2ece1ccd59878e4507ec9",
+  "prompts": {
+    "162e2f3e62c2da02": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1246e304-5a09-4453-a1b9-9d67c6a628a6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 2,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/841d4090b1e654c7fcfd903ce9b3c9653bfef359c6a58a60b2755c149acdf8c2"
+    }
+  }
+}

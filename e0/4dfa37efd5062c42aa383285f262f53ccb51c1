@@ -1,0 +1,40 @@
+agent-support/vscode/src/known-human-checkpoint-manager.ts
+  11d03b37dc3ad21b 78,88
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/listener/DocumentSaveListener.kt
+  11d03b37dc3ad21b 86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.8",
+  "base_commit_sha": "e04dfa37efd5062c42aa383285f262f53ccb51c1",
+  "prompts": {
+    "0258c5b1691621d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80d9d130-1df9-4582-94e6-56a7a47eff46",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/b4e6944c247b9f3bb1ffaa4c1f05fbee9949b7bf5ef33221379fde3448a8130b"
+    },
+    "11d03b37dc3ad21b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9e7961-e2a3-4c64-9188-a3037cb57221",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 604,
+      "total_deletions": 48,
+      "accepted_lines": 29,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/27f30a4fa64a04c35a6a401bf5719f6c269e3c7db87b7eb9735544152823af35"
+    }
+  }
+}

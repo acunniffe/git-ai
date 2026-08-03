@@ -1,0 +1,22 @@
+tests/e2e/user-scenarios.bats
+  0b28020 1475-1630
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "ce16a6ff8793fcb6cadfd2f082b47992994d71a0",
+  "prompts": {
+    "0b28020": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c3a93c9c-80d7-47be-80f3-d2402791e1af",
+        "model": "default"
+      },
+      "human_author": "Atnes Ness <atnesness@gmail.com>",
+      "messages": [],
+      "total_additions": 222,
+      "total_deletions": 62,
+      "accepted_lines": 1631,
+      "overriden_lines": 0
+    }
+  }
+}
