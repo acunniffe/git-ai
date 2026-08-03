@@ -1778,6 +1778,78 @@ fn test_update_ref_current_branch_with_new_content_preserves_attribution() {
 }
 
 #[test]
+fn test_traced_update_ref_after_untraced_update_refs_preserves_source_ai_attribution() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let mut readme = repo.filename("README.md");
+    readme.assert_committed_lines(lines!["# Test Repo".human()]);
+
+    repo.git(&["checkout", "-b", "feature"])
+        .expect("checkout feature should succeed");
+    let mut feature_file = repo.filename("update-ref-gap.txt");
+    feature_file.set_contents(lines!["update ref ai".ai()]);
+    let source = repo
+        .stage_all_and_commit("update-ref source")
+        .expect("source commit should succeed")
+        .commit_sha;
+    feature_file.assert_committed_lines(lines!["update ref ai".ai()]);
+
+    let parent = raw_untraced_git(&repo, &["rev-parse", &format!("{source}^1")])
+        .trim()
+        .to_string();
+    let tree = raw_untraced_git(&repo, &["rev-parse", &format!("{source}^{{tree}}")])
+        .trim()
+        .to_string();
+    let missed_destination = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "missed update-ref destination",
+        ],
+    )
+    .trim()
+    .to_string();
+    let traced_destination = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "traced update-ref destination",
+        ],
+    )
+    .trim()
+    .to_string();
+    let branch_ref = "refs/heads/feature";
+
+    repo.sync_daemon();
+    raw_untraced_git(
+        &repo,
+        &["update-ref", branch_ref, &missed_destination, &source],
+    );
+    assert!(
+        repo.read_authorship_note(&missed_destination).is_none(),
+        "the trace-disabled destination should not receive attribution"
+    );
+    raw_untraced_git(
+        &repo,
+        &["update-ref", branch_ref, &source, &missed_destination],
+    );
+
+    repo.git(&["update-ref", branch_ref, &traced_destination, &source])
+        .expect("traced update-ref should succeed");
+
+    assert_note_has_ai_for_file(&repo, &traced_destination, "update-ref-gap.txt");
+    feature_file.assert_committed_lines(lines!["update ref ai".ai()]);
+}
+
+#[test]
 fn test_update_ref_fast_forward_bounds_committed_hunks_to_final_commit() {
     let repo = TestRepo::new();
     setup_initial_commit(&repo);

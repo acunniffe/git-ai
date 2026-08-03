@@ -1162,15 +1162,10 @@ impl RefCursor {
         Ok(())
     }
 
-    // DEFERRED (code-review #14): this finder scans the reflog from
-    // reflog_start_offset and takes the first unconsumed entry matching the
-    // message/transition; it does not use the command's ingress hint (the
-    // reflog position at which THIS command began) to bound the search. In
-    // pathological histories with repeated identical rebase-start messages and
-    // transitions, it could match an earlier same-shaped entry than the one
-    // this command produced. Bounding by the per-command ingress offset would
-    // make the match exact; deferred as it needs the ingress offset threaded
-    // through to the finder.
+    // A prior untraced rebase can leave a complete matching span after the
+    // in-order cursor. Use the command-start hint to select this command's start
+    // marker while retaining the late-capture fallback shared by other cursor
+    // lookups.
     fn find_rebase_start_entry(
         &mut self,
         cmd: &NormalizedCommand,
@@ -1187,16 +1182,17 @@ impl RefCursor {
         let key = head_key(&git_dir);
         let path = git_dir.join("logs").join("HEAD");
         let start = self.reflog_start_offset(&key, &path)?;
-        let entries = read_reflog_entries(key, &path, "HEAD", start)?;
-
-        Ok(entries.into_iter().find(|entry| {
+        let entries = read_reflog_entries(key.clone(), &path, "HEAD", start)?;
+        let candidates = entries.into_iter().filter(|entry| {
             !self.entry_consumed(entry)
                 && rebase_reflog_action_is(&entry.message, "start")
                 && expected.matches_span_boundary(entry)
                 && target
                     .as_deref()
                     .is_none_or(|target| rebase_start_message_targets(&entry.message, target))
-        }))
+        });
+
+        Ok(self.select_candidate_with_hint(&key, candidates))
     }
 
     fn consume_failed_explicit_branch_rebase_start(
@@ -4167,6 +4163,71 @@ mod tests {
             }],
             "ingress hint must skip the untraced duplicate-message commit"
         );
+    }
+
+    #[test]
+    fn ingress_offset_hint_skips_untraced_rebase_span() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let head_log = git_dir.join("logs/HEAD");
+        fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+
+        let base_line =
+            format!("{A} {B} Test User <test@example.com> 0 +0000\tcommit: traced base\n");
+        let missed_start = format!(
+            "{B} {C} Test User <test@example.com> 0 +0000\trebase (start): checkout main\n"
+        );
+        let missed_pick =
+            format!("{C} {D} Test User <test@example.com> 0 +0000\trebase (pick): missed\n");
+        let missed_finish = format!(
+            "{D} {D} Test User <test@example.com> 0 +0000\trebase (finish): returning to refs/heads/missed\n"
+        );
+        let checkout = format!(
+            "{D} {E} Test User <test@example.com> 0 +0000\tcheckout: moving from missed to traced\n"
+        );
+        let traced_start = format!(
+            "{E} {C} Test User <test@example.com> 0 +0000\trebase (start): checkout main\n"
+        );
+        let traced_pick =
+            format!("{C} {F} Test User <test@example.com> 0 +0000\trebase (pick): traced\n");
+        let traced_finish = format!(
+            "{F} {F} Test User <test@example.com> 0 +0000\trebase (finish): returning to refs/heads/traced\n"
+        );
+        let in_order_offset = base_line.len() as u64;
+        let command_start_offset = (base_line.len()
+            + missed_start.len()
+            + missed_pick.len()
+            + missed_finish.len()
+            + checkout.len()) as u64;
+        fs::write(
+            &head_log,
+            format!(
+                "{base_line}{missed_start}{missed_pick}{missed_finish}{checkout}{traced_start}{traced_pick}{traced_finish}"
+            ),
+        )
+        .unwrap();
+
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        cursor
+            .initialize_reflog_cursor(&head_key(&git_dir), in_order_offset)
+            .unwrap();
+        let mut cmd = command_with_worktree(&family, Some(worktree), &["rebase", "main"]);
+        cmd.reflog_start_offsets
+            .insert(head_key(&git_dir), command_start_offset);
+        cursor
+            .initialize_from_command_reflog_start_offsets(&cmd)
+            .unwrap();
+
+        let entry = cursor
+            .find_rebase_start_entry(&cmd, ExpectedTransition::default())
+            .unwrap()
+            .expect("current rebase start should be found");
+
+        assert_eq!(entry.start_offset, command_start_offset);
+        assert_eq!(entry.old, E);
+        assert_eq!(entry.new, C);
     }
 
     #[test]
