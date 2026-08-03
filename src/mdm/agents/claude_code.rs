@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use crate::daemon::DaemonConfig;
 use crate::error::GitAiError;
 use crate::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
 use crate::mdm::utils::{
@@ -19,6 +21,54 @@ pub struct ClaudeCodeInstaller;
 impl ClaudeCodeInstaller {
     fn settings_path() -> PathBuf {
         claude_config_dir().join("settings.json")
+    }
+
+    fn allow_trace2_socket(settings: &mut Value) -> Result<(), GitAiError> {
+        #[cfg(unix)]
+        {
+            let root = settings.as_object_mut().ok_or_else(|| {
+                GitAiError::Generic("Claude Code settings must be a JSON object".to_string())
+            })?;
+            let sandbox = root.entry("sandbox").or_insert_with(|| json!({}));
+            let sandbox = sandbox.as_object_mut().ok_or_else(|| {
+                GitAiError::Generic(
+                    "Claude Code sandbox settings must be a JSON object".to_string(),
+                )
+            })?;
+            let network = sandbox.entry("network").or_insert_with(|| json!({}));
+            let network = network.as_object_mut().ok_or_else(|| {
+                GitAiError::Generic(
+                    "Claude Code sandbox network settings must be a JSON object".to_string(),
+                )
+            })?;
+            let allowed_sockets = network
+                .entry("allowUnixSockets")
+                .or_insert_with(|| json!([]));
+            let allowed_sockets = allowed_sockets.as_array_mut().ok_or_else(|| {
+                GitAiError::Generic(
+                    "Claude Code sandbox network.allowUnixSockets must be an array".to_string(),
+                )
+            })?;
+
+            let trace_socket = DaemonConfig::from_env_or_default_paths()?
+                .trace_socket_path
+                .to_string_lossy()
+                .into_owned();
+            let trace_socket = Value::String(trace_socket);
+            if !allowed_sockets.contains(&trace_socket) {
+                allowed_sockets.push(trace_socket);
+            }
+
+            // Linux and WSL seccomp cannot filter Unix sockets by path, so Claude
+            // Code requires this broader switch for allowUnixSockets to take effect.
+            #[cfg(target_os = "linux")]
+            network.insert("allowAllUnixSockets".to_string(), Value::Bool(true));
+        }
+
+        #[cfg(not(unix))]
+        let _ = settings;
+
+        Ok(())
     }
 
     /// Returns `(hooks_installed, hooks_up_to_date)` from a parsed settings value.
@@ -222,6 +272,7 @@ impl ClaudeCodeInstaller {
         if let Some(root) = merged.as_object_mut() {
             root.insert("hooks".to_string(), hooks_obj);
         }
+        Self::allow_trace2_socket(&mut merged)?;
 
         if existing == merged {
             return Ok(None);
@@ -474,17 +525,14 @@ mod tests {
     fn s2_idempotent_already_on_catch_all() {
         let (_td, path) = setup_test_env();
         let cmd = expected_cmd();
-        fs::write(
-            &path,
-            serde_json::to_string_pretty(&json!({
-                "hooks": {
-                    "PreToolUse": [{"matcher": "*", "hooks": [{"type":"command","command": cmd}]}],
-                    "PostToolUse": [{"matcher": "*", "hooks": [{"type":"command","command": cmd}]}]
-                }
-            }))
-            .unwrap(),
-        )
-        .unwrap();
+        let mut settings = json!({
+            "hooks": {
+                "PreToolUse": [{"matcher": "*", "hooks": [{"type":"command","command": cmd}]}],
+                "PostToolUse": [{"matcher": "*", "hooks": [{"type":"command","command": cmd}]}]
+            }
+        });
+        ClaudeCodeInstaller::allow_trace2_socket(&mut settings).unwrap();
+        fs::write(&path, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 
         let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
         assert!(diff.is_none(), "should return None when already up-to-date");
@@ -688,7 +736,7 @@ mod tests {
     fn s7_idempotent_user_catch_all_plus_git_ai() {
         let (_td, path) = setup_test_env();
         let cmd = expected_cmd();
-        let before = json!({
+        let mut before = json!({
             "hooks": {
                 "PreToolUse": [{"matcher": "*", "hooks": [
                     {"type":"command","command": "my-audit-tool"},
@@ -700,6 +748,7 @@ mod tests {
                 ]}]
             }
         });
+        ClaudeCodeInstaller::allow_trace2_socket(&mut before).unwrap();
         fs::write(&path, serde_json::to_string_pretty(&before).unwrap()).unwrap();
 
         let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
