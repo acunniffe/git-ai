@@ -1792,6 +1792,7 @@ fn wltrace_captures_daemon_working_log_ops_when_enabled() {
     fs::write(&file_path, "AI content\n").unwrap();
     repo.git_ai(&["checkpoint", "mock_ai", "traced.txt"])
         .unwrap();
+    repo.sync_daemon();
 
     let trace = fs::read_to_string(trace_file.path()).expect("read wltrace output");
     for op in [
