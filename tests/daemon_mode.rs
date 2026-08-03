@@ -827,7 +827,7 @@ fn claude_fixture_path() -> PathBuf {
 }
 
 #[test]
-fn daemon_ignores_temporary_repositories_until_they_have_a_remote_url() {
+fn daemon_ignores_temporary_repositories_until_remote_config_changes_out_of_band() {
     const ENABLE_TEMP_REPO_FILTER: (&str, &str) = ("GIT_AI_TEST_ENABLE_TEMP_REPO_FILTER", "1");
 
     let repo = TestRepo::new_with_daemon_env(&[ENABLE_TEMP_REPO_FILTER]);
@@ -866,17 +866,16 @@ fn daemon_ignores_temporary_repositories_until_they_have_a_remote_url() {
         "the daemon should not process the temporary local-only repository"
     );
 
-    repo.git_without_test_sync_for_test(
-        &[
-            "remote",
-            "add",
-            "origin",
-            "https://github.com/acme/temporary-repo.git",
-        ],
-        &[],
+    let mut git_config = fs::OpenOptions::new()
+        .append(true)
+        .open(repo.path().join(".git/config"))
+        .expect("repository config should exist");
+    writeln!(
+        git_config,
+        "\n[remote \"origin\"]\n\turl = https://github.com/acme/temporary-repo.git"
     )
-    .expect("adding a remote should succeed");
-    repo.sync_daemon_force();
+    .expect("remote config should be written directly");
+    git_config.flush().expect("remote config should be flushed");
 
     fs::write(&file_path, "ignored AI line\ntracked AI line\n")
         .expect("failed to write tracked AI edit");

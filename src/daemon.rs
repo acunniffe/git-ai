@@ -106,7 +106,7 @@ const CHECKPOINT_FAMILY_DRAIN_CONCURRENCY: usize = 2;
 #[cfg(not(windows))]
 const TRACE_SOCKET_RECV_BUFFER_BYTES: usize = 512 * 1024;
 const TRACE_INGEST_QUEUE_CAPACITY: usize = 16_384;
-const TEMP_REPO_FILTER_CACHE_CAPACITY: usize = 1_024;
+const TEMP_REPO_FILTER_ALLOW_CACHE_CAPACITY: usize = 1_024;
 #[cfg(not(windows))]
 const TRACE_CONNECTION_BOOTSTRAP_READ_TIMEOUT: Duration = Duration::from_millis(100);
 #[cfg(windows)]
@@ -486,16 +486,6 @@ fn trace_payload_explicit_worktree(payload: &Value) -> Option<PathBuf> {
         .or_else(|| payload.get("repo_working_dir"))
         .and_then(Value::as_str)
         .map(PathBuf::from)
-}
-
-fn trace_payload_may_change_remote_config(payload: &Value) -> bool {
-    let argv = trace_payload_effective_argv(payload);
-    matches!(
-        trace_payload_primary_command(payload)
-            .or_else(|| trace_argv_primary_command(&argv))
-            .as_deref(),
-        Some("config" | "remote")
-    )
 }
 
 fn daemon_worktree_from_repo_path(repo_path: &Path) -> Option<PathBuf> {
@@ -2740,13 +2730,6 @@ struct TraceIngressState {
     root_close_markers_enqueued: HashSet<String>,
 }
 
-#[derive(Debug, Clone)]
-struct TraceRepoFilterRoot {
-    repo_path: PathBuf,
-    ignored: bool,
-    invalidates_cache: bool,
-}
-
 #[doc(hidden)]
 pub struct ActorDaemonCoordinator {
     backend: Arc<crate::daemon::git_backend::SystemGitBackend>,
@@ -2797,8 +2780,8 @@ pub struct ActorDaemonCoordinator {
     processed_trace_ingest_seq: AtomicUsize,
     trace_ingest_progress_notify: Notify,
     trace_ingress_state: Mutex<TraceIngressState>,
-    temp_repo_filter_cache: Mutex<HashMap<PathBuf, bool>>,
-    temp_repo_filter_roots: Mutex<HashMap<String, TraceRepoFilterRoot>>,
+    temp_repo_filter_allow_cache: Mutex<HashSet<PathBuf>>,
+    temp_repo_filter_roots: Mutex<HashSet<String>>,
     shutting_down: AtomicBool,
     shutdown_action: AtomicU8,
     shutdown_notify: Notify,
@@ -2901,8 +2884,8 @@ impl ActorDaemonCoordinator {
             processed_trace_ingest_seq: AtomicUsize::new(0),
             trace_ingest_progress_notify: Notify::new(),
             trace_ingress_state: Mutex::new(TraceIngressState::default()),
-            temp_repo_filter_cache: Mutex::new(HashMap::new()),
-            temp_repo_filter_roots: Mutex::new(HashMap::new()),
+            temp_repo_filter_allow_cache: Mutex::new(HashSet::new()),
+            temp_repo_filter_roots: Mutex::new(HashSet::new()),
             shutting_down: AtomicBool::new(false),
             shutdown_action: AtomicU8::new(DaemonExitAction::Stop.as_u8()),
             shutdown_notify: Notify::new(),
@@ -6533,28 +6516,21 @@ impl ActorDaemonCoordinator {
                 &root_sid,
             );
 
-        let tracked_root = {
+        let ignored_root = {
             let mut roots = self.temp_repo_filter_roots.lock().map_err(|_| {
                 GitAiError::Generic("temporary repository root cache lock poisoned".to_string())
             })?;
             if terminal {
                 roots.remove(&root_sid)
             } else {
-                roots.get(&root_sid).cloned()
+                roots.contains(&root_sid)
             }
         };
-        if let Some(tracked_root) = tracked_root {
-            if terminal && tracked_root.invalidates_cache {
-                self.temp_repo_filter_cache
-                    .lock()
-                    .map_err(|_| {
-                        GitAiError::Generic(
-                            "temporary repository decision cache lock poisoned".to_string(),
-                        )
-                    })?
-                    .remove(&tracked_root.repo_path);
+        if ignored_root {
+            if terminal {
+                self.clear_trace_root_tracking(&root_sid)?;
             }
-            return Ok(tracked_root.ignored);
+            return Ok(true);
         }
 
         if event != "def_repo" || crate::daemon::trace_normalizer::def_repo_is_secondary(payload) {
@@ -6564,16 +6540,15 @@ impl ActorDaemonCoordinator {
             return Ok(false);
         };
 
-        let cached = self
-            .temp_repo_filter_cache
+        let cached_allow = self
+            .temp_repo_filter_allow_cache
             .lock()
             .map_err(|_| {
-                GitAiError::Generic("temporary repository decision cache lock poisoned".to_string())
+                GitAiError::Generic("temporary repository allow cache lock poisoned".to_string())
             })?
-            .get(&repo_path)
-            .copied();
-        let ignored = if let Some(ignored) = cached {
-            ignored
+            .contains(&repo_path);
+        let ignored = if cached_allow {
+            false
         } else {
             let repo_path_for_check = repo_path.clone();
             let ignored = crate::tokio_runtime::spawn_blocking_result(move || {
@@ -6582,36 +6557,29 @@ impl ActorDaemonCoordinator {
             })
             .await
             .unwrap_or(false);
-            let mut cache = self.temp_repo_filter_cache.lock().map_err(|_| {
-                GitAiError::Generic("temporary repository decision cache lock poisoned".to_string())
-            })?;
-            if cache.len() >= TEMP_REPO_FILTER_CACHE_CAPACITY
-                && let Some(evicted) = cache.keys().next().cloned()
-            {
-                cache.remove(&evicted);
+            if !ignored {
+                let mut cache = self.temp_repo_filter_allow_cache.lock().map_err(|_| {
+                    GitAiError::Generic(
+                        "temporary repository allow cache lock poisoned".to_string(),
+                    )
+                })?;
+                if cache.len() >= TEMP_REPO_FILTER_ALLOW_CACHE_CAPACITY
+                    && let Some(evicted) = cache.iter().next().cloned()
+                {
+                    cache.remove(&evicted);
+                }
+                cache.insert(repo_path.clone());
             }
-            cache.insert(repo_path.clone(), ignored);
             ignored
         };
 
-        let invalidates_cache = trace_payload_may_change_remote_config(payload);
-        if ignored || invalidates_cache {
+        if ignored {
             self.temp_repo_filter_roots
                 .lock()
                 .map_err(|_| {
                     GitAiError::Generic("temporary repository root cache lock poisoned".to_string())
                 })?
-                .insert(
-                    root_sid.clone(),
-                    TraceRepoFilterRoot {
-                        repo_path,
-                        ignored,
-                        invalidates_cache,
-                    },
-                );
-        }
-
-        if ignored {
+                .insert(root_sid.clone());
             {
                 let mut normalizer = self.normalizer.lock().await;
                 let _ = normalizer.sweep_orphans_for_roots(std::slice::from_ref(&root_sid));
@@ -6623,6 +6591,8 @@ impl ActorDaemonCoordinator {
                 self.drain_ready_family_sequencers_after_root_cleared(Some(family))
                     .await?;
             }
+            // Keep ingress connection state until atexit or the synthesized connection-close
+            // marker arrives. The terminal payload then clears all per-root bookkeeping above.
         }
 
         Ok(ignored)
@@ -10116,6 +10086,78 @@ mod tests {
             "closing the trace stream without root atexit must not leave the family sequencer wedged"
         );
         coord.request_shutdown();
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn ignored_temp_repo_terminal_payload_clears_trace_tracking() {
+        let _filter = EnvVarGuard::set("GIT_AI_TEST_ENABLE_TEMP_REPO_FILTER", "1");
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let init = std::process::Command::new("git")
+            .arg("-C")
+            .arg(temp.path())
+            .args(["init", "repo"])
+            .output()
+            .expect("git init should run");
+        assert!(
+            init.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&init.stderr)
+        );
+
+        let sid = "20260411T120000.000000-Psid-ignored-temp";
+        coord.trace_root_connection_opened(sid).unwrap();
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "commit", "-m", "ignored commit"],
+            "worktree": worktree,
+            "time_ns": 1u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        coord.record_trace_payload_enqueued_root(Some(sid)).unwrap();
+
+        let def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": worktree,
+            "time_ns": 2u64,
+        });
+        assert!(coord.should_ignore_trace_payload(&def_repo).await.unwrap());
+
+        let close_marker_roots = coord
+            .record_trace_connection_close(&[sid.to_string()])
+            .unwrap();
+        assert_eq!(close_marker_roots, [sid.to_string()]);
+        coord.record_trace_payload_enqueued_root(Some(sid)).unwrap();
+        let close_marker = serde_json::json!({
+            "event": TRACE_CONNECTION_CLOSED_EVENT,
+            "sid": sid,
+            "time_ns": 3u64,
+        });
+        assert!(
+            coord
+                .should_ignore_trace_payload(&close_marker)
+                .await
+                .unwrap()
+        );
+
+        let ingress = coord.trace_ingress_state.lock().unwrap();
+        assert!(!ingress.root_argv.contains_key(sid));
+        assert!(!ingress.root_open_connections.contains_key(sid));
+        assert!(!ingress.root_close_markers_enqueued.contains(sid));
+        drop(ingress);
+        assert!(
+            !coord
+                .queued_trace_payloads_by_root
+                .lock()
+                .unwrap()
+                .contains_key(sid)
+        );
+        assert!(!coord.temp_repo_filter_roots.lock().unwrap().contains(sid));
     }
 
     #[tokio::test]
