@@ -43,8 +43,7 @@ fn install_hooks_allows_trace2_socket_in_all_claude_sandboxes() {
     assert!(allowed_sockets.contains(&json!(expected_trace_socket)));
     assert_eq!(network["allowedDomains"], json!(["example.com"]));
     assert_eq!(settings["theme"], "dark");
-    #[cfg(target_os = "linux")]
-    assert_eq!(network["allowAllUnixSockets"], true);
+    assert!(network["allowAllUnixSockets"].is_null());
 
     repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
         .expect("reinstall Claude hooks");
@@ -77,6 +76,34 @@ fn install_hooks_preserves_explicit_sandbox_restrictions() {
     assert_eq!(settings["sandbox"]["network"]["allowAllUnixSockets"], false);
     assert!(settings["hooks"]["PreToolUse"].is_array());
     assert!(settings["hooks"]["PostToolUse"].is_array());
+}
+
+#[test]
+fn uninstall_hooks_removes_only_the_trace2_socket_allowance() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let settings_path = repo.test_home_path().join(".claude/settings.json");
+    fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+    let original_sandbox = json!({
+        "enabled": true,
+        "network": {
+            "allowedDomains": ["example.com"],
+            "allowUnixSockets": ["/tmp/user-owned.sock"]
+        }
+    });
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&json!({"sandbox": original_sandbox})).unwrap(),
+    )
+    .unwrap();
+
+    repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
+        .expect("install Claude hooks");
+    repo.git_ai_without_pre_sync_for_test(&["uninstall-hooks"])
+        .expect("uninstall Claude hooks");
+
+    let settings: Value =
+        serde_json::from_str(&fs::read_to_string(settings_path).unwrap()).unwrap();
+    assert_eq!(settings["sandbox"], original_sandbox);
 }
 
 #[test]

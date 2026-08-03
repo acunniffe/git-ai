@@ -59,28 +59,75 @@ impl ClaudeCodeInstaller {
                 .as_array_mut()
                 .expect("allowUnixSockets shape checked above");
 
-            let trace_socket = DaemonConfig::from_env_or_default_paths()?
-                .trace_socket_path
-                .to_string_lossy()
-                .into_owned();
-            let trace_socket = Value::String(trace_socket);
+            let trace_socket = Self::trace2_socket_value()?;
             if !allowed_sockets.contains(&trace_socket) {
                 allowed_sockets.push(trace_socket);
             }
 
-            // Linux and WSL seccomp cannot filter Unix sockets by path, so Claude
-            // Code requires this broader switch for allowUnixSockets to take effect.
-            // Preserve an explicit user restriction rather than widening their sandbox.
-            #[cfg(target_os = "linux")]
-            network
-                .entry("allowAllUnixSockets")
-                .or_insert(Value::Bool(true));
+            // Claude Code ignores path-scoped socket allowances on Linux and WSL2.
+            // Do not enable allowAllUnixSockets as a fallback: it disables Unix
+            // socket isolation for every sandboxed command, not just git.
         }
 
         #[cfg(not(unix))]
         let _ = settings;
 
         Ok(())
+    }
+
+    #[cfg(unix)]
+    fn trace2_socket_value() -> Result<Value, GitAiError> {
+        Ok(Value::String(
+            DaemonConfig::from_env_or_default_paths()?
+                .trace_socket_path
+                .to_string_lossy()
+                .into_owned(),
+        ))
+    }
+
+    fn remove_trace2_socket(settings: &mut Value) -> Result<bool, GitAiError> {
+        #[cfg(unix)]
+        {
+            let Some(root) = settings.as_object_mut() else {
+                return Ok(false);
+            };
+            let Some(sandbox) = root.get_mut("sandbox").and_then(Value::as_object_mut) else {
+                return Ok(false);
+            };
+            let Some(network) = sandbox.get_mut("network").and_then(Value::as_object_mut) else {
+                return Ok(false);
+            };
+            let Some(allowed_sockets) = network
+                .get_mut("allowUnixSockets")
+                .and_then(Value::as_array_mut)
+            else {
+                return Ok(false);
+            };
+
+            let trace_socket = Self::trace2_socket_value()?;
+            let original_len = allowed_sockets.len();
+            allowed_sockets.retain(|socket| socket != &trace_socket);
+            if allowed_sockets.len() == original_len {
+                return Ok(false);
+            }
+
+            if allowed_sockets.is_empty() {
+                network.remove("allowUnixSockets");
+            }
+            if network.is_empty() {
+                sandbox.remove("network");
+            }
+            if sandbox.is_empty() {
+                root.remove("sandbox");
+            }
+            Ok(true)
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = settings;
+            Ok(false)
+        }
     }
 
     /// Returns `(hooks_installed, hooks_up_to_date)` from a parsed settings value.
@@ -312,12 +359,9 @@ impl ClaudeCodeInstaller {
         let existing: Value = serde_json::from_str(&existing_content)?;
 
         let mut merged = existing.clone();
-        let mut hooks_obj = match merged.get("hooks").cloned() {
-            Some(h) => h,
-            None => return Ok(None),
-        };
+        let mut hooks_obj = merged.get("hooks").cloned().unwrap_or_else(|| json!({}));
 
-        let mut changed = false;
+        let mut hooks_changed = false;
 
         for hook_type in &["PreToolUse", "PostToolUse"] {
             if let Some(hook_type_array) =
@@ -337,19 +381,20 @@ impl ClaudeCodeInstaller {
                             }
                         });
                         if hooks_array.len() != original_len {
-                            changed = true;
+                            hooks_changed = true;
                         }
                     }
                 }
             }
         }
 
-        if !changed {
-            return Ok(None);
-        }
-
-        if let Some(root) = merged.as_object_mut() {
+        if hooks_changed && let Some(root) = merged.as_object_mut() {
             root.insert("hooks".to_string(), hooks_obj);
+        }
+        let socket_changed = Self::remove_trace2_socket(&mut merged)?;
+
+        if !hooks_changed && !socket_changed {
+            return Ok(None);
         }
 
         let new_content = serde_json::to_string_pretty(&merged)?;
