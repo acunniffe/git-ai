@@ -1,4 +1,6 @@
 use crate::config::{CodexHooksFormat, Config};
+#[cfg(unix)]
+use crate::daemon::DaemonConfig;
 use crate::error::GitAiError;
 use crate::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
 use crate::mdm::utils::{
@@ -229,6 +231,70 @@ impl CodexInstaller {
         }
 
         Ok(merged)
+    }
+
+    fn config_with_trace_socket_allowed(config: &TomlValue) -> Result<TomlValue, GitAiError> {
+        #[cfg(not(unix))]
+        return Ok(config.clone());
+
+        #[cfg(unix)]
+        {
+            let trace_socket_path = DaemonConfig::from_env_or_default_paths()?.trace_socket_path;
+            let mut merged = config.clone();
+            let root = merged.as_table_mut().ok_or_else(|| {
+                GitAiError::Generic("Codex config root must be a table".to_string())
+            })?;
+            let features = root
+                .entry("features")
+                .or_insert_with(|| TomlValue::Table(Map::new()));
+            if !features.is_table() {
+                *features = TomlValue::Table(Map::new());
+            }
+            let features = features.as_table_mut().ok_or_else(|| {
+                GitAiError::Generic("Codex config features field must be a table".to_string())
+            })?;
+
+            let network_proxy = features
+                .entry("network_proxy")
+                .or_insert_with(|| TomlValue::Table(Map::new()));
+            if let Some(enabled) = network_proxy.as_bool() {
+                *network_proxy = TomlValue::Table(Map::from_iter([(
+                    "enabled".to_string(),
+                    TomlValue::Boolean(enabled),
+                )]));
+            } else if !network_proxy.is_table() {
+                *network_proxy = TomlValue::Table(Map::new());
+            }
+            let network_proxy = network_proxy.as_table_mut().ok_or_else(|| {
+                GitAiError::Generic(
+                    "Codex config features.network_proxy field must be a table".to_string(),
+                )
+            })?;
+            network_proxy
+                .entry("enabled")
+                .or_insert(TomlValue::Boolean(true));
+
+            let unix_sockets = network_proxy
+                .entry("unix_sockets")
+                .or_insert_with(|| TomlValue::Table(Map::new()));
+            if !unix_sockets.is_table() {
+                *unix_sockets = TomlValue::Table(Map::new());
+            }
+            unix_sockets
+                .as_table_mut()
+                .ok_or_else(|| {
+                    GitAiError::Generic(
+                        "Codex config features.network_proxy.unix_sockets field must be a table"
+                            .to_string(),
+                    )
+                })?
+                .insert(
+                    trace_socket_path.to_string_lossy().into_owned(),
+                    TomlValue::String("allow".to_string()),
+                );
+
+            Ok(merged)
+        }
     }
 
     fn config_with_installed_hooks(
@@ -707,8 +773,9 @@ impl HookInstaller for CodexInstaller {
                 Self::remove_notify_if_git_ai(&config)?.unwrap_or(config.clone());
             let (config_without_inline_hooks, _) =
                 Self::remove_inline_hooks_from_config(&config_without_notify)?;
-            let desired_config =
-                Self::config_with_hooks_feature_enabled(&config_without_inline_hooks)?;
+            let desired_config = Self::config_with_trace_socket_allowed(
+                &Self::config_with_hooks_feature_enabled(&config_without_inline_hooks)?,
+            )?;
             let desired_hooks_json =
                 Self::hooks_json_with_installed_hooks(&hooks_json, &params.binary_path)?;
             let has_json_hooks = Self::hooks_json_has_git_ai_entries(&hooks_json);
@@ -722,7 +789,9 @@ impl HookInstaller for CodexInstaller {
             });
         }
 
-        let desired_config = Self::config_with_installed_hooks(&config, &params.binary_path)?;
+        let desired_config = Self::config_with_trace_socket_allowed(
+            &Self::config_with_installed_hooks(&config, &params.binary_path)?,
+        )?;
         let has_inline_hooks = Self::config_has_inline_hooks(&config);
         let has_legacy_hooks_json = Self::hooks_json_has_git_ai_entries(&hooks_json);
         let hooks_installed = Self::config_hooks_feature_enabled(&config)
@@ -768,8 +837,9 @@ impl HookInstaller for CodexInstaller {
                 Self::remove_notify_if_git_ai(&existing_config)?.unwrap_or(existing_config.clone());
             let (config_without_inline_hooks, _) =
                 Self::remove_inline_hooks_from_config(&config_without_notify)?;
-            let merged_config =
-                Self::config_with_hooks_feature_enabled(&config_without_inline_hooks)?;
+            let merged_config = Self::config_with_trace_socket_allowed(
+                &Self::config_with_hooks_feature_enabled(&config_without_inline_hooks)?,
+            )?;
             let merged_hooks =
                 Self::hooks_json_with_installed_hooks(&existing_hooks, &params.binary_path)?;
 
@@ -810,8 +880,9 @@ impl HookInstaller for CodexInstaller {
             return Ok(Some(diff_output.join("\n")));
         }
 
-        let merged_config =
-            Self::config_with_installed_hooks(&existing_config, &params.binary_path)?;
+        let merged_config = Self::config_with_trace_socket_allowed(
+            &Self::config_with_installed_hooks(&existing_config, &params.binary_path)?,
+        )?;
 
         // Check if legacy hooks.json needs migration
         let (hooks_json_changed, existing_hooks_content) = if hooks_json_path.exists() {
@@ -1933,6 +2004,55 @@ codex_hooks = true
             assert!(check.tool_installed);
             assert!(check.hooks_installed);
             assert!(check.hooks_up_to_date);
+        });
+    }
+
+    #[test]
+    #[serial]
+    #[cfg(unix)]
+    fn test_hooks_json_install_allows_trace_socket_and_is_idempotent() {
+        with_temp_home(|home| {
+            let codex_dir = home.join(".codex");
+            write_git_ai_config(home, "hooks_json");
+            fs::create_dir_all(&codex_dir).unwrap();
+            let config_path = codex_dir.join("config.toml");
+            fs::write(&config_path, "model = \"gpt-5\"\n").unwrap();
+
+            let installer = CodexInstaller;
+            let params = HookInstallerParams {
+                binary_path: test_binary_path(),
+            };
+            installer
+                .install_hooks(&params, false)
+                .expect("install should succeed");
+
+            let installed_content = fs::read_to_string(&config_path).unwrap();
+            let installed = CodexInstaller::parse_config_toml(&installed_content).unwrap();
+            let network_proxy = installed
+                .get("features")
+                .and_then(|features| features.get("network_proxy"))
+                .expect("network proxy config");
+            let trace_socket = DaemonConfig::from_home(home)
+                .trace_socket_path
+                .to_string_lossy()
+                .into_owned();
+            assert_eq!(
+                network_proxy.get("enabled").and_then(TomlValue::as_bool),
+                Some(true)
+            );
+            assert_eq!(
+                network_proxy
+                    .get("unix_sockets")
+                    .and_then(|sockets| sockets.get(&trace_socket))
+                    .and_then(TomlValue::as_str),
+                Some("allow")
+            );
+
+            let second_install = installer
+                .install_hooks(&params, false)
+                .expect("second install should succeed");
+            assert!(second_install.is_none(), "second install should be a no-op");
+            assert_eq!(fs::read_to_string(config_path).unwrap(), installed_content);
         });
     }
 
