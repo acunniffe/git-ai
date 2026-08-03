@@ -329,8 +329,11 @@ impl CodexInstaller {
             if remove_unix_sockets {
                 network_proxy.remove("unix_sockets");
             }
-            // Only the exact socket rule is owned by git-ai. Keep `enabled` and any
-            // other proxy settings because they may have existed before installation.
+            if network_proxy.len() == 1
+                && network_proxy.get("enabled").and_then(TomlValue::as_bool) == Some(true)
+            {
+                network_proxy.remove("enabled");
+            }
             if network_proxy.is_empty() {
                 features.remove("network_proxy");
             }
@@ -2100,6 +2103,18 @@ codex_hooks = true
                 .expect("second install should succeed");
             assert!(second_install.is_none(), "second install should be a no-op");
             assert_eq!(fs::read_to_string(config_path).unwrap(), installed_content);
+
+            installer
+                .uninstall_hooks(&params, false)
+                .expect("uninstall should succeed");
+            let uninstalled = CodexInstaller::parse_config_toml(
+                &fs::read_to_string(codex_dir.join("config.toml")).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                uninstalled.get("features").is_none(),
+                "uninstall should remove proxy config created solely for git-ai"
+            );
         });
     }
 
