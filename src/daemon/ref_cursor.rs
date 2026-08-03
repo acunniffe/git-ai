@@ -1607,15 +1607,23 @@ impl RefCursor {
         reference: &str,
     ) -> Result<Vec<RefChange>, GitAiError> {
         let start = self.reflog_start_offset(key, path)?;
-        let command_boundary = self.command_start_hints.get(key).copied().or(start);
-        let entries = read_reflog_entries(key.to_string(), path, reference, start)?;
+        let mut entries = read_reflog_entries(key.to_string(), path, reference, start)?
+            .into_iter()
+            .filter(|entry| !self.entry_consumed(entry))
+            .collect::<Vec<_>>();
+        if let Some(command_boundary) = self.command_start_hints.get(key).copied() {
+            if let Some(first_current) = entries
+                .iter()
+                .position(|entry| entry.start_offset >= command_boundary)
+            {
+                entries.drain(..first_current);
+            } else if let Some(latest_before_boundary) = entries.pop() {
+                entries.clear();
+                entries.push(latest_before_boundary);
+            }
+        }
         let mut changes = Vec::new();
         for entry in entries {
-            if self.entry_consumed(&entry)
-                || command_boundary.is_some_and(|boundary| entry.start_offset < boundary)
-            {
-                continue;
-            }
             self.consume_entry(&entry)?;
             changes.push(entry_to_ref_change(&entry));
         }
@@ -3549,6 +3557,13 @@ fn parse_branch_command_spec(args: &[String]) -> BranchCommandSpec {
         .unwrap_or(BranchCommandSpec::None)
 }
 
+pub(super) fn branch_command_is_tip_update(cmd: &NormalizedCommand) -> bool {
+    matches!(
+        parse_branch_command_spec(&command_args(cmd)),
+        BranchCommandSpec::CreateOrReset { .. }
+    )
+}
+
 fn branch_command_args(args: &[String]) -> &[String] {
     if args.first().is_some_and(|arg| arg == "branch") {
         &args[1..]
@@ -4700,6 +4715,42 @@ mod tests {
                 reference: reference.to_string(),
                 old: B.to_string(),
                 new: D.to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn late_common_boundary_falls_back_to_current_unstructured_update_ref() {
+        let temp = tempfile::tempdir().unwrap();
+        let reference = "refs/heads/main";
+        let log_path = temp.path().join("logs").join(reference);
+        fs::create_dir_all(log_path.parent().unwrap()).unwrap();
+
+        let base_line = format!("{A} {B} Test User <test@example.com> 0 +0000\tbase\n");
+        let current_line =
+            format!("{B} {C} Test User <test@example.com> 0 +0000\tcurrent stdin update\n");
+        let in_order_offset = base_line.len() as u64;
+        let late_command_start_offset = (base_line.len() + current_line.len()) as u64;
+        fs::write(&log_path, format!("{base_line}{current_line}")).unwrap();
+
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        cursor
+            .initialize_reflog_cursor(&common_key(reference), in_order_offset)
+            .unwrap();
+        let mut cmd = command(&family, &["update-ref", "--stdin"]);
+        cmd.reflog_start_offsets
+            .insert(common_key(reference), late_command_start_offset);
+
+        cursor.enrich_command(&mut cmd, &state).unwrap();
+
+        assert_eq!(
+            cmd.ref_changes,
+            vec![RefChange {
+                reference: reference.to_string(),
+                old: B.to_string(),
+                new: C.to_string(),
             }]
         );
     }

@@ -1964,6 +1964,73 @@ fn test_traced_branch_force_after_untraced_branch_forces_preserves_source_ai_att
     feature_file.assert_committed_lines(lines!["branch force ai".ai()]);
 }
 
+fn assert_branch_relocation_over_existing_does_not_migrate_note(flag: &str) {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let main = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "destination"]).unwrap();
+    let mut file = repo.filename("branch-relocation.txt");
+    file.set_contents(lines!["destination ai".ai()]);
+    let destination = repo
+        .stage_all_and_commit("destination ai")
+        .unwrap()
+        .commit_sha;
+    file.assert_committed_lines(lines!["destination ai".ai()]);
+    assert_note_has_ai_for_file(&repo, &destination, "branch-relocation.txt");
+
+    let parent = raw_untraced_git(&repo, &["rev-parse", &format!("{destination}^1")])
+        .trim()
+        .to_string();
+    let tree = raw_untraced_git(&repo, &["rev-parse", &format!("{destination}^{{tree}}")])
+        .trim()
+        .to_string();
+    let source = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "unattributed relocation source",
+        ],
+    )
+    .trim()
+    .to_string();
+    assert!(repo.read_authorship_note(&source).is_none());
+
+    repo.git(&["checkout", &main]).unwrap();
+    repo.git(&["branch", "source", &source]).unwrap();
+    repo.git(&["checkout", "source"]).unwrap();
+    file.assert_committed_lines(lines!["destination ai".human()]);
+    repo.git(&["checkout", &main]).unwrap();
+    repo.git(&["branch", flag, "source", "destination"])
+        .unwrap();
+    repo.sync_daemon();
+
+    assert_eq!(
+        repo.git(&["rev-parse", "destination"]).unwrap().trim(),
+        source
+    );
+    repo.git(&["checkout", "destination"]).unwrap();
+    file.assert_committed_lines(lines!["destination ai".human()]);
+    assert!(
+        repo.read_authorship_note(&source).is_none(),
+        "branch {flag} must not migrate the overwritten destination note"
+    );
+}
+
+#[test]
+fn test_branch_force_rename_over_existing_does_not_migrate_note() {
+    assert_branch_relocation_over_existing_does_not_migrate_note("-M");
+}
+
+#[test]
+fn test_branch_force_copy_over_existing_does_not_migrate_note() {
+    assert_branch_relocation_over_existing_does_not_migrate_note("-C");
+}
+
 #[test]
 fn test_traced_update_ref_stdin_after_untraced_transactions_only_processes_current_update() {
     let repo = TestRepo::new();
