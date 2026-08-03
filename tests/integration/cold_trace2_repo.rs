@@ -275,12 +275,163 @@ fn test_traced_commit_after_untraced_head_move_creates_authorship_note() {
     let raw_unseen = raw_commit_file(&repo, "raw.txt", "raw unseen\n", "raw unseen");
     assert_no_ai_authorship_for_commit(&repo, &raw_unseen);
 
-    write_file(&repo, "next.txt", "next traced\n");
+    write_file(&repo, "next.txt", "next traced ai\n");
+    repo.git_ai(&["checkpoint", "mock_ai", "next.txt"]).unwrap();
     repo.git(&["add", "next.txt"]).unwrap();
     run_traced_git(&repo, &["commit", "-m", "traced after raw"]);
     let traced_after_raw = raw_head(&repo);
 
-    assert_traced_commit_has_no_ai_authorship(&repo, &traced_after_raw);
+    assert_ai_authorship_note(&repo, &traced_after_raw);
+    let mut next = repo.filename("next.txt");
+    next.assert_committed_lines(crate::lines!["next traced ai".ai()]);
+}
+
+#[test]
+fn test_traced_reset_after_untraced_reset_preserves_recovered_ai_attribution() {
+    let repo = TestRepo::new_dedicated_daemon();
+
+    write_file(&repo, "base.txt", "base\n");
+    repo.git_ai(&["checkpoint", "mock_known_human", "base.txt"])
+        .unwrap();
+    let base = repo.stage_all_and_commit("base").unwrap().commit_sha;
+    let mut base_file = repo.filename("base.txt");
+    base_file.assert_committed_lines(crate::lines!["base".human()]);
+
+    write_file(&repo, "recovered.txt", "recovered ai\n");
+    repo.git_ai(&["checkpoint", "mock_ai", "recovered.txt"])
+        .unwrap();
+    let recovered = repo
+        .stage_all_and_commit("recovered source")
+        .unwrap()
+        .commit_sha;
+    let mut recovered_file = repo.filename("recovered.txt");
+    recovered_file.assert_committed_lines(crate::lines!["recovered ai".ai()]);
+
+    write_file(&repo, "gap.txt", "gap ai\n");
+    repo.git_ai(&["checkpoint", "mock_ai", "gap.txt"]).unwrap();
+    repo.stage_all_and_commit("gap source").unwrap();
+    let mut gap_file = repo.filename("gap.txt");
+    gap_file.assert_committed_lines(crate::lines!["gap ai".ai()]);
+
+    raw_git(&repo, &["reset", "--hard", &recovered]);
+    run_traced_git(&repo, &["reset", "--mixed", &base]);
+    repo.stage_all_and_commit("recommit recovered work")
+        .unwrap();
+
+    recovered_file.assert_committed_lines(crate::lines!["recovered ai".ai()]);
+}
+
+#[test]
+fn test_traced_cherry_pick_after_untraced_cherry_pick_preserves_source_ai_attribution() {
+    let repo = TestRepo::new_dedicated_daemon();
+
+    write_file(&repo, "base.txt", "base\n");
+    repo.git_ai(&["checkpoint", "mock_known_human", "base.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+    let mut base_file = repo.filename("base.txt");
+    base_file.assert_committed_lines(crate::lines!["base".human()]);
+    let main = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "pick-sources"]).unwrap();
+    write_file(&repo, "missed-pick.txt", "missed pick ai\n");
+    repo.git_ai(&["checkpoint", "mock_ai", "missed-pick.txt"])
+        .unwrap();
+    let missed_source = repo
+        .stage_all_and_commit("missed pick source")
+        .unwrap()
+        .commit_sha;
+    let mut missed_file = repo.filename("missed-pick.txt");
+    missed_file.assert_committed_lines(crate::lines!["missed pick ai".ai()]);
+
+    write_file(&repo, "traced-pick.txt", "traced pick ai\n");
+    repo.git_ai(&["checkpoint", "mock_ai", "traced-pick.txt"])
+        .unwrap();
+    let traced_source = repo
+        .stage_all_and_commit("traced pick source")
+        .unwrap()
+        .commit_sha;
+    let mut traced_file = repo.filename("traced-pick.txt");
+    traced_file.assert_committed_lines(crate::lines!["traced pick ai".ai()]);
+
+    repo.git(&["checkout", &main]).unwrap();
+    write_file(&repo, "main-advance.txt", "main advance\n");
+    repo.git_ai(&["checkpoint", "mock_known_human", "main-advance.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("main advance").unwrap();
+    let mut main_advance = repo.filename("main-advance.txt");
+    main_advance.assert_committed_lines(crate::lines!["main advance".human()]);
+    repo.sync_daemon_force();
+    raw_git(&repo, &["cherry-pick", &missed_source]);
+    let missed_pick = raw_head(&repo);
+    assert_no_authorship_note(&repo, &missed_pick);
+
+    run_traced_git(&repo, &["cherry-pick", &traced_source]);
+    traced_file.assert_committed_lines(crate::lines!["traced pick ai".ai()]);
+}
+
+#[test]
+fn test_traced_revert_after_untraced_revert_restores_source_ai_attribution() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let missed_path = "missed-revert.txt";
+    let traced_path = "traced-revert.txt";
+
+    write_file(&repo, missed_path, "missed ai\n");
+    repo.git_ai(&["checkpoint", "mock_ai", missed_path])
+        .unwrap();
+    write_file(&repo, traced_path, "traced ai\n");
+    repo.git_ai(&["checkpoint", "mock_ai", traced_path])
+        .unwrap();
+    repo.stage_all_and_commit("ai source lines").unwrap();
+    let mut missed_file = repo.filename(missed_path);
+    missed_file.assert_committed_lines(crate::lines!["missed ai".ai()]);
+    let mut traced_file = repo.filename(traced_path);
+    traced_file.assert_committed_lines(crate::lines!["traced ai".ai()]);
+    let main = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "missed-revert-source"])
+        .unwrap();
+    fs::remove_file(repo.path().join(missed_path)).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", missed_path])
+        .unwrap();
+    let missed_delete = repo
+        .stage_all_and_commit("delete missed file")
+        .unwrap()
+        .commit_sha;
+    assert!(!repo.path().join(missed_path).exists());
+    traced_file.assert_committed_lines(crate::lines!["traced ai".ai()]);
+
+    repo.git(&["checkout", &main]).unwrap();
+    repo.git(&["checkout", "-b", "traced-revert-source"])
+        .unwrap();
+    fs::remove_file(repo.path().join(traced_path)).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", traced_path])
+        .unwrap();
+    let traced_delete = repo
+        .stage_all_and_commit("delete traced file")
+        .unwrap()
+        .commit_sha;
+    assert!(!repo.path().join(traced_path).exists());
+    missed_file.assert_committed_lines(crate::lines!["missed ai".ai()]);
+
+    repo.git(&["checkout", &main]).unwrap();
+    fs::remove_file(repo.path().join(missed_path)).unwrap();
+    fs::remove_file(repo.path().join(traced_path)).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", missed_path])
+        .unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", traced_path])
+        .unwrap();
+    repo.stage_all_and_commit("delete both files").unwrap();
+    assert!(!repo.path().join(missed_path).exists());
+    assert!(!repo.path().join(traced_path).exists());
+
+    raw_git(&repo, &["revert", "--no-edit", &missed_delete]);
+    let missed_revert = raw_head(&repo);
+    assert_no_authorship_note(&repo, &missed_revert);
+
+    run_traced_git(&repo, &["revert", "--no-edit", &traced_delete]);
+    missed_file.assert_committed_lines(crate::lines!["missed ai".human()]);
+    traced_file.assert_committed_lines(crate::lines!["traced ai".ai()]);
 }
 
 #[test]
@@ -674,14 +825,19 @@ fn test_cold_repo_first_traced_stash_pop_is_processed() {
 }
 
 #[test]
-fn test_cold_repo_traced_stash_after_raw_stash_history_preserves_current_ai_attribution() {
-    let mut repo = cold_repo();
-    raw_commit_file(&repo, "stash.txt", "base\n", "raw base");
+fn test_traced_stash_after_untraced_stash_preserves_current_ai_attribution() {
+    let repo = TestRepo::new_dedicated_daemon();
+    write_file(&repo, "stash.txt", "base\n");
+    repo.git_ai(&["checkpoint", "mock_known_human", "stash.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+    let mut file = repo.filename("stash.txt");
+    file.assert_committed_lines(crate::lines!["base".human()]);
+
     write_file(&repo, "stash.txt", "base\nold raw stash\n");
     raw_git(&repo, &["stash", "push"]);
     assert_eq!(read_file(&repo, "stash.txt"), "base\n");
 
-    start_cold_daemon(&mut repo);
     write_file(&repo, "stash.txt", "base\ncurrent ai stash\n");
     repo.git_ai(&["checkpoint", "mock_ai", "stash.txt"])
         .unwrap_or_else(|error| panic!("mock_ai checkpoint failed: {}", error));
@@ -692,14 +848,16 @@ fn test_cold_repo_traced_stash_after_raw_stash_history_preserves_current_ai_attr
     repo.stage_all_and_commit("apply current ai stash")
         .expect("apply current ai stash commit should succeed");
 
-    let mut file = repo.filename("stash.txt");
-    file.assert_lines_and_blame(crate::lines!["base".human(), "current ai stash".ai(),]);
+    file.assert_committed_lines(crate::lines!["base".human(), "current ai stash".ai(),]);
 }
 
 crate::reuse_tests_in_worktree!(
     test_cold_repo_first_traced_commit_is_processed,
     test_cold_repo_commit_message_trailing_whitespace_preserves_ai_authorship,
     test_traced_commit_after_untraced_head_move_creates_authorship_note,
+    test_traced_reset_after_untraced_reset_preserves_recovered_ai_attribution,
+    test_traced_cherry_pick_after_untraced_cherry_pick_preserves_source_ai_attribution,
+    test_traced_revert_after_untraced_revert_restores_source_ai_attribution,
     test_traced_commit_after_untraced_duplicate_message_head_move_notes_traced_commit,
     test_cold_repo_first_traced_amend_is_processed,
     test_cold_repo_first_traced_soft_reset_is_processed,
@@ -712,5 +870,5 @@ crate::reuse_tests_in_worktree!(
     test_cold_daemon_first_traced_squash_merge_preserves_source_ai_authorship,
     test_cold_repo_first_traced_merge_is_processed,
     test_cold_repo_first_traced_stash_pop_is_processed,
-    test_cold_repo_traced_stash_after_raw_stash_history_preserves_current_ai_attribution,
+    test_traced_stash_after_untraced_stash_preserves_current_ai_attribution,
 );
