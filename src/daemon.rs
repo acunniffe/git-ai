@@ -6352,9 +6352,10 @@ impl ActorDaemonCoordinator {
             }
         }
 
-        // Handle update-ref: migrate working logs and authorship notes when the ref
-        // update affects the currently checked-out branch.
-        if primary == "update-ref"
+        // Handle direct ref movers: migrate working logs and authorship notes when
+        // the update affects the currently checked-out branch. `branch -f` emits
+        // the same exact RefUpdated event as update-ref and uses the same rewrite.
+        if matches!(primary, "update-ref" | "branch")
             && let Some(worktree) = cmd.worktree.as_ref()
         {
             for event in events {
