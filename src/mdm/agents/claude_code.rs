@@ -16,9 +16,15 @@ const CLAUDE_PRE_TOOL_CMD: &str = "checkpoint claude --hook-input stdin";
 const CLAUDE_POST_TOOL_CMD: &str = "checkpoint claude --hook-input stdin";
 const CLAUDE_CATCH_ALL_MATCHER: &str = "*";
 
-pub struct ClaudeCodeInstaller;
+pub struct ClaudeCodeInstaller {
+    allow_trace_socket: bool,
+}
 
 impl ClaudeCodeInstaller {
+    pub(crate) fn new(allow_trace_socket: bool) -> Self {
+        Self { allow_trace_socket }
+    }
+
     fn settings_path() -> PathBuf {
         claude_config_dir().join("settings.json")
     }
@@ -180,6 +186,7 @@ impl ClaudeCodeInstaller {
     fn install_hooks_at(
         settings_path: &Path,
         params: &HookInstallerParams,
+        allow_trace_socket: bool,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
         if let Some(dir) = settings_path.parent() {
@@ -331,7 +338,9 @@ impl ClaudeCodeInstaller {
         if let Some(root) = merged.as_object_mut() {
             root.insert("hooks".to_string(), hooks_obj);
         }
-        Self::allow_trace2_socket(&mut merged)?;
+        if allow_trace_socket {
+            Self::allow_trace2_socket(&mut merged)?;
+        }
 
         if existing == merged {
             return Ok(None);
@@ -469,7 +478,12 @@ impl HookInstaller for ClaudeCodeInstaller {
         params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        Self::install_hooks_at(&Self::settings_path(), params, dry_run)
+        Self::install_hooks_at(
+            &Self::settings_path(),
+            params,
+            self.allow_trace_socket,
+            dry_run,
+        )
     }
 
     fn uninstall_hooks(
@@ -564,7 +578,7 @@ mod tests {
         // File does not exist yet
         fs::remove_file(&path).ok();
 
-        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
         assert!(diff.is_some(), "should produce a diff");
 
         let settings = read_settings(&path);
@@ -591,7 +605,7 @@ mod tests {
         ClaudeCodeInstaller::allow_trace2_socket(&mut settings).unwrap();
         fs::write(&path, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 
-        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), true, false).unwrap();
         assert!(diff.is_none(), "should return None when already up-to-date");
     }
 
@@ -611,7 +625,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -661,7 +675,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for (hook_type, user_cmd) in &[
@@ -717,7 +731,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -762,7 +776,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -808,7 +822,7 @@ mod tests {
         ClaudeCodeInstaller::allow_trace2_socket(&mut before).unwrap();
         fs::write(&path, serde_json::to_string_pretty(&before).unwrap()).unwrap();
 
-        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), true, false).unwrap();
         assert!(diff.is_none(), "should be idempotent");
     }
 
@@ -841,7 +855,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -896,7 +910,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -924,7 +938,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -966,7 +980,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -1021,7 +1035,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -1060,7 +1074,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
 
@@ -1349,7 +1363,7 @@ mod tests {
         assert!(!settings_path.parent().unwrap().exists());
 
         let result =
-            ClaudeCodeInstaller::install_hooks_at(&settings_path, &params(), false).unwrap();
+            ClaudeCodeInstaller::install_hooks_at(&settings_path, &params(), false, false).unwrap();
 
         assert!(result.is_some(), "should report changes for fresh install");
         assert!(settings_path.exists(), "settings.json should be created");

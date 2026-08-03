@@ -36,13 +36,14 @@ use super::hook_installer::HookInstaller;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SandboxInstallOptions {
+    pub claude: bool,
     pub codex: bool,
 }
 
 /// Get all available hook installers
 pub fn get_all_installers(sandbox: SandboxInstallOptions) -> Vec<Box<dyn HookInstaller>> {
     let mut installers: Vec<Box<dyn HookInstaller>> = vec![
-        Box::new(ClaudeCodeInstaller),
+        Box::new(ClaudeCodeInstaller::new(sandbox.claude)),
         Box::new(ClineInstaller),
         Box::new(CodexInstaller::new(sandbox.codex)),
         Box::new(CursorInstaller),

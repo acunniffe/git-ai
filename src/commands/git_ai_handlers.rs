@@ -368,6 +368,7 @@ fn print_help() {
     eprintln!("  install-hooks      Install git hooks for AI authorship tracking");
     eprintln!("    --skills               Also install agent skill files");
     eprintln!("    --codex-sandbox        Allow Git to send trace2 events from Codex sandboxes");
+    eprintln!("    --claude-sandbox       Allow Claude sandboxes to reach the trace2 socket");
     eprintln!("    --visual-studio-extension");
     eprintln!("                           Also install the Visual Studio extension on Windows");
     eprintln!("  uninstall-hooks    Remove git-ai hooks from all detected tools");

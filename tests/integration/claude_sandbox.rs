@@ -6,8 +6,24 @@ use serde_json::{Value, json};
 use std::fs;
 
 #[test]
-#[cfg(unix)]
-fn install_hooks_allows_trace2_socket_in_all_claude_sandboxes() {
+fn install_hooks_does_not_configure_claude_sandbox_by_default() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let settings_path = repo.test_home_path().join(".claude/settings.json");
+    fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+    fs::write(&settings_path, "{}\n").unwrap();
+
+    repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
+        .expect("install Claude hooks");
+
+    let settings: Value =
+        serde_json::from_str(&fs::read_to_string(settings_path).unwrap()).unwrap();
+    assert!(settings["sandbox"].is_null());
+    assert!(settings["hooks"]["PreToolUse"].is_array());
+    assert!(settings["hooks"]["PostToolUse"].is_array());
+}
+
+#[test]
+fn install_hooks_claude_sandbox_flag_allows_trace2_socket() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
     let settings_path = repo.test_home_path().join(".claude/settings.json");
     fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
@@ -27,7 +43,7 @@ fn install_hooks_allows_trace2_socket_in_all_claude_sandboxes() {
     )
     .unwrap();
 
-    repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
+    repo.git_ai_without_pre_sync_for_test(&["install-hooks", "--claude-sandbox"])
         .expect("install Claude hooks");
 
     let first_install = fs::read_to_string(&settings_path).unwrap();
@@ -45,7 +61,7 @@ fn install_hooks_allows_trace2_socket_in_all_claude_sandboxes() {
     assert_eq!(settings["theme"], "dark");
     assert!(network["allowAllUnixSockets"].is_null());
 
-    repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
+    repo.git_ai_without_pre_sync_for_test(&["install-hooks", "--claude-sandbox"])
         .expect("reinstall Claude hooks");
     assert_eq!(fs::read_to_string(settings_path).unwrap(), first_install);
 }
@@ -68,7 +84,7 @@ fn install_hooks_preserves_explicit_sandbox_restrictions() {
     )
     .unwrap();
 
-    repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
+    repo.git_ai_without_pre_sync_for_test(&["install-hooks", "--claude-sandbox"])
         .expect("install Claude hooks");
 
     let settings: Value =
@@ -96,7 +112,7 @@ fn uninstall_hooks_removes_only_the_trace2_socket_allowance() {
     )
     .unwrap();
 
-    repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
+    repo.git_ai_without_pre_sync_for_test(&["install-hooks", "--claude-sandbox"])
         .expect("install Claude hooks");
     repo.git_ai_without_pre_sync_for_test(&["uninstall-hooks"])
         .expect("uninstall Claude hooks");
@@ -125,7 +141,7 @@ fn install_hooks_ignores_unexpected_sandbox_shapes() {
         )
         .unwrap();
 
-        repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
+        repo.git_ai_without_pre_sync_for_test(&["install-hooks", "--claude-sandbox"])
             .unwrap_or_else(|error| panic!("install hooks with unexpected {name} shape: {error}"));
 
         let settings: Value =

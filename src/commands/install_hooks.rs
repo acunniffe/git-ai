@@ -366,6 +366,7 @@ fn parse_install_options(args: &[String]) -> Result<InstallOptions, GitAiError> 
             "--verbose" | "-v" => options.verbose = true,
             "--skills" => options.install_skills = true,
             "--codex-sandbox" | "--codex-sandbox=true" => options.sandbox.codex = true,
+            "--claude-sandbox" | "--claude-sandbox=true" => options.sandbox.claude = true,
             "--visual-studio-extension" => options.include_visual_studio_extension = true,
             value if value.starts_with("--api-base=") => {
                 options.api_base = non_empty_value(&value[11..]);
@@ -1079,6 +1080,7 @@ mod tests {
     fn parse_install_options_defaults_visual_studio_extension_to_disabled() {
         let options = parse_install_options(&[]).unwrap();
 
+        assert!(!options.sandbox.claude);
         assert!(!options.include_visual_studio_extension);
         assert!(!options.sandbox.codex);
         assert!(!should_include_installer(
@@ -1086,6 +1088,13 @@ mod tests {
             &options
         ));
         assert!(should_include_installer("vscode", &options));
+    }
+
+    #[test]
+    fn parse_install_options_enables_claude_sandbox_flag() {
+        let options = parse_install_options(&["--claude-sandbox".to_string()]).unwrap();
+
+        assert!(options.sandbox.claude);
     }
 
     #[test]
