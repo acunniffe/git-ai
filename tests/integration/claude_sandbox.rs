@@ -1,3 +1,5 @@
+#![cfg(unix)]
+
 use crate::repos::test_repo::{DaemonTestScope, TestRepo};
 use git_ai::daemon::DaemonConfig;
 use serde_json::{Value, json};
@@ -17,8 +19,7 @@ fn install_hooks_allows_trace2_socket_in_all_claude_sandboxes() {
                 "enabled": true,
                 "network": {
                     "allowedDomains": ["example.com"],
-                    "allowUnixSockets": ["/tmp/user-owned.sock"],
-                    "allowAllUnixSockets": false
+                    "allowUnixSockets": ["/tmp/user-owned.sock"]
                 }
             }
         }))
@@ -48,4 +49,62 @@ fn install_hooks_allows_trace2_socket_in_all_claude_sandboxes() {
     repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
         .expect("reinstall Claude hooks");
     assert_eq!(fs::read_to_string(settings_path).unwrap(), first_install);
+}
+
+#[test]
+fn install_hooks_preserves_explicit_sandbox_restrictions() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let settings_path = repo.test_home_path().join(".claude/settings.json");
+    fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+    fs::write(
+        &settings_path,
+        serde_json::to_string_pretty(&json!({
+            "sandbox": {
+                "network": {
+                    "allowAllUnixSockets": false
+                }
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
+        .expect("install Claude hooks");
+
+    let settings: Value =
+        serde_json::from_str(&fs::read_to_string(settings_path).unwrap()).unwrap();
+    assert_eq!(settings["sandbox"]["network"]["allowAllUnixSockets"], false);
+    assert!(settings["hooks"]["PreToolUse"].is_array());
+    assert!(settings["hooks"]["PostToolUse"].is_array());
+}
+
+#[test]
+fn install_hooks_ignores_unexpected_sandbox_shapes() {
+    for (name, sandbox) in [
+        ("sandbox", json!(true)),
+        ("network", json!({"network": true})),
+        (
+            "allow-unix-sockets",
+            json!({"network": {"allowUnixSockets": true}}),
+        ),
+    ] {
+        let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+        let settings_path = repo.test_home_path().join(".claude/settings.json");
+        fs::create_dir_all(settings_path.parent().unwrap()).unwrap();
+        fs::write(
+            &settings_path,
+            serde_json::to_string_pretty(&json!({"sandbox": sandbox})).unwrap(),
+        )
+        .unwrap();
+
+        repo.git_ai_without_pre_sync_for_test(&["install-hooks"])
+            .unwrap_or_else(|error| panic!("install hooks with unexpected {name} shape: {error}"));
+
+        let settings: Value =
+            serde_json::from_str(&fs::read_to_string(settings_path).unwrap()).unwrap();
+        assert_eq!(settings["sandbox"], sandbox);
+        assert!(settings["hooks"]["PreToolUse"].is_array());
+        assert!(settings["hooks"]["PostToolUse"].is_array());
+    }
 }

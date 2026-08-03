@@ -26,29 +26,38 @@ impl ClaudeCodeInstaller {
     fn allow_trace2_socket(settings: &mut Value) -> Result<(), GitAiError> {
         #[cfg(unix)]
         {
-            let root = settings.as_object_mut().ok_or_else(|| {
-                GitAiError::Generic("Claude Code settings must be a JSON object".to_string())
-            })?;
+            let Some(root) = settings.as_object_mut() else {
+                return Ok(());
+            };
+            if root.get("sandbox").is_some_and(|value| !value.is_object()) {
+                return Ok(());
+            }
             let sandbox = root.entry("sandbox").or_insert_with(|| json!({}));
-            let sandbox = sandbox.as_object_mut().ok_or_else(|| {
-                GitAiError::Generic(
-                    "Claude Code sandbox settings must be a JSON object".to_string(),
-                )
-            })?;
+            let sandbox = sandbox
+                .as_object_mut()
+                .expect("sandbox shape checked above");
+            if sandbox
+                .get("network")
+                .is_some_and(|value| !value.is_object())
+            {
+                return Ok(());
+            }
             let network = sandbox.entry("network").or_insert_with(|| json!({}));
-            let network = network.as_object_mut().ok_or_else(|| {
-                GitAiError::Generic(
-                    "Claude Code sandbox network settings must be a JSON object".to_string(),
-                )
-            })?;
+            let network = network
+                .as_object_mut()
+                .expect("network shape checked above");
+            if network
+                .get("allowUnixSockets")
+                .is_some_and(|value| !value.is_array())
+            {
+                return Ok(());
+            }
             let allowed_sockets = network
                 .entry("allowUnixSockets")
                 .or_insert_with(|| json!([]));
-            let allowed_sockets = allowed_sockets.as_array_mut().ok_or_else(|| {
-                GitAiError::Generic(
-                    "Claude Code sandbox network.allowUnixSockets must be an array".to_string(),
-                )
-            })?;
+            let allowed_sockets = allowed_sockets
+                .as_array_mut()
+                .expect("allowUnixSockets shape checked above");
 
             let trace_socket = DaemonConfig::from_env_or_default_paths()?
                 .trace_socket_path
@@ -61,8 +70,11 @@ impl ClaudeCodeInstaller {
 
             // Linux and WSL seccomp cannot filter Unix sockets by path, so Claude
             // Code requires this broader switch for allowUnixSockets to take effect.
+            // Preserve an explicit user restriction rather than widening their sandbox.
             #[cfg(target_os = "linux")]
-            network.insert("allowAllUnixSockets".to_string(), Value::Bool(true));
+            network
+                .entry("allowAllUnixSockets")
+                .or_insert(Value::Bool(true));
         }
 
         #[cfg(not(unix))]
