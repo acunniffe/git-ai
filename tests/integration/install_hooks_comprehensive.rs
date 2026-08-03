@@ -275,7 +275,7 @@ fn plain_install_hooks_preserves_the_invoking_user_home() {
 
 #[test]
 #[cfg(unix)]
-fn install_hooks_allows_git_ai_trace_socket_in_codex_sandboxes() {
+fn install_hooks_only_allows_git_ai_trace_socket_in_codex_sandboxes_when_requested() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
     let codex_dir = repo.test_home_path().join(".codex");
     let config_path = codex_dir.join("config.toml");
@@ -301,6 +301,41 @@ fn install_hooks_allows_git_ai_trace_socket_in_codex_sandboxes() {
     );
 
     let config: toml::Value =
+        toml::from_str(&fs::read_to_string(&config_path).expect("read default Codex config"))
+            .expect("parse default Codex config");
+    let network_proxy = config
+        .get("features")
+        .and_then(|features| features.get("network_proxy"))
+        .expect("existing Codex network proxy config should remain");
+    assert!(
+        network_proxy.get("enabled").is_none(),
+        "plain install-hooks must not enable the Codex network proxy"
+    );
+    let trace_socket_path = repo.daemon_trace_socket_path();
+    let trace_socket = trace_socket_path.to_string_lossy();
+    assert!(
+        network_proxy
+            .get("unix_sockets")
+            .and_then(toml::Value::as_table)
+            .and_then(|allowed_sockets| allowed_sockets.get(trace_socket.as_ref()))
+            .is_none(),
+        "plain install-hooks must not allow the git-ai trace2 socket"
+    );
+
+    let mut command =
+        repo.git_ai_command_without_pre_sync_for_test(&["install-hooks", "--codex-sandbox"], &[]);
+    command.env_remove("CODEX_HOME");
+    let output = command
+        .output()
+        .expect("run git-ai install-hooks --codex-sandbox");
+    assert!(
+        output.status.success(),
+        "install-hooks --codex-sandbox failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let config: toml::Value =
         toml::from_str(&fs::read_to_string(&config_path).expect("read installed Codex config"))
             .expect("parse installed Codex config");
     let allowed_sockets = config
@@ -318,9 +353,6 @@ fn install_hooks_allows_git_ai_trace_socket_in_codex_sandboxes() {
         Some(true),
         "the Codex network proxy must be enabled for its socket allowlist to apply"
     );
-    let trace_socket_path = repo.daemon_trace_socket_path();
-    let trace_socket = trace_socket_path.to_string_lossy();
-
     assert_eq!(
         allowed_sockets
             .get(trace_socket.as_ref())

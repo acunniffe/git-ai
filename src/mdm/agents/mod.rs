@@ -36,10 +36,15 @@ use super::hook_installer::HookInstaller;
 
 /// Get all available hook installers
 pub fn get_all_installers() -> Vec<Box<dyn HookInstaller>> {
+    get_all_installers_with_codex_sandbox(false)
+}
+
+/// Get all available hook installers with optional Codex sandbox integration.
+pub fn get_all_installers_with_codex_sandbox(codex_sandbox: bool) -> Vec<Box<dyn HookInstaller>> {
     let mut installers: Vec<Box<dyn HookInstaller>> = vec![
         Box::new(ClaudeCodeInstaller),
         Box::new(ClineInstaller),
-        Box::new(CodexInstaller),
+        Box::new(CodexInstaller::new(codex_sandbox)),
         Box::new(CursorInstaller),
         Box::new(VSCodeInstaller),
         Box::new(GitHubCopilotInstaller),
