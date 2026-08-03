@@ -53,7 +53,7 @@ mod continue_cli;
 mod cross_repo_cwd_attribution;
 mod cursor;
 mod daemon_commit_carryover;
-mod daemon_completion_log;
+mod daemon_completion_routing;
 mod diff;
 mod diff_comprehensive;
 mod diff_ignore_binary;
