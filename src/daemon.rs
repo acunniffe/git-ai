@@ -2725,6 +2725,9 @@ struct TraceIngressState {
     /// Roots whose start event was identified as definitely read-only. All
     /// subsequent events for these roots (including exit) take the fast path.
     root_definitely_read_only: HashSet<String>,
+    /// Roots suppressed by the temporary-repository filter. Keeping this with the other ingress
+    /// state lets connection-close handling synthesize a terminal marker before clearing it.
+    root_ignored_temp_repositories: HashSet<String>,
     root_open_connections: HashMap<String, usize>,
     unidentified_open_connections: usize,
     root_close_markers_enqueued: HashSet<String>,
@@ -2781,7 +2784,6 @@ pub struct ActorDaemonCoordinator {
     trace_ingest_progress_notify: Notify,
     trace_ingress_state: Mutex<TraceIngressState>,
     temp_repo_filter_allow_cache: Mutex<HashSet<PathBuf>>,
-    temp_repo_filter_roots: Mutex<HashSet<String>>,
     shutting_down: AtomicBool,
     shutdown_action: AtomicU8,
     shutdown_notify: Notify,
@@ -2885,7 +2887,6 @@ impl ActorDaemonCoordinator {
             trace_ingest_progress_notify: Notify::new(),
             trace_ingress_state: Mutex::new(TraceIngressState::default()),
             temp_repo_filter_allow_cache: Mutex::new(HashSet::new()),
-            temp_repo_filter_roots: Mutex::new(HashSet::new()),
             shutting_down: AtomicBool::new(false),
             shutdown_action: AtomicU8::new(DaemonExitAction::Stop.as_u8()),
             shutdown_notify: Notify::new(),
@@ -3656,6 +3657,9 @@ impl ActorDaemonCoordinator {
     }
 
     fn trace_root_needs_close_marker(ingress: &TraceIngressState, root_sid: &str) -> bool {
+        if ingress.root_ignored_temp_repositories.contains(root_sid) {
+            return true;
+        }
         if ingress.root_definitely_read_only.contains(root_sid) {
             return false;
         }
@@ -3677,6 +3681,7 @@ impl ActorDaemonCoordinator {
         ingress.root_target_repo_only.remove(root_sid);
         ingress.root_last_activity_ns.remove(root_sid);
         ingress.root_definitely_read_only.remove(root_sid);
+        ingress.root_ignored_temp_repositories.remove(root_sid);
         ingress.root_open_connections.remove(root_sid);
         ingress.root_close_markers_enqueued.remove(root_sid);
     }
@@ -6517,14 +6522,10 @@ impl ActorDaemonCoordinator {
             );
 
         let ignored_root = {
-            let mut roots = self.temp_repo_filter_roots.lock().map_err(|_| {
-                GitAiError::Generic("temporary repository root cache lock poisoned".to_string())
+            let ingress = self.trace_ingress_state.lock().map_err(|_| {
+                GitAiError::Generic("trace ingress state lock poisoned".to_string())
             })?;
-            if terminal {
-                roots.remove(&root_sid)
-            } else {
-                roots.contains(&root_sid)
-            }
+            ingress.root_ignored_temp_repositories.contains(&root_sid)
         };
         if ignored_root {
             if terminal {
@@ -6551,13 +6552,13 @@ impl ActorDaemonCoordinator {
             false
         } else {
             let repo_path_for_check = repo_path.clone();
-            let ignored = crate::tokio_runtime::spawn_blocking_result(move || {
+            let checked = crate::tokio_runtime::spawn_blocking_result(move || {
                 let repo = discover_repository_in_path_no_git_exec(&repo_path_for_check)?;
                 repo.is_temporary_without_remote_url()
             })
-            .await
-            .unwrap_or(false);
-            if !ignored {
+            .await;
+            let ignored = checked.as_ref().copied().unwrap_or(false);
+            if matches!(checked, Ok(false)) {
                 let mut cache = self.temp_repo_filter_allow_cache.lock().map_err(|_| {
                     GitAiError::Generic(
                         "temporary repository allow cache lock poisoned".to_string(),
@@ -6574,11 +6575,10 @@ impl ActorDaemonCoordinator {
         };
 
         if ignored {
-            self.temp_repo_filter_roots
+            self.trace_ingress_state
                 .lock()
-                .map_err(|_| {
-                    GitAiError::Generic("temporary repository root cache lock poisoned".to_string())
-                })?
+                .map_err(|_| GitAiError::Generic("trace ingress state lock poisoned".to_string()))?
+                .root_ignored_temp_repositories
                 .insert(root_sid.clone());
             {
                 let mut normalizer = self.normalizer.lock().await;
@@ -10090,7 +10090,7 @@ mod tests {
 
     #[serial]
     #[tokio::test]
-    async fn ignored_temp_repo_terminal_payload_clears_trace_tracking() {
+    async fn ignored_temp_repo_connection_close_clears_trace_tracking() {
         let _filter = EnvVarGuard::set("GIT_AI_TEST_ENABLE_TEMP_REPO_FILTER", "1");
         let coord = ActorDaemonCoordinator::new();
         let temp = tempfile::tempdir().unwrap();
@@ -10109,14 +10109,14 @@ mod tests {
 
         let sid = "20260411T120000.000000-Psid-ignored-temp";
         coord.trace_root_connection_opened(sid).unwrap();
-        let mut start = serde_json::json!({
-            "event": "start",
-            "sid": sid,
-            "argv": ["git", "commit", "-m", "ignored commit"],
-            "worktree": worktree,
-            "time_ns": 1u64,
-        });
-        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        {
+            let mut ingress = coord.trace_ingress_state.lock().unwrap();
+            ingress.root_argv.insert(
+                sid.to_string(),
+                vec!["git".to_string(), "unknown".to_string()],
+            );
+            ingress.root_mutating.insert(sid.to_string(), false);
+        }
         coord.record_trace_payload_enqueued_root(Some(sid)).unwrap();
 
         let def_repo = serde_json::json!({
@@ -10149,6 +10149,7 @@ mod tests {
         assert!(!ingress.root_argv.contains_key(sid));
         assert!(!ingress.root_open_connections.contains_key(sid));
         assert!(!ingress.root_close_markers_enqueued.contains(sid));
+        assert!(!ingress.root_ignored_temp_repositories.contains(sid));
         drop(ingress);
         assert!(
             !coord
@@ -10157,7 +10158,32 @@ mod tests {
                 .unwrap()
                 .contains_key(sid)
         );
-        assert!(!coord.temp_repo_filter_roots.lock().unwrap().contains(sid));
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn temporary_repo_inspection_error_is_not_cached_as_allowed() {
+        let _filter = EnvVarGuard::set("GIT_AI_TEST_ENABLE_TEMP_REPO_FILTER", "1");
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let missing_worktree = temp.path().join("missing-repo");
+        let payload = serde_json::json!({
+            "event": "def_repo",
+            "sid": "20260411T120000.000000-Psid-missing-temp",
+            "repo": 1,
+            "worktree": missing_worktree,
+            "time_ns": 1u64,
+        });
+
+        assert!(!coord.should_ignore_trace_payload(&payload).await.unwrap());
+        assert!(
+            !coord
+                .temp_repo_filter_allow_cache
+                .lock()
+                .unwrap()
+                .contains(&missing_worktree),
+            "a failed inspection must fail open for this payload without caching the decision"
+        );
     }
 
     #[tokio::test]

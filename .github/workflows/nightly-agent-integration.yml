@@ -200,6 +200,7 @@ jobs:
           git init
           git config user.email "ci@git-ai.test"
           git config user.name "CI Test"
+          git remote add origin https://github.com/git-ai-project/git-ai.git
           echo "# Integration Test Repo" > README.md
           git add README.md
           git commit -m "Initial commit"
@@ -298,6 +299,7 @@ jobs:
           git init
           git config user.email "ci@git-ai.test"
           git config user.name "CI Test"
+          git remote add origin https://github.com/git-ai-project/git-ai.git
           echo "# Integration Test Repo" > README.md
           git add README.md
           git commit -m "Initial commit"
