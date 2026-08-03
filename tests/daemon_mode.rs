@@ -1792,6 +1792,7 @@ fn wltrace_captures_daemon_working_log_ops_when_enabled() {
     fs::write(&file_path, "AI content\n").unwrap();
     repo.git_ai(&["checkpoint", "mock_ai", "traced.txt"])
         .unwrap();
+    repo.sync_daemon();
 
     let trace = fs::read_to_string(trace_file.path()).expect("read wltrace output");
     for op in [
@@ -2628,6 +2629,108 @@ fn daemon_commit_waiting_for_editor_does_not_block_later_commit() {
         repo.daemon_completion_entries(),
         repo.daemon_stderr_contents()
     );
+}
+
+#[test]
+#[cfg(unix)]
+fn real_commit_waiting_for_editor_preserves_later_commit_attribution() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let repo = TestRepo::new_dedicated_daemon();
+    let mut file = repo.filename("editor-wait.txt");
+    let file_path = repo.path().join("editor-wait.txt");
+
+    fs::write(&file_path, "Human base\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "editor-wait.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+    file.assert_committed_lines(lines!["Human base".human()]);
+
+    repo.git_ai(&["checkpoint", "human", "editor-wait.txt"])
+        .unwrap();
+    fs::write(&file_path, "Human base\nAI line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "editor-wait.txt"])
+        .unwrap();
+    repo.git(&["add", "editor-wait.txt"]).unwrap();
+
+    let editor_script = repo.test_home_path().join("blocking-commit-editor.sh");
+    let editor_started = repo.test_home_path().join("commit-editor-started");
+    let editor_release = repo.test_home_path().join("commit-editor-release");
+    fs::write(
+        &editor_script,
+        "#!/bin/sh\n\
+         touch \"$GIT_AI_TEST_EDITOR_STARTED\"\n\
+         while [ ! -e \"$GIT_AI_TEST_EDITOR_RELEASE\" ]; do\n\
+             sleep 0.05\n\
+         done\n\
+         exit 1\n",
+    )
+    .unwrap();
+    fs::set_permissions(&editor_script, fs::Permissions::from_mode(0o700)).unwrap();
+
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let mut waiting_commit = Command::new(real_git_executable());
+    waiting_commit
+        .arg("-C")
+        .arg(repo.path())
+        .arg("commit")
+        .env("GIT_EDITOR", &editor_script)
+        .env("GIT_AI_TEST_EDITOR_STARTED", &editor_started)
+        .env("GIT_AI_TEST_EDITOR_RELEASE", &editor_release)
+        .env(
+            "GIT_TRACE2_EVENT",
+            DaemonConfig::trace2_event_target_for_path(&trace_socket),
+        )
+        .env(
+            "GIT_TRACE2_EVENT_NESTING",
+            std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string()),
+        )
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    configure_test_home_env(&mut waiting_commit, repo.test_home_path());
+    let mut waiting_commit = waiting_commit
+        .spawn()
+        .expect("failed to spawn commit waiting for its editor");
+
+    let started = std::time::Instant::now();
+    while !editor_started.exists() && started.elapsed() < Duration::from_secs(2) {
+        if waiting_commit
+            .try_wait()
+            .expect("failed to poll waiting commit")
+            .is_some()
+        {
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    let editor_did_start = editor_started.exists();
+    let later_commit = if editor_did_start {
+        repo.git_without_test_sync_for_test(&["commit", "-m", "later commit"], &[])
+    } else {
+        Err("the first commit exited before opening its editor".to_string())
+    };
+    let sync = if later_commit.is_ok() {
+        send_control_request_with_timeout(
+            &daemon_control_socket_path(&repo),
+            &ControlRequest::SyncFamily {
+                repo_working_dir: repo_workdir_string(&repo),
+            },
+            Duration::from_secs(2),
+        )
+    } else {
+        Err(git_ai::error::GitAiError::Generic(
+            "later commit did not succeed".to_string(),
+        ))
+    };
+
+    fs::write(&editor_release, b"").unwrap();
+    let _ = waiting_commit.wait();
+
+    later_commit.expect("later commit should finish while the first commit's editor remains open");
+    let sync = sync.expect("daemon should sync while the first commit's editor remains open");
+    assert!(sync.ok, "daemon sync failed: {sync:?}");
+    file.assert_committed_lines(lines!["Human base".human(), "AI line".ai()]);
 }
 
 #[test]
