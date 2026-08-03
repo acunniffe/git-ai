@@ -1,0 +1,37 @@
+flake.nix
+  dba54e53ce33f1eb 224-225,308-309,313-332,461-462,532-556
+  1e8c42007da14a80 213-223,226-240,250,271-307,333-404,423-428,449-460,463-474,484,495-531,557-606,608-628,633-635,638
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.36",
+  "base_commit_sha": "27dcd099427d9ea1bbbe05e2d0f456d97de2b9c1",
+  "prompts": {
+    "1e8c42007da14a80": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "48641bdf-7626-4380-a199-a5588a53690b",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "John Wiegley <jwiegley@positron.ai>",
+      "messages": [],
+      "total_additions": 283,
+      "total_deletions": 20,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    },
+    "dba54e53ce33f1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d8096e8-49cf-47ba-88ad-8213f36e7de1",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "John Wiegley <jwiegley@positron.ai>",
+      "messages": [],
+      "total_additions": 54,
+      "total_deletions": 2,
+      "accepted_lines": 54,
+      "overriden_lines": 0
+    }
+  }
+}

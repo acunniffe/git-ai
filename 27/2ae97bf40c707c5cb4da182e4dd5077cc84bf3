@@ -1,0 +1,23 @@
+src/daemon.rs
+  597fbcce80335bea 2645,2688-2692,2718-2724,2727-2730,6365,6367-6369,6403-6410
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.1",
+  "base_commit_sha": "272ae97bf40c707c5cb4da182e4dd5077cc84bf3",
+  "prompts": {
+    "597fbcce80335bea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5088777d-907a-414b-885d-c32df969c66d",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 29,
+      "total_deletions": 5,
+      "accepted_lines": 29,
+      "overriden_lines": 0
+    }
+  }
+}

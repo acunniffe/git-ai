@@ -1,0 +1,24 @@
+.github/workflows/release-vscode-extension.yml
+  c9fa1bf615a36463 10-17,20,51-85,88,92-116,123-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "436ce855902e048d21c1b3567406cf3ec18880cd",
+  "prompts": {
+    "c9fa1bf615a36463": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2955bbba-262e-47fe-ab42-fa8f6719e566",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 95,
+      "total_deletions": 9,
+      "accepted_lines": 94,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/ff3ca535cfcbcba94d87b37c986306bca2cdbdee25990e3b0faf2e68204f78dc"
+    }
+  }
+}

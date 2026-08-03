@@ -1,0 +1,21 @@
+src/commands/config.rs
+  s_e3d5c00d94c096::t_c0fba413165b22 736,741
+src/commands/install_hooks.rs
+  s_e3d5c00d94c096::t_c0fba413165b22 440-452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "e2f3dac4ac1987a14c9c11d3c16c8b3db6b8cdb1",
+  "prompts": {},
+  "sessions": {
+    "s_e3d5c00d94c096": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f82b0-e5c2-7c60-90b9-203e4bbd9ceb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

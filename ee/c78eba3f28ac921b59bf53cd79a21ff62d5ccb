@@ -1,0 +1,26 @@
+tests/integration/reset.rs
+  2de4ed9274e38630 1,605-664,681
+src/authorship/rebase_authorship.rs
+  2de4ed9274e38630 3107-3130,3132,3134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "eec78eba3f28ac921b59bf53cd79a21ff62d5ccb",
+  "prompts": {
+    "2de4ed9274e38630": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ba8b128a-03da-4815-b476-b148f4ab0621",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 90,
+      "total_deletions": 21,
+      "accepted_lines": 88,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/9eb1ddc47b5237631b2e8480fba13871d4e9d27e386dbbae3cfe653172c694dc"
+    }
+  }
+}

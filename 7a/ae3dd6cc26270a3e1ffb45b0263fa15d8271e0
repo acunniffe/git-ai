@@ -1,0 +1,23 @@
+src/ci/workflow_templates/gitlab.yaml
+  d710e78a18a485f3 4,12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.30",
+  "base_commit_sha": "7aae3dd6cc26270a3e1ffb45b0263fa15d8271e0",
+  "prompts": {
+    "d710e78a18a485f3": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "95fb3c62-0305-418a-98e6-b4097bef5ffc",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

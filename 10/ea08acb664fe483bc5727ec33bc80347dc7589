@@ -1,0 +1,26 @@
+src/feature_flags.rs
+  48d87a2257dba127 57
+src/auth/credentials.rs
+  48d87a2257dba127 4-5,34-36,41-42,46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "10ea08acb664fe483bc5727ec33bc80347dc7589",
+  "prompts": {
+    "48d87a2257dba127": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cbc33c82-8129-41c2-8253-f075132e20ec",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 4,
+      "accepted_lines": 9,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/9cc12a0f494193d1926b2c079d7769eaca97db09af46a92956f12ba3e6e2404c"
+    }
+  }
+}
