@@ -949,7 +949,11 @@ impl RefCursor {
         let kind = stash_args.first().map(String::as_str).unwrap_or("push");
 
         if matches!(kind, "apply" | "pop" | "drop" | "branch") {
-            self.reconcile_stash_stack_top(command_start_refs.get("refs/stash"));
+            if kind == "apply" {
+                // Only apply leaves the stash reflog intact, so its captured
+                // boundary still identifies the pre-command stack tip.
+                self.reconcile_stash_stack_top(command_start_refs.get("refs/stash"));
+            }
             let target = if kind == "branch" {
                 stash_args.get(2)
             } else {
@@ -6348,6 +6352,44 @@ mod tests {
 
         assert_eq!(cmd.stash_target_oid.as_deref(), Some(B));
         assert_eq!(cursor.stash_stack, vec![B.to_string()]);
+    }
+
+    #[test]
+    fn destructive_stash_targets_ignore_post_rewrite_boundary_tip() {
+        for args in [
+            vec!["stash", "pop", "stash@{0}"],
+            vec!["stash", "drop", "stash@{0}"],
+            vec!["stash", "branch", "restored", "stash@{0}"],
+        ] {
+            let temp = tempfile::tempdir().unwrap();
+            let reference = "refs/stash";
+            let log_path = temp.path().join("logs").join(reference);
+            fs::create_dir_all(log_path.parent().unwrap()).unwrap();
+
+            let surviving = format!(
+                "{} {B} Test User <test@example.com> 0 +0000\tOn main: surviving\n",
+                zero_oid()
+            );
+            let removed =
+                format!("{B} {C} Test User <test@example.com> 0 +0000\tOn main: removed\n");
+            fs::write(&log_path, &surviving).unwrap();
+
+            let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+            let state = family_state(&family);
+            let mut cursor = RefCursor::new(family.clone());
+            cursor.offsets.insert(
+                common_key(reference),
+                (surviving.len() + removed.len()) as u64,
+            );
+            cursor.stash_stack = vec![C.to_string(), B.to_string()];
+            let mut cmd = command(&family, &args);
+            cmd.reflog_start_offsets
+                .insert(common_key(reference), surviving.len() as u64);
+
+            cursor.enrich_command(&mut cmd, &state).unwrap();
+
+            assert_eq!(cmd.stash_target_oid.as_deref(), Some(C), "args: {args:?}");
+        }
     }
 
     #[test]
