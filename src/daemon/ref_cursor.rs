@@ -948,9 +948,8 @@ impl RefCursor {
         let stash_args = stash_command_args(&args);
         let kind = stash_args.first().map(String::as_str).unwrap_or("push");
 
-        self.reconcile_stash_stack_top(command_start_refs.get("refs/stash"));
-
         if matches!(kind, "apply" | "pop" | "drop" | "branch") {
+            self.reconcile_stash_stack_top(command_start_refs.get("refs/stash"));
             let target = if kind == "branch" {
                 stash_args.get(2)
             } else {
