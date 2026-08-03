@@ -6352,9 +6352,11 @@ impl ActorDaemonCoordinator {
             }
         }
 
-        // Handle update-ref: migrate working logs and authorship notes when the ref
-        // update affects the currently checked-out branch.
-        if primary == "update-ref"
+        // Handle direct tip movers: migrate working logs and authorship notes when
+        // the update affects the currently checked-out branch. A branch create/reset
+        // (`branch -f`) uses the same rewrite, while rename/copy lifecycle events do not.
+        if (primary == "update-ref"
+            || primary == "branch" && crate::daemon::ref_cursor::branch_command_is_tip_update(cmd))
             && let Some(worktree) = cmd.worktree.as_ref()
         {
             for event in events {

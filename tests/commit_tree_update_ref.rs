@@ -135,8 +135,15 @@ fn raw_traced_git(repo: &TestRepo, args: &[&str]) -> String {
 }
 
 fn raw_traced_git_stdin(repo: &TestRepo, args: &[&str], stdin: &str) -> String {
+    let session = new_daemon_test_sync_session_id();
+    let session_arg = format!("git-ai.testSyncSession={session}");
     let mut command = Command::new(real_git_executable());
-    command.arg("-C").arg(repo.path()).args(args);
+    command
+        .arg("-C")
+        .arg(repo.path())
+        .arg("-c")
+        .arg(&session_arg)
+        .args(args);
     command.env("HOME", repo.test_home_path());
     command.env(
         "GIT_CONFIG_GLOBAL",
@@ -175,6 +182,46 @@ fn raw_traced_git_stdin(repo: &TestRepo, args: &[&str], stdin: &str) -> String {
     assert!(
         output.status.success(),
         "raw traced git {:?} failed\nstdout: {}\nstderr: {}",
+        args,
+        stdout,
+        stderr
+    );
+    repo.sync_daemon_external_completion_sessions(&[session]);
+    combined_output(stdout, stderr)
+}
+
+fn raw_untraced_git_stdin(repo: &TestRepo, args: &[&str], stdin: &str) -> String {
+    let mut command = Command::new(real_git_executable());
+    command.arg("-C").arg(repo.path()).args(args);
+    command.env("HOME", repo.test_home_path());
+    command.env(
+        "GIT_CONFIG_GLOBAL",
+        repo.test_home_path().join(".gitconfig"),
+    );
+    command.env("XDG_CONFIG_HOME", repo.test_home_path().join(".config"));
+    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    command.env("GIT_TRACE2_EVENT", "0");
+    command.stdin(Stdio::piped());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+
+    let mut child = command
+        .spawn()
+        .unwrap_or_else(|error| panic!("failed to run raw untraced git {:?}: {}", args, error));
+    child
+        .stdin
+        .take()
+        .expect("stdin should be piped")
+        .write_all(stdin.as_bytes())
+        .expect("write stdin to raw untraced git");
+    let output = child.wait_with_output().unwrap_or_else(|error| {
+        panic!("failed to wait for raw untraced git {:?}: {}", args, error)
+    });
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(
+        output.status.success(),
+        "raw untraced git {:?} failed\nstdout: {}\nstderr: {}",
         args,
         stdout,
         stderr
@@ -1778,6 +1825,292 @@ fn test_update_ref_current_branch_with_new_content_preserves_attribution() {
 }
 
 #[test]
+fn test_traced_update_ref_after_untraced_update_refs_preserves_source_ai_attribution() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let mut readme = repo.filename("README.md");
+    readme.assert_committed_lines(lines!["# Test Repo".human()]);
+
+    repo.git(&["checkout", "-b", "feature"])
+        .expect("checkout feature should succeed");
+    let mut feature_file = repo.filename("update-ref-gap.txt");
+    feature_file.set_contents(lines!["update ref ai".ai()]);
+    let source = repo
+        .stage_all_and_commit("update-ref source")
+        .expect("source commit should succeed")
+        .commit_sha;
+    feature_file.assert_committed_lines(lines!["update ref ai".ai()]);
+
+    let parent = raw_untraced_git(&repo, &["rev-parse", &format!("{source}^1")])
+        .trim()
+        .to_string();
+    let tree = raw_untraced_git(&repo, &["rev-parse", &format!("{source}^{{tree}}")])
+        .trim()
+        .to_string();
+    let missed_destination = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "missed update-ref destination",
+        ],
+    )
+    .trim()
+    .to_string();
+    let traced_destination = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "traced update-ref destination",
+        ],
+    )
+    .trim()
+    .to_string();
+    let branch_ref = "refs/heads/feature";
+
+    repo.sync_daemon();
+    raw_untraced_git(
+        &repo,
+        &["update-ref", branch_ref, &missed_destination, &source],
+    );
+    assert!(
+        repo.read_authorship_note(&missed_destination).is_none(),
+        "the trace-disabled destination should not receive attribution"
+    );
+    raw_untraced_git(
+        &repo,
+        &["update-ref", branch_ref, &source, &missed_destination],
+    );
+
+    repo.git(&["update-ref", branch_ref, &traced_destination, &source])
+        .expect("traced update-ref should succeed");
+
+    assert_note_has_ai_for_file(&repo, &traced_destination, "update-ref-gap.txt");
+    feature_file.assert_committed_lines(lines!["update ref ai".ai()]);
+}
+
+#[test]
+fn test_traced_branch_force_after_untraced_branch_forces_preserves_source_ai_attribution() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let main = repo.current_branch();
+    let mut readme = repo.filename("README.md");
+    readme.assert_committed_lines(lines!["# Test Repo".human()]);
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let mut feature_file = repo.filename("branch-force-gap.txt");
+    feature_file.set_contents(lines!["branch force ai".ai()]);
+    let source = repo
+        .stage_all_and_commit("branch force source")
+        .unwrap()
+        .commit_sha;
+    feature_file.assert_committed_lines(lines!["branch force ai".ai()]);
+
+    let parent = raw_untraced_git(&repo, &["rev-parse", &format!("{source}^1")])
+        .trim()
+        .to_string();
+    let tree = raw_untraced_git(&repo, &["rev-parse", &format!("{source}^{{tree}}")])
+        .trim()
+        .to_string();
+    let missed_destination = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "missed branch force destination",
+        ],
+    )
+    .trim()
+    .to_string();
+    let traced_destination = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "traced branch force destination",
+        ],
+    )
+    .trim()
+    .to_string();
+
+    repo.git(&["checkout", &main]).unwrap();
+    repo.sync_daemon();
+    raw_untraced_git(&repo, &["branch", "-f", "feature", &missed_destination]);
+    assert!(
+        repo.read_authorship_note(&missed_destination).is_none(),
+        "the trace-disabled branch destination should not receive attribution"
+    );
+    raw_untraced_git(&repo, &["branch", "-f", "feature", &source]);
+
+    repo.git(&["branch", "-f", "feature", &traced_destination])
+        .unwrap();
+    repo.sync_daemon();
+
+    assert_note_has_ai_for_file(&repo, &traced_destination, "branch-force-gap.txt");
+    repo.git(&["checkout", "feature"]).unwrap();
+    feature_file.assert_committed_lines(lines!["branch force ai".ai()]);
+}
+
+fn assert_branch_relocation_over_existing_does_not_migrate_note(flag: &str) {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let main = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "destination"]).unwrap();
+    let mut file = repo.filename("branch-relocation.txt");
+    file.set_contents(lines!["destination ai".ai()]);
+    let destination = repo
+        .stage_all_and_commit("destination ai")
+        .unwrap()
+        .commit_sha;
+    file.assert_committed_lines(lines!["destination ai".ai()]);
+    assert_note_has_ai_for_file(&repo, &destination, "branch-relocation.txt");
+
+    let parent = raw_untraced_git(&repo, &["rev-parse", &format!("{destination}^1")])
+        .trim()
+        .to_string();
+    let tree = raw_untraced_git(&repo, &["rev-parse", &format!("{destination}^{{tree}}")])
+        .trim()
+        .to_string();
+    let source = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "unattributed relocation source",
+        ],
+    )
+    .trim()
+    .to_string();
+    assert!(repo.read_authorship_note(&source).is_none());
+
+    repo.git(&["checkout", &main]).unwrap();
+    repo.git(&["branch", "source", &source]).unwrap();
+    repo.git(&["checkout", "source"]).unwrap();
+    file.assert_committed_lines(lines!["destination ai".human()]);
+    repo.git(&["checkout", &main]).unwrap();
+    repo.git(&["branch", flag, "source", "destination"])
+        .unwrap();
+    repo.sync_daemon();
+
+    assert_eq!(
+        repo.git(&["rev-parse", "destination"]).unwrap().trim(),
+        source
+    );
+    repo.git(&["checkout", "destination"]).unwrap();
+    file.assert_committed_lines(lines!["destination ai".human()]);
+    assert!(
+        repo.read_authorship_note(&source).is_none(),
+        "branch {flag} must not migrate the overwritten destination note"
+    );
+}
+
+#[test]
+fn test_branch_force_rename_over_existing_does_not_migrate_note() {
+    assert_branch_relocation_over_existing_does_not_migrate_note("-M");
+}
+
+#[test]
+fn test_branch_force_copy_over_existing_does_not_migrate_note() {
+    assert_branch_relocation_over_existing_does_not_migrate_note("-C");
+}
+
+#[test]
+fn test_traced_update_ref_stdin_after_untraced_transactions_only_processes_current_update() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let main = repo.current_branch();
+    let mut readme = repo.filename("README.md");
+    readme.assert_committed_lines(lines!["# Test Repo".human()]);
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let mut feature_file = repo.filename("stdin-gap.txt");
+    feature_file.set_contents(lines!["stdin gap ai".ai()]);
+    let source = repo
+        .stage_all_and_commit("stdin gap source")
+        .unwrap()
+        .commit_sha;
+    feature_file.assert_committed_lines(lines!["stdin gap ai".ai()]);
+
+    let parent = raw_untraced_git(&repo, &["rev-parse", &format!("{source}^1")])
+        .trim()
+        .to_string();
+    let tree = raw_untraced_git(&repo, &["rev-parse", &format!("{source}^{{tree}}")])
+        .trim()
+        .to_string();
+    let missed_destination = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "missed stdin destination",
+        ],
+    )
+    .trim()
+    .to_string();
+    let traced_destination = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &tree,
+            "-p",
+            &parent,
+            "-m",
+            "traced stdin destination",
+        ],
+    )
+    .trim()
+    .to_string();
+    let branch_ref = "refs/heads/feature";
+
+    repo.git(&["checkout", &main]).unwrap();
+    repo.sync_daemon();
+    raw_untraced_git_stdin(
+        &repo,
+        &["update-ref", "--stdin"],
+        &format!("update {branch_ref} {missed_destination} {source}\n"),
+    );
+    raw_untraced_git_stdin(
+        &repo,
+        &["update-ref", "--stdin"],
+        &format!("update {branch_ref} {source} {missed_destination}\n"),
+    );
+
+    raw_traced_git_stdin(
+        &repo,
+        &["update-ref", "--stdin"],
+        &format!("update {branch_ref} {traced_destination} {source}\n"),
+    );
+
+    assert!(
+        repo.read_authorship_note(&missed_destination).is_none(),
+        "the later traced transaction must not retroactively process missed updates"
+    );
+    assert_note_has_ai_for_file(&repo, &traced_destination, "stdin-gap.txt");
+    repo.git(&["checkout", "feature"]).unwrap();
+    feature_file.assert_committed_lines(lines!["stdin gap ai".ai()]);
+}
+
+#[test]
 fn test_update_ref_fast_forward_bounds_committed_hunks_to_final_commit() {
     let repo = TestRepo::new();
     setup_initial_commit(&repo);
@@ -1996,13 +2329,11 @@ fn test_update_ref_stdin_head_with_new_content_preserves_attribution() {
     .to_string();
 
     repo.sync_daemon();
-    let baseline = repo.daemon_total_completion_count();
     raw_traced_git_stdin(
         &repo,
         &["update-ref", "--stdin"],
         &format!("update HEAD {} {}\n", commit_sha, parent_sha),
     );
-    repo.wait_for_daemon_total_completion_count(baseline, baseline + 1);
 
     assert_note_has_ai_for_file(&repo, &commit_sha, "stdin.txt");
 }
