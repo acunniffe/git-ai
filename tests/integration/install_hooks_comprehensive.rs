@@ -335,6 +335,37 @@ fn install_hooks_allows_git_ai_trace_socket_in_codex_sandboxes() {
         Some("allow"),
         "existing Codex Unix socket rules must be preserved"
     );
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(&["uninstall-hooks"], &[]);
+    command.env_remove("CODEX_HOME");
+    let output = command.output().expect("run git-ai uninstall-hooks");
+    assert!(output.status.success(), "uninstall-hooks failed");
+
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(&config_path).expect("read uninstalled Codex config"))
+            .expect("parse uninstalled Codex config");
+    let network_proxy = config
+        .get("features")
+        .and_then(|features| features.get("network_proxy"))
+        .expect("existing network proxy config should remain");
+    assert!(
+        network_proxy.get("enabled").is_none(),
+        "uninstall must remove the network proxy setting added by git-ai"
+    );
+    let allowed_sockets = network_proxy
+        .get("unix_sockets")
+        .and_then(toml::Value::as_table)
+        .expect("existing socket rules should remain");
+    assert!(
+        allowed_sockets.get(trace_socket.as_ref()).is_none(),
+        "uninstall must remove the git-ai trace socket rule"
+    );
+    assert_eq!(
+        allowed_sockets
+            .get("/tmp/existing-agent.sock")
+            .and_then(toml::Value::as_str),
+        Some("allow")
+    );
 }
 
 #[test]

@@ -27,6 +27,47 @@ impl CodexInstaller {
         codex_home_dir().join("hooks.json")
     }
 
+    #[cfg(unix)]
+    fn network_proxy_enabled_marker_path(config_path: &Path) -> Result<PathBuf, GitAiError> {
+        let mut hasher = Sha256::new();
+        hasher.update(config_path.to_string_lossy().as_bytes());
+        let digest = format!("{:x}", hasher.finalize());
+        Ok(DaemonConfig::from_env_or_default_paths()?
+            .internal_dir
+            .join(format!("codex-network-proxy-enabled-{}", &digest[..16])))
+    }
+
+    #[cfg(unix)]
+    fn config_has_network_proxy_enabled(config: &TomlValue) -> bool {
+        config
+            .get("features")
+            .and_then(|features| features.get("network_proxy"))
+            .is_some_and(|network_proxy| {
+                network_proxy.is_bool()
+                    || network_proxy
+                        .as_table()
+                        .is_some_and(|table| table.contains_key("enabled"))
+            })
+    }
+
+    #[cfg(unix)]
+    fn record_network_proxy_enabled_provenance(config_path: &Path) -> Result<(), GitAiError> {
+        let marker_path = Self::network_proxy_enabled_marker_path(config_path)?;
+        if let Some(parent) = marker_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        write_atomic(&marker_path, b"")
+    }
+
+    #[cfg(unix)]
+    fn clear_network_proxy_enabled_provenance(config_path: &Path) -> Result<(), GitAiError> {
+        let marker_path = Self::network_proxy_enabled_marker_path(config_path)?;
+        if marker_path.exists() {
+            fs::remove_file(marker_path)?;
+        }
+        Ok(())
+    }
+
     fn desired_command(binary_path: &Path) -> String {
         format!("{} {}", binary_path.display(), CODEX_CHECKPOINT_CMD)
     }
@@ -297,7 +338,12 @@ impl CodexInstaller {
         }
     }
 
-    fn config_without_trace_socket_allowance(config: &TomlValue) -> Result<TomlValue, GitAiError> {
+    fn config_without_trace_socket_allowance(
+        config: &TomlValue,
+        remove_enabled: bool,
+    ) -> Result<TomlValue, GitAiError> {
+        #[cfg(not(unix))]
+        let _ = remove_enabled;
         #[cfg(not(unix))]
         return Ok(config.clone());
 
@@ -329,7 +375,7 @@ impl CodexInstaller {
             if remove_unix_sockets {
                 network_proxy.remove("unix_sockets");
             }
-            if network_proxy.len() == 1
+            if remove_enabled
                 && network_proxy.get("enabled").and_then(TomlValue::as_bool) == Some(true)
             {
                 network_proxy.remove("enabled");
@@ -872,6 +918,8 @@ impl HookInstaller for CodexInstaller {
         };
 
         let existing_config = Self::parse_config_toml(&existing_config_content)?;
+        #[cfg(unix)]
+        let network_proxy_enabled_added = !Self::config_has_network_proxy_enabled(&existing_config);
 
         let existing_hooks_content = if hooks_json_path.exists() {
             fs::read_to_string(&hooks_json_path)?
@@ -923,6 +971,11 @@ impl HookInstaller for CodexInstaller {
                 if !dry_run {
                     write_atomic(&hooks_json_path, new_hooks_content.as_bytes())?;
                 }
+            }
+
+            #[cfg(unix)]
+            if !dry_run && network_proxy_enabled_added {
+                Self::record_network_proxy_enabled_provenance(&config_path)?;
             }
 
             return Ok(Some(diff_output.join("\n")));
@@ -984,6 +1037,11 @@ impl HookInstaller for CodexInstaller {
             }
         }
 
+        #[cfg(unix)]
+        if !dry_run && network_proxy_enabled_added {
+            Self::record_network_proxy_enabled_provenance(&config_path)?;
+        }
+
         Ok(Some(diff_output.join("\n")))
     }
 
@@ -994,7 +1052,16 @@ impl HookInstaller for CodexInstaller {
     ) -> Result<Option<String>, GitAiError> {
         let config_path = Self::config_path();
         let hooks_json_path = Self::hooks_json_path();
+        #[cfg(unix)]
+        let network_proxy_enabled_added =
+            Self::network_proxy_enabled_marker_path(&config_path)?.exists();
+        #[cfg(not(unix))]
+        let network_proxy_enabled_added = false;
         if !config_path.exists() && !hooks_json_path.exists() {
+            #[cfg(unix)]
+            if !dry_run {
+                Self::clear_network_proxy_enabled_provenance(&config_path)?;
+            }
             return Ok(None);
         }
 
@@ -1010,8 +1077,10 @@ impl HookInstaller for CodexInstaller {
             Self::remove_notify_if_git_ai(&existing_config)?.unwrap_or(existing_config.clone());
         let (config_without_hooks, inline_hooks_changed) =
             Self::remove_inline_hooks_from_config(&config_without_notify)?;
-        let config_without_trace_socket =
-            Self::config_without_trace_socket_allowance(&config_without_hooks)?;
+        let config_without_trace_socket = Self::config_without_trace_socket_allowance(
+            &config_without_hooks,
+            network_proxy_enabled_added,
+        )?;
         let merged_config = Self::remove_feature_flags(&config_without_trace_socket)?;
 
         // Check if legacy hooks.json needs cleanup
@@ -1026,6 +1095,10 @@ impl HookInstaller for CodexInstaller {
 
         let config_changed = merged_config != existing_config;
         if !config_changed && !inline_hooks_changed && !hooks_json_changed {
+            #[cfg(unix)]
+            if !dry_run {
+                Self::clear_network_proxy_enabled_provenance(&config_path)?;
+            }
             return Ok(None);
         }
 
@@ -1066,6 +1139,11 @@ impl HookInstaller for CodexInstaller {
                     fs::remove_file(&hooks_json_path)?;
                 }
             }
+        }
+
+        #[cfg(unix)]
+        if !dry_run {
+            Self::clear_network_proxy_enabled_provenance(&config_path)?;
         }
 
         Ok(Some(diff_output.join("\n")))
@@ -2179,6 +2257,66 @@ enabled = true
                     .and_then(TomlValue::as_str),
                 Some("allow"),
                 "uninstall must preserve unrelated socket rules"
+            );
+        });
+    }
+
+    #[test]
+    #[serial]
+    #[cfg(unix)]
+    fn test_uninstall_restores_network_proxy_enabled_provenance() {
+        with_temp_home(|home| {
+            let codex_dir = home.join(".codex");
+            write_git_ai_config(home, "hooks_json");
+            fs::create_dir_all(&codex_dir).unwrap();
+            let config_path = codex_dir.join("config.toml");
+            let installer = CodexInstaller;
+            let params = HookInstallerParams {
+                binary_path: test_binary_path(),
+            };
+
+            fs::write(&config_path, "[features.network_proxy]\nenabled = true\n").unwrap();
+            installer.install_hooks(&params, false).unwrap();
+            installer.uninstall_hooks(&params, false).unwrap();
+            let config =
+                CodexInstaller::parse_config_toml(&fs::read_to_string(&config_path).unwrap())
+                    .unwrap();
+            assert_eq!(
+                config
+                    .get("features")
+                    .and_then(|features| features.get("network_proxy"))
+                    .and_then(|network_proxy| network_proxy.get("enabled"))
+                    .and_then(TomlValue::as_bool),
+                Some(true),
+                "uninstall must preserve a pre-existing enabled setting"
+            );
+
+            fs::write(
+                &config_path,
+                r#"[features.network_proxy.unix_sockets]
+"/tmp/existing-agent.sock" = "allow"
+"#,
+            )
+            .unwrap();
+            installer.install_hooks(&params, false).unwrap();
+            installer.uninstall_hooks(&params, false).unwrap();
+            let config =
+                CodexInstaller::parse_config_toml(&fs::read_to_string(&config_path).unwrap())
+                    .unwrap();
+            let network_proxy = config
+                .get("features")
+                .and_then(|features| features.get("network_proxy"))
+                .expect("unrelated proxy settings should remain");
+            assert!(
+                network_proxy.get("enabled").is_none(),
+                "uninstall must remove enabled when git-ai added it"
+            );
+            assert_eq!(
+                network_proxy
+                    .get("unix_sockets")
+                    .and_then(|sockets| sockets.get("/tmp/existing-agent.sock"))
+                    .and_then(TomlValue::as_str),
+                Some("allow")
             );
         });
     }
