@@ -1,7 +1,7 @@
 use crate::config;
 use crate::daemon::DaemonConfig;
 use crate::error::GitAiError;
-use crate::mdm::agents::get_all_installers;
+use crate::mdm::agents::{get_all_installers, get_all_installers_with_codex_sandbox};
 use crate::mdm::hook_installer::HookInstallerParams;
 use crate::mdm::skills_installer;
 use crate::mdm::spinner::{Spinner, print_diff};
@@ -21,6 +21,7 @@ struct InstallOptions {
     dry_run: bool,
     verbose: bool,
     install_skills: bool,
+    codex_sandbox: bool,
     include_visual_studio_extension: bool,
     api_base: Option<String>,
     api_key: Option<String>,
@@ -364,6 +365,7 @@ fn parse_install_options(args: &[String]) -> Result<InstallOptions, GitAiError> 
             "--dry-run" | "--dry-run=true" => options.dry_run = true,
             "--verbose" | "-v" => options.verbose = true,
             "--skills" => options.install_skills = true,
+            "--codex-sandbox" => options.codex_sandbox = true,
             "--visual-studio-extension" => options.include_visual_studio_extension = true,
             value if value.starts_with("--api-base=") => {
                 options.api_base = non_empty_value(&value[11..]);
@@ -537,7 +539,7 @@ async fn async_run_install(
     // === Coding Agents ===
     println!("\n\x1b[1mCoding Agents\x1b[0m");
 
-    let installers = get_all_installers();
+    let installers = get_all_installers_with_codex_sandbox(options.codex_sandbox);
     let mut installed_tools: HashSet<String> = HashSet::new();
     // Track agents whose hooks were updated (name, process_names) for restart warnings
     let mut updated_agents: Vec<(String, Vec<String>)> = Vec::new();
@@ -1078,6 +1080,7 @@ mod tests {
         let options = parse_install_options(&[]).unwrap();
 
         assert!(!options.include_visual_studio_extension);
+        assert!(!options.codex_sandbox);
         assert!(!should_include_installer(
             VISUAL_STUDIO_INSTALLER_ID,
             &options
@@ -1090,6 +1093,7 @@ mod tests {
         let args = vec![
             "--dry-run".to_string(),
             "--visual-studio-extension".to_string(),
+            "--codex-sandbox".to_string(),
             "--skills".to_string(),
             "-v".to_string(),
         ];
@@ -1098,6 +1102,7 @@ mod tests {
         assert!(options.dry_run);
         assert!(options.verbose);
         assert!(options.install_skills);
+        assert!(options.codex_sandbox);
         assert!(options.include_visual_studio_extension);
         assert!(should_include_installer(
             VISUAL_STUDIO_INSTALLER_ID,

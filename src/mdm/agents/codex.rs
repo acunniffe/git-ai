@@ -16,9 +16,16 @@ use toml::map::Map;
 const CODEX_CHECKPOINT_CMD: &str = "checkpoint codex --hook-input stdin";
 const CODEX_HOOK_EVENTS: [&str; 3] = ["PreToolUse", "PostToolUse", "Stop"];
 
-pub struct CodexInstaller;
+#[derive(Debug, Default)]
+pub struct CodexInstaller {
+    allow_trace_socket: bool,
+}
 
 impl CodexInstaller {
+    pub(crate) fn new(allow_trace_socket: bool) -> Self {
+        Self { allow_trace_socket }
+    }
+
     fn config_path() -> PathBuf {
         codex_home_dir().join("config.toml")
     }
@@ -335,6 +342,17 @@ impl CodexInstaller {
                 );
 
             Ok(merged)
+        }
+    }
+
+    fn config_with_optional_trace_socket_allowance(
+        &self,
+        config: &TomlValue,
+    ) -> Result<TomlValue, GitAiError> {
+        if self.allow_trace_socket {
+            Self::config_with_trace_socket_allowed(config)
+        } else {
+            Ok(config.clone())
         }
     }
 
@@ -867,7 +885,7 @@ impl HookInstaller for CodexInstaller {
                 Self::remove_notify_if_git_ai(&config)?.unwrap_or(config.clone());
             let (config_without_inline_hooks, _) =
                 Self::remove_inline_hooks_from_config(&config_without_notify)?;
-            let desired_config = Self::config_with_trace_socket_allowed(
+            let desired_config = self.config_with_optional_trace_socket_allowance(
                 &Self::config_with_hooks_feature_enabled(&config_without_inline_hooks)?,
             )?;
             let desired_hooks_json =
@@ -883,7 +901,7 @@ impl HookInstaller for CodexInstaller {
             });
         }
 
-        let desired_config = Self::config_with_trace_socket_allowed(
+        let desired_config = self.config_with_optional_trace_socket_allowance(
             &Self::config_with_installed_hooks(&config, &params.binary_path)?,
         )?;
         let has_inline_hooks = Self::config_has_inline_hooks(&config);
@@ -919,7 +937,8 @@ impl HookInstaller for CodexInstaller {
 
         let existing_config = Self::parse_config_toml(&existing_config_content)?;
         #[cfg(unix)]
-        let network_proxy_enabled_added = !Self::config_has_network_proxy_enabled(&existing_config);
+        let network_proxy_enabled_added =
+            self.allow_trace_socket && !Self::config_has_network_proxy_enabled(&existing_config);
 
         let existing_hooks_content = if hooks_json_path.exists() {
             fs::read_to_string(&hooks_json_path)?
@@ -933,7 +952,7 @@ impl HookInstaller for CodexInstaller {
                 Self::remove_notify_if_git_ai(&existing_config)?.unwrap_or(existing_config.clone());
             let (config_without_inline_hooks, _) =
                 Self::remove_inline_hooks_from_config(&config_without_notify)?;
-            let merged_config = Self::config_with_trace_socket_allowed(
+            let merged_config = self.config_with_optional_trace_socket_allowance(
                 &Self::config_with_hooks_feature_enabled(&config_without_inline_hooks)?,
             )?;
             let merged_hooks =
@@ -981,7 +1000,7 @@ impl HookInstaller for CodexInstaller {
             return Ok(Some(diff_output.join("\n")));
         }
 
-        let merged_config = Self::config_with_trace_socket_allowed(
+        let merged_config = self.config_with_optional_trace_socket_allowance(
             &Self::config_with_installed_hooks(&existing_config, &params.binary_path)?,
         )?;
 
@@ -1604,7 +1623,7 @@ codex_hooks = true
             let config_path = codex_dir.join("config.toml");
             fs::write(&config_path, "model = \"gpt-5\"\n").unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -1654,7 +1673,7 @@ codex_hooks = true
             let config_path = custom_codex_home.join("config.toml");
             fs::write(&config_path, "model = \"gpt-5\"\n").unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -1713,7 +1732,7 @@ notify = ["/usr/local/bin/git-ai", "checkpoint", "codex", "--hook-input"]
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -1759,7 +1778,7 @@ notify = ["/Users/svarlamov/.git-ai/bin/git-ai", "checkpoint", "codex", "--via-c
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -1793,7 +1812,7 @@ notify = ["notify-send", "Codex finished"]
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -1849,7 +1868,7 @@ notify = ["notify-send", "Codex finished"]
             let original_content = "model = \"gpt-5\"\n";
             fs::write(&config_path, original_content).unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -1876,7 +1895,7 @@ notify = ["notify-send", "Codex finished"]
             let config_path = codex_dir.join("config.toml");
             fs::write(&config_path, "model = \"gpt-5\"\n").unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -1949,7 +1968,7 @@ codex_hooks = true
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2014,7 +2033,7 @@ codex_hooks = true
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2084,7 +2103,7 @@ codex_hooks = true
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2138,6 +2157,49 @@ codex_hooks = true
     #[test]
     #[serial]
     #[cfg(unix)]
+    fn test_hooks_json_install_does_not_configure_sandbox_by_default() {
+        with_temp_home(|home| {
+            let codex_dir = home.join(".codex");
+            write_git_ai_config(home, "hooks_json");
+            fs::create_dir_all(&codex_dir).unwrap();
+            let config_path = codex_dir.join("config.toml");
+            fs::write(&config_path, "model = \"gpt-5\"\n").unwrap();
+
+            let installer = CodexInstaller::default();
+            let params = HookInstallerParams {
+                binary_path: test_binary_path(),
+            };
+            installer
+                .install_hooks(&params, false)
+                .expect("install should succeed");
+
+            let installed =
+                CodexInstaller::parse_config_toml(&fs::read_to_string(&config_path).unwrap())
+                    .unwrap();
+            assert!(
+                installed
+                    .get("features")
+                    .and_then(|features| features.get("network_proxy"))
+                    .is_none(),
+                "default install must not configure the Codex network proxy"
+            );
+            assert!(
+                !CodexInstaller::network_proxy_enabled_marker_path(&config_path)
+                    .unwrap()
+                    .exists(),
+                "default install must not record proxy ownership"
+            );
+
+            let check = installer
+                .check_hooks(&params)
+                .expect("check should succeed");
+            assert!(check.hooks_up_to_date);
+        });
+    }
+
+    #[test]
+    #[serial]
+    #[cfg(unix)]
     fn test_hooks_json_install_allows_trace_socket_and_is_idempotent() {
         with_temp_home(|home| {
             let codex_dir = home.join(".codex");
@@ -2146,7 +2208,7 @@ codex_hooks = true
             let config_path = codex_dir.join("config.toml");
             fs::write(&config_path, "model = \"gpt-5\"\n").unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::new(true);
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2216,7 +2278,7 @@ enabled = true
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::new(true);
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2270,7 +2332,7 @@ enabled = true
             write_git_ai_config(home, "hooks_json");
             fs::create_dir_all(&codex_dir).unwrap();
             let config_path = codex_dir.join("config.toml");
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::new(true);
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2363,7 +2425,7 @@ command = "/usr/local/bin/git-ai checkpoint codex --hook-input stdin"
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2449,7 +2511,7 @@ command = "/usr/local/bin/git-ai checkpoint codex --hook-input stdin"
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2508,7 +2570,7 @@ codex_hooks = true
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2539,7 +2601,7 @@ codex_hooks = true
             let codex_dir = home.join(".codex");
             assert!(!codex_dir.exists());
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2597,7 +2659,7 @@ codex_hooks = true
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2692,7 +2754,7 @@ codex_hooks = true
             let config_path = codex_dir.join("config.toml");
             fs::write(&config_path, "model = \"o3\"\n").unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2740,7 +2802,7 @@ codex_hooks = true
             let config_path = codex_dir.join("config.toml");
             fs::write(&config_path, "model = \"o3\"\n").unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2793,7 +2855,7 @@ trusted_hash = "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef123
             )
             .unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
@@ -2834,7 +2896,7 @@ trusted_hash = "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef123
             let config_path = codex_dir.join("config.toml");
             fs::write(&config_path, "model = \"o3\"\n").unwrap();
 
-            let installer = CodexInstaller;
+            let installer = CodexInstaller::default();
             let params = HookInstallerParams {
                 binary_path: test_binary_path(),
             };
