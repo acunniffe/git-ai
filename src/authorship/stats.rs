@@ -511,7 +511,8 @@ pub fn stats_for_commit_stats_with_parent_and_authorship(
 ) -> Result<CommitStats, GitAiError> {
     use crate::commands::diff::get_diff_with_line_numbers;
 
-    let from_ref = parent_sha.unwrap_or("4b825dc642cb6eb9a060e54bf8d69288fbee4904");
+    let from_ref =
+        parent_sha.unwrap_or_else(|| crate::authorship::diff_base::empty_tree_for_oid(commit_sha));
     let hunks = get_diff_with_line_numbers(repo, from_ref, commit_sha)?;
     stats_for_commit_stats_from_hunks(repo, commit_sha, ignore_patterns, &hunks, authorship_log)
 }
@@ -686,7 +687,7 @@ pub fn get_git_diff_stats(
     }
 
     let from_ref = if parent_count == 0 {
-        "4b825dc642cb6eb9a060e54bf8d69288fbee4904".to_string()
+        crate::authorship::diff_base::empty_tree_for_oid(commit_sha).to_string()
     } else {
         commit_obj.parent(0)?.id()
     };

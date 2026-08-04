@@ -663,7 +663,7 @@ fn render_stats(
     let parent_sha = parents
         .first()
         .map(String::as_str)
-        .unwrap_or("4b825dc642cb6eb9a060e54bf8d69288fbee4904");
+        .unwrap_or_else(|| crate::authorship::diff_base::empty_tree_for_oid(commit_sha));
 
     if let Ok(estimate) = crate::authorship::post_commit::estimate_stats_cost_for_commit_range(
         repo,

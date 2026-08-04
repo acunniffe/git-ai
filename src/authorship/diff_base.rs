@@ -10,6 +10,10 @@ pub(crate) fn empty_tree_for_oid(oid: &str) -> &'static str {
     }
 }
 
+pub(crate) fn is_empty_tree_oid(oid: &str) -> bool {
+    oid == SHA1_EMPTY_TREE || oid == SHA256_EMPTY_TREE
+}
+
 /// Resolve the diff base for post-commit diff parsing so the diff is always
 /// bounded to the single commit being finalized.
 ///
