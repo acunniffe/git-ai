@@ -4508,6 +4508,7 @@ impl ActorDaemonCoordinator {
             ingress
                 .root_mutating
                 .entry(root.clone())
+                .and_modify(|mutating| *mutating |= command_mutates_refs)
                 .or_insert(command_mutates_refs);
             let target_repo_only = trace_command_uses_target_repo_context_only(Some(primary));
             ingress
@@ -10154,6 +10155,16 @@ mod tests {
 
         let sid = "20260411T120000.000000-Psid-close";
         coord.trace_root_connection_opened(sid).unwrap();
+        let mut early_child = serde_json::json!({
+            "event": "cmd_name",
+            "sid": format!("{sid}/20260411T120000.000001-Pchild"),
+            "name": "rev-list",
+            "time_ns": 0u64,
+        });
+        assert!(
+            !coord.prepare_trace_payload_for_ingest(&mut early_child),
+            "read-only child metadata should stay off the ingest queue"
+        );
         let mut start = serde_json::json!({
             "event": "start",
             "sid": sid,
@@ -10162,6 +10173,17 @@ mod tests {
             "time_ns": 1u64,
         });
         assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        assert_eq!(
+            coord
+                .trace_ingress_state
+                .lock()
+                .unwrap()
+                .root_mutating
+                .get(sid)
+                .copied(),
+            Some(true),
+            "a mutating root start must upgrade an earlier read-only child classification"
+        );
         coord.enqueue_trace_payload(start).unwrap();
 
         finalize_trace_connection_roots(coord.clone(), [sid.to_string()].into_iter().collect())
@@ -10175,6 +10197,14 @@ mod tests {
                 .unwrap()
                 .contains_key(sid),
             "closing the trace stream without root atexit must not leave the family sequencer wedged"
+        );
+        assert!(
+            !coord
+                .async_reflog_start_offsets_by_root
+                .lock()
+                .unwrap()
+                .contains_key(sid),
+            "closing the trace stream must discard the async reflog baseline"
         );
         coord.request_shutdown();
     }
