@@ -63,6 +63,7 @@ pub mod domain;
 pub mod family_actor;
 pub mod git_backend;
 pub mod global_actor;
+mod memory_watchdog;
 pub mod reducer;
 pub mod ref_cursor;
 pub mod rewrite_metrics;
@@ -8491,6 +8492,11 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
     let coordinator = Arc::new(coordinator_inner);
     coordinator.start_trace_ingest_worker()?;
     coordinator.start_checkpoint_ingress_worker()?;
+    if let Some(limit_mb) = config::Config::get().daemon_memory_limit_mb()
+        && let Some(limit_bytes) = limit_mb.checked_mul(config::MEBIBYTE_BYTES)
+    {
+        memory_watchdog::start(Arc::clone(&coordinator), limit_bytes)?;
+    }
     let rt_handle = tokio::runtime::Handle::current();
     let control_socket_path = config.control_socket_path.clone();
     let trace_socket_path = config.trace_socket_path.clone();
