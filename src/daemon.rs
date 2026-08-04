@@ -2668,6 +2668,8 @@ struct PendingRootSlot {
 type CommitFileTimestampSnapshotHandle =
     tokio::task::JoinHandle<Option<crate::authorship::attribution_recovery::FileTimestampsByPath>>;
 type CommitFileTimestampSnapshotHandles = HashMap<String, CommitFileTimestampSnapshotHandle>;
+type ReflogStartOffsets = HashMap<String, u64>;
+type AsyncReflogStartOffsetsByRoot = HashMap<String, ReflogStartOffsets>;
 
 const COMMIT_FILE_TIMESTAMP_SNAPSHOT_WAIT: Duration = Duration::from_millis(500);
 const SESSION_EVENT_RECOVERY_PREFLIGHT_WAIT: Duration = Duration::from_secs(2);
@@ -2782,6 +2784,10 @@ pub struct ActorDaemonCoordinator {
     processed_trace_ingest_seq: AtomicUsize,
     trace_ingest_progress_notify: Notify,
     trace_ingress_state: Mutex<TraceIngressState>,
+    /// Command-start reflog snapshots owned by the serialized async ingest
+    /// worker. Keeping them here lets split trace2 metadata converge without
+    /// putting repository reads back on the listener's critical path.
+    async_reflog_start_offsets_by_root: Mutex<AsyncReflogStartOffsetsByRoot>,
     shutting_down: AtomicBool,
     shutdown_action: AtomicU8,
     shutdown_notify: Notify,
@@ -2884,6 +2890,7 @@ impl ActorDaemonCoordinator {
             processed_trace_ingest_seq: AtomicUsize::new(0),
             trace_ingest_progress_notify: Notify::new(),
             trace_ingress_state: Mutex::new(TraceIngressState::default()),
+            async_reflog_start_offsets_by_root: Mutex::new(HashMap::new()),
             shutting_down: AtomicBool::new(false),
             shutdown_action: AtomicU8::new(DaemonExitAction::Stop.as_u8()),
             shutdown_notify: Notify::new(),
@@ -3791,6 +3798,7 @@ impl ActorDaemonCoordinator {
             GitAiError::Generic("queued trace payloads by root lock poisoned".to_string())
         })?;
         queued.remove(root_sid);
+        self.async_reflog_start_offsets_by_root()?.remove(root_sid);
         self.trace_ingest_progress_notify.notify_waiters();
         Ok(())
     }
@@ -6511,12 +6519,18 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    fn async_reflog_start_offsets_by_root(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, AsyncReflogStartOffsetsByRoot>, GitAiError> {
+        self.async_reflog_start_offsets_by_root.lock().map_err(|_| {
+            GitAiError::Generic("async reflog start offsets by root lock poisoned".to_string())
+        })
+    }
+
     async fn attach_reflog_start_offsets_for_async_ingest(
+        &self,
         payload: &mut Value,
     ) -> Result<(), GitAiError> {
-        if payload.get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD).is_some() {
-            return Ok(());
-        }
         let event = payload
             .get("event")
             .and_then(Value::as_str)
@@ -6525,10 +6539,42 @@ impl ActorDaemonCoordinator {
             .get("sid")
             .and_then(Value::as_str)
             .unwrap_or_default();
-        if event != "def_repo"
-            || sid != trace_root_sid(sid)
-            || crate::daemon::trace_normalizer::def_repo_is_secondary(payload)
+        let root_sid = trace_root_sid(sid);
+        if sid.is_empty()
+            || sid != root_sid
+            || event == TRACE_CONNECTION_CLOSED_EVENT
+            || (event == "def_repo"
+                && crate::daemon::trace_normalizer::def_repo_is_secondary(payload))
         {
+            return Ok(());
+        }
+
+        if let Some(offsets) = payload
+            .get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD)
+            .and_then(Value::as_object)
+            .and_then(|offsets| serde_json::from_value(Value::Object(offsets.clone())).ok())
+        {
+            self.async_reflog_start_offsets_by_root()?
+                .entry(root_sid.to_string())
+                .or_insert(offsets);
+            return Ok(());
+        }
+
+        if let Some(offsets) = self
+            .async_reflog_start_offsets_by_root()?
+            .get(root_sid)
+            .cloned()
+        {
+            if let Some(object) = payload.as_object_mut() {
+                object.insert(
+                    TRACE_ROOT_REFLOG_START_OFFSETS_FIELD.to_string(),
+                    json!(offsets),
+                );
+            }
+            return Ok(());
+        }
+
+        if is_terminal_root_trace_event(event, sid, root_sid) {
             return Ok(());
         }
 
@@ -6549,6 +6595,8 @@ impl ActorDaemonCoordinator {
         .map_err(|error| {
             GitAiError::Generic(format!("reflog start capture worker failed: {error}"))
         })?;
+        self.async_reflog_start_offsets_by_root()?
+            .insert(root_sid.to_string(), offsets.clone());
         if let Some(object) = payload.as_object_mut() {
             object.insert(
                 TRACE_ROOT_REFLOG_START_OFFSETS_FIELD.to_string(),
@@ -6562,7 +6610,8 @@ impl ActorDaemonCoordinator {
         &self,
         mut payload: Value,
     ) -> Result<TracePayloadApplyOutcome, GitAiError> {
-        Self::attach_reflog_start_offsets_for_async_ingest(&mut payload).await?;
+        self.attach_reflog_start_offsets_for_async_ingest(&mut payload)
+            .await?;
         let payload_root_sid = Self::trace_payload_root_sid(&payload);
         let event = payload
             .get("event")
@@ -9983,6 +10032,9 @@ mod tests {
             "git init failed: {}",
             String::from_utf8_lossy(&init.stderr)
         );
+        let head_log = repo.join(".git/logs/HEAD");
+        std::fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+        std::fs::write(&head_log, b"pre-command HEAD entry\n").unwrap();
 
         let sid = "20260411T120000.000000-Psid-split-metadata";
         let mut def_repo = serde_json::json!({
@@ -10012,6 +10064,23 @@ mod tests {
             "time_ns": 2u64,
         });
         assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        coord
+            .attach_reflog_start_offsets_for_async_ingest(&mut start)
+            .await
+            .unwrap();
+        let head_key = format!(
+            "worktree:{}:HEAD",
+            repo.join(".git").canonicalize().unwrap().to_string_lossy()
+        );
+        assert_eq!(
+            start
+                .get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD)
+                .and_then(Value::as_object)
+                .and_then(|offsets| offsets.get(&head_key))
+                .and_then(Value::as_u64),
+            Some(std::fs::metadata(&head_log).unwrap().len()),
+            "async ingestion must capture the baseline after split repo/argv metadata becomes complete"
+        );
         coord
             .apply_trace_payload_to_state(start)
             .await
@@ -10059,7 +10128,8 @@ mod tests {
             "listener-side trace preparation must not read or attach repository state"
         );
 
-        ActorDaemonCoordinator::attach_reflog_start_offsets_for_async_ingest(&mut payload)
+        coord
+            .attach_reflog_start_offsets_for_async_ingest(&mut payload)
             .await
             .unwrap();
         let offsets = payload
