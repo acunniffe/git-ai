@@ -1,0 +1,136 @@
+src/auth/credentials.rs
+  s_3b8401a0cbe012::t_06b534c74fccf8 1-424
+src/api/mod.rs
+  s_3b8401a0cbe012::t_98081b6a22aecc 10
+src/commands/diff.rs
+  s_3b8401a0cbe012::t_dff6237b2d8186 590-591,595-596
+tests/integration/show_command.rs
+  s_3b8401a0cbe012::t_9aafaa9d54cb05 70-74
+  s_3b8401a0cbe012::t_8ffe8a2495f045 87-93
+  s_3b8401a0cbe012::t_23c8d1809452e5 1-69,75-86,94
+src/auth/client.rs
+  s_3b8401a0cbe012::t_b9472597f974ca 1-103,108-170,173-471
+  s_3b8401a0cbe012::t_dff6237b2d8186 104-107,171-172
+src/commands/config.rs
+  s_3b8401a0cbe012::t_cc4018e14fbcb7 1-204,206-224,226-247,252,257-269
+  s_3b8401a0cbe012::t_dff6237b2d8186 205,225
+  s_3b8401a0cbe012::t_55eee64ee89ab0 248-251,253-256
+src/commands/show.rs
+  s_3b8401a0cbe012::t_492211a579742f 95-98
+  s_3b8401a0cbe012::t_dff6237b2d8186 58-60
+  s_3b8401a0cbe012::t_78708caf66f166 1-57,61-94,99-125
+src/daemon/checkpoint_worker.rs
+  s_3b8401a0cbe012::t_dff6237b2d8186 166-167
+  s_3b8401a0cbe012::t_f2ac7bb217ad1f 70-79,89-95
+  s_3b8401a0cbe012::t_a69fb781390414 99-107
+  s_3b8401a0cbe012::t_00c984a8c8909d 267-280,303-307
+  s_3b8401a0cbe012::t_8ff32ac1a9f6d7 281-302
+tests/integration/rebase_merge_commit_note_leak.rs
+  s_3b8401a0cbe012::t_dff6237b2d8186 193-587
+src/commands/mod.rs
+  s_3b8401a0cbe012::t_ccd98442a7b335 16,25-26
+  s_3b8401a0cbe012::t_f5fce99d76e9ec 6,10,17-18,31
+  s_3b8401a0cbe012::t_761425efd4c504 7
+  s_3b8401a0cbe012::t_15bae9410734bd 5
+  s_3b8401a0cbe012::t_f45191298046e4 30
+src/commands/checkpoint.rs
+  s_3b8401a0cbe012::t_3f2a6f9e7f686b 157
+  s_3b8401a0cbe012::t_347a7d6d555f9a 169,180-189
+  s_3b8401a0cbe012::t_dff6237b2d8186 540-541,852-857,1028-1032
+  s_3b8401a0cbe012::t_ad758d1a506c23 221-223
+src/commands/debug.rs
+  s_3b8401a0cbe012::t_dff6237b2d8186 29-33,43-47
+  s_3b8401a0cbe012::t_8173d329f69978 1-28,34-42,48-149
+src/commands/show_prompt.rs
+  s_3b8401a0cbe012::t_c323e2a12cad97 1-122,128-188
+  s_3b8401a0cbe012::t_dff6237b2d8186 123-127
+src/auth/types.rs
+  s_3b8401a0cbe012::t_a73ddda6ff565c 1-171
+src/auth/identity.rs
+  s_3b8401a0cbe012::t_20011659ccd582 1-114
+tests/integration/repos/test_repo.rs
+  s_3b8401a0cbe012::t_dff6237b2d8186 155
+  s_3b8401a0cbe012::t_2b2bba6ff0c3af 261-264
+src/commands/login.rs
+  s_3b8401a0cbe012::t_61c7a340a16e5b 1-92
+src/commands/whoami.rs
+  s_3b8401a0cbe012::t_8e0a9f94ed9257 1-77
+tests/integration/debug_command.rs
+  s_3b8401a0cbe012::t_6431e6b78dca3e 1-75
+tests/integration/push_hooks_comprehensive.rs
+  s_3b8401a0cbe012::t_4a6c1d04bec62a 20
+  s_3b8401a0cbe012::t_461adf4333899f 1-17,19,21-34,36-44,46-63,65-83,141-146,149
+  s_3b8401a0cbe012::t_c0146b9c66e939 18,35,45,64,84-140,147-148
+src/commands/exchange_nonce.rs
+  s_3b8401a0cbe012::t_ddf8d8226bc13a 1-32
+tests/integration/auth_commands.rs
+  s_3b8401a0cbe012::t_88a8ab20fbbf16 1-41
+src/lib.rs
+  s_3b8401a0cbe012::t_37b0d8e282649d 2
+  s_3b8401a0cbe012::t_dff6237b2d8186 46
+src/daemon/run.rs
+  s_3b8401a0cbe012::t_dff6237b2d8186 403
+src/auth/credential_backend.rs
+  s_3b8401a0cbe012::t_d76eac840c193f 1-380
+src/commands/logout.rs
+  s_3b8401a0cbe012::t_afa1cec49dda9a 1-22
+src/auth/mod.rs
+  s_3b8401a0cbe012::t_58f7376a8e24d6 1-12
+Cargo.toml
+  s_3b8401a0cbe012::t_b77b8cc58cd10d 14,18-23
+src/commands/dashboard.rs
+  s_3b8401a0cbe012::t_6da6ea3b223e2a 1-49
+src/commands/log.rs
+  s_3b8401a0cbe012::t_94a3c735c52fb1 1-364
+tests/integration/main.rs
+  s_3b8401a0cbe012::t_1f0c6b2d9d7052 68-74
+  s_3b8401a0cbe012::t_27957e828a30f1 75-78
+src/commands/upgrade.rs
+  s_3b8401a0cbe012::t_c250daed4b288e 1-48
+src/auth/state.rs
+  s_3b8401a0cbe012::t_ca45276f848b6a 1-79
+src/commands/stats.rs
+  s_3b8401a0cbe012::t_822fe29abd9528 327-375,383
+  s_3b8401a0cbe012::t_be481411e2e349 288,290,295,300,305,316-317,324
+  s_3b8401a0cbe012::t_15b2e7674cd942 137,139,141-143,151-153,155,158-166,177,184,195
+  s_3b8401a0cbe012::t_dff6237b2d8186 376-382
+  s_3b8401a0cbe012::t_004bb69bfd8935 257,262,265,277,284
+tests/integration/merge_authorship.rs
+  s_3b8401a0cbe012::t_77fd3cf5b68ee5 27-28,60,65
+  s_3b8401a0cbe012::t_de9cdd4e329bfc 200,385
+  s_3b8401a0cbe012::t_0191aa564b11d3 279
+  s_3b8401a0cbe012::t_7389721708e316 340,342-348
+  s_3b8401a0cbe012::t_0f0c0ec8a5663f 1-26,29-31,35-59,61-64,66-91,94-95,99-114,116-129,131-199,201-214,216-217,219-268,271-274,277-278,280-339,341,358-384,386-405,407-408,410-418
+  s_3b8401a0cbe012::t_6b3f4662cdd7de 32-34,92-93,96-98,115,130,215,218,269-270,275-276,349-357,406,409
+src/main.rs
+  s_3b8401a0cbe012::t_bb4335d3f26e9b 63
+  s_3b8401a0cbe012::t_691638bec2ac07 107
+  s_3b8401a0cbe012::t_b80102f8097aef 42
+  s_3b8401a0cbe012::t_c1f2e347480aaa 108-111
+  s_3b8401a0cbe012::t_431aba305b912f 112
+  s_3b8401a0cbe012::t_0cfc2cf694a88e 93-95
+  s_3b8401a0cbe012::t_b62c823368178c 29-36
+  s_3b8401a0cbe012::t_91964e8eaeee8e 37-41
+  s_3b8401a0cbe012::t_1d7929247ce74c 64
+  s_3b8401a0cbe012::t_cc73f056a830ab 106
+tests/integration/config_command.rs
+  s_3b8401a0cbe012::t_66dfbc6fd3703f 1-173
+tests/integration/dashboard_upgrade_commands.rs
+  s_3b8401a0cbe012::t_dcaf889252e618 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "b92b58516ac5d006b523ec5d46f60ee72800e231",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

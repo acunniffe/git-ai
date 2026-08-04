@@ -1,0 +1,43 @@
+src/daemon/transcript_worker.rs
+  941263e0b8c3337c 16,63,68,71,77,81,99,121,219-233,239-243,392,394-397,430,433-435,444,446-449,458,464-471,515
+src/transcripts/agents/copilot.rs
+  941263e0b8c3337c 320-331
+src/transcripts/agents/codex.rs
+  941263e0b8c3337c 4,6-7,76-127,146-167,244-255
+src/daemon/sweep_coordinator.rs
+  941263e0b8c3337c 37-40,55,62-72
+src/transcripts/agents/cursor.rs
+  941263e0b8c3337c 181-192
+src/transcripts/agents/claude.rs
+  941263e0b8c3337c 203-214
+src/transcripts/agents/gemini.rs
+  941263e0b8c3337c 193-204
+src/transcripts/agents/droid.rs
+  941263e0b8c3337c 209-220
+src/daemon.rs
+  941263e0b8c3337c 3798,3862,3893-3895,7311-7316,8302,8306-8308
+src/transcripts/agents/pi.rs
+  941263e0b8c3337c 119-130
+src/transcripts/agents/windsurf.rs
+  941263e0b8c3337c 119-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "d9e294fcd37f37d064cffdd6026e8859723c0345",
+  "prompts": {
+    "941263e0b8c3337c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38c42e01-ec70-4cf9-b136-c51756903a1e",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 262,
+      "total_deletions": 89,
+      "accepted_lines": 257,
+      "overriden_lines": 0
+    }
+  }
+}

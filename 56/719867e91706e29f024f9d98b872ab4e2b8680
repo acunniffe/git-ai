@@ -1,0 +1,304 @@
+agent-support/vscode/package.json
+  7a32d11 31-35
+agent-support/vscode/src/utils/config.ts
+  7a32d11 1-17
+agent-support/vscode/src/extension.ts
+  7a32d11 5,14-19,21-26
+  cff1645 20
+agent-support/vscode/src/ai-edit-manager.ts
+  cff1645 289-291
+agent-support/vscode/README.md
+  cff1645 22,29,32-36,38-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "77b413bd78d72b0842f44855ad4cb96cc7b5e8dd",
+  "prompts": {
+    "7a32d11": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8f65913c-2897-462b-a78d-3351b490f5b0",
+        "model": "gpt-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@extension.ts (15-24) Gate the entire ai tab tracking code behind a config feature flag (gitai.experiments.aiTabTracking) (see @ai-edit-manager.ts for how we use config flags). Fork out the config stuff into a helper class in utils/config.ts",
+          "timestamp": "2025-11-04T11:13:41.538Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll first scan the code to see how configuration is currently accessed and check if a configuration contribution for the new flag exists. Then I'll add a `utils/config.ts` helper and update `extension.ts` to gate AI tab tracking behind `gitai.experiments.aiTabTracking`.",
+          "timestamp": "2025-11-04T11:13:53.141Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/agent-support/vscode/package.json"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "list_dir",
+          "input": {
+            "target_directory": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/utils"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I'll add a new `utils/config.ts` helper for configuration access, update `extension.ts` to gate AI tab tracking behind `gitai.experiments.aiTabTracking`, and declare the new setting in `package.json`.",
+          "timestamp": "2025-11-04T11:14:13.568Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/utils/config.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/package.json"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I’m going to gate AI tab tracking behind the new `gitai.experiments.aiTabTracking` flag, add a `utils/config.ts` helper, and register the setting in `package.json`.\n\n```14:25:/Users/svarlamov/projects/git-ai/agent-support/vscode/src/extension.ts\n  if (Config.isAiTabTrackingEnabled()) {\n    const aiTabEditManager = new AITabEditManager(context, ideHostCfg, aiEditManager);\n    const aiTabTrackingEnabled = aiTabEditManager.enableIfSupported();\n\n    if (aiTabTrackingEnabled) {\n      console.log('[git-ai] Tracking document content changes for AI tab completion detection');\n      context.subscriptions.push(\n        vscode.workspace.onDidChangeTextDocument((event) => {\n          aiTabEditManager.handleDocumentContentChangeEvent(event);\n        })\n      );\n    }\n  }\n```\n\n```1:15:/Users/svarlamov/projects/git-ai/agent-support/vscode/src/utils/config.ts\nimport * as vscode from \"vscode\";\n\nexport class Config {\n  private static getRoot(): vscode.WorkspaceConfiguration {\n    return vscode.workspace.getConfiguration(\"gitai\");\n  }\n\n  static isCheckpointLoggingEnabled(): boolean {\n    return !!this.getRoot().get<boolean>(\"enableCheckpointLogging\");\n  }\n\n  static isAiTabTrackingEnabled(): boolean {\n    return !!this.getRoot().get<boolean>(\"experiments.aiTabTracking\");\n  }\n}\n```\n\n- Added configuration contribution in `package.json`:\n  - `gitai.experiments.aiTabTracking` (boolean, default `false`)\n\nStatus: I created `utils/config.ts`, updated `extension.ts` to use it, and declared the new config in `package.json`. No linter issues found.\n\n- Gated AI tab tracking in `extension.ts` using `Config.isAiTabTrackingEnabled()`, including instantiation and event wiring.\n- Added `utils/config.ts` helper with typed getters for config flags.\n- Registered `gitai.experiments.aiTabTracking` in `package.json` (default false).",
+          "timestamp": "2025-11-04T11:15:07.254Z"
+        }
+      ],
+      "total_additions": 78,
+      "total_deletions": 0,
+      "accepted_lines": 79,
+      "overriden_lines": 0
+    },
+    "cff1645": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "44cbd167-861d-49b4-8942-47dd46d7a630",
+        "model": "gpt-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "When checking git ai version in @ai-edit-manager.ts make sure to string anything after the semver, because some builds may append release type behind that should just be ignored like \n\n\n\n1.0.22 (debug)\n\n\n\n42.88.1 (enterprise)",
+          "timestamp": "2025-11-04T11:14:50.972Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll update the version parsing in `src/ai-edit-manager.ts` to strictly extract the `major.minor.patch` semver and ignore any trailing labels like \"(debug)\" or \"(enterprise)\". Now I'll make the edit.",
+          "timestamp": "2025-11-04T11:15:26.244Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/ai-edit-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/ai-edit-manager.ts"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "- I updated `src/ai-edit-manager.ts` to robustly parse the version by extracting a strict `major.minor.patch` semver and ignoring any trailing labels like “(debug)” or “(enterprise)”.\n\n- Change: when reading `git-ai --version`, we now match `\\b\\d+\\.\\d+\\.\\d+\\b` and fall back to stripping any trailing parenthetical if needed. This ensures versions like `1.0.22 (debug)` and `42.88.1 (enterprise)` are treated as `1.0.22` and `42.88.1`.",
+          "timestamp": "2025-11-04T11:15:33.142Z"
+        },
+        {
+          "type": "user",
+          "text": "Add docs on the flag to @README.md and add a notification that it is enabled if the flag is enabled",
+          "timestamp": "2025-11-04T11:17:44.723Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll check the extension activation code and config utilities to add the startup notification when the flag is enabled, and update the README with clear docs on the flag.",
+          "timestamp": "2025-11-04T11:17:59.227Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/utils/config.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/agent-support/vscode/README.md"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/agent-support/vscode/package.json"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": false,
+            "todos": [
+              {
+                "content": "Add startup notification when checkpoint logging is enabled",
+                "id": "notif-on-flag-enabled",
+                "status": "in_progress"
+              },
+              {
+                "content": "Document enableCheckpointLogging flag in README with behavior and example",
+                "id": "docs-flag-readme",
+                "status": "pending"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Add startup notification when checkpoint logging is enabled",
+                "id": "notif-on-flag-enabled",
+                "status": "completed"
+              },
+              {
+                "content": "Document enableCheckpointLogging flag in README with behavior and example",
+                "id": "docs-flag-readme",
+                "status": "in_progress"
+              }
+            ]
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/README.md"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "todo_write",
+          "input": {
+            "merge": true,
+            "todos": [
+              {
+                "content": "Document enableCheckpointLogging flag in README with behavior and example",
+                "id": "docs-flag-readme",
+                "status": "completed"
+              }
+            ]
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "- I added a startup notification in `src/extension.ts` that displays “git-ai: Checkpoint logging is enabled” when `gitai.enableCheckpointLogging` is true.\n- I updated `README.md` with a concise “Checkpoint logging (optional)” section documenting the flag, default value, behavior, and how to enable it via Settings or `settings.json`.\n\n- All tasks completed.",
+          "timestamp": "2025-11-04T11:18:50.545Z"
+        },
+        {
+          "type": "user",
+          "text": "Ignore the previous. Just document the feature flag for the ai tab tracking experiment",
+          "timestamp": "2025-11-04T11:20:14.193Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll update the README to add a concise section documenting the experimental AI tab tracking flag, including what it does, its default, and how to enable it.",
+          "timestamp": "2025-11-04T11:20:37.321Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/README.md"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "- I added an “AI tab tracking (experimental)” section to `README.md` documenting the `gitai.experiments.aiTabTracking` flag, its default, purpose, notes, and a `settings.json` example.\n\n- No code changes were made.",
+          "timestamp": "2025-11-04T11:20:37.371Z"
+        },
+        {
+          "type": "user",
+          "text": "Add a notification in @extension.ts if the ai tab tracking experiment is enabled. Update the docs that seeing this is how you will know it's active. Make sure that they know you have to resetart the IDE to get it to load the config",
+          "timestamp": "2025-11-04T11:21:20.492Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll add a startup notification in `src/extension.ts` when AI tab tracking is active, and update `README.md` to mention the notification and that an IDE restart is required for config changes to take effect. Now applying the edits.",
+          "timestamp": "2025-11-04T11:21:46.984Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/src/extension.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/agent-support/vscode/README.md"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "- Added a startup notification in `src/extension.ts` when AI tab tracking is active: “git-ai: AI tab tracking is enabled (experimental)”.\n- Updated `README.md` under “AI tab tracking (experimental)”:\n  - Noted that you must restart VS Code/Cursor after changing the setting.\n  - Stated that a notification confirms the feature is active.\n  - Kept host support and experimental caveats.\n\n- You’ll know it’s active when you see the notification after restart.",
+          "timestamp": "2025-11-04T11:21:53.659Z"
+        }
+      ],
+      "total_additions": 365,
+      "total_deletions": 0,
+      "accepted_lines": 337,
+      "overriden_lines": 14
+    }
+  }
+}

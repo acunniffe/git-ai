@@ -1,0 +1,32 @@
+src/config.rs
+  2c9a7357d8710fc9 6,552-591
+src/observability/flush.rs
+  2c9a7357d8710fc9 2
+src/commands/upgrade.rs
+  2c9a7357d8710fc9 221,262
+src/auth/client.rs
+  2c9a7357d8710fc9 1,51,97,167
+src/api/client.rs
+  2c9a7357d8710fc9 81-102,164,194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "06d98192a0fad041e996d6574154b328382950c9",
+  "prompts": {
+    "2c9a7357d8710fc9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c59ae13-ffdc-4dd4-a58d-76a1c678f99e",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 77,
+      "total_deletions": 72,
+      "accepted_lines": 74,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/d2714695d4261c30be48d5c15b9a69613e90525371493733d8c69715160f083c"
+    }
+  }
+}

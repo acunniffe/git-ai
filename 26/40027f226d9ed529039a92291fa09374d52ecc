@@ -1,0 +1,26 @@
+src/daemon.rs
+  acaacb0abd2332ed 3780,5653-5657,5663-5664,5666,5668-5671,5737,5756
+tests/integration/windsurf.rs
+  acaacb0abd2332ed 77,584-585
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "2640027f226d9ed529039a92291fa09374d52ecc",
+  "prompts": {
+    "acaacb0abd2332ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e8803e77-45ab-4067-a145-5b3f347826a4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 26,
+      "accepted_lines": 18,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/a9fc0903b073b840478a66014e5a20de75f3b1f488566b8a56bc6fa301927837"
+    }
+  }
+}

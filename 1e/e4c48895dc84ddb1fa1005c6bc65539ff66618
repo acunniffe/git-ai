@@ -1,0 +1,24 @@
+src/commands/checkpoint.rs
+  92676bb23ea67fc8 370,376-383
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.34",
+  "base_commit_sha": "1ee4c48895dc84ddb1fa1005c6bc65539ff66618",
+  "prompts": {
+    "92676bb23ea67fc8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "233bb747-9a3d-431d-ab10-9dd7da2fcb99",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 1,
+      "accepted_lines": 10,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/f077210c9a18ac4b3835fb02496181e3e9f69369db9c7d8f09f2dce59dfb1d19"
+    }
+  }
+}

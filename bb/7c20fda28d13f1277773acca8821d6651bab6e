@@ -1,0 +1,26 @@
+tests/integration/checkout_switch.rs
+  7cb497240c3524af 424-428
+tests/integration/cherry_pick.rs
+  7cb497240c3524af 702-706
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "bb7c20fda28d13f1277773acca8821d6651bab6e",
+  "prompts": {
+    "7cb497240c3524af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "824c14ec-df6d-4a75-ba4a-256448ada43e",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test Runner",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 0,
+      "accepted_lines": 10,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/f4428c81a1c4718490ce053260c6fe3dc0c73f7ac2a791b9e9b0033bc3a27ba3"
+    }
+  }
+}

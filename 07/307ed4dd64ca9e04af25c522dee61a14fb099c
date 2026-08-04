@@ -1,0 +1,48 @@
+src/authorship/authorship_log_serialization.rs
+  11d03b37dc3ad21b 1407-1410
+src/commands/blame.rs
+  11d03b37dc3ad21b 1099-1102
+src/commands/checkpoint.rs
+  11d03b37dc3ad21b 634,805-808,877-881,1601,1642
+src/authorship/attribution_tracker.rs
+  11d03b37dc3ad21b 2151
+src/authorship/rebase_authorship.rs
+  11d03b37dc3ad21b 1260-1267,1276-1301,1303-1309,1311-1312,1314,1316-1322,1324-1327,4073-4075
+src/commands/git_ai_handlers.rs
+  11d03b37dc3ad21b 668-722,724-741,744-754
+tests/integration/ci_squash_rebase.rs
+  11d03b37dc3ad21b 230-233,413-415,506-509,1253-1256
+tests/integration/prompt_across_commit.rs
+  11d03b37dc3ad21b 94-97,118-121
+tests/integration/rebase_realworld.rs
+  11d03b37dc3ad21b 9707-9710,9713-9716,9722-9723,10149-10152,10155-10157,10164-10165,10347-10350,10353-10356,10362-10363,10553-10556,10559-10561,10568-10569,10779-10782,10785-10788,10794-10795,10980-10983,10986-10988,10995-10996,11203-11206,11209-11212,11218-11219,11465-11468,11471-11473,11480-11481
+tests/integration/repos/test_file.rs
+  11d03b37dc3ad21b 699-702,739-742,783-790
+tests/integration/squash_merge.rs
+  11d03b37dc3ad21b 179-182,504-507
+src/authorship/virtual_attribution.rs
+  11d03b37dc3ad21b 342-344,406-409,510-512,564-567,660-662,714-717,1924
+src/authorship/working_log.rs
+  11d03b37dc3ad21b 332-335
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.8",
+  "base_commit_sha": "07307ed4dd64ca9e04af25c522dee61a14fb099c",
+  "prompts": {
+    "11d03b37dc3ad21b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9e7961-e2a3-4c64-9188-a3037cb57221",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 319,
+      "total_deletions": 198,
+      "accepted_lines": 319,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/ef81e119c0d550a5f90754d5b5592a643cda8d1fe0541ed66cffe8bdf7e1188b"
+    }
+  }
+}
