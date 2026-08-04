@@ -3686,6 +3686,7 @@ impl ActorDaemonCoordinator {
 
     fn record_trace_connection_close(&self, roots: &[String]) -> Result<Vec<String>, GitAiError> {
         let mut close_marker_candidates = Vec::new();
+        let mut roots_cleared_without_marker = Vec::new();
         let mut ingress = self
             .trace_ingress_state
             .lock()
@@ -3700,6 +3701,7 @@ impl ActorDaemonCoordinator {
             }
             if !Self::trace_root_needs_close_marker(&ingress, root_sid) {
                 Self::clear_trace_ingress_root_locked(&mut ingress, root_sid);
+                roots_cleared_without_marker.push(root_sid);
                 continue;
             }
             if ingress.root_close_markers_enqueued.contains(root_sid) {
@@ -3707,6 +3709,26 @@ impl ActorDaemonCoordinator {
             }
             ingress.root_close_markers_enqueued.insert(root_sid.clone());
             close_marker_candidates.push(root_sid.clone());
+        }
+        drop(ingress);
+        let mut roots_safe_to_clear = Vec::new();
+        if !roots_cleared_without_marker.is_empty() {
+            let queued = self.queued_trace_payloads_by_root.lock().map_err(|_| {
+                GitAiError::Generic("queued trace payloads by root lock poisoned".to_string())
+            })?;
+            for root_sid in roots_cleared_without_marker {
+                if queued.get(root_sid).copied().unwrap_or(0) > 0 {
+                    close_marker_candidates.push(root_sid.clone());
+                } else {
+                    roots_safe_to_clear.push(root_sid);
+                }
+            }
+        }
+        if !roots_safe_to_clear.is_empty() {
+            let mut offsets = self.async_reflog_start_offsets_by_root()?;
+            for root_sid in roots_safe_to_clear {
+                offsets.remove(root_sid);
+            }
         }
         self.trace_ingest_progress_notify.notify_waiters();
         Ok(close_marker_candidates)
@@ -4520,6 +4542,7 @@ impl ActorDaemonCoordinator {
             ingress
                 .root_mutating
                 .entry(root.clone())
+                .and_modify(|mutating| *mutating |= command_mutates_refs)
                 .or_insert(command_mutates_refs);
             let target_repo_only = trace_command_uses_target_repo_context_only(Some(primary));
             ingress
@@ -10267,6 +10290,16 @@ mod tests {
 
         let sid = "20260411T120000.000000-Psid-close";
         coord.trace_root_connection_opened(sid).unwrap();
+        let mut early_child = serde_json::json!({
+            "event": "cmd_name",
+            "sid": format!("{sid}/20260411T120000.000001-Pchild"),
+            "name": "rev-list",
+            "time_ns": 0u64,
+        });
+        assert!(
+            !coord.prepare_trace_payload_for_ingest(&mut early_child),
+            "read-only child metadata should stay off the ingest queue"
+        );
         let mut start = serde_json::json!({
             "event": "start",
             "sid": sid,
@@ -10275,6 +10308,17 @@ mod tests {
             "time_ns": 1u64,
         });
         assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        assert_eq!(
+            coord
+                .trace_ingress_state
+                .lock()
+                .unwrap()
+                .root_mutating
+                .get(sid)
+                .copied(),
+            Some(true),
+            "a mutating root start must upgrade an earlier read-only child classification"
+        );
         coord.enqueue_trace_payload(start).unwrap();
 
         finalize_trace_connection_roots(coord.clone(), [sid.to_string()].into_iter().collect())
@@ -10289,6 +10333,14 @@ mod tests {
                 .contains_key(sid),
             "closing the trace stream without root atexit must not leave the family sequencer wedged"
         );
+        assert!(
+            !coord
+                .async_reflog_start_offsets_by_root
+                .lock()
+                .unwrap()
+                .contains_key(sid),
+            "closing the trace stream must discard the async reflog baseline"
+        );
         coord.request_shutdown();
     }
 
@@ -10297,6 +10349,11 @@ mod tests {
         let coord = ActorDaemonCoordinator::new();
         let sid = "20260411T120000.000000-Psid-readonly-close";
         coord.trace_root_connection_opened(sid).unwrap();
+        coord
+            .async_reflog_start_offsets_by_root
+            .lock()
+            .unwrap()
+            .insert(sid.to_string(), HashMap::new());
         let mut start = make_start_payload(&["git", "status", "--short"]);
         start["sid"] = serde_json::json!(sid);
         assert!(!coord.prepare_trace_payload_for_ingest(&mut start));
@@ -10313,6 +10370,46 @@ mod tests {
         assert!(!ingress.root_argv.contains_key(sid));
         assert!(!ingress.root_definitely_read_only.contains(sid));
         assert!(!ingress.root_open_connections.contains_key(sid));
+        drop(ingress);
+        assert!(
+            !coord
+                .async_reflog_start_offsets_by_root
+                .lock()
+                .unwrap()
+                .contains_key(sid),
+            "plain-close teardown must discard an async reflog baseline"
+        );
+    }
+
+    #[tokio::test]
+    async fn trace_connection_close_orders_async_cleanup_after_queued_payloads() {
+        let coord = ActorDaemonCoordinator::new();
+        let sid = "20260411T120000.000000-Psid-queued-close";
+        coord.trace_root_connection_opened(sid).unwrap();
+        coord
+            .async_reflog_start_offsets_by_root
+            .lock()
+            .unwrap()
+            .insert(sid.to_string(), HashMap::new());
+        coord
+            .queued_trace_payloads_by_root
+            .lock()
+            .unwrap()
+            .insert(sid.to_string(), 1);
+
+        let close_marker_roots = coord
+            .record_trace_connection_close(&[sid.to_string()])
+            .unwrap();
+
+        assert_eq!(close_marker_roots, vec![sid.to_string()]);
+        assert!(
+            coord
+                .async_reflog_start_offsets_by_root
+                .lock()
+                .unwrap()
+                .contains_key(sid),
+            "queued payloads must retain their baseline until the ordered close marker runs"
+        );
     }
 
     #[tokio::test]
