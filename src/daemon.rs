@@ -2721,7 +2721,6 @@ struct TraceIngressState {
     root_families: HashMap<String, String>,
     root_argv: HashMap<String, Vec<String>>,
     root_started_at_ns: HashMap<String, u128>,
-    root_reflog_start_offsets: HashMap<String, HashMap<String, u64>>,
     root_mutating: HashMap<String, bool>,
     root_target_repo_only: HashMap<String, bool>,
     root_last_activity_ns: HashMap<String, u64>,
@@ -3663,7 +3662,6 @@ impl ActorDaemonCoordinator {
             .get(root_sid)
             .copied()
             .unwrap_or(false)
-            || ingress.root_reflog_start_offsets.contains_key(root_sid)
     }
 
     fn clear_trace_ingress_root_locked(ingress: &mut TraceIngressState, root_sid: &str) {
@@ -3671,7 +3669,6 @@ impl ActorDaemonCoordinator {
         ingress.root_families.remove(root_sid);
         ingress.root_argv.remove(root_sid);
         ingress.root_started_at_ns.remove(root_sid);
-        ingress.root_reflog_start_offsets.remove(root_sid);
         ingress.root_mutating.remove(root_sid);
         ingress.root_target_repo_only.remove(root_sid);
         ingress.root_last_activity_ns.remove(root_sid);
@@ -4524,26 +4521,12 @@ impl ActorDaemonCoordinator {
         }
 
         let terminal = is_terminal_root_trace_event(&event, &sid, &root);
-        if command_mutates_refs
-            && !terminal
-            && !ingress.root_reflog_start_offsets.contains_key(&root)
-            && let Some(worktree) = worktree_hint
-                .clone()
-                .or_else(|| ingress.root_worktrees.get(&root).cloned())
-        {
-            let offsets =
-                crate::daemon::ref_cursor::capture_reflog_start_offsets_for_worktree(&worktree);
-            ingress
-                .root_reflog_start_offsets
-                .insert(root.clone(), offsets);
-        }
 
         let read_only_root =
             event_is_read_only || ingress.root_definitely_read_only.contains(&root);
         let inherited = (
             ingress.root_argv.get(&root).cloned(),
             ingress.root_started_at_ns.get(&root).copied(),
-            ingress.root_reflog_start_offsets.get(&root).cloned(),
             ingress.root_worktrees.get(&root).cloned(),
         );
         if terminal {
@@ -4551,7 +4534,6 @@ impl ActorDaemonCoordinator {
             ingress.root_families.remove(&root);
             ingress.root_argv.remove(&root);
             ingress.root_started_at_ns.remove(&root);
-            ingress.root_reflog_start_offsets.remove(&root);
             ingress.root_mutating.remove(&root);
             ingress.root_target_repo_only.remove(&root);
             ingress.root_last_activity_ns.remove(&root);
@@ -4575,18 +4557,10 @@ impl ActorDaemonCoordinator {
                     json!(started_at_ns),
                 );
             }
-            if object.get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD).is_none()
-                && let Some(offsets) = inherited.2
-            {
-                object.insert(
-                    TRACE_ROOT_REFLOG_START_OFFSETS_FIELD.to_string(),
-                    json!(offsets),
-                );
-            }
             if object.get(TRACE_ROOT_WORKTREE_FIELD).is_none()
                 && object.get("worktree").is_none()
                 && object.get("repo_working_dir").is_none()
-                && let Some(worktree) = inherited.3
+                && let Some(worktree) = inherited.2
             {
                 object.insert(
                     TRACE_ROOT_WORKTREE_FIELD.to_string(),
@@ -6537,10 +6511,58 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    async fn attach_reflog_start_offsets_for_async_ingest(
+        payload: &mut Value,
+    ) -> Result<(), GitAiError> {
+        if payload.get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD).is_some() {
+            return Ok(());
+        }
+        let event = payload
+            .get("event")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let sid = payload
+            .get("sid")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if event != "def_repo"
+            || sid != trace_root_sid(sid)
+            || crate::daemon::trace_normalizer::def_repo_is_secondary(payload)
+        {
+            return Ok(());
+        }
+
+        let argv = trace_payload_effective_argv(payload);
+        let primary =
+            trace_payload_primary_command(payload).or_else(|| trace_argv_primary_command(&argv));
+        if !trace_invocation_may_mutate_refs(primary.as_deref(), &argv) {
+            return Ok(());
+        }
+        let Some(worktree) = trace_payload_worktree_hint(payload) else {
+            return Ok(());
+        };
+
+        let offsets = tokio::task::spawn_blocking(move || {
+            crate::daemon::ref_cursor::capture_reflog_start_offsets_for_worktree(&worktree)
+        })
+        .await
+        .map_err(|error| {
+            GitAiError::Generic(format!("reflog start capture worker failed: {error}"))
+        })?;
+        if let Some(object) = payload.as_object_mut() {
+            object.insert(
+                TRACE_ROOT_REFLOG_START_OFFSETS_FIELD.to_string(),
+                json!(offsets),
+            );
+        }
+        Ok(())
+    }
+
     async fn apply_trace_payload_to_state(
         &self,
-        payload: Value,
+        mut payload: Value,
     ) -> Result<TracePayloadApplyOutcome, GitAiError> {
+        Self::attach_reflog_start_offsets_for_async_ingest(&mut payload).await?;
         let payload_root_sid = Self::trace_payload_root_sid(&payload);
         let event = payload
             .get("event")
@@ -10006,7 +10028,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mutating_trace_payload_captures_repo_reflog_start_offsets() {
+    async fn mutating_trace_payload_defers_repo_reflog_capture_to_async_ingest() {
         let coord = ActorDaemonCoordinator::new();
         let temp = tempfile::tempdir().unwrap();
         let repo = temp.path().join("repo");
@@ -10025,18 +10047,25 @@ mod tests {
         std::fs::write(&stash_log, old_reflog).unwrap();
         std::fs::write(&branch_log, old_branch_reflog).unwrap();
         let mut payload = serde_json::json!({
-            "event": "start",
+            "event": "def_repo",
             "sid": "20260411T120000.000000-Psid-reflog",
             "argv": ["git", "reset", "--hard", "HEAD~1"],
             "worktree": repo,
         });
 
         assert!(coord.prepare_trace_payload_for_ingest(&mut payload));
+        assert!(
+            payload.get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD).is_none(),
+            "listener-side trace preparation must not read or attach repository state"
+        );
 
+        ActorDaemonCoordinator::attach_reflog_start_offsets_for_async_ingest(&mut payload)
+            .await
+            .unwrap();
         let offsets = payload
             .get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD)
             .and_then(Value::as_object)
-            .expect("mutating trace payload should include reflog start offsets");
+            .expect("async trace ingestion should attach reflog start offsets");
         let head_key = format!(
             "worktree:{}:HEAD",
             git_dir.canonicalize().unwrap().to_string_lossy()
