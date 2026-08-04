@@ -771,7 +771,7 @@ fn read_varint(bytes: &[u8], offset: &mut usize, end: usize) -> Result<u64, GitA
         }
         value = value
             .checked_add(1)
-            .and_then(|value| value.checked_shl(7))
+            .and_then(|value| value.checked_mul(128))
             .ok_or_else(|| invalid_reftable("varint overflow"))?
             | u64::from(bytes[*offset] & 0x7f);
     }
@@ -826,7 +826,7 @@ fn invalid_reftable(message: impl Into<String>) -> GitAiError {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::ffi::OsStr;
     use std::fs;
@@ -858,7 +858,7 @@ mod tests {
             .expect("git command with stdin should succeed");
     }
 
-    fn native_reftable_repo(object_format: &str) -> tempfile::TempDir {
+    pub(crate) fn native_reftable_repo(object_format: &str) -> tempfile::TempDir {
         let temp = tempfile::tempdir().unwrap();
         git(
             temp.path(),
@@ -970,6 +970,15 @@ mod tests {
         ]);
 
         assert!(parse_table(&bytes).is_err());
+    }
+
+    #[test]
+    fn oversized_varint_returns_error() {
+        let mut bytes = vec![0x81; 10];
+        bytes.push(0);
+        let mut offset = 0;
+
+        assert!(read_varint(&bytes, &mut offset, bytes.len()).is_err());
     }
 
     #[test]
