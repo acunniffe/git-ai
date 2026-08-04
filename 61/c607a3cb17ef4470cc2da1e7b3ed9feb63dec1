@@ -13,16 +13,14 @@ tests/integration/repos/test_repo.rs
 src/commands/config.rs
   s_b0e77478c0079b::t_1915fe3907a795 125,160,212,228-230,398-404,544-547,885-901,1262-1268
   s_b0e77478c0079b::t_91aaac887335e0 5
-src/git/repo_storage.rs
-  s_f5625e539bdb2a::t_71a6d9bf7c11a7 464
 src/tokio_runtime.rs
-  s_f5625e539bdb2a::t_b2f625bff773d6 6,7-8
-  s_f5625e539bdb2a::t_e4343007cbe024 9
+  s_f5625e539bdb2a::t_b2f625bff773d6 58,62-63
+  s_f5625e539bdb2a::t_e4343007cbe024 96
 ---
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "development:1.6.17",
-  "base_commit_sha": "aed35403771c24070133ba97f68f00f0760be237",
+  "base_commit_sha": "61c607a3cb17ef4470cc2da1e7b3ed9feb63dec1",
   "prompts": {},
   "sessions": {
     "s_194789cae2b5d8": {
