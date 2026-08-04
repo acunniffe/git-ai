@@ -444,10 +444,12 @@ fn test_stats_cli_empty_tree_range() {
     let mut file = repo.filename("history.txt");
     file.set_contents(crate::lines!["AI Line 1".ai()]);
     let _first = repo.stage_all_and_commit("Initial AI").unwrap();
+    file.assert_committed_lines(crate::lines!["AI Line 1".ai()]);
 
     // Second commit: human line
     file.set_contents(crate::lines!["AI Line 1".ai(), "Human Line 2".human()]);
     repo.stage_all_and_commit("Human adds line").unwrap();
+    file.assert_committed_lines(crate::lines!["AI Line 1".ai(), "Human Line 2".human(),]);
 
     // Git's empty tree OID
     let empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -472,10 +474,8 @@ fn test_stats_cli_empty_tree_range() {
     assert_eq!(stats.authorship_stats.total_commits, 2);
     assert_eq!(stats.range_stats.git_diff_added_lines, 2);
     assert_eq!(stats.range_stats.ai_additions, 1);
-    // Range stats use legacy Human checkpoints and pass known_human_accepted=0,
-    // so human lines appear as unknown_additions (not human_additions).
-    assert_eq!(stats.range_stats.human_additions, 0);
-    assert_eq!(stats.range_stats.unknown_additions, 1);
+    assert_eq!(stats.range_stats.human_additions, 1);
+    assert_eq!(stats.range_stats.unknown_additions, 0);
 }
 
 #[test]
