@@ -1,0 +1,26 @@
+src/http.rs
+  1869dfcc0dd7127e 3,5-8
+tests/integration/tls_native_certs.rs
+  1869dfcc0dd7127e 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "64cd1eba5ceb13bbc5122fde56078857950a6514",
+  "prompts": {
+    "1869dfcc0dd7127e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa1bc3bc-c768-48d8-a4ed-35be4c4cc996",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 395,
+      "accepted_lines": 6,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e7171bca1bab543c50201949df2d4dc1b59d65e74f9b2a9a60857cb550b64491"
+    }
+  }
+}

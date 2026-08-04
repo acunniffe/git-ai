@@ -1,0 +1,28 @@
+docs/installer-release-runbook.md
+  s_2740b0b2a8bdc6::t_2ff8c2e50f69ce 15,17-21,31-33,35,45-71
+  s_2740b0b2a8bdc6::t_7b4a32150195fd 1-14,16,22-30,34,36-44,72-82
+tests/package_installers.rs
+  s_2740b0b2a8bdc6::t_2ff8c2e50f69ce 99-102,106-107
+  s_2740b0b2a8bdc6::t_7b4a32150195fd 91-98,103-105,108-109
+  s_2740b0b2a8bdc6::t_14518c1daa9285 89-90
+  s_2740b0b2a8bdc6::t_143ff2ab7f6c9d 110
+README.md
+  s_2740b0b2a8bdc6::t_7b4a32150195fd 49-50,52-62,74-76
+  s_2740b0b2a8bdc6::t_2ff8c2e50f69ce 51,63-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "2cf29a8c29590611df5b13ab76bcce55c56e0e87",
+  "prompts": {},
+  "sessions": {
+    "s_2740b0b2a8bdc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6cfb-8eed-7430-8509-7cb0df96f1ba",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

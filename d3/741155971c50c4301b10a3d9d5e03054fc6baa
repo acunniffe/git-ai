@@ -1,0 +1,27 @@
+tests/integration/pi.rs
+  s_84ccbf9d01f873::t_a1e6d0a8c031e7 156-158,172-173,176-184
+  s_84ccbf9d01f873::t_6775e5341cdeec 174-175
+src/commands/checkpoint.rs
+  s_84ccbf9d01f873::t_057c9374b13ecf 887-894
+tests/integration/ignore_prompts.rs
+  s_84ccbf9d01f873::t_c7be0c48d2f999 114,119-120,122-128
+  s_84ccbf9d01f873::t_5163c87be20b0d 247,250-251,255-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "d3741155971c50c4301b10a3d9d5e03054fc6baa",
+  "prompts": {},
+  "sessions": {
+    "s_84ccbf9d01f873": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "904b8a40-da3f-4fb5-998c-d263b72cbe55",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/9d5be8c23078b2e5af6bc22ec4b9c05af6084738cb88599c942e7c1913fc6976"
+    }
+  }
+}

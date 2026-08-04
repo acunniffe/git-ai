@@ -1,0 +1,28 @@
+.github/workflows/intellij-build.yml
+  9fb3fc942f3535d1 58-59,113-114,204-205
+.github/workflows/intellij-ui-tests.yml
+  9fb3fc942f3535d1 64-65,78-79
+.github/workflows/release-intellij-plugin.yml
+  9fb3fc942f3535d1 55-56,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "ea7272456f21c629bcec74723e650d61e3772b05",
+  "prompts": {
+    "9fb3fc942f3535d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "11a2455f-d881-47d7-b25f-40181d6345ae",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 0,
+      "accepted_lines": 13,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/505d3f42f3652b1c22259e232450d7fe78ea8e82e30e589cec4c7ba9d638c18f"
+    }
+  }
+}

@@ -1,0 +1,27 @@
+tests/integration/checkpoint_unit.rs
+  s_603ad09f68a354::t_c0443c72ae2c19 305-306
+  s_603ad09f68a354::t_68719415312138 271-304,307-323
+src/daemon/checkpoint.rs
+  s_603ad09f68a354::t_32723424c251b4 194-199
+src/daemon.rs
+  s_603ad09f68a354::t_570228212dbd39 2678
+  s_603ad09f68a354::t_960630e5f8fa62 2671-2677,2679-2698,9003-9004,9006
+  s_603ad09f68a354::t_1a969b6da3ec59 8991-9002,9005,9007-9033
+  s_603ad09f68a354::t_28399dd7771c35 33,1896-1915,1936-1937,1939,1941
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "b36654a90a9c32fe32464cccabc3f35219b7b996",
+  "prompts": {},
+  "sessions": {
+    "s_603ad09f68a354": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9821-5898-7f60-a8b3-95ebfa79fc20",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

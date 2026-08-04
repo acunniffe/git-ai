@@ -1,0 +1,29 @@
+src/commands/checkpoint_agent/presets/codex.rs
+  941263e0b8c3337c 185-192
+tests/integration/cursor.rs
+  941263e0b8c3337c 57,79-83
+tests/integration/agent_presets_comprehensive.rs
+  941263e0b8c3337c 150-152,384-386
+src/daemon/transcript_worker.rs
+  941263e0b8c3337c 223
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "2cae982b95d59713f79e39e00428bbf7efa4450b",
+  "prompts": {
+    "941263e0b8c3337c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38c42e01-ec70-4cf9-b136-c51756903a1e",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 21,
+      "total_deletions": 18,
+      "accepted_lines": 21,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,26 @@
+src/mdm/agents/cursor.rs
+  s_cea2e4b3af1f79::t_8e401774c92e36 412-419,425-427
+  s_cea2e4b3af1f79::t_6884e555e6f1c2 421-424
+src/mdm/agents/vscode.rs
+  cb4f16c756527153 183
+  816419a490cc9680 303
+src/mdm/agents/windsurf.rs
+  s_cea2e4b3af1f79::t_6884e555e6f1c2 423-426
+  s_cea2e4b3af1f79::t_fdb4d7221e7c22 407-421,427-429
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "5bf8f0a76e4acc6cb1b8d457f548597f4ea51261",
+  "prompts": {},
+  "sessions": {
+    "s_cea2e4b3af1f79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e111d39d-5ec3-40a3-924c-bceb3ca9a256",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "poi1649 <bojun.kim@deliveryhero.com>"
+    }
+  }
+}
