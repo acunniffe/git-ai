@@ -1,0 +1,57 @@
+tests/integration/agent_presets_comprehensive.rs
+  805abd0f664c09cf 837-839
+tests/integration/checkpoint_unit.rs
+  805abd0f664c09cf 4-6,8,37,53-62,71,375-380,393,441-446,459,506-511,524,625-630,639-657,671
+tests/daemon_mode.rs
+  805abd0f664c09cf 7-8,27,1257-1259
+src/commands/checkpoint_agent/presets/opencode.rs
+  805abd0f664c09cf 2-3
+src/commands/checkpoint_agent/presets/known_human.rs
+  805abd0f664c09cf 46
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  805abd0f664c09cf 3-4
+tests/integration/test_utils_unit.rs
+  805abd0f664c09cf 4,17-25,34,49,52-60,106-112,141-146,160-162
+tests/integration/github_copilot.rs
+  805abd0f664c09cf 310,340,381
+src/commands/git_ai_handlers.rs
+  805abd0f664c09cf 312-313,315-324,342-349,854,906
+tests/integration/codex.rs
+  805abd0f664c09cf 3
+src/commands/checkpoint_agent/presets/gemini.rs
+  805abd0f664c09cf 3-4
+src/commands/checkpoint_agent/presets/droid.rs
+  805abd0f664c09cf 3-4
+src/daemon/control_api.rs
+  805abd0f664c09cf 14,19
+src/daemon/family_actor.rs
+  805abd0f664c09cf 23-27,97,100,113,116,211
+src/commands/checkpoint_agent/orchestrator.rs
+  805abd0f664c09cf 10
+src/daemon.rs
+  805abd0f664c09cf 2592-2597,5646,5650,5659,5661,7244,7267
+src/commands/checkpoint_agent/presets/github_copilot.rs
+  805abd0f664c09cf 3-4
+src/commands/checkpoint_agent/presets/windsurf.rs
+  805abd0f664c09cf 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "296e8b834c265133205566470011bce488e2b2ca",
+  "prompts": {
+    "805abd0f664c09cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95d34781-45d6-4032-834e-108e3d30f164",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 201,
+      "total_deletions": 938,
+      "accepted_lines": 179,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,124 @@
+agent-support/visualstudio/src/GitAiVS/Detection/CopilotEditDetector.cs
+  s_61bbcfe4478210::t_3d632c554353d4 1-59,61-128,129-145
+  s_61bbcfe4478210::t_fb787e7ec85842 60
+agent-support/visualstudio/src/GitAiVS/Models/CheckpointInput.cs
+  s_61bbcfe4478210::t_b02ab9caa8c8b8 1,3-105,107-109,152
+src/mdm/agents/visual_studio.rs
+  s_61bbcfe4478210::t_d04c6e96f7ea4a 1-4,7-9,15-19,28-56,58-198,200,202-203,204-216,221-264,267,269-284,297-298,301,307,310,328-331,336,338,340-341,343,353-402,506
+  s_61bbcfe4478210::t_1f5ef5b04ef458 265-266,268
+  s_7c5783049a5bb3::t_78312b339bd581 217-220
+  s_7c5783049a5bb3::t_0c9db4c09684a9 57,320-322
+  s_7c5783049a5bb3::t_c0b1b0d3f182f8 199,201,285-296,311,332-335,337,339,342,344-352
+agent-support/visualstudio/src/GitAiVS/Listeners/TextBufferListener.cs
+  s_61bbcfe4478210::t_40fc847004de65 1-18,19-21,25-33,34,35,38-41,43-51,54,56-58,60-62,64,84,96-104,108-116,118,121-122,124-127,128-129,131,133,135,138-140,142-143,145-151,153-155,158,159,161,163,165-169,171-181,183,194-196
+  s_61bbcfe4478210::t_421cddf4067dad 152,156,157
+  s_61bbcfe4478210::t_4b060818c3eb13 137
+  s_61bbcfe4478210::t_ce7b4432b40696 164-165,170
+  s_61bbcfe4478210::t_12a6b9d9835366 134
+  s_61bbcfe4478210::t_1bc8f853d8c57f 162
+  s_61bbcfe4478210::t_3eee0de3e3bb1f 5
+  s_61bbcfe4478210::t_04e82d719625ad 42
+  s_61bbcfe4478210::t_8ee156ba8172d8 22-24,105,119,123,130,132,136,141,182,184-188
+  s_61bbcfe4478210::t_dd90eb2040e095 107
+  s_61bbcfe4478210::t_20309c69372530 52-54
+  s_61bbcfe4478210::t_6494e939a66bcc 190
+  s_61bbcfe4478210::t_50576d2a4786fc 182,184,186-188
+  s_61bbcfe4478210::t_cd38944f00a8da 105
+  s_61bbcfe4478210::t_4969ff0b17dd5c 144,157,160
+  s_61bbcfe4478210::t_3378279ef781e4 117-118,120
+agent-support/visualstudio/README.md
+  s_61bbcfe4478210::t_429e69f045209b 2,4,6,13-16,21,25,30-35,37-39,41,43-47,49,51
+  s_61bbcfe4478210::t_718fd344020244 1,3,5,7-12,17-20,22-24,26-29,36,40,42,48,50,52
+agent-support/visualstudio/src/GitAiVS/Services/BinaryResolver.cs
+  s_61bbcfe4478210::t_89ee270bf77a33 1-3,5-13,16-19,23-24,26-29,31-37,39,45,54,58,60-62,64-72,74-76,77,79-89,91-95,98-99,101-113,116,118,121,123-125,127-131,133-145,152,161,163,165,167-172,174-185,255-256
+  s_61bbcfe4478210::t_25fe435cd841c3 14-15,20-22,25,40-44,46,49-57,59,63,78,90,96,119-120,122,126,148,149-152,154-155,159-160,164,166
+  s_61bbcfe4478210::t_2089626e555d6a 173
+agent-support/visualstudio/src/GitAiVS/Services/GitRepoResolver.cs
+  s_61bbcfe4478210::t_8d64a6dfd07782 2,4-12,18-34,36,38,57,59-62,89-90
+  s_61bbcfe4478210::t_1d0589792197f4 1,3,13-17,35,37
+agent-support/visualstudio/src/GitAiVS/Listeners/DocumentSaveListener.cs
+  s_61bbcfe4478210::t_dfcc1dfca61c01 1-16,19-21,24-30,31-38,40-43,46,48-51,54-67,69-71,73-98,100-104,106,109-113,115-116,118-133
+  s_61bbcfe4478210::t_db42620566231a 68,72
+  s_61bbcfe4478210::t_45f1fc92884b30 108
+  s_61bbcfe4478210::t_7516b93b57ff74 4
+  s_61bbcfe4478210::t_112693df7f24a7 17-18,22-23,39,44-45,47,52-53,99,105,107,114,117
+agent-support/visualstudio/src/GitAiVS/Services/CheckpointService.cs
+  s_61bbcfe4478210::t_786bac7ee9d338 1,3-10,14-16,19-21,28-38,40-43,45-47,49-53,55-58,60-65,67-72,74-84,86-87,89,91,94,96-98,103-105,107-115,121-124,129-131,133-135,154-156,158-162
+  s_61bbcfe4478210::t_9138c306a279fb 22-27
+  s_61bbcfe4478210::t_b996e69330460c 2,11-13,17-18,39,44,48,54,59,66,73,85,88,92-93,95,99-102,106,116-120,128,132,138-153,157
+  s_61bbcfe4478210::t_73aaa0f6a03308 125-127,136-137
+agent-support/visualstudio/DESIGN.md
+  s_61bbcfe4478210::t_2f2e3b613d0d4d 1-35,37-72,73-80,85-117,119-122,124,126-132,134-150,152,154,156-166,168-172,174-182,184,186,188,191,194,196,200,202-204,206-208,210-211,213,215,217,219,221,223,225,227-229,231,236,238,240,242,244-252,254,256-258,260-270,293-296,298,300,302,307,309-316,327,329
+  s_61bbcfe4478210::t_9338ff751ba9ab 36,81-84,118,123,125,133,151,153,155,167,173,183,185,189,190,195,197-199,201,205,209,212,214,216,218,220,222,224,226,230,232-235,237,239,241,243,253,255,259,271-292,297,299,301,303-306,308,317-326,328,330-335
+  s_61bbcfe4478210::t_dae053f4e7ba41 187,192-193
+src/mdm/agents/mod.rs
+  s_61bbcfe4478210::t_f687c7c67c7ffa 13,29
+  s_7c5783049a5bb3::t_93603a94a43c63 12,28,37,50-56
+agent-support/visualstudio/src/GitAiVS/source.extension.vsixmanifest
+  s_61bbcfe4478210::t_5a4be57da9fcd6 1-15,34-39,41-49
+  s_61bbcfe4478210::t_e1c6e859253b58 17-18,23-24,29-30
+  s_61bbcfe4478210::t_4d3afdeb231a58 16,22,28
+  s_61bbcfe4478210::t_b3d029a60df866 40
+  s_61bbcfe4478210::t_4e2b9a0a637272 5
+agent-support/visualstudio/src/GitAiVS/GitAiVS.csproj
+  s_61bbcfe4478210::t_8b1e6c61405cbd 4-7,16-21,29-32,37-39,46-48,50-55,59,63
+  s_61bbcfe4478210::t_446902327ca664 1-3,8-15,22-28,34-36,60-62
+  s_61bbcfe4478210::t_a2f0a72d85ac07 49
+  s_61bbcfe4478210::t_a4b5471d6b73ae 56-58
+agent-support/visualstudio/src/GitAiVS/GitAiPackage.cs
+  s_61bbcfe4478210::t_1a13f6136c4d27 1,2-14,16-17,19-22,24,27-30,32-39,41,44,46,49,55,58,60,62,64,66-68,69-75,77-80,82-85,87-92,94-110,112-116,118-123,124-175,176-184
+  s_61bbcfe4478210::t_049c0a09be41ca 93
+  s_61bbcfe4478210::t_6ac469378eac7a 117
+  s_61bbcfe4478210::t_396aa71d99f516 111
+  s_61bbcfe4478210::t_e8090602f8f40a 86
+  s_61bbcfe4478210::t_fc8829ec8dfd75 76
+  s_61bbcfe4478210::t_5e89506e76643f 23,25-26,40-41
+  s_61bbcfe4478210::t_aeec0c4b45513f 62-66
+  s_61bbcfe4478210::t_e19d4a60d348af 15,18,31,42-43,45,47,50-54,56-57,59,61,81
+  s_61bbcfe4478210::t_5b5c682a17b5d3 30
+agent-support/visualstudio/src/GitAiVS/LICENSE
+  s_61bbcfe4478210::t_87487830215365 1-21
+agent-support/visualstudio/src/GitAiVS.Tests/CheckpointInputTests.cs
+  s_61bbcfe4478210::t_4ec6ff4e20952f 1-100,124-125
+agent-support/visualstudio/GitAiVS.sln
+  s_61bbcfe4478210::t_b9a205cc4bfbb4 24-26
+  s_61bbcfe4478210::t_5d80d8621b9341 1-5,7,10-15,27-28
+  s_61bbcfe4478210::t_7e1d9b0edcf3bd 20-23
+  s_61bbcfe4478210::t_848896e8fa1fd0 8-9
+  s_61bbcfe4478210::t_3f250d99a5a178 6,16-19
+agent-support/visualstudio/src/GitAiVS.Tests/DocumentSaveListenerTests.cs
+  s_61bbcfe4478210::t_375c4ed42c3888 1-39
+agent-support/visualstudio/src/GitAiVS.Tests/BinaryResolverTests.cs
+  s_61bbcfe4478210::t_a4d5780bd3e759 2-3,5,7-8,10-16,18-24,26-27,29-31,34-35,37-40,42-45,48-49,51-52,54-64,66-71
+agent-support/visualstudio/src/GitAiVS.Tests/GitAiVS.Tests.csproj
+  s_61bbcfe4478210::t_adb57c49caf9d1 1-27
+.github/workflows/test-visualstudio-extension.yml
+  s_61bbcfe4478210::t_f663f508b58df8 1-23,24-26,28-29,31,33-34,46-50,52-53,55,70-71
+  s_7c5783049a5bb3::t_f77e9b3c701011 27,30-32,51,54-56
+agent-support/visualstudio/src/GitAiVS.Tests/GitRepoResolverTests.cs
+  s_61bbcfe4478210::t_5b2a69c7507939 1-35,45-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "a9ee975188e2248957215769eac144f5f397b76d",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    },
+    "s_7c5783049a5bb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb46c-974d-76a2-8a4e-1cb97cb4fcfd",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

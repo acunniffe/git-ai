@@ -1,0 +1,55 @@
+tests/commit_tree_update_ref.rs
+  s_7e05ba92eeba4c::t_b8fff78ed8b55f 138-139,141-146,189
+  s_7e05ba92eeba4c::t_11f7cc62774030 193-228
+  s_7e05ba92eeba4c::t_fee2b83f199cb5 1899-1967
+  s_7e05ba92eeba4c::t_369b5a692e8314 191,1968-2045
+  s_7e05ba92eeba4c::t_91e9f2cb420f0b 190,192
+src/daemon.rs
+  s_7e05ba92eeba4c::t_04ef61c4465a72 6355-6358
+src/daemon/ref_cursor.rs
+  s_7e05ba92eeba4c::t_ce4aebd22a7b2f 1624,1985,6272-6281,6283-6302
+  s_7e05ba92eeba4c::t_47009599ec8e3c 199,945,951-952,1430-1431,1435-1437,1969-1984
+  s_7e05ba92eeba4c::t_508655dace0d0c 4665-4673,4675-4707
+  s_7e05ba92eeba4c::t_8b5ef29a9991c2 812-816,823-824,1604-1613,1620-1623
+  s_7e05ba92eeba4c::t_5a537ff7c7dd8c 817,825-826,1614-1619,4267-4268,4278-4279,4674,6282
+  s_7e05ba92eeba4c::t_84aa11a8fa4315 4254-4266,4269-4277,4280-4322
+  s_308399384e171e::t_d14810c146f693 1625,1986,4253,4664,6271
+tests/integration/cold_trace2_repo.rs
+  s_7e05ba92eeba4c::t_16a8a12e50f639 417-434,436-446,448-454,620-622,634-638,643,654-672
+  s_7e05ba92eeba4c::t_594c824c73bb31 435,447
+  s_7e05ba92eeba4c::t_5b78c46ad444bb 416,506,673,848,1250-1306,1354-1386
+  s_7e05ba92eeba4c::t_fdb502d68c5226 1391,1397,1406,1415,1418
+  s_7e05ba92eeba4c::t_c1c6b68caa9940 1395,1399
+  s_7e05ba92eeba4c::t_32252179d40c1e 507-518,520-521,523-529,531-532,534-538,540-541,543-554
+  s_7e05ba92eeba4c::t_fd12310ac1fdc0 1392
+  s_7e05ba92eeba4c::t_8f9c8db9fc6d59 849-916
+  s_7e05ba92eeba4c::t_732c7753825230 243,249-250,257,291-297,310-331,519,522,530,533,539,542
+  s_7e05ba92eeba4c::t_6bd6c69f97ce41 244-248,251-256,258-290,298-309,332-334
+  s_7e05ba92eeba4c::t_11cbce9fa2cbc4 623-633,639-642,644-653
+  s_7e05ba92eeba4c::t_8072e4249876c4 674
+  s_7e05ba92eeba4c::t_1fcd1270e83ae9 1387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "c8c1ce245d2c485f5ecb0c16170e9e037fae58a8",
+  "prompts": {},
+  "sessions": {
+    "s_308399384e171e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5c9-5bf9-7c53-9e95-a36b3e6eca3c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_7e05ba92eeba4c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5da-6f02-7801-8355-ae16942c7ace",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,260 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  6269bc015b45f6cf 15,219-221,329-331,416-538
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "0538423764bce0892bd8d69a9bc92c087daf3119",
+  "prompts": {
+    "6269bc015b45f6cf": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "455f0cbc-71c4-4c4c-bd78-936b6594636a",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Add full debug logs as to whether or not cursor conversations are found in the cursor agent preset sqlite db",
+          "timestamp": "2025-12-03T20:41:47.906Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the cursor agent preset code to understand how it queries the SQLite database.",
+          "timestamp": "2025-12-03T20:41:49.095Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "How are cursor conversations queried from SQLite database in agent presets?",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking which logging framework is used in this codebase:",
+          "timestamp": "2025-12-03T20:41:50.510Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "path": "src/commands/checkpoint_agent",
+            "pattern": "log::|eprintln!|println!|tracing::"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "What logging framework or macros are used for debug logging?",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding debug logging using `crate::utils::debug_log`. Updating the cursor preset functions to log database queries and results:",
+          "timestamp": "2025-12-03T20:41:52.323Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 15,
+            "offset": 44,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/utils.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding debug logging to the cursor preset functions:",
+          "timestamp": "2025-12-03T20:41:52.871Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linting errors:",
+          "timestamp": "2025-12-03T20:42:09.016Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Verifying the code compiles and checking the modified section:",
+          "timestamp": "2025-12-03T20:42:12.633Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 120,
+            "offset": 365,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking the rest of the function to ensure it's correct:",
+          "timestamp": "2025-12-03T20:42:13.211Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 480,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking the rest of the function for proper structure:",
+          "timestamp": "2025-12-03T20:42:13.876Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 600,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Fixing indentation in the match arm:",
+          "timestamp": "2025-12-03T20:42:14.695Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 105,
+            "offset": 503,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Fixing indentation in the match arm:",
+          "timestamp": "2025-12-03T20:42:15.347Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Rechecking linting errors:",
+          "timestamp": "2025-12-03T20:42:22.735Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Adding debug logging to `fetch_latest_cursor_conversation`:",
+          "timestamp": "2025-12-03T20:42:26.411Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 25,
+            "offset": 266,
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Rechecking linting errors:",
+          "timestamp": "2025-12-03T20:42:30.616Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Verifying the code compiles:",
+          "timestamp": "2025-12-03T20:42:34.256Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/svarlamov/projects/git-ai && cargo check --quiet 2>&1 | head -20",
+            "is_background": false
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Code compiles successfully. Summary of changes:\n\n## Summary\n\nAdded debug logging throughout the cursor agent preset SQLite database queries. Logs include:\n\n### 1. **Database Path and Existence Checks**\n   - Logs when checking for the database file\n   - Logs whether the database exists or not\n\n### 2. **Composer Payload Queries** (`fetch_composer_payload`)\n   - Logs database connection attempts\n   - Logs the SQL query key pattern being searched\n   - Logs query success/failure\n   - Logs when conversation data is found or not found\n   - Logs JSON parsing results\n\n### 3. **Bubble Content Queries** (`fetch_bubble_content_from_db`)\n   - Logs each bubble query attempt\n   - Logs the bubble key pattern being searched\n   - Logs when bubble content is found or not found\n   - Logs JSON parsing results\n\n### 4. **Transcript Extraction** (`transcript_data_from_composer_payload`)\n   - Logs the number of conversation headers (bubbles) found\n   - Logs each bubble fetch attempt with index and bubble_id\n   - Logs successful bubble fetches\n   - Logs bubbles not found in database\n   - Logs tool calls found in bubbles\n   - Logs summary statistics (total bubbles processed, found vs not found)\n   - Logs final transcript extraction results\n\n### 5. **Main Run Function**\n   - Logs conversation_id being queried\n   - Logs database existence checks\n   - Logs when conversation data is found or missing\n\n### 6. **Fetch Latest Conversation Function**\n   - Logs when the function is called\n   - Logs database existence checks\n   - Logs final transcript extraction results\n\nAll debug logs use `crate::utils::debug_log`, which only outputs when:\n- `GIT_AI_DEBUG=1` environment variable is set, or\n- Running in debug mode (`debug_assertions`)\n\nThis provides visibility into whether cursor conversations are found in the SQLite database and where any issues occur.",
+          "timestamp": "2025-12-03T20:42:58.347Z"
+        }
+      ],
+      "total_additions": 130,
+      "total_deletions": 1,
+      "accepted_lines": 130,
+      "overriden_lines": 0
+    }
+  }
+}

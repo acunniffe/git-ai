@@ -1,0 +1,94 @@
+src/authorship/post_commit.rs
+  d8027690cedbf0e0 13-14,185-196,212-223,252-263,292-303,329-340
+src/commands/checkpoint_agent/agent_presets.rs
+  d8027690cedbf0e0 7,84-90,274-280,486-492,1195-1201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "b2d4363c7ce85417e3b8bacbc4246b5189064d20",
+  "prompts": {
+    "d8027690cedbf0e0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3337b68c-081c-47c8-b5d6-19839cc0bb84",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Go through the codebase and find all the places where we left comments/todos to log errors related to agent prompt/inputs handling and actually link them up to sentry and debug log\n\nheres an example: @src/authorship/post_commit.rs:184-185",
+          "timestamp": "2025-12-13T21:29:18.612Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Searching for TODO comments about logging agent prompt/input errors and implementing Sentry and debug logging. Reviewing the example location and scanning the codebase.",
+          "timestamp": "2025-12-13T21:29:20.559Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/authorship/post_commit.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-i": true,
+            "pattern": "TODO.*[Ll]og.*error.*sentry"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "pattern": "TODO.*[Ss]entry"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-i": true,
+            "pattern": "TODO.*agent.*prompt|TODO.*prompt.*agent|TODO.*input.*agent|TODO.*agent.*input"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking how Sentry and debug logging are set up in the codebase:",
+          "timestamp": "2025-12-13T21:29:22.244Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "How is Sentry logging configured and used in this codebase?",
+            "target_directories": []
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "codebase_search",
+          "input": {
+            "query": "How is debug logging implemented in this codebase?",
+            "target_directories": []
+          }
+        }
+      ],
+      "total_additions": 132,
+      "total_deletions": 54,
+      "accepted_lines": 92,
+      "overriden_lines": 0
+    }
+  }
+}

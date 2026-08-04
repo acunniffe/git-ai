@@ -1,0 +1,35 @@
+docs/add-your-agent.mdx
+  4acc33c 8,10,14,20-22,25,27-28,31,34,36,38,40,45,50-51,55,63,68,72,74-76,78,82-85,87,89,91,93,100,102-103,105-109,111,113-117,120,123-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "5b6fd6e100608fc91751fe8368d063bf6e152edb",
+  "prompts": {
+    "4acc33c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b5403dc1-e74e-449b-beb7-da88a6ede4fa",
+        "model": "claude-3.5-sonnet"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Can you clean this up with any improvements in grammar or phrasing that makes it clearer? Audiance is developers"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you clean up the documentation to make it clearer and more professional for developers. Let me read through the current content and make improvements to grammar, phrasing, and overall clarity."
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've cleaned up the documentation with several improvements to make it clearer and more professional for developers:\n\n## Key improvements made:\n\n1. **Grammar and spelling fixes**: Fixed \"became\" → \"become\", \"equivilant\" → \"equivalent\", \"psuedo\" → \"pseudo\", \"immediatly\" → \"immediately\", etc.\n\n2. **Better structure and formatting**:\n   - Added bold formatting for key terms like \"Hooks\" and \"Direct Integration\"\n   - Improved bullet point formatting with consistent capitalization\n   - Better code block formatting and syntax highlighting\n\n3. **Clearer language**:\n   - \"Your Agent\" → \"Your agent\" (consistent capitalization)\n   - \"it is easy\" → \"integrating Git AI is straightforward\"\n   - \"non-trivial amount\" → \"significant\"\n   - \"probably the best path\" → \"the recommended integration path\"\n\n4. **Improved readability**:\n   - Better sentence structure and flow\n   - More concise explanations\n   - Clearer step-by-step instructions\n   - Better formatting for the checklist section\n\n5. **Professional tone**:\n   - More consistent terminology\n   - Better technical precision\n   - Clearer explanations of complex concepts\n\nThe documentation now reads much more professionally and should be easier for developers to follow when integrating their agents with Git AI."
+        }
+      ],
+      "total_additions": 65,
+      "total_deletions": 54,
+      "accepted_lines": 55,
+      "overriden_lines": 0
+    }
+  }
+}

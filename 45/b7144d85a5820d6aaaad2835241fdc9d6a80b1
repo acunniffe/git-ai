@@ -1,0 +1,69 @@
+tests/integration/github_copilot.rs
+  52e0337472fe7d8f 129
+src/commands/checkpoint_agent/presets/pi.rs
+  52e0337472fe7d8f 29,103
+tests/integration/agent_v1.rs
+  52e0337472fe7d8f 33,67,147
+src/commands/checkpoint_agent/presets/claude.rs
+  52e0337472fe7d8f 154
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  52e0337472fe7d8f 17,27,45,74,132,178
+src/commands/checkpoint_agent/presets/cursor.rs
+  52e0337472fe7d8f 209
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  52e0337472fe7d8f 66
+tests/integration/ai_tab.rs
+  52e0337472fe7d8f 55,90
+src/commands/git_ai_handlers.rs
+  52e0337472fe7d8f 10,12,330-343,402-405,408-410,907,927
+src/daemon.rs
+  52e0337472fe7d8f 35,83,1364,2477-2481,2489-2493,2533-2540,4597,4602,5622,5631,7118,7230,8642-8644
+tests/integration/bash_tool_provenance.rs
+  52e0337472fe7d8f 1718,1720-1721,1723-1724,1727
+tests/integration/test_utils_unit.rs
+  52e0337472fe7d8f 4,17-36,45,75,77
+src/commands/checkpoint_agent/presets/github_copilot.rs
+  52e0337472fe7d8f 55,172,624,815-816,1047
+src/commands/checkpoint_agent/presets/gemini.rs
+  52e0337472fe7d8f 119
+tests/integration/agent_presets_comprehensive.rs
+  52e0337472fe7d8f 837-838
+src/commands/checkpoint.rs
+  52e0337472fe7d8f 170,360,387
+src/commands/checkpoint_agent/presets/firebender.rs
+  52e0337472fe7d8f 26,131,451
+src/commands/checkpoint_agent/presets/droid.rs
+  52e0337472fe7d8f 245
+src/commands/status.rs
+  52e0337472fe7d8f 56
+tests/daemon_mode.rs
+  52e0337472fe7d8f 7-8,27,554-555,1260-1264
+tests/integration/checkpoint_unit.rs
+  52e0337472fe7d8f 2-3,26-28,198-200,274-275
+src/daemon/control_api.rs
+  52e0337472fe7d8f 11
+src/commands/checkpoint_agent/presets/known_human.rs
+  52e0337472fe7d8f 10,46
+src/commands/checkpoint_agent/orchestrator.rs
+  52e0337472fe7d8f 14,55-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "45b7144d85a5820d6aaaad2835241fdc9d6a80b1",
+  "prompts": {
+    "52e0337472fe7d8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f9931c2-b988-437f-8537-64a1ed799b25",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 243,
+      "total_deletions": 1879,
+      "accepted_lines": 180,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,97 @@
+src/feature_flags.rs
+  beb2ccb 7,16,22,34-35,51-53
+src/config.rs
+  6f3a31b 12-14,83-85,177-214,496-529
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "ea61aa0d3f33d3713fab51137554a6db8ae64992",
+  "prompts": {
+    "57fda9f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "75e6fd34-f8f3-4f69-942a-c20eb5c176a0",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/feature_flags.rs:1-57 in cfg test mode, give me the ability the overwrite the feature flags. this is very important for a test fixture @src/config.rs:23-24",
+          "timestamp": "2025-11-30T13:56:27.102Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll add a test-only constructor for `FeatureFlags` that allows you to create instances with custom values. This will make it easy to test different feature flag configurations.",
+          "timestamp": "2025-11-30T13:56:35.521Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've added a test-only `new()` constructor to `FeatureFlags`. Now in your tests, you can create feature flag instances with any combination of values:\n\n```rust\n#[test]\nfn",
+          "timestamp": "2025-11-30T13:56:45.449Z"
+        }
+      ],
+      "total_additions": 9,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "6f3a31b": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "8cdd19df-27e4-4325-8042-9704691cedd9",
+        "model": "unknown"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 76,
+      "total_deletions": 0,
+      "accepted_lines": 78,
+      "overriden_lines": 0
+    },
+    "74db6c2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "875cdae5-74e9-42c2-88c1-87525ceba12f",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/checkpoint.rs:1-1278 add some debug_logs throughout checkpoint that use Instant::now to benchmark key operations. I'm trying to find the slowest operations in a checkpoint",
+          "timestamp": "2025-11-30T13:09:04.817Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll add debug logging with timing benchmarks throughout the checkpoint process to help identify slow operations.",
+          "timestamp": "2025-11-30T13:09:10.935Z"
+        }
+      ],
+      "total_additions": 62,
+      "total_deletions": 2,
+      "accepted_lines": 147,
+      "overriden_lines": 0
+    },
+    "beb2ccb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "d186b4a5-107f-42f5-b52f-be037c595bf5",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/feature_flags.rs:1-116 add a flag called inter_commit_move",
+          "timestamp": "2025-11-30T13:54:04.358Z"
+        }
+      ],
+      "total_additions": 20,
+      "total_deletions": 4,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}

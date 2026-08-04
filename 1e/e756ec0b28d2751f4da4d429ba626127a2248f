@@ -1,0 +1,21 @@
+.github/workflows/test.yml
+  s_f00ef7c0f45b07::t_a1e60d80f1b251 88,77
+  s_f00ef7c0f45b07::t_95193f7a19f6b6 100-102,132,80
+  s_f00ef7c0f45b07::t_fbde933e0843e0 122-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "1ee756ec0b28d2751f4da4d429ba626127a2248f",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

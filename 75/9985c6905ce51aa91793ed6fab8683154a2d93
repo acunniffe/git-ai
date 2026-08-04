@@ -1,0 +1,23 @@
+src/commands/git_ai_handlers.rs
+  c8f64271543c7b88 86,241,247,251,256,282,298,314,330,343,359,372,432,513
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.32",
+  "base_commit_sha": "759985c6905ce51aa91793ed6fab8683154a2d93",
+  "prompts": {
+    "c8f64271543c7b88": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "96a95e9b-2ded-4875-bb49-e4ff1c12d477",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 14,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}

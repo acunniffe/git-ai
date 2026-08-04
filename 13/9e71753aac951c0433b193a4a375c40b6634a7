@@ -1,0 +1,23 @@
+src/commands/daemon.rs
+  d46277b929576d9f 7,10,13,75,97-99,569
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "139e71753aac951c0433b193a4a375c40b6634a7",
+  "prompts": {
+    "d46277b929576d9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7d963b3-678f-4ed0-8566-d90a0d657703",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 26,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}

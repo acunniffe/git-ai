@@ -1,0 +1,39 @@
+src/authorship/rebase_v3.rs
+  s_122f961aa46a22::t_f60a1427c4b672 407-410
+  s_122f961aa46a22::t_be2e7e500e700a 868-881,883-893
+  s_122f961aa46a22::t_64ce96a8a6fc5e 865-867
+src/commands/rebase_validation.rs
+  s_122f961aa46a22::t_aff98c5387661f 211-216
+  s_122f961aa46a22::t_bac71f6d2a43ea 102-108
+tests/integration/rebase.rs
+  s_122f961aa46a22::t_92f25303e3bd4b 2981
+  s_122f961aa46a22::t_4a3830fb671714 3046-3047,3052-3053,3058-3059
+  s_122f961aa46a22::t_925bb3ad4934a2 3064-3066
+  s_122f961aa46a22::t_7ce556d9ba33c1 3089-3091,3093-3095
+  s_122f961aa46a22::t_dc9d025f5122d8 2927
+tests/integration/rebase_notes_durability.rs
+  s_122f961aa46a22::t_f03687f8f90ae1 42
+  s_122f961aa46a22::t_19c9632e36e53c 117
+tests/integration/rebase_daemon_race.rs
+  s_122f961aa46a22::t_3f52d2ddd87a8c 332-341
+src/commands/rebase_recover.rs
+  s_122f961aa46a22::t_30ac6c209c0442 136
+  s_122f961aa46a22::t_8489a3db52f07a 127-130
+  s_122f961aa46a22::t_b6d536fdbf417d 320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "c1033cae7dde9f6beb1add6a9a0f0c5a4cd6c2d0",
+  "prompts": {},
+  "sessions": {
+    "s_122f961aa46a22": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c99dd480-07a1-4da6-8ad5-4bc2483187aa",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

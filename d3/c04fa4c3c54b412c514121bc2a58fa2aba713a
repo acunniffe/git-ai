@@ -1,0 +1,23 @@
+src/metrics/events.rs
+  759815a68a4f7264 1459,1492,1514-1515
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "d3c04fa4c3c54b412c514121bc2a58fa2aba713a",
+  "prompts": {
+    "759815a68a4f7264": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9b8122a-6f33-4fcb-a981-7260b993c9a7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 30,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    }
+  }
+}
