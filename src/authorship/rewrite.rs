@@ -994,21 +994,22 @@ fn derive_mappings_from_range_diff(
     };
     let commit_limit = range_diff_commit_limit();
     let old_count = range_commit_count_up_to(repo, &base, old_tip, commit_limit);
-    let new_count = range_commit_count_up_to(repo, onto, new_tip, commit_limit);
-    if !matches!((old_count, new_count), (Some(old), Some(new)) if old <= commit_limit && new <= commit_limit)
-    {
-        tracing::warn!(
-            old_tip,
-            new_tip,
-            old_count,
-            new_count,
-            commit_limit,
-            "skipping range-diff mapping derivation because a range exceeds the commit limit"
-        );
-        return Ok(Vec::new());
-    }
+    let bounded_new_base = bounded_tip_range_base(repo, onto, new_tip, commit_limit);
+    let bounded_new_base = match (old_count, bounded_new_base) {
+        (Some(old), Some(new_base)) if old <= commit_limit => new_base,
+        _ => {
+            tracing::warn!(
+                old_tip,
+                new_tip,
+                old_count,
+                commit_limit,
+                "skipping range-diff mapping derivation because its inputs cannot be bounded"
+            );
+            return Ok(Vec::new());
+        }
+    };
 
-    let range_diff_output = run_range_diff(repo, &base, old_tip, onto, new_tip)?;
+    let range_diff_output = run_range_diff(repo, &base, old_tip, &bounded_new_base, new_tip)?;
     let mut mappings = parse_range_diff_output(&range_diff_output);
 
     let merge_mappings = derive_merge_commit_mappings(repo, &base, old_tip, new_tip, &mappings)?;
@@ -1094,6 +1095,37 @@ fn range_commit_count_up_to(repo: &Repository, base: &str, tip: &str, limit: u64
         return None;
     }
     String::from_utf8_lossy(&output.stdout).trim().parse().ok()
+}
+
+/// Return a base that keeps `base..tip` at or below `limit` commits. If the
+/// original range is larger, retain its newest bounded suffix. This preserves
+/// rewritten stack commits at the tip while excluding long upstream history
+/// that may be present when no precise landing hint is available.
+fn bounded_tip_range_base(repo: &Repository, base: &str, tip: &str, limit: u64) -> Option<String> {
+    let mut args = repo.global_args_for_exec();
+    args.extend([
+        "rev-list".to_string(),
+        "--topo-order".to_string(),
+        format!("--max-count={}", limit.saturating_add(1)),
+        format!("{}..{}", base, tip),
+    ]);
+    let output = exec_git_allow_nonzero(&args).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let output = String::from_utf8_lossy(&output.stdout);
+    let mut commits = output.lines();
+    let bounded_base = commits.nth(limit.try_into().ok()?);
+    let Some(bounded_base) = bounded_base else {
+        return Some(base.to_string());
+    };
+
+    matches!(
+        range_commit_count_up_to(repo, bounded_base, tip, limit),
+        Some(count) if count <= limit
+    )
+    .then(|| bounded_base.to_string())
 }
 
 fn run_range_diff(

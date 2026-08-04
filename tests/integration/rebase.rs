@@ -3246,6 +3246,69 @@ fn test_reset_keep_move_skips_range_diff_when_range_exceeds_limit() {
     );
 }
 
+#[test]
+fn test_reset_keep_move_bounds_long_upstream_without_losing_authorship() {
+    use std::fs;
+
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_RANGE_DIFF_COMMIT_LIMIT", "2")]);
+
+    let mut base_file = repo.filename("base.txt");
+    base_file.set_contents(crate::lines!["base"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    let base_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let default_branch = repo.current_branch();
+    base_file.assert_committed_lines(crate::lines!["base".human()]);
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let feature_path = repo.path().join("feature.txt");
+    fs::write(&feature_path, "ai feature line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+        .unwrap();
+    repo.git(&["add", "feature.txt"]).unwrap();
+    repo.commit("feature commit").unwrap();
+    let feature_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let mut feature_file = repo.filename("feature.txt");
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+
+    repo.git(&["checkout", &default_branch]).unwrap();
+    let upstream_path = repo.path().join("upstream.txt");
+    let mut upstream_file = repo.filename("upstream.txt");
+    for commit_number in 1..=3 {
+        fs::write(
+            &upstream_path,
+            numbered_file_contents("upstream line", commit_number),
+        )
+        .unwrap();
+        repo.git(&["add", "upstream.txt"]).unwrap();
+        repo.commit(&format!("upstream commit {commit_number}"))
+            .unwrap();
+        upstream_file.assert_committed_lines(
+            (1..=commit_number)
+                .map(|i| format!("upstream line {i}").unattributed_human())
+                .collect(),
+        );
+    }
+
+    repo.git(&["checkout", "-b", "feature-prime"]).unwrap();
+    repo.git(&["cherry-pick", &feature_commit]).unwrap();
+    let feature_prime_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+    repo.git(&["notes", "--ref=refs/notes/ai", "remove", &feature_prime_tip])
+        .unwrap();
+    assert!(repo.read_authorship_note(&feature_prime_tip).is_none());
+
+    repo.git(&["checkout", "feature"]).unwrap();
+    repo.git(&["reset", "--keep", &feature_prime_tip]).unwrap();
+
+    assert_eq!(
+        repo.git(&["merge-base", &feature_commit, &feature_prime_tip])
+            .unwrap()
+            .trim(),
+        base_sha
+    );
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+}
+
 /// Test rebase with more than DIFF_TREE_STREAM_CHUNK_SIZE (50) rewritten commits.
 ///
 /// The streaming diff-tree path drains completed results in chunks of 50 and
