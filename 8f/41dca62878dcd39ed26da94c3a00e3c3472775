@@ -1,0 +1,30 @@
+src/authorship/virtual_attribution.rs
+  7ecb1cfe1c2cb067 1703-1706
+src/authorship/rebase_authorship.rs
+  7ecb1cfe1c2cb067 1646-1652,1654-1671
+src/commands/checkpoint.rs
+  7ecb1cfe1c2cb067 56,795-796,875-891
+tests/integration/github_copilot_tools.rs
+  7ecb1cfe1c2cb067 158-159,161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "8f41dca62878dcd39ed26da94c3a00e3c3472775",
+  "prompts": {
+    "7ecb1cfe1c2cb067": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea2d21db-480a-4ded-8895-ba98a9e3e4d8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 763,
+      "total_deletions": 799,
+      "accepted_lines": 390,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e83c30fcbadde8f29494dea891a0e2ac1ada305fbe1648019998258b333b8776"
+    }
+  }
+}

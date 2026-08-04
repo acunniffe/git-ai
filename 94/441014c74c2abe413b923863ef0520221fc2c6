@@ -1,0 +1,23 @@
+scripts/ai
+  s_c319f2b597755a::t_d1126b528d18b2 33,36,38-39,41-42
+  s_c319f2b597755a::t_b953fdfe62f007 34-35,37
+  s_c319f2b597755a::t_5f7d05d5443f6d 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "94441014c74c2abe413b923863ef0520221fc2c6",
+  "prompts": {},
+  "sessions": {
+    "s_c319f2b597755a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67253ece-adc6-429e-9c60-3499f05e77cc",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/10f335d5bc247399d4bc28877d1d1d2b8efa4ee896ffaf4a994b28887ee1f934"
+    }
+  }
+}

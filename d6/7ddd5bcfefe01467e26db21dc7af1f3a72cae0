@@ -1,0 +1,23 @@
+tests/integration/diff.rs
+  6dc8b7e84449532e 2610-2611,2615-2618,2621,2627,2643-2644
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "d67ddd5bcfefe01467e26db21dc7af1f3a72cae0",
+  "prompts": {
+    "6dc8b7e84449532e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51725c83-0845-429f-9b38-f3e633f5a7b9",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 9,
+      "accepted_lines": 249,
+      "overriden_lines": 0
+    }
+  }
+}

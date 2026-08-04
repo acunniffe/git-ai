@@ -1,0 +1,19 @@
+tests/integration/pull_rebase_ff.rs
+  s_f00ef7c0f45b07::t_1ce4aa9d237762 1-2,855-861,907-912
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "edd90cd9c41f46c1a896d2ce2c3acf1615cdfc0e",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

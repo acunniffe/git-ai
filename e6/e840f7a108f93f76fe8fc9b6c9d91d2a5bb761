@@ -1,0 +1,67 @@
+src/commands/mod.rs
+  48d8b354e3491428 19
+Cargo.toml
+  48d8b354e3491428 14
+src/commands/sync_prompts.rs
+  48d8b354e3491428 1-235
+src/authorship/post_commit.rs
+  48d8b354e3491428 2,192-194,196-197,201-202,209-210,212-214
+src/commands/prompt_picker.rs
+  48d8b354e3491428 101
+src/authorship/prompt_utils.rs
+  48d8b354e3491428 3-6,10-12,150-376
+src/commands/flush_cas.rs
+  a929e8c2e3447b29 3,50-53,55,59,124-126,129-130
+src/commands/git_ai_handlers.rs
+  48d8b354e3491428 107-109,149-152
+src/authorship/internal_db.rs
+  a929e8c2e3447b29 54,228-229,792-793,855-856,859-860,1193-1195,1197,1203-1204,1216-1217,1226-1228,1230,1233,1236-1237,1242-1243,1253-1256,1258-1259,1265-1266,1277,1289-1291,1329-1333,1337,1343,1349,1356-1357,1367-1368,1378-1379,1399-1401,1406,1412,1424-1428,1432,1438,1444,1452,1508
+  48d8b354e3491428 28,33-35,87,93-94,117,123-124,416-419,425,427-428,434,439-440,450,456-457,474-477,483,485-486,492,497-498,508,514-515,527-530,544-547,556-563,581-584,598-601,610-617,629,633,637-650,654-660,662-666,685-688,697-704,728-731,736-739,758-761,770-777,967,973-974
+  e1ebca97e8715698 5,338,342,362,365
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "e6e840f7a108f93f76fe8fc9b6c9d91d2a5bb761",
+  "prompts": {
+    "48d8b354e3491428": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7c315d6f-5ad9-41cc-9cdd-32124f5baba2",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 973,
+      "total_deletions": 364,
+      "accepted_lines": 863,
+      "overriden_lines": 0
+    },
+    "a929e8c2e3447b29": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2377fefb-2086-4bcf-9354-52d138c66a09",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 100,
+      "total_deletions": 72,
+      "accepted_lines": 82,
+      "overriden_lines": 1
+    },
+    "e1ebca97e8715698": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "0d105cdc-c5be-4a25-8e05-12b2ac29761b",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 4,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

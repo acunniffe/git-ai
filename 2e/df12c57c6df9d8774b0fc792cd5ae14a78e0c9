@@ -1,0 +1,56 @@
+src/metrics/db.rs
+  s_8d2579124116c6::t_079b26ec087a4c 31-41,59-63,290-291,298-305,307-308,316-323,392,396
+  s_8d2579124116c6::t_c6ea9bbd0bf71a 65-67
+  s_86cae81fcd9c97::t_26e199f4acd43e 409-410,387-388,411-450,399,404
+  s_86cae81fcd9c97::t_0686b2ba09c11f 13
+  s_86cae81fcd9c97::t_a65485a460d96a 42-46
+  s_86cae81fcd9c97::t_dea1c72eb26629 64
+  s_86cae81fcd9c97::t_4857c585b53cc7 292-297,306,309-315
+  s_86cae81fcd9c97::t_114c5f4fee242b 324-325,327-333,358,370-386,389,391,393-395,397
+  s_86cae81fcd9c97::t_78316604c628fa 8
+  s_27ed236e4270d9::t_63582f35bf5f4f 326,334,337-338,340,349
+  s_27ed236e4270d9::t_7fc537d62a19d4 335-336,339,341-348,355-356,359,361-368
+  s_27ed236e4270d9::t_fa7ec335e685fe 369
+  s_27ed236e4270d9::t_23b2333abe46db 390,398,400,402-403,405-408
+  s_0db412aeb21ffe::t_84993596dd6441 350-354,357,360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "2edf12c57c6df9d8774b0fc792cd5ae14a78e0c9",
+  "prompts": {},
+  "sessions": {
+    "s_0db412aeb21ffe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfef8749-d442-403d-b447-4d2895852996",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_86cae81fcd9c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5160589a-86c2-41a5-bdcd-5daee68d43ef",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

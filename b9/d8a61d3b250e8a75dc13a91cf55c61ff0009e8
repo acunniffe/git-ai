@@ -1,0 +1,14 @@
+README.md
+  h_670eaf8bab379b 228,239-245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "b9d8a61d3b250e8a75dc13a91cf55c61ff0009e8",
+  "prompts": {},
+  "humans": {
+    "h_670eaf8bab379b": {
+      "author": "Aidan Cunniffe"
+    }
+  }
+}

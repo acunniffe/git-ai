@@ -1,0 +1,23 @@
+src/commands/git_ai_handlers.rs
+  805abd0f664c09cf 7,10,12,289-295,297,299-301,305-306,308-314,316,318,321,323-324,326,328,332-334,336-337,339,344-347,349-350,352,354-356,358-363,366-367,857-859,862-869,873,911-922,927
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "ec4ca1e79d0e7098f94ce0d8dacbd745e86a84a0",
+  "prompts": {
+    "805abd0f664c09cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95d34781-45d6-4032-834e-108e3d30f164",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 84,
+      "total_deletions": 935,
+      "accepted_lines": 84,
+      "overriden_lines": 0
+    }
+  }
+}
