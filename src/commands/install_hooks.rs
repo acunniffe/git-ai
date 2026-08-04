@@ -1,7 +1,7 @@
 use crate::config;
 use crate::daemon::DaemonConfig;
 use crate::error::GitAiError;
-use crate::mdm::agents::{SandboxInstallOptions, get_all_installers};
+use crate::mdm::agents::get_all_installers;
 use crate::mdm::hook_installer::HookInstallerParams;
 use crate::mdm::skills_installer;
 use crate::mdm::spinner::{Spinner, print_diff};
@@ -21,7 +21,6 @@ struct InstallOptions {
     dry_run: bool,
     verbose: bool,
     install_skills: bool,
-    sandbox: SandboxInstallOptions,
     include_visual_studio_extension: bool,
     api_base: Option<String>,
     api_key: Option<String>,
@@ -313,6 +312,9 @@ fn ensure_daemon(dry_run: bool) {
 /// Main entry point for install-hooks command
 pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
     let options = parse_install_options(args)?;
+    let whitelist_agent_sandboxes = config::Config::fresh()
+        .get_feature_flags()
+        .whitelist_agent_sandboxes;
     let install_config = InstallConfig {
         api_base: options.api_base.clone().or_else(|| {
             std::env::var("API_BASE")
@@ -345,7 +347,11 @@ pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
     let params = HookInstallerParams { binary_path };
 
     // Run async operations and convert result.
-    let statuses = crate::tokio_runtime::block_on(async_run_install(&params, &options))?;
+    let statuses = crate::tokio_runtime::block_on(async_run_install(
+        &params,
+        &options,
+        whitelist_agent_sandboxes,
+    ))?;
 
     // Clean up legacy envelope logs directory and related artifacts.
     // These are no longer used — all telemetry now routes through the daemon.
@@ -365,7 +371,6 @@ fn parse_install_options(args: &[String]) -> Result<InstallOptions, GitAiError> 
             "--dry-run" | "--dry-run=true" => options.dry_run = true,
             "--verbose" | "-v" => options.verbose = true,
             "--skills" => options.install_skills = true,
-            "--codex-sandbox" | "--codex-sandbox=true" => options.sandbox.codex = true,
             "--visual-studio-extension" => options.include_visual_studio_extension = true,
             value if value.starts_with("--api-base=") => {
                 options.api_base = non_empty_value(&value[11..]);
@@ -529,6 +534,7 @@ pub fn run_uninstall(args: &[String]) -> Result<HashMap<String, String>, GitAiEr
 async fn async_run_install(
     params: &HookInstallerParams,
     options: &InstallOptions,
+    whitelist_agent_sandboxes: bool,
 ) -> Result<HashMap<String, InstallStatus>, GitAiError> {
     let mut any_checked = false;
     let mut has_changes = false;
@@ -539,7 +545,7 @@ async fn async_run_install(
     // === Coding Agents ===
     println!("\n\x1b[1mCoding Agents\x1b[0m");
 
-    let installers = get_all_installers(options.sandbox);
+    let installers = get_all_installers(whitelist_agent_sandboxes);
     let mut installed_tools: HashSet<String> = HashSet::new();
     // Track agents whose hooks were updated (name, process_names) for restart warnings
     let mut updated_agents: Vec<(String, Vec<String>)> = Vec::new();
@@ -882,7 +888,7 @@ async fn async_run_uninstall(
     // === Coding Agents ===
     println!("\n\x1b[1mCoding Agents\x1b[0m");
 
-    let installers = get_all_installers(SandboxInstallOptions::default());
+    let installers = get_all_installers(false);
 
     for installer in installers {
         let name = installer.name();
@@ -1080,7 +1086,6 @@ mod tests {
         let options = parse_install_options(&[]).unwrap();
 
         assert!(!options.include_visual_studio_extension);
-        assert!(!options.sandbox.codex);
         assert!(!should_include_installer(
             VISUAL_STUDIO_INSTALLER_ID,
             &options
@@ -1093,7 +1098,6 @@ mod tests {
         let args = vec![
             "--dry-run".to_string(),
             "--visual-studio-extension".to_string(),
-            "--codex-sandbox".to_string(),
             "--skills".to_string(),
             "-v".to_string(),
         ];
@@ -1102,19 +1106,11 @@ mod tests {
         assert!(options.dry_run);
         assert!(options.verbose);
         assert!(options.install_skills);
-        assert!(options.sandbox.codex);
         assert!(options.include_visual_studio_extension);
         assert!(should_include_installer(
             VISUAL_STUDIO_INSTALLER_ID,
             &options
         ));
-    }
-
-    #[test]
-    fn parse_install_options_accepts_codex_sandbox_true_flag() {
-        let options = parse_install_options(&["--codex-sandbox=true".to_string()]).unwrap();
-
-        assert!(options.sandbox.codex);
     }
 
     #[test]

@@ -36,6 +36,46 @@ fn test_config_allow_superuser_set_get_unset() {
 }
 
 #[test]
+fn test_config_whitelist_agent_sandboxes_set_get_unset() {
+    let repo = TestRepo::new();
+
+    assert_eq!(
+        get_json(&repo, "feature_flags.whitelist_agent_sandboxes"),
+        Value::Bool(false)
+    );
+
+    repo.git_ai(&[
+        "config",
+        "set",
+        "feature_flags.whitelist_agent_sandboxes",
+        "true",
+    ])
+    .expect("enable agent sandbox whitelisting");
+    assert_eq!(
+        get_json(&repo, "feature_flags.whitelist_agent_sandboxes"),
+        Value::Bool(true)
+    );
+
+    assert!(
+        repo.git_ai(&[
+            "config",
+            "set",
+            "feature_flags.whitelist_agent_sandboxes",
+            "yes",
+        ])
+        .is_err(),
+        "the sandbox whitelist feature flag must remain boolean"
+    );
+
+    repo.git_ai(&["config", "unset", "feature_flags.whitelist_agent_sandboxes"])
+        .expect("disable agent sandbox whitelisting");
+    assert_eq!(
+        get_json(&repo, "feature_flags.whitelist_agent_sandboxes"),
+        Value::Bool(false)
+    );
+}
+
+#[test]
 fn test_config_transcript_streaming_lookback_days_set_get_unset() {
     let repo = TestRepo::new();
 

@@ -275,7 +275,7 @@ fn plain_install_hooks_preserves_the_invoking_user_home() {
 
 #[test]
 #[cfg(unix)]
-fn install_hooks_only_allows_git_ai_trace_socket_in_codex_sandboxes_when_requested() {
+fn install_hooks_only_allows_git_ai_trace_socket_in_codex_sandboxes_when_configured() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
     let codex_dir = repo.test_home_path().join(".codex");
     let config_path = codex_dir.join("config.toml");
@@ -322,15 +322,22 @@ fn install_hooks_only_allows_git_ai_trace_socket_in_codex_sandboxes_when_request
         "plain install-hooks must not allow the git-ai trace2 socket"
     );
 
-    let mut command =
-        repo.git_ai_command_without_pre_sync_for_test(&["install-hooks", "--codex-sandbox"], &[]);
+    repo.git_ai(&[
+        "config",
+        "set",
+        "feature_flags.whitelist_agent_sandboxes",
+        "true",
+    ])
+    .expect("enable agent sandbox whitelisting");
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(&["install-hooks"], &[]);
     command.env_remove("CODEX_HOME");
     let output = command
         .output()
-        .expect("run git-ai install-hooks --codex-sandbox");
+        .expect("run configured git-ai install-hooks");
     assert!(
         output.status.success(),
-        "install-hooks --codex-sandbox failed:\nstdout: {}\nstderr: {}",
+        "configured install-hooks failed:\nstdout: {}\nstderr: {}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
