@@ -21,6 +21,8 @@ pub const DEFAULT_API_BASE_URL: &str = "https://usegitai.com";
 pub const DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES: usize = 3 * 1024 * 1024;
 pub const DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES: usize = 32 * 1024 * 1024;
 pub const DEFAULT_MAX_CHECKPOINT_TOTAL_LINES: usize = 500_000;
+pub(crate) const MEBIBYTE_BYTES: u64 = 1024 * 1024;
+pub(crate) const MAX_DAEMON_MEMORY_LIMIT_MB: u64 = u64::MAX / MEBIBYTE_BYTES;
 
 /// Which backend to use for storing authorship notes.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -187,6 +189,7 @@ pub struct Config {
     max_checkpoint_file_size_bytes: usize,
     max_checkpoint_total_size_bytes: usize,
     max_checkpoint_total_lines: usize,
+    daemon_memory_limit_mb: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize)]
@@ -274,6 +277,8 @@ pub struct FileConfig {
     pub max_checkpoint_total_size_bytes: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_checkpoint_total_lines: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub daemon_memory_limit_mb: Option<u64>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -339,6 +344,8 @@ pub struct ConfigPatch {
     pub max_checkpoint_total_size_bytes: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_checkpoint_total_lines: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub daemon_memory_limit_mb: Option<u64>,
 }
 
 impl Config {
@@ -658,6 +665,11 @@ impl Config {
     /// Returns the total line budget for content in one checkpoint request.
     pub fn max_checkpoint_total_lines(&self) -> usize {
         self.max_checkpoint_total_lines
+    }
+
+    /// Returns the daemon peak-RSS limit in MiB, or `None` when disabled.
+    pub fn daemon_memory_limit_mb(&self) -> Option<u64> {
+        self.daemon_memory_limit_mb
     }
 
     /// Returns true if quiet mode is enabled (suppresses chart output after commits)
@@ -1211,6 +1223,11 @@ fn build_config() -> Config {
         .or_else(|| file_cfg.as_ref().and_then(|c| c.max_checkpoint_total_lines))
         .unwrap_or(DEFAULT_MAX_CHECKPOINT_TOTAL_LINES);
 
+    let daemon_memory_limit_mb = file_cfg
+        .as_ref()
+        .and_then(|c| c.daemon_memory_limit_mb)
+        .and_then(normalize_daemon_memory_limit_mb);
+
     #[cfg(any(test, feature = "test-support"))]
     {
         let mut config = Config {
@@ -1240,6 +1257,7 @@ fn build_config() -> Config {
             max_checkpoint_file_size_bytes,
             max_checkpoint_total_size_bytes,
             max_checkpoint_total_lines,
+            daemon_memory_limit_mb,
         };
         apply_test_config_patch(&mut config);
         config
@@ -1273,7 +1291,22 @@ fn build_config() -> Config {
         max_checkpoint_file_size_bytes,
         max_checkpoint_total_size_bytes,
         max_checkpoint_total_lines,
+        daemon_memory_limit_mb,
     }
+}
+
+fn normalize_daemon_memory_limit_mb(limit_mb: u64) -> Option<u64> {
+    if limit_mb == 0 {
+        eprintln!(
+            "Warning: daemon_memory_limit_mb must be greater than zero; memory monitoring is disabled"
+        );
+        return None;
+    }
+    if limit_mb > MAX_DAEMON_MEMORY_LIMIT_MB {
+        eprintln!("Warning: daemon_memory_limit_mb is too large; memory monitoring is disabled");
+        return None;
+    }
+    Some(limit_mb)
 }
 
 /// Build custom attributes from file config and `GIT_AI_CUSTOM_ATTRIBUTES` env var.
@@ -1728,6 +1761,9 @@ fn apply_test_config_patch(config: &mut Config) {
         if let Some(max_lines) = patch.max_checkpoint_total_lines {
             config.max_checkpoint_total_lines = max_lines;
         }
+        if let Some(limit_mb) = patch.daemon_memory_limit_mb {
+            config.daemon_memory_limit_mb = normalize_daemon_memory_limit_mb(limit_mb);
+        }
     }
 }
 
@@ -1772,6 +1808,7 @@ mod tests {
             max_checkpoint_file_size_bytes: DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
             max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
             max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+            daemon_memory_limit_mb: None,
         }
     }
 
@@ -2017,6 +2054,7 @@ mod tests {
             max_checkpoint_file_size_bytes: DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
             max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
             max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+            daemon_memory_limit_mb: None,
         }
     }
 
@@ -2165,6 +2203,7 @@ mod tests {
             max_checkpoint_file_size_bytes: DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
             max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
             max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+            daemon_memory_limit_mb: None,
         }
     }
 

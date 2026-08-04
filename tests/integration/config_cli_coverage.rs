@@ -113,6 +113,39 @@ fn test_config_checkpoint_budget_set_get_unset() {
 }
 
 #[test]
+fn test_config_daemon_memory_limit_set_get_unset() {
+    let repo = TestRepo::new();
+
+    assert_eq!(
+        get_json(&repo, "daemon_memory_limit_mb"),
+        Value::Null,
+        "daemon memory monitoring should be disabled by default"
+    );
+
+    repo.git_ai(&["config", "set", "daemon_memory_limit_mb", "1024"])
+        .expect("set daemon_memory_limit_mb");
+    assert_eq!(
+        get_json(&repo, "daemon_memory_limit_mb"),
+        Value::Number(1024.into())
+    );
+
+    assert!(
+        repo.git_ai(&["config", "set", "daemon_memory_limit_mb", "0"])
+            .is_err(),
+        "zero must be rejected; unset disables the limit"
+    );
+    assert!(
+        repo.git_ai(&["config", "set", "daemon_memory_limit_mb", "-1"])
+            .is_err(),
+        "negative limits must be rejected"
+    );
+
+    repo.git_ai(&["config", "unset", "daemon_memory_limit_mb"])
+        .expect("unset daemon_memory_limit_mb");
+    assert_eq!(get_json(&repo, "daemon_memory_limit_mb"), Value::Null);
+}
+
+#[test]
 fn test_config_custom_attributes_object_set_get_unset() {
     let repo = TestRepo::new();
 
@@ -237,6 +270,7 @@ fn test_config_show_all_includes_new_keys() {
     assert!(value.get("transcript_streaming_lookback_days").is_some());
     assert!(value.get("max_checkpoint_total_size_bytes").is_some());
     assert!(value.get("max_checkpoint_total_lines").is_some());
+    assert!(value.get("daemon_memory_limit_mb").is_some());
     assert!(value.get("custom_attributes").is_some());
 }
 
@@ -303,6 +337,7 @@ fn fully_populated_file_config() -> FileConfig {
         max_checkpoint_file_size_bytes: Some(3 * 1024 * 1024),
         max_checkpoint_total_size_bytes: Some(32 * 1024 * 1024),
         max_checkpoint_total_lines: Some(500_000),
+        daemon_memory_limit_mb: Some(1024),
     }
 }
 
