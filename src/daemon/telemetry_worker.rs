@@ -471,7 +471,7 @@ fn backfill_metrics_event_metadata() -> Result<(), GitAiError> {
             let mut db_lock = db
                 .lock()
                 .map_err(|_| GitAiError::Generic("metrics DB lock poisoned".to_string()))?;
-            db_lock.backfill_event_metadata_batch_after(after_id, METADATA_BACKFILL_BATCH_SIZE)?
+            db_lock.backfill_event_metadata_batch_once(after_id, METADATA_BACKFILL_BATCH_SIZE)?
         };
 
         let Some(id) = last_id else {
