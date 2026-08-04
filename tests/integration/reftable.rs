@@ -30,6 +30,11 @@ fn reftable_sha256_commit_preserves_mixed_attribution() {
     file.set_contents(lines!["Human SHA-256", "AI SHA-256".ai()]);
     repo.stage_all_and_commit("sha256 root").unwrap();
     file.assert_committed_lines(lines!["Human SHA-256".human(), "AI SHA-256".ai()]);
+    let root_stats = repo.stats().unwrap();
+    assert_eq!(root_stats.git_diff_added_lines, 2);
+    assert_eq!(root_stats.human_additions, 1);
+    assert_eq!(root_stats.ai_additions, 1);
+    assert_eq!(root_stats.ai_accepted, 1);
 
     file.insert_at(2, lines!["AI SHA-256 amend".ai()]);
     repo.git(&["add", "sha256.txt"]).unwrap();

@@ -223,7 +223,7 @@ fn create_authorship_log_for_range(
 
     // Special handling for empty tree: there's no start state to compare against
     // We only need the end state's attributions
-    if start_sha == EMPTY_TREE_HASH {
+    if crate::authorship::diff_base::is_empty_tree_oid(start_sha) {
         tracing::debug!("Start is empty tree - using only end commit attributions");
 
         let repo_clone = repo.clone();

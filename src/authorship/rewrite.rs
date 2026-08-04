@@ -10,8 +10,6 @@ use crate::git::repository::{
     Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin_streaming,
 };
 
-const EMPTY_TREE_SHA: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-
 #[derive(Debug)]
 pub enum RewriteEvent {
     NonFastForward {
@@ -236,10 +234,6 @@ fn post_squash_metric_note_from_result(
     }
 }
 
-fn empty_tree_sha() -> &'static str {
-    EMPTY_TREE_SHA
-}
-
 fn tree_revision_arg(sha: &str) -> Option<String> {
     if sha == "initial" {
         None
@@ -248,9 +242,13 @@ fn tree_revision_arg(sha: &str) -> Option<String> {
     }
 }
 
-fn insert_known_tree(sha_to_tree: &mut HashMap<String, String>, sha: &str) -> bool {
+fn insert_known_tree(
+    sha_to_tree: &mut HashMap<String, String>,
+    sha: &str,
+    empty_tree: &str,
+) -> bool {
     if sha == "initial" {
-        sha_to_tree.insert(sha.to_string(), empty_tree_sha().to_string());
+        sha_to_tree.insert(sha.to_string(), empty_tree.to_string());
         true
     } else {
         false
@@ -277,9 +275,14 @@ fn resolve_tree_shas(
 ) -> Result<HashMap<String, String>, GitAiError> {
     let mut sha_to_tree = HashMap::new();
     let mut shas_to_resolve = Vec::new();
+    let empty_tree = unique_shas
+        .iter()
+        .find(|sha| sha.as_str() != "initial")
+        .map(|sha| crate::authorship::diff_base::empty_tree_for_oid(sha))
+        .unwrap_or(crate::authorship::diff_base::SHA1_EMPTY_TREE);
 
     for sha in unique_shas {
-        if !insert_known_tree(&mut sha_to_tree, sha) {
+        if !insert_known_tree(&mut sha_to_tree, sha, empty_tree) {
             shas_to_resolve.push(sha.clone());
         }
     }

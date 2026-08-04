@@ -1313,31 +1313,9 @@ impl TestRepo {
     }
 
     fn new_reftable_with_object_format(object_format: &str) -> Self {
-        ensure_isolated_process_home();
-
-        let mut rng = rand::rng();
-        let n: u64 = rng.random_range(0..10000000000);
-        let base = std::env::temp_dir();
-        let path = base.join(n.to_string());
-        let test_home = base.join(format!("{}-home", n));
-        let test_db_path = resolve_test_db_path(&base, n, &test_home);
-        clone_reftable_template_to(&path, object_format);
-
-        let mut repo = Self {
-            path,
-            feature_flags: FeatureFlags::default(),
-            config_patch: None,
-            test_db_path,
-            test_home,
-            daemon_scope: DaemonTestScope::Shared,
-            daemon_process: None,
-            _base_repo_path: None,
-            _base_test_db_path: None,
-            daemon_family_key: OnceLock::new(),
-        };
-        repo.apply_default_config_patch();
-        repo.setup_daemon_mode();
-        repo
+        Self::new_with_daemon_scope_and_template(DaemonTestScope::Shared, |path| {
+            clone_reftable_template_to(path, object_format);
+        })
     }
 
     /// Create a worktree-backed TestRepo.
@@ -1478,6 +1456,13 @@ impl TestRepo {
     }
 
     fn new_with_daemon_scope_inner(daemon_scope: DaemonTestScope) -> Self {
+        Self::new_with_daemon_scope_and_template(daemon_scope, clone_template_to)
+    }
+
+    fn new_with_daemon_scope_and_template(
+        daemon_scope: DaemonTestScope,
+        clone_template: impl FnOnce(&Path),
+    ) -> Self {
         // Isolate this test binary's HOME before any git or git-ai subprocess is spawned.
         ensure_isolated_process_home();
 
@@ -1488,8 +1473,8 @@ impl TestRepo {
         let test_home = base.join(format!("{}-home", n));
         let test_db_path = resolve_test_db_path(&base, n, &test_home);
 
-        // Clone from cached template (git init + config + symbolic-ref already done)
-        clone_template_to(&path);
+        // Clone from a cached template (git init + config + symbolic-ref already done).
+        clone_template(&path);
 
         let mut repo = Self {
             path,
