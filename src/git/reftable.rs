@@ -470,20 +470,18 @@ fn invalid_reftable(message: impl Into<String>) -> GitAiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsStr;
     use std::fs;
-    use std::process::Command;
 
     fn git_with_env(repo: &Path, args: &[&str], env: &[(&str, &str)]) {
-        let mut command = Command::new(crate::config::Config::get().git_cmd());
-        command
-            .arg("-C")
-            .arg(repo)
-            .args(args)
-            .env_remove("GIT_TRACE2_EVENT");
-        for (key, value) in env {
-            command.env(key, value);
-        }
-        let output = command.output().unwrap();
+        let mut command_args = vec!["-C".to_string(), repo.to_string_lossy().to_string()];
+        command_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        let env = env
+            .iter()
+            .map(|(key, value)| (*key, OsStr::new(value)))
+            .collect::<Vec<_>>();
+        let output = crate::git::repository::exec_git_allow_nonzero_with_env(&command_args, &env)
+            .expect("git command should run");
         assert!(
             output.status.success(),
             "git {args:?} failed: {}",
