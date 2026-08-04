@@ -2860,6 +2860,7 @@ fn test_rebase_same_file_then_ff_merge_preserves_attribution() {
 }
 
 const COMMITS_OVER_PENDING_DROPPED_LIMIT: usize = 200;
+const COMMITS_JUST_OVER_PENDING_DROPPED_LIMIT: usize = 65;
 
 fn numbered_file_contents(prefix: &str, count: usize) -> String {
     (1..=count)
@@ -2893,6 +2894,48 @@ fn leading_dropped_commits_before_first_match(range_diff: &str) -> usize {
     }
 
     dropped
+}
+
+fn dropped_commits_after_first_match(range_diff: &str) -> usize {
+    let mut saw_match = false;
+    let mut dropped = 0;
+
+    for line in range_diff.lines() {
+        let mut parts = line.split_whitespace();
+        let (_ordinal, _old_sha, Some(status)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+
+        match status {
+            "=" | "!" => saw_match = true,
+            "<" if saw_match => dropped += 1,
+            _ => {}
+        }
+    }
+
+    dropped
+}
+
+fn shift_authorship_mapping_counts(daemon_log: &str) -> Vec<usize> {
+    daemon_log
+        .lines()
+        .filter_map(|line| {
+            line.split_once("shift_authorship_notes: ")?
+                .1
+                .split_whitespace()
+                .next()?
+                .parse()
+                .ok()
+        })
+        .collect()
+}
+
+fn range_diff_spawn_count(spawn_log_path: &std::path::Path) -> usize {
+    std::fs::read_to_string(spawn_log_path)
+        .unwrap_or_default()
+        .lines()
+        .filter(|command| *command == "range-diff")
+        .count()
 }
 
 #[test]
@@ -3035,6 +3078,171 @@ fn test_reset_keep_undo_rebase_discards_many_old_upstream_commits() {
             .iter()
             .all(|attestation| attestation.file_path != "trunk.txt"),
         "discarded upstream-only commits must not add trunk attestations to the feature note"
+    );
+}
+
+#[test]
+fn test_reset_keep_move_discards_many_commits_after_matched_stack() {
+    use std::fs;
+
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_DEBUG", "1")]);
+
+    let mut base_file = repo.filename("base.txt");
+    base_file.set_contents(crate::lines!["base"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    let base_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let feature_path = repo.path().join("feature.txt");
+    fs::write(&feature_path, "ai feature line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+        .unwrap();
+    repo.git(&["add", "feature.txt"]).unwrap();
+    repo.commit("feature commit").unwrap();
+    let feature_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let mut feature_file = repo.filename("feature.txt");
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+
+    repo.git(&["checkout", "-b", "feature-prime", &base_sha])
+        .unwrap();
+    repo.git(&["cherry-pick", &feature_commit]).unwrap();
+    repo.git(&[
+        "commit",
+        "--amend",
+        "-m",
+        "feature commit moved to new parent",
+    ])
+    .unwrap();
+    let feature_prime_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+
+    repo.git(&["checkout", "feature"]).unwrap();
+    let dropped_path = repo.path().join("dropped.txt");
+    for commit_number in 1..=COMMITS_JUST_OVER_PENDING_DROPPED_LIMIT {
+        fs::write(
+            &dropped_path,
+            numbered_file_contents("ai dropped line", commit_number),
+        )
+        .unwrap();
+        repo.git_ai(&["checkpoint", "mock_ai", "dropped.txt"])
+            .unwrap();
+        repo.git(&["add", "dropped.txt"]).unwrap();
+        repo.commit(&format!("dropped commit {commit_number}"))
+            .unwrap();
+    }
+    let feature_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let mut dropped_file = repo.filename("dropped.txt");
+    dropped_file.assert_committed_lines(expected_ai_numbered_lines(
+        "ai dropped line",
+        COMMITS_JUST_OVER_PENDING_DROPPED_LIMIT,
+    ));
+
+    let old_range = format!("{base_sha}..{feature_tip}");
+    let new_range = format!("{base_sha}..{feature_prime_tip}");
+    let range_diff = repo
+        .git(&[
+            "range-diff",
+            "-s",
+            "--creation-factor=100",
+            &old_range,
+            &new_range,
+        ])
+        .unwrap();
+    let trailing_drops = dropped_commits_after_first_match(&range_diff);
+    assert!(
+        trailing_drops == COMMITS_JUST_OVER_PENDING_DROPPED_LIMIT,
+        "test setup must place {COMMITS_JUST_OVER_PENDING_DROPPED_LIMIT} drops after a match; got {trailing_drops}\n{range_diff}"
+    );
+
+    repo.sync_daemon();
+    let mapping_count_baseline =
+        shift_authorship_mapping_counts(&repo.daemon_stderr_contents()).len();
+
+    repo.git(&["reset", "--keep", &feature_prime_tip]).unwrap();
+    repo.sync_daemon();
+
+    assert!(!dropped_path.exists());
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+
+    let daemon_log = repo.daemon_stderr_contents();
+    let mapping_counts = shift_authorship_mapping_counts(&daemon_log);
+    assert_eq!(
+        &mapping_counts[mapping_count_baseline..],
+        &[1],
+        "the move should map only the matched stack commit, not fabricate one mapping per dropped commit\n{daemon_log}"
+    );
+}
+
+#[test]
+fn test_reset_keep_move_skips_range_diff_when_range_exceeds_limit() {
+    use std::fs;
+
+    let log_dir = tempfile::tempdir().unwrap();
+    let spawn_log_path = log_dir.path().join("spawns.log");
+    let spawn_log = spawn_log_path.to_string_lossy().into_owned();
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_SPAWN_LOG", spawn_log.as_str()),
+        ("GIT_AI_TEST_RANGE_DIFF_COMMIT_LIMIT", "2"),
+    ]);
+
+    let mut base_file = repo.filename("base.txt");
+    base_file.set_contents(crate::lines!["base"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    let base_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let feature_path = repo.path().join("feature.txt");
+    fs::write(&feature_path, "ai feature line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+        .unwrap();
+    repo.git(&["add", "feature.txt"]).unwrap();
+    repo.commit("feature commit").unwrap();
+    let feature_commit = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let mut feature_file = repo.filename("feature.txt");
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+
+    repo.git(&["checkout", "-b", "feature-prime", &base_sha])
+        .unwrap();
+    repo.git(&["cherry-pick", &feature_commit]).unwrap();
+    repo.git(&[
+        "commit",
+        "--amend",
+        "-m",
+        "feature commit moved to new parent",
+    ])
+    .unwrap();
+    let feature_prime_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+
+    repo.git(&["checkout", "feature"]).unwrap();
+    let dropped_path = repo.path().join("dropped.txt");
+    for commit_number in 1..=3 {
+        fs::write(
+            &dropped_path,
+            numbered_file_contents("ai dropped line", commit_number),
+        )
+        .unwrap();
+        repo.git_ai(&["checkpoint", "mock_ai", "dropped.txt"])
+            .unwrap();
+        repo.git(&["add", "dropped.txt"]).unwrap();
+        repo.commit(&format!("dropped commit {commit_number}"))
+            .unwrap();
+    }
+    let mut dropped_file = repo.filename("dropped.txt");
+    dropped_file.assert_committed_lines(expected_ai_numbered_lines("ai dropped line", 3));
+
+    repo.sync_daemon();
+    let range_diff_baseline = range_diff_spawn_count(&spawn_log_path);
+
+    repo.git(&["reset", "--keep", &feature_prime_tip]).unwrap();
+    repo.sync_daemon();
+
+    assert!(!dropped_path.exists());
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+    assert_eq!(
+        range_diff_spawn_count(&spawn_log_path),
+        range_diff_baseline,
+        "an oversized range must be rejected before spawning git range-diff"
     );
 }
 
