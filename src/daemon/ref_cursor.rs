@@ -5,6 +5,7 @@ use crate::git::cli_parser::{
     explicit_rebase_branch_arg, parse_git_cli_args, summarize_rebase_args,
 };
 use crate::git::find_repository_in_path;
+use crate::git::reftable::{ReftableLogEntry, ReftableReader, reftable_stack_update_index};
 use crate::git::repo_state::{common_dir_for_worktree, git_dir_for_worktree, is_valid_git_oid};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
@@ -27,6 +28,9 @@ pub struct RefCursor {
     command_start_hints: HashMap<String, u64>,
     stash_stack: Vec<String>,
     pending_cherry_pick_source_oids: Vec<String>,
+    reftable_reader: ReftableReader,
+    reftable_entries: HashMap<String, Vec<CursorEntry>>,
+    uses_reftable: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -133,6 +137,9 @@ impl RefCursor {
             command_start_hints: HashMap::new(),
             stash_stack: Vec::new(),
             pending_cherry_pick_source_oids: Vec::new(),
+            reftable_reader: ReftableReader::default(),
+            reftable_entries: HashMap::new(),
+            uses_reftable: false,
         }
     }
 
@@ -142,6 +149,7 @@ impl RefCursor {
         state: &FamilyState,
     ) -> Result<(), GitAiError> {
         cmd.ref_changes.clear();
+        self.refresh_reftable_entries(cmd.worktree.as_deref())?;
         self.initialize_from_command_reflog_start_offsets(cmd)?;
         // Reflog offsets are sampled asynchronously and may describe repository
         // state after this command -- or even after later commands. They are safe
@@ -214,6 +222,114 @@ impl RefCursor {
         Ok(())
     }
 
+    fn refresh_reftable_entries(&mut self, worktree: Option<&Path>) -> Result<(), GitAiError> {
+        let common_stack = self.common_dir().join("reftable");
+        let common_position = reftable_stack_update_index(&common_stack)?;
+        let uses_reftable = common_position.is_some();
+        if self.uses_reftable != uses_reftable {
+            self.offsets.clear();
+            self.anchors.clear();
+            self.consumed_offsets.clear();
+            self.consumed_anchors.clear();
+            self.command_start_hints.clear();
+        }
+        self.uses_reftable = uses_reftable;
+        self.reftable_entries.clear();
+        if !uses_reftable {
+            return Ok(());
+        }
+
+        let Some(worktree) = worktree else {
+            return Ok(());
+        };
+        let Some(git_dir) = git_dir_for_worktree(worktree) else {
+            return Ok(());
+        };
+        let head_stack = git_dir.join("reftable");
+        let common_logs = self.reftable_reader.read_logs(&common_stack)?;
+        for log in common_logs {
+            if log.reference != "HEAD" || git_dir == self.common_dir() {
+                self.insert_reftable_entry(&common_stack, &git_dir, log);
+            }
+        }
+        if git_dir != self.common_dir() {
+            for log in self.reftable_reader.read_logs(&head_stack)? {
+                if log.reference == "HEAD" {
+                    self.insert_reftable_entry(&head_stack, &git_dir, log);
+                }
+            }
+        }
+        for entries in self.reftable_entries.values_mut() {
+            entries.sort_by_key(|entry| entry.end_offset);
+        }
+        Ok(())
+    }
+
+    fn insert_reftable_entry(&mut self, stack_dir: &Path, git_dir: &Path, log: ReftableLogEntry) {
+        let key = if log.reference == "HEAD" {
+            head_key(git_dir)
+        } else {
+            common_key(&log.reference)
+        };
+        self.reftable_entries
+            .entry(key.clone())
+            .or_default()
+            .push(CursorEntry {
+                key,
+                path: stack_dir.join("tables.list"),
+                reference: log.reference,
+                old: log.old_oid,
+                new: log.new_oid,
+                message: log.message,
+                timestamp_secs: Some(log.timestamp_secs),
+                start_offset: log.update_index.saturating_sub(1),
+                end_offset: log.update_index,
+            });
+    }
+
+    fn read_entries(
+        &self,
+        key: String,
+        path: &Path,
+        reference: &str,
+        start_offset: Option<u64>,
+    ) -> Result<Vec<CursorEntry>, GitAiError> {
+        self.read_entries_with_noops(key, path, reference, start_offset, false)
+    }
+
+    fn read_entries_with_noops(
+        &self,
+        key: String,
+        path: &Path,
+        reference: &str,
+        start_offset: Option<u64>,
+        include_noops: bool,
+    ) -> Result<Vec<CursorEntry>, GitAiError> {
+        if !self.uses_reftable {
+            return if include_noops {
+                read_reflog_entries_including_noops(key, path, reference, start_offset)
+            } else {
+                read_reflog_entries(key, path, reference, start_offset)
+            };
+        }
+        Ok(self
+            .reftable_entries
+            .get(&key)
+            .into_iter()
+            .flatten()
+            .filter(|entry| start_offset.is_none_or(|start| entry.end_offset > start))
+            .filter(|entry| include_noops || entry.old != entry.new)
+            .cloned()
+            .collect())
+    }
+
+    fn reftable_entry_ending_at(&self, key: &str, position: u64) -> Option<&CursorEntry> {
+        self.reftable_entries
+            .get(key)?
+            .iter()
+            .find(|entry| entry.end_offset == position)
+    }
+
     fn initialize_from_command_reflog_start_offsets(
         &mut self,
         cmd: &NormalizedCommand,
@@ -226,11 +342,29 @@ impl RefCursor {
             return Ok(());
         }
 
-        let offsets = cmd
-            .reflog_start_offsets
-            .iter()
-            .map(|(key, offset)| (key.clone(), *offset))
-            .collect::<Vec<_>>();
+        let mut offsets = Vec::new();
+        for (key, offset) in &cmd.reflog_start_offsets {
+            if key == &reftable_common_key() {
+                offsets.extend(
+                    self.reftable_entries
+                        .keys()
+                        .filter(|entry_key| entry_key.starts_with("common:"))
+                        .cloned()
+                        .map(|entry_key| (entry_key, *offset)),
+                );
+                if let Some(worktree) = cmd.worktree.as_deref()
+                    && let Some(git_dir) = git_dir_for_worktree(worktree)
+                    && git_dir == self.common_dir()
+                {
+                    offsets.push((head_key(&git_dir), *offset));
+                }
+            } else if let Some(git_dir) = key.strip_prefix("reftable-worktree:").map(PathBuf::from)
+            {
+                offsets.push((head_key(&git_dir), *offset));
+            } else {
+                offsets.push((key.clone(), *offset));
+            }
+        }
         for (key, offset) in offsets {
             if self.offsets.contains_key(&key) {
                 // An authoritative in-order cursor already exists (established by
@@ -304,7 +438,7 @@ impl RefCursor {
                 } else {
                     "HEAD".to_string()
                 };
-                let entries = read_reflog_entries(key.to_string(), &path, &reference, None)?;
+                let entries = self.read_entries(key.to_string(), &path, &reference, None)?;
                 let earliest_own = entries
                     .into_iter()
                     .filter(|entry| {
@@ -330,7 +464,7 @@ impl RefCursor {
                 } else {
                     "HEAD".to_string()
                 };
-                let entries = read_reflog_entries(key.to_string(), &path, &reference, None)?;
+                let entries = self.read_entries(key.to_string(), &path, &reference, None)?;
                 Ok(
                     head_span_start_near_offset(&entries, offset, &prefix_refs, expected, limit)
                         .unwrap_or(offset),
@@ -387,7 +521,8 @@ impl RefCursor {
         } else {
             "HEAD".to_string()
         };
-        let entries = read_reflog_entries_including_noops(key.to_string(), path, &reference, None)?;
+        let entries =
+            self.read_entries_with_noops(key.to_string(), path, &reference, None, true)?;
         let prefixes = pull_reflog_message_prefixes(action);
         let prefix_refs = prefixes.iter().map(String::as_str).collect::<Vec<_>>();
 
@@ -413,7 +548,8 @@ impl RefCursor {
         } else {
             "HEAD".to_string()
         };
-        let entries = read_reflog_entries_including_noops(key.to_string(), path, &reference, None)?;
+        let entries =
+            self.read_entries_with_noops(key.to_string(), path, &reference, None, true)?;
         if key.starts_with("common:") {
             return Ok(
                 clamp_seed_to_entry_containing_offset(&entries, offset, &["rebase"])
@@ -1230,7 +1366,7 @@ impl RefCursor {
         let key = head_key(&git_dir);
         let path = git_dir.join("logs").join("HEAD");
         let start = self.reflog_start_offset(&key, &path)?;
-        let entries = read_reflog_entries(key, &path, "HEAD", start)?;
+        let entries = self.read_entries(key, &path, "HEAD", start)?;
 
         Ok(entries.into_iter().find(|entry| {
             !self.entry_consumed(entry)
@@ -1262,7 +1398,7 @@ impl RefCursor {
         let head_path = git_dir.join("logs").join("HEAD");
         let start = self.reflog_start_offset(&head_key, &head_path)?;
         let head_entries =
-            read_reflog_entries_including_noops(head_key, &head_path, "HEAD", start)?;
+            self.read_entries_with_noops(head_key, &head_path, "HEAD", start, true)?;
         let Some(start_marker) =
             rebase_start_marker_for_explicit_branch(&head_entries, &branch_ref)
         else {
@@ -1480,7 +1616,7 @@ impl RefCursor {
         let key = head_key(&git_dir);
         let path = git_dir.join("logs").join("HEAD");
         let start = self.reflog_start_offset(&key, &path)?;
-        let entries = read_reflog_entries(key, &path, "HEAD", start)?;
+        let entries = self.read_entries(key, &path, "HEAD", start)?;
 
         Ok(entries.into_iter().find(|entry| {
             !self.entry_consumed(entry)
@@ -1509,7 +1645,7 @@ impl RefCursor {
         let path = git_dir.join("logs").join("HEAD");
         let key = head_key(&git_dir);
         let start = self.reflog_start_offset(&key, &path)?;
-        let entries = read_reflog_entries(key, &path, "HEAD", start)?;
+        let entries = self.read_entries(key, &path, "HEAD", start)?;
         let mut contiguous = VecDeque::<CursorEntry>::new();
         let hint = self.command_start_hints.get(&head_key(&git_dir)).copied();
         let mut latest_before_hint: Option<CursorEntry> = None;
@@ -1563,7 +1699,8 @@ impl RefCursor {
         let path = git_dir.join("logs").join("HEAD");
         let start = self.reflog_start_offset(&key, &path)?;
         let command_window = reflog_timestamp_window(cmd);
-        let candidates = read_reflog_entries(key.clone(), &path, "HEAD", start)?
+        let candidates = self
+            .read_entries(key.clone(), &path, "HEAD", start)?
             .into_iter()
             .filter(|entry| {
                 !self.entry_consumed(entry)
@@ -1644,7 +1781,8 @@ impl RefCursor {
         };
         let key = head_key(&git_dir);
         let path = git_dir.join("logs").join("HEAD");
-        Ok(read_reflog_entries(key, &path, "HEAD", Some(start_offset))?
+        Ok(self
+            .read_entries(key, &path, "HEAD", Some(start_offset))?
             .into_iter()
             .find(|entry| {
                 !self.entry_consumed(entry)
@@ -1726,7 +1864,7 @@ impl RefCursor {
         };
 
         let start = self.reflog_start_offset(&key, &path)?;
-        let entries = read_reflog_entries(key.clone(), &path, reference, start)?;
+        let entries = self.read_entries(key.clone(), &path, reference, start)?;
         let matches = entries
             .into_iter()
             .filter(|entry| matches_command(entry, self))
@@ -1735,7 +1873,8 @@ impl RefCursor {
             return Ok(matches);
         }
 
-        Ok(read_reflog_entries(key, &path, reference, None)?
+        Ok(self
+            .read_entries(key, &path, reference, None)?
             .into_iter()
             .filter(|entry| matches_command(entry, self))
             .collect())
@@ -1783,7 +1922,7 @@ impl RefCursor {
         let path = self.common_dir().join("logs").join("refs/stash");
         let key = common_key("refs/stash");
         let start = self.reflog_start_offset(&key, &path)?;
-        let entries = read_reflog_entries(key, &path, "refs/stash", start)?;
+        let entries = self.read_entries(key, &path, "refs/stash", start)?;
 
         Ok(entries.into_iter().find(|entry| {
             !self.entry_consumed(entry)
@@ -1814,7 +1953,7 @@ impl RefCursor {
         use_hint: bool,
     ) -> Result<Option<CursorEntry>, GitAiError> {
         let start = self.reflog_start_offset(&key, path)?;
-        let entries = read_reflog_entries(key.clone(), path, reference, start)?;
+        let entries = self.read_entries(key.clone(), path, reference, start)?;
         let mut candidates = entries.into_iter().filter(|entry| {
             !self.entry_consumed(entry)
                 && expected.matches(entry)
@@ -1944,7 +2083,7 @@ impl RefCursor {
         let key = head_key(&git_dir);
         let path = git_dir.join("logs").join("HEAD");
         let start = self.reflog_start_offset(&key, &path)?;
-        let entries = read_reflog_entries_including_noops(key, &path, "HEAD", start)?;
+        let entries = self.read_entries_with_noops(key, &path, "HEAD", start, true)?;
         let Some(finish) = entries
             .into_iter()
             .find(|entry| entry.new == new && branch_from_message(&entry.message).is_some())
@@ -2001,7 +2140,7 @@ impl RefCursor {
         }
         let path = self.common_dir().join("logs").join("refs/stash");
         let key = common_key("refs/stash");
-        let entries = read_reflog_entries(key.clone(), &path, "refs/stash", Some(0))?;
+        let entries = self.read_entries(key.clone(), &path, "refs/stash", Some(0))?;
         let cursor = self.offsets.get(&key).copied().unwrap_or(u64::MAX);
         let mut stack = entries
             .into_iter()
@@ -2037,6 +2176,16 @@ impl RefCursor {
     }
 
     fn discover_common_refs(&self) -> Result<Vec<String>, GitAiError> {
+        if self.uses_reftable {
+            let mut refs = self
+                .reftable_entries
+                .keys()
+                .filter_map(|key| key.strip_prefix("common:").map(ToString::to_string))
+                .collect::<Vec<_>>();
+            refs.sort();
+            refs.dedup();
+            return Ok(refs);
+        }
         let logs = self.common_dir().join("logs");
         let mut refs = Vec::new();
         discover_reflog_refs(&logs, &logs, &mut refs)?;
@@ -2062,6 +2211,22 @@ impl RefCursor {
         };
         if offset == 0 {
             return Ok(Some(0));
+        }
+
+        if self.uses_reftable {
+            let Some(entry) = self.reftable_entry_ending_at(key, offset) else {
+                self.clear_ref_cursor(key);
+                return Ok(None);
+            };
+            if self
+                .anchors
+                .get(key)
+                .is_some_and(|anchor| anchor != &ReflogAnchor::from(entry))
+            {
+                self.clear_ref_cursor(key);
+                return Ok(None);
+            }
+            return Ok(Some(offset));
         }
 
         let len = match fs::metadata(path) {
@@ -2096,6 +2261,15 @@ impl RefCursor {
             self.anchors.remove(key);
             return Ok(());
         }
+        if self.uses_reftable {
+            if let Some(entry) = self.reftable_entry_ending_at(key, offset) {
+                self.anchors
+                    .insert(key.to_string(), ReflogAnchor::from(entry));
+            } else {
+                self.anchors.remove(key);
+            }
+            return Ok(());
+        }
         let Some(path) = self.reflog_path_for_key(key) else {
             self.anchors.remove(key);
             return Ok(());
@@ -2127,6 +2301,12 @@ impl RefCursor {
     }
 
     fn reflog_has_records_after_offset(&self, key: &str, offset: u64) -> Result<bool, GitAiError> {
+        if self.uses_reftable {
+            return Ok(self
+                .reftable_entries
+                .get(key)
+                .is_some_and(|entries| entries.iter().any(|entry| entry.end_offset > offset)));
+        }
         let Some(path) = self.reflog_path_for_key(key) else {
             return Ok(false);
         };
@@ -2185,7 +2365,7 @@ impl RefCursor {
         reference: &str,
     ) -> Result<(), GitAiError> {
         let start = self.offsets.get(key).copied();
-        let entries = read_reflog_entries(key.to_string(), path, reference, start)?;
+        let entries = self.read_entries(key.to_string(), path, reference, start)?;
         let mut advanced_to = start.unwrap_or(0);
         let mut anchor = None;
         for entry in entries {
@@ -2226,7 +2406,7 @@ impl RefCursor {
         let path = self.common_dir().join("logs").join(reference);
         let key = common_key(reference);
         let start = self.reflog_start_offset(&key, &path)?;
-        let entries = read_reflog_entries(key.clone(), &path, reference, start)?;
+        let entries = self.read_entries(key.clone(), &path, reference, start)?;
         for entry in entries {
             let Some((old_reference, new_reference)) =
                 parse_branch_lifecycle_message(kind, &entry.message)
@@ -2251,6 +2431,19 @@ impl RefCursor {
     ) -> Result<(), GitAiError> {
         let key = common_key(reference);
         let path = self.common_dir().join("logs").join(reference);
+        if self.uses_reftable {
+            if let Some(entry) = self
+                .reftable_entries
+                .get(&key)
+                .and_then(|entries| entries.last())
+                .cloned()
+            {
+                self.advance_cursor_to_entry(&entry);
+            } else {
+                self.clear_ref_cursor(&key);
+            }
+            return Ok(());
+        }
         match fs::metadata(&path) {
             Ok(metadata) => {
                 let len = metadata.len();
@@ -2273,6 +2466,13 @@ impl RefCursor {
     }
 
     fn common_ref_log_len(&self, reference: &str) -> Result<Option<u64>, GitAiError> {
+        if self.uses_reftable {
+            return Ok(self
+                .reftable_entries
+                .get(&common_key(reference))
+                .and_then(|entries| entries.last())
+                .map(|entry| entry.end_offset));
+        }
         let path = self.common_dir().join("logs").join(reference);
         match fs::metadata(path) {
             Ok(metadata) => Ok(Some(metadata.len())),
@@ -2289,7 +2489,7 @@ impl RefCursor {
         let path = self.common_dir().join("logs").join(branch_ref);
         let key = common_key(branch_ref);
         let start = self.reflog_start_offset(&key, &path)?;
-        let entries = read_reflog_entries(key.clone(), &path, branch_ref, start)?;
+        let entries = self.read_entries(key.clone(), &path, branch_ref, start)?;
 
         if let Some(finished_new) = finished_new
             && let Some(entry) = entries.iter().rev().find(|entry| {
@@ -2362,6 +2562,20 @@ impl RefCursor {
 pub(crate) fn capture_reflog_start_offsets_for_worktree(worktree: &Path) -> HashMap<String, u64> {
     let mut offsets = HashMap::new();
 
+    let Some(common_dir) = common_dir_for_worktree(worktree) else {
+        return offsets;
+    };
+    if let Ok(Some(position)) = reftable_stack_update_index(&common_dir.join("reftable")) {
+        offsets.insert(reftable_common_key(), position);
+        if let Some(git_dir) = git_dir_for_worktree(worktree)
+            && git_dir != common_dir
+            && let Ok(Some(head_position)) = reftable_stack_update_index(&git_dir.join("reftable"))
+        {
+            offsets.insert(reftable_head_key(&git_dir), head_position);
+        }
+        return offsets;
+    }
+
     if let Some(git_dir) = git_dir_for_worktree(worktree) {
         let path = git_dir.join("logs").join("HEAD");
         if let Ok(metadata) = fs::metadata(&path) {
@@ -2369,9 +2583,6 @@ pub(crate) fn capture_reflog_start_offsets_for_worktree(worktree: &Path) -> Hash
         }
     }
 
-    let Some(common_dir) = common_dir_for_worktree(worktree) else {
-        return offsets;
-    };
     let logs = common_dir.join("logs");
     let mut refs = Vec::new();
     if discover_reflog_refs(&logs, &logs, &mut refs).is_ok() {
@@ -3826,6 +4037,19 @@ fn dedup_ref_changes(changes: &mut Vec<RefChange>) {
 
 fn common_key(reference: &str) -> String {
     format!("common:{}", reference)
+}
+
+fn reftable_common_key() -> String {
+    "reftable-common".to_string()
+}
+
+fn reftable_head_key(git_dir: &Path) -> String {
+    let normalized = git_dir
+        .canonicalize()
+        .unwrap_or_else(|_| git_dir.to_path_buf())
+        .to_string_lossy()
+        .to_string();
+    format!("reftable-worktree:{normalized}")
 }
 
 fn branch_arg_to_ref(branch: &str) -> String {
