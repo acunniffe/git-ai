@@ -3,6 +3,7 @@ pub mod command_classification;
 pub mod fast_reader;
 pub mod notes_api;
 pub mod refs;
+pub(crate) mod reftable;
 pub mod repo_state;
 pub mod repository;
 
