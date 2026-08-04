@@ -284,7 +284,7 @@ fn reftable_compaction_and_log_expiry_do_not_stale_cached_cursors() {
 
 #[test]
 fn reftable_pull_rebase_preserves_local_ai_commit() {
-    let (repo, upstream) = TestRepo::new_with_remote();
+    let (repo, _upstream) = TestRepo::new_with_remote();
     let mut file = repo.filename("pull.txt");
     file.set_contents(lines!["Human root", ""]);
     let root = repo.stage_all_and_commit("root").unwrap();
@@ -297,11 +297,11 @@ fn reftable_pull_rebase_preserves_local_ai_commit() {
     repo.stage_all_and_commit("local AI").unwrap();
     file.assert_committed_lines(lines!["Human root".human(), "AI local".ai()]);
 
-    let tree = upstream
-        .git(&["rev-parse", "refs/heads/main^{tree}"])
+    let tree = repo
+        .git_og(&["rev-parse", &format!("{}^{{tree}}", root.commit_sha)])
         .unwrap();
-    let remote_commit = upstream
-        .git(&[
+    let remote_commit = repo
+        .git_og(&[
             "-c",
             "user.name=Remote User",
             "-c",
@@ -314,14 +314,12 @@ fn reftable_pull_rebase_preserves_local_ai_commit() {
             "remote advance",
         ])
         .unwrap();
-    upstream
-        .git(&[
-            "update-ref",
-            "refs/heads/main",
-            remote_commit.trim(),
-            &root.commit_sha,
-        ])
-        .unwrap();
+    repo.git_og(&[
+        "push",
+        "origin",
+        &format!("{}:refs/heads/main", remote_commit.trim()),
+    ])
+    .unwrap();
 
     repo.git(&["pull", "--rebase", "origin", "main"]).unwrap();
     file = repo.filename("pull.txt");
