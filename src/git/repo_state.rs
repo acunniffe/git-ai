@@ -1,5 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
+
+static REFTABLE_READER: OnceLock<Mutex<crate::git::reftable::ReftableReader>> = OnceLock::new();
 
 pub fn is_valid_git_oid(value: &str) -> bool {
     matches!(value.len(), 40 | 64) && value.chars().all(|c| c.is_ascii_hexdigit())
@@ -89,23 +92,42 @@ pub fn read_head_state_for_worktree(worktree: &Path) -> Option<HeadState> {
     let git_dir = git_dir_for_worktree(worktree)?;
     let common_dir = common_dir_for_git_dir(&git_dir)?;
     let reader = FastRefReader::new(&git_dir, &common_dir);
-    match reader.try_read_head()? {
-        HeadKind::Symbolic(refname) => {
+    match reader.try_read_head() {
+        Some(HeadKind::Symbolic(refname)) => {
             let branch = refname.strip_prefix("refs/heads/").map(|s| s.to_string());
             let detached = branch.is_none();
             let head = reader.try_resolve_ref(&refname);
-            Some(HeadState {
+            return Some(HeadState {
                 head,
                 branch,
                 detached,
-            })
+            });
         }
-        HeadKind::Detached(oid) => Some(HeadState {
-            head: Some(oid),
-            branch: None,
-            detached: true,
-        }),
+        Some(HeadKind::Detached(oid)) => {
+            return Some(HeadState {
+                head: Some(oid),
+                branch: None,
+                detached: true,
+            });
+        }
+        None => {}
     }
+
+    let (head, symbolic) = REFTABLE_READER
+        .get_or_init(|| Mutex::new(crate::git::reftable::ReftableReader::default()))
+        .lock()
+        .ok()?
+        .read_head(&common_dir.join("reftable"), &git_dir.join("reftable"))
+        .ok()??;
+    let branch = symbolic
+        .as_deref()
+        .and_then(|refname| refname.strip_prefix("refs/heads/"))
+        .map(ToString::to_string);
+    Some(HeadState {
+        head: Some(head),
+        detached: symbolic.is_none(),
+        branch,
+    })
 }
 
 #[cfg(test)]

@@ -53,6 +53,25 @@ struct ParsedLogRecord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum ReftableRefValue {
+    Deletion,
+    Direct(String),
+    Symbolic(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ReftableRefEntry {
+    name: String,
+    value: ReftableRefValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedTable {
+    refs: Vec<ReftableRefEntry>,
+    logs: Vec<ParsedLogRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReftableLogEntry {
     pub reference: String,
     pub update_index: u64,
@@ -64,7 +83,7 @@ pub(crate) struct ReftableLogEntry {
 
 #[derive(Debug, Default)]
 pub(crate) struct ReftableReader {
-    parsed_tables: HashMap<std::path::PathBuf, Vec<ParsedLogRecord>>,
+    parsed_tables: HashMap<std::path::PathBuf, ParsedTable>,
 }
 
 impl ReftableReader {
@@ -72,33 +91,14 @@ impl ReftableReader {
         &mut self,
         stack_dir: &Path,
     ) -> Result<Vec<ReftableLogEntry>, GitAiError> {
-        let table_names = match fs::read_to_string(stack_dir.join("tables.list")) {
-            Ok(contents) => contents,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error.into()),
-        };
-        let mut active_paths = HashSet::new();
+        let active_paths = active_table_paths(stack_dir)?;
         let mut visible = BTreeMap::<(String, u64), ReftableLogEntry>::new();
-        for table_name in table_names.lines().filter(|line| !line.is_empty()) {
-            if Path::new(table_name)
-                .file_name()
-                .and_then(|name| name.to_str())
-                != Some(table_name)
-            {
-                return Err(invalid_reftable("invalid table name in tables.list"));
-            }
-            let table_path = stack_dir.join(table_name);
-            active_paths.insert(table_path.clone());
-            let records = if let Some(records) = self.parsed_tables.get(&table_path) {
-                records
-            } else {
-                let records = parse_table_logs(&fs::read(&table_path)?)?;
-                self.parsed_tables.insert(table_path.clone(), records);
-                self.parsed_tables
-                    .get(&table_path)
-                    .expect("newly cached reftable must be present")
-            };
-            for record in records {
+        for table_path in &active_paths {
+            let table = self.parsed_table(table_path)?;
+            // Log keys sort by ref name and descending update index. Apply each
+            // ref's records oldest-to-newest so a delete-log marker only removes
+            // history that predates it, not later entries in the same table.
+            for record in table.logs.iter().rev() {
                 let key = (record.reference.clone(), record.update_index);
                 match &record.value {
                     ParsedLogValue::Deletion => {
@@ -113,8 +113,7 @@ impl ReftableReader {
                 }
             }
         }
-        self.parsed_tables
-            .retain(|path, _| !path.starts_with(stack_dir) || active_paths.contains(path));
+        self.prune_stack_cache(stack_dir, &active_paths);
         let mut logs = visible.into_values().collect::<Vec<_>>();
         logs.sort_by(|left, right| {
             left.update_index
@@ -123,6 +122,90 @@ impl ReftableReader {
         });
         Ok(logs)
     }
+
+    fn read_refs(
+        &mut self,
+        stack_dir: &Path,
+    ) -> Result<BTreeMap<String, ReftableRefValue>, GitAiError> {
+        let active_paths = active_table_paths(stack_dir)?;
+        let mut refs = BTreeMap::new();
+        for table_path in &active_paths {
+            for entry in &self.parsed_table(table_path)?.refs {
+                match &entry.value {
+                    ReftableRefValue::Deletion => {
+                        refs.remove(&entry.name);
+                    }
+                    value => {
+                        refs.insert(entry.name.clone(), value.clone());
+                    }
+                }
+            }
+        }
+        self.prune_stack_cache(stack_dir, &active_paths);
+        Ok(refs)
+    }
+
+    fn parsed_table(&mut self, table_path: &Path) -> Result<&ParsedTable, GitAiError> {
+        if !self.parsed_tables.contains_key(table_path) {
+            let table = parse_table(&fs::read(table_path)?)?;
+            self.parsed_tables.insert(table_path.to_path_buf(), table);
+        }
+        Ok(self
+            .parsed_tables
+            .get(table_path)
+            .expect("cached reftable must be present"))
+    }
+
+    fn prune_stack_cache(&mut self, stack_dir: &Path, active_paths: &[std::path::PathBuf]) {
+        let active_paths = active_paths.iter().cloned().collect::<HashSet<_>>();
+        self.parsed_tables
+            .retain(|path, _| !path.starts_with(stack_dir) || active_paths.contains(path));
+    }
+
+    pub(crate) fn read_head(
+        &mut self,
+        common_stack: &Path,
+        worktree_stack: &Path,
+    ) -> Result<Option<(String, Option<String>)>, GitAiError> {
+        let mut refs = self.read_refs(common_stack)?;
+        if worktree_stack != common_stack
+            && let Some(head) = self.read_refs(worktree_stack)?.remove("HEAD")
+        {
+            refs.insert("HEAD".to_string(), head);
+        }
+        match refs.get("HEAD") {
+            Some(ReftableRefValue::Direct(oid)) => Ok(Some((oid.clone(), None))),
+            Some(ReftableRefValue::Symbolic(target)) => {
+                let Some(ReftableRefValue::Direct(oid)) = refs.get(target) else {
+                    return Ok(None);
+                };
+                Ok(Some((oid.clone(), Some(target.clone()))))
+            }
+            _ => Ok(None),
+        }
+    }
+}
+
+fn active_table_paths(stack_dir: &Path) -> Result<Vec<std::path::PathBuf>, GitAiError> {
+    let table_names = match fs::read_to_string(stack_dir.join("tables.list")) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.into()),
+    };
+    table_names
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|table_name| {
+            if Path::new(table_name)
+                .file_name()
+                .and_then(|name| name.to_str())
+                != Some(table_name)
+            {
+                return Err(invalid_reftable("invalid table name in tables.list"));
+            }
+            Ok(stack_dir.join(table_name))
+        })
+        .collect()
 }
 
 pub(crate) fn reftable_stack_update_index(stack_dir: &Path) -> Result<Option<u64>, GitAiError> {
@@ -156,7 +239,7 @@ pub(crate) fn read_reftable_logs(stack_dir: &Path) -> Result<Vec<ReftableLogEntr
     ReftableReader::default().read_logs(stack_dir)
 }
 
-fn parse_table_logs(bytes: &[u8]) -> Result<Vec<ParsedLogRecord>, GitAiError> {
+fn parse_table(bytes: &[u8]) -> Result<ParsedTable, GitAiError> {
     let header = parse_header(bytes)?;
     let footer_start = bytes
         .len()
@@ -173,18 +256,37 @@ fn parse_table_logs(bytes: &[u8]) -> Result<Vec<ParsedLogRecord>, GitAiError> {
     }
 
     let mut footer_offset = footer_start + header.version.header_len();
-    footer_offset += 8; // ref index position
-    footer_offset += 8; // object position and abbreviated object-id length
-    footer_offset += 8; // object index position
+    let ref_index_position = read_u64(bytes, footer_offset)? as usize;
+    footer_offset += 8;
+    let object_position = (read_u64(bytes, footer_offset)? >> 5) as usize;
+    footer_offset += 8;
+    let object_index_position = read_u64(bytes, footer_offset)? as usize;
+    footer_offset += 8;
     let footer_log_position = read_u64(bytes, footer_offset)? as usize;
     footer_offset += 8;
     let log_index_position = read_u64(bytes, footer_offset)? as usize;
+    let ref_end = [
+        ref_index_position,
+        object_position,
+        object_index_position,
+        footer_log_position,
+        log_index_position,
+        footer_start,
+    ]
+    .into_iter()
+    .filter(|position| *position != 0)
+    .min()
+    .unwrap_or(footer_start);
+    let refs = parse_ref_section(bytes, header, ref_end)?;
     let log_position = if footer_log_position != 0 {
         footer_log_position
     } else if bytes.get(header.version.header_len()) == Some(&b'g') {
         header.version.header_len()
     } else {
-        return Ok(Vec::new());
+        return Ok(ParsedTable {
+            refs,
+            logs: Vec::new(),
+        });
     };
     let log_end = if log_index_position == 0 {
         footer_start
@@ -221,7 +323,10 @@ fn parse_table_logs(bytes: &[u8]) -> Result<Vec<ParsedLogRecord>, GitAiError> {
             .checked_add(4 + consumed)
             .ok_or_else(|| invalid_reftable("log block position overflow"))?;
     }
-    Ok(records)
+    Ok(ParsedTable {
+        refs,
+        logs: records,
+    })
 }
 
 fn parse_header(bytes: &[u8]) -> Result<ReftableHeader, GitAiError> {
@@ -251,6 +356,139 @@ fn parse_header(bytes: &[u8]) -> Result<ReftableHeader, GitAiError> {
         max_update_index: read_u64(bytes, 16)?,
         oid_len,
     })
+}
+
+fn parse_ref_section(
+    bytes: &[u8],
+    header: ReftableHeader,
+    ref_end: usize,
+) -> Result<Vec<ReftableRefEntry>, GitAiError> {
+    let mut refs = Vec::new();
+    let mut offset = header.version.header_len();
+    while offset < ref_end {
+        if bytes[offset] == 0 {
+            offset += 1;
+            continue;
+        }
+        if bytes[offset] != b'r' {
+            break;
+        }
+        let block_len = read_u24(bytes, offset + 1)? as usize;
+        let block_end = if offset == header.version.header_len() {
+            block_len
+        } else {
+            offset
+                .checked_add(block_len)
+                .ok_or_else(|| invalid_reftable("ref block position overflow"))?
+        };
+        if block_end > ref_end || block_end > bytes.len() {
+            return Err(invalid_reftable("ref block extends past section"));
+        }
+        refs.extend(parse_ref_block(&bytes[offset..block_end], offset, header)?);
+        offset = block_end;
+    }
+    Ok(refs)
+}
+
+fn parse_ref_block(
+    block: &[u8],
+    block_start: usize,
+    header: ReftableHeader,
+) -> Result<Vec<ReftableRefEntry>, GitAiError> {
+    if block.len() < 6 || block[0] != b'r' {
+        return Err(invalid_reftable("invalid ref block"));
+    }
+    let restart_count = read_u16(block, block.len() - 2)? as usize;
+    if restart_count == 0 {
+        return Err(invalid_reftable("ref block has no restart offsets"));
+    }
+    let restart_table_start = block
+        .len()
+        .checked_sub(2 + restart_count * 3)
+        .ok_or_else(|| invalid_reftable("truncated ref restart table"))?;
+    let mut restart_offsets = Vec::with_capacity(restart_count);
+    for index in 0..restart_count {
+        restart_offsets.push(read_u24(block, restart_table_start + index * 3)? as usize);
+    }
+    if restart_offsets.windows(2).any(|pair| pair[0] > pair[1]) {
+        return Err(invalid_reftable("unsorted ref restart offsets"));
+    }
+
+    let mut offset = 4;
+    let mut previous_name = Vec::new();
+    let mut refs = Vec::new();
+    while offset < restart_table_start {
+        let restart = restart_offsets.contains(&(block_start + offset));
+        let entry = parse_ref_record(
+            block,
+            &mut offset,
+            restart_table_start,
+            header,
+            &previous_name,
+            restart,
+        )?;
+        previous_name = entry.name.as_bytes().to_vec();
+        refs.push(entry);
+    }
+    if offset != restart_table_start {
+        return Err(invalid_reftable("ref block ended inside a record"));
+    }
+    Ok(refs)
+}
+
+fn parse_ref_record(
+    block: &[u8],
+    offset: &mut usize,
+    end: usize,
+    header: ReftableHeader,
+    previous_name: &[u8],
+    restart: bool,
+) -> Result<ReftableRefEntry, GitAiError> {
+    let prefix_len = read_varint(block, offset, end)? as usize;
+    if prefix_len > previous_name.len() || (restart && prefix_len != 0) {
+        return Err(invalid_reftable("invalid ref name prefix"));
+    }
+    let suffix_len_and_type = read_varint(block, offset, end)?;
+    let suffix_len = (suffix_len_and_type >> 3) as usize;
+    let value_type = (suffix_len_and_type & 0x7) as u8;
+    let suffix_end = offset
+        .checked_add(suffix_len)
+        .ok_or_else(|| invalid_reftable("ref suffix overflow"))?;
+    if suffix_end > end {
+        return Err(invalid_reftable("truncated ref suffix"));
+    }
+    let mut name = previous_name[..prefix_len].to_vec();
+    name.extend_from_slice(&block[*offset..suffix_end]);
+    *offset = suffix_end;
+    let _update_index = header
+        .min_update_index
+        .checked_add(read_varint(block, offset, end)?)
+        .ok_or_else(|| invalid_reftable("ref update index overflow"))?;
+    let value = match value_type {
+        0 => ReftableRefValue::Deletion,
+        1 => ReftableRefValue::Direct(read_oid(block, offset, end, header.oid_len)?),
+        2 => {
+            let target = read_oid(block, offset, end, header.oid_len)?;
+            let _peeled = read_oid(block, offset, end, header.oid_len)?;
+            ReftableRefValue::Direct(target)
+        }
+        3 => {
+            let length = read_varint(block, offset, end)? as usize;
+            let target_end = offset
+                .checked_add(length)
+                .ok_or_else(|| invalid_reftable("symbolic ref target overflow"))?;
+            if target_end > end {
+                return Err(invalid_reftable("truncated symbolic ref target"));
+            }
+            let target = String::from_utf8(block[*offset..target_end].to_vec())
+                .map_err(|_| invalid_reftable("symbolic ref target is not UTF-8"))?;
+            *offset = target_end;
+            ReftableRefValue::Symbolic(target)
+        }
+        _ => return Err(invalid_reftable("unsupported ref value type")),
+    };
+    let name = String::from_utf8(name).map_err(|_| invalid_reftable("ref name is not UTF-8"))?;
+    Ok(ReftableRefEntry { name, value })
 }
 
 fn parse_log_block(block: &[u8], oid_len: usize) -> Result<Vec<ParsedLogRecord>, GitAiError> {
@@ -592,5 +830,20 @@ mod tests {
         git(temp.path(), &["reflog", "expire", "--expire=all", "--all"]);
         let expired = reader.read_logs(&stack_dir).unwrap();
         assert!(expired.is_empty(), "expired logs remained: {expired:#?}");
+
+        git(
+            temp.path(),
+            &["commit", "--allow-empty", "-m", "after expiry"],
+        );
+        let logs_after_expiry = reader.read_logs(&stack_dir).unwrap();
+        assert_eq!(
+            logs_after_expiry
+                .iter()
+                .filter(|entry| entry.reference == "HEAD")
+                .map(|entry| entry.message.as_str())
+                .collect::<Vec<_>>(),
+            ["commit: after expiry"],
+            "new logs after expiry were not visible: {logs_after_expiry:#?}"
+        );
     }
 }

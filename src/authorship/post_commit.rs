@@ -747,7 +747,7 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
             | crate::authorship::background_agent::BackgroundAgent::WithHooks { .. }
     ) {
         let diff_base = if parent_sha == "initial" {
-            "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+            crate::authorship::diff_base::empty_tree_for_oid(amended_commit)
         } else {
             &parent_sha
         };
@@ -902,7 +902,7 @@ pub fn estimate_stats_cost_for_head(
             .map(|p| p.id())
             .unwrap_or_else(|_| "initial".to_string())
     } else {
-        "4b825dc642cb6eb9a060e54bf8d69288fbee4904".to_string()
+        crate::authorship::diff_base::empty_tree_for_oid(commit_sha).to_string()
     };
     estimate_stats_cost_for_commit_range(repo, &parent_sha, commit_sha, ignore_patterns)
 }
