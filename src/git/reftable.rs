@@ -1065,17 +1065,32 @@ mod tests {
             temp.path(),
             &["config", "user.email", "reftable@example.com"],
         );
-        let no_compaction = [("GIT_TEST_REFTABLE_AUTOCOMPACTION", "0")];
-        for index in 0..5 {
-            git_with_env(
+        let stack_dir = temp.path().join(".git/reftable");
+        let multi_stack = temp.path().join("multi-stack");
+        fs::create_dir(&multi_stack).unwrap();
+        let mut snapshot_names = Vec::new();
+        for index in 0..2 {
+            git(
                 temp.path(),
                 &["commit", "--allow-empty", "-m", &format!("commit {index}")],
-                &no_compaction,
             );
+            for (table_index, table) in active_table_paths(&stack_dir)
+                .unwrap()
+                .into_iter()
+                .enumerate()
+            {
+                let snapshot_name = format!("snapshot-{index}-{table_index}.ref");
+                fs::copy(table, multi_stack.join(&snapshot_name)).unwrap();
+                snapshot_names.push(snapshot_name);
+            }
         }
-        let stack_dir = temp.path().join(".git/reftable");
+        fs::write(
+            multi_stack.join("tables.list"),
+            format!("{}\n", snapshot_names.join("\n")),
+        )
+        .unwrap();
         assert!(
-            fs::read_to_string(stack_dir.join("tables.list"))
+            fs::read_to_string(multi_stack.join("tables.list"))
                 .unwrap()
                 .lines()
                 .count()
@@ -1085,12 +1100,21 @@ mod tests {
         let mut reader = ReftableReader::default();
         assert_eq!(
             reader
+                .read_logs(&multi_stack)
+                .unwrap()
+                .iter()
+                .filter(|entry| entry.reference == "HEAD")
+                .count(),
+            2
+        );
+        assert_eq!(
+            reader
                 .read_logs(&stack_dir)
                 .unwrap()
                 .iter()
                 .filter(|entry| entry.reference == "HEAD")
                 .count(),
-            5
+            2
         );
         git(temp.path(), &["reflog", "expire", "--expire=all", "--all"]);
         let expired = reader.read_logs(&stack_dir).unwrap();
