@@ -191,7 +191,7 @@ We built Git AI for Teams to make it easy to roll out Git AI across your organiz
 No. Git AI works no matter how you commit — your Git client, the Git CLI, and your own Git aliases are all supported.
 
 #### Git AI notes are attached to commits — how are attributions preserved when I rebase, squash, stash, cherry-pick, etc.?
-Git AI analyzes the final state of the code after the operation completes and copies/merges the attributions into a Git Note for any completed commits. The entire system is eventually consistent and does not add any latency to git commits or any operations.
+Git AI analyzes the final state of the code after the operation completes and copies/merges the attributions into a Git Note for any updated commits. The entire system is eventually consistent and does not add latency to git operations.
 
 #### Can I use this on my own?
 Yes. Git AI is free and open source, works locally, and requires no login or team setup.
