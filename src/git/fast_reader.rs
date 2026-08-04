@@ -45,6 +45,12 @@ impl<'a> FastRefReader<'a> {
 
         if let Some(refname) = trimmed.strip_prefix("ref: ") {
             let refname = refname.trim();
+            // Reftable keeps the real HEAD in its table stack and leaves this
+            // sentinel in the legacy file. Let the caller use the native
+            // reftable reader instead of treating the sentinel as a branch.
+            if refname == "refs/heads/.invalid" {
+                return None;
+            }
             if !refname.is_empty() {
                 return Some(HeadKind::Symbolic(refname.to_string()));
             }

@@ -1720,8 +1720,7 @@ impl Repository {
 
         // For initial commits (no parent), compare against the empty tree
         if commit.parent_count()? == 0 {
-            let empty_tree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
-            args.push(empty_tree.to_string());
+            args.push(crate::authorship::diff_base::empty_tree_for_oid(commit_sha).to_string());
         }
 
         args.push(commit_sha.to_string());

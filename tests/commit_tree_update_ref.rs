@@ -707,6 +707,49 @@ fn test_delayed_commit_trace_replay_attributes_matching_commit_not_later_commit(
     );
 }
 
+#[test]
+fn test_reftable_delayed_commit_trace_replay_attributes_matching_commit_not_later_commit() {
+    let repo = TestRepo::new_reftable();
+    let mut root_file = repo.filename("root.txt");
+    root_file.set_contents(lines!["Human root"]);
+    repo.stage_all_and_commit("root").unwrap();
+    root_file.assert_committed_lines(lines!["Human root".human()]);
+
+    fs::write(repo.path().join("first-delayed.txt"), "first delayed ai\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "first-delayed.txt"])
+        .unwrap();
+    raw_untraced_git(&repo, &["add", "first-delayed.txt"]);
+    repo.sync_daemon();
+    let baseline = repo.daemon_total_completion_count();
+
+    let trace_dir = tempfile::tempdir().expect("trace temp dir");
+    let commit_trace = trace_dir.path().join("reftable-commit.trace2");
+    raw_git_trace_to_file(&repo, &["commit", "-m", "first delayed"], &commit_trace);
+    let first_commit = head_sha(&repo);
+
+    fs::write(repo.path().join("later-delayed.txt"), "later untraced\n").unwrap();
+    raw_untraced_git(&repo, &["add", "later-delayed.txt"]);
+    raw_untraced_git(&repo, &["commit", "-m", "later untraced commit"]);
+    let later_commit = head_sha(&repo);
+
+    replay_trace_file_to_daemon(&repo, &commit_trace);
+    repo.wait_for_daemon_total_completion_count(baseline, baseline + 1);
+
+    assert_note_has_ai_for_file(&repo, &first_commit, "first-delayed.txt");
+    assert!(
+        repo.read_authorship_note(&later_commit).is_none(),
+        "delayed reftable trace replay must not attach attribution to a later commit"
+    );
+
+    repo.git(&["checkout", "--detach", &first_commit]).unwrap();
+    let mut first_file = repo.filename("first-delayed.txt");
+    first_file.assert_committed_lines(lines!["first delayed ai".ai()]);
+    repo.git(&["checkout", "--detach", &later_commit]).unwrap();
+    first_file.assert_committed_lines(lines!["first delayed ai".ai()]);
+    let mut later_file = repo.filename("later-delayed.txt");
+    later_file.assert_committed_lines(lines!["later untraced".unattributed_human()]);
+}
+
 #[cfg(not(windows))]
 #[test]
 fn test_trace_listener_bootstrap_captures_commit_ref_transition_before_worker_spawn_delay() {
