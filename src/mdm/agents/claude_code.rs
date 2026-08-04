@@ -1,3 +1,5 @@
+#[cfg(unix)]
+use crate::daemon::DaemonConfig;
 use crate::error::GitAiError;
 use crate::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
 use crate::mdm::utils::{
@@ -14,11 +16,124 @@ const CLAUDE_PRE_TOOL_CMD: &str = "checkpoint claude --hook-input stdin";
 const CLAUDE_POST_TOOL_CMD: &str = "checkpoint claude --hook-input stdin";
 const CLAUDE_CATCH_ALL_MATCHER: &str = "*";
 
-pub struct ClaudeCodeInstaller;
+pub struct ClaudeCodeInstaller {
+    allow_trace_socket: bool,
+}
 
 impl ClaudeCodeInstaller {
+    pub(crate) fn new(allow_trace_socket: bool) -> Self {
+        Self { allow_trace_socket }
+    }
+
     fn settings_path() -> PathBuf {
         claude_config_dir().join("settings.json")
+    }
+
+    fn allow_trace2_socket(settings: &mut Value) -> Result<(), GitAiError> {
+        #[cfg(unix)]
+        {
+            let Some(root) = settings.as_object_mut() else {
+                return Ok(());
+            };
+            if root.get("sandbox").is_some_and(|value| !value.is_object()) {
+                return Ok(());
+            }
+            let sandbox = root.entry("sandbox").or_insert_with(|| json!({}));
+            let sandbox = sandbox
+                .as_object_mut()
+                .expect("sandbox shape checked above");
+            if sandbox
+                .get("network")
+                .is_some_and(|value| !value.is_object())
+            {
+                return Ok(());
+            }
+            let network = sandbox.entry("network").or_insert_with(|| json!({}));
+            let network = network
+                .as_object_mut()
+                .expect("network shape checked above");
+            if network
+                .get("allowUnixSockets")
+                .is_some_and(|value| !value.is_array())
+            {
+                return Ok(());
+            }
+            let allowed_sockets = network
+                .entry("allowUnixSockets")
+                .or_insert_with(|| json!([]));
+            let allowed_sockets = allowed_sockets
+                .as_array_mut()
+                .expect("allowUnixSockets shape checked above");
+
+            let trace_socket = Self::trace2_socket_value()?;
+            if !allowed_sockets.contains(&trace_socket) {
+                allowed_sockets.push(trace_socket);
+            }
+
+            // Claude Code ignores path-scoped socket allowances on Linux and WSL2.
+            // Do not enable allowAllUnixSockets as a fallback: it disables Unix
+            // socket isolation for every sandboxed command, not just git.
+        }
+
+        #[cfg(not(unix))]
+        let _ = settings;
+
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    fn trace2_socket_value() -> Result<Value, GitAiError> {
+        Ok(Value::String(
+            DaemonConfig::from_env_or_default_paths()?
+                .trace_socket_path
+                .to_string_lossy()
+                .into_owned(),
+        ))
+    }
+
+    fn remove_trace2_socket(settings: &mut Value) -> Result<bool, GitAiError> {
+        #[cfg(unix)]
+        {
+            let Some(root) = settings.as_object_mut() else {
+                return Ok(false);
+            };
+            let Some(sandbox) = root.get_mut("sandbox").and_then(Value::as_object_mut) else {
+                return Ok(false);
+            };
+            let Some(network) = sandbox.get_mut("network").and_then(Value::as_object_mut) else {
+                return Ok(false);
+            };
+            let Some(allowed_sockets) = network
+                .get_mut("allowUnixSockets")
+                .and_then(Value::as_array_mut)
+            else {
+                return Ok(false);
+            };
+
+            let trace_socket = Self::trace2_socket_value()?;
+            let original_len = allowed_sockets.len();
+            allowed_sockets.retain(|socket| socket != &trace_socket);
+            if allowed_sockets.len() == original_len {
+                return Ok(false);
+            }
+
+            if allowed_sockets.is_empty() {
+                network.remove("allowUnixSockets");
+            }
+            if network.is_empty() {
+                sandbox.remove("network");
+            }
+            if sandbox.is_empty() {
+                root.remove("sandbox");
+            }
+            Ok(true)
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = settings;
+            Ok(false)
+        }
     }
 
     /// Returns `(hooks_installed, hooks_up_to_date)` from a parsed settings value.
@@ -71,6 +186,7 @@ impl ClaudeCodeInstaller {
     fn install_hooks_at(
         settings_path: &Path,
         params: &HookInstallerParams,
+        allow_trace_socket: bool,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
         if let Some(dir) = settings_path.parent() {
@@ -222,6 +338,9 @@ impl ClaudeCodeInstaller {
         if let Some(root) = merged.as_object_mut() {
             root.insert("hooks".to_string(), hooks_obj);
         }
+        if allow_trace_socket {
+            Self::allow_trace2_socket(&mut merged)?;
+        }
 
         if existing == merged {
             return Ok(None);
@@ -249,12 +368,9 @@ impl ClaudeCodeInstaller {
         let existing: Value = serde_json::from_str(&existing_content)?;
 
         let mut merged = existing.clone();
-        let mut hooks_obj = match merged.get("hooks").cloned() {
-            Some(h) => h,
-            None => return Ok(None),
-        };
+        let mut hooks_obj = merged.get("hooks").cloned().unwrap_or_else(|| json!({}));
 
-        let mut changed = false;
+        let mut hooks_changed = false;
 
         for hook_type in &["PreToolUse", "PostToolUse"] {
             if let Some(hook_type_array) =
@@ -274,19 +390,20 @@ impl ClaudeCodeInstaller {
                             }
                         });
                         if hooks_array.len() != original_len {
-                            changed = true;
+                            hooks_changed = true;
                         }
                     }
                 }
             }
         }
 
-        if !changed {
-            return Ok(None);
-        }
-
-        if let Some(root) = merged.as_object_mut() {
+        if hooks_changed && let Some(root) = merged.as_object_mut() {
             root.insert("hooks".to_string(), hooks_obj);
+        }
+        let socket_changed = Self::remove_trace2_socket(&mut merged)?;
+
+        if !hooks_changed && !socket_changed {
+            return Ok(None);
         }
 
         let new_content = serde_json::to_string_pretty(&merged)?;
@@ -361,7 +478,12 @@ impl HookInstaller for ClaudeCodeInstaller {
         params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        Self::install_hooks_at(&Self::settings_path(), params, dry_run)
+        Self::install_hooks_at(
+            &Self::settings_path(),
+            params,
+            self.allow_trace_socket,
+            dry_run,
+        )
     }
 
     fn uninstall_hooks(
@@ -456,7 +578,7 @@ mod tests {
         // File does not exist yet
         fs::remove_file(&path).ok();
 
-        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
         assert!(diff.is_some(), "should produce a diff");
 
         let settings = read_settings(&path);
@@ -474,19 +596,16 @@ mod tests {
     fn s2_idempotent_already_on_catch_all() {
         let (_td, path) = setup_test_env();
         let cmd = expected_cmd();
-        fs::write(
-            &path,
-            serde_json::to_string_pretty(&json!({
-                "hooks": {
-                    "PreToolUse": [{"matcher": "*", "hooks": [{"type":"command","command": cmd}]}],
-                    "PostToolUse": [{"matcher": "*", "hooks": [{"type":"command","command": cmd}]}]
-                }
-            }))
-            .unwrap(),
-        )
-        .unwrap();
+        let mut settings = json!({
+            "hooks": {
+                "PreToolUse": [{"matcher": "*", "hooks": [{"type":"command","command": cmd}]}],
+                "PostToolUse": [{"matcher": "*", "hooks": [{"type":"command","command": cmd}]}]
+            }
+        });
+        ClaudeCodeInstaller::allow_trace2_socket(&mut settings).unwrap();
+        fs::write(&path, serde_json::to_string_pretty(&settings).unwrap()).unwrap();
 
-        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), true, false).unwrap();
         assert!(diff.is_none(), "should return None when already up-to-date");
     }
 
@@ -506,7 +625,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -556,7 +675,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for (hook_type, user_cmd) in &[
@@ -612,7 +731,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -657,7 +776,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -688,7 +807,7 @@ mod tests {
     fn s7_idempotent_user_catch_all_plus_git_ai() {
         let (_td, path) = setup_test_env();
         let cmd = expected_cmd();
-        let before = json!({
+        let mut before = json!({
             "hooks": {
                 "PreToolUse": [{"matcher": "*", "hooks": [
                     {"type":"command","command": "my-audit-tool"},
@@ -700,9 +819,10 @@ mod tests {
                 ]}]
             }
         });
+        ClaudeCodeInstaller::allow_trace2_socket(&mut before).unwrap();
         fs::write(&path, serde_json::to_string_pretty(&before).unwrap()).unwrap();
 
-        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        let diff = ClaudeCodeInstaller::install_hooks_at(&path, &params(), true, false).unwrap();
         assert!(diff.is_none(), "should be idempotent");
     }
 
@@ -735,7 +855,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -790,7 +910,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -818,7 +938,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -860,7 +980,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -915,7 +1035,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
         for hook_type in &["PreToolUse", "PostToolUse"] {
@@ -954,7 +1074,7 @@ mod tests {
         )
         .unwrap();
 
-        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false).unwrap();
+        ClaudeCodeInstaller::install_hooks_at(&path, &params(), false, false).unwrap();
 
         let settings = read_settings(&path);
 
@@ -1243,7 +1363,7 @@ mod tests {
         assert!(!settings_path.parent().unwrap().exists());
 
         let result =
-            ClaudeCodeInstaller::install_hooks_at(&settings_path, &params(), false).unwrap();
+            ClaudeCodeInstaller::install_hooks_at(&settings_path, &params(), false, false).unwrap();
 
         assert!(result.is_some(), "should report changes for fresh install");
         assert!(settings_path.exists(), "settings.json should be created");

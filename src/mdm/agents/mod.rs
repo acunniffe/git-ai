@@ -37,7 +37,7 @@ use super::hook_installer::HookInstaller;
 /// Get all available hook installers
 pub fn get_all_installers(whitelist_agent_sandboxes: bool) -> Vec<Box<dyn HookInstaller>> {
     let mut installers: Vec<Box<dyn HookInstaller>> = vec![
-        Box::new(ClaudeCodeInstaller),
+        Box::new(ClaudeCodeInstaller::new(whitelist_agent_sandboxes)),
         Box::new(ClineInstaller),
         Box::new(CodexInstaller::new(whitelist_agent_sandboxes)),
         Box::new(CursorInstaller),
