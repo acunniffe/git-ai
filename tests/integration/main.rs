@@ -40,6 +40,7 @@ mod ci_local_skip_push;
 mod ci_partial_clone;
 mod ci_squash_rebase;
 mod claude_code;
+mod claude_sandbox;
 mod cli_parser_rebase_args;
 mod codex;
 mod cold_trace2_repo;
