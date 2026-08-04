@@ -237,14 +237,15 @@ impl RefCursor {
         let Some(git_dir) = git_dir_for_worktree(worktree) else {
             return Ok(());
         };
+        let main_worktree = self.git_dir_is_common(&git_dir);
         let head_stack = git_dir.join("reftable");
         let common_logs = self.reftable_reader.read_logs(&common_stack)?;
         for log in common_logs {
-            if log.reference != "HEAD" || git_dir == self.common_dir() {
+            if log.reference != "HEAD" || main_worktree {
                 self.insert_reftable_entry(&common_stack, &git_dir, log);
             }
         }
-        if git_dir != self.common_dir() {
+        if !main_worktree {
             for log in self.reftable_reader.read_logs(&head_stack)? {
                 if log.reference == "HEAD" {
                     self.insert_reftable_entry(&head_stack, &git_dir, log);
@@ -361,11 +362,12 @@ impl RefCursor {
             .collect())
     }
 
-    fn reftable_entry_ending_at(&self, key: &str, position: u64) -> Option<&CursorEntry> {
+    fn reftable_entry_at_or_before(&self, key: &str, position: u64) -> Option<&CursorEntry> {
         self.reftable_entries
             .get(key)?
             .iter()
-            .find(|entry| entry.end_offset == position)
+            .filter(|entry| entry.end_offset <= position)
+            .max_by_key(|entry| entry.end_offset)
     }
 
     fn initialize_from_command_reflog_start_offsets(
@@ -392,7 +394,7 @@ impl RefCursor {
                 );
                 if let Some(worktree) = cmd.worktree.as_deref()
                     && let Some(git_dir) = git_dir_for_worktree(worktree)
-                    && git_dir == self.common_dir()
+                    && self.git_dir_is_common(&git_dir)
                 {
                     offsets.push((head_key(&git_dir), *offset));
                 }
@@ -2214,17 +2216,14 @@ impl RefCursor {
         }
 
         if self.uses_reftable {
-            let Some(entry) = self.reftable_entry_ending_at(key, offset) else {
-                self.clear_ref_cursor(key);
-                return Ok(None);
-            };
-            if self
-                .anchors
-                .get(key)
-                .is_some_and(|anchor| anchor != &ReflogAnchor::from(entry))
-            {
-                self.clear_ref_cursor(key);
-                return Ok(None);
+            if let Some(anchor) = self.anchors.get(key) {
+                let current_anchor = self
+                    .reftable_entry_at_or_before(key, offset)
+                    .map(ReflogAnchor::from);
+                if current_anchor.as_ref() != Some(anchor) {
+                    self.clear_ref_cursor(key);
+                    return Ok(None);
+                }
             }
             return Ok(Some(offset));
         }
@@ -2262,7 +2261,7 @@ impl RefCursor {
             return Ok(());
         }
         if self.uses_reftable {
-            if let Some(entry) = self.reftable_entry_ending_at(key, offset) {
+            if let Some(entry) = self.reftable_entry_at_or_before(key, offset) {
                 self.anchors
                     .insert(key.to_string(), ReflogAnchor::from(entry));
             } else {
@@ -2526,6 +2525,10 @@ impl RefCursor {
 
     fn common_dir(&self) -> PathBuf {
         PathBuf::from(&self.family.0)
+    }
+
+    fn git_dir_is_common(&self, git_dir: &Path) -> bool {
+        head_key(git_dir) == head_key(&self.common_dir())
     }
 
     fn head_expected_transition(
@@ -4203,6 +4206,71 @@ mod tests {
             ref_changes: Vec::new(),
             confidence: Confidence::Low,
         }
+    }
+
+    fn reftable_cursor_entry(key: &str, path: &Path, end_offset: u64) -> CursorEntry {
+        CursorEntry {
+            key: key.to_string(),
+            path: path.to_path_buf(),
+            reference: key.strip_prefix("common:").unwrap_or("HEAD").to_string(),
+            old: A.to_string(),
+            new: B.to_string(),
+            message: "test update".to_string(),
+            timestamp_secs: Some(0),
+            start_offset: end_offset.saturating_sub(1),
+            end_offset,
+        }
+    }
+
+    #[test]
+    fn reftable_cursor_keeps_stack_watermark_between_ref_updates() {
+        let temp = tempfile::tempdir().unwrap();
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        cursor.uses_reftable = true;
+        let key = common_key("refs/heads/main");
+        let path = temp.path().join("reftable/tables.list");
+        cursor
+            .reftable_entries
+            .insert(key.clone(), vec![reftable_cursor_entry(&key, &path, 3)]);
+
+        cursor.initialize_reflog_cursor(&key, 5).unwrap();
+
+        assert_eq!(cursor.reflog_start_offset(&key, &path).unwrap(), Some(5));
+        assert_eq!(cursor.offsets.get(&key), Some(&5));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reftable_common_watermark_seeds_head_through_symlinked_worktree() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("real");
+        let git_dir = create_git_dir(&worktree);
+        let symlinked_worktree = temp.path().join("linked-path");
+        std::os::unix::fs::symlink(&worktree, &symlinked_worktree).unwrap();
+        let family = FamilyKey::new(
+            git_dir
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .to_string(),
+        );
+        let mut cursor = RefCursor::new(family.clone());
+        cursor.uses_reftable = true;
+        let key = head_key(&symlinked_worktree.join(".git"));
+        let path = git_dir.join("reftable/tables.list");
+        cursor
+            .reftable_entries
+            .insert(key.clone(), vec![reftable_cursor_entry(&key, &path, 6)]);
+        let mut cmd =
+            command_with_worktree(&family, Some(symlinked_worktree), &["commit", "-m", "test"]);
+        cmd.reflog_start_offsets.insert(reftable_common_key(), 5);
+
+        cursor
+            .initialize_from_command_reflog_start_offsets(&cmd)
+            .unwrap();
+
+        assert_eq!(cursor.offsets.get(&key), Some(&5));
     }
 
     #[test]

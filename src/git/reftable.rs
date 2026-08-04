@@ -65,6 +65,7 @@ struct ReftableRefEntry {
     value: ReftableRefValue,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ParsedTable {
     refs: Vec<ReftableRefEntry>,
@@ -83,7 +84,9 @@ pub(crate) struct ReftableLogEntry {
 
 #[derive(Debug, Default)]
 pub(crate) struct ReftableReader {
-    parsed_tables: HashMap<std::path::PathBuf, ParsedTable>,
+    parsed_refs: HashMap<(std::path::PathBuf, String), Option<ReftableRefValue>>,
+    parsed_logs: HashMap<std::path::PathBuf, Vec<ParsedLogRecord>>,
+    unreadable_log_tables: HashSet<std::path::PathBuf>,
 }
 
 impl ReftableReader {
@@ -91,75 +94,136 @@ impl ReftableReader {
         &mut self,
         stack_dir: &Path,
     ) -> Result<Vec<ReftableLogEntry>, GitAiError> {
-        let active_paths = active_table_paths(stack_dir)?;
-        let mut visible = BTreeMap::<(String, u64), ReftableLogEntry>::new();
-        for table_path in &active_paths {
-            let table = self.parsed_table(table_path)?;
-            // Log keys sort by ref name and descending update index. Apply each
-            // ref's records oldest-to-newest so a delete-log marker only removes
-            // history that predates it, not later entries in the same table.
-            for record in table.logs.iter().rev() {
-                let key = (record.reference.clone(), record.update_index);
-                match &record.value {
-                    ParsedLogValue::Deletion => {
-                        visible.remove(&key);
+        for attempt in 0..2 {
+            let active_paths = active_table_paths(stack_dir)?;
+            let mut visible = BTreeMap::<(String, u64), ReftableLogEntry>::new();
+            let mut retry_stack = false;
+            for table_path in &active_paths {
+                if self.unreadable_log_tables.contains(table_path) {
+                    continue;
+                }
+                let records = match self.parsed_logs(table_path) {
+                    Ok(records) => records,
+                    Err(error) if attempt == 0 && is_not_found(&error) => {
+                        retry_stack = true;
+                        break;
                     }
-                    ParsedLogValue::DeleteLog => {
-                        visible.retain(|(reference, _), _| reference != &record.reference);
+                    Err(error) => {
+                        if !is_not_found(&error) {
+                            self.unreadable_log_tables.insert(table_path.clone());
+                        }
+                        tracing::warn!(
+                            path = %table_path.display(),
+                            error = %error,
+                            "skipping unreadable reftable log table"
+                        );
+                        continue;
                     }
-                    ParsedLogValue::Update(entry) => {
-                        visible.insert(key, entry.clone());
+                };
+                // Log keys sort by ref name and descending update index. Apply each
+                // ref's records oldest-to-newest so a delete-log marker only removes
+                // history that predates it, not later entries in the same table.
+                for record in records.iter().rev() {
+                    let key = (record.reference.clone(), record.update_index);
+                    match &record.value {
+                        ParsedLogValue::Deletion => {
+                            visible.remove(&key);
+                        }
+                        ParsedLogValue::DeleteLog => {
+                            visible.retain(|(reference, _), _| reference != &record.reference);
+                        }
+                        ParsedLogValue::Update(entry) => {
+                            visible.insert(key, entry.clone());
+                        }
                     }
                 }
             }
+            if retry_stack {
+                continue;
+            }
+            self.prune_stack_cache(stack_dir, &active_paths);
+            let mut logs = visible.into_values().collect::<Vec<_>>();
+            logs.sort_by(|left, right| {
+                left.update_index
+                    .cmp(&right.update_index)
+                    .then_with(|| left.reference.cmp(&right.reference))
+            });
+            return Ok(logs);
         }
-        self.prune_stack_cache(stack_dir, &active_paths);
-        let mut logs = visible.into_values().collect::<Vec<_>>();
-        logs.sort_by(|left, right| {
-            left.update_index
-                .cmp(&right.update_index)
-                .then_with(|| left.reference.cmp(&right.reference))
-        });
-        Ok(logs)
+        Ok(Vec::new())
     }
 
-    fn read_refs(
+    fn read_ref(
         &mut self,
         stack_dir: &Path,
-    ) -> Result<BTreeMap<String, ReftableRefValue>, GitAiError> {
-        let active_paths = active_table_paths(stack_dir)?;
-        let mut refs = BTreeMap::new();
-        for table_path in &active_paths {
-            for entry in &self.parsed_table(table_path)?.refs {
-                match &entry.value {
-                    ReftableRefValue::Deletion => {
-                        refs.remove(&entry.name);
+        reference: &str,
+    ) -> Result<Option<ReftableRefValue>, GitAiError> {
+        for attempt in 0..2 {
+            let active_paths = active_table_paths(stack_dir)?;
+            let mut value = None;
+            let mut retry_stack = false;
+            for table_path in &active_paths {
+                let entry = match self.parsed_ref(table_path, reference) {
+                    Ok(entry) => entry,
+                    Err(error) if attempt == 0 && is_not_found(&error) => {
+                        retry_stack = true;
+                        break;
                     }
-                    value => {
-                        refs.insert(entry.name.clone(), value.clone());
-                    }
+                    Err(error) if is_not_found(&error) => continue,
+                    Err(error) => return Err(error),
+                };
+                match entry {
+                    Some(ReftableRefValue::Deletion) => value = None,
+                    Some(entry) => value = Some(entry),
+                    None => {}
                 }
             }
+            if retry_stack {
+                continue;
+            }
+            self.prune_stack_cache(stack_dir, &active_paths);
+            return Ok(value);
         }
-        self.prune_stack_cache(stack_dir, &active_paths);
-        Ok(refs)
+        Ok(None)
     }
 
-    fn parsed_table(&mut self, table_path: &Path) -> Result<&ParsedTable, GitAiError> {
-        if !self.parsed_tables.contains_key(table_path) {
-            let table = parse_table(&fs::read(table_path)?)?;
-            self.parsed_tables.insert(table_path.to_path_buf(), table);
+    fn parsed_ref(
+        &mut self,
+        table_path: &Path,
+        reference: &str,
+    ) -> Result<Option<ReftableRefValue>, GitAiError> {
+        let key = (table_path.to_path_buf(), reference.to_string());
+        if !self.parsed_refs.contains_key(&key) {
+            let value =
+                parse_table_ref(&fs::read(table_path)?, reference)?.map(|entry| entry.value);
+            self.parsed_refs.insert(key.clone(), value);
         }
         Ok(self
-            .parsed_tables
+            .parsed_refs
+            .get(&key)
+            .expect("cached reftable ref must be present")
+            .clone())
+    }
+
+    fn parsed_logs(&mut self, table_path: &Path) -> Result<&Vec<ParsedLogRecord>, GitAiError> {
+        if !self.parsed_logs.contains_key(table_path) {
+            let logs = parse_table_logs(&fs::read(table_path)?)?;
+            self.parsed_logs.insert(table_path.to_path_buf(), logs);
+        }
+        Ok(self
+            .parsed_logs
             .get(table_path)
-            .expect("cached reftable must be present"))
+            .expect("cached reftable logs must be present"))
     }
 
     fn prune_stack_cache(&mut self, stack_dir: &Path, active_paths: &[std::path::PathBuf]) {
         let active_paths = active_paths.iter().cloned().collect::<HashSet<_>>();
-        self.parsed_tables
+        self.parsed_refs
+            .retain(|(path, _), _| !path.starts_with(stack_dir) || active_paths.contains(path));
+        self.parsed_logs
             .retain(|path, _| !path.starts_with(stack_dir) || active_paths.contains(path));
+        self.unreadable_log_tables
+            .retain(|path| !path.starts_with(stack_dir) || active_paths.contains(path));
     }
 
     pub(crate) fn read_head(
@@ -167,23 +231,28 @@ impl ReftableReader {
         common_stack: &Path,
         worktree_stack: &Path,
     ) -> Result<Option<(String, Option<String>)>, GitAiError> {
-        let mut refs = self.read_refs(common_stack)?;
+        let mut head = self.read_ref(common_stack, "HEAD")?;
         if worktree_stack != common_stack
-            && let Some(head) = self.read_refs(worktree_stack)?.remove("HEAD")
+            && let Some(worktree_head) = self.read_ref(worktree_stack, "HEAD")?
         {
-            refs.insert("HEAD".to_string(), head);
+            head = Some(worktree_head);
         }
-        match refs.get("HEAD") {
-            Some(ReftableRefValue::Direct(oid)) => Ok(Some((oid.clone(), None))),
+        match head {
+            Some(ReftableRefValue::Direct(oid)) => Ok(Some((oid, None))),
             Some(ReftableRefValue::Symbolic(target)) => {
-                let Some(ReftableRefValue::Direct(oid)) = refs.get(target) else {
+                let Some(ReftableRefValue::Direct(oid)) = self.read_ref(common_stack, &target)?
+                else {
                     return Ok(None);
                 };
-                Ok(Some((oid.clone(), Some(target.clone()))))
+                Ok(Some((oid, Some(target))))
             }
             _ => Ok(None),
         }
     }
+}
+
+fn is_not_found(error: &GitAiError) -> bool {
+    matches!(error, GitAiError::IoError(error) if error.kind() == std::io::ErrorKind::NotFound)
 }
 
 fn active_table_paths(stack_dir: &Path) -> Result<Vec<std::path::PathBuf>, GitAiError> {
@@ -239,7 +308,22 @@ pub(crate) fn read_reftable_logs(stack_dir: &Path) -> Result<Vec<ReftableLogEntr
     ReftableReader::default().read_logs(stack_dir)
 }
 
+#[cfg(test)]
 fn parse_table(bytes: &[u8]) -> Result<ParsedTable, GitAiError> {
+    Ok(ParsedTable {
+        refs: parse_table_refs(bytes)?,
+        logs: parse_table_logs(bytes)?,
+    })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TableLayout {
+    header: ReftableHeader,
+    ref_end: usize,
+    log_section: Option<(usize, usize)>,
+}
+
+fn parse_table_layout(bytes: &[u8]) -> Result<TableLayout, GitAiError> {
     let header = parse_header(bytes)?;
     let footer_start = bytes
         .len()
@@ -277,25 +361,44 @@ fn parse_table(bytes: &[u8]) -> Result<ParsedTable, GitAiError> {
     .filter(|position| *position != 0)
     .min()
     .unwrap_or(footer_start);
-    let refs = parse_ref_section(bytes, header, ref_end)?;
     let log_position = if footer_log_position != 0 {
-        footer_log_position
+        Some(footer_log_position)
     } else if bytes.get(header.version.header_len()) == Some(&b'g') {
-        header.version.header_len()
+        Some(header.version.header_len())
     } else {
-        return Ok(ParsedTable {
-            refs,
-            logs: Vec::new(),
-        });
+        None
     };
     let log_end = if log_index_position == 0 {
         footer_start
     } else {
         log_index_position.min(footer_start)
     };
-    if log_position >= log_end {
+    if log_position.is_some_and(|position| position >= log_end) {
         return Err(invalid_reftable("log section position is out of bounds"));
     }
+    Ok(TableLayout {
+        header,
+        ref_end,
+        log_section: log_position.map(|position| (position, log_end)),
+    })
+}
+
+#[cfg(test)]
+fn parse_table_refs(bytes: &[u8]) -> Result<Vec<ReftableRefEntry>, GitAiError> {
+    let layout = parse_table_layout(bytes)?;
+    parse_ref_section(bytes, layout.header, layout.ref_end, None)
+}
+
+fn parse_table_ref(bytes: &[u8], reference: &str) -> Result<Option<ReftableRefEntry>, GitAiError> {
+    let layout = parse_table_layout(bytes)?;
+    Ok(parse_ref_section(bytes, layout.header, layout.ref_end, Some(reference))?.pop())
+}
+
+fn parse_table_logs(bytes: &[u8]) -> Result<Vec<ParsedLogRecord>, GitAiError> {
+    let layout = parse_table_layout(bytes)?;
+    let Some((log_position, log_end)) = layout.log_section else {
+        return Ok(Vec::new());
+    };
 
     let mut records = Vec::new();
     let mut offset = log_position;
@@ -311,6 +414,9 @@ fn parse_table(bytes: &[u8]) -> Result<ParsedTable, GitAiError> {
         if uncompressed_len < 6 {
             return Err(invalid_reftable("invalid log block length"));
         }
+        if offset.checked_add(4).is_none_or(|start| start > log_end) {
+            return Err(invalid_reftable("truncated log block header"));
+        }
         let (body, consumed) = inflate_zlib(
             &bytes[offset + 4..log_end],
             uncompressed_len.saturating_sub(4),
@@ -318,15 +424,12 @@ fn parse_table(bytes: &[u8]) -> Result<ParsedTable, GitAiError> {
         let mut block = Vec::with_capacity(uncompressed_len);
         block.extend_from_slice(&bytes[offset..offset + 4]);
         block.extend_from_slice(&body);
-        records.extend(parse_log_block(&block, header.oid_len)?);
+        records.extend(parse_log_block(&block, layout.header.oid_len)?);
         offset = offset
             .checked_add(4 + consumed)
             .ok_or_else(|| invalid_reftable("log block position overflow"))?;
     }
-    Ok(ParsedTable {
-        refs,
-        logs: records,
-    })
+    Ok(records)
 }
 
 fn parse_header(bytes: &[u8]) -> Result<ReftableHeader, GitAiError> {
@@ -362,6 +465,7 @@ fn parse_ref_section(
     bytes: &[u8],
     header: ReftableHeader,
     ref_end: usize,
+    target: Option<&str>,
 ) -> Result<Vec<ReftableRefEntry>, GitAiError> {
     let mut refs = Vec::new();
     let mut offset = header.version.header_len();
@@ -381,10 +485,21 @@ fn parse_ref_section(
                 .checked_add(block_len)
                 .ok_or_else(|| invalid_reftable("ref block position overflow"))?
         };
-        if block_end > ref_end || block_end > bytes.len() {
+        if block_end <= offset || block_end > ref_end || block_end > bytes.len() {
             return Err(invalid_reftable("ref block extends past section"));
         }
-        refs.extend(parse_ref_block(&bytes[offset..block_end], offset, header)?);
+        let block_refs = parse_ref_block(&bytes[offset..block_end], offset, header)?;
+        if let Some(target) = target {
+            for entry in block_refs {
+                match entry.name.as_str().cmp(target) {
+                    std::cmp::Ordering::Less => {}
+                    std::cmp::Ordering::Equal => return Ok(vec![entry]),
+                    std::cmp::Ordering::Greater => return Ok(Vec::new()),
+                }
+            }
+        } else {
+            refs.extend(block_refs);
+        }
         offset = block_end;
     }
     Ok(refs)
@@ -414,11 +529,16 @@ fn parse_ref_block(
         return Err(invalid_reftable("unsorted ref restart offsets"));
     }
 
+    let restart_base = if block_start == header.version.header_len() {
+        block_start
+    } else {
+        0
+    };
     let mut offset = 4;
     let mut previous_name = Vec::new();
     let mut refs = Vec::new();
     while offset < restart_table_start {
-        let restart = restart_offsets.contains(&(block_start + offset));
+        let restart = restart_offsets.contains(&(restart_base + offset));
         let entry = parse_ref_record(
             block,
             &mut offset,
@@ -731,7 +851,14 @@ mod tests {
         git_with_env(repo, args, &[]);
     }
 
-    fn native_reftable_logs(object_format: &str) -> Vec<ReftableLogEntry> {
+    fn git_with_stdin(repo: &Path, args: &[&str], stdin: &[u8]) {
+        let mut command_args = vec!["-C".to_string(), repo.to_string_lossy().to_string()];
+        command_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        crate::git::repository::exec_git_stdin(&command_args, stdin)
+            .expect("git command with stdin should succeed");
+    }
+
+    fn native_reftable_repo(object_format: &str) -> tempfile::TempDir {
         let temp = tempfile::tempdir().unwrap();
         git(
             temp.path(),
@@ -754,8 +881,25 @@ mod tests {
         git(temp.path(), &["commit", "-m", "first"]);
         fs::write(temp.path().join("file.txt"), "first\nsecond\n").unwrap();
         git(temp.path(), &["commit", "-am", "second"]);
+        temp
+    }
 
+    fn native_reftable_logs(object_format: &str) -> Vec<ReftableLogEntry> {
+        let temp = native_reftable_repo(object_format);
         read_reftable_logs(&temp.path().join(".git/reftable")).unwrap()
+    }
+
+    fn corrupt_log_position_near_footer(bytes: &mut [u8]) {
+        let header = parse_header(bytes).unwrap();
+        let footer_start = bytes.len() - header.version.footer_len();
+        let log_position_field = footer_start + header.version.header_len() + 24;
+        let log_position = footer_start - 2;
+        bytes[log_position] = b'g';
+        bytes[log_position_field..log_position_field + 8]
+            .copy_from_slice(&(log_position as u64).to_be_bytes());
+        let footer_crc = crc32(&bytes[footer_start..bytes.len() - 4]);
+        let crc_offset = bytes.len() - 4;
+        bytes[crc_offset..].copy_from_slice(&footer_crc.to_be_bytes());
     }
 
     fn assert_native_log_history(object_format: &str, oid_hex_len: usize) {
@@ -786,6 +930,127 @@ mod tests {
     #[test]
     fn reads_git_generated_v2_sha256_log_blocks() {
         assert_native_log_history("sha256", 64);
+    }
+
+    #[test]
+    fn missing_active_table_degrades_to_empty_log_snapshot() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("tables.list"), "missing.ref\n").unwrap();
+
+        let logs = ReftableReader::default()
+            .read_logs(temp.path())
+            .expect("a compaction race must not abort command enrichment");
+
+        assert!(logs.is_empty());
+    }
+
+    #[test]
+    fn truncated_log_block_header_returns_error() {
+        let temp = native_reftable_repo("sha1");
+        let stack = temp.path().join(".git/reftable");
+        let table = active_table_paths(&stack).unwrap().pop().unwrap();
+        let mut bytes = fs::read(table).unwrap();
+        corrupt_log_position_near_footer(&mut bytes);
+
+        assert!(parse_table(&bytes).is_err());
+    }
+
+    #[test]
+    fn invalid_first_ref_block_length_returns_error() {
+        let temp = native_reftable_repo("sha1");
+        let stack = temp.path().join(".git/reftable");
+        let table = active_table_paths(&stack).unwrap().pop().unwrap();
+        let mut bytes = fs::read(table).unwrap();
+        let header = parse_header(&bytes).unwrap();
+        let invalid_len = header.version.header_len() - 1;
+        bytes[header.version.header_len() + 1..header.version.header_len() + 4].copy_from_slice(&[
+            ((invalid_len >> 16) & 0xff) as u8,
+            ((invalid_len >> 8) & 0xff) as u8,
+            (invalid_len & 0xff) as u8,
+        ]);
+
+        assert!(parse_table(&bytes).is_err());
+    }
+
+    #[test]
+    fn later_ref_block_restart_offsets_are_block_relative() {
+        let temp = native_reftable_repo("sha1");
+        let stack = temp.path().join(".git/reftable");
+        let Some((head_oid, _)) = ReftableReader::default().read_head(&stack, &stack).unwrap()
+        else {
+            panic!("generated repository should have a direct branch target");
+        };
+        let mut updates = String::new();
+        for index in 0..600 {
+            updates.push_str(&format!(
+                "create refs/heads/generated-{index:04} {head_oid}\n"
+            ));
+        }
+        git_with_stdin(temp.path(), &["update-ref", "--stdin"], updates.as_bytes());
+
+        let (bytes, header, block_start, block_end) = active_table_paths(&stack)
+            .unwrap()
+            .into_iter()
+            .rev()
+            .find_map(|table| {
+                let bytes = fs::read(table).ok()?;
+                let header = parse_header(&bytes).ok()?;
+                let footer_start = bytes.len() - header.version.footer_len();
+                let mut offset = header.version.header_len();
+                let mut blocks = Vec::new();
+                while offset < footer_start {
+                    if bytes[offset] == 0 {
+                        offset += 1;
+                        continue;
+                    }
+                    if bytes[offset] != b'r' {
+                        break;
+                    }
+                    let block_len = read_u24(&bytes, offset + 1).ok()? as usize;
+                    let block_end = if offset == header.version.header_len() {
+                        block_len
+                    } else {
+                        offset.checked_add(block_len)?
+                    };
+                    blocks.push((offset, block_end));
+                    offset = block_end;
+                }
+                let (block_start, block_end) = *blocks.get(1)?;
+                Some((bytes, header, block_start, block_end))
+            })
+            .expect("generated refs should span multiple ref blocks");
+        let mut block = bytes[block_start..block_end].to_vec();
+        let restart_count = read_u16(&block, block.len() - 2).unwrap() as usize;
+        assert!(restart_count > 1);
+        let restart_table_start = block.len() - 2 - restart_count * 3;
+        let second_restart = read_u24(&block, restart_table_start + 3).unwrap() as usize;
+        block[second_restart] = 1;
+
+        assert!(parse_ref_block(&block, block_start, header).is_err());
+    }
+
+    #[test]
+    fn head_read_does_not_parse_corrupt_log_blocks() {
+        let temp = native_reftable_repo("sha1");
+        let stack = temp.path().join(".git/reftable");
+        let expected = ReftableReader::default()
+            .read_head(&stack, &stack)
+            .unwrap()
+            .expect("generated repository should have HEAD");
+        let table = active_table_paths(&stack).unwrap().pop().unwrap();
+        let mut bytes = fs::read(&table).unwrap();
+        let header = parse_header(&bytes).unwrap();
+        let footer_start = bytes.len() - header.version.footer_len();
+        let log_position_field = footer_start + header.version.header_len() + 24;
+        let log_position = read_u64(&bytes, log_position_field).unwrap() as usize;
+        assert_ne!(log_position, 0);
+        bytes[log_position + 4] ^= 0xff;
+        fs::write(table, bytes).unwrap();
+
+        assert_eq!(
+            ReftableReader::default().read_head(&stack, &stack).unwrap(),
+            Some(expected)
+        );
     }
 
     #[test]
