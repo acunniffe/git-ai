@@ -3,6 +3,8 @@ src/mdm/agents/claude_code.rs
   s_66613148b4df44::t_e9d8dfffe2cdb4 20,24-25,189,341,484
 tests/integration/claude_sandbox.rs
   s_66613148b4df44::t_8e474da85182d9 9-26,46,64,87,115,144
+src/mdm/agents/mod.rs
+  s_66613148b4df44::t_5f38dd845a8343 40
 ---
 {
   "schema_version": "authorship/3.0.0",
