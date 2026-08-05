@@ -1,0 +1,24 @@
+tests/integration/github_copilot_create_file.rs
+  8c2ef04cb517f0b8 5,8,80-82,116-119,168-170,201,203,223,227-240,246,250-252,282-306,325,329-331,352-379,400,404-405
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.8",
+  "base_commit_sha": "c57881b3b6aee5a986d16b4a7f6d8020a5e6685b",
+  "prompts": {
+    "8c2ef04cb517f0b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "40b15166-99ae-43fd-a14b-72819fefe741",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 330,
+      "total_deletions": 299,
+      "accepted_lines": 237,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/1d89bd390f3bbad6d544f9da209700e4402334b3213c66ead02a806c3dc4b1fb"
+    }
+  }
+}

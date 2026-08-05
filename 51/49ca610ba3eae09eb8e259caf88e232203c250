@@ -1,0 +1,24 @@
+src/git/repository.rs
+  929eca6b6e2f071d 2977
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "5149ca610ba3eae09eb8e259caf88e232203c250",
+  "prompts": {
+    "929eca6b6e2f071d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a7cd3c1d-197c-4dc6-852f-9b32a006c7ef",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/737273170b562a3557bda363a80a69222852676389c46784fbdb55430f75177a"
+    }
+  }
+}

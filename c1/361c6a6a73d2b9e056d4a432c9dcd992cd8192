@@ -1,0 +1,23 @@
+docs/superpowers/plans/2026-04-30-ai-helper-script-improvements.md
+  4ba387f78fe33548 1-452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "c1361c6a6a73d2b9e056d4a432c9dcd992cd8192",
+  "prompts": {
+    "4ba387f78fe33548": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1be30fab-3ae0-4a38-8d8d-e7ddb490f725",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 452,
+      "total_deletions": 0,
+      "accepted_lines": 452,
+      "overriden_lines": 0
+    }
+  }
+}

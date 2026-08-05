@@ -1,0 +1,30 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  293268f972235922 941-945,1085-1090,1092,1094-1103,1116-1117,1128,1168-1233,1249-1252,1883-1901,1903-1904,1906-1912,1917-1920,1925-1938,1940-1959,1961-2008
+flake.nix
+  293268f972235922 39
+src/daemon.rs
+  293268f972235922 1302,5301-5317,7819-7836,7838-7866
+docs/superpowers/plans/2026-04-05-devin-bug-fixes.md
+  293268f972235922 1-270
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "404a1348f25ddecaf2d2633699291ab8c51ea764",
+  "prompts": {
+    "293268f972235922": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "34741536-abcc-42cf-89df-82f40cf18979",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test Runner",
+      "messages": [],
+      "total_additions": 582,
+      "total_deletions": 15,
+      "accepted_lines": 547,
+      "overriden_lines": 9,
+      "messages_url": "https://usegitai.com/cas/80d7cb5d7ea3afb5d411fe0ba60f1b8f73d5cc30a3c1fb1e269f8cbf1ad3656a"
+    }
+  }
+}

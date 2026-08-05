@@ -1,0 +1,14 @@
+README.md
+  h_ea2010baa7a42b 88,98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "814dadfe4afa46a55718f9f7742515f9e8e7d15d",
+  "prompts": {},
+  "humans": {
+    "h_ea2010baa7a42b": {
+      "author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

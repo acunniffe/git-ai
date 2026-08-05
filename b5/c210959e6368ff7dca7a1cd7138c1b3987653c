@@ -1,0 +1,21 @@
+tests/integration/pi.rs
+  s_84ccbf9d01f873::t_ca740875283c13 178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "b5c210959e6368ff7dca7a1cd7138c1b3987653c",
+  "prompts": {},
+  "sessions": {
+    "s_84ccbf9d01f873": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "904b8a40-da3f-4fb5-998c-d263b72cbe55",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/d5475f801e24ac3699ff19f4cb0c3c88e1f60e0ae599023e1651cf5fb2bab27d"
+    }
+  }
+}

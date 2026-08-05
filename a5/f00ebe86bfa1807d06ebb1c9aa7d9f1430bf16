@@ -1,0 +1,24 @@
+tests/integration/bash_tool_conformance.rs
+  d85763f9dab5b79c 724-727,735-736,738-747,752-753,971-980
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "a5f00ebe86bfa1807d06ebb1c9aa7d9f1430bf16",
+  "prompts": {
+    "d85763f9dab5b79c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79131d5c-9f58-4b93-9c97-b5d930ee22ce",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 78,
+      "accepted_lines": 28,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/dd4a1dcebb6b0cd75515d2ef7a556024490ccd40b005337284960cd37ea1d73e"
+    }
+  }
+}
