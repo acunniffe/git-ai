@@ -156,6 +156,28 @@ pub fn fetch_missing_notes_for_commits(
                 tracing::debug!("HTTP backend fetch for missing source notes failed: {}", e);
             }
         }
+
+        // On the HTTP backend the server is the sole source of truth:
+        // refs/notes/ai is never pushed there, so the refs fetch below
+        // cannot produce these notes by construction — it only costs a
+        // full negotiation per remote (minutes on large repos) while
+        // daemon op-processing blocks behind it. A note the server does
+        // not have is missing, period.
+        let still_missing: Vec<&String> = {
+            let noted = noted_commits(repository, source_commits);
+            source_commits
+                .iter()
+                .filter(|sha| !noted.contains(sha.as_str()))
+                .collect()
+        };
+        if still_missing.is_empty() {
+            return Ok(());
+        }
+        return Err(GitAiError::Generic(format!(
+            "authorship notes for source commits {:?} are missing from the notes backend \
+             (refs fetch skipped: refs/notes/ai is not populated on the http backend)",
+            still_missing
+        )));
     }
 
     tracing::debug!(
@@ -599,6 +621,80 @@ mod tests {
             result
         );
         assert_eq!(cached, Some("server-note-content".to_string()));
+    }
+
+    /// On the HTTP backend the server is the sole source of truth:
+    /// refs/notes/ai is never pushed there, so the git refs fetch cannot
+    /// succeed by construction and only costs a full negotiation per remote
+    /// (minutes on large repos) while daemon op-processing blocks behind it.
+    /// When the backend lacks a note, the refs fetch must be SKIPPED — even
+    /// if a remote happens to carry a refs/notes/ai ref (non-HTTP history).
+    #[test]
+    #[serial_test::serial(notes_db_env)]
+    fn fetch_missing_notes_skips_refs_fetch_on_http_backend() {
+        use crate::git::test_utils::TmpRepo;
+        use tempfile::NamedTempFile;
+
+        let tmp_db = NamedTempFile::new().expect("tmp notes-db");
+
+        let repo = TmpRepo::new().expect("TmpRepo::new");
+        repo.write_file("src.txt", "content", false).expect("write");
+        let sha = repo.commit_all("source commit").expect("commit");
+
+        // A REAL local origin that carries the note in refs/notes/ai: if the
+        // refs fetch runs, it would succeed and find the note — which is how
+        // this test detects the (unwanted) fall-through.
+        let origin = tempfile::tempdir().expect("origin dir");
+        let origin_path = origin.path().to_str().unwrap().to_string();
+        std::process::Command::new("git")
+            .args(["init", "--bare", &origin_path])
+            .output()
+            .expect("init bare");
+        repo.git_command(&["remote", "add", "origin", &origin_path])
+            .expect("remote add");
+        repo.git_command(&["push", "-q", "origin", "HEAD:refs/heads/main"])
+            .expect("push branch");
+        repo.git_command(&["notes", "--ref=ai", "add", "-m", "{}", &sha])
+            .expect("add note");
+        repo.git_command(&["push", "-q", "origin", "refs/notes/ai:refs/notes/ai"])
+            .expect("push notes ref");
+        repo.git_command(&["update-ref", "-d", "refs/notes/ai"])
+            .expect("drop local notes ref");
+
+        // The HTTP backend does NOT have the note.
+        let mut server = mockito::Server::new();
+        let _mock = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"^/worker/notes/".to_string()),
+            )
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"notes": {}}"#)
+            .create();
+
+        set_http_backend_env(tmp_db.path().to_str().unwrap(), &server.url());
+        let result = fetch_missing_notes_for_commits(repo.gitai_repo(), std::slice::from_ref(&sha));
+        let tracking_ref_after = repo
+            .git_command(&[
+                "rev-parse",
+                "--verify",
+                "--quiet",
+                "refs/notes/ai-remote/origin",
+            ])
+            .ok();
+        clear_http_backend_env();
+
+        assert!(
+            tracking_ref_after.is_none() || tracking_ref_after.as_deref() == Some(""),
+            "refs fetch must not run on the HTTP backend (tracking ref was created)"
+        );
+        let err =
+            result.expect_err("missing on the backend must stay missing, not be refs-fetched");
+        assert!(
+            err.to_string().contains(&sha),
+            "error should name the missing sha: {err}"
+        );
     }
 
     /// The error contract is preserved: when neither the HTTP backend nor
