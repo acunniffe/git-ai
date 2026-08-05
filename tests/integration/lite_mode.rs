@@ -334,7 +334,7 @@ fn test_lite_mode_preserves_uncommitted_ai_attribution_through_revert() {
 
     fs::remove_file(repo.path().join("reverted.txt")).unwrap();
     let deletion = repo.stage_all_and_commit("delete file").unwrap().commit_sha;
-    assert!(!repo.path().join("reverted.txt").exists());
+    reverted.assert_committed_lines(crate::lines![]);
 
     let mut pending = repo.filename("pending.txt");
     pending.set_contents_no_stage(crate::lines!["pending AI".ai()]);
