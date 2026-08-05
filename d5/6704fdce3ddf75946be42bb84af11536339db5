@@ -1,0 +1,26 @@
+scripts/ai
+  s_c1c3ba664f9c66::t_e7256db3f658ec 13-16,34-35,37,39-41,49-60,100,175,187,216,240,273,298-307,315,318,321,326,331,334,336
+  s_c1c3ba664f9c66::t_6f033973c69f03 215,272,277
+  s_c1c3ba664f9c66::t_66b1d76d3f2e1d 42-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "d56704fdce3ddf75946be42bb84af11536339db5",
+  "prompts": {},
+  "humans": {
+    "h_5e32efc4aad69a": {
+      "author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  },
+  "sessions": {
+    "s_c1c3ba664f9c66": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e9556-aadc-7dd0-ba50-a033b13e7727",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+beta.txt
+  s_7dde216d12f721 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:2.0.0-alpha.1",
+  "base_commit_sha": "1fb2b68f739a5296df9a769e8a4f60b3a7872bb9",
+  "prompts": {},
+  "sessions": {
+    "s_7dde216d12f721": {
+      "agent_id": {
+        "tool": "test-agent",
+        "id": "session-1",
+        "model": "test-model"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

@@ -1,0 +1,88 @@
+src/daemon.rs
+  a6bcdcf51f19c92d 6496-6498,6501-6503
+src/git/refs.rs
+  a6bcdcf51f19c92d 570
+src/authorship/git_ai_hooks.rs
+  a6bcdcf51f19c92d 76-77,91-92,129-130,136,159-160,167-168
+src/mdm/jetbrains/detection.rs
+  a6bcdcf51f19c92d 127-128
+src/commands/hooks/clone_hooks.rs
+  a6bcdcf51f19c92d 16-18,34-35,44-46
+src/commands/hooks/fetch_hooks.rs
+  a6bcdcf51f19c92d 36,69-71,86,92-94,243,283-284,378-379
+src/commands/hooks/cherry_pick_hooks.rs
+  a6bcdcf51f19c92d 32-34,56-58,80-82,113-115,150,452-453,513
+src/authorship/range_authorship.rs
+  a6bcdcf51f19c92d 183-184
+src/authorship/virtual_attribution.rs
+  a6bcdcf51f19c92d 2110,2199
+src/commands/hooks/reset_hooks.rs
+  a6bcdcf51f19c92d 54,165,180-181,233,250-252,259-260,279,332,350,368-369
+src/commands/hooks/switch_hooks.rs
+  a6bcdcf51f19c92d 27-29,137-139,144
+src/commands/hooks/update_ref_hooks.rs
+  a6bcdcf51f19c92d 83-85
+src/authorship/prompt_utils.rs
+  a6bcdcf51f19c92d 203-204,239-240,281-282,325-326,371-372,413-414,450-451,472-473,543-544,587-588,617-618
+src/authorship/stats.rs
+  a6bcdcf51f19c92d 81-82
+src/commands/hooks/checkout_hooks.rs
+  a6bcdcf51f19c92d 48-50,183-185,190
+src/mdm/agents/jetbrains.rs
+  a6bcdcf51f19c92d 71,97-98,106-107
+src/commands/hooks/rebase_hooks.rs
+  a6bcdcf51f19c92d 32-34,46-48,78-80,106-108,160,222,251-252,275-277,392-393
+src/commands/checkpoint_agent/bash_tool.rs
+  a6bcdcf51f19c92d 384-386,581,1138-1140,1205-1206,1242-1244,1304-1305,1401,1507
+src/authorship/post_commit.rs
+  a6bcdcf51f19c92d 213,270
+src/commands/git_handlers.rs
+  a6bcdcf51f19c92d 198-200,774-775,797-798
+src/authorship/rebase_authorship.rs
+  a6bcdcf51f19c92d 148-149,188-189,272-273,583-584,1108,1819-1820,3000-3001,3064,3135
+src/git/sync_authorship.rs
+  a6bcdcf51f19c92d 114,116,119-120,140-141,190-191,204-205,213,254,303-304,315-316
+src/daemon/sentry_layer.rs
+  a6bcdcf51f19c92d 65-66
+src/git/repo_storage.rs
+  a6bcdcf51f19c92d 129,192,754,759
+src/commands/prompts_db.rs
+  a6bcdcf51f19c92d 1012-1014,1058-1059,1115-1117,1170-1172,1184-1187,1207-1210,1303-1305
+src/commands/checkpoint.rs
+  a6bcdcf51f19c92d 917
+src/git/repository.rs
+  a6bcdcf51f19c92d 1254-1255
+src/mdm/jetbrains/download.rs
+  a6bcdcf51f19c92d 125,136
+src/commands/checkpoint_agent/agent_presets.rs
+  a6bcdcf51f19c92d 90-92,1458-1460
+src/commands/hooks/stash_hooks.rs
+  a6bcdcf51f19c92d 99,126,130,237
+src/commands/hooks/merge_hooks.rs
+  a6bcdcf51f19c92d 39
+src/commands/daemon.rs
+  a6bcdcf51f19c92d 8
+src/commands/hooks/push_hooks.rs
+  a6bcdcf51f19c92d 20,54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "7cd6049684e912e6b1fe15125bafd426196a359d",
+  "prompts": {
+    "a6bcdcf51f19c92d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84365ffc-bffe-41d6-b7e2-11822ec2da90",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 246,
+      "total_deletions": 273,
+      "accepted_lines": 246,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/bfd6b5d945b277050caa3ca4b9b5f1444bba86a35d83528c6cacf50425a4f87e"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+src/ci/ci_context.rs
+  s_1073b58daf9856::t_17506bbd32f626 807-808
+  s_1073b58daf9856::t_56ed4431563c8e 741-758,764,797-806,809-828
+src/ci/github.rs
+  s_1073b58daf9856::t_d585efd8ee0817 189-190
+src/commands/ci_handlers.rs
+  s_1073b58daf9856::t_376ad452d39b38 344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "ffc5c42685650802faa58a08ae088e2445e3ba6b",
+  "prompts": {},
+  "sessions": {
+    "s_1073b58daf9856": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e985f-ce37-7b40-8aac-d1d7f1e07e71",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,168 @@
+src/daemon/bash_history_db.rs
+  s_8a403007dd162d::t_e8d30db24e0b73 6-9,96,156,177-178
+  s_b0e77478c0079b::t_6425acffdb2c26 179-180
+tests/integration/session_event_attribution.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 142-167,420-470,472-499,504-505,507-509,548,686-711
+  s_8a403007dd162d::t_65da9266eeef49 593-638
+  s_1eeb4f6def9ecf::t_c24f67134aece9 511-531,534-540
+  s_1eeb4f6def9ecf::t_fd41efe5502169 712
+  s_1eeb4f6def9ecf::t_0e1caab9eb48e7 532-533,545-546
+  s_8a403007dd162d::t_5d19943e162d23 471,500-503,506,551,589
+  s_8a403007dd162d::t_fdeb74594191fc 564-565
+  s_1eeb4f6def9ecf::t_2201cffba6fdb7 550,639-658,664-672,677-680,682-685
+  s_cd75f4d4983cd8::t_1fe67f88d8562e 549
+  s_1eeb4f6def9ecf::t_1a6971bf90a00d 659-663
+  s_8a403007dd162d::t_0fa022a4360e65 552-563,566-588,590-592
+  s_8a403007dd162d::t_27a0cdc5b6f0f9 510,541-544,547
+  s_8a403007dd162d::t_be1e45cd3dcdb4 673-676,681
+tests/integration/simple_additions.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 4,10-23,245-249,1014-1016
+tests/integration/gemini.rs
+  s_1eeb4f6def9ecf::t_2f2eee35a610e6 4,17-32,373
+src/authorship/attribution_recovery.rs
+  s_8a403007dd162d::t_ecf184f34162d3 706-708,1120-1127
+  s_1eeb4f6def9ecf::t_48ce2dfb09a167 765-767,777,779,800-801,832-835,841
+  s_8a403007dd162d::t_7c156fc15d0d06 182,188-200,564,575,671,700-703,727,759,776,795-798,897,902-908,914
+  s_1eeb4f6def9ecf::t_448e46811cd528 1,23,162,232,669-670,672-674,676-699,704-705,709-710,720-726,728-731,752-758,760-761,764,768,847-848,858-865,1112-1119,1128-1151,1165-1168,1175,1177,1179-1180,1198-1199,1894-1934,1936-1937,1939-1940,1942-1956,1958,1960-1961,1967-1974,1990-1991,2083-2120,2265-2280,2315,2568-2592,2594-2598,2600-2608
+  s_8a403007dd162d::t_cd094d6513a946 770-774,780-793,810,2013-2014,2019-2024,2026,2028,2030-2046,2049
+  s_8a403007dd162d::t_a8bd8dc60a0751 711-719,849-857
+  s_8a403007dd162d::t_e3a0df15a42bf5 3,1992
+  s_8a403007dd162d::t_6295212ed7b4cf 1998-2004,2052-2056,2058-2062,2064-2069,2071-2082
+  s_8a403007dd162d::t_26314ca72af7e2 1152-1164,1169,1172
+  s_8a403007dd162d::t_b679051ced12ad 237,248
+  s_cd75f4d4983cd8::t_ddfbed8f31f0ba 2282,2427
+  s_8a403007dd162d::t_036bfac3d8f693 2323,2338-2339,2344,2349,2352-2363
+  s_8a403007dd162d::t_6b54abf11e6a30 292,762,794,802,808-809,826-827,831,866
+  s_f5625e539bdb2a::t_eb4001bcc57679 2006
+  s_8a403007dd162d::t_093ea1fae54f13 2420,2428,2612-2624,2626-2628,2633,2638-2651,2656,2663,2695-2710,2729-2734,2738-2739,2744-2745,2749-2758
+  s_8a403007dd162d::t_bb66962d3a4eca 2029
+  s_8a403007dd162d::t_31b66bec421206 2283-2303
+  s_8a403007dd162d::t_2fa29d4dfbe56c 236,238-247,249-255,257-279,283-291,293-308,2325,2327-2334
+  s_8a403007dd162d::t_41bdaa60b708bf 799,1941,1977,2625,2629,2652,2719,2735-2737,2740-2742,2746-2748
+  s_8a403007dd162d::t_be9851203a3b60 2421-2425
+  s_8a403007dd162d::t_9917176b19d550 2674,2678-2682
+  s_8a403007dd162d::t_61d6ec2e4e8af6 339,454,568,675,763
+  s_8a403007dd162d::t_65da9266eeef49 2426,2610,2661,2711-2718,2720-2728,2760-2761
+  s_8a403007dd162d::t_8181bb42050bd0 281-282
+  s_8a403007dd162d::t_54884a9a005e37 2025,2027,2673,2690
+  s_8a403007dd162d::t_6b2f0dee1340cd 1485
+  s_8a403007dd162d::t_d306f476fa80b0 2350-2351,2364-2409
+  s_8a403007dd162d::t_fb2923971fdc16 2007-2012,2015-2018,2047-2048,2050-2051,2057,2063,2070
+  s_362a9c73a1ff77::t_d62aee1396279d 664-668,734,867
+  s_8a403007dd162d::t_aa9db8d99ecc8c 2429-2444
+  s_8a403007dd162d::t_008d2f8cffc4e3 2664-2672,2675-2677,2683-2689,2691-2694
+  s_8a403007dd162d::t_4ae0300acf4a02 17,1170,1173-1174,1176,1178,1181-1183,1185-1187,1191-1197
+  s_8a403007dd162d::t_f3371c428e98d0 2454
+  s_8a403007dd162d::t_e8d30db24e0b73 1171,1184,1188-1190,2743,2759
+  s_1eeb4f6def9ecf::t_d788bbca897938 1993-1997
+  s_1eeb4f6def9ecf::t_9c884d532253fa 769,2593,2599,2609
+  s_8a403007dd162d::t_fdeb74594191fc 2635,2658
+  s_8a403007dd162d::t_4189239e2549e6 424,426-442,537,539-555,645,647-663,733,735-751,868-886,1521,1523-1539
+  s_8a403007dd162d::t_276aa385e721c2 803-807,811-825,828-830
+  s_8a403007dd162d::t_856262ef14ff14 2005,2281,2321-2322,2324,2335-2337,2340-2343,2345-2346
+  s_8a403007dd162d::t_119114a1806fd6 775,778,836-840,842,844-846
+  s_8a403007dd162d::t_69a6e8901cad81 1935,1938,1957,1959,1962-1966,1975-1976,1978-1989
+  s_8a403007dd162d::t_592d3a1251e44f 2445-2453,2455-2468
+  s_8a403007dd162d::t_d75b5dded29f3a 2630-2632,2634,2636-2637,2653-2655,2657,2659-2660
+  s_8a403007dd162d::t_913cfffe645aab 2611
+  s_8a403007dd162d::t_c40b375fd17ba4 843
+  s_cd75f4d4983cd8::t_dcef597fa162ab 2662
+src/metrics/db.rs
+  s_8a403007dd162d::t_e8d30db24e0b73 15-18,99,184,195-196
+  s_b0e77478c0079b::t_003b20989f0ca7 197-198
+tests/integration/fuzzer/operations.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 188-189,215-216,262-263,318-319
+tests/integration/fuzzer/model.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 269-333
+tests/integration/windsurf.rs
+  s_1eeb4f6def9ecf::t_6a923ebe1e1b82 3,19-34,341
+tests/integration/pull_rebase_ff.rs
+  s_8a403007dd162d::t_368a168c8f4784 1,542,544
+  s_8a403007dd162d::t_fd7501c965810d 3,7-8,567,569-579,587-609,632-636
+  s_8a403007dd162d::t_38f4035f18c221 16-21
+  s_93ad1369d7e6f1::t_c6f1660200e309 643-644
+  s_b880de3a5e6407::t_ec42f7cdb12c17 645
+  s_8a403007dd162d::t_41bdaa60b708bf 560-564,638-641
+  s_8a403007dd162d::t_65da9266eeef49 2,4,512-539,543,545-559,565-566,568,580-586,610-631,637,642
+  s_8a403007dd162d::t_beaef526df329a 540-541
+tests/integration/cold_trace2_repo.rs
+  s_1eeb4f6def9ecf::t_0483b8600027a2 135-137
+tests/integration/post_commit_unit.rs
+  s_1eeb4f6def9ecf::t_057cbc64924c0f 4-19,79,81
+tests/integration/squash_merge.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 562-563,565
+tests/integration/continue_cli.rs
+  s_1eeb4f6def9ecf::t_86578240b8a7ee 4,16-31,406
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "996ec6ffec0982827b421cbc0ba94b8a9b48ccc0",
+  "prompts": {},
+  "sessions": {
+    "s_1eeb4f6def9ecf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24a5-539f-7dd3-9793-1f096a58ff70",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_362a9c73a1ff77": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19dd-d615-7bf1-86ee-d496ac6d02e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_8a403007dd162d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb56c-a2e6-7223-942f-05519301449c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_93ad1369d7e6f1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1994-05a5-7f83-80be-8f99134d0c9c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b0e77478c0079b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb58f-c784-7353-8bc4-2d4463541970",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b880de3a5e6407": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19db-47e2-7340-a92b-59658d9d09e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_cd75f4d4983cd8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb395-75ee-75c3-ae47-bb8bd3e752e1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f5625e539bdb2a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb611-50e1-7002-b32d-c055ac3eb311",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

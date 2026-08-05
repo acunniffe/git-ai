@@ -1,0 +1,22 @@
+src/notes/migration_state.rs
+  s_a0e7afeb591111::t_2de3f040db9c5b 23
+  s_a0e7afeb591111::t_40f5e5612b2ff9 1-22,24-301
+src/notes/mod.rs
+  s_a0e7afeb591111::t_00f3dd85d70e9b 9-12,15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "735c138581db6fad68d064c7033f01fcea3148dc",
+  "prompts": {},
+  "sessions": {
+    "s_a0e7afeb591111": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "06a9e76d-17dc-4a63-a860-e25089a41f39",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Jean-Michel Bouchard <jim@polarcoordinates.org>"
+    }
+  }
+}

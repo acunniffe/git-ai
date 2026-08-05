@@ -1,0 +1,72 @@
+src/commands/checkpoint_agent/presets/claude.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 219
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 172,358
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  s_a5f4b12640a58f::t_382efc7f224249 56
+  s_a5f4b12640a58f::t_8728695e5e34ff 113
+  s_a5f4b12640a58f::t_56e6cf21e35f10 146
+src/commands/checkpoint_agent/presets/droid.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 106,495-499
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 146
+  s_a5f4b12640a58f::t_ae87c1a368c650 465
+src/commands/checkpoint_agent/orchestrator.rs
+  s_a5f4b12640a58f::t_09e17fdcc3a217 4,9
+  s_a5f4b12640a58f::t_2204116954c451 169
+  s_a5f4b12640a58f::t_2eaa8217b82473 132
+  s_a5f4b12640a58f::t_7154644d11333d 30-43,48-98,109
+  s_a5f4b12640a58f::t_9f09b4038dc22a 44-47
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 113,126-129,159-162
+  s_a5f4b12640a58f::t_1202c2570321f8 192-224,226
+src/commands/checkpoint_agent/presets/amp.rs
+  s_a5f4b12640a58f::t_855f6a957110d4 77,97-109,115-116,127-194
+  s_a5f4b12640a58f::t_5def4376541154 271
+  s_a5f4b12640a58f::t_0ba74e6001a068 117,119-120
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 118,259
+src/commands/checkpoint_agent/presets/pi.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 131-132,378-383,400-405,421-426,442-447,463-468
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 41
+src/commands/checkpoint_agent/presets/windsurf.rs
+  s_a5f4b12640a58f::t_95d174c53fb740 25
+  s_a5f4b12640a58f::t_dbf52d0bf0f54b 259,265-298
+  s_a5f4b12640a58f::t_ad28561a5f7179 44-50,59,73-74,77,90-101,106
+  s_a5f4b12640a58f::t_cc6716c38cb712 4
+src/commands/checkpoint_agent/transcript_readers.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 23-25,55,112,456,466,503-505,511,626-627,644,694,974,1778,1788,1850-1851
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 55-56,88-89
+src/commands/checkpoint_agent/presets/github_copilot.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 19-21,100-108,168-169,185-186,322-327,436-441,593-595,622-624,675-677,704-706,738-740,763-765,787-789,845-847,882,989-991,1011-1013,1028-1030,1052-1054
+src/commands/checkpoint_agent/presets/parse.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 22,32
+src/commands/checkpoint_agent/presets/gemini.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 39
+src/commands/checkpoint_agent/presets/firebender.rs
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 195-196,422-425,432-434
+src/commands/git_ai_handlers.rs
+  s_a5f4b12640a58f::t_c02d7029110521 411-412,414-415,417-430,432-434,439-442
+  s_a5f4b12640a58f::t_f01caf0033f1e5 9
+src/commands/checkpoint_agent/presets/codex.rs
+  s_a5f4b12640a58f::t_710a12cc857d60 3-4,16,18-23,31,33-43,45-48,66,69-70,91-119,121-122,124
+  s_a5f4b12640a58f::t_b5bc95aeb5a6ca 32,44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "f909db4c25293b8a4cdfe833e3b6c1a315157c61",
+  "prompts": {},
+  "sessions": {
+    "s_a5f4b12640a58f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cede33a-f5a5-4d2d-8694-f7b2f0278d54",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/d6b9e1d1cfa3715c89d69dca1f26a0ca4c60b174e41ed23dd08514274937ff07"
+    }
+  }
+}

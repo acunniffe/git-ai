@@ -1,0 +1,22 @@
+agent-support/opencode/git-ai.ts
+  s_657ade7d5a1637::t_8add02c3b3e022 212-221,223,235-239,241,253-254
+  s_657ade7d5a1637::t_1b5bc717624399 259-262,264-265,267-269,271,282-283
+src/commands/git_ai_handlers.rs
+  s_657ade7d5a1637::t_e48a0bd54c92f1 68-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "0338faee63d579d68ecc19af20988e932740612e",
+  "prompts": {},
+  "sessions": {
+    "s_657ade7d5a1637": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2e4b6f48-c39b-428f-95b3-512bd9ffcb4e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

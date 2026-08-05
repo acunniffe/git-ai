@@ -1,0 +1,59 @@
+tests/integration/performance.rs
+  805abd0f664c09cf 404
+tests/integration/chinese_text_edits.rs
+  805abd0f664c09cf 146
+tests/integration/repos/test_repo.rs
+  805abd0f664c09cf 790,822,3204,3207,3212,3233
+tests/integration/repos/test_file.rs
+  805abd0f664c09cf 796
+tests/integration/simple_additions.rs
+  805abd0f664c09cf 1123,1222,1515,1571,1684,1729
+tests/integration/worktrees.rs
+  805abd0f664c09cf 382
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  805abd0f664c09cf 1,45,73
+tests/integration/initial_attributions.rs
+  805abd0f664c09cf 76,164,368,415
+tests/integration/test_utils_unit.rs
+  805abd0f664c09cf 108
+src/commands/checkpoint_agent/orchestrator.rs
+  805abd0f664c09cf 15-54,99,102-103,111-121,125-126,268-274,279,310
+tests/integration/stash_attribution.rs
+  805abd0f664c09cf 1112
+tests/integration/diff.rs
+  805abd0f664c09cf 375
+src/commands/git_ai_handlers.rs
+  805abd0f664c09cf 326-330,854-889,896,908-910
+tests/integration/attribution_tracker_comprehensive.rs
+  805abd0f664c09cf 1116
+tests/integration/ai_reflow_attribution.rs
+  805abd0f664c09cf 31-32,87-88,121-122,160,173,201-202
+tests/integration/subdirs.rs
+  805abd0f664c09cf 74
+tests/integration/realistic_complex_edits.rs
+  805abd0f664c09cf 30,94,181,226,294,345,394,461,516,554,616,654,725,783,868,930,976,1055,1115,1154,1249,1297,1369,1417,1509,1588
+tests/integration/non_utf8_files.rs
+  805abd0f664c09cf 470,489
+tests/integration/e2e_user_scenarios.rs
+  805abd0f664c09cf 125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "e15179549d261d5cb6b0f50f41ccc26ec1727fe6",
+  "prompts": {
+    "805abd0f664c09cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95d34781-45d6-4032-834e-108e3d30f164",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 196,
+      "total_deletions": 103,
+      "accepted_lines": 185,
+      "overriden_lines": 0
+    }
+  }
+}
