@@ -232,9 +232,10 @@ impl RefCursor {
             self.consumed_offsets.clear();
             self.consumed_anchors.clear();
             self.command_start_hints.clear();
+            self.reftable_entries.clear();
+            self.reftable_reader.reset_log_cache();
         }
         self.uses_reftable = uses_reftable;
-        self.reftable_entries.clear();
         if !uses_reftable {
             return Ok(());
         }
@@ -243,26 +244,56 @@ impl RefCursor {
         let main_worktree = git_dir
             .as_deref()
             .is_some_and(|git_dir| self.git_dir_is_common(git_dir));
-        let common_logs = self.reftable_reader.read_logs(&common_stack)?;
-        for log in common_logs {
-            if log.reference != "HEAD" || main_worktree {
-                self.insert_reftable_entry(&common_stack, git_dir.as_deref(), log);
+        let common_git_dir = self.common_dir();
+        let common_head_key = head_key(&common_git_dir);
+        let had_common_head = self.reftable_entries.contains_key(&common_head_key);
+        if let Some(common_logs) = self.reftable_reader.read_logs_if_changed(&common_stack)? {
+            self.replace_reftable_stack_entries(
+                &common_stack,
+                (main_worktree || had_common_head).then_some(common_git_dir.as_path()),
+                common_logs,
+            );
+        }
+        if main_worktree && !self.reftable_entries.contains_key(&common_head_key) {
+            let head_logs = self
+                .reftable_reader
+                .cached_logs(&common_stack)
+                .into_iter()
+                .flatten()
+                .filter(|log| log.reference == "HEAD")
+                .cloned()
+                .collect::<Vec<_>>();
+            for log in head_logs {
+                self.insert_reftable_entry(&common_stack, Some(&common_git_dir), log);
             }
         }
         if let Some(git_dir) = git_dir.as_deref()
             && !main_worktree
         {
             let head_stack = git_dir.join("reftable");
-            for log in self.reftable_reader.read_logs(&head_stack)? {
-                if log.reference == "HEAD" {
-                    self.insert_reftable_entry(&head_stack, Some(git_dir), log);
-                }
+            if let Some(head_logs) = self.reftable_reader.read_logs_if_changed(&head_stack)? {
+                self.replace_reftable_stack_entries(&head_stack, Some(git_dir), head_logs);
             }
         }
-        for entries in self.reftable_entries.values_mut() {
-            entries.sort_by_key(|entry| entry.end_offset);
-        }
         Ok(())
+    }
+
+    fn replace_reftable_stack_entries(
+        &mut self,
+        stack_dir: &Path,
+        git_dir: Option<&Path>,
+        logs: Vec<ReftableLogEntry>,
+    ) {
+        let stack_list = stack_dir.join("tables.list");
+        self.reftable_entries.retain(|_, entries| {
+            entries.retain(|entry| entry.path != stack_list);
+            !entries.is_empty()
+        });
+        for log in logs {
+            if log.reference != "HEAD" || git_dir.is_some() {
+                self.insert_reftable_entry(stack_dir, git_dir, log);
+            }
+        }
     }
 
     fn insert_reftable_entry(
@@ -353,6 +384,11 @@ impl RefCursor {
 
         let mut offsets = Vec::new();
         for (key, offset) in &cmd.reflog_start_offsets {
+            let offset_uses_reftable =
+                key == &reftable_common_key() || key.starts_with("reftable-worktree:");
+            if offset_uses_reftable != self.uses_reftable {
+                continue;
+            }
             if key == &reftable_common_key() {
                 offsets.extend(
                     self.reftable_entries
@@ -1192,11 +1228,9 @@ impl RefCursor {
             .or_else(|| self.resolve_stash_target_at_cursor(target).ok().flatten());
         let log_was_rewritten = if self.uses_reftable {
             target_oid.as_ref().is_some_and(|target_oid| {
-                self.stash_stack.iter().any(|oid| oid == target_oid)
-                    && self
-                        .reftable_entries
-                        .get(&key)
-                        .is_none_or(|entries| entries.iter().all(|entry| entry.new != *target_oid))
+                self.reftable_entries
+                    .get(&key)
+                    .is_none_or(|entries| entries.iter().all(|entry| entry.new != *target_oid))
             })
         } else {
             let old_cursor = self.offsets.get(&key).copied();
@@ -1218,8 +1252,24 @@ impl RefCursor {
         };
 
         let target_index = stash_target_index(target);
-        let old_top = self.stash_stack.first().cloned();
-        self.remove_stash_from_stack(target_index, &target_oid);
+        let old_top = self
+            .stash_stack
+            .first()
+            .cloned()
+            .or_else(|| (target_index.unwrap_or(0) == 0).then(|| target_oid.clone()));
+        if self.uses_reftable {
+            self.stash_stack = self
+                .reftable_entries
+                .get(&key)
+                .into_iter()
+                .flatten()
+                .rev()
+                .filter(|entry| valid_non_zero_oid(&entry.new))
+                .map(|entry| entry.new.clone())
+                .collect();
+        } else {
+            self.remove_stash_from_stack(target_index, &target_oid);
+        }
         let new_top = self.stash_stack.first().cloned().unwrap_or_else(zero_oid);
 
         if old_top.as_deref() == Some(target_oid.as_str()) {
@@ -4266,6 +4316,13 @@ mod tests {
                 .all(|key| key.starts_with("common:")),
             "worktree-local HEAD history must be skipped without a worktree"
         );
+
+        cursor.refresh_reftable_entries(Some(repo.path())).unwrap();
+
+        assert!(
+            cursor.reftable_entries.contains_key(&head_key(&common_dir)),
+            "main-worktree HEAD history should be materialized from the cached stack"
+        );
     }
 
     #[test]
@@ -4290,6 +4347,76 @@ mod tests {
 
         assert!(cmd.ref_changes.is_empty());
         assert_eq!(cursor.stash_stack, vec![B.to_string()]);
+    }
+
+    #[test]
+    fn reftable_stash_drop_detects_target_missing_from_in_memory_stack() {
+        let temp = tempfile::tempdir().unwrap();
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        cursor.uses_reftable = true;
+        let key = common_key("refs/stash");
+        let path = temp.path().join("reftable/tables.list");
+        cursor
+            .reftable_entries
+            .insert(key.clone(), vec![reftable_cursor_entry(&key, &path, 4)]);
+        cursor.offsets.insert(key, 5);
+        let mut cmd = command(&family, &["stash", "drop"]);
+        cmd.stash_target_oid = Some(C.to_string());
+
+        cursor
+            .consume_destructive_stash_operation(None, &mut cmd)
+            .unwrap();
+
+        assert_eq!(
+            cmd.ref_changes,
+            vec![RefChange {
+                reference: "refs/stash".to_string(),
+                old: C.to_string(),
+                new: B.to_string(),
+            }]
+        );
+        assert_eq!(cursor.stash_stack, vec![B.to_string()]);
+    }
+
+    #[test]
+    fn ignores_file_offsets_after_repository_migrates_to_reftable() {
+        let temp = tempfile::tempdir().unwrap();
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        cursor.uses_reftable = true;
+        let key = common_key("refs/heads/main");
+        cursor.reftable_entries.insert(
+            key.clone(),
+            vec![reftable_cursor_entry(
+                &key,
+                &temp.path().join("reftable/tables.list"),
+                3,
+            )],
+        );
+        let mut cmd = command(&family, &["refs", "migrate"]);
+        cmd.reflog_start_offsets.insert(key.clone(), 170);
+
+        cursor
+            .initialize_from_command_reflog_start_offsets(&cmd)
+            .unwrap();
+
+        assert!(!cursor.offsets.contains_key(&key));
+    }
+
+    #[test]
+    fn ignores_reftable_offsets_after_repository_migrates_to_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        let mut cmd = command(&family, &["refs", "migrate"]);
+        cmd.reflog_start_offsets.insert(reftable_common_key(), 5);
+
+        cursor
+            .initialize_from_command_reflog_start_offsets(&cmd)
+            .unwrap();
+
+        assert!(cursor.offsets.is_empty());
     }
 
     #[cfg(unix)]

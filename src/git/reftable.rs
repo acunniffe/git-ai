@@ -3,7 +3,7 @@
 use crate::error::GitAiError;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const REFTABLE_MAGIC: &[u8; 4] = b"REFT";
 
@@ -87,17 +87,47 @@ pub(crate) struct ReftableReader {
     parsed_refs: HashMap<(std::path::PathBuf, String), Option<ReftableRefValue>>,
     parsed_logs: HashMap<std::path::PathBuf, Vec<ParsedLogRecord>>,
     unreadable_log_tables: HashSet<std::path::PathBuf>,
+    log_snapshots: HashMap<PathBuf, ReftableLogSnapshot>,
+}
+
+#[derive(Debug)]
+struct ReftableLogSnapshot {
+    active_paths: Vec<PathBuf>,
+    logs: Vec<ReftableLogEntry>,
 }
 
 impl ReftableReader {
+    #[cfg(test)]
     pub(crate) fn read_logs(
         &mut self,
         stack_dir: &Path,
     ) -> Result<Vec<ReftableLogEntry>, GitAiError> {
+        if let Some(logs) = self.read_logs_if_changed(stack_dir)? {
+            return Ok(logs);
+        }
+        Ok(self
+            .log_snapshots
+            .get(stack_dir)
+            .map(|snapshot| snapshot.logs.clone())
+            .unwrap_or_default())
+    }
+
+    pub(crate) fn read_logs_if_changed(
+        &mut self,
+        stack_dir: &Path,
+    ) -> Result<Option<Vec<ReftableLogEntry>>, GitAiError> {
         for attempt in 0..2 {
             let active_paths = active_table_paths(stack_dir)?;
+            if self
+                .log_snapshots
+                .get(stack_dir)
+                .is_some_and(|snapshot| snapshot.active_paths == active_paths)
+            {
+                return Ok(None);
+            }
             let mut visible = BTreeMap::<(String, u64), ReftableLogEntry>::new();
             let mut retry_stack = false;
+            let mut cache_snapshot = true;
             for table_path in &active_paths {
                 if self.unreadable_log_tables.contains(table_path) {
                     continue;
@@ -109,8 +139,14 @@ impl ReftableReader {
                         break;
                     }
                     Err(error) => {
-                        if !is_not_found(&error) {
+                        if is_invalid_reftable(&error) {
                             self.unreadable_log_tables.insert(table_path.clone());
+                        } else {
+                            // Reftable files are immutable, so parser failures are
+                            // deterministic. I/O failures can be transient and must
+                            // be retried by the next command rather than poisoning
+                            // this repo family's reader for its whole lifetime.
+                            cache_snapshot = false;
                         }
                         tracing::warn!(
                             path = %table_path.display(),
@@ -148,9 +184,33 @@ impl ReftableReader {
                     .cmp(&right.update_index)
                     .then_with(|| left.reference.cmp(&right.reference))
             });
-            return Ok(logs);
+            if cache_snapshot {
+                self.log_snapshots.insert(
+                    stack_dir.to_path_buf(),
+                    ReftableLogSnapshot {
+                        active_paths,
+                        logs: logs.clone(),
+                    },
+                );
+            } else {
+                self.log_snapshots.remove(stack_dir);
+            }
+            return Ok(Some(logs));
         }
-        Ok(Vec::new())
+        Ok(Some(Vec::new()))
+    }
+
+    pub(crate) fn cached_logs(&self, stack_dir: &Path) -> Option<&[ReftableLogEntry]> {
+        self.log_snapshots
+            .get(stack_dir)
+            .map(|snapshot| snapshot.logs.as_slice())
+    }
+
+    pub(crate) fn reset_log_cache(&mut self) {
+        self.parsed_refs.clear();
+        self.parsed_logs.clear();
+        self.unreadable_log_tables.clear();
+        self.log_snapshots.clear();
     }
 
     fn read_ref(
@@ -224,6 +284,8 @@ impl ReftableReader {
             .retain(|path, _| !path.starts_with(stack_dir) || active_paths.contains(path));
         self.unreadable_log_tables
             .retain(|path| !path.starts_with(stack_dir) || active_paths.contains(path));
+        self.log_snapshots
+            .retain(|path, _| path != stack_dir || !active_paths.is_empty());
     }
 
     pub(crate) fn read_head(
@@ -253,6 +315,10 @@ impl ReftableReader {
 
 fn is_not_found(error: &GitAiError) -> bool {
     matches!(error, GitAiError::IoError(error) if error.kind() == std::io::ErrorKind::NotFound)
+}
+
+fn is_invalid_reftable(error: &GitAiError) -> bool {
+    matches!(error, GitAiError::Generic(message) if message.starts_with("invalid reftable:"))
 }
 
 fn active_table_paths(stack_dir: &Path) -> Result<Vec<std::path::PathBuf>, GitAiError> {
@@ -942,6 +1008,40 @@ pub(crate) mod tests {
             .expect("a compaction race must not abort command enrichment");
 
         assert!(logs.is_empty());
+    }
+
+    #[test]
+    fn unchanged_stack_does_not_rebuild_log_snapshot() {
+        let temp = native_reftable_repo("sha1");
+        let stack = temp.path().join(".git/reftable");
+        let mut reader = ReftableReader::default();
+
+        assert!(reader.read_logs_if_changed(&stack).unwrap().is_some());
+        assert!(reader.read_logs_if_changed(&stack).unwrap().is_none());
+    }
+
+    #[test]
+    fn transient_log_table_io_error_is_retried() {
+        let source = native_reftable_repo("sha1");
+        let source_stack = source.path().join(".git/reftable");
+        let source_table = active_table_paths(&source_stack).unwrap().pop().unwrap();
+        let table_name = source_table.file_name().unwrap();
+        let table_bytes = fs::read(&source_table).unwrap();
+        let stack = tempfile::tempdir().unwrap();
+        fs::write(
+            stack.path().join("tables.list"),
+            format!("{}\n", table_name.to_string_lossy()),
+        )
+        .unwrap();
+        let table = stack.path().join(table_name);
+        fs::create_dir(&table).unwrap();
+        let mut reader = ReftableReader::default();
+
+        assert!(reader.read_logs(stack.path()).unwrap().is_empty());
+        fs::remove_dir(&table).unwrap();
+        fs::write(&table, table_bytes).unwrap();
+
+        assert!(!reader.read_logs(stack.path()).unwrap().is_empty());
     }
 
     #[test]
