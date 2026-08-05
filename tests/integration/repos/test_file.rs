@@ -344,6 +344,20 @@ impl<'a> TestFile<'a> {
     pub fn assert_committed_lines<T: Into<ExpectedLine>>(&mut self, lines: Vec<T>) {
         let expected_lines: Vec<ExpectedLine> = lines.into_iter().map(|l| l.into()).collect();
 
+        if expected_lines.is_empty() && !self.file_path.exists() {
+            let relative_path = self
+                .file_path
+                .strip_prefix(self.repo.path())
+                .expect("test file should be inside the test repository");
+            let relative_path = git_ai::utils::normalize_to_posix(&relative_path.to_string_lossy());
+            let head_path = format!("HEAD:{relative_path}");
+            assert!(
+                self.repo.git_og(&["cat-file", "-e", &head_path]).is_err(),
+                "Expected no committed lines, but {relative_path} still exists in HEAD"
+            );
+            return;
+        }
+
         // Get blame output
         let filename = self.file_path.to_str().expect("valid path");
         let blame_output = self

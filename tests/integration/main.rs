@@ -88,6 +88,7 @@ mod issue_1204_multi_agent;
 mod issue_1415_empty_git_dir;
 mod jetbrains_download;
 mod jetbrains_ide_types;
+mod lite_mode;
 mod log;
 mod merge_rebase;
 mod metrics_retry_idle;

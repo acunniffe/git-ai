@@ -72,6 +72,18 @@ history rewrite (rebase, `pull --rebase`, amend, `commit-tree`+`update-ref`
 restacks, squashes) into these events with *exact* commit SHAs. The rewrite
 core never guesses what operation happened; that is the ingestion layer's job.
 
+### Lite mode
+
+The `lite_mode` feature flag disables authorship-note migration for rewrites
+handled asynchronously by the daemon. In lite mode, ordinary new commits and
+regular `merge --squash` commits still write authorship notes, while rebase,
+amend, cherry-pick, revert, divergent reset/restack, and direct `update-ref`
+rewrites do not create notes for their replacement commits. Working-log moves
+that do not rewrite notes are preserved.
+
+This gate belongs only to daemon side-effect dispatch. Explicit `git-ai ci`
+commands continue to use the rewrite core regardless of lite mode.
+
 ## Core note-shift algorithm
 
 Given a set of `(source_commit, destination_commit)` mappings:

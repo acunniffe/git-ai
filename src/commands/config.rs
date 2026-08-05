@@ -208,6 +208,7 @@ pub fn handle_config(args: &[String]) {
             }
             if key == "feature_flags.transcript_streaming"
                 || key == "feature_flags.transcript_sweep"
+                || key == "feature_flags.lite_mode"
                 || key == "transcript_streaming_lookback_days"
                 || key == "daemon_memory_limit_mb"
             {
