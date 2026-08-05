@@ -2690,6 +2690,13 @@ struct PendingCherryPickNoCommit {
 }
 
 #[derive(Debug, Clone)]
+struct PendingRebase {
+    original_head: String,
+    onto: Option<String>,
+    checkpoint_bases: HashSet<String>,
+}
+
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 enum RecentReplayPrerequisite {
     CheckoutSwitchRename {
@@ -2731,7 +2738,7 @@ pub struct ActorDaemonCoordinator {
             crate::daemon::git_backend::SystemGitBackend,
         >,
     >,
-    pending_rebase_original_head_by_worktree: Mutex<HashMap<String, (String, Option<String>)>>,
+    pending_rebase_original_head_by_worktree: Mutex<HashMap<String, PendingRebase>>,
     pending_cherry_pick_sources_by_worktree: Mutex<HashMap<String, Vec<String>>>,
     pending_cherry_pick_no_commit_by_worktree: Mutex<HashMap<String, PendingCherryPickNoCommit>>,
     pending_squash_merge_by_worktree: Mutex<HashMap<String, PendingSquashMerge>>,
@@ -4763,6 +4770,13 @@ impl ActorDaemonCoordinator {
                         .map(|f| f.path.to_string_lossy().to_string())
                         .collect();
                     let checkpoint_kind = request.checkpoint_kind;
+                    let checkpoint_base_commit = request.files.first().map(|file| {
+                        use crate::commands::checkpoint_agent::orchestrator::BaseCommit;
+                        match &file.base_commit {
+                            BaseCommit::Sha(sha) => sha.clone(),
+                            BaseCommit::Initial => "initial".to_string(),
+                        }
+                    });
                     let checkpoint_trace_id = request.trace_id.clone();
                     let checkpoint_path_role = request.path_role;
                     let checkpoint_has_agent = request.agent_id.is_some();
@@ -4912,6 +4926,25 @@ impl ActorDaemonCoordinator {
                         );
                     }
                     if result.is_ok() {
+                        if config::Config::get().get_feature_flags().lite_mode
+                            && let Some(base_commit) = checkpoint_base_commit
+                            && let Err(error) = self
+                                .record_pending_rebase_checkpoint_base_for_worktree(
+                                    Path::new(&repo_wd),
+                                    base_commit,
+                                )
+                        {
+                            let _ = self.record_side_effect_error(family, order, &error);
+                            tracing::error!(
+                                component = "daemon",
+                                phase = "checkpoint_processing",
+                                reason = "pending_rebase_checkpoint_tracking_failed",
+                                %family,
+                                order,
+                                %error,
+                                "pending rebase checkpoint tracking failed"
+                            );
+                        }
                         // Clear pending AI edit state once the PostFileEdit completes.
                         if checkpoint_kind.is_ai()
                             && checkpoint_path_role == PreparedPathRole::Edited
@@ -5050,7 +5083,31 @@ impl ActorDaemonCoordinator {
             .map_err(|_| {
                 GitAiError::Generic("pending rebase original-head map lock poisoned".to_string())
             })?;
-        map.insert(Self::worktree_state_key(worktree), (original_head, onto));
+        map.insert(
+            Self::worktree_state_key(worktree),
+            PendingRebase {
+                original_head,
+                onto,
+                checkpoint_bases: HashSet::new(),
+            },
+        );
+        Ok(())
+    }
+
+    fn record_pending_rebase_checkpoint_base_for_worktree(
+        &self,
+        worktree: &Path,
+        base_commit: String,
+    ) -> Result<(), GitAiError> {
+        let mut map = self
+            .pending_rebase_original_head_by_worktree
+            .lock()
+            .map_err(|_| {
+                GitAiError::Generic("pending rebase original-head map lock poisoned".to_string())
+            })?;
+        if let Some(pending) = map.get_mut(&Self::worktree_state_key(worktree)) {
+            pending.checkpoint_bases.insert(base_commit);
+        }
         Ok(())
     }
 
@@ -5071,7 +5128,7 @@ impl ActorDaemonCoordinator {
     fn take_pending_rebase_original_head_for_worktree(
         &self,
         worktree: &Path,
-    ) -> Result<Option<(String, Option<String>)>, GitAiError> {
+    ) -> Result<Option<PendingRebase>, GitAiError> {
         let mut map = self
             .pending_rebase_original_head_by_worktree
             .lock()
@@ -5378,12 +5435,25 @@ impl ActorDaemonCoordinator {
         // inspect the commit graph or migrate authorship notes. Everything needed for
         // this bookkeeping comes from the already-normalized trace2/ref transition.
         if config::Config::get().get_feature_flags().lite_mode {
-            if let Some((original_head, _)) = pending_original_head.as_ref()
-                && let Some(new_tip) = rebase_new_tip_from_command(cmd, original_head)
+            if let Some(pending) = pending_original_head.as_ref()
+                && let Some(new_tip) = rebase_new_tip_from_command(cmd, &pending.original_head)
             {
-                if original_head != &new_tip {
-                    repo.storage.rename_working_log(original_head, &new_tip)?;
+                for checkpoint_base in &pending.checkpoint_bases {
+                    if checkpoint_base != &pending.original_head && checkpoint_base != &new_tip {
+                        repo.storage
+                            .delete_working_log_for_base_commit(checkpoint_base)?;
+                    }
                 }
+                if pending.original_head != new_tip {
+                    repo.storage
+                        .rename_working_log(&pending.original_head, &new_tip)?;
+                }
+                return Ok(());
+            }
+            if !matches!(
+                cmd.primary_command.as_deref(),
+                Some("rebase" | "pull" | "update-ref")
+            ) {
                 return Ok(());
             }
             let command_moves_checked_out_history =
@@ -5426,22 +5496,25 @@ impl ActorDaemonCoordinator {
                     branch_changes.len(),
                     pending_original_head
                         .as_ref()
-                        .map(|(head, _)| head.as_str())
+                        .map(|pending| pending.original_head.as_str())
                         .unwrap_or("NONE"),
                     cmd.ref_changes.len(),
                 )
             },
         );
 
-        if let Some((original_head, stored_onto)) = pending_original_head
-            && let Some(new_tip) = rebase_new_tip_from_command(cmd, &original_head)
+        if let Some(pending) = pending_original_head
+            && let Some(new_tip) = rebase_new_tip_from_command(cmd, &pending.original_head)
         {
-            if original_head != new_tip && !is_ancestor_commit(&repo, &original_head, &new_tip) {
+            if pending.original_head != new_tip
+                && !is_ancestor_commit(&repo, &pending.original_head, &new_tip)
+            {
                 let command_rebase_onto =
-                    rebase_onto_from_command(cmd, &repo, &original_head, &new_tip);
-                let rebase_onto = stored_onto
+                    rebase_onto_from_command(cmd, &repo, &pending.original_head, &new_tip);
+                let rebase_onto = pending
+                    .onto
                     .filter(|onto| {
-                        onto != &original_head
+                        onto != &pending.original_head
                             && onto != &new_tip
                             && is_ancestor_commit(&repo, onto, &new_tip)
                     })
@@ -5449,12 +5522,13 @@ impl ActorDaemonCoordinator {
                 let outcome =
                     crate::authorship::rewrite::handle_non_fast_forward_rewrite_with_operation(
                         &repo,
-                        &original_head,
+                        &pending.original_head,
                         &new_tip,
                         rebase_onto.as_deref(),
                         crate::authorship::rewrite::RewriteMetricOperation::Rebase,
                     )?;
-                repo.storage.rename_working_log(&original_head, &new_tip)?;
+                repo.storage
+                    .rename_working_log(&pending.original_head, &new_tip)?;
                 let conflict_base = rebase_onto.clone();
                 let metric_context = process_conflict_resolution_working_logs(
                     &repo,
@@ -5464,8 +5538,12 @@ impl ActorDaemonCoordinator {
                 let metric_commits =
                     rewrite_metric_commits_with_context(outcome.metric_commits, metric_context);
                 if !metric_commits.is_empty() {
-                    let branch =
-                        rewrite_metric_branch_for_transition(cmd, &original_head, &new_tip, None);
+                    let branch = rewrite_metric_branch_for_transition(
+                        cmd,
+                        &pending.original_head,
+                        &new_tip,
+                        None,
+                    );
                     crate::daemon::rewrite_metrics::spawn_rewrite_commit_metrics(
                         &repo,
                         rewrite_metric_commits_with_branch(metric_commits, branch),

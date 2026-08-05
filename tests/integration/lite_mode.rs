@@ -7,6 +7,14 @@ fn lite_repo() -> TestRepo {
     TestRepo::new_with_daemon_env(&[("GIT_AI_LITE_MODE", "true")])
 }
 
+fn working_log_dir(repo: &TestRepo, commit: &str) -> std::path::PathBuf {
+    repo.path()
+        .join(".git")
+        .join("ai")
+        .join("working_logs")
+        .join(commit)
+}
+
 #[test]
 fn test_lite_mode_skips_rebase_notes_but_tracks_the_next_commit() {
     let repo = lite_repo();
@@ -314,6 +322,147 @@ fn test_lite_mode_moves_working_log_for_checked_out_fast_forward_update_ref() {
     base.assert_committed_lines(crate::lines!["base".human()]);
     let mut pending = repo.filename("pending.txt");
     pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
+}
+
+#[test]
+fn test_lite_mode_does_not_move_working_log_for_fast_forward_merge() {
+    let repo = lite_repo();
+    let base_path = repo.path().join("base.txt");
+    fs::write(&base_path, "base\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "base.txt"])
+        .unwrap();
+    let base_tip = repo.stage_all_and_commit("base").unwrap().commit_sha;
+    let mut base = repo.filename("base.txt");
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    let main = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let merged_path = repo.path().join("merged.txt");
+    fs::write(&merged_path, "merged\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "merged.txt"])
+        .unwrap();
+    let feature_tip = repo.stage_all_and_commit("feature").unwrap().commit_sha;
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    let mut merged = repo.filename("merged.txt");
+    merged.assert_committed_lines(crate::lines!["merged".human()]);
+
+    repo.git(&["checkout", &main]).unwrap();
+    let pending_path = repo.path().join("pending.txt");
+    fs::write(&pending_path, "pending AI\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "pending.txt"])
+        .unwrap();
+    repo.sync_daemon();
+    assert!(working_log_dir(&repo, &base_tip).exists());
+
+    repo.git(&["merge", "--ff-only", "feature"]).unwrap();
+    assert_eq!(
+        repo.git(&["rev-parse", "HEAD"]).unwrap().trim(),
+        feature_tip
+    );
+    assert!(working_log_dir(&repo, &base_tip).exists());
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    merged.assert_committed_lines(crate::lines!["merged".human()]);
+}
+
+#[test]
+fn test_lite_mode_does_not_move_working_log_for_merge_commit() {
+    let repo = lite_repo();
+    let base_path = repo.path().join("base.txt");
+    fs::write(&base_path, "base\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "base.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+    let mut base = repo.filename("base.txt");
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    let main = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let merged_path = repo.path().join("merged.txt");
+    fs::write(&merged_path, "merged\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "merged.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("feature").unwrap();
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    let mut merged = repo.filename("merged.txt");
+    merged.assert_committed_lines(crate::lines!["merged".human()]);
+
+    repo.git(&["checkout", &main]).unwrap();
+    let main_path = repo.path().join("main.txt");
+    fs::write(&main_path, "main\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "main.txt"])
+        .unwrap();
+    let pre_merge_tip = repo.stage_all_and_commit("main").unwrap().commit_sha;
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    let mut main_file = repo.filename("main.txt");
+    main_file.assert_committed_lines(crate::lines!["main".human()]);
+
+    let pending_path = repo.path().join("pending.txt");
+    fs::write(&pending_path, "pending AI\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "pending.txt"])
+        .unwrap();
+    repo.sync_daemon();
+    assert!(working_log_dir(&repo, &pre_merge_tip).exists());
+
+    repo.git(&["merge", "--no-ff", "feature", "-m", "merge feature"])
+        .unwrap();
+    let merge_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert_ne!(merge_tip, pre_merge_tip);
+    assert!(working_log_dir(&repo, &pre_merge_tip).exists());
+    assert!(!working_log_dir(&repo, &merge_tip).exists());
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    main_file.assert_committed_lines(crate::lines!["main".human()]);
+    merged.assert_committed_lines(crate::lines!["merged".human()]);
+}
+
+#[test]
+fn test_lite_mode_archives_conflict_resolution_working_log_after_rebase() {
+    let repo = lite_repo();
+    let conflict_path = repo.path().join("conflict.txt");
+    fs::write(&conflict_path, "base\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "conflict.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+    let mut conflict = repo.filename("conflict.txt");
+    conflict.assert_committed_lines(crate::lines!["base".human()]);
+    let main = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    fs::write(&conflict_path, "feature\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "conflict.txt"])
+        .unwrap();
+    let original_feature = repo.stage_all_and_commit("feature").unwrap().commit_sha;
+    conflict.assert_committed_lines(crate::lines!["feature".human()]);
+
+    repo.git(&["checkout", &main]).unwrap();
+    fs::write(&conflict_path, "main\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "conflict.txt"])
+        .unwrap();
+    let onto = repo.stage_all_and_commit("main").unwrap().commit_sha;
+    conflict.assert_committed_lines(crate::lines!["main".human()]);
+
+    repo.git(&["checkout", "feature"]).unwrap();
+    assert!(repo.git(&["rebase", &main]).is_err());
+    assert_eq!(repo.git(&["rev-parse", "HEAD"]).unwrap().trim(), onto);
+
+    fs::write(&conflict_path, "resolved AI\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "conflict.txt"])
+        .unwrap();
+    repo.sync_daemon();
+    let resolution_log = repo.working_logs_for_base_commit(&onto);
+    assert!(!resolution_log.read_all_checkpoints().unwrap().is_empty());
+
+    repo.git(&["add", "conflict.txt"]).unwrap();
+    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
+        .unwrap();
+    let rebased = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert_ne!(rebased, original_feature);
+    assert!(repo.read_authorship_note(&rebased).is_none());
+    assert!(!working_log_dir(&repo, &onto).exists());
+    assert!(
+        working_log_dir(&repo, &format!("old-{onto}")).exists(),
+        "the consumed conflict-resolution log should be archived"
+    );
+    conflict.assert_committed_lines(crate::lines!["resolved AI".human()]);
 }
 
 #[test]
