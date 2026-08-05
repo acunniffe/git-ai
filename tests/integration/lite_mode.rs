@@ -141,8 +141,10 @@ fn test_lite_mode_preserves_uncommitted_ai_attribution_through_amend() {
 
     let amended = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
     assert!(repo.read_authorship_note(&amended).is_none());
+    committed.assert_committed_lines(crate::lines!["committed".human(), "amended".human(),]);
 
     repo.stage_all_and_commit("commit pending work").unwrap();
+    committed.assert_committed_lines(crate::lines!["committed".human(), "amended".human(),]);
     pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
 }
 
@@ -291,8 +293,10 @@ fn test_lite_mode_preserves_uncommitted_ai_attribution_through_cherry_pick() {
     repo.git(&["cherry-pick", &source]).unwrap();
     let destination = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
     assert!(repo.read_authorship_note(&destination).is_none());
+    picked.assert_committed_lines(crate::lines!["picked".human()]);
 
     repo.stage_all_and_commit("commit pending work").unwrap();
+    picked.assert_committed_lines(crate::lines!["picked".human()]);
     pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
 }
 
@@ -330,14 +334,17 @@ fn test_lite_mode_preserves_uncommitted_ai_attribution_through_revert() {
 
     fs::remove_file(repo.path().join("reverted.txt")).unwrap();
     let deletion = repo.stage_all_and_commit("delete file").unwrap().commit_sha;
+    assert!(!repo.path().join("reverted.txt").exists());
 
     let mut pending = repo.filename("pending.txt");
     pending.set_contents_no_stage(crate::lines!["pending AI".ai()]);
     repo.git(&["revert", "--no-edit", &deletion]).unwrap();
     let destination = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
     assert!(repo.read_authorship_note(&destination).is_none());
+    reverted.assert_committed_lines(crate::lines!["restore me".human()]);
 
     repo.stage_all_and_commit("commit pending work").unwrap();
+    reverted.assert_committed_lines(crate::lines!["restore me".human()]);
     pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
 }
 
@@ -607,7 +614,7 @@ fn test_lite_mode_does_not_move_working_log_for_merge_commit() {
 }
 
 #[test]
-fn test_lite_mode_archives_conflict_resolution_working_log_after_rebase() {
+fn test_lite_mode_leaves_conflict_stop_working_log_at_its_rebase_base() {
     let repo = lite_repo();
     let conflict_path = repo.path().join("conflict.txt");
     fs::write(&conflict_path, "base\n").unwrap();
@@ -639,6 +646,10 @@ fn test_lite_mode_archives_conflict_resolution_working_log_after_rebase() {
     fs::write(&conflict_path, "resolved AI\n").unwrap();
     repo.git_ai(&["checkpoint", "mock_ai", "conflict.txt"])
         .unwrap();
+    let pending_path = repo.path().join("pending-during-rebase.txt");
+    fs::write(&pending_path, "pending AI\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "pending-during-rebase.txt"])
+        .unwrap();
     repo.sync_daemon();
     let resolution_log = repo.working_logs_for_base_commit(&onto);
     assert!(!resolution_log.read_all_checkpoints().unwrap().is_empty());
@@ -649,12 +660,13 @@ fn test_lite_mode_archives_conflict_resolution_working_log_after_rebase() {
     let rebased = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
     assert_ne!(rebased, original_feature);
     assert!(repo.read_authorship_note(&rebased).is_none());
-    assert!(!working_log_dir(&repo, &onto).exists());
     assert!(
-        working_log_dir(&repo, &format!("old-{onto}")).exists(),
-        "the consumed conflict-resolution log should be archived"
+        working_log_dir(&repo, &onto).exists(),
+        "lite mode should leave the conflict-stop log scoped to its rebase base"
     );
+    assert!(!resolution_log.read_all_checkpoints().unwrap().is_empty());
     conflict.assert_committed_lines(crate::lines!["resolved AI".human()]);
+    assert_eq!(fs::read_to_string(pending_path).unwrap(), "pending AI\n");
 }
 
 #[test]
