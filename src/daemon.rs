@@ -1332,28 +1332,92 @@ fn transcript_sweep_triggers_for_events(
     triggers
 }
 
-fn apply_pull_notes_sync_side_effect(
+fn incoming_transport_revision_oids(
+    command: &crate::daemon::domain::NormalizedCommand,
+    remote: &str,
+) -> Vec<String> {
+    let remote_tracking_prefix = format!("refs/remotes/{remote}/");
+    let is_fetch = command.primary_command.as_deref() == Some("fetch");
+    let mut seen = HashSet::new();
+
+    let mut revisions: Vec<String> = command
+        .ref_changes
+        .iter()
+        .filter(|change| {
+            is_valid_oid(&change.new)
+                && !is_zero_oid(&change.new)
+                && change.old != change.new
+                && !change.reference.starts_with("refs/notes/")
+                && change.reference.starts_with(&remote_tracking_prefix)
+        })
+        .filter_map(|change| {
+            seen.insert(change.new.clone())
+                .then_some(change.new.clone())
+        })
+        .collect();
+
+    // A pull from a URL or path may update no remote-tracking ref. Its
+    // trace2-derived HEAD transitions are still immutable candidates, and
+    // batching all of them preserves the one-rev-list/one-API-request bound.
+    if revisions.is_empty() && !is_fetch {
+        revisions.extend(
+            command
+                .ref_changes
+                .iter()
+                .filter(|change| {
+                    change.reference == "HEAD"
+                        && is_valid_oid(&change.new)
+                        && !is_zero_oid(&change.new)
+                        && change.old != change.new
+                })
+                .filter_map(|change| {
+                    seen.insert(change.new.clone())
+                        .then_some(change.new.clone())
+                }),
+        );
+    }
+
+    revisions
+}
+
+fn apply_transport_notes_sync_side_effect(
     worktree: &str,
-    command: Option<&str>,
-    args: &[String],
+    command: &crate::daemon::domain::NormalizedCommand,
 ) -> Result<(), GitAiError> {
     use crate::config::NotesBackendKind;
+    use crate::git::cli_parser::is_dry_run;
+
+    let parsed = parsed_invocation_for_normalized_command(command);
+    if is_dry_run(&parsed.command_args) {
+        return Ok(());
+    }
 
     let repo = find_repository_in_path(worktree)?;
-    let parsed = parsed_invocation_for_side_effect(command, args);
     let remote = fetch_remote_from_args(&repo, &parsed)?;
     let notes_backend = crate::config::Config::fresh().notes_backend_kind();
+    let primary = command.primary_command.as_deref().unwrap_or("fetch");
 
-    tracing::info!(
-        command = command.unwrap_or("pull"),
-        remote = %remote,
-        backend = %notes_backend,
-        worktree = %worktree,
-        "handling pull notes sync"
-    );
+    if primary == "pull" {
+        tracing::info!(
+            command = primary,
+            remote = %remote,
+            backend = %notes_backend,
+            worktree = %worktree,
+            "handling pull notes sync"
+        );
+    } else {
+        tracing::info!(
+            command = primary,
+            remote = %remote,
+            backend = %notes_backend,
+            worktree = %worktree,
+            "handling fetch notes sync"
+        );
+    }
 
     if notes_backend == NotesBackendKind::Http {
-        return crate::git::notes_api::warm_cache_for_remote(&repo, &remote);
+        let revisions = incoming_transport_revision_oids(command, &remote);
+        return crate::git::notes_api::warm_cache_for_revisions(&repo, &revisions);
     }
 
     fetch_authorship_notes(&repo, &remote)?;
@@ -5709,6 +5773,28 @@ impl ActorDaemonCoordinator {
                 "side-effect trace"
             );
         }
+        let should_sync_transport_notes = cmd.exit_code == 0
+            && events.iter().any(|event| {
+                matches!(
+                    event,
+                    crate::daemon::domain::SemanticEvent::FetchCompleted { .. }
+                        | crate::daemon::domain::SemanticEvent::PullCompleted { .. }
+                )
+            });
+        let mut transport_notes_sync_error = None;
+        if should_sync_transport_notes
+            && let Some(worktree) = cmd.worktree.as_ref()
+            && let Err(error) =
+                apply_transport_notes_sync_side_effect(&worktree.to_string_lossy(), cmd)
+        {
+            tracing::debug!(
+                %error,
+                command = cmd.primary_command.as_deref().unwrap_or("unknown"),
+                "transport notes sync failed; deferring error until rewrite side effects finish"
+            );
+            transport_notes_sync_error = Some(error);
+        }
+
         // Non-FF rewrite detection: fires for commands that rewrite history via ref moves.
         // Skip for: checkout/switch/branch (no rewriting), cherry-pick (handled separately),
         // and plain commit/amend (CommitCreated/CommitAmended events handle those).
@@ -5930,13 +6016,6 @@ impl ActorDaemonCoordinator {
                 match event {
                     crate::daemon::domain::SemanticEvent::CloneCompleted { .. } => {
                         apply_clone_notes_sync_side_effect(&worktree)?;
-                    }
-                    crate::daemon::domain::SemanticEvent::PullCompleted { .. } => {
-                        apply_pull_notes_sync_side_effect(
-                            &worktree,
-                            cmd.invoked_command.as_deref(),
-                            &cmd.invoked_args,
-                        )?;
                     }
                     crate::daemon::domain::SemanticEvent::PushCompleted { .. } => {
                         apply_push_side_effect(
@@ -6419,6 +6498,10 @@ impl ActorDaemonCoordinator {
                 continue;
             }
             self.trigger_transcript_sweep(trigger);
+        }
+
+        if let Some(error) = transport_notes_sync_error {
+            return Err(error);
         }
 
         Ok(())

@@ -539,7 +539,6 @@ fn test_pull_rebase_preserves_committed_ai_authorship() {
 }
 
 #[test]
-#[ignore = "temporarily restored by the stacked transport-aware notes sync follow-up"]
 fn test_pull_rebase_force_pushed_target_preserves_remote_authorship_note() {
     // Model a clone that still has an old PR head while another clone force-pushes
     // a rewritten head with its own complete authorship note. Pull processes the
@@ -636,6 +635,117 @@ fn test_pull_rebase_force_pushed_target_preserves_remote_authorship_note() {
         "old AI line".ai(),
         "remote AI line".ai(),
     ]);
+}
+
+#[test]
+fn test_pull_rebase_after_collaborator_restack_preserves_both_users_notes() {
+    // User B has A(old) + B locally. User A restacks and force-pushes A(new)
+    // with a new note. B's pull --rebase must hydrate A(new)'s note before
+    // replaying B, while still shifting B's locally available source note.
+    let (local, upstream) = TestRepo::new_with_remote();
+    let file_path = local.path().join("stack.txt");
+
+    std::fs::write(&file_path, "base\n").unwrap();
+    local.stage_all_and_commit("initial").unwrap();
+    let mut local_file = local.filename("stack.txt");
+    local_file.assert_committed_lines(crate::lines!["base".unattributed_human()]);
+
+    local.git_ai(&["checkpoint", "human", "stack.txt"]).unwrap();
+    std::fs::write(&file_path, "base\nA old AI line\n").unwrap();
+    local
+        .git_ai(&["checkpoint", "mock_ai", "stack.txt"])
+        .unwrap();
+    let old_a = local.stage_all_and_commit("A before restack").unwrap();
+    local_file.assert_committed_lines(crate::lines![
+        "base".unattributed_human(),
+        "A old AI line".ai(),
+    ]);
+    local.git(&["push", "-u", "origin", "main"]).unwrap();
+
+    let b_path = local.path().join("b.txt");
+    local.git_ai(&["checkpoint", "human", "b.txt"]).unwrap();
+    std::fs::write(&b_path, "B AI line\n").unwrap();
+    local.git_ai(&["checkpoint", "mock_ai", "b.txt"]).unwrap();
+    let old_b = local.stage_all_and_commit("B local work").unwrap();
+    local_file.assert_committed_lines(crate::lines![
+        "base".unattributed_human(),
+        "A old AI line".ai(),
+    ]);
+    let mut b_file = local.filename("b.txt");
+    b_file.assert_committed_lines(crate::lines!["B AI line".ai()]);
+
+    let contributor_parent = tempfile::tempdir().expect("contributor temp dir");
+    let contributor_path = contributor_parent.path().join("contributor");
+    local
+        .git_og(&[
+            "clone",
+            upstream.path().to_str().unwrap(),
+            contributor_path.to_str().unwrap(),
+        ])
+        .unwrap();
+    let contributor =
+        TestRepo::new_at_path_with_daemon_scope(&contributor_path, DaemonTestScope::Shared);
+    contributor
+        .git(&["reset", "--hard", &format!("{}^", old_a.commit_sha)])
+        .unwrap();
+
+    let contributor_file_path = contributor.path().join("stack.txt");
+    contributor
+        .git_ai(&["checkpoint", "human", "stack.txt"])
+        .unwrap();
+    std::fs::write(
+        &contributor_file_path,
+        "base\nA old AI line\nA restack AI line\n",
+    )
+    .unwrap();
+    contributor
+        .git_ai(&["checkpoint", "mock_ai", "stack.txt"])
+        .unwrap();
+    let new_a = contributor.stage_all_and_commit("A after restack").unwrap();
+    let mut contributor_file = contributor.filename("stack.txt");
+    contributor_file.assert_committed_lines(crate::lines![
+        "base".unattributed_human(),
+        "A old AI line".ai(),
+        "A restack AI line".ai(),
+    ]);
+    contributor
+        .git(&["push", "--force", "origin", "HEAD:main"])
+        .unwrap();
+    contributor.sync_daemon_force();
+    contributor
+        .git_og(&["push", "--force", "origin", "refs/notes/ai:refs/notes/ai"])
+        .unwrap();
+
+    assert!(
+        local.read_authorship_note(&new_a.commit_sha).is_none(),
+        "precondition: B must be missing A's restacked note"
+    );
+    local.git(&["pull", "--rebase"]).unwrap();
+
+    let new_b = local
+        .git(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+    assert_ne!(
+        new_b, old_b.commit_sha,
+        "B's local commit should be replayed"
+    );
+    assert_ne!(
+        new_b, new_a.commit_sha,
+        "B's replayed commit should remain on top of A"
+    );
+    assert_eq!(
+        local.git(&["rev-parse", "HEAD^"]).unwrap().trim(),
+        new_a.commit_sha,
+        "B's replayed commit should be based on A's restacked commit"
+    );
+    local_file.assert_committed_lines(crate::lines![
+        "base".unattributed_human(),
+        "A old AI line".ai(),
+        "A restack AI line".ai(),
+    ]);
+    b_file.assert_committed_lines(crate::lines!["B AI line".ai()]);
 }
 
 #[test]
@@ -2135,6 +2245,8 @@ crate::reuse_tests_in_worktree!(
     test_fast_forward_pull_preserves_ai_attribution,
     test_fast_forward_pull_without_local_changes,
     test_pull_rebase_preserves_committed_ai_authorship,
+    test_pull_rebase_force_pushed_target_preserves_remote_authorship_note,
+    test_pull_rebase_after_collaborator_restack_preserves_both_users_notes,
     test_local_rebase_does_not_fetch_notes_for_fresh_destinations,
     test_pull_rebase_via_git_config_preserves_committed_ai_authorship,
     test_pull_rebase_via_zero_arg_alias_and_git_config_preserves_committed_ai_authorship,
@@ -2153,9 +2265,4 @@ crate::reuse_tests_in_worktree!(
     test_regular_rebase_conflict_keep_both_sides_preserves_each_original_source,
     test_regular_rebase_conflict_keep_main_side_preserves_main_attribution,
     test_regular_rebase_with_conflict_abort_preserves_original_notes,
-);
-
-crate::reuse_tests_in_worktree_with_attrs!(
-    (#[ignore = "temporarily restored by the stacked transport-aware notes sync follow-up"])
-    test_pull_rebase_force_pushed_target_preserves_remote_authorship_note,
 );
