@@ -6438,6 +6438,8 @@ impl ActorDaemonCoordinator {
                         continue;
                     }
                     if lite_mode {
+                        // The trace-derived pass above already moved the working log when this
+                        // transition also moved HEAD. Avoid the commit-graph lookup and note write.
                         continue;
                     }
                     let repo = find_repository_in_path(&worktree.to_string_lossy())?;

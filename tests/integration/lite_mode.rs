@@ -274,6 +274,49 @@ fn test_lite_mode_does_not_move_working_log_for_unrelated_branch_update() {
 }
 
 #[test]
+fn test_lite_mode_moves_working_log_for_checked_out_fast_forward_update_ref() {
+    let repo = lite_repo();
+    let base_path = repo.path().join("base.txt");
+    fs::write(&base_path, "base\n").unwrap();
+    let old_tip = repo.stage_all_and_commit("base").unwrap().commit_sha;
+    let mut base = repo.filename("base.txt");
+    base.assert_committed_lines(crate::lines!["base".human()]);
+
+    let pending_path = repo.path().join("pending.txt");
+    fs::write(&pending_path, "pending AI\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "pending.txt"])
+        .unwrap();
+
+    let tree = repo
+        .git(&["rev-parse", &format!("{old_tip}^{{tree}}")])
+        .unwrap()
+        .trim()
+        .to_string();
+    let new_tip = repo
+        .git(&["commit-tree", &tree, "-p", &old_tip, "-m", "fast-forward"])
+        .unwrap()
+        .trim()
+        .to_string();
+    let branch = repo.current_branch();
+    repo.git(&[
+        "update-ref",
+        &format!("refs/heads/{branch}"),
+        &new_tip,
+        &old_tip,
+    ])
+    .unwrap();
+
+    assert_eq!(repo.git(&["rev-parse", "HEAD"]).unwrap().trim(), new_tip);
+    assert!(repo.read_authorship_note(&new_tip).is_none());
+    base.assert_committed_lines(crate::lines!["base".human()]);
+
+    repo.stage_all_and_commit("commit pending work").unwrap();
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    let mut pending = repo.filename("pending.txt");
+    pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
+}
+
+#[test]
 fn test_lite_mode_preserves_regular_squash_notes() {
     let repo = lite_repo();
     let mut base = repo.filename("base.txt");
