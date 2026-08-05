@@ -1553,6 +1553,378 @@ fn test_update_ref_restack_after_parent_amend_preserves_child_attribution() {
     rewritten_child_file.assert_lines_and_blame(lines!["child ai".ai(), "child human".human()]);
 }
 
+#[test]
+fn test_update_ref_preserves_squashed_commit_before_first_match() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let base = head_sha(&repo);
+    let mut readme = repo.filename("README.md");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+
+    repo.git(&["checkout", "-b", "feature"])
+        .expect("checkout feature should succeed");
+
+    let mut squashed_file = repo.filename("leading_squashed.txt");
+    squashed_file.set_contents(lines!["leading squashed ai".ai()]);
+    let squashed_commit = repo
+        .stage_all_and_commit("leading squash source")
+        .expect("leading squash source commit should succeed");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    squashed_file.assert_lines_and_blame(lines!["leading squashed ai".ai()]);
+
+    // Make this patch dominate the preceding one so range-diff matches it to
+    // the destination commit and reports the squash source before that match.
+    let anchor_lines = (1..=100)
+        .map(|line| format!("anchor line {line}"))
+        .collect::<Vec<_>>();
+    let mut anchor_file = repo.filename("leading_anchor.txt");
+    anchor_file.set_contents(anchor_lines.clone());
+    let anchor_commit = repo
+        .stage_all_and_commit("anchor")
+        .expect("anchor commit should succeed");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    squashed_file.assert_lines_and_blame(lines!["leading squashed ai".ai()]);
+    anchor_file.assert_lines_and_blame(anchor_lines.clone());
+
+    let new_anchor =
+        commit_tree_from_existing_tree(&repo, &anchor_commit.commit_sha, &base, "anchor");
+
+    let old_range = format!("{base}..{}", anchor_commit.commit_sha);
+    let new_range = format!("{base}..{new_anchor}");
+    let range_diff = repo
+        .git(&[
+            "range-diff",
+            "--no-color",
+            "--no-abbrev",
+            "-s",
+            "--creation-factor=100",
+            &old_range,
+            &new_range,
+        ])
+        .expect("range-diff should succeed");
+    let range_diff_lines = range_diff.lines().collect::<Vec<_>>();
+    let squashed_drop_index = range_diff_lines
+        .iter()
+        .position(|line| line.contains(&squashed_commit.commit_sha) && line.contains(" < "))
+        .expect("squashed source should be unmatched");
+    let anchor_match_index = range_diff_lines
+        .iter()
+        .position(|line| line.contains(&anchor_commit.commit_sha) && line.contains(" ! "))
+        .expect("anchor commit should match the destination commit");
+    assert!(
+        squashed_drop_index < anchor_match_index,
+        "squashed source must appear before the first match\n{range_diff}"
+    );
+
+    repo.git(&[
+        "update-ref",
+        "refs/heads/feature",
+        &new_anchor,
+        &anchor_commit.commit_sha,
+    ])
+    .expect("update-ref should succeed");
+    repo.sync_daemon();
+
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    squashed_file.assert_lines_and_blame(lines!["leading squashed ai".ai()]);
+    anchor_file.assert_lines_and_blame(anchor_lines);
+}
+
+#[test]
+fn test_update_ref_preserves_edited_squashed_commit_before_first_match() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let base = head_sha(&repo);
+    let mut readme = repo.filename("README.md");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+
+    repo.git(&["checkout", "-b", "feature"])
+        .expect("checkout feature should succeed");
+
+    let mut squashed_file = repo.filename("edited_leading_squashed.txt");
+    squashed_file.set_contents(lines!["leading squashed ai".ai()]);
+    repo.stage_all_and_commit("leading squash source")
+        .expect("leading squash source commit should succeed");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    squashed_file.assert_lines_and_blame(lines!["leading squashed ai".ai()]);
+
+    let anchor_lines = (1..=100)
+        .map(|line| format!("anchor line {line}"))
+        .collect::<Vec<_>>();
+    let anchor_path = repo.path().join("edited_leading_anchor.txt");
+    let mut anchor_file = repo.filename("edited_leading_anchor.txt");
+    fs::write(&anchor_path, anchor_lines.join("\n") + "\n").unwrap();
+    repo.git_ai(&[
+        "checkpoint",
+        "mock_known_human",
+        "edited_leading_anchor.txt",
+    ])
+    .unwrap();
+    let anchor_commit = repo
+        .stage_all_and_commit("anchor")
+        .expect("anchor commit should succeed");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    squashed_file.assert_lines_and_blame(lines!["leading squashed ai".ai()]);
+    anchor_file.assert_lines_and_blame(anchor_lines.clone());
+
+    let edited_anchor_lines = anchor_lines
+        .iter()
+        .cloned()
+        .chain(std::iter::once("cleanup added while squashing".to_string()))
+        .collect::<Vec<_>>();
+    fs::write(&anchor_path, edited_anchor_lines.join("\n") + "\n").unwrap();
+    repo.git(&["add", "edited_leading_anchor.txt"])
+        .expect("stage edited anchor");
+    let edited_tree = repo.git(&["write-tree"]).expect("write edited tree");
+    let new_anchor = repo
+        .git(&[
+            "commit-tree",
+            edited_tree.trim(),
+            "-p",
+            &base,
+            "-m",
+            "edited anchor",
+        ])
+        .expect("create edited squashed commit")
+        .trim()
+        .to_string();
+
+    repo.git(&[
+        "update-ref",
+        "refs/heads/feature",
+        &new_anchor,
+        &anchor_commit.commit_sha,
+    ])
+    .expect("update-ref should succeed");
+    repo.sync_daemon();
+
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    squashed_file.assert_lines_and_blame(lines!["leading squashed ai".ai()]);
+    anchor_file.assert_lines_and_blame(edited_anchor_lines);
+}
+
+#[test]
+fn test_update_ref_preserves_metadata_from_leading_empty_squash_source() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let mut readme = repo.filename("README.md");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+
+    repo.git(&["checkout", "-b", "feature"])
+        .expect("checkout feature should succeed");
+
+    let mut donor_file = repo.filename("donor.txt");
+    donor_file.set_contents(lines!["donor ai".ai()]);
+    let donor_commit = repo
+        .stage_all_and_commit("metadata donor")
+        .expect("metadata donor commit should succeed");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    donor_file.assert_lines_and_blame(lines!["donor ai".ai()]);
+    let base = donor_commit.commit_sha;
+
+    repo.git(&["commit", "--allow-empty", "-m", "empty squash source"])
+        .expect("empty commit should succeed");
+    repo.sync_daemon();
+    let empty_source = head_sha(&repo);
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    donor_file.assert_lines_and_blame(lines!["donor ai".ai()]);
+
+    let donor_note = repo
+        .read_authorship_note(&base)
+        .expect("metadata donor should have an authorship note");
+    let mut metadata_only_log =
+        AuthorshipLog::deserialize_from_string(&donor_note).expect("parse metadata donor note");
+    metadata_only_log.attestations.clear();
+    metadata_only_log.metadata.base_commit_sha = empty_source.clone();
+    let prompt_record = metadata_only_log.metadata.prompts.values().next().cloned();
+    let session_record = metadata_only_log.metadata.sessions.values().next().cloned();
+    metadata_only_log.metadata.prompts.clear();
+    metadata_only_log.metadata.sessions.clear();
+    if let Some(record) = prompt_record {
+        metadata_only_log
+            .metadata
+            .prompts
+            .insert("empty-source-only-prompt".to_string(), record);
+    }
+    if let Some(record) = session_record {
+        metadata_only_log
+            .metadata
+            .sessions
+            .insert("empty-source-only-session".to_string(), record);
+    }
+    let expected_prompts = metadata_only_log.metadata.prompts.clone();
+    let expected_sessions = metadata_only_log.metadata.sessions.clone();
+    assert!(
+        !expected_prompts.is_empty() || !expected_sessions.is_empty(),
+        "test setup requires AI metadata"
+    );
+    let metadata_only_note = metadata_only_log
+        .serialize_to_string()
+        .expect("serialize metadata-only note");
+    repo.git(&[
+        "notes",
+        "--ref=ai",
+        "add",
+        "-f",
+        "-m",
+        &metadata_only_note,
+        &empty_source,
+    ])
+    .expect("attach metadata-only note to empty commit");
+    repo.sync_daemon();
+
+    let anchor_lines = (1..=100)
+        .map(|line| format!("anchor line {line}"))
+        .collect::<Vec<_>>();
+    let mut anchor_file = repo.filename("empty_source_anchor.txt");
+    anchor_file.set_contents(anchor_lines.clone());
+    let anchor_commit = repo
+        .stage_all_and_commit("anchor")
+        .expect("anchor commit should succeed");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    donor_file.assert_lines_and_blame(lines!["donor ai".ai()]);
+    anchor_file.assert_lines_and_blame(anchor_lines.clone());
+
+    let new_anchor =
+        commit_tree_from_existing_tree(&repo, &anchor_commit.commit_sha, &base, "anchor");
+    let old_range = format!("{base}..{}", anchor_commit.commit_sha);
+    let new_range = format!("{base}..{new_anchor}");
+    let range_diff = repo
+        .git(&[
+            "range-diff",
+            "--no-color",
+            "--no-abbrev",
+            "-s",
+            "--creation-factor=100",
+            &old_range,
+            &new_range,
+        ])
+        .expect("range-diff should succeed");
+    assert!(
+        range_diff
+            .lines()
+            .any(|line| line.contains(&empty_source) && line.contains(" < ")),
+        "empty metadata source must be the leading unmatched commit\n{range_diff}"
+    );
+
+    repo.git(&[
+        "update-ref",
+        "refs/heads/feature",
+        &new_anchor,
+        &anchor_commit.commit_sha,
+    ])
+    .expect("update-ref should succeed");
+    repo.sync_daemon();
+
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    donor_file.assert_lines_and_blame(lines!["donor ai".ai()]);
+    anchor_file.assert_lines_and_blame(anchor_lines);
+    let destination_note = repo
+        .read_authorship_note(&new_anchor)
+        .expect("squash destination should have an authorship note");
+    let destination_log =
+        AuthorshipLog::deserialize_from_string(&destination_note).expect("parse destination note");
+    for prompt_hash in expected_prompts.keys() {
+        assert!(
+            destination_log.metadata.prompts.contains_key(prompt_hash),
+            "prompt metadata from empty squash source was lost"
+        );
+    }
+    for session_hash in expected_sessions.keys() {
+        assert!(
+            destination_log.metadata.sessions.contains_key(session_hash),
+            "session metadata from empty squash source was lost"
+        );
+    }
+}
+
+#[test]
+fn test_update_ref_preserves_squashed_commit_between_matches() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+    let base = head_sha(&repo);
+    let mut readme = repo.filename("README.md");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+
+    repo.git(&["checkout", "-b", "feature"])
+        .expect("checkout feature should succeed");
+
+    // Make this patch dominate the following one so range-diff matches it to
+    // the destination commit that squashes both patches together.
+    let anchor_lines = (1..=100)
+        .map(|line| format!("anchor line {line}"))
+        .collect::<Vec<_>>();
+    let mut anchor_file = repo.filename("anchor.txt");
+    anchor_file.set_contents(anchor_lines.clone());
+    let anchor_commit = repo
+        .stage_all_and_commit("anchor")
+        .expect("anchor commit should succeed");
+    readme.assert_lines_and_blame(lines!["# Test Repo".human()]);
+    anchor_file.assert_lines_and_blame(anchor_lines.clone());
+
+    let mut squashed_file = repo.filename("squashed.txt");
+    squashed_file.set_contents(lines!["squashed ai".ai()]);
+    let squashed_commit = repo
+        .stage_all_and_commit("squashed source")
+        .expect("squashed source commit should succeed");
+    anchor_file.assert_lines_and_blame(anchor_lines.clone());
+    squashed_file.assert_lines_and_blame(lines!["squashed ai".ai()]);
+
+    let mut tail_file = repo.filename("tail.txt");
+    tail_file.set_contents(lines!["tail human"]);
+    let tail_commit = repo
+        .stage_all_and_commit("tail")
+        .expect("tail commit should succeed");
+    anchor_file.assert_lines_and_blame(anchor_lines.clone());
+    squashed_file.assert_lines_and_blame(lines!["squashed ai".ai()]);
+    tail_file.assert_lines_and_blame(lines!["tail human".human()]);
+
+    let new_anchor =
+        commit_tree_from_existing_tree(&repo, &squashed_commit.commit_sha, &base, "anchor");
+    let new_tail =
+        commit_tree_from_existing_tree(&repo, &tail_commit.commit_sha, &new_anchor, "tail");
+
+    let old_range = format!("{base}..{}", tail_commit.commit_sha);
+    let new_range = format!("{base}..{new_tail}");
+    let range_diff = repo
+        .git(&[
+            "range-diff",
+            "--no-color",
+            "--no-abbrev",
+            "-s",
+            "--creation-factor=100",
+            &old_range,
+            &new_range,
+        ])
+        .expect("range-diff should succeed");
+    let range_diff_lines = range_diff.lines().collect::<Vec<_>>();
+    let anchor_match_index = range_diff_lines
+        .iter()
+        .position(|line| line.contains(&anchor_commit.commit_sha) && line.contains(" ! "))
+        .expect("anchor commit should match the first destination commit");
+    let squashed_drop_index = range_diff_lines
+        .iter()
+        .position(|line| line.contains(&squashed_commit.commit_sha) && line.contains(" < "))
+        .expect("squashed source should be unmatched");
+    assert!(
+        anchor_match_index < squashed_drop_index,
+        "squashed source must appear after the first match\n{range_diff}"
+    );
+
+    repo.git(&[
+        "update-ref",
+        "refs/heads/feature",
+        &new_tail,
+        &tail_commit.commit_sha,
+    ])
+    .expect("update-ref should succeed");
+    repo.sync_daemon();
+
+    anchor_file.assert_lines_and_blame(anchor_lines);
+    squashed_file.assert_lines_and_blame(lines!["squashed ai".ai()]);
+    tail_file.assert_lines_and_blame(lines!["tail human".human()]);
+}
+
 /// Test Graphite-style rebase: replay multiple feature commits via commit-tree,
 /// then move the branch with ONE update-ref from old tip to new tip.
 ///

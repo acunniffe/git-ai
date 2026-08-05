@@ -1,12 +1,50 @@
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::authorship::working_log::AgentId;
 use git_ai::daemon::bash_history_db::{BashCallEnd, BashCallStart, BashHistoryDatabase};
+use git_ai::git::repository::{exec_git_stdin, find_repository_in_path};
 
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::{DaemonTestScope, TestRepo};
 use serde_json::json;
 use std::collections::{BTreeSet, HashMap};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+const COMMITS_OVER_UNTRUSTED_LEADING_LIMIT: usize = 65;
+const IMPORTED_OLD_UPSTREAM_REF: &str = "refs/heads/old-upstream-import";
+
+fn import_empty_commit_chain(repo: &TestRepo, parent: &str, count: usize) {
+    let mut stream = String::new();
+
+    for commit_number in 1..=count {
+        let message = format!("old upstream empty {commit_number}");
+        let parent = if commit_number == 1 {
+            parent.to_string()
+        } else {
+            format!(":{}", commit_number - 1)
+        };
+        stream.push_str(&format!(
+            "commit {IMPORTED_OLD_UPSTREAM_REF}\n\
+             mark :{commit_number}\n\
+             committer Test <test@example.com> {} +0000\n\
+             data {}\n\
+             {message}\n\
+             from {parent}\n\n",
+            1_000_000_000 + commit_number,
+            message.len(),
+        ));
+    }
+    stream.push_str("done\n");
+
+    let repository =
+        find_repository_in_path(repo.path().to_str().unwrap()).expect("find test repository");
+    let mut args = repository.global_args_for_exec();
+    args.extend([
+        "fast-import".to_string(),
+        "--quiet".to_string(),
+        "--done".to_string(),
+    ]);
+    exec_git_stdin(&args, stream.as_bytes()).expect("batch-import empty old-upstream commits");
+}
 
 /// Helper struct that provides a local repo with an upstream containing seeded commits.
 /// The local repo is initially behind the upstream (no divergence — fast-forward possible).
@@ -1264,6 +1302,173 @@ fn test_pull_rebase_with_conflict_preserves_ai_notes() {
         "Authorship note should reference README.md, got: {}",
         note_content
     );
+}
+
+#[test]
+fn test_conflicted_explicit_pull_rebase_discards_force_pushed_upstream_authorship() {
+    let (local, upstream) = TestRepo::new_with_remote();
+
+    let mut conflict_file = local.filename("conflict.txt");
+    conflict_file.set_contents(crate::lines!["base"]);
+    local
+        .stage_all_and_commit("initial")
+        .expect("initial commit");
+    conflict_file.assert_committed_lines(crate::lines!["base".human()]);
+    let branch = local.current_branch();
+    local
+        .git(&["push", "-u", "origin", "HEAD"])
+        .expect("push initial commit");
+
+    // Keep a second checkout at the immutable root so it can force-push a
+    // divergent upstream without moving the local branch under test.
+    let contributor_parent = tempfile::tempdir().expect("contributor temp dir");
+    let contributor_path = contributor_parent.path().join("contributor");
+    local
+        .git_og(&[
+            "clone",
+            upstream.path().to_str().expect("upstream path utf-8"),
+            contributor_path.to_str().expect("contributor path utf-8"),
+        ])
+        .expect("clone contributor");
+    let contributor =
+        TestRepo::new_at_path_with_daemon_scope(&contributor_path, DaemonTestScope::NoDaemon);
+
+    let mut shared_file = local.filename("shared.txt");
+    shared_file.set_contents(crate::lines!["abandoned upstream".ai()]);
+    let attributed_old_upstream = local
+        .stage_all_and_commit("attributed old upstream")
+        .expect("commit attributed old upstream");
+    conflict_file.assert_committed_lines(crate::lines!["base".human()]);
+    shared_file.assert_committed_lines(crate::lines!["abandoned upstream".ai()]);
+    assert!(
+        local
+            .read_authorship_note(&attributed_old_upstream.commit_sha)
+            .is_some(),
+        "old upstream source must carry authorship for the corruption check"
+    );
+
+    // Construct the rest of the abandoned lineage with one fast-import
+    // process. Together with the attributed commit, this puts the prefix over
+    // the bounded 64-commit ambiguity limit without spawning Git per commit.
+    import_empty_commit_chain(
+        &local,
+        &attributed_old_upstream.commit_sha,
+        COMMITS_OVER_UNTRUSTED_LEADING_LIMIT - 1,
+    );
+    local
+        .git(&["reset", "--hard", IMPORTED_OLD_UPSTREAM_REF])
+        .expect("advance to imported old-upstream tip");
+    conflict_file.assert_committed_lines(crate::lines!["base".human()]);
+    shared_file.assert_committed_lines(crate::lines!["abandoned upstream".ai()]);
+    local
+        .git(&["push", "origin", &format!("HEAD:{branch}")])
+        .expect("push old upstream lineage");
+
+    conflict_file.set_contents(crate::lines!["local feature".ai()]);
+    let local_feature = local
+        .stage_all_and_commit("local feature")
+        .expect("commit local feature");
+    conflict_file.assert_committed_lines(crate::lines!["local feature".ai()]);
+    shared_file.assert_committed_lines(crate::lines!["abandoned upstream".ai()]);
+
+    let mut contributor_shared_file = contributor.filename("shared.txt");
+    std::fs::write(
+        contributor.path().join("shared.txt"),
+        "abandoned upstream\n",
+    )
+    .expect("write divergent human upstream file");
+    let mut contributor_conflict_file = contributor.filename("conflict.txt");
+    std::fs::write(contributor.path().join("conflict.txt"), "remote upstream\n")
+        .expect("write divergent conflict");
+    contributor
+        .git_og(&["add", "-A"])
+        .expect("stage contributor");
+    contributor
+        .git_og(&["commit", "-m", "force-pushed upstream"])
+        .expect("commit divergent upstream");
+    contributor_shared_file.assert_committed_lines(crate::lines!["abandoned upstream".human()]);
+    contributor_conflict_file.assert_committed_lines(crate::lines!["remote upstream".human()]);
+    let new_upstream_tip = contributor
+        .git_og(&["rev-parse", "HEAD"])
+        .expect("resolve new upstream tip")
+        .trim()
+        .to_string();
+    contributor
+        .git_og(&["push", "--force", "origin", &format!("HEAD:{branch}")])
+        .expect("force-push divergent upstream");
+
+    let pull_result = local.git(&["pull", "--rebase", "origin", &branch]);
+    assert!(
+        pull_result.is_err(),
+        "explicit pull --rebase must stop for the conflict"
+    );
+
+    std::fs::write(
+        local.path().join("conflict.txt"),
+        "remote upstream\nlocal feature\n",
+    )
+    .expect("resolve pull-rebase conflict");
+    local
+        .git(&["add", "conflict.txt"])
+        .expect("stage resolution");
+    local
+        .git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
+        .expect("complete conflicted pull rebase");
+
+    let rebased_tip = local
+        .git(&["rev-parse", "HEAD"])
+        .expect("resolve rebased tip")
+        .trim()
+        .to_string();
+    assert_ne!(
+        rebased_tip, local_feature.commit_sha,
+        "the local feature must be rewritten"
+    );
+    assert_eq!(
+        local
+            .git(&["rev-list", "--count", &format!("{new_upstream_tip}..HEAD")])
+            .expect("count rebased local commits")
+            .trim(),
+        "1",
+        "Git must replay only the local feature, not the abandoned upstream lineage"
+    );
+
+    let range_diff = local
+        .git(&[
+            "range-diff",
+            "-s",
+            "--creation-factor=100",
+            &format!("{new_upstream_tip}..{}", local_feature.commit_sha),
+            &format!("{new_upstream_tip}..{rebased_tip}"),
+        ])
+        .expect("range-diff pull rebase");
+    assert!(
+        range_diff
+            .lines()
+            .take_while(|line| !line.contains(" = ") && !line.contains(" ! "))
+            .filter(|line| line.contains(" < "))
+            .count()
+            > 64,
+        "the observed pull checkout must expose an unsafe leading prefix\n{range_diff}"
+    );
+
+    let note = local
+        .read_authorship_note(&rebased_tip)
+        .expect("rebased feature should retain its authorship note");
+    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse rebased feature note");
+    assert!(
+        log.attestations
+            .iter()
+            .all(|attestation| attestation.file_path != "shared.txt"),
+        "abandoned upstream authorship must not be copied into the rebased feature note: {:?}",
+        log.attestations
+    );
+
+    shared_file.assert_committed_lines(crate::lines!["abandoned upstream".human()]);
+    conflict_file.assert_committed_lines(crate::lines![
+        "remote upstream".human(),
+        "local feature".human(),
+    ]);
 }
 
 // =============================================================================

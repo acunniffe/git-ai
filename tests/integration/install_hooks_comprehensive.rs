@@ -9,7 +9,29 @@ use git_ai::commands::install_hooks::{
 };
 use std::collections::HashMap;
 use std::fs;
-use std::process::Command;
+use std::process::{Command, Output};
+use std::time::Duration;
+
+fn output_retrying_executable_file_busy(command: &mut Command) -> std::io::Result<Output> {
+    const MAX_ATTEMPTS: usize = 20;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        match command.output() {
+            Err(error)
+                if error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                    && attempt < MAX_ATTEMPTS =>
+            {
+                // Some Linux CI filesystems briefly retain the writer after a
+                // binary copy completes. Retrying the exec avoids making this
+                // packaging test depend on that filesystem timing.
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            result => return result,
+        }
+    }
+
+    unreachable!("the final attempt always returns")
+}
 
 // ==============================================================================
 // InstallStatus Tests
@@ -253,7 +275,8 @@ fn plain_install_hooks_preserves_the_invoking_user_home() {
         .env("APPDATA", invoking_home.join("AppData").join("Roaming"))
         .env("LOCALAPPDATA", invoking_home.join("AppData").join("Local"));
 
-    let output = command.output().expect("run copied git-ai binary");
+    let output =
+        output_retrying_executable_file_busy(&mut command).expect("run copied git-ai binary");
     assert!(
         output.status.success(),
         "plain install-hooks failed: {}",

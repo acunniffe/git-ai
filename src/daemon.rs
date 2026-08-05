@@ -1584,6 +1584,102 @@ fn rebase_is_control_mode(cmd: &crate::daemon::domain::NormalizedCommand) -> boo
     summarize_rebase_args(&cmd.invoked_args).is_control_mode
 }
 
+fn immutable_rebase_old_range_base(
+    cmd: &crate::daemon::domain::NormalizedCommand,
+    original_head: &str,
+    observed_onto: Option<&str>,
+) -> Option<String> {
+    if cmd.primary_command.as_deref() == Some("pull") {
+        // A pull fetches before starting its rebase. The observed checkout is
+        // therefore the newly fetched upstream, while Git may use the
+        // pre-fetch remote-tracking reflog as its fork point. Without that
+        // immutable pre-fetch boundary, the old range must remain untrusted.
+        return None;
+    }
+
+    let summary = summarize_rebase_args(&cmd.invoked_args);
+    if summary.is_control_mode || summary.has_root {
+        return None;
+    }
+    let explicitly_uses_fork_point = cmd.invoked_args.iter().any(|arg| arg == "--fork-point");
+    if explicitly_uses_fork_point {
+        return None;
+    }
+    let explicitly_disables_fork_point =
+        cmd.invoked_args.iter().any(|arg| arg == "--no-fork-point");
+    if summary.positionals.is_empty() && !explicitly_disables_fork_point {
+        // Without an explicit upstream, Git implicitly enables --fork-point.
+        // The actual old boundary may then come from the upstream reflog and
+        // cannot be reconstructed from the observed checkout OID.
+        return None;
+    }
+    if cmd.primary_command.as_deref() == Some("rebase")
+        && let Some(upstream) = summary.positionals.first()
+    {
+        if is_valid_oid(upstream) && !is_zero_oid(upstream) {
+            return Some(upstream.clone());
+        }
+
+        // With no explicit branch argument, HEAD-relative revisions are
+        // anchored to the immutable pre-rebase tip captured from
+        // trace2/reflog data.
+        if summary.positionals.len() == 1
+            && let Some(suffix) = upstream
+                .strip_prefix("HEAD")
+                .or_else(|| upstream.strip_prefix('@'))
+            && is_parent_ancestry_suffix(suffix)
+        {
+            return Some(format!("{original_head}{suffix}"));
+        }
+    }
+
+    // Without an explicit --onto, Git checks out the upstream itself. The
+    // exact checkout OID is already present in the cursor-bounded reflog
+    // changes, so it is safe even when argv used a mutable ref name.
+    if summary.onto_spec.is_none()
+        && let Some(onto) = observed_onto
+        && is_valid_oid(onto)
+        && !is_zero_oid(onto)
+    {
+        return Some(onto.to_string());
+    }
+    None
+}
+
+fn untrusted_rebase_unmatched_commit_policy(
+    cmd: &crate::daemon::domain::NormalizedCommand,
+) -> crate::authorship::rewrite::UnmatchedCommitPolicy {
+    if summarize_rebase_args(&cmd.invoked_args).onto_spec.is_some() {
+        // An explicit --onto can replace a divergent upstream with an
+        // unrelated base. Even a short leading `<` run is not reliable squash
+        // evidence in that shape.
+        crate::authorship::rewrite::UnmatchedCommitPolicy::DiscardLeading
+    } else {
+        // Implicit/explicit fork-point selection lacks an immutable old
+        // boundary, but common interactive rebases can still squash a small
+        // leading group. Preserve only through the historical safety limit.
+        crate::authorship::rewrite::UnmatchedCommitPolicy::PreserveLeadingBounded
+    }
+}
+
+fn is_parent_ancestry_suffix(suffix: &str) -> bool {
+    if suffix.is_empty() {
+        return true;
+    }
+    let bytes = suffix.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if !matches!(bytes[index], b'^' | b'~') {
+            return false;
+        }
+        index += 1;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            index += 1;
+        }
+    }
+    true
+}
+
 fn rebase_onto_from_command(
     cmd: &crate::daemon::domain::NormalizedCommand,
     repository: &Repository,
@@ -2684,6 +2780,14 @@ struct PendingSquashMerge {
 }
 
 #[derive(Debug, Clone)]
+struct PendingRebase {
+    original_head: String,
+    onto: Option<String>,
+    old_range_base: Option<String>,
+    untrusted_unmatched_commit_policy: crate::authorship::rewrite::UnmatchedCommitPolicy,
+}
+
+#[derive(Debug, Clone)]
 struct PendingCherryPickNoCommit {
     source_commits: Vec<String>,
     head: String,
@@ -2731,7 +2835,7 @@ pub struct ActorDaemonCoordinator {
             crate::daemon::git_backend::SystemGitBackend,
         >,
     >,
-    pending_rebase_original_head_by_worktree: Mutex<HashMap<String, (String, Option<String>)>>,
+    pending_rebase_original_head_by_worktree: Mutex<HashMap<String, PendingRebase>>,
     pending_cherry_pick_sources_by_worktree: Mutex<HashMap<String, Vec<String>>>,
     pending_cherry_pick_no_commit_by_worktree: Mutex<HashMap<String, PendingCherryPickNoCommit>>,
     pending_squash_merge_by_worktree: Mutex<HashMap<String, PendingSquashMerge>>,
@@ -5043,6 +5147,8 @@ impl ActorDaemonCoordinator {
         worktree: &Path,
         original_head: String,
         onto: Option<String>,
+        old_range_base: Option<String>,
+        untrusted_unmatched_commit_policy: crate::authorship::rewrite::UnmatchedCommitPolicy,
     ) -> Result<(), GitAiError> {
         let mut map = self
             .pending_rebase_original_head_by_worktree
@@ -5050,7 +5156,15 @@ impl ActorDaemonCoordinator {
             .map_err(|_| {
                 GitAiError::Generic("pending rebase original-head map lock poisoned".to_string())
             })?;
-        map.insert(Self::worktree_state_key(worktree), (original_head, onto));
+        map.insert(
+            Self::worktree_state_key(worktree),
+            PendingRebase {
+                original_head,
+                onto,
+                old_range_base,
+                untrusted_unmatched_commit_policy,
+            },
+        );
         Ok(())
     }
 
@@ -5071,7 +5185,7 @@ impl ActorDaemonCoordinator {
     fn take_pending_rebase_original_head_for_worktree(
         &self,
         worktree: &Path,
-    ) -> Result<Option<(String, Option<String>)>, GitAiError> {
+    ) -> Result<Option<PendingRebase>, GitAiError> {
         let mut map = self
             .pending_rebase_original_head_by_worktree
             .lock()
@@ -5398,14 +5512,19 @@ impl ActorDaemonCoordinator {
                     branch_changes.len(),
                     pending_original_head
                         .as_ref()
-                        .map(|(head, _)| head.as_str())
+                        .map(|pending| pending.original_head.as_str())
                         .unwrap_or("NONE"),
                     cmd.ref_changes.len(),
                 )
             },
         );
 
-        if let Some((original_head, stored_onto)) = pending_original_head
+        if let Some(PendingRebase {
+            original_head,
+            onto: stored_onto,
+            old_range_base,
+            untrusted_unmatched_commit_policy,
+        }) = pending_original_head
             && let Some(new_tip) = rebase_new_tip_from_command(cmd, &original_head)
         {
             if original_head != new_tip && !is_ancestor_commit(&repo, &original_head, &new_tip) {
@@ -5425,6 +5544,8 @@ impl ActorDaemonCoordinator {
                         &new_tip,
                         rebase_onto.as_deref(),
                         crate::authorship::rewrite::RewriteMetricOperation::Rebase,
+                        old_range_base.as_deref(),
+                        untrusted_unmatched_commit_policy,
                     )?;
                 repo.storage.rename_working_log(&original_head, &new_tip)?;
                 let conflict_base = rebase_onto.clone();
@@ -5463,12 +5584,16 @@ impl ActorDaemonCoordinator {
                 onto_hint.clone()
             };
             let outcome = if is_rebase_cmd {
+                let old_range_base =
+                    immutable_rebase_old_range_base(cmd, old_tip, rewrite_onto.as_deref());
                 crate::authorship::rewrite::handle_non_fast_forward_rewrite_with_operation(
                     &repo,
                     old_tip,
                     new_tip,
                     rewrite_onto.as_deref(),
                     crate::authorship::rewrite::RewriteMetricOperation::Rebase,
+                    old_range_base.as_deref(),
+                    untrusted_rebase_unmatched_commit_policy(cmd),
                 )?
             } else if cmd.primary_command.as_deref() == Some("update-ref") {
                 crate::authorship::rewrite::handle_non_fast_forward_rewrite_with_operation(
@@ -5477,6 +5602,8 @@ impl ActorDaemonCoordinator {
                     new_tip,
                     rewrite_onto.as_deref(),
                     crate::authorship::rewrite::RewriteMetricOperation::UpdateRef,
+                    None,
+                    crate::authorship::rewrite::UnmatchedCommitPolicy::PreserveLeadingBounded,
                 )?
             } else {
                 crate::authorship::rewrite::handle_non_fast_forward_rewrite_with_operation(
@@ -5485,6 +5612,8 @@ impl ActorDaemonCoordinator {
                     new_tip,
                     rewrite_onto.as_deref(),
                     crate::authorship::rewrite::RewriteMetricOperation::NonFastForward,
+                    None,
+                    crate::authorship::rewrite::UnmatchedCommitPolicy::PreserveLeadingBounded,
                 )?
             };
             repo.storage.rename_working_log(old_tip, new_tip)?;
@@ -5794,6 +5923,8 @@ impl ActorDaemonCoordinator {
                     );
                     if let Some(old_head) = pending_old_head {
                         let rebase_onto = rebase_start.as_ref().map(|(_, new)| new.clone());
+                        let old_range_base =
+                            immutable_rebase_old_range_base(cmd, &old_head, rebase_onto.as_deref());
                         if std::env::var("GIT_AI_DEBUG_DAEMON_TRACE")
                             .ok()
                             .as_deref()
@@ -5810,6 +5941,8 @@ impl ActorDaemonCoordinator {
                             worktree,
                             old_head,
                             rebase_onto,
+                            old_range_base,
+                            untrusted_rebase_unmatched_commit_policy(cmd),
                         )?;
                     }
                 }
@@ -9480,6 +9613,160 @@ mod tests {
             strict_rebase_original_head_from_command(&cmd, MAIN),
             Some(FEATURE.to_string()),
             "explicit branch rebase must store the target branch tip, not the caller's original HEAD"
+        );
+    }
+
+    #[test]
+    fn rebase_old_range_base_accepts_full_upstream_oid() {
+        const ORIGINAL: &str = "1111111111111111111111111111111111111111";
+        const UPSTREAM: &str = "2222222222222222222222222222222222222222";
+        let cmd = test_rebase_command(&[UPSTREAM], Vec::new());
+
+        assert_eq!(
+            immutable_rebase_old_range_base(&cmd, ORIGINAL, None),
+            Some(UPSTREAM.to_string())
+        );
+    }
+
+    #[test]
+    fn rebase_old_range_base_anchors_head_relative_upstream_to_original_tip() {
+        const ORIGINAL: &str = "1111111111111111111111111111111111111111";
+        let cmd = test_rebase_command(&["HEAD~65^2"], Vec::new());
+
+        assert_eq!(
+            immutable_rebase_old_range_base(&cmd, ORIGINAL, None),
+            Some(format!("{ORIGINAL}~65^2"))
+        );
+    }
+
+    #[test]
+    fn rebase_old_range_base_uses_observed_upstream_for_named_standard_rebase() {
+        const ORIGINAL: &str = "1111111111111111111111111111111111111111";
+        assert_eq!(
+            immutable_rebase_old_range_base(
+                &test_rebase_command(&["main"], Vec::new()),
+                ORIGINAL,
+                Some("2222222222222222222222222222222222222222")
+            ),
+            Some("2222222222222222222222222222222222222222".to_string())
+        );
+    }
+
+    #[test]
+    fn rebase_old_range_base_rejects_mutable_or_ambiguous_upstream_specs() {
+        const ORIGINAL: &str = "1111111111111111111111111111111111111111";
+        assert_eq!(
+            immutable_rebase_old_range_base(
+                &test_rebase_command(&["HEAD~2", "feature"], Vec::new()),
+                ORIGINAL,
+                None
+            ),
+            None,
+            "HEAD is ambiguous when rebase checks out an explicit branch"
+        );
+        assert_eq!(
+            immutable_rebase_old_range_base(
+                &test_rebase_command(&["HEAD@{upstream}"], Vec::new()),
+                ORIGINAL,
+                None
+            ),
+            None
+        );
+        assert_eq!(
+            immutable_rebase_old_range_base(
+                &test_rebase_command(&["--root"], Vec::new()),
+                ORIGINAL,
+                None
+            ),
+            None
+        );
+        assert_eq!(
+            immutable_rebase_old_range_base(
+                &test_rebase_command(&["--onto", "new-base", "old-base"], Vec::new()),
+                ORIGINAL,
+                Some("3333333333333333333333333333333333333333")
+            ),
+            None,
+            "the observed checkout is the new base, not the old range boundary"
+        );
+    }
+
+    #[test]
+    fn rebase_old_range_base_rejects_fork_point_selection() {
+        const ORIGINAL: &str = "1111111111111111111111111111111111111111";
+        const UPSTREAM: &str = "2222222222222222222222222222222222222222";
+        let cmd = test_rebase_command(&["--fork-point", UPSTREAM], Vec::new());
+
+        assert_eq!(
+            immutable_rebase_old_range_base(&cmd, ORIGINAL, Some(UPSTREAM)),
+            None,
+            "fork-point can select a reflog-derived boundary different from upstream"
+        );
+    }
+
+    #[test]
+    fn rebase_old_range_base_rejects_implicit_fork_point_selection() {
+        const ORIGINAL: &str = "1111111111111111111111111111111111111111";
+        const OBSERVED_ONTO: &str = "2222222222222222222222222222222222222222";
+        let cmd = test_rebase_command(&[], Vec::new());
+
+        assert_eq!(
+            immutable_rebase_old_range_base(&cmd, ORIGINAL, Some(OBSERVED_ONTO)),
+            None,
+            "rebase without an upstream implicitly uses fork-point, whose old boundary can differ \
+             from the observed checkout"
+        );
+    }
+
+    #[test]
+    fn rebase_old_range_base_rejects_post_fetch_pull_checkout() {
+        const ORIGINAL: &str = "1111111111111111111111111111111111111111";
+        const FETCHED_UPSTREAM: &str = "2222222222222222222222222222222222222222";
+        let mut cmd = test_rebase_command(&["--rebase", "origin", "main"], Vec::new());
+        cmd.primary_command = Some("pull".to_string());
+        cmd.invoked_command = Some("pull".to_string());
+
+        assert_eq!(
+            immutable_rebase_old_range_base(&cmd, ORIGINAL, Some(FETCHED_UPSTREAM)),
+            None,
+            "pull's observed checkout is post-fetch and cannot identify the old fork point"
+        );
+    }
+
+    #[test]
+    fn untrusted_rebase_policy_bounds_fork_point_but_discards_explicit_onto() {
+        assert_eq!(
+            untrusted_rebase_unmatched_commit_policy(&test_rebase_command(&[], Vec::new())),
+            crate::authorship::rewrite::UnmatchedCommitPolicy::PreserveLeadingBounded,
+            "implicit fork-point rebases should retain small legitimate squash groups"
+        );
+        assert_eq!(
+            untrusted_rebase_unmatched_commit_policy(&test_rebase_command(
+                &["--fork-point", "main"],
+                Vec::new()
+            )),
+            crate::authorship::rewrite::UnmatchedCommitPolicy::PreserveLeadingBounded,
+            "explicit fork-point rebases have the same bounded ambiguity"
+        );
+        assert_eq!(
+            untrusted_rebase_unmatched_commit_policy(&test_rebase_command(
+                &["--onto", "new-base", "old-base"],
+                Vec::new()
+            )),
+            crate::authorship::rewrite::UnmatchedCommitPolicy::DiscardLeading,
+            "explicit --onto can expose a short but unrelated old-upstream prefix"
+        );
+    }
+
+    #[test]
+    fn rebase_old_range_base_accepts_observed_upstream_when_fork_point_is_disabled() {
+        const ORIGINAL: &str = "1111111111111111111111111111111111111111";
+        const OBSERVED_ONTO: &str = "2222222222222222222222222222222222222222";
+        let cmd = test_rebase_command(&["--no-fork-point"], Vec::new());
+
+        assert_eq!(
+            immutable_rebase_old_range_base(&cmd, ORIGINAL, Some(OBSERVED_ONTO)),
+            Some(OBSERVED_ONTO.to_string())
         );
     }
 
