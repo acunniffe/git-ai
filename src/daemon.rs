@@ -5458,12 +5458,24 @@ impl ActorDaemonCoordinator {
             }
             let command_moves_checked_out_history =
                 matches!(cmd.primary_command.as_deref(), Some("rebase" | "pull"));
+            let mut collapsed_head: Option<(&str, &str)> = None;
+            for change in cmd.ref_changes.iter().filter(|change| {
+                change.reference == "HEAD"
+                    && is_valid_oid(&change.old)
+                    && !is_zero_oid(&change.old)
+                    && is_valid_oid(&change.new)
+                    && !is_zero_oid(&change.new)
+            }) {
+                if let Some((_old, new)) = &mut collapsed_head {
+                    *new = &change.new;
+                } else {
+                    collapsed_head = Some((&change.old, &change.new));
+                }
+            }
             for (old_tip, new_tip) in collapsed.values() {
                 let moves_head = command_moves_checked_out_history
-                    || cmd.ref_changes.iter().any(|change| {
-                        change.reference == "HEAD"
-                            && change.old.as_str() == *old_tip
-                            && change.new.as_str() == *new_tip
+                    || collapsed_head.is_some_and(|(head_old, head_new)| {
+                        head_old == *old_tip && head_new == *new_tip
                     });
                 if old_tip != new_tip && moves_head {
                     repo.storage.rename_working_log(old_tip, new_tip)?;

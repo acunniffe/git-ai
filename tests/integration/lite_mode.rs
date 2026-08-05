@@ -1,7 +1,9 @@
 use std::fs;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 use crate::repos::test_file::ExpectedLineExt;
-use crate::repos::test_repo::TestRepo;
+use crate::repos::test_repo::{TestRepo, real_git_executable};
 
 fn lite_repo() -> TestRepo {
     TestRepo::new_with_daemon_env(&[("GIT_AI_LITE_MODE", "true")])
@@ -13,6 +15,54 @@ fn working_log_dir(repo: &TestRepo, commit: &str) -> std::path::PathBuf {
         .join("ai")
         .join("working_logs")
         .join(commit)
+}
+
+fn traced_git_with_stdin(repo: &TestRepo, args: &[&str], stdin: &str) {
+    repo.sync_daemon();
+
+    let mut command = Command::new(real_git_executable());
+    command.arg("-C").arg(repo.path()).args(args);
+    command.env("HOME", repo.test_home_path());
+    command.env(
+        "GIT_CONFIG_GLOBAL",
+        repo.test_home_path().join(".gitconfig"),
+    );
+    command.env("XDG_CONFIG_HOME", repo.test_home_path().join(".config"));
+    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    command.env(
+        "GIT_TRACE2_EVENT",
+        git_ai::daemon::DaemonConfig::trace2_event_target_for_path(
+            &repo.daemon_trace_socket_path(),
+        ),
+    );
+    command.env(
+        "GIT_TRACE2_EVENT_NESTING",
+        std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string()),
+    );
+    command.stdin(Stdio::piped());
+    command.stdout(Stdio::piped());
+    command.stderr(Stdio::piped());
+
+    let mut child = command
+        .spawn()
+        .unwrap_or_else(|error| panic!("failed to run traced git {args:?}: {error}"));
+    child
+        .stdin
+        .take()
+        .expect("stdin should be piped")
+        .write_all(stdin.as_bytes())
+        .expect("write traced git stdin");
+    let output = child
+        .wait_with_output()
+        .unwrap_or_else(|error| panic!("failed to wait for traced git {args:?}: {error}"));
+    assert!(
+        output.status.success(),
+        "traced git {args:?} failed\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+
+    repo.sync_daemon();
 }
 
 #[test]
@@ -94,6 +144,96 @@ fn test_lite_mode_preserves_uncommitted_ai_attribution_through_amend() {
 
     repo.stage_all_and_commit("commit pending work").unwrap();
     pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
+}
+
+#[test]
+fn test_lite_mode_does_not_reapply_amended_attribution_on_the_next_commit() {
+    let repo = lite_repo();
+    let path = repo.path().join("amend-same-file.txt");
+
+    fs::write(&path, "base\n").unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+    let mut file = repo.filename("amend-same-file.txt");
+    file.assert_committed_lines(crate::lines!["base".unattributed_human()]);
+
+    fs::write(&path, "base\namended AI\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "amend-same-file.txt"])
+        .unwrap();
+    repo.git(&["add", "amend-same-file.txt"]).unwrap();
+    repo.git(&["commit", "--amend", "--no-edit"]).unwrap();
+    let amended = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert!(repo.read_authorship_note(&amended).is_none());
+    file.assert_committed_lines(crate::lines![
+        "base".unattributed_human(),
+        "amended AI".unattributed_human(),
+    ]);
+
+    fs::write(&path, "base\namended AI\nlater AI\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "amend-same-file.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("later work").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "base".unattributed_human(),
+        "amended AI".unattributed_human(),
+        "later AI".ai(),
+    ]);
+}
+
+#[test]
+fn test_ci_rewrites_rebase_notes_with_a_lite_mode_daemon() {
+    let repo = lite_repo();
+    let mut base = repo.filename("ci-base.txt");
+    base.set_contents(crate::lines!["base"]);
+    repo.stage_all_and_commit("base").unwrap();
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    repo.git(&["branch", "-M", "main"]).unwrap();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let mut feature = repo.filename("ci-feature.txt");
+    feature.set_contents(crate::lines!["feature AI".ai()]);
+    let original_feature = repo.stage_all_and_commit("feature").unwrap().commit_sha;
+    feature.assert_committed_lines(crate::lines!["feature AI".ai()]);
+
+    repo.git(&["checkout", "main"]).unwrap();
+    let mut main_file = repo.filename("ci-main.txt");
+    main_file.set_contents(crate::lines!["main"]);
+    let base_sha = repo
+        .stage_all_and_commit("advance main")
+        .unwrap()
+        .commit_sha;
+    main_file.assert_committed_lines(crate::lines!["main".human()]);
+
+    repo.git(&["checkout", "feature"]).unwrap();
+    repo.git(&["rebase", "main"]).unwrap();
+    let rebased_feature = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert_ne!(rebased_feature, original_feature);
+    assert!(
+        repo.read_authorship_note(&rebased_feature).is_none(),
+        "the lite daemon must skip automatic note rewriting"
+    );
+
+    let output = repo
+        .git_ai(&[
+            "ci",
+            "local",
+            "sync",
+            "--previous-head-sha",
+            &original_feature,
+            "--base-ref",
+            "main",
+            "--base-sha",
+            &base_sha,
+            "--head-sha",
+            &rebased_feature,
+            "--skip-fetch-notes",
+            "--skip-push",
+        ])
+        .expect("ci local sync should succeed in lite mode");
+    assert!(
+        output.contains("Local CI (sync): authorship rewritten successfully"),
+        "expected explicit CI rewrite, got: {output}"
+    );
+    feature.assert_committed_lines(crate::lines!["feature AI".ai()]);
 }
 
 #[test]
@@ -321,6 +461,58 @@ fn test_lite_mode_moves_working_log_for_checked_out_fast_forward_update_ref() {
     repo.stage_all_and_commit("commit pending work").unwrap();
     base.assert_committed_lines(crate::lines!["base".human()]);
     let mut pending = repo.filename("pending.txt");
+    pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
+}
+
+#[test]
+fn test_lite_mode_moves_working_log_for_multi_step_checked_out_update_ref() {
+    let repo = lite_repo();
+    let base_path = repo.path().join("multi-step-base.txt");
+    fs::write(&base_path, "base\n").unwrap();
+    let old_tip = repo.stage_all_and_commit("base").unwrap().commit_sha;
+    let mut base = repo.filename("multi-step-base.txt");
+    base.assert_committed_lines(crate::lines!["base".human()]);
+
+    let pending_path = repo.path().join("multi-step-pending.txt");
+    fs::write(&pending_path, "pending AI\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "multi-step-pending.txt"])
+        .unwrap();
+    repo.sync_daemon();
+    assert!(working_log_dir(&repo, &old_tip).exists());
+
+    let tree = repo
+        .git(&["rev-parse", &format!("{old_tip}^{{tree}}")])
+        .unwrap()
+        .trim()
+        .to_string();
+    let middle_tip = repo
+        .git(&["commit-tree", &tree, "-p", &old_tip, "-m", "middle"])
+        .unwrap()
+        .trim()
+        .to_string();
+    let new_tip = repo
+        .git(&["commit-tree", &tree, "-p", &middle_tip, "-m", "new tip"])
+        .unwrap()
+        .trim()
+        .to_string();
+    traced_git_with_stdin(
+        &repo,
+        &["update-ref", "--stdin"],
+        &format!(
+            "start\nupdate HEAD {middle_tip} {old_tip}\nprepare\ncommit\n\
+             start\nupdate HEAD {new_tip} {middle_tip}\nprepare\ncommit\n"
+        ),
+    );
+
+    assert_eq!(repo.git(&["rev-parse", "HEAD"]).unwrap().trim(), new_tip);
+    assert!(!working_log_dir(&repo, &old_tip).exists());
+    assert!(working_log_dir(&repo, &new_tip).exists());
+    assert!(repo.read_authorship_note(&new_tip).is_none());
+    base.assert_committed_lines(crate::lines!["base".human()]);
+
+    repo.stage_all_and_commit("commit pending work").unwrap();
+    base.assert_committed_lines(crate::lines!["base".human()]);
+    let mut pending = repo.filename("multi-step-pending.txt");
     pending.assert_committed_lines(crate::lines!["pending AI".ai()]);
 }
 
