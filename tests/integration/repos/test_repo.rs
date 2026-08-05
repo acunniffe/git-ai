@@ -1669,7 +1669,21 @@ impl TestRepo {
         Self::new_with_remote_with_daemon_scope(DaemonTestScope::Shared)
     }
 
+    pub fn new_reftable_with_remote() -> (Self, Self) {
+        Self::new_with_remote_with_daemon_scope_and_ref_format(
+            DaemonTestScope::Shared,
+            Some("reftable"),
+        )
+    }
+
     pub fn new_with_remote_with_daemon_scope(daemon_scope: DaemonTestScope) -> (Self, Self) {
+        Self::new_with_remote_with_daemon_scope_and_ref_format(daemon_scope, None)
+    }
+
+    fn new_with_remote_with_daemon_scope_and_ref_format(
+        daemon_scope: DaemonTestScope,
+        ref_format: Option<&str>,
+    ) -> (Self, Self) {
         let mut rng = rand::rng();
         let base = std::env::temp_dir();
 
@@ -1703,11 +1717,13 @@ impl TestRepo {
         let mirror_test_db_path = resolve_test_db_path(&base, mirror_n, &mirror_test_home);
 
         let mut command = Command::new(real_git_executable());
-        command.args([
-            "clone",
-            upstream_path.to_str().unwrap(),
-            mirror_path.to_str().unwrap(),
-        ]);
+        command.arg("clone");
+        if let Some(ref_format) = ref_format {
+            command.arg(format!("--ref-format={ref_format}"));
+        }
+        command
+            .arg(upstream_path.to_str().unwrap())
+            .arg(mirror_path.to_str().unwrap());
         let clone_output = run_command_output(&mut command, "clone upstream repository")
             .expect("failed to clone upstream repository");
 

@@ -284,14 +284,18 @@ fn reftable_compaction_and_log_expiry_do_not_stale_cached_cursors() {
 
 #[test]
 fn reftable_pull_rebase_preserves_local_ai_commit() {
-    let (repo, _upstream) = TestRepo::new_with_remote();
+    let (repo, _upstream) = TestRepo::new_reftable_with_remote();
+    assert_eq!(
+        repo.git(&["rev-parse", "--show-ref-format"])
+            .unwrap()
+            .trim(),
+        "reftable"
+    );
     let mut file = repo.filename("pull.txt");
     file.set_contents(lines!["Human root", ""]);
     let root = repo.stage_all_and_commit("root").unwrap();
     file.assert_committed_lines(lines!["Human root".human()]);
     repo.git(&["push", "-u", "origin", "main"]).unwrap();
-    repo.git(&["refs", "migrate", "--ref-format=reftable"])
-        .unwrap();
 
     file.insert_at(1, lines!["AI local".ai()]);
     repo.stage_all_and_commit("local AI").unwrap();
