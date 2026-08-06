@@ -10,9 +10,11 @@
 use crate::repos::test_repo::{TestRepo, real_git_executable};
 
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::cell::RefCell;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 const DETERMINISTIC_GIT_NAME: &str = "Graphite Test";
 const DETERMINISTIC_GIT_EMAIL: &str = "graphite-test@example.com";
@@ -304,4 +306,326 @@ pub fn setup_initial_commit(repo: &TestRepo) {
     readme.set_contents(crate::lines!["# Test Repo"]);
     repo.stage_all_and_commit("initial commit")
         .expect("initial commit should succeed");
+}
+
+// ---------------------------------------------------------------------------
+// Remote-backed harness
+// ---------------------------------------------------------------------------
+
+/// The shared GitHub repository the remote Graphite tests run against.
+/// Override with `GRAPHITE_TEST_REPO=owner/name` to point at a different one.
+const DEFAULT_GRAPHITE_TEST_REPO: &str = "jumboblip/aug-6";
+
+/// Branch namespace for everything these tests push, so orphans from a crashed
+/// run are trivially identifiable and sweepable by `cleanup-test-branches.sh`.
+const BRANCH_NAMESPACE: &str = "gtai";
+
+fn graphite_test_repo() -> String {
+    std::env::var("GRAPHITE_TEST_REPO").unwrap_or_else(|_| DEFAULT_GRAPHITE_TEST_REPO.to_string())
+}
+
+static GH_CLI_PRESENT: OnceLock<bool> = OnceLock::new();
+
+/// Whether the `gh` binary exists. Deliberately does NOT check `gh auth status`:
+/// the harness supplies its own `GH_TOKEN`, and the developer's ambient `gh`
+/// login is typically a different account than the one owning the test repo.
+fn is_gh_binary_present() -> bool {
+    *GH_CLI_PRESENT.get_or_init(|| {
+        Command::new("gh")
+            .arg("--version")
+            .output()
+            .is_ok_and(|output| output.status.success())
+    })
+}
+
+/// A `TestRepo` cloned from the shared GitHub test repo, wired for Graphite's
+/// remote commands.
+///
+/// Every instance clones into its own temp directory and namespaces the branches
+/// it creates, so concurrent and repeated runs cannot collide on the remote. The
+/// `Drop` impl closes the PRs it opened and deletes the branches it pushed.
+pub struct GraphiteTestRepo {
+    pub repo: TestRepo,
+    test_repo: String,
+    branch_prefix: String,
+    /// GitHub token used for the tokenized `origin` URL and all `gh` calls.
+    github_token: String,
+    pushed_branches: RefCell<Vec<String>>,
+    opened_prs: RefCell<Vec<String>>,
+}
+
+impl GraphiteTestRepo {
+    /// Clone the shared test repo and authenticate Graphite against it.
+    ///
+    /// Returns `None` when the environment cannot support a remote test. In CI
+    /// a missing prerequisite is a hard failure instead, matching `require_gt!`.
+    pub fn new(test_name: &str) -> Option<Self> {
+        let github_token = check_remote_prerequisites()?;
+        let test_repo = graphite_test_repo();
+
+        let workspace = std::env::temp_dir().join(format!(
+            "git-ai-gt-remote-{}-{}",
+            std::process::id(),
+            git_ai::uuid::generate_v4()
+        ));
+        clone_test_repo(&test_repo, &github_token, &workspace);
+
+        let harness = Self {
+            repo: TestRepo::new_at_path(&workspace),
+            test_repo,
+            branch_prefix: new_branch_prefix(test_name),
+            github_token,
+            pushed_branches: RefCell::new(Vec::new()),
+            opened_prs: RefCell::new(Vec::new()),
+        };
+
+        // Authenticate through the gt() runner so the credential lands in the
+        // per-test XDG_CONFIG_HOME rather than the developer's real gt config.
+        let graphite_token =
+            std::env::var("GRAPHITE_TEST_TOKEN").expect("checked by check_remote_prerequisites");
+        harness
+            .gt(&["auth", "--token", &graphite_token])
+            .expect("gt auth should succeed");
+        harness
+            .gt(&["init", "--trunk", &harness.trunk_branch()])
+            .expect("gt init should succeed");
+
+        Some(harness)
+    }
+
+    /// Namespaced branch name, unique to this test run.
+    pub fn branch(&self, suffix: &str) -> String {
+        format!("{}/{}", self.branch_prefix, suffix)
+    }
+
+    /// Namespaced path inside the repo, so files from concurrent runs never
+    /// collide when their pull requests land on trunk.
+    pub fn scoped_path(&self, filename: &str) -> String {
+        format!("{}/{}", self.branch_prefix, filename)
+    }
+
+    /// Run a `gt` command in this repo. See the free [`gt`] function.
+    pub fn gt(&self, args: &[&str]) -> Result<String, String> {
+        gt(&self.repo, args)
+    }
+
+    /// Push the current stack and open a pull request for each branch in it.
+    pub fn submit(&self) -> Result<String, String> {
+        // `--no-ai` keeps PR titles deterministic and skips a Graphite round-trip.
+        let output = self.gt(&["submit", "--no-edit", "--no-ai", "--publish"])?;
+        self.record_pushed_branches();
+        Ok(output)
+    }
+
+    /// Look up the open pull request for a branch, recording it for cleanup.
+    pub fn pr_number_for_branch(&self, branch: &str) -> Option<String> {
+        let output = self
+            .gh(&[
+                "pr",
+                "list",
+                "--repo",
+                &self.test_repo,
+                "--head",
+                branch,
+                "--json",
+                "number",
+                "--jq",
+                ".[0].number",
+            ])
+            .ok()?;
+
+        let number = output.trim().to_string();
+        if number.is_empty() {
+            return None;
+        }
+
+        let mut opened = self.opened_prs.borrow_mut();
+        if !opened.contains(&number) {
+            opened.push(number.clone());
+        }
+        Some(number)
+    }
+
+    /// The trunk branch of the clone, read from the `origin/HEAD` symref that
+    /// `git clone` writes. Avoids assuming the shared repo's default is `main`.
+    fn trunk_branch(&self) -> String {
+        self.repo
+            .git(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
+            .ok()
+            .and_then(|head| {
+                head.trim()
+                    .strip_prefix("origin/")
+                    .filter(|branch| !branch.is_empty())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| "main".to_string())
+    }
+
+    /// Run a `gh` command against the shared test repo.
+    ///
+    /// `GH_TOKEN` and `GH_CONFIG_DIR` are passed explicitly rather than
+    /// inherited: `TestRepo` calls `ensure_isolated_process_home()`, which
+    /// repoints `HOME` process-wide, so an inherited-env `gh` would look for
+    /// `hosts.yml` in a throwaway home and fail to authenticate.
+    fn gh(&self, args: &[&str]) -> Result<String, String> {
+        let output = Command::new("gh")
+            .args(args)
+            .current_dir(self.repo.path())
+            .env("GH_TOKEN", &self.github_token)
+            .env("GH_CONFIG_DIR", self.repo.test_home_path().join("gh"))
+            .env("GH_PROMPT_DISABLED", "1")
+            .env("NO_COLOR", "1")
+            .output()
+            .map_err(|error| format!("failed to execute gh {args:?}: {error}"))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "gh {args:?} failed:\n{}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    }
+
+    /// Record every namespaced branch that now exists on the remote, so teardown
+    /// deletes the whole stack rather than only the branch that was checked out.
+    fn record_pushed_branches(&self) {
+        let Ok(output) = self.repo.git(&[
+            "for-each-ref",
+            "--format=%(refname:short)",
+            &format!("refs/remotes/origin/{}/*", self.branch_prefix),
+        ]) else {
+            return;
+        };
+
+        let mut pushed = self.pushed_branches.borrow_mut();
+        for line in output.lines() {
+            let Some(branch) = line.trim().strip_prefix("origin/") else {
+                continue;
+            };
+            if !branch.is_empty() && !pushed.iter().any(|existing| existing == branch) {
+                pushed.push(branch.to_string());
+            }
+        }
+    }
+}
+
+impl Drop for GraphiteTestRepo {
+    fn drop(&mut self) {
+        let branches = self.pushed_branches.borrow().clone();
+        let prs = self.opened_prs.borrow().clone();
+
+        if std::env::var("GIT_AI_TEST_NO_CLEANUP").is_ok() {
+            eprintln!(
+                "⚠️  Cleanup disabled — branches under {} left on {}",
+                self.branch_prefix, self.test_repo
+            );
+            if !prs.is_empty() {
+                eprintln!("   Open PRs: {}", prs.join(", "));
+            }
+            return;
+        }
+
+        for pr_number in &prs {
+            if let Err(error) = self.gh(&["pr", "close", pr_number, "--repo", &self.test_repo]) {
+                eprintln!("⚠️  Failed to close PR #{pr_number}: {error}");
+            }
+        }
+
+        if branches.is_empty() {
+            return;
+        }
+
+        // One push deletes every branch — constant-time teardown rather than a
+        // spawn per branch.
+        let refspecs = branches
+            .iter()
+            .map(|branch| format!(":refs/heads/{branch}"))
+            .collect::<Vec<_>>();
+        let mut args = vec!["push", "origin"];
+        args.extend(refspecs.iter().map(String::as_str));
+
+        if let Err(error) = self.repo.git(&args) {
+            eprintln!(
+                "⚠️  Failed to delete remote branches {}: {error}\n   Manual cleanup required on {}",
+                branches.join(", "),
+                self.test_repo
+            );
+        }
+    }
+}
+
+/// Verify everything a remote test needs, returning the GitHub token on success.
+///
+/// Missing prerequisites skip the test locally but fail it in CI, where they
+/// always indicate a misconfigured workflow.
+fn check_remote_prerequisites() -> Option<String> {
+    if find_gt_binary().is_none() {
+        return skip_or_panic("Graphite CLI (`gt`) not found");
+    }
+
+    if !is_gh_binary_present() {
+        return skip_or_panic("GitHub CLI (`gh`) not found");
+    }
+
+    if std::env::var("GRAPHITE_TEST_TOKEN").is_err() {
+        return skip_or_panic("GRAPHITE_TEST_TOKEN is not set");
+    }
+
+    match std::env::var("GRAPHITE_TEST_GH_TOKEN") {
+        Ok(token) if !token.is_empty() => Some(token),
+        _ => skip_or_panic("GRAPHITE_TEST_GH_TOKEN is not set"),
+    }
+}
+
+fn skip_or_panic(reason: &str) -> Option<String> {
+    if std::env::var("CI").is_ok() {
+        panic!("Graphite remote test cannot run in CI: {reason}");
+    }
+    eprintln!("SKIP: {reason} — skipping Graphite remote test");
+    None
+}
+
+/// Clone the shared test repo with a tokenized `origin` URL.
+///
+/// The token has to live in the remote URL: the per-test `HOME` and
+/// `GIT_CONFIG_GLOBAL` are throwaway, so there is no credential helper for
+/// either `git push` or the pushes `gt submit` makes internally.
+fn clone_test_repo(test_repo: &str, token: &str, destination: &Path) {
+    let url = format!("https://x-access-token:{token}@github.com/{test_repo}.git");
+
+    let output = Command::new(real_git_executable())
+        .args(["clone", &url, destination.to_str().unwrap()])
+        // Fail fast on a bad token instead of blocking on a credential prompt,
+        // and ignore any system gitconfig that might rewrite the remote URL.
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .unwrap_or_else(|error| panic!("failed to execute git clone: {error}"));
+
+    assert!(
+        output.status.success(),
+        "failed to clone {test_repo}:\n{}",
+        // Redact the token so a clone failure cannot leak it into test output.
+        String::from_utf8_lossy(&output.stderr).replace(token, "***"),
+    );
+}
+
+fn new_branch_prefix(test_name: &str) -> String {
+    let sanitized = test_name
+        .trim_start_matches("test_")
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>();
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    format!(
+        "{BRANCH_NAMESPACE}/{sanitized}-{}-{timestamp}",
+        std::process::id()
+    )
 }
