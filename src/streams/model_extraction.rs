@@ -272,56 +272,6 @@ fn normalize_model(model: &str) -> Option<String> {
     Some(model.to_string())
 }
 
-/// Extracts the model from VS Code Copilot's `models.json` debug log.
-/// Given a transcript path like `.../transcripts/{session_id}.jsonl`,
-/// derives `.../debug-logs/{session_id}/models.json` and reads the default model.
-pub fn extract_model_from_copilot_models_json(
-    stream_path: &Path,
-) -> Result<Option<String>, StreamError> {
-    let session_id = stream_path
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("");
-    if session_id.is_empty() {
-        return Ok(None);
-    }
-
-    // transcript: .../transcripts/{session_id}.jsonl
-    // models:     .../debug-logs/{session_id}/models.json
-    let transcripts_dir = match stream_path.parent() {
-        Some(p) => p,
-        None => return Ok(None),
-    };
-    let copilot_chat_dir = match transcripts_dir.parent() {
-        Some(p) => p,
-        None => return Ok(None),
-    };
-    let models_path = copilot_chat_dir
-        .join("debug-logs")
-        .join(session_id)
-        .join("models.json");
-
-    let content = match std::fs::read_to_string(&models_path) {
-        Ok(c) => c,
-        Err(_) => return Ok(None),
-    };
-
-    let models: Vec<serde_json::Value> = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return Ok(None),
-    };
-
-    let model = models.iter().find_map(|m| {
-        if m.get("is_chat_default").and_then(|v| v.as_bool()) == Some(true) {
-            m.get("id").and_then(|v| v.as_str()).map(String::from)
-        } else {
-            None
-        }
-    });
-
-    Ok(model)
-}
-
 pub fn extract_model_from_copilot_vscode_transcript(
     stream_path: &Path,
     format: StreamFormat,
@@ -337,7 +287,238 @@ pub fn extract_model_from_copilot_vscode_transcript(
         return Ok(Some(model));
     }
 
-    extract_model_from_copilot_models_json(stream_path)
+    // Deliberately no models.json fallback: its `is_chat_default` entry is the
+    // workspace-wide default model, not the user's per-session selection, so it
+    // mislabels sessions. Better to report no model than a wrong one.
+    Ok(extract_model_from_copilot_chat_sessions(
+        stream_path,
+        chat_session_id,
+    ))
+}
+
+/// Reads the user's selected model for a session from VS Code's own
+/// `workspaceStorage/{hash}/chatSessions/` store. Chat session files record the
+/// picker selection (`inputState.selectedModel.identifier`) and per-request
+/// `modelId`s; requests are matched to the transcript session via the
+/// `sessionId` their results reference.
+fn extract_model_from_copilot_chat_sessions(
+    stream_path: &Path,
+    chat_session_id: &str,
+) -> Option<String> {
+    if chat_session_id.is_empty() {
+        return None;
+    }
+
+    let chat_sessions_dir = copilot_chat_sessions_dir(stream_path)?;
+    let entries = std::fs::read_dir(chat_sessions_dir).ok()?;
+    let mut candidates = CopilotModelCandidates::default();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let ext = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if ext != "json" && ext != "jsonl" {
+            continue;
+        }
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(_) => continue,
+        };
+
+        if !content.contains(chat_session_id) {
+            continue;
+        }
+
+        collect_model_candidates_from_chat_session_content(
+            &content,
+            chat_session_id,
+            &mut candidates,
+        );
+
+        if candidates.request_non_auto_model_id.is_some() {
+            break;
+        }
+    }
+
+    candidates.best()
+}
+
+// transcript:     .../workspaceStorage/{hash}/GitHub.copilot-chat/transcripts/{id}.jsonl
+// chat sessions:  .../workspaceStorage/{hash}/chatSessions/
+fn copilot_chat_sessions_dir(stream_path: &Path) -> Option<PathBuf> {
+    let transcripts_dir = stream_path.parent()?;
+    if !dir_name_matches(transcripts_dir, "transcripts") {
+        return None;
+    }
+
+    let copilot_dir = transcripts_dir.parent()?;
+    if !dir_name_matches(copilot_dir, "github.copilot-chat") {
+        return None;
+    }
+
+    let chat_sessions_dir = copilot_dir.parent()?.join("chatSessions");
+    chat_sessions_dir.is_dir().then_some(chat_sessions_dir)
+}
+
+fn dir_name_matches(dir: &Path, expected: &str) -> bool {
+    dir.file_name()
+        .and_then(|v| v.to_str())
+        .map(|name| name.eq_ignore_ascii_case(expected))
+        .unwrap_or(false)
+}
+
+#[derive(Default)]
+struct CopilotModelCandidates {
+    request_non_auto_model_id: Option<String>,
+    request_model_id: Option<String>,
+    session_non_auto_model_id: Option<String>,
+    session_model_id: Option<String>,
+}
+
+impl CopilotModelCandidates {
+    fn best(self) -> Option<String> {
+        self.request_non_auto_model_id
+            .or(self.request_model_id)
+            .or(self.session_non_auto_model_id)
+            .or(self.session_model_id)
+    }
+}
+
+fn collect_model_candidates_from_chat_session_content(
+    content: &str,
+    chat_session_id: &str,
+    candidates: &mut CopilotModelCandidates,
+) {
+    // Chat session files are either a single JSON document or JSONL where kind 0
+    // carries the session object and kind 2 carries request batches.
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(content) {
+        collect_model_candidates_from_session_object(&parsed, chat_session_id, candidates);
+        return;
+    }
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let parsed_line: serde_json::Value = match serde_json::from_str(trimmed) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        match parsed_line.get("kind").and_then(|v| v.as_u64()) {
+            Some(0) => {
+                if let Some(session_obj) = parsed_line.get("v") {
+                    collect_model_candidates_from_session_object(
+                        session_obj,
+                        chat_session_id,
+                        candidates,
+                    );
+                }
+            }
+            Some(2) => {
+                if let Some(requests) = parsed_line.get("v").and_then(|v| v.as_array()) {
+                    for request in requests {
+                        collect_model_candidates_from_request(request, chat_session_id, candidates);
+                    }
+                }
+            }
+            _ => {
+                collect_model_candidates_from_session_object(
+                    &parsed_line,
+                    chat_session_id,
+                    candidates,
+                );
+            }
+        }
+    }
+}
+
+fn collect_model_candidates_from_session_object(
+    session_obj: &serde_json::Value,
+    chat_session_id: &str,
+    candidates: &mut CopilotModelCandidates,
+) {
+    if let Some(selected_model) = session_obj
+        .get("inputState")
+        .and_then(|v| v.get("selectedModel"))
+        .and_then(|v| v.get("identifier"))
+        .and_then(|v| v.as_str())
+    {
+        record_model_candidate(
+            selected_model,
+            &mut candidates.session_model_id,
+            &mut candidates.session_non_auto_model_id,
+        );
+    }
+
+    if let Some(requests) = session_obj.get("requests").and_then(|v| v.as_array()) {
+        for request in requests {
+            collect_model_candidates_from_request(request, chat_session_id, candidates);
+        }
+    }
+}
+
+fn collect_model_candidates_from_request(
+    request: &serde_json::Value,
+    chat_session_id: &str,
+    candidates: &mut CopilotModelCandidates,
+) {
+    if !request_matches_transcript_session(request, chat_session_id) {
+        return;
+    }
+
+    if let Some(model_id) = request.get("modelId").and_then(|v| v.as_str()) {
+        record_model_candidate(
+            model_id,
+            &mut candidates.request_model_id,
+            &mut candidates.request_non_auto_model_id,
+        );
+    }
+}
+
+fn request_matches_transcript_session(request: &serde_json::Value, chat_session_id: &str) -> bool {
+    [
+        request.get("result").and_then(|v| v.get("metadata")),
+        request.get("result"),
+        Some(request),
+    ]
+    .iter()
+    .flatten()
+    .any(|obj| {
+        obj.get("sessionId")
+            .and_then(|v| v.as_str())
+            .map(|session_id| session_id == chat_session_id)
+            .unwrap_or(false)
+    })
+}
+
+fn record_model_candidate(
+    model_id: &str,
+    slot: &mut Option<String>,
+    non_auto_slot: &mut Option<String>,
+) {
+    let model = model_id.trim();
+    if model.is_empty() {
+        return;
+    }
+
+    if slot.is_none() {
+        *slot = Some(model.to_string());
+    }
+
+    if !model.eq_ignore_ascii_case("copilot/auto") && non_auto_slot.is_none() {
+        *non_auto_slot = Some(model.to_string());
+    }
 }
 
 pub fn extract_model_from_copilot_otel_for_transcript(
@@ -580,9 +761,8 @@ mod tests {
     fn create_copilot_vscode_workspace() -> (tempfile::TempDir, PathBuf, PathBuf) {
         let dir = tempfile::tempdir().unwrap();
         let user_dir = dir.path().join("User");
-        let transcript_path = user_dir
-            .join("workspaceStorage")
-            .join("workspace-1")
+        let workspace_dir = user_dir.join("workspaceStorage").join("workspace-1");
+        let transcript_path = workspace_dir
             .join("GitHub.copilot-chat")
             .join("transcripts")
             .join("session-abc.jsonl");
@@ -593,9 +773,9 @@ mod tests {
         )
         .unwrap();
 
-        let models_path = user_dir
-            .join("workspaceStorage")
-            .join("workspace-1")
+        // The chat default in models.json is workspace-wide, not session-specific;
+        // it must never be reported as the session's model.
+        let models_path = workspace_dir
             .join("GitHub.copilot-chat")
             .join("debug-logs")
             .join("session-abc")
@@ -616,6 +796,19 @@ mod tests {
             .join("agent-traces.db");
 
         (dir, transcript_path, otel_db_path)
+    }
+
+    fn write_chat_session_file(transcript_path: &Path, name: &str, content: &str) {
+        let chat_sessions_dir = transcript_path
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("chatSessions");
+        std::fs::create_dir_all(&chat_sessions_dir).unwrap();
+        std::fs::write(chat_sessions_dir.join(name), content).unwrap();
     }
 
     #[test]
@@ -1006,22 +1199,6 @@ model = "profile-only-model"
     }
 
     #[test]
-    fn test_extract_model_copilot_vscode_models_json() {
-        let path = fixture_path(
-            "copilot_vscode_workspace/GitHub.copilot-chat/transcripts/test-session-abc.jsonl",
-        );
-        let result = extract_model_from_copilot_models_json(&path).unwrap();
-        assert_eq!(result, Some("gpt-4.1".to_string()));
-    }
-
-    #[test]
-    fn test_extract_model_copilot_vscode_models_json_missing() {
-        let path = PathBuf::from("/nonexistent/transcripts/fake-session.jsonl");
-        let result = extract_model_from_copilot_models_json(&path).unwrap();
-        assert_eq!(result, None);
-    }
-
-    #[test]
     fn test_extract_model_copilot_otel_newest_request_model_wins() {
         let dir = tempfile::tempdir().unwrap();
         let db_path = dir.path().join("agent-traces.db");
@@ -1102,7 +1279,7 @@ model = "profile-only-model"
     }
 
     #[test]
-    fn test_extract_model_copilot_vscode_transcript_prefers_otel_over_models_json() {
+    fn test_extract_model_copilot_vscode_transcript_prefers_otel_over_chat_sessions() {
         let (_dir, transcript_path, otel_db_path) = create_copilot_vscode_workspace();
         let conn = create_copilot_otel_db(&otel_db_path);
         insert_copilot_otel_model(
@@ -1114,6 +1291,11 @@ model = "profile-only-model"
             1000.0,
         );
         drop(conn);
+        write_chat_session_file(
+            &transcript_path,
+            "chat-1.json",
+            r#"{"sessionId":"chat-1","inputState":{"selectedModel":{"identifier":"copilot/gpt-4o"}},"requests":[{"result":{"metadata":{"sessionId":"session-abc"}}}]}"#,
+        );
 
         let result = extract_model_from_copilot_vscode_transcript(
             &transcript_path,
@@ -1125,7 +1307,25 @@ model = "profile-only-model"
     }
 
     #[test]
-    fn test_extract_model_copilot_vscode_transcript_falls_back_to_models_json() {
+    fn test_extract_model_copilot_vscode_transcript_falls_back_to_chat_sessions() {
+        let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
+        write_chat_session_file(
+            &transcript_path,
+            "chat-1.json",
+            r#"{"sessionId":"chat-1","inputState":{"selectedModel":{"identifier":"copilot/claude-sonnet-5"}},"requests":[{"result":{"metadata":{"sessionId":"session-abc"}}}]}"#,
+        );
+
+        let result = extract_model_from_copilot_vscode_transcript(
+            &transcript_path,
+            StreamFormat::CopilotEventStreamJsonl,
+            "session-abc",
+        )
+        .unwrap();
+        assert_eq!(result, Some("copilot/claude-sonnet-5".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_copilot_vscode_transcript_never_uses_models_json_default() {
         let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
 
         let result = extract_model_from_copilot_vscode_transcript(
@@ -1134,7 +1334,48 @@ model = "profile-only-model"
             "session-abc",
         )
         .unwrap();
-        assert_eq!(result, Some("gpt-4.1".to_string()));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_model_copilot_chat_sessions_prefers_request_model_over_selected() {
+        let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
+        write_chat_session_file(
+            &transcript_path,
+            "chat-1.jsonl",
+            concat!(
+                r#"{"kind":0,"v":{"sessionId":"chat-1","inputState":{"selectedModel":{"identifier":"copilot/auto"}},"requests":[]}}"#,
+                "\n",
+                r#"{"kind":2,"k":["requests"],"v":[{"requestId":"r1","modelId":"copilot/gpt-4o","result":{"metadata":{"sessionId":"session-abc"}}}]}"#,
+                "\n",
+            ),
+        );
+
+        let result = extract_model_from_copilot_vscode_transcript(
+            &transcript_path,
+            StreamFormat::CopilotEventStreamJsonl,
+            "session-abc",
+        )
+        .unwrap();
+        assert_eq!(result, Some("copilot/gpt-4o".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_copilot_chat_sessions_ignores_other_sessions() {
+        let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
+        write_chat_session_file(
+            &transcript_path,
+            "chat-1.json",
+            r#"{"sessionId":"chat-1","inputState":{"selectedModel":{"identifier":"copilot/gpt-4o"}},"requests":[{"result":{"metadata":{"sessionId":"session-other"}}}]}"#,
+        );
+
+        let result = extract_model_from_copilot_vscode_transcript(
+            &transcript_path,
+            StreamFormat::CopilotEventStreamJsonl,
+            "session-abc",
+        )
+        .unwrap();
+        assert_eq!(result, None);
     }
 
     #[test]

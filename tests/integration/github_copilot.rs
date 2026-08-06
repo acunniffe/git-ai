@@ -666,6 +666,19 @@ fn setup_vscode_model_lookup_workspace(chat_session_fixture: &str) -> (tempfile:
     )
     .unwrap();
 
+    // A models.json chat default must never be used as the session's model: it is the
+    // workspace-wide default, not what the user selected for this session.
+    let models_dir = workspace_storage
+        .join("GitHub.copilot-chat")
+        .join("debug-logs")
+        .join(VS_CODE_LOOKUP_SESSION_ID);
+    fs::create_dir_all(&models_dir).unwrap();
+    fs::write(
+        models_dir.join("models.json"),
+        r#"[{"id":"gpt-5.3-codex","is_chat_default":true}]"#,
+    )
+    .unwrap();
+
     let fixture_p = fixture_path(chat_session_fixture);
     let ext = fixture_p
         .extension()
@@ -698,8 +711,7 @@ fn test_copilot_preset_vscode_model_uses_auto_model_id_when_present() {
     let events = parse_copilot(&vscode_post_tool_use_hook_input(&transcript_path))
         .expect("Expected AI checkpoint");
     match &events[0] {
-        // Model is lazily resolved from transcript, so at parse time it's "unknown"
-        ParsedHookEvent::PostFileEdit(e) => assert_eq!(e.context.agent_id.model, "unknown"),
+        ParsedHookEvent::PostFileEdit(e) => assert_eq!(e.context.agent_id.model, "copilot/auto"),
         _ => panic!("Expected PostFileEdit"),
     }
 }
@@ -713,8 +725,7 @@ fn test_copilot_preset_vscode_model_prefers_non_auto_model_id_from_chat_sessions
     let events = parse_copilot(&vscode_post_tool_use_hook_input(&transcript_path))
         .expect("Expected AI checkpoint");
     match &events[0] {
-        // Model is lazily resolved from transcript, so at parse time it's "unknown"
-        ParsedHookEvent::PostFileEdit(e) => assert_eq!(e.context.agent_id.model, "unknown"),
+        ParsedHookEvent::PostFileEdit(e) => assert_eq!(e.context.agent_id.model, "copilot/gpt-4o"),
         _ => panic!("Expected PostFileEdit"),
     }
 }
@@ -728,9 +739,8 @@ fn test_copilot_preset_vscode_model_falls_back_to_selected_model_id() {
     let events = parse_copilot(&vscode_post_tool_use_hook_input(&transcript_path))
         .expect("Expected AI checkpoint");
     match &events[0] {
-        // Model is lazily resolved from transcript, so at parse time it's "unknown"
         ParsedHookEvent::PostFileEdit(e) => {
-            assert_eq!(e.context.agent_id.model, "unknown")
+            assert_eq!(e.context.agent_id.model, "copilot/claude-sonnet-4")
         }
         _ => panic!("Expected PostFileEdit"),
     }
@@ -745,9 +755,8 @@ fn test_copilot_preset_vscode_model_lookup_supports_json_chat_session_file() {
     let events = parse_copilot(&vscode_post_tool_use_hook_input(&transcript_path))
         .expect("Expected AI checkpoint");
     match &events[0] {
-        // Model is lazily resolved from transcript, so at parse time it's "unknown"
         ParsedHookEvent::PostFileEdit(e) => {
-            assert_eq!(e.context.agent_id.model, "unknown")
+            assert_eq!(e.context.agent_id.model, "copilot/gpt-4o-mini")
         }
         _ => panic!("Expected PostFileEdit"),
     }
@@ -762,6 +771,8 @@ fn test_copilot_preset_vscode_does_not_use_details_as_model_fallback() {
     let events = parse_copilot(&vscode_post_tool_use_hook_input(&transcript_path))
         .expect("Expected AI checkpoint");
     match &events[0] {
+        // Neither the human-readable result details nor the models.json chat default may be
+        // used as a model source; an unresolvable model must stay "unknown".
         ParsedHookEvent::PostFileEdit(e) => assert_eq!(e.context.agent_id.model, "unknown"),
         _ => panic!("Expected PostFileEdit"),
     }
