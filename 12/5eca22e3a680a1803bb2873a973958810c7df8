@@ -1,0 +1,33 @@
+src/commands/checkpoint_agent/presets/droid.rs
+  s_09f076df97d063::t_1edcd1379536a5 309-363
+  s_09f076df97d063::t_0820c6e57c28b3 20-28,119
+tests/integration/bash_tool_conformance.rs
+  s_09f076df97d063::t_1edcd1379536a5 612
+  s_09f076df97d063::t_fa8f4a2ece4eb6 625,630,632
+  s_09f076df97d063::t_157ebf1a8050c8 621-624,626-629
+tests/integration/droid.rs
+  s_09f076df97d063::t_45b311bed0cf18 151,192
+src/commands/checkpoint_agent/bash_tool.rs
+  s_09f076df97d063::t_0820c6e57c28b3 333,1521
+  s_09f076df97d063::t_2d883d43aacdd8 337-340,1525-1528,1530-1533
+  s_09f076df97d063::t_fa8f4a2ece4eb6 1529,1534,1536
+src/commands/checkpoint_agent/presets/amp.rs
+  s_09f076df97d063::t_2d883d43aacdd8 252,255-264
+  s_09f076df97d063::t_157ebf1a8050c8 473-534
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.17",
+  "base_commit_sha": "125eca22e3a680a1803bb2873a973958810c7df8",
+  "prompts": {},
+  "sessions": {
+    "s_09f076df97d063": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faea0-e65d-7581-8a55-5888c002af02",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
