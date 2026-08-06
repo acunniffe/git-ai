@@ -169,6 +169,44 @@ impl RefCursor {
         }
     }
 
+    pub(super) fn find_head_entry_in_command_window(
+        &mut self,
+        cmd: &NormalizedCommand,
+        message_prefixes: &[&str],
+        expected: ExpectedTransition,
+    ) -> Result<Option<CursorEntry>, GitAiError> {
+        let Some(worktree) = cmd.worktree.as_deref() else {
+            return Ok(None);
+        };
+        let Some(git_dir) = git_dir_for_worktree(worktree) else {
+            return Ok(None);
+        };
+        let key = head_key(&git_dir);
+        let path = git_dir.join("logs").join("HEAD");
+        let start = self.reflog_start_offset(&key, &path)?;
+        let command_window = reflog_timestamp_window(cmd);
+        let candidates = read_reflog_entries(key.clone(), &path, "HEAD", start)?
+            .into_iter()
+            .filter(|entry| {
+                !self.entry_consumed(entry)
+                    && expected.matches(entry)
+                    && message_matches(&entry.message, message_prefixes)
+                    && entry
+                        .timestamp_secs
+                        .is_some_and(|timestamp| command_window.contains(timestamp))
+            })
+            .collect::<Vec<_>>();
+
+        if self.command_start_hints.contains_key(&key) {
+            return Ok(self.select_candidate_with_hint(&key, candidates));
+        }
+
+        Ok(match candidates.as_slice() {
+            [entry] => Some(entry.clone()),
+            _ => None,
+        })
+    }
+
     /// Choose among reflog entries that match a command's expected transition,
     /// biased by the soft command-start hint (the daemon-ingress reflog offset).
     ///

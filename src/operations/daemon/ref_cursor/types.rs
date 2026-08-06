@@ -143,6 +143,11 @@ impl ExpectedTransition {
         self
     }
 
+    pub(super) fn without_reflog_message_constraint(mut self) -> Self {
+        self.messages.clear();
+        self
+    }
+
     pub(super) fn without_old_oid_constraint(mut self) -> Self {
         self.old_oids.clear();
         self

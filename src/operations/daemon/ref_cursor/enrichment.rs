@@ -337,7 +337,37 @@ impl RefCursor {
             .head_expected_transition(cmd, state)
             .without_old_oid_constraint()
             .with_reflog_messages(commit_reflog_messages(&args, amend));
-        self.consume_head_transition_for_command(cmd, state, prefixes, expected)
+        let Some(entry) = self.find_commit_head_entry(cmd, prefixes, expected)? else {
+            return Ok(());
+        };
+
+        self.consume_head_entry_for_command(cmd, entry)
+    }
+
+    fn find_commit_head_entry(
+        &mut self,
+        cmd: &NormalizedCommand,
+        message_prefixes: &[&str],
+        expected: ExpectedTransition,
+    ) -> Result<Option<CursorEntry>, GitAiError> {
+        // Keep the argv-derived subject as the normal path. A commit-msg hook
+        // can rewrite that subject before Git records it in the reflog, so only
+        // an exact-match miss may use the bounded command-window fallback.
+        if let Some(entry) =
+            self.find_head_entry(cmd.worktree.as_deref(), message_prefixes, expected.clone())?
+        {
+            return Ok(Some(entry));
+        }
+
+        if expected.messages.is_empty() {
+            return Ok(None);
+        }
+
+        self.find_head_entry_in_command_window(
+            cmd,
+            message_prefixes,
+            expected.without_reflog_message_constraint(),
+        )
     }
 
     pub(super) fn consume_head_entry_for_command(

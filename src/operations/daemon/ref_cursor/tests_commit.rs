@@ -412,3 +412,103 @@ fn commit_reflog_boundary_skips_untraced_duplicate_message() {
         }]
     );
 }
+
+#[test]
+fn eng_216_commit_reflog_subject_rewrite_falls_back_to_hinted_entry() {
+    let temp = tempfile::tempdir().unwrap();
+    let worktree = temp.path().join("repo");
+    let git_dir = worktree.join(".git");
+    let head_log = git_dir.join("logs/HEAD");
+    fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
+
+    let base_line = format!("{A} {B} Test User <test@example.com> 0 +0000\tcommit: traced base\n");
+    let untraced_line = format!("{B} {C} Test User <test@example.com> 0 +0000\tcommit: untraced\n");
+    let hooked_line =
+        format!("{C} {D} Test User <test@example.com> 0 +0000\tcommit: hooked: raw subject\n");
+    let in_order_offset = base_line.len() as u64;
+    let hint_offset = (base_line.len() + untraced_line.len()) as u64;
+    fs::write(
+        &head_log,
+        format!("{base_line}{untraced_line}{hooked_line}"),
+    )
+    .unwrap();
+
+    let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+    let mut state = family_state(&family);
+    state.refs.insert("HEAD".to_string(), B.to_string());
+    let mut cursor = RefCursor::new(family.clone());
+    cursor
+        .initialize_reflog_cursor(&head_key(&git_dir), in_order_offset)
+        .unwrap();
+
+    let mut cmd = command_with_worktree(&family, Some(worktree), &["commit", "-m", "raw subject"]);
+    cmd.reflog_start_offsets
+        .insert(head_key(&git_dir), hint_offset);
+
+    cursor.enrich_command(&mut cmd, &state).unwrap();
+
+    assert_eq!(
+        cmd.ref_changes,
+        vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: C.to_string(),
+            new: D.to_string(),
+        }],
+        "commit-msg hooks may rewrite the final subject used by Git's reflog"
+    );
+}
+
+#[test]
+fn eng_216_commit_reflog_subject_rewrite_fallback_does_not_guess_without_hint() {
+    let temp = tempfile::tempdir().unwrap();
+    let worktree = temp.path().join("repo");
+    let git_dir = worktree.join(".git");
+    append_reflog(
+        &git_dir,
+        "HEAD",
+        &[
+            (A, B, "commit: untraced"),
+            (B, C, "commit: hooked: raw subject"),
+        ],
+    );
+
+    let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+    let state = family_state(&family);
+    let mut cursor = RefCursor::new(family.clone());
+    let mut cmd = command_with_worktree(&family, Some(worktree), &["commit", "-m", "raw subject"]);
+
+    cursor.enrich_command(&mut cmd, &state).unwrap();
+
+    assert!(
+        cmd.ref_changes.is_empty(),
+        "multiple commit entries without a command-start hint remain ambiguous"
+    );
+}
+
+#[test]
+fn eng_216_commit_reflog_subject_rewrite_fallback_stays_in_command_time_window() {
+    let temp = tempfile::tempdir().unwrap();
+    let worktree = temp.path().join("repo");
+    let git_dir = worktree.join(".git");
+    let head_log = git_dir.join("logs/HEAD");
+    fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+    crate::operations::git::test_utils::seed_valid_git_dir(&git_dir);
+    fs::write(
+        &head_log,
+        format!("{A} {B} Test User <test@example.com> 10 +0000\tcommit: hooked: raw subject\n"),
+    )
+    .unwrap();
+
+    let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+    let state = family_state(&family);
+    let mut cursor = RefCursor::new(family.clone());
+    let mut cmd = command_with_worktree(&family, Some(worktree), &["commit", "-m", "raw subject"]);
+
+    cursor.enrich_command(&mut cmd, &state).unwrap();
+
+    assert!(
+        cmd.ref_changes.is_empty(),
+        "subject-rewrite fallback must reject entries outside the command's timestamp window"
+    );
+}
