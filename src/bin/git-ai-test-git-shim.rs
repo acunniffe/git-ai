@@ -97,6 +97,36 @@ fn argv_with_test_sync_session(argv: &[String], test_sync_session: &str) -> Vec<
     out
 }
 
+fn argv_with_simulated_legacy_range_diff_abbreviation(argv: &[String]) -> Vec<String> {
+    if env::var("GIT_AI_TEST_GIT_SHIM_ABBREVIATE_RANGE_DIFF").as_deref() != Ok("1") {
+        return argv.to_vec();
+    }
+
+    let Some(range_diff_index) = argv.iter().position(|arg| arg == "range-diff") else {
+        return argv.to_vec();
+    };
+    let has_core_abbrev_override = argv[..range_diff_index]
+        .windows(2)
+        .any(|args| args[0] == "-c" && args[1] == "core.abbrev=no")
+        || argv[..range_diff_index]
+            .iter()
+            .any(|arg| arg == "-ccore.abbrev=no");
+
+    if has_core_abbrev_override {
+        return argv.to_vec();
+    }
+
+    argv.iter()
+        .map(|arg| {
+            if arg == "--no-abbrev" {
+                "--abbrev=8".to_string()
+            } else {
+                arg.clone()
+            }
+        })
+        .collect()
+}
+
 #[cfg(unix)]
 fn exec_target(target: &str, argv: &[String]) -> ! {
     let mut command = Command::new(target);
@@ -145,6 +175,7 @@ fn main() {
             panic!("git-ai-test-git-shim failed: {error}");
         }
     }
+    effective_argv = argv_with_simulated_legacy_range_diff_abbreviation(&effective_argv);
     exec_target(&target, &effective_argv);
 }
 
@@ -170,5 +201,6 @@ fn main() {
             panic!("git-ai-test-git-shim failed: {error}");
         }
     }
+    effective_argv = argv_with_simulated_legacy_range_diff_abbreviation(&effective_argv);
     exec_target(&target, &effective_argv)
 }

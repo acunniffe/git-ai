@@ -235,7 +235,7 @@ If squash detected: return `vec![(old_tip, new_tip)]` immediately (skip range-di
 ### range-diff invocation
 
 ```bash
-git range-diff --no-color --no-abbrev -s --creation-factor=100 <base>..<old_tip> <base>..<new_tip>
+git -c core.abbrev=no range-diff --no-color --no-abbrev -s --creation-factor=100 <base>..<old_tip> <base>..<new_tip>
 ```
 
 - Two-range form is mandatory (three-dot syntax includes upstream noise)
