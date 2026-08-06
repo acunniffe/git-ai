@@ -312,6 +312,38 @@ fn find_repository_in_path_supports_bare_repositories() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn find_repository_in_path_does_not_read_locked_git_config() {
+    use std::fs::OpenOptions;
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let repo = TestRepo::new_with_daemon_scope(crate::repos::test_repo::DaemonTestScope::NoDaemon);
+    let _config_lock = OpenOptions::new()
+        .read(true)
+        .share_mode(0)
+        .open(repo.path().join(".git").join("config"))
+        .expect("lock repository config");
+    let probe_error = repo
+        .git_og(&["rev-parse", "--show-toplevel"])
+        .expect_err("exclusive config lock should reproduce the Git read failure");
+    assert!(
+        probe_error.contains("Permission denied"),
+        "expected config lock failure, got: {probe_error}"
+    );
+
+    let discovered = find_repository_in_path(repo.path().to_str().unwrap())
+        .expect("repository discovery should not read config");
+    assert_eq!(
+        discovered
+            .workdir()
+            .expect("repository workdir")
+            .canonicalize()
+            .expect("canonical discovered workdir"),
+        repo.path().canonicalize().expect("canonical test repo")
+    );
+}
+
 #[test]
 fn find_repository_in_path_bare_repo_can_read_head_gitattributes() {
     let temp = tempfile::tempdir().expect("tempdir");
