@@ -10,7 +10,6 @@
 use crate::repos::test_repo::{TestRepo, real_git_executable};
 
 use serde::Deserialize;
-use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
@@ -341,61 +340,95 @@ fn is_gh_binary_present() -> bool {
 /// A `TestRepo` cloned from the shared GitHub test repo, wired for Graphite's
 /// remote commands.
 ///
-/// Every instance clones into its own temp directory and namespaces the branches
-/// it creates, so concurrent and repeated runs cannot collide on the remote. The
-/// `Drop` impl closes the PRs it opened and deletes the branches it pushed.
+/// Every test clones into its own temp directory and namespaces everything it
+/// pushes — including its own trunk — under `gtai/<test>-<pid>-<timestamp>/`, so
+/// concurrent runs cannot collide on the remote and the shared repo's real
+/// default branch is never written to.
+///
+/// A test can add more clones of the same repo with [`GraphiteTestRepo::peer`],
+/// which share the namespace. Only the clone that created the namespace tears it
+/// down; teardown enumerates the remote directly, so branches pushed by any clone
+/// are swept.
 pub struct GraphiteTestRepo {
     pub repo: TestRepo,
     test_repo: String,
     branch_prefix: String,
+    /// Per-test trunk, so tests can advance trunk without racing each other.
+    trunk: String,
     /// GitHub token used for the tokenized `origin` URL and all `gh` calls.
     github_token: String,
-    pushed_branches: RefCell<Vec<String>>,
-    opened_prs: RefCell<Vec<String>>,
+    /// False for peer clones: cleaning up from every clone would double-delete.
+    owns_cleanup: bool,
 }
 
 impl GraphiteTestRepo {
-    /// Clone the shared test repo and authenticate Graphite against it.
+    /// Clone the shared test repo, authenticate Graphite, and branch a per-test
+    /// trunk off the repo's default branch.
     ///
     /// Returns `None` when the environment cannot support a remote test. In CI
     /// a missing prerequisite is a hard failure instead, matching `require_gt!`.
     pub fn new(test_name: &str) -> Option<Self> {
         let github_token = check_remote_prerequisites()?;
         let test_repo = graphite_test_repo();
+        let repo = clone_and_authenticate(&test_repo, &github_token);
 
-        let workspace = std::env::temp_dir().join(format!(
-            "git-ai-gt-remote-{}-{}",
-            std::process::id(),
-            git_ai::uuid::generate_v4()
-        ));
-        clone_test_repo(&test_repo, &github_token, &workspace);
+        let branch_prefix = new_branch_prefix(test_name);
+        let trunk = format!("{branch_prefix}/trunk");
+
+        // The clone is already on the repo's default branch, so branching here
+        // roots the per-test trunk at the real trunk without having to name it.
+        repo.git(&["checkout", "-b", &trunk])
+            .expect("creating the per-test trunk should succeed");
+        repo.git(&["push", "-u", "origin", &trunk])
+            .expect("pushing the per-test trunk should succeed");
 
         let harness = Self {
-            repo: TestRepo::new_at_path(&workspace),
+            repo,
             test_repo,
-            branch_prefix: new_branch_prefix(test_name),
+            branch_prefix,
+            trunk,
             github_token,
-            pushed_branches: RefCell::new(Vec::new()),
-            opened_prs: RefCell::new(Vec::new()),
+            owns_cleanup: true,
         };
-
-        // Authenticate through the gt() runner so the credential lands in the
-        // per-test XDG_CONFIG_HOME rather than the developer's real gt config.
-        let graphite_token =
-            std::env::var("GRAPHITE_TEST_TOKEN").expect("checked by check_remote_prerequisites");
-        harness
-            .gt(&["auth", "--token", &graphite_token])
-            .expect("gt auth should succeed");
-        harness
-            .gt(&["init", "--trunk", &harness.trunk_branch()])
-            .expect("gt init should succeed");
+        harness.init_graphite();
 
         Some(harness)
+    }
+
+    /// An additional clone of the same repo, sharing this test's branch
+    /// namespace and trunk. Used to make changes that reach the first clone only
+    /// through the remote.
+    ///
+    /// The peer owns no cleanup and must not outlive its parent.
+    pub fn peer(&self) -> Self {
+        let repo = clone_and_authenticate(&self.test_repo, &self.github_token);
+
+        // The per-test trunk already exists on the remote; checking it out by
+        // name sets up tracking against `origin/<trunk>`.
+        repo.git(&["checkout", &self.trunk])
+            .expect("checking out the per-test trunk should succeed");
+
+        let peer = Self {
+            repo,
+            test_repo: self.test_repo.clone(),
+            branch_prefix: self.branch_prefix.clone(),
+            trunk: self.trunk.clone(),
+            github_token: self.github_token.clone(),
+            owns_cleanup: false,
+        };
+        peer.init_graphite();
+
+        peer
     }
 
     /// Namespaced branch name, unique to this test run.
     pub fn branch(&self, suffix: &str) -> String {
         format!("{}/{}", self.branch_prefix, suffix)
+    }
+
+    /// This test's trunk branch.
+    pub fn trunk(&self) -> &str {
+        &self.trunk
     }
 
     /// Namespaced path inside the repo, so files from concurrent runs never
@@ -412,12 +445,22 @@ impl GraphiteTestRepo {
     /// Push the current stack and open a pull request for each branch in it.
     pub fn submit(&self) -> Result<String, String> {
         // `--no-ai` keeps PR titles deterministic and skips a Graphite round-trip.
-        let output = self.gt(&["submit", "--no-edit", "--no-ai", "--publish"])?;
-        self.record_pushed_branches();
-        Ok(output)
+        self.gt(&["submit", "--no-edit", "--no-ai", "--publish"])
     }
 
-    /// Look up the open pull request for a branch, recording it for cleanup.
+    /// Pull `branch` (and its ancestors) down from the remote, keeping local
+    /// changes that adopting the remote would discard.
+    pub fn get(&self, branch: &str) -> Result<String, String> {
+        self.gt(&["get", branch])
+    }
+
+    /// Pull `branch` down, overwriting the local branch with the remote as the
+    /// source of truth even when that discards local commits.
+    pub fn get_force(&self, branch: &str) -> Result<String, String> {
+        self.gt(&["get", branch, "--force"])
+    }
+
+    /// The open pull request number for a branch, if one exists.
     pub fn pr_number_for_branch(&self, branch: &str) -> Option<String> {
         let output = self
             .gh(&[
@@ -436,29 +479,16 @@ impl GraphiteTestRepo {
 
         let number = output.trim().to_string();
         if number.is_empty() {
-            return None;
+            None
+        } else {
+            Some(number)
         }
-
-        let mut opened = self.opened_prs.borrow_mut();
-        if !opened.contains(&number) {
-            opened.push(number.clone());
-        }
-        Some(number)
     }
 
-    /// The trunk branch of the clone, read from the `origin/HEAD` symref that
-    /// `git clone` writes. Avoids assuming the shared repo's default is `main`.
-    fn trunk_branch(&self) -> String {
-        self.repo
-            .git(&["symbolic-ref", "--short", "refs/remotes/origin/HEAD"])
-            .ok()
-            .and_then(|head| {
-                head.trim()
-                    .strip_prefix("origin/")
-                    .filter(|branch| !branch.is_empty())
-                    .map(str::to_string)
-            })
-            .unwrap_or_else(|| "main".to_string())
+    /// Point Graphite at the per-test trunk. Shared by `new` and `peer`.
+    fn init_graphite(&self) {
+        self.gt(&["init", "--trunk", &self.trunk])
+            .expect("gt init should succeed");
     }
 
     /// Run a `gh` command against the shared test repo.
@@ -488,63 +518,98 @@ impl GraphiteTestRepo {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
-    /// Record every namespaced branch that now exists on the remote, so teardown
-    /// deletes the whole stack rather than only the branch that was checked out.
-    fn record_pushed_branches(&self) {
+    /// Every branch under this test's namespace that currently exists on the
+    /// remote.
+    ///
+    /// Asks the remote rather than reading local remote-tracking refs, so
+    /// branches pushed by a peer clone — which this clone never fetched — are
+    /// still torn down.
+    fn remote_branches(&self) -> Vec<String> {
         let Ok(output) = self.repo.git(&[
-            "for-each-ref",
-            "--format=%(refname:short)",
-            &format!("refs/remotes/origin/{}/*", self.branch_prefix),
+            "ls-remote",
+            "--heads",
+            "origin",
+            &format!("refs/heads/{}/*", self.branch_prefix),
         ]) else {
-            return;
+            return Vec::new();
         };
 
-        let mut pushed = self.pushed_branches.borrow_mut();
-        for line in output.lines() {
-            let Some(branch) = line.trim().strip_prefix("origin/") else {
-                continue;
-            };
-            if !branch.is_empty() && !pushed.iter().any(|existing| existing == branch) {
-                pushed.push(branch.to_string());
-            }
-        }
+        output
+            .lines()
+            .filter_map(|line| line.split_once('\t'))
+            .filter_map(|(_sha, reference)| reference.trim().strip_prefix("refs/heads/"))
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// Open pull requests whose head branch is in this test's namespace.
+    ///
+    /// One API call for all of them, then filtered locally.
+    fn open_pr_numbers(&self) -> Vec<String> {
+        let Ok(output) = self.gh(&[
+            "pr",
+            "list",
+            "--repo",
+            &self.test_repo,
+            "--state",
+            "open",
+            "--limit",
+            "100",
+            "--json",
+            "number,headRefName",
+            "--jq",
+            ".[] | \"\\(.number)\\t\\(.headRefName)\"",
+        ]) else {
+            return Vec::new();
+        };
+
+        let namespace = format!("{}/", self.branch_prefix);
+        output
+            .lines()
+            .filter_map(|line| line.split_once('\t'))
+            .filter(|(_number, head)| head.trim().starts_with(&namespace))
+            .map(|(number, _head)| number.trim().to_string())
+            .collect()
     }
 }
 
 impl Drop for GraphiteTestRepo {
     fn drop(&mut self) {
-        let branches = self.pushed_branches.borrow().clone();
-        let prs = self.opened_prs.borrow().clone();
+        if !self.owns_cleanup {
+            return;
+        }
 
         if std::env::var("GIT_AI_TEST_NO_CLEANUP").is_ok() {
             eprintln!(
                 "⚠️  Cleanup disabled — branches under {} left on {}",
                 self.branch_prefix, self.test_repo
             );
-            if !prs.is_empty() {
-                eprintln!("   Open PRs: {}", prs.join(", "));
-            }
             return;
         }
 
-        for pr_number in &prs {
-            if let Err(error) = self.gh(&["pr", "close", pr_number, "--repo", &self.test_repo]) {
+        // Close PRs before deleting their branches: GitHub's behavior when a head
+        // branch disappears out from under an open PR is not something teardown
+        // should depend on.
+        for pr_number in self.open_pr_numbers() {
+            if let Err(error) = self.gh(&["pr", "close", &pr_number, "--repo", &self.test_repo]) {
                 eprintln!("⚠️  Failed to close PR #{pr_number}: {error}");
             }
         }
 
+        let branches = self.remote_branches();
         if branches.is_empty() {
             return;
         }
 
         // One push deletes every branch — constant-time teardown rather than a
         // spawn per branch.
-        let refspecs = branches
-            .iter()
-            .map(|branch| format!(":refs/heads/{branch}"))
-            .collect::<Vec<_>>();
-        let mut args = vec!["push", "origin"];
-        args.extend(refspecs.iter().map(String::as_str));
+        //
+        // `--delete` rather than `:refs/heads/<branch>` refspecs is deliberate:
+        // `apply_push_side_effect` (src/daemon.rs) skips its authorship-notes
+        // push when it sees `--delete`, so teardown does not pile onto the
+        // shared `refs/notes/ai` ref that these tests already contend for.
+        let mut args = vec!["push", "origin", "--delete"];
+        args.extend(branches.iter().map(String::as_str));
 
         if let Err(error) = self.repo.git(&args) {
             eprintln!(
@@ -554,6 +619,27 @@ impl Drop for GraphiteTestRepo {
             );
         }
     }
+}
+
+/// Clone the test repo into a fresh temp workspace and authenticate Graphite
+/// against it.
+fn clone_and_authenticate(test_repo: &str, github_token: &str) -> TestRepo {
+    let workspace = std::env::temp_dir().join(format!(
+        "git-ai-gt-remote-{}-{}",
+        std::process::id(),
+        git_ai::uuid::generate_v4()
+    ));
+    clone_test_repo(test_repo, github_token, &workspace);
+
+    let repo = TestRepo::new_at_path(&workspace);
+
+    // Authenticate through the gt() runner so the credential lands in the
+    // per-test XDG_CONFIG_HOME rather than the developer's real gt config.
+    let graphite_token =
+        std::env::var("GRAPHITE_TEST_TOKEN").expect("checked by check_remote_prerequisites");
+    gt(&repo, &["auth", "--token", &graphite_token]).expect("gt auth should succeed");
+
+    repo
 }
 
 /// Verify everything a remote test needs, returning the GitHub token on success.

@@ -14,6 +14,10 @@
 //! ./tests/integration/graphite/scripts/run-graphite-tests.sh
 //! ```
 //!
+//! Remote-backed tests share one `refs/notes/ai` ref on the test repository, so
+//! they all run in the `graphite_remote` serial group — see the "Why these are
+//! serialized" note in `super::remote_sync`.
+//!
 //! Every branch is namespaced under `gtai/<test>-<pid>-<timestamp>` and torn
 //! down when the test ends. Set `GIT_AI_TEST_NO_CLEANUP=1` to leave the pushed
 //! branches and opened PRs on the remote for inspection; sweep them afterwards
@@ -27,6 +31,7 @@ use crate::repos::test_file::ExpectedLineExt;
 /// so this is the core check that attribution survives a submit.
 #[test]
 #[ignore] // Remote-backed - run with `cargo test --test integration graphite::remote_ops -- --ignored`
+#[serial_test::serial(graphite_remote)]
 fn test_gt_submit_opens_pr_and_preserves_attribution() {
     let Some(remote) = GraphiteTestRepo::new("test_gt_submit_opens_pr") else {
         return;

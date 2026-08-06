@@ -73,4 +73,7 @@ echo ""
 echo "🚀 Running Graphite integration tests against ${GRAPHITE_TEST_REPO:-jumboblip/aug-6}..."
 echo ""
 
-cargo test --test integration graphite::remote_ops -- --ignored --nocapture ${TEST_ARGS[@]+"${TEST_ARGS[@]}"}
+# `graphite::remote` matches both remote_ops and remote_sync. The tests share a
+# serial group internally, so they push notes one at a time regardless of
+# --test-threads.
+cargo test --test integration graphite::remote -- --ignored --nocapture ${TEST_ARGS[@]+"${TEST_ARGS[@]}"}
