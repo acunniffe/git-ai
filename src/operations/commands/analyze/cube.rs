@@ -87,8 +87,8 @@ impl CubeClient {
         let request = self
             .agent
             .post(&self.url(path))
-            .set("x-api-key", &self.api_key)
-            .set("Content-Type", "application/json");
+            .header("x-api-key", &self.api_key)
+            .header("Content-Type", "application/json");
         let body_str = serde_json::to_string(body).map_err(|e| CubeError::Json(e.to_string()))?;
         let response = http::send_with_body(request, &body_str).map_err(CubeError::Transport)?;
         Self::parse(response)
@@ -99,7 +99,7 @@ impl CubeClient {
         let request = self
             .agent
             .get(&self.url(path))
-            .set("x-api-key", &self.api_key);
+            .header("x-api-key", &self.api_key);
         let response = http::send(request).map_err(CubeError::Transport)?;
         Self::parse(response)
     }

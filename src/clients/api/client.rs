@@ -124,19 +124,27 @@ impl ApiContext {
         }
     }
 
-    fn with_common_headers(request: ureq::Request) -> ureq::Request {
+    fn with_common_headers<Body>(
+        request: ureq::RequestBuilder<Body>,
+    ) -> ureq::RequestBuilder<Body> {
         request
-            .set(
+            .header(
                 "User-Agent",
                 &format!("git-ai/{}", env!("CARGO_PKG_VERSION")),
             )
-            .set("X-Distinct-ID", &config::get_or_create_distinct_id())
+            .header("X-Distinct-ID", &config::get_or_create_distinct_id())
     }
 
     /// Create a GET request with common headers (User-Agent, X-Distinct-ID)
     /// Use this for all HTTP GET requests to ensure consistent headers.
     /// The returned (Agent, Request) pair uses the system's native certificate store.
-    pub fn http_get(url: &str, timeout_secs: Option<u64>) -> (ureq::Agent, ureq::Request) {
+    pub fn http_get(
+        url: &str,
+        timeout_secs: Option<u64>,
+    ) -> (
+        ureq::Agent,
+        ureq::RequestBuilder<ureq::typestate::WithoutBody>,
+    ) {
         let agent = http::build_agent(timeout_secs);
         let request = Self::with_common_headers(agent.get(url));
         (agent, request)
@@ -145,7 +153,10 @@ impl ApiContext {
     /// Create a POST request with common headers (User-Agent, X-Distinct-ID)
     /// Use this for all HTTP POST requests to ensure consistent headers.
     /// The returned (Agent, Request) pair uses the system's native certificate store.
-    pub fn http_post(url: &str, timeout_secs: Option<u64>) -> (ureq::Agent, ureq::Request) {
+    pub fn http_post(
+        url: &str,
+        timeout_secs: Option<u64>,
+    ) -> (ureq::Agent, ureq::RequestBuilder<ureq::typestate::WithBody>) {
         let agent = http::build_agent(timeout_secs);
         let request = Self::with_common_headers(agent.post(url));
         (agent, request)
@@ -211,15 +222,18 @@ impl ApiContext {
         Ok(joined)
     }
 
-    fn apply_auth_headers(&self, mut request: ureq::Request) -> ureq::Request {
+    fn apply_auth_headers<Body>(
+        &self,
+        mut request: ureq::RequestBuilder<Body>,
+    ) -> ureq::RequestBuilder<Body> {
         if let Some(api_key) = &self.api_key {
-            request = request.set("X-API-Key", api_key);
+            request = request.header("X-API-Key", api_key);
             if let Some(identity) = &self.author_identity {
-                request = request.set("X-Author-Identity", identity);
+                request = request.header("X-Author-Identity", identity);
             }
         }
         if let Some(token) = &self.auth_token {
-            request = request.set("Authorization", &format!("Bearer {}", token));
+            request = request.header("Authorization", &format!("Bearer {}", token));
         }
         request
     }
@@ -230,12 +244,18 @@ impl ApiContext {
         GitAiError::Generic(format!("HTTP request failed: {}", error))
     }
 
-    fn authenticated_json_post_request(&self, url: &str) -> ureq::Request {
+    fn authenticated_json_post_request(
+        &self,
+        url: &str,
+    ) -> ureq::RequestBuilder<ureq::typestate::WithBody> {
         let (_agent, request) = Self::http_post(url, self.timeout_secs);
-        self.apply_auth_headers(request.set("Content-Type", "application/json"))
+        self.apply_auth_headers(request.header("Content-Type", "application/json"))
     }
 
-    fn authenticated_get_request(&self, url: &str) -> ureq::Request {
+    fn authenticated_get_request(
+        &self,
+        url: &str,
+    ) -> ureq::RequestBuilder<ureq::typestate::WithoutBody> {
         let (_agent, request) = Self::http_get(url, self.timeout_secs);
         self.apply_auth_headers(request)
     }
@@ -344,14 +364,17 @@ mod tests {
         let get = ctx.authenticated_get_request("https://example.com/get");
         let post = ctx.authenticated_json_post_request("https://example.com/post");
 
-        for request in [get, post] {
-            assert_eq!(request.header("X-API-Key"), Some("api-key"));
+        fn assert_auth_headers<Body>(request: &ureq::RequestBuilder<Body>) {
+            let headers = request.headers_ref().unwrap();
+            assert_eq!(headers.get("X-API-Key").unwrap(), "api-key");
             assert_eq!(
-                request.header("X-Author-Identity"),
-                Some("Test User <test@example.com>")
+                headers.get("X-Author-Identity").unwrap(),
+                "Test User <test@example.com>"
             );
-            assert_eq!(request.header("Authorization"), Some("Bearer oauth-token"));
+            assert_eq!(headers.get("Authorization").unwrap(), "Bearer oauth-token");
         }
+        assert_auth_headers(&get);
+        assert_auth_headers(&post);
     }
 
     #[test]
@@ -366,9 +389,10 @@ mod tests {
 
         let request = ctx.apply_auth_headers(ureq::get("https://example.com"));
 
-        assert_eq!(request.header("X-API-Key"), None);
-        assert_eq!(request.header("X-Author-Identity"), None);
-        assert_eq!(request.header("Authorization"), None);
+        let headers = request.headers_ref().unwrap();
+        assert_eq!(headers.get("X-API-Key"), None);
+        assert_eq!(headers.get("X-Author-Identity"), None);
+        assert_eq!(headers.get("Authorization"), None);
     }
 
     #[test]
