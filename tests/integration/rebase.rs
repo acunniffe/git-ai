@@ -2880,6 +2880,7 @@ fn test_eng_279_reset_keep_discards_divergent_trunk_mappings() {
 
     repo.git(&["reset", "--keep", &original_feature_tip])
         .unwrap();
+    repo.sync_daemon();
     assert_eq!(
         repo.git(&["rev-parse", "HEAD"]).unwrap().trim(),
         original_feature_tip
