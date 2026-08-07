@@ -484,6 +484,7 @@ fn calculate_next_retry(attempts: u32, now: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::repository::sqlite::assert_persisted_schema_version;
     use tempfile::TempDir;
 
     fn create_test_db() -> (InternalDatabase, TempDir) {
@@ -518,15 +519,7 @@ mod tests {
         assert_eq!(count, 1);
 
         // Verify schema_metadata exists
-        let version: String = db
-            .conn
-            .query_row(
-                "SELECT value FROM schema_metadata WHERE key = 'version'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(version, "3");
+        assert_persisted_schema_version(&db.conn, "3");
     }
 
     #[test]
@@ -559,15 +552,7 @@ mod tests {
         };
         db.initialize_schema().unwrap();
 
-        let version: String = db
-            .conn
-            .query_row(
-                "SELECT value FROM schema_metadata WHERE key = 'version'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(version, "3");
+        assert_persisted_schema_version(&db.conn, "3");
     }
 
     #[test]
