@@ -1,13 +1,20 @@
+use crate::authorship::working_log::AgentId;
 use crate::streams::sweep::StreamFormat;
 use crate::streams::types::StreamError;
+use serde::Deserialize;
+use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 const MAX_JSONL_SCAN_BYTES: u64 = 50 * 1024;
 const MAX_JSONL_HEAD_SCAN_BYTES: usize = 1024 * 1024;
 const MAX_JSONL_HEAD_LINES: usize = 20;
 const MAX_CODEX_CONFIG_BYTES: u64 = 1024 * 1024;
+const COPILOT_MODEL_CACHE_CAPACITY: usize = 1024;
+const COPILOT_MODEL_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
 pub fn extract_model(
     path: &Path,
@@ -272,6 +279,470 @@ fn normalize_model(model: &str) -> Option<String> {
     Some(model.to_string())
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum CopilotModelEvidence {
+    Concrete(String),
+    Auto,
+}
+
+impl CopilotModelEvidence {
+    fn from_model(model: &str) -> Option<Self> {
+        let model = normalize_model(model)?;
+        if model.eq_ignore_ascii_case("copilot/auto") {
+            Some(Self::Auto)
+        } else if model.eq_ignore_ascii_case("unknown") {
+            None
+        } else {
+            Some(Self::Concrete(model))
+        }
+    }
+
+    fn model(&self) -> &str {
+        match self {
+            Self::Concrete(model) => model,
+            Self::Auto => "copilot/auto",
+        }
+    }
+
+    fn is_concrete(&self) -> bool {
+        matches!(self, Self::Concrete(_))
+    }
+}
+
+#[derive(Default)]
+struct CopilotModelCandidates {
+    latest_request: Option<CopilotModelEvidence>,
+    selected: Option<CopilotModelEvidence>,
+}
+
+impl CopilotModelCandidates {
+    fn record_request(&mut self, request: CopilotRequestModel) {
+        let request_model = request
+            .model_id
+            .as_deref()
+            .and_then(CopilotModelEvidence::from_model);
+        let resolved_model = request
+            .result
+            .metadata
+            .resolved_model
+            .as_deref()
+            .and_then(CopilotModelEvidence::from_model);
+
+        self.latest_request = match request_model {
+            Some(CopilotModelEvidence::Auto) => resolved_model.or(Some(CopilotModelEvidence::Auto)),
+            Some(model) => Some(model),
+            None => resolved_model,
+        };
+    }
+
+    fn record_selected(&mut self, model: Option<&str>) {
+        if let Some(model) = model.and_then(CopilotModelEvidence::from_model) {
+            self.selected = Some(model);
+        }
+    }
+
+    fn best(self) -> Option<CopilotModelEvidence> {
+        self.latest_request.or(self.selected)
+    }
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct CopilotChatSessionState {
+    input_state: CopilotInputState,
+    requests: Vec<CopilotRequestModel>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct CopilotInputState {
+    selected_model: CopilotSelectedModel,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct CopilotSelectedModel {
+    identifier: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct CopilotRequestModel {
+    model_id: Option<String>,
+    result: CopilotRequestResult,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct CopilotRequestResult {
+    metadata: CopilotRequestMetadata,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+struct CopilotRequestMetadata {
+    resolved_model: Option<String>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct CopilotPatchHeader {
+    kind: Option<u8>,
+    k: Vec<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct CopilotPatchValue<T> {
+    v: T,
+}
+
+fn collect_copilot_session_state(
+    state: CopilotChatSessionState,
+    candidates: &mut CopilotModelCandidates,
+) {
+    candidates.record_selected(state.input_state.selected_model.identifier.as_deref());
+    for request in state.requests {
+        candidates.record_request(request);
+    }
+}
+
+fn copilot_patch_path_matches(path: &[serde_json::Value], expected: &[&str]) -> bool {
+    path.len() == expected.len()
+        && path
+            .iter()
+            .zip(expected)
+            .all(|(actual, expected)| actual.as_str() == Some(*expected))
+}
+
+fn collect_copilot_jsonl_line(line: &str, candidates: &mut CopilotModelCandidates) {
+    let Ok(header) = serde_json::from_str::<CopilotPatchHeader>(line) else {
+        return;
+    };
+
+    match header.kind {
+        Some(0) => {
+            if let Ok(patch) =
+                serde_json::from_str::<CopilotPatchValue<CopilotChatSessionState>>(line)
+            {
+                collect_copilot_session_state(patch.v, candidates);
+            }
+        }
+        Some(2) if copilot_patch_path_matches(&header.k, &["requests"]) => {
+            if let Ok(patch) =
+                serde_json::from_str::<CopilotPatchValue<Vec<CopilotRequestModel>>>(line)
+            {
+                for request in patch.v {
+                    candidates.record_request(request);
+                }
+            }
+        }
+        Some(1)
+            if copilot_patch_path_matches(
+                &header.k,
+                &["inputState", "selectedModel", "identifier"],
+            ) =>
+        {
+            if let Ok(patch) = serde_json::from_str::<CopilotPatchValue<String>>(line) {
+                candidates.record_selected(Some(&patch.v));
+            }
+        }
+        Some(1) if copilot_patch_path_matches(&header.k, &["inputState", "selectedModel"]) => {
+            if let Ok(patch) = serde_json::from_str::<CopilotPatchValue<CopilotSelectedModel>>(line)
+            {
+                candidates.record_selected(patch.v.identifier.as_deref());
+            }
+        }
+        Some(1) if header.k.last().and_then(serde_json::Value::as_str) == Some("modelId") => {
+            if let Ok(patch) = serde_json::from_str::<CopilotPatchValue<String>>(line) {
+                candidates.record_request(CopilotRequestModel {
+                    model_id: Some(patch.v),
+                    ..Default::default()
+                });
+            }
+        }
+        Some(1) if header.k.last().and_then(serde_json::Value::as_str) == Some("resolvedModel") => {
+            if let Ok(patch) = serde_json::from_str::<CopilotPatchValue<String>>(line) {
+                candidates.record_request(CopilotRequestModel {
+                    result: CopilotRequestResult {
+                        metadata: CopilotRequestMetadata {
+                            resolved_model: Some(patch.v),
+                        },
+                    },
+                    ..Default::default()
+                });
+            }
+        }
+        None => {
+            if let Ok(state) = serde_json::from_str::<CopilotChatSessionState>(line) {
+                collect_copilot_session_state(state, candidates);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn extract_model_from_copilot_chat_session(
+    path: &Path,
+) -> Result<Option<CopilotModelEvidence>, StreamError> {
+    let file = match File::open(path) {
+        Ok(file) => file,
+        Err(_) => return Ok(None),
+    };
+    let mut candidates = CopilotModelCandidates::default();
+
+    if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
+        if let Ok(state) = serde_json::from_reader::<_, CopilotChatSessionState>(file) {
+            collect_copilot_session_state(state, &mut candidates);
+        }
+        return Ok(candidates.best());
+    }
+
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    loop {
+        line.clear();
+        let bytes_read = match reader.read_line(&mut line) {
+            Ok(bytes_read) => bytes_read,
+            Err(_) => return Ok(None),
+        };
+        if bytes_read == 0 {
+            break;
+        }
+        let line = line.trim();
+        if !line.is_empty() {
+            collect_copilot_jsonl_line(line, &mut candidates);
+        }
+    }
+
+    Ok(candidates.best())
+}
+
+fn copilot_chat_session_paths(
+    stream_path: &Path,
+    chat_session_id: &str,
+) -> Option<(PathBuf, PathBuf)> {
+    let session_component = Path::new(chat_session_id);
+    if chat_session_id.is_empty()
+        || session_component.file_name().and_then(|name| name.to_str()) != Some(chat_session_id)
+    {
+        return None;
+    }
+
+    let transcripts_dir = stream_path.parent()?;
+    if !transcripts_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("transcripts"))
+    {
+        return None;
+    }
+    let copilot_dir = transcripts_dir.parent()?;
+    if !copilot_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("github.copilot-chat"))
+    {
+        return None;
+    }
+
+    let chat_sessions_dir = copilot_dir.parent()?.join("chatSessions");
+    Some((
+        chat_sessions_dir.join(format!("{chat_session_id}.jsonl")),
+        chat_sessions_dir.join(format!("{chat_session_id}.json")),
+    ))
+}
+
+fn load_copilot_vscode_model(
+    stream_path: &Path,
+    format: StreamFormat,
+    chat_session_id: &str,
+) -> Result<Option<CopilotModelEvidence>, StreamError> {
+    let session_evidence = if let Some((jsonl_path, json_path)) =
+        copilot_chat_session_paths(stream_path, chat_session_id)
+    {
+        extract_model_from_copilot_chat_session(&jsonl_path)?
+            .or(extract_model_from_copilot_chat_session(&json_path)?)
+    } else {
+        None
+    };
+
+    if session_evidence
+        .as_ref()
+        .is_some_and(CopilotModelEvidence::is_concrete)
+    {
+        return Ok(session_evidence);
+    }
+
+    if let Some(model) = extract_model(stream_path, format, None)?
+        .as_deref()
+        .and_then(CopilotModelEvidence::from_model)
+        && model.is_concrete()
+    {
+        return Ok(Some(model));
+    }
+
+    if let Some(model) =
+        extract_model_from_copilot_otel_for_transcript(stream_path, chat_session_id)?
+            .as_deref()
+            .and_then(CopilotModelEvidence::from_model)
+        && model.is_concrete()
+    {
+        return Ok(Some(model));
+    }
+
+    Ok(session_evidence)
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct CopilotModelCacheKey {
+    chat_session_id: String,
+    stream_path: PathBuf,
+}
+
+#[derive(Default)]
+struct CopilotModelCacheEntry {
+    concrete_model: Option<String>,
+    retryable_model: Option<String>,
+    retry_after: Option<Instant>,
+}
+
+impl CopilotModelCacheEntry {
+    fn cached_model(&self, now: Instant) -> Option<Option<String>> {
+        if let Some(model) = &self.concrete_model {
+            return Some(Some(model.clone()));
+        }
+        self.retry_after
+            .filter(|retry_after| *retry_after > now)
+            .map(|_| self.retryable_model.clone())
+    }
+
+    fn store(&mut self, model: Option<CopilotModelEvidence>, now: Instant) -> Option<String> {
+        match model {
+            Some(CopilotModelEvidence::Concrete(model)) => {
+                self.concrete_model = Some(model.clone());
+                self.retryable_model = None;
+                self.retry_after = None;
+                Some(model)
+            }
+            retryable => {
+                let model = retryable.map(|model| model.model().to_string());
+                self.retryable_model = model.clone();
+                self.retry_after = Some(now + COPILOT_MODEL_RETRY_INTERVAL);
+                model
+            }
+        }
+    }
+}
+
+struct CopilotModelCache {
+    capacity: usize,
+    entries: HashMap<CopilotModelCacheKey, Arc<Mutex<CopilotModelCacheEntry>>>,
+    insertion_order: VecDeque<CopilotModelCacheKey>,
+}
+
+impl CopilotModelCache {
+    fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            entries: HashMap::with_capacity(capacity),
+            insertion_order: VecDeque::with_capacity(capacity),
+        }
+    }
+
+    fn entry(&mut self, key: CopilotModelCacheKey) -> Arc<Mutex<CopilotModelCacheEntry>> {
+        if let Some(entry) = self.entries.get(&key) {
+            return Arc::clone(entry);
+        }
+
+        while self.entries.len() >= self.capacity.max(1) {
+            let Some(oldest) = self.insertion_order.pop_front() else {
+                self.entries.clear();
+                break;
+            };
+            self.entries.remove(&oldest);
+        }
+
+        let entry = Arc::new(Mutex::new(CopilotModelCacheEntry::default()));
+        self.entries.insert(key.clone(), Arc::clone(&entry));
+        self.insertion_order.push_back(key);
+        entry
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.entries.len()
+    }
+}
+
+static COPILOT_MODEL_CACHE: OnceLock<Mutex<CopilotModelCache>> = OnceLock::new();
+
+fn copilot_model_cache_entry(
+    stream_path: &Path,
+    chat_session_id: &str,
+) -> Arc<Mutex<CopilotModelCacheEntry>> {
+    let key = CopilotModelCacheKey {
+        chat_session_id: chat_session_id.to_string(),
+        stream_path: stream_path.to_path_buf(),
+    };
+    let cache = COPILOT_MODEL_CACHE
+        .get_or_init(|| Mutex::new(CopilotModelCache::new(COPILOT_MODEL_CACHE_CAPACITY)));
+    cache.lock().map_or_else(
+        |_| Arc::new(Mutex::new(CopilotModelCacheEntry::default())),
+        |mut cache| cache.entry(key),
+    )
+}
+
+pub(crate) fn extract_cached_copilot_vscode_model(
+    stream_path: &Path,
+    chat_session_id: &str,
+) -> Result<Option<String>, StreamError> {
+    let entry = copilot_model_cache_entry(stream_path, chat_session_id);
+    let Ok(mut entry) = entry.lock() else {
+        return load_copilot_vscode_model(
+            stream_path,
+            StreamFormat::CopilotEventStreamJsonl,
+            chat_session_id,
+        )
+        .map(|model| model.map(|model| model.model().to_string()));
+    };
+    let now = Instant::now();
+    if let Some(model) = entry.cached_model(now) {
+        return Ok(model);
+    }
+
+    let model = load_copilot_vscode_model(
+        stream_path,
+        StreamFormat::CopilotEventStreamJsonl,
+        chat_session_id,
+    )?;
+    Ok(entry.store(model, now))
+}
+
+pub(crate) fn enrich_copilot_agent_model(
+    agent_id: &mut AgentId,
+    metadata: &HashMap<String, String>,
+) {
+    if agent_id.tool != "github-copilot"
+        || !matches!(
+            agent_id.model.trim().to_ascii_lowercase().as_str(),
+            "" | "unknown" | "copilot/auto"
+        )
+    {
+        return;
+    }
+    let Some(stream_path) = metadata
+        .get("transcript_path")
+        .or_else(|| metadata.get("chat_session_path"))
+    else {
+        return;
+    };
+    if let Ok(Some(model)) =
+        extract_cached_copilot_vscode_model(Path::new(stream_path), &agent_id.id)
+    {
+        agent_id.model = model;
+    }
+}
+
 /// Extracts the model from VS Code Copilot's `models.json` debug log.
 /// Given a transcript path like `.../transcripts/{session_id}.jsonl`,
 /// derives `.../debug-logs/{session_id}/models.json` and reads the default model.
@@ -327,17 +798,8 @@ pub fn extract_model_from_copilot_vscode_transcript(
     format: StreamFormat,
     chat_session_id: &str,
 ) -> Result<Option<String>, StreamError> {
-    if let Some(model) = extract_model(stream_path, format, None)? {
-        return Ok(Some(model));
-    }
-
-    if let Some(model) =
-        extract_model_from_copilot_otel_for_transcript(stream_path, chat_session_id)?
-    {
-        return Ok(Some(model));
-    }
-
-    extract_model_from_copilot_models_json(stream_path)
+    load_copilot_vscode_model(stream_path, format, chat_session_id)
+        .map(|model| model.map(|model| model.model().to_string()))
 }
 
 pub fn extract_model_from_copilot_otel_for_transcript(
@@ -1125,7 +1587,7 @@ model = "profile-only-model"
     }
 
     #[test]
-    fn test_extract_model_copilot_vscode_transcript_falls_back_to_models_json() {
+    fn test_extract_model_copilot_vscode_transcript_ignores_models_json_default() {
         let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
 
         let result = extract_model_from_copilot_vscode_transcript(
@@ -1134,7 +1596,144 @@ model = "profile-only-model"
             "session-abc",
         )
         .unwrap();
-        assert_eq!(result, Some("gpt-4.1".to_string()));
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_model_copilot_vscode_transcript_reads_request_patch() {
+        let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
+        let (chat_session_path, _) =
+            copilot_chat_session_paths(&transcript_path, "session-abc").unwrap();
+        std::fs::create_dir_all(chat_session_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            chat_session_path,
+            concat!(
+                r#"{"kind":0,"v":{"inputState":{"selectedModel":{"identifier":"copilot/auto"}},"requests":[]}}"#,
+                "\n",
+                r#"{"kind":2,"k":["requests"],"v":[{"modelId":"copilot/claude-sonnet-5","result":{"details":"GPT-5.3 Codex"}}]}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let result = extract_model_from_copilot_vscode_transcript(
+            &transcript_path,
+            StreamFormat::CopilotEventStreamJsonl,
+            "session-abc",
+        )
+        .unwrap();
+        assert_eq!(result, Some("copilot/claude-sonnet-5".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_copilot_vscode_auto_uses_resolved_model() {
+        let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
+        let (chat_session_path, _) =
+            copilot_chat_session_paths(&transcript_path, "session-abc").unwrap();
+        std::fs::create_dir_all(chat_session_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            chat_session_path,
+            concat!(
+                r#"{"kind":0,"v":{"inputState":{"selectedModel":{"identifier":"copilot/auto"}},"requests":[]}}"#,
+                "\n",
+                r#"{"kind":2,"k":["requests"],"v":[{"modelId":"copilot/auto","result":{"metadata":{"resolvedModel":"claude-sonnet-5"}}}]}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let result = extract_model_from_copilot_vscode_transcript(
+            &transcript_path,
+            StreamFormat::CopilotEventStreamJsonl,
+            "session-abc",
+        )
+        .unwrap();
+        assert_eq!(result, Some("claude-sonnet-5".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_copilot_vscode_supports_plain_json_state() {
+        let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
+        let (_, chat_session_path) =
+            copilot_chat_session_paths(&transcript_path, "session-abc").unwrap();
+        std::fs::create_dir_all(chat_session_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            chat_session_path,
+            r#"{"requests":[{"modelId":"copilot/claude-sonnet-5"}]}"#,
+        )
+        .unwrap();
+
+        let result = extract_model_from_copilot_vscode_transcript(
+            &transcript_path,
+            StreamFormat::CopilotEventStreamJsonl,
+            "session-abc",
+        )
+        .unwrap();
+        assert_eq!(result, Some("copilot/claude-sonnet-5".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_copilot_vscode_uses_exact_session_file() {
+        let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
+        let (chat_session_path, _) =
+            copilot_chat_session_paths(&transcript_path, "other-session").unwrap();
+        std::fs::create_dir_all(chat_session_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            chat_session_path,
+            r#"{"inputState":{"selectedModel":{"identifier":"copilot/claude-sonnet-5"}}}"#,
+        )
+        .unwrap();
+
+        let result = extract_model_from_copilot_vscode_transcript(
+            &transcript_path,
+            StreamFormat::CopilotEventStreamJsonl,
+            "session-abc",
+        )
+        .unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_copilot_model_cache_bounds_entries() {
+        let key = |session: &str| CopilotModelCacheKey {
+            chat_session_id: session.to_string(),
+            stream_path: PathBuf::from(format!("/{session}.jsonl")),
+        };
+        let mut cache = CopilotModelCache::new(2);
+        cache.entry(key("one"));
+        cache.entry(key("two"));
+        cache.entry(key("three"));
+
+        assert_eq!(cache.len(), 2);
+        assert!(!cache.entries.contains_key(&key("one")));
+        assert!(cache.entries.contains_key(&key("two")));
+        assert!(cache.entries.contains_key(&key("three")));
+    }
+
+    #[test]
+    fn test_copilot_model_cache_retries_non_concrete_results() {
+        let now = Instant::now();
+        let mut entry = CopilotModelCacheEntry::default();
+        assert_eq!(
+            entry.store(Some(CopilotModelEvidence::Auto), now),
+            Some("copilot/auto".to_string())
+        );
+        assert_eq!(
+            entry.cached_model(now + Duration::from_secs(4)),
+            Some(Some("copilot/auto".to_string()))
+        );
+        assert_eq!(entry.cached_model(now + Duration::from_secs(5)), None);
+
+        entry.store(
+            Some(CopilotModelEvidence::Concrete(
+                "copilot/claude-sonnet-5".to_string(),
+            )),
+            now + Duration::from_secs(5),
+        );
+        assert_eq!(
+            entry.cached_model(now + Duration::from_secs(500)),
+            Some(Some("copilot/claude-sonnet-5".to_string()))
+        );
     }
 
     #[test]

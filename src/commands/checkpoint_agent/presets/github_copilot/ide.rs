@@ -220,25 +220,9 @@ pub(super) fn parse_vscode_native_hooks(
         agent_id: AgentId {
             tool: "github-copilot".to_string(),
             id: session_id.clone(),
-            model: transcript_path
-                .as_ref()
-                .and_then(|tp| {
-                    let path = Path::new(tp.as_str());
-                    let sweep_format = match transcript_format {
-                        StreamFormat::CopilotEventStreamJsonl => {
-                            crate::streams::sweep::StreamFormat::CopilotEventStreamJsonl
-                        }
-                        _ => crate::streams::sweep::StreamFormat::CopilotSessionJson,
-                    };
-                    model_extraction::extract_model_from_copilot_vscode_transcript(
-                        path,
-                        sweep_format,
-                        &session_id,
-                    )
-                    .ok()
-                    .flatten()
-                })
-                .unwrap_or_else(|| "unknown".to_string()),
+            // Native hooks do not include the model. Resolve it once per session in the
+            // long-lived daemon instead of reading VS Code storage in every hook process.
+            model: "unknown".to_string(),
         },
         external_session_id: session_id,
         trace_id: trace_id.to_string(),
@@ -606,7 +590,7 @@ mod tests {
     }
 
     #[test]
-    fn test_copilot_native_model_prefers_otel_selected_model_over_models_json_default() {
+    fn test_copilot_native_defers_model_lookup_to_daemon() {
         let dir = tempfile::tempdir().unwrap();
         let user_dir = dir.path().join("User");
         let transcript_path = user_dir
@@ -632,30 +616,6 @@ mod tests {
         std::fs::create_dir_all(models_path.parent().unwrap()).unwrap();
         std::fs::write(&models_path, r#"[{"id":"gpt-4.1","is_chat_default":true}]"#).unwrap();
 
-        let otel_db_path = user_dir
-            .join("globalStorage")
-            .join("github.copilot-chat")
-            .join("agent-traces.db");
-        std::fs::create_dir_all(otel_db_path.parent().unwrap()).unwrap();
-        let conn = crate::sqlite::open_with_memory_limits(&otel_db_path).unwrap();
-        conn.execute_batch(
-            "CREATE TABLE spans (
-                span_id TEXT PRIMARY KEY,
-                chat_session_id TEXT,
-                request_model TEXT,
-                response_model TEXT,
-                end_time_ms REAL NOT NULL
-            );",
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO spans (span_id, chat_session_id, request_model, response_model, end_time_ms)
-             VALUES ('span-1', 'session-abc', 'claude-sonnet-4', 'claude-sonnet-4-20250514', 1000)",
-            [],
-        )
-        .unwrap();
-        drop(conn);
-
         let input = json!({
             "hook_event_name": "PostToolUse",
             "cwd": "/home/user/project",
@@ -672,7 +632,7 @@ mod tests {
 
         match &events[0] {
             ParsedHookEvent::PostFileEdit(e) => {
-                assert_eq!(e.context.agent_id.model, "claude-sonnet-4");
+                assert_eq!(e.context.agent_id.model, "unknown");
             }
             _ => panic!("Expected PostFileEdit"),
         }
