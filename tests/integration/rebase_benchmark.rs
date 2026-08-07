@@ -3,6 +3,33 @@ use crate::repos::test_repo::TestRepo;
 use std::fs;
 use std::time::Instant;
 
+// Deterministic xorshift64 PRNG keeps benchmark workloads reproducible without rand.
+struct DeterministicRng(u64);
+
+impl DeterministicRng {
+    fn next(&mut self) -> u64 {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        self.0
+    }
+
+    fn gen_range(&mut self, max: usize) -> usize {
+        (self.next() as usize) % max.max(1)
+    }
+}
+
+#[test]
+fn deterministic_rng_sequence_and_ranges_are_stable() {
+    let mut rng = DeterministicRng(42);
+    assert_eq!(rng.next(), 45_454_805_674);
+    assert_eq!(rng.next(), 11_532_217_803_599_905_471);
+    assert_eq!(rng.next(), 10_021_416_941_527_320_954);
+    assert_eq!(rng.gen_range(0), 0);
+    assert_eq!(rng.gen_range(1), 0);
+    assert_eq!(rng.gen_range(10), 7);
+}
+
 /// Benchmark: large rebase with many AI-authored commits
 /// This simulates the real-world scenario reported by users in large monorepos
 /// where rebases with AI authorship notes become extremely slow.
@@ -1059,20 +1086,6 @@ fn benchmark_rebase_heavy_with_timing() {
 #[test]
 #[ignore]
 fn benchmark_rebase_realistic_monorepo() {
-    // Simple deterministic PRNG (xorshift64) to avoid adding rand dependency
-    struct Rng(u64);
-    impl Rng {
-        fn next(&mut self) -> u64 {
-            self.0 ^= self.0 << 13;
-            self.0 ^= self.0 >> 7;
-            self.0 ^= self.0 << 17;
-            self.0
-        }
-        fn gen_range(&mut self, max: usize) -> usize {
-            (self.next() as usize) % max.max(1)
-        }
-    }
-
     let num_feature_commits: usize = std::env::var("REALISTIC_BENCH_COMMITS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -1090,7 +1103,7 @@ fn benchmark_rebase_realistic_monorepo() {
     println!("============================================\n");
 
     let repo = TestRepo::new();
-    let mut rng = Rng(42); // deterministic for reproducibility
+    let mut rng = DeterministicRng(42); // deterministic for reproducibility
 
     // All checkpoints use "mock_ai" — the recognized test preset
 
@@ -1507,20 +1520,6 @@ fn benchmark_rebase_realistic_monorepo() {
 #[test]
 #[ignore]
 fn benchmark_monorepo_rebase() {
-    // Simple deterministic PRNG (xorshift64)
-    struct Rng(u64);
-    impl Rng {
-        fn next(&mut self) -> u64 {
-            self.0 ^= self.0 << 13;
-            self.0 ^= self.0 >> 7;
-            self.0 ^= self.0 << 17;
-            self.0
-        }
-        fn gen_range(&mut self, max: usize) -> usize {
-            (self.next() as usize) % max.max(1)
-        }
-    }
-
     let num_background_files: usize = std::env::var("MONO_BENCH_BG_FILES")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -1592,7 +1591,7 @@ fn benchmark_monorepo_rebase() {
         false
     };
 
-    let mut rng = Rng(12345);
+    let mut rng = DeterministicRng(12345);
     let setup_start = Instant::now();
 
     // AI file paths used throughout setup and rebase
@@ -1919,20 +1918,6 @@ fn benchmark_monorepo_rebase() {
 #[test]
 #[ignore]
 fn benchmark_monorepo_graphite_rebase() {
-    // Simple deterministic PRNG (xorshift64)
-    struct Rng(u64);
-    impl Rng {
-        fn next(&mut self) -> u64 {
-            self.0 ^= self.0 << 13;
-            self.0 ^= self.0 >> 7;
-            self.0 ^= self.0 << 17;
-            self.0
-        }
-        fn gen_range(&mut self, max: usize) -> usize {
-            (self.next() as usize) % max.max(1)
-        }
-    }
-
     let num_background_files: usize = std::env::var("MONO_BENCH_BG_FILES")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -2006,7 +1991,7 @@ fn benchmark_monorepo_graphite_rebase() {
         false
     };
 
-    let mut rng = Rng(12345); // Same seed as standard benchmark for identical repo
+    let mut rng = DeterministicRng(12345); // Same seed as standard benchmark for identical repo
 
     let ai_file_paths: Vec<String> = (0..num_ai_files)
         .map(|i| format!("services/payments/src/handlers/payment_handler_{}.rs", i))
