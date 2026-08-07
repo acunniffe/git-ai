@@ -21,7 +21,7 @@
 use std::fs;
 
 use crate::repos::blame_support::is_ai_blame_author;
-use crate::repos::test_file::ExpectedLineExt;
+use crate::repos::test_file::{ExpectedLine, ExpectedLineExt};
 use crate::repos::test_repo::TestRepo;
 use git_ai::model::authorship_log_serialization::AuthorshipLog;
 use git_ai::operations::commands::blame::GitAiBlameOptions;
@@ -9404,12 +9404,55 @@ fn test_human_conflict_multicommit_chain_middle_conflict_all_notes_preserved() {
 // attribution.  All other AI files in the chain retain their attribution.
 // ============================================================================
 
+#[derive(Clone, Copy)]
+enum HumanContextAttribution {
+    Known,
+    Unattributed,
+}
+
+impl HumanContextAttribution {
+    fn expected_line(self, contents: &str) -> ExpectedLine {
+        match self {
+            Self::Known => contents.human(),
+            Self::Unattributed => contents.unattributed_human(),
+        }
+    }
+
+    fn assert_metadata_humans(self, repo: &TestRepo, commit: &str, context: &str) {
+        if matches!(self, Self::Unattributed) {
+            return;
+        }
+
+        let conflict_note = parse_note(repo, commit);
+        assert!(
+            conflict_note
+                .metadata
+                .humans
+                .contains_key("h_e858f2c2faea28"),
+            "{context} should have h_e858f2c2faea28 in metadata.humans (human context lines in resolved file)"
+        );
+        assert_eq!(
+            conflict_note.metadata.humans["h_e858f2c2faea28"].author,
+            "Test User <test@example.com>"
+        );
+    }
+}
+
 /// Test 1: config.py TIMEOUT constant — feature (C3) changes TIMEOUT to 60,
 /// main changes it to 120 → conflict.  AI resolves to TIMEOUT = 90.
 /// C1' has users.py, C2' adds products.py, C3' adds config.py (AI-resolved),
 /// C4' adds orders.py, C5' adds payments.py.
 #[test]
 fn test_conflict_ai_resolves_timeout_constant() {
+    run_test_conflict_ai_resolves_timeout_constant(HumanContextAttribution::Known);
+}
+
+#[test]
+fn test_conflict_ai_resolves_timeout_constant_standard_human() {
+    run_test_conflict_ai_resolves_timeout_constant(HumanContextAttribution::Unattributed);
+}
+
+fn run_test_conflict_ai_resolves_timeout_constant(human_context: HumanContextAttribution) {
     let repo = TestRepo::new();
 
     // Initial: config.py with a class and TIMEOUT constant (human)
@@ -9488,10 +9531,10 @@ fn test_conflict_ai_resolves_timeout_constant() {
     // C3: AI changes TIMEOUT to 60 in config.py — WILL CONFLICT with main's 120
     let mut config = repo.filename("config.py");
     config.set_contents(crate::lines![
-        "class Config:".human(),
+        human_context.expected_line("class Config:"),
         "    TIMEOUT = 60".ai(),
-        "    HOST = 'localhost'".human(),
-        "    PORT = 8080".human(),
+        human_context.expected_line("    HOST = 'localhost'"),
+        human_context.expected_line("    PORT = 8080"),
     ]);
     repo.stage_all_and_commit("feat: C3 AI tunes TIMEOUT to 60")
         .unwrap();
@@ -9534,13 +9577,13 @@ fn test_conflict_ai_resolves_timeout_constant() {
         "rebase should conflict on config.py at C3"
     );
 
-    // AI resolves: sets TIMEOUT = 90 as .ai(), surrounding lines as .human()
+    // AI resolves: sets TIMEOUT = 90 as .ai(), surrounding lines as the selected human attribution
     let mut conflict_config = repo.filename("config.py");
     conflict_config.set_contents(crate::lines![
-        "class Config:".human(),
+        human_context.expected_line("class Config:"),
         "    TIMEOUT = 90".ai(),
-        "    HOST = 'localhost'".human(),
-        "    PORT = 8080".human(),
+        human_context.expected_line("    HOST = 'localhost'"),
+        human_context.expected_line("    PORT = 8080"),
     ]);
     // set_contents already ran git add -A + checkpoint
     repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
@@ -9584,19 +9627,7 @@ fn test_conflict_ai_resolves_timeout_constant() {
     assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
     assert_note_files_exact(&repo, &chain[4], "c5_files", &["payments.py"]);
 
-    // Verify per-commit-delta humans scoping (KnownHuman variant)
-    let conflict_note = parse_note(&repo, &chain[2]); // X = conflict commit index
-    assert!(
-        conflict_note
-            .metadata
-            .humans
-            .contains_key("h_e858f2c2faea28"),
-        "c3' should have h_e858f2c2faea28 in metadata.humans (human context lines in resolved file)"
-    );
-    assert_eq!(
-        conflict_note.metadata.humans["h_e858f2c2faea28"].author,
-        "Test User <test@example.com>"
-    );
+    human_context.assert_metadata_humans(&repo, &chain[2], "c3'");
 }
 
 /// Test 2: compute.rs function body — feature (C2) implements a function with
@@ -9816,6 +9847,19 @@ fn test_conflict_ai_resolves_with_added_extra_lines() {
 /// entry in `original_head_line_to_author` and therefore receive human attribution.
 #[test]
 fn test_conflict_ai_resolves_preserving_human_context_lines() {
+    run_test_conflict_ai_resolves_preserving_human_context_lines(HumanContextAttribution::Known);
+}
+
+#[test]
+fn test_conflict_ai_resolves_preserving_human_context_lines_standard_human() {
+    run_test_conflict_ai_resolves_preserving_human_context_lines(
+        HumanContextAttribution::Unattributed,
+    );
+}
+
+fn run_test_conflict_ai_resolves_preserving_human_context_lines(
+    human_context: HumanContextAttribution,
+) {
     let repo = TestRepo::new();
 
     // Initial: processor.py with a class (6 human lines)
@@ -9889,14 +9933,14 @@ fn test_conflict_ai_resolves_preserving_human_context_lines() {
     // C3: AI adds 5 lines to method2 in processor.py — WILL CONFLICT
     let mut processor = repo.filename("processor.py");
     processor.set_contents(crate::lines![
-        "class Processor:".human(),
-        "    def method1(self): return 'method1'".human(),
+        human_context.expected_line("class Processor:"),
+        human_context.expected_line("    def method1(self): return 'method1'"),
         "    def method2(self):".ai(),
         "        result = []".ai(),
         "        for i in range(10):".ai(),
         "            result.append(i * 2)".ai(),
         "        return result".ai(),
-        "    def method3(self): return 'method3'".human(),
+        human_context.expected_line("    def method3(self): return 'method3'"),
     ]);
     fs::write(
         repo.path().join("processor.py"),
@@ -9950,8 +9994,8 @@ fn test_conflict_ai_resolves_preserving_human_context_lines() {
     //   # AI merged, label = , return result/label → newly introduced, no original match → human.
     let mut conflict_processor = repo.filename("processor.py");
     conflict_processor.set_contents(crate::lines![
-        "class Processor:".human(),
-        "    def method1(self): return 'method1'".human(),
+        human_context.expected_line("class Processor:"),
+        human_context.expected_line("    def method1(self): return 'method1'"),
         "    def method2(self):".ai(),
         "        # AI merged: combines human's return with feature's loop".ai(),
         "        result = []".ai(),
@@ -9959,7 +10003,7 @@ fn test_conflict_ai_resolves_preserving_human_context_lines() {
         "            result.append(i * 2)".ai(),
         "        label = 'human-method2'".ai(),
         "        return result, label".ai(),
-        "    def method3(self): return 'method3'".human(),
+        human_context.expected_line("    def method3(self): return 'method3'"),
     ]);
     fs::write(
         repo.path().join("processor.py"),
@@ -10015,19 +10059,7 @@ fn test_conflict_ai_resolves_preserving_human_context_lines() {
     assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
     assert_note_files_exact(&repo, &chain[4], "c5_files", &["util_e.py"]);
 
-    // Verify per-commit-delta humans scoping (KnownHuman variant)
-    let conflict_note = parse_note(&repo, &chain[2]); // X = conflict commit index
-    assert!(
-        conflict_note
-            .metadata
-            .humans
-            .contains_key("h_e858f2c2faea28"),
-        "c3' should have h_e858f2c2faea28 in metadata.humans (human context lines in resolved file)"
-    );
-    assert_eq!(
-        conflict_note.metadata.humans["h_e858f2c2faea28"].author,
-        "Test User <test@example.com>"
-    );
+    human_context.assert_metadata_humans(&repo, &chain[2], "c3'");
 }
 
 /// Test 4: version.py — conflict is on C1 (the VERY FIRST feature commit).
@@ -10035,6 +10067,15 @@ fn test_conflict_ai_resolves_preserving_human_context_lines() {
 /// AI resolves to "2.1".  C2–C5 accumulate other files normally.
 #[test]
 fn test_conflict_ai_resolves_on_first_commit() {
+    run_test_conflict_ai_resolves_on_first_commit(HumanContextAttribution::Known);
+}
+
+#[test]
+fn test_conflict_ai_resolves_on_first_commit_standard_human() {
+    run_test_conflict_ai_resolves_on_first_commit(HumanContextAttribution::Unattributed);
+}
+
+fn run_test_conflict_ai_resolves_on_first_commit(human_context: HumanContextAttribution) {
     let repo = TestRepo::new();
 
     // Initial: version.py with VERSION = "1.0"
@@ -10084,7 +10125,7 @@ fn test_conflict_ai_resolves_on_first_commit() {
     let mut version = repo.filename("version.py");
     version.set_contents(crate::lines![
         "VERSION = \"2.0\"".ai(),
-        "CODENAME = \"alpha\"".human(),
+        human_context.expected_line("CODENAME = \"alpha\""),
     ]);
     repo.stage_all_and_commit("feat: C1 bump version to 2.0")
         .unwrap();
@@ -10157,11 +10198,11 @@ fn test_conflict_ai_resolves_on_first_commit() {
         "rebase should conflict on version.py at C1"
     );
 
-    // AI resolves: VERSION = "2.1" as .ai(), CODENAME as .human()
+    // AI resolves: VERSION = "2.1" as .ai(), CODENAME as the selected human attribution
     let mut conflict_version = repo.filename("version.py");
     conflict_version.set_contents(crate::lines![
         "VERSION = \"2.1\"".ai(),
-        "CODENAME = \"beta\"".human(),
+        human_context.expected_line("CODENAME = \"beta\""),
     ]);
     repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
         .unwrap();
@@ -10197,19 +10238,7 @@ fn test_conflict_ai_resolves_on_first_commit() {
     assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
     assert_note_files_exact(&repo, &chain[4], "c5_files", &["migration_guide.py"]);
 
-    // Verify per-commit-delta humans scoping (KnownHuman variant)
-    let conflict_note = parse_note(&repo, &chain[0]); // X = conflict commit index
-    assert!(
-        conflict_note
-            .metadata
-            .humans
-            .contains_key("h_e858f2c2faea28"),
-        "c1' should have h_e858f2c2faea28 in metadata.humans (human context lines in resolved file)"
-    );
-    assert_eq!(
-        conflict_note.metadata.humans["h_e858f2c2faea28"].author,
-        "Test User <test@example.com>"
-    );
+    human_context.assert_metadata_humans(&repo, &chain[0], "c1'");
 }
 
 /// Test 5: schema.rs max_connections — conflict is on C5 (LAST feature commit).
@@ -10217,6 +10246,15 @@ fn test_conflict_ai_resolves_on_first_commit() {
 /// max_connections constant; main also modifies same constant.  AI resolves.
 #[test]
 fn test_conflict_ai_resolves_on_last_commit() {
+    run_test_conflict_ai_resolves_on_last_commit(HumanContextAttribution::Known);
+}
+
+#[test]
+fn test_conflict_ai_resolves_on_last_commit_standard_human() {
+    run_test_conflict_ai_resolves_on_last_commit(HumanContextAttribution::Unattributed);
+}
+
+fn run_test_conflict_ai_resolves_on_last_commit(human_context: HumanContextAttribution) {
     let repo = TestRepo::new();
 
     // Initial: schema.rs with a constant (human)
@@ -10331,7 +10369,7 @@ fn test_conflict_ai_resolves_on_last_commit() {
     let mut schema = repo.filename("src/schema.rs");
     schema.set_contents(crate::lines![
         "pub const MAX_CONNECTIONS: u32 = 100;".ai(),
-        "pub const SCHEMA_VERSION: u32 = 1;".human(),
+        human_context.expected_line("pub const SCHEMA_VERSION: u32 = 1;"),
     ]);
     fs::write(
         repo.path().join("src/schema.rs"),
@@ -10355,7 +10393,7 @@ fn test_conflict_ai_resolves_on_last_commit() {
     let mut conflict_schema = repo.filename("src/schema.rs");
     conflict_schema.set_contents(crate::lines![
         "pub const MAX_CONNECTIONS: u32 = 75;".ai(),
-        "pub const SCHEMA_VERSION: u32 = 1;".human(),
+        human_context.expected_line("pub const SCHEMA_VERSION: u32 = 1;"),
     ]);
     fs::write(
         repo.path().join("src/schema.rs"),
@@ -10402,19 +10440,7 @@ fn test_conflict_ai_resolves_on_last_commit() {
         ],
     );
 
-    // Verify per-commit-delta humans scoping (KnownHuman variant)
-    let conflict_note = parse_note(&repo, &chain[4]); // X = conflict commit index
-    assert!(
-        conflict_note
-            .metadata
-            .humans
-            .contains_key("h_e858f2c2faea28"),
-        "c5' should have h_e858f2c2faea28 in metadata.humans (human context lines in resolved file)"
-    );
-    assert_eq!(
-        conflict_note.metadata.humans["h_e858f2c2faea28"].author,
-        "Test User <test@example.com>"
-    );
+    human_context.assert_metadata_humans(&repo, &chain[4], "c5'");
 }
 
 /// Test 6: config.py AND settings.py both conflict in C3.
@@ -10422,6 +10448,19 @@ fn test_conflict_ai_resolves_on_last_commit() {
 /// AI resolves both conflicts.  Note for C3' has both files.
 #[test]
 fn test_conflict_ai_resolves_multiple_files_in_same_commit() {
+    run_test_conflict_ai_resolves_multiple_files_in_same_commit(HumanContextAttribution::Known);
+}
+
+#[test]
+fn test_conflict_ai_resolves_multiple_files_in_same_commit_standard_human() {
+    run_test_conflict_ai_resolves_multiple_files_in_same_commit(
+        HumanContextAttribution::Unattributed,
+    );
+}
+
+fn run_test_conflict_ai_resolves_multiple_files_in_same_commit(
+    human_context: HumanContextAttribution,
+) {
     let repo = TestRepo::new();
 
     // Initial: BOTH files exist at the shared base so C3's edits will conflict with main
@@ -10504,13 +10543,13 @@ fn test_conflict_ai_resolves_multiple_files_in_same_commit() {
     // C3: AI changes config.py AND settings.py — BOTH WILL CONFLICT
     let mut config = repo.filename("config.py");
     config.set_contents(crate::lines![
-        "DEBUG = False".human(),
+        human_context.expected_line("DEBUG = False"),
         "SECRET_KEY = 'ai-generated-secret-key-v2'".ai(),
     ]);
     let mut settings = repo.filename("settings.py");
     settings.set_contents(crate::lines![
         "DATABASE_URL = 'postgres://localhost/feature_db'".ai(),
-        "CACHE_BACKEND = 'locmem'".human(),
+        human_context.expected_line("CACHE_BACKEND = 'locmem'"),
     ]);
     repo.stage_all_and_commit("feat: C3 AI tunes config and settings")
         .unwrap();
@@ -10553,14 +10592,14 @@ fn test_conflict_ai_resolves_multiple_files_in_same_commit() {
     // AI resolves config.py
     let mut conflict_config = repo.filename("config.py");
     conflict_config.set_contents(crate::lines![
-        "DEBUG = True".human(),
+        human_context.expected_line("DEBUG = True"),
         "SECRET_KEY = 'ai-generated-secret-key-v2'".ai(),
     ]);
     // AI resolves settings.py
     let mut conflict_settings = repo.filename("settings.py");
     conflict_settings.set_contents(crate::lines![
         "DATABASE_URL = 'postgres://localhost/feature_db'".ai(),
-        "CACHE_BACKEND = 'redis'".human(),
+        human_context.expected_line("CACHE_BACKEND = 'redis'"),
     ]);
     repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
         .unwrap();
@@ -10611,19 +10650,7 @@ fn test_conflict_ai_resolves_multiple_files_in_same_commit() {
     assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
     assert_note_files_exact(&repo, &chain[4], "c5_files", &["serializers.py"]);
 
-    // Verify per-commit-delta humans scoping (KnownHuman variant)
-    let conflict_note = parse_note(&repo, &chain[2]); // X = conflict commit index
-    assert!(
-        conflict_note
-            .metadata
-            .humans
-            .contains_key("h_e858f2c2faea28"),
-        "c3' should have h_e858f2c2faea28 in metadata.humans (human context lines in resolved file)"
-    );
-    assert_eq!(
-        conflict_note.metadata.humans["h_e858f2c2faea28"].author,
-        "Test User <test@example.com>"
-    );
+    human_context.assert_metadata_humans(&repo, &chain[2], "c3'");
 }
 
 /// Test 7: dispatcher.py — conflict on C2.  C3 and C4 also modify dispatcher.py
@@ -10631,6 +10658,19 @@ fn test_conflict_ai_resolves_multiple_files_in_same_commit() {
 /// Subsequent commits append more methods to dispatcher.py.
 #[test]
 fn test_conflict_ai_resolves_then_more_ai_builds_on_result() {
+    run_test_conflict_ai_resolves_then_more_ai_builds_on_result(HumanContextAttribution::Known);
+}
+
+#[test]
+fn test_conflict_ai_resolves_then_more_ai_builds_on_result_standard_human() {
+    run_test_conflict_ai_resolves_then_more_ai_builds_on_result(
+        HumanContextAttribution::Unattributed,
+    );
+}
+
+fn run_test_conflict_ai_resolves_then_more_ai_builds_on_result(
+    human_context: HumanContextAttribution,
+) {
     let repo = TestRepo::new();
 
     // Initial: dispatcher.py stub (human)
@@ -10694,13 +10734,13 @@ fn test_conflict_ai_resolves_then_more_ai_builds_on_result() {
     // C2: AI adds process() to dispatcher.py — WILL CONFLICT
     let mut dispatcher_c2 = repo.filename("dispatcher.py");
     dispatcher_c2.set_contents(crate::lines![
-        "class Dispatcher:".human(),
+        human_context.expected_line("class Dispatcher:"),
         "    def process(self, msg):".ai(),
         "        msg = msg.strip()".ai(),
         "        if not msg: raise ValueError('empty')".ai(),
         "        tokens = msg.split()".ai(),
         "        return {'cmd': tokens[0], 'args': tokens[1:]}".ai(),
-        "    pass".human(),
+        human_context.expected_line("    pass"),
     ]);
     repo.stage_all_and_commit("feat: C2 AI adds process() to Dispatcher")
         .unwrap();
@@ -10758,7 +10798,7 @@ fn test_conflict_ai_resolves_then_more_ai_builds_on_result() {
     // AI resolves C2: 12-line process() implementation (all .ai() except class line)
     let mut conflict_dispatcher = repo.filename("dispatcher.py");
     conflict_dispatcher.set_contents(crate::lines![
-        "class Dispatcher:".human(),
+        human_context.expected_line("class Dispatcher:"),
         "    def process(self, msg):".ai(),
         "        # AI merge: validates and parses, as in feature branch".ai(),
         "        msg = msg.strip()".ai(),
@@ -10769,7 +10809,7 @@ fn test_conflict_ai_resolves_then_more_ai_builds_on_result() {
         "        return {'cmd': cmd, 'args': args, 'raw': msg}".ai(),
         "    def _noop(self, args): return None".ai(),
         "    def __repr__(self): return f'Dispatcher()'".ai(),
-        "    pass".human(),
+        human_context.expected_line("    pass"),
     ]);
     repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
         .unwrap();
@@ -10796,19 +10836,7 @@ fn test_conflict_ai_resolves_then_more_ai_builds_on_result() {
     assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
     assert_note_files_exact(&repo, &chain[4], "c5_files", &["event_bus.py"]);
 
-    // Verify per-commit-delta humans scoping (KnownHuman variant)
-    let conflict_note = parse_note(&repo, &chain[1]); // X = conflict commit index
-    assert!(
-        conflict_note
-            .metadata
-            .humans
-            .contains_key("h_e858f2c2faea28"),
-        "c2' should have h_e858f2c2faea28 in metadata.humans (human context lines in resolved file)"
-    );
-    assert_eq!(
-        conflict_note.metadata.humans["h_e858f2c2faea28"].author,
-        "Test User <test@example.com>"
-    );
+    human_context.assert_metadata_humans(&repo, &chain[1], "c2'");
 }
 
 /// Test 8: models.rs struct fields — feature (C3) AI adds 4 new fields,
@@ -10816,6 +10844,15 @@ fn test_conflict_ai_resolves_then_more_ai_builds_on_result() {
 /// The merged struct body is all .ai().
 #[test]
 fn test_conflict_ai_resolves_rust_struct_fields() {
+    run_test_conflict_ai_resolves_rust_struct_fields(HumanContextAttribution::Known);
+}
+
+#[test]
+fn test_conflict_ai_resolves_rust_struct_fields_standard_human() {
+    run_test_conflict_ai_resolves_rust_struct_fields(HumanContextAttribution::Unattributed);
+}
+
+fn run_test_conflict_ai_resolves_rust_struct_fields(human_context: HumanContextAttribution) {
     let repo = TestRepo::new();
 
     // Initial: models.rs with a struct (2 original fields, human)
@@ -10893,14 +10930,14 @@ fn test_conflict_ai_resolves_rust_struct_fields() {
     // C3: AI adds 4 new fields to User struct — WILL CONFLICT with main's email/created_at
     let mut models = repo.filename("src/models.rs");
     models.set_contents(crate::lines![
-        "pub struct User {".human(),
-        "    pub id: u64,".human(),
-        "    pub name: String,".human(),
+        human_context.expected_line("pub struct User {"),
+        human_context.expected_line("    pub id: u64,"),
+        human_context.expected_line("    pub name: String,"),
         "    pub active: bool,".ai(),
         "    pub role: String,".ai(),
         "    pub score: f64,".ai(),
         "    pub metadata: std::collections::HashMap<String, String>,".ai(),
-        "}".human(),
+        human_context.expected_line("}"),
     ]);
     fs::write(
         repo.path().join("src/models.rs"),
@@ -10953,7 +10990,7 @@ fn test_conflict_ai_resolves_rust_struct_fields() {
     // AI resolves: merges ALL fields — original 2 + 4 feature + 2 main = 8 fields (all .ai() in struct body)
     let mut conflict_models = repo.filename("src/models.rs");
     conflict_models.set_contents(crate::lines![
-        "pub struct User {".human(),
+        human_context.expected_line("pub struct User {"),
         "    pub id: u64,".ai(),
         "    pub name: String,".ai(),
         "    pub email: String,".ai(),
@@ -10962,7 +10999,7 @@ fn test_conflict_ai_resolves_rust_struct_fields() {
         "    pub role: String,".ai(),
         "    pub score: f64,".ai(),
         "    pub metadata: std::collections::HashMap<String, String>,".ai(),
-        "}".human(),
+        human_context.expected_line("}"),
     ]);
     fs::write(
         repo.path().join("src/models.rs"),
@@ -11017,19 +11054,7 @@ fn test_conflict_ai_resolves_rust_struct_fields() {
     assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
     assert_note_files_exact(&repo, &chain[4], "c5_files", &["src/utils.rs"]);
 
-    // Verify per-commit-delta humans scoping (KnownHuman variant)
-    let conflict_note = parse_note(&repo, &chain[2]); // X = conflict commit index
-    assert!(
-        conflict_note
-            .metadata
-            .humans
-            .contains_key("h_e858f2c2faea28"),
-        "c3' should have h_e858f2c2faea28 in metadata.humans (human context lines in resolved file)"
-    );
-    assert_eq!(
-        conflict_note.metadata.humans["h_e858f2c2faea28"].author,
-        "Test User <test@example.com>"
-    );
+    human_context.assert_metadata_humans(&repo, &chain[2], "c3'");
 }
 
 /// Test 9: service.py process_payment — feature (C4) AI implements a 20-line
@@ -11038,6 +11063,21 @@ fn test_conflict_ai_resolves_rust_struct_fields() {
 /// Non-conflict commits: C1 models.py, C2 validators.py, C3 exceptions.py, C5 utils.py.
 #[test]
 fn test_conflict_ai_resolves_complex_function_with_error_handling() {
+    run_test_conflict_ai_resolves_complex_function_with_error_handling(
+        HumanContextAttribution::Known,
+    );
+}
+
+#[test]
+fn test_conflict_ai_resolves_complex_function_with_error_handling_standard_human() {
+    run_test_conflict_ai_resolves_complex_function_with_error_handling(
+        HumanContextAttribution::Unattributed,
+    );
+}
+
+fn run_test_conflict_ai_resolves_complex_function_with_error_handling(
+    human_context: HumanContextAttribution,
+) {
     let repo = TestRepo::new();
 
     // Initial: service.py with a function stub (human)
@@ -11129,7 +11169,7 @@ fn test_conflict_ai_resolves_complex_function_with_error_handling() {
     // C4: AI implements process_payment with 20 lines — WILL CONFLICT
     let mut service = repo.filename("service.py");
     service.set_contents(crate::lines![
-        "def process_payment(amount, card):".human(),
+        human_context.expected_line("def process_payment(amount, card):"),
         "    from validators import validate_amount, validate_card".ai(),
         "    from exceptions import PaymentError, CardDeclinedError".ai(),
         "    import logging".ai(),
@@ -11175,7 +11215,7 @@ fn test_conflict_ai_resolves_complex_function_with_error_handling() {
     // AI resolves: 25-line merged implementation (all .ai() except function signature line)
     let mut conflict_service = repo.filename("service.py");
     conflict_service.set_contents(crate::lines![
-        "def process_payment(amount, card):".human(),
+        human_context.expected_line("def process_payment(amount, card):"),
         "    from validators import validate_amount, validate_card".ai(),
         "    from exceptions import PaymentError, CardDeclinedError".ai(),
         "    from models import PaymentResult".ai(),
@@ -11262,19 +11302,7 @@ fn test_conflict_ai_resolves_complex_function_with_error_handling() {
     assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
     assert_note_files_exact(&repo, &chain[4], "c5_files", &["utils.py"]);
 
-    // Verify per-commit-delta humans scoping (KnownHuman variant)
-    let conflict_note = parse_note(&repo, &chain[3]); // X = conflict commit index
-    assert!(
-        conflict_note
-            .metadata
-            .humans
-            .contains_key("h_e858f2c2faea28"),
-        "c4' should have h_e858f2c2faea28 in metadata.humans (human context lines in resolved file)"
-    );
-    assert_eq!(
-        conflict_note.metadata.humans["h_e858f2c2faea28"].author,
-        "Test User <test@example.com>"
-    );
+    human_context.assert_metadata_humans(&repo, &chain[3], "c4'");
 }
 
 /// Test 10: Two conflicts — C2 (AI resolved) and C4 (human resolved).
@@ -11681,1567 +11709,6 @@ fn test_conflict_content_diff_wins_over_working_log() {
 // ============================================================================
 // END Category 5: Path-specific correctness tests
 // ============================================================================
-
-// ============================================================================
-// Standard-human variants: same as the KnownHuman tests above but use
-// .unattributed_human() instead of .human() in set_contents calls.
-// These do NOT assert metadata.humans (no KnownHuman attribution expected).
-// ============================================================================
-
-/// Test 1: config.py TIMEOUT constant — feature (C3) changes TIMEOUT to 60,
-/// main changes it to 120 → conflict.  AI resolves to TIMEOUT = 90.
-/// C1' has users.py, C2' adds products.py, C3' adds config.py (AI-resolved),
-/// C4' adds orders.py, C5' adds payments.py.
-#[test]
-fn test_conflict_ai_resolves_timeout_constant_standard_human() {
-    let repo = TestRepo::new();
-
-    // Initial: config.py with a class and TIMEOUT constant (human)
-    repo.commit_untracked_file(
-        "config.py",
-        "class Config:\n    TIMEOUT = 30\n    HOST = 'localhost'\n    PORT = 8080\n",
-        "Initial commit",
-    );
-    let main_branch = repo.current_branch();
-
-    // Main: changes TIMEOUT to 120 and adds 4 more commits
-    repo.commit_untracked_file(
-        "config.py",
-        "class Config:\n    TIMEOUT = 120\n    HOST = 'localhost'\n    PORT = 8080\n",
-        "main: increase TIMEOUT to 120",
-    );
-    repo.commit_untracked_file(
-        "logging_config.py",
-        "import logging\nlogging.basicConfig(level=logging.INFO)\n",
-        "main: add logging config",
-    );
-    repo.commit_untracked_file(
-        "constants.py",
-        "MAX_CONNECTIONS = 100\nDEFAULT_PAGE_SIZE = 20\n",
-        "main: add constants",
-    );
-    repo.commit_untracked_file(
-        "exceptions.py",
-        "class AppError(Exception): pass\nclass ValidationError(AppError): pass\n",
-        "main: add exceptions",
-    );
-    repo.commit_untracked_file(
-        "utils.py",
-        "def flatten(lst): return [x for sub in lst for x in sub]\n",
-        "main: add utils",
-    );
-
-    // Feature branch from base (before main's TIMEOUT change)
-    let base_sha = repo
-        .git(&["rev-parse", "HEAD~5"])
-        .unwrap()
-        .trim()
-        .to_string();
-    repo.git(&["checkout", "-b", "feature", &base_sha]).unwrap();
-
-    // C1: AI creates users.py (8 AI lines)
-    let mut users = repo.filename("users.py");
-    users.set_contents(crate::lines![
-        "class UserService:".ai(),
-        "    def __init__(self, db):".ai(),
-        "        self.db = db".ai(),
-        "    def get_user(self, uid):".ai(),
-        "        return self.db.query('SELECT * FROM users WHERE id=?', uid)".ai(),
-        "    def create_user(self, name, email):".ai(),
-        "        return self.db.execute('INSERT INTO users VALUES (?, ?)', name, email)".ai(),
-        "    def delete_user(self, uid):".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C1 add user service")
-        .unwrap();
-
-    // C2: AI creates products.py (8 AI lines)
-    let mut products = repo.filename("products.py");
-    products.set_contents(crate::lines![
-        "class ProductService:".ai(),
-        "    def __init__(self, db):".ai(),
-        "        self.db = db".ai(),
-        "    def get_product(self, pid):".ai(),
-        "        return self.db.query('SELECT * FROM products WHERE id=?', pid)".ai(),
-        "    def list_products(self):".ai(),
-        "        return self.db.query('SELECT * FROM products')".ai(),
-        "    def update_price(self, pid, price):".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C2 add product service")
-        .unwrap();
-
-    // C3: AI changes TIMEOUT to 60 in config.py — WILL CONFLICT with main's 120
-    let mut config = repo.filename("config.py");
-    config.set_contents(crate::lines![
-        "class Config:".unattributed_human(),
-        "    TIMEOUT = 60".ai(),
-        "    HOST = 'localhost'".unattributed_human(),
-        "    PORT = 8080".unattributed_human(),
-    ]);
-    repo.stage_all_and_commit("feat: C3 AI tunes TIMEOUT to 60")
-        .unwrap();
-
-    // C4: AI creates orders.py (8 AI lines)
-    let mut orders = repo.filename("orders.py");
-    orders.set_contents(crate::lines![
-        "class OrderService:".ai(),
-        "    def __init__(self, db):".ai(),
-        "        self.db = db".ai(),
-        "    def create_order(self, uid, items):".ai(),
-        "        total = sum(i['price'] for i in items)".ai(),
-        "        return self.db.execute('INSERT INTO orders VALUES (?, ?)', uid, total)".ai(),
-        "    def get_order(self, oid):".ai(),
-        "        return self.db.query('SELECT * FROM orders WHERE id=?', oid)".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C4 add order service")
-        .unwrap();
-
-    // C5: AI creates payments.py (8 AI lines)
-    let mut payments = repo.filename("payments.py");
-    payments.set_contents(crate::lines![
-        "class PaymentService:".ai(),
-        "    def __init__(self, db, stripe):".ai(),
-        "        self.db = db".ai(),
-        "        self.stripe = stripe".ai(),
-        "    def charge(self, oid, amount, token):".ai(),
-        "        r = self.stripe.charge(amount, token)".ai(),
-        "        self.db.execute('INSERT INTO payments VALUES (?, ?)', oid, r['id'])".ai(),
-        "    def refund(self, pid):".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C5 add payment service")
-        .unwrap();
-
-    // Rebase onto main — C3 will conflict on config.py
-    repo.git(&["checkout", "feature"]).unwrap();
-    let rebase_result = repo.git(&["rebase", &main_branch]);
-    assert!(
-        rebase_result.is_err(),
-        "rebase should conflict on config.py at C3"
-    );
-
-    // AI resolves: sets TIMEOUT = 90 as .ai(), surrounding lines as .unattributed_human()
-    let mut conflict_config = repo.filename("config.py");
-    conflict_config.set_contents(crate::lines![
-        "class Config:".unattributed_human(),
-        "    TIMEOUT = 90".ai(),
-        "    HOST = 'localhost'".unattributed_human(),
-        "    PORT = 8080".unattributed_human(),
-    ]);
-    // set_contents already ran git add -A + checkpoint
-    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
-        .unwrap();
-
-    let chain = get_commit_chain(&repo, 5);
-
-    // C1': users.py only (per-commit-delta)
-    assert_note_base_commit_matches(&repo, &chain[0], "c1_base");
-    assert_note_files_exact(&repo, &chain[0], "c1_files", &["users.py"]);
-
-    // C2': products.py only
-    assert_note_base_commit_matches(&repo, &chain[1], "c2_base");
-    assert_note_files_exact(&repo, &chain[1], "c2_files", &["products.py"]);
-
-    // C3': config.py only (AI-resolved, TIMEOUT = 90 attributed as AI)
-    assert_note_base_commit_matches(&repo, &chain[2], "c3_base");
-    assert_note_files_exact(&repo, &chain[2], "c3_files", &["config.py"]);
-    // 1 AI line: TIMEOUT = 90 (working-log fallback path must set accepted_lines correctly)
-    assert_accepted_lines_exact(&repo, &chain[2], "c3_accepted_lines", 1);
-
-    // blame at chain[2] for config.py: the AI-resolved TIMEOUT line should be AI
-    assert_blame_at_commit(
-        &repo,
-        &chain[2],
-        "config.py",
-        "c3_blame_config",
-        &[
-            ("class Config:", false),
-            ("TIMEOUT = 90", true),
-            ("HOST = 'localhost'", false),
-            ("PORT = 8080", false),
-        ],
-    );
-
-    // C4': orders.py only
-    assert_note_base_commit_matches(&repo, &chain[3], "c4_base");
-    assert_note_files_exact(&repo, &chain[3], "c4_files", &["orders.py"]);
-
-    // C5': payments.py only
-    assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
-    assert_note_files_exact(&repo, &chain[4], "c5_files", &["payments.py"]);
-}
-
-/// Test 3: processor.py — feature (C3) adds 5 AI lines to method2 body,
-/// main also changes method2.  AI resolution rewrites processor.py preserving
-/// 2 human context lines and writing 7 lines for the resolved method2 (marked
-/// `.ai()` in set_contents).  However, the content-diff path only carries
-/// attribution for lines whose content exactly matches the original feature commit:
-/// only `def method2(self):`, `result = []`, `for i in range(10):`, and
-/// `result.append(i * 2)` survive the content match — 4 lines.  The newly
-/// introduced lines (`# AI merged`, `label = `, `return result, label`) have no
-/// entry in `original_head_line_to_author` and therefore receive human attribution.
-#[test]
-fn test_conflict_ai_resolves_preserving_human_context_lines_standard_human() {
-    let repo = TestRepo::new();
-
-    // Initial: processor.py with a class (6 human lines)
-    repo.commit_untracked_file("processor.py",
-        "class Processor:\n    def method1(self): return 'method1'\n    def method2(self): pass\n    def method3(self): return 'method3'\n",
-        "Initial commit",
-    );
-    let main_branch = repo.current_branch();
-
-    // Main: human changes method2 differently → conflict
-    repo.commit_untracked_file("processor.py",
-        "class Processor:\n    def method1(self): return 'method1'\n    def method2(self): return 'human-method2'\n    def method3(self): return 'method3'\n",
-        "main: implement method2",
-    );
-    repo.commit_untracked_file(
-        "runner.py",
-        "from processor import Processor\np = Processor()\np.method1()\n",
-        "main: add runner",
-    );
-    repo.commit_untracked_file("tests/test_processor.py",
-        "from processor import Processor\ndef test_method1(): assert Processor().method1() == 'method1'\n",
-        "main: add tests",
-    );
-    repo.commit_untracked_file(
-        "setup.py",
-        "from setuptools import setup\nsetup(name='processor', version='0.1.0')\n",
-        "main: add setup.py",
-    );
-    repo.commit_untracked_file(
-        "pyproject.toml",
-        "[build-system]\nrequires = ['setuptools']\n",
-        "main: add pyproject.toml",
-    );
-
-    // Feature branch from base
-    let base_sha = repo
-        .git(&["rev-parse", "HEAD~5"])
-        .unwrap()
-        .trim()
-        .to_string();
-    repo.git(&["checkout", "-b", "feature", &base_sha]).unwrap();
-
-    // C1: AI creates util_a.py (8 AI lines)
-    let mut util_a = repo.filename("util_a.py");
-    util_a.set_contents(crate::lines![
-        "def parse_int(s: str) -> int:".ai(),
-        "    try:".ai(),
-        "        return int(s)".ai(),
-        "    except ValueError:".ai(),
-        "        raise ValueError(f'Cannot parse {s!r} as int')".ai(),
-        "".ai(),
-        "def parse_float(s: str) -> float:".ai(),
-        "    return float(s)".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C1 add util_a").unwrap();
-
-    // C2: AI creates util_b.py (8 AI lines)
-    let mut util_b = repo.filename("util_b.py");
-    util_b.set_contents(crate::lines![
-        "from typing import List, Optional".ai(),
-        "".ai(),
-        "def chunk(lst: List, size: int) -> List[List]:".ai(),
-        "    return [lst[i:i+size] for i in range(0, len(lst), size)]".ai(),
-        "".ai(),
-        "def flatten(lst: List[List]) -> List:".ai(),
-        "    return [x for sub in lst for x in sub]".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C2 add util_b").unwrap();
-
-    // C3: AI adds 5 lines to method2 in processor.py — WILL CONFLICT
-    let mut processor = repo.filename("processor.py");
-    processor.set_contents(crate::lines![
-        "class Processor:".unattributed_human(),
-        "    def method1(self): return 'method1'".unattributed_human(),
-        "    def method2(self):".ai(),
-        "        result = []".ai(),
-        "        for i in range(10):".ai(),
-        "            result.append(i * 2)".ai(),
-        "        return result".ai(),
-        "    def method3(self): return 'method3'".unattributed_human(),
-    ]);
-    fs::write(
-        repo.path().join("processor.py"),
-        "class Processor:\n    def method1(self): return 'method1'\n    def method2(self):\n        result = []\n        for i in range(10):\n            result.append(i * 2)\n        return result\n    def method3(self): return 'method3'\n",
-    )
-    .unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", "processor.py"])
-        .unwrap();
-    repo.stage_all_and_commit("feat: C3 AI implements method2")
-        .unwrap();
-
-    // C4: AI creates util_d.py (8 AI lines)
-    let mut util_d = repo.filename("util_d.py");
-    util_d.set_contents(crate::lines![
-        "import hashlib".ai(),
-        "".ai(),
-        "def md5(s: str) -> str:".ai(),
-        "    return hashlib.md5(s.encode()).hexdigest()".ai(),
-        "".ai(),
-        "def sha256(s: str) -> str:".ai(),
-        "    return hashlib.sha256(s.encode()).hexdigest()".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C4 add util_d").unwrap();
-
-    // C5: AI creates util_e.py (8 AI lines)
-    let mut util_e = repo.filename("util_e.py");
-    util_e.set_contents(crate::lines![
-        "import json".ai(),
-        "".ai(),
-        "def to_json(obj) -> str:".ai(),
-        "    return json.dumps(obj, indent=2)".ai(),
-        "".ai(),
-        "def from_json(s: str):".ai(),
-        "    return json.loads(s)".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C5 add util_e").unwrap();
-
-    // Rebase — C3 will conflict on processor.py
-    repo.git(&["checkout", "feature"]).unwrap();
-    let rebase_result = repo.git(&["rebase", &main_branch]);
-    assert!(
-        rebase_result.is_err(),
-        "rebase should conflict on processor.py at C3"
-    );
-
-    // AI resolves: 2 human context lines + 7 lines for resolved method2 (set_contents(.ai()))
-    // NOTE: content-diff only recovers lines matching original C3 content:
-    //   def method2, result = [], for i in range, result.append → 4 AI-attributed lines.
-    //   # AI merged, label = , return result/label → newly introduced, no original match → human.
-    let mut conflict_processor = repo.filename("processor.py");
-    conflict_processor.set_contents(crate::lines![
-        "class Processor:".unattributed_human(),
-        "    def method1(self): return 'method1'".unattributed_human(),
-        "    def method2(self):".ai(),
-        "        # AI merged: combines human's return with feature's loop".ai(),
-        "        result = []".ai(),
-        "        for i in range(10):".ai(),
-        "            result.append(i * 2)".ai(),
-        "        label = 'human-method2'".ai(),
-        "        return result, label".ai(),
-        "    def method3(self): return 'method3'".unattributed_human(),
-    ]);
-    fs::write(
-        repo.path().join("processor.py"),
-        "class Processor:\n    def method1(self): return 'method1'\n    def method2(self):\n        # AI merged: combines human's return with feature's loop\n        result = []\n        for i in range(10):\n            result.append(i * 2)\n        label = 'human-method2'\n        return result, label\n    def method3(self): return 'method3'\n",
-    )
-    .unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", "processor.py"])
-        .unwrap();
-    repo.git(&["add", "processor.py"]).unwrap();
-    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
-        .unwrap();
-
-    let chain = get_commit_chain(&repo, 5);
-
-    // C1': util_a.py only (per-commit-delta)
-    assert_note_base_commit_matches(&repo, &chain[0], "c1_base");
-    assert_note_files_exact(&repo, &chain[0], "c1_files", &["util_a.py"]);
-
-    // C2': util_b.py only
-    assert_note_base_commit_matches(&repo, &chain[1], "c2_base");
-    assert_note_files_exact(&repo, &chain[1], "c2_files", &["util_b.py"]);
-
-    // C3': processor.py only (AI-resolved: 4 AI lines via content-diff match)
-    assert_note_base_commit_matches(&repo, &chain[2], "c3_base");
-    assert_note_files_exact(&repo, &chain[2], "c3_files", &["processor.py"]);
-
-    // blame at chain[2] for processor.py: lines from parent are human,
-    // all new lines written by AI during resolution are AI.
-    assert_blame_at_commit(
-        &repo,
-        &chain[2],
-        "processor.py",
-        "c3_blame_processor",
-        &[
-            ("class Processor:", false),
-            ("def method1", false),
-            ("def method2", true),
-            ("AI merged", true),
-            ("result = []", true),
-            ("for i in range", true),
-            ("result.append", true),
-            ("label = ", true),
-            ("return result, label", true),
-            ("def method3", false),
-        ],
-    );
-
-    // C4': util_d.py only
-    assert_note_base_commit_matches(&repo, &chain[3], "c4_base");
-    assert_note_files_exact(&repo, &chain[3], "c4_files", &["util_d.py"]);
-
-    // C5': util_e.py only
-    assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
-    assert_note_files_exact(&repo, &chain[4], "c5_files", &["util_e.py"]);
-}
-
-/// Test 4: version.py — conflict is on C1 (the VERY FIRST feature commit).
-/// Feature changes VERSION to "2.0", main changes it to "1.5".
-/// AI resolves to "2.1".  C2–C5 accumulate other files normally.
-#[test]
-fn test_conflict_ai_resolves_on_first_commit_standard_human() {
-    let repo = TestRepo::new();
-
-    // Initial: version.py with VERSION = "1.0"
-    repo.commit_untracked_file(
-        "version.py",
-        "VERSION = \"1.0\"\nCODENAME = \"alpha\"\n",
-        "Initial commit",
-    );
-    let main_branch = repo.current_branch();
-
-    // Main: changes VERSION to "1.5" — will conflict with feature's C1
-    repo.commit_untracked_file(
-        "version.py",
-        "VERSION = \"1.5\"\nCODENAME = \"beta\"\n",
-        "main: bump version to 1.5",
-    );
-    repo.commit_untracked_file(
-        "CHANGELOG.md",
-        "## 1.5\n- Performance improvements\n",
-        "main: add changelog",
-    );
-    repo.commit_untracked_file(
-        "CONTRIBUTORS.md",
-        "# Contributors\n- Alice\n- Bob\n",
-        "main: add contributors",
-    );
-    repo.commit_untracked_file(
-        "LICENSE",
-        "MIT License\nCopyright 2024\n",
-        "main: add license",
-    );
-    repo.commit_untracked_file(
-        "docs/index.md",
-        "# Docs\nWelcome to the docs.\n",
-        "main: add docs",
-    );
-
-    // Feature branch from base
-    let base_sha = repo
-        .git(&["rev-parse", "HEAD~5"])
-        .unwrap()
-        .trim()
-        .to_string();
-    repo.git(&["checkout", "-b", "feature", &base_sha]).unwrap();
-
-    // C1: AI changes VERSION to "2.0" — WILL CONFLICT
-    let mut version = repo.filename("version.py");
-    version.set_contents(crate::lines![
-        "VERSION = \"2.0\"".ai(),
-        "CODENAME = \"alpha\"".unattributed_human(),
-    ]);
-    repo.stage_all_and_commit("feat: C1 bump version to 2.0")
-        .unwrap();
-
-    // C2: AI creates changelog.py (8 AI lines)
-    let mut changelog = repo.filename("changelog.py");
-    changelog.set_contents(crate::lines![
-        "import datetime".ai(),
-        "".ai(),
-        "class ChangelogEntry:".ai(),
-        "    def __init__(self, version: str, date: datetime.date, changes: list):".ai(),
-        "        self.version = version".ai(),
-        "        self.date = date".ai(),
-        "        self.changes = changes".ai(),
-        "    def render(self) -> str: return f'{self.version} ({self.date}): {len(self.changes)} changes'".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C2 add changelog model")
-        .unwrap();
-
-    // C3: AI creates release_notes.py (8 AI lines)
-    let mut release_notes = repo.filename("release_notes.py");
-    release_notes.set_contents(crate::lines![
-        "from typing import List".ai(),
-        "".ai(),
-        "def format_release_notes(entries: List[dict]) -> str:".ai(),
-        "    lines = []".ai(),
-        "    for e in entries:".ai(),
-        "        lines.append(f\"## {e['version']}\")".ai(),
-        "        for change in e.get('changes', []):".ai(),
-        "            lines.append(f'- {change}')".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C3 add release notes formatter")
-        .unwrap();
-
-    // C4: AI creates deprecations.py (8 AI lines)
-    let mut deprecations = repo.filename("deprecations.py");
-    deprecations.set_contents(crate::lines![
-        "import warnings".ai(),
-        "import functools".ai(),
-        "".ai(),
-        "def deprecated(reason: str):".ai(),
-        "    def decorator(func):".ai(),
-        "        @functools.wraps(func)".ai(),
-        "        def wrapper(*args, **kwargs):".ai(),
-        "            warnings.warn(f'{func.__name__} is deprecated: {reason}', DeprecationWarning, stacklevel=2)".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C4 add deprecation decorator")
-        .unwrap();
-
-    // C5: AI creates migration_guide.py (8 AI lines)
-    let mut migration_guide = repo.filename("migration_guide.py");
-    migration_guide.set_contents(crate::lines![
-        "MIGRATION_STEPS = [".ai(),
-        "    'Update config files to new schema',".ai(),
-        "    'Run database migration scripts',".ai(),
-        "    'Update API call signatures',".ai(),
-        "    'Test all integrations',".ai(),
-        "    'Deploy to staging first',".ai(),
-        "    'Monitor error rates after deployment',".ai(),
-        "]".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C5 add migration guide")
-        .unwrap();
-
-    // Rebase — C1 will conflict immediately on version.py
-    repo.git(&["checkout", "feature"]).unwrap();
-    let rebase_result = repo.git(&["rebase", &main_branch]);
-    assert!(
-        rebase_result.is_err(),
-        "rebase should conflict on version.py at C1"
-    );
-
-    // AI resolves: VERSION = "2.1" as .ai(), CODENAME as .unattributed_human()
-    let mut conflict_version = repo.filename("version.py");
-    conflict_version.set_contents(crate::lines![
-        "VERSION = \"2.1\"".ai(),
-        "CODENAME = \"beta\"".unattributed_human(),
-    ]);
-    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
-        .unwrap();
-
-    let chain = get_commit_chain(&repo, 5);
-
-    // C1': version.py only with AI-resolved VERSION line (per-commit-delta)
-    assert_note_base_commit_matches(&repo, &chain[0], "c1_base");
-    assert_note_files_exact(&repo, &chain[0], "c1_files", &["version.py"]);
-
-    // blame at chain[0] for version.py: VERSION line is AI, CODENAME is human
-    assert_blame_at_commit(
-        &repo,
-        &chain[0],
-        "version.py",
-        "c1_blame_version",
-        &[("VERSION = \"2.1\"", true), ("CODENAME = \"beta\"", false)],
-    );
-
-    // C2': changelog.py only
-    assert_note_base_commit_matches(&repo, &chain[1], "c2_base");
-    assert_note_files_exact(&repo, &chain[1], "c2_files", &["changelog.py"]);
-
-    // C3': release_notes.py only
-    assert_note_base_commit_matches(&repo, &chain[2], "c3_base");
-    assert_note_files_exact(&repo, &chain[2], "c3_files", &["release_notes.py"]);
-
-    // C4': deprecations.py only
-    assert_note_base_commit_matches(&repo, &chain[3], "c4_base");
-    assert_note_files_exact(&repo, &chain[3], "c4_files", &["deprecations.py"]);
-
-    // C5': migration_guide.py only
-    assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
-    assert_note_files_exact(&repo, &chain[4], "c5_files", &["migration_guide.py"]);
-}
-
-/// Test 5: schema.rs max_connections — conflict is on C5 (LAST feature commit).
-/// C1–C4 accumulate model_*.rs files cleanly.  C5 modifies schema.rs
-/// max_connections constant; main also modifies same constant.  AI resolves.
-#[test]
-fn test_conflict_ai_resolves_on_last_commit_standard_human() {
-    let repo = TestRepo::new();
-
-    // Initial: schema.rs with a constant (human)
-    repo.commit_untracked_file(
-        "src/schema.rs",
-        "pub const MAX_CONNECTIONS: u32 = 10;\npub const SCHEMA_VERSION: u32 = 1;\n",
-        "Initial commit",
-    );
-    let main_branch = repo.current_branch();
-
-    // Main: changes max_connections → will conflict with feature's C5
-    repo.commit_untracked_file(
-        "src/schema.rs",
-        "pub const MAX_CONNECTIONS: u32 = 50;\npub const SCHEMA_VERSION: u32 = 1;\n",
-        "main: increase max_connections to 50",
-    );
-    repo.commit_untracked_file(
-        "src/migration.rs",
-        "pub fn run_migrations() {}\n",
-        "main: add migration runner",
-    );
-    repo.commit_untracked_file(
-        "src/connection.rs",
-        "pub struct Connection { id: u32 }\n",
-        "main: add Connection type",
-    );
-    repo.commit_untracked_file(
-        "src/pool.rs",
-        "pub struct Pool { size: u32 }\n",
-        "main: add Pool struct",
-    );
-    repo.commit_untracked_file(
-        "Cargo.toml",
-        "[package]\nname = \"schema\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        "main: add Cargo.toml",
-    );
-
-    // Feature branch from base
-    let base_sha = repo
-        .git(&["rev-parse", "HEAD~5"])
-        .unwrap()
-        .trim()
-        .to_string();
-    repo.git(&["checkout", "-b", "feature", &base_sha]).unwrap();
-
-    // C1: AI creates model_a.rs (10 AI lines)
-    let mut model_a = repo.filename("src/model_a.rs");
-    model_a.set_contents(crate::lines![
-        "#[derive(Debug, Clone)]".ai(),
-        "pub struct ModelA {".ai(),
-        "    pub id: u64,".ai(),
-        "    pub name: String,".ai(),
-        "    pub active: bool,".ai(),
-        "}".ai(),
-        "".ai(),
-        "impl ModelA {".ai(),
-        "    pub fn new(id: u64, name: impl Into<String>) -> Self {".ai(),
-        "        Self { id, name: name.into(), active: true }".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C1 add ModelA").unwrap();
-
-    // C2: AI creates model_b.rs (10 AI lines)
-    let mut model_b = repo.filename("src/model_b.rs");
-    model_b.set_contents(crate::lines![
-        "#[derive(Debug, Clone)]".ai(),
-        "pub struct ModelB {".ai(),
-        "    pub id: u64,".ai(),
-        "    pub value: f64,".ai(),
-        "    pub tags: Vec<String>,".ai(),
-        "}".ai(),
-        "".ai(),
-        "impl ModelB {".ai(),
-        "    pub fn new(id: u64, value: f64) -> Self {".ai(),
-        "        Self { id, value, tags: Vec::new() }".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C2 add ModelB").unwrap();
-
-    // C3: AI creates model_c.rs (10 AI lines)
-    let mut model_c = repo.filename("src/model_c.rs");
-    model_c.set_contents(crate::lines![
-        "#[derive(Debug, Clone, PartialEq)]".ai(),
-        "pub enum Status {".ai(),
-        "    Active,".ai(),
-        "    Inactive,".ai(),
-        "    Pending,".ai(),
-        "}".ai(),
-        "".ai(),
-        "impl Default for Status {".ai(),
-        "    fn default() -> Self { Status::Pending }".ai(),
-        "}".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C3 add Status enum")
-        .unwrap();
-
-    // C4: AI creates model_d.rs (10 AI lines)
-    let mut model_d = repo.filename("src/model_d.rs");
-    model_d.set_contents(crate::lines![
-        "use std::collections::HashMap;".ai(),
-        "".ai(),
-        "#[derive(Debug, Default)]".ai(),
-        "pub struct Registry {".ai(),
-        "    entries: HashMap<u64, String>,".ai(),
-        "}".ai(),
-        "".ai(),
-        "impl Registry {".ai(),
-        "    pub fn register(&mut self, id: u64, name: impl Into<String>) {".ai(),
-        "        self.entries.insert(id, name.into());".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C4 add Registry").unwrap();
-
-    // C5: AI changes max_connections to 100 — WILL CONFLICT
-    let mut schema = repo.filename("src/schema.rs");
-    schema.set_contents(crate::lines![
-        "pub const MAX_CONNECTIONS: u32 = 100;".ai(),
-        "pub const SCHEMA_VERSION: u32 = 1;".unattributed_human(),
-    ]);
-    fs::write(
-        repo.path().join("src/schema.rs"),
-        "pub const MAX_CONNECTIONS: u32 = 100;\npub const SCHEMA_VERSION: u32 = 1;\n",
-    )
-    .unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", "src/schema.rs"])
-        .unwrap();
-    repo.stage_all_and_commit("feat: C5 AI tunes MAX_CONNECTIONS to 100")
-        .unwrap();
-
-    // Rebase — C5 will conflict on src/schema.rs
-    repo.git(&["checkout", "feature"]).unwrap();
-    let rebase_result = repo.git(&["rebase", &main_branch]);
-    assert!(
-        rebase_result.is_err(),
-        "rebase should conflict on src/schema.rs at C5"
-    );
-
-    // AI resolves: picks 75 as a compromise, as .ai()
-    let mut conflict_schema = repo.filename("src/schema.rs");
-    conflict_schema.set_contents(crate::lines![
-        "pub const MAX_CONNECTIONS: u32 = 75;".ai(),
-        "pub const SCHEMA_VERSION: u32 = 1;".unattributed_human(),
-    ]);
-    fs::write(
-        repo.path().join("src/schema.rs"),
-        "pub const MAX_CONNECTIONS: u32 = 75;\npub const SCHEMA_VERSION: u32 = 1;\n",
-    )
-    .unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", "src/schema.rs"])
-        .unwrap();
-    repo.git(&["add", "src/schema.rs"]).unwrap();
-    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
-        .unwrap();
-
-    let chain = get_commit_chain(&repo, 5);
-
-    // C1': model_a.rs only (per-commit-delta)
-    assert_note_base_commit_matches(&repo, &chain[0], "c1_base");
-    assert_note_files_exact(&repo, &chain[0], "c1_files", &["src/model_a.rs"]);
-
-    // C2': model_b.rs only
-    assert_note_base_commit_matches(&repo, &chain[1], "c2_base");
-    assert_note_files_exact(&repo, &chain[1], "c2_files", &["src/model_b.rs"]);
-
-    // C3': model_c.rs only
-    assert_note_base_commit_matches(&repo, &chain[2], "c3_base");
-    assert_note_files_exact(&repo, &chain[2], "c3_files", &["src/model_c.rs"]);
-
-    // C4': model_d.rs only
-    assert_note_base_commit_matches(&repo, &chain[3], "c4_base");
-    assert_note_files_exact(&repo, &chain[3], "c4_files", &["src/model_d.rs"]);
-
-    // C5': schema.rs only (AI-resolved MAX_CONNECTIONS)
-    assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
-    assert_note_files_exact(&repo, &chain[4], "c5_files", &["src/schema.rs"]);
-
-    // blame at chain[4] for schema.rs: MAX_CONNECTIONS line is AI, SCHEMA_VERSION is human
-    assert_blame_at_commit(
-        &repo,
-        &chain[4],
-        "src/schema.rs",
-        "c5_blame_schema",
-        &[
-            ("MAX_CONNECTIONS: u32 = 75", true),
-            ("SCHEMA_VERSION: u32 = 1", false),
-        ],
-    );
-}
-
-/// Test 6: config.py AND settings.py both conflict in C3.
-/// C3 AI changes a line in both files; main also changes same lines.
-/// AI resolves both conflicts.  Note for C3' has both files.
-#[test]
-fn test_conflict_ai_resolves_multiple_files_in_same_commit_standard_human() {
-    let repo = TestRepo::new();
-
-    // Initial: BOTH files exist at the shared base so C3's edits will conflict with main
-    repo.commit_untracked_file(
-        "config.py",
-        "DEBUG = False\nSECRET_KEY = 'changeme'\n",
-        "Initial: config",
-    );
-    repo.commit_untracked_file(
-        "settings.py",
-        "DATABASE_URL = 'sqlite:///dev.db'\nCACHE_BACKEND = 'locmem'\n",
-        "Initial: settings",
-    );
-    let main_branch = repo.current_branch();
-
-    // Main: changes the same lines in both files → will conflict with feature's C3
-    repo.commit_untracked_file(
-        "config.py",
-        "DEBUG = True\nSECRET_KEY = 'changeme'\n",
-        "main: enable DEBUG",
-    );
-    repo.commit_untracked_file(
-        "settings.py",
-        "DATABASE_URL = 'postgres://localhost/main_db'\nCACHE_BACKEND = 'redis'\n",
-        "main: update settings",
-    );
-    repo.commit_untracked_file(
-        "wsgi.py",
-        "from app import create_app\napplication = create_app()\n",
-        "main: add wsgi",
-    );
-    repo.commit_untracked_file(
-        "asgi.py",
-        "from app import create_app\napplication = create_app()\n",
-        "main: add asgi",
-    );
-    repo.commit_untracked_file(
-        "manage.py",
-        "#!/usr/bin/env python\nimport sys\nif __name__ == '__main__': pass\n",
-        "main: add manage.py",
-    );
-
-    // Feature branch from the shared base (HEAD~5 = after both initial commits)
-    let base_sha = repo
-        .git(&["rev-parse", "HEAD~5"])
-        .unwrap()
-        .trim()
-        .to_string();
-    repo.git(&["checkout", "-b", "feature", &base_sha]).unwrap();
-
-    // C1: AI creates auth.py (8 AI lines)
-    let mut auth = repo.filename("auth.py");
-    auth.set_contents(crate::lines![
-        "from typing import Optional".ai(),
-        "".ai(),
-        "def authenticate(token: str) -> Optional[str]:".ai(),
-        "    if not token: return None".ai(),
-        "    parts = token.split('.')".ai(),
-        "    if len(parts) != 3: return None".ai(),
-        "    return parts[1]".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C1 add auth").unwrap();
-
-    // C2: AI creates middleware.py (8 AI lines)
-    let mut middleware = repo.filename("middleware.py");
-    middleware.set_contents(crate::lines![
-        "class CorsMiddleware:".ai(),
-        "    def __init__(self, app):".ai(),
-        "        self.app = app".ai(),
-        "    def __call__(self, environ, start_response):".ai(),
-        "        def custom_start(status, headers):".ai(),
-        "            headers.append(('Access-Control-Allow-Origin', '*'))".ai(),
-        "            return start_response(status, headers)".ai(),
-        "        return self.app(environ, custom_start)".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C2 add CORS middleware")
-        .unwrap();
-
-    // C3: AI changes config.py AND settings.py — BOTH WILL CONFLICT
-    let mut config = repo.filename("config.py");
-    config.set_contents(crate::lines![
-        "DEBUG = False".unattributed_human(),
-        "SECRET_KEY = 'ai-generated-secret-key-v2'".ai(),
-    ]);
-    let mut settings = repo.filename("settings.py");
-    settings.set_contents(crate::lines![
-        "DATABASE_URL = 'postgres://localhost/feature_db'".ai(),
-        "CACHE_BACKEND = 'locmem'".unattributed_human(),
-    ]);
-    repo.stage_all_and_commit("feat: C3 AI tunes config and settings")
-        .unwrap();
-
-    // C4: AI creates permissions.py (8 AI lines)
-    let mut permissions = repo.filename("permissions.py");
-    permissions.set_contents(crate::lines![
-        "class Permission:".ai(),
-        "    READ = 'read'".ai(),
-        "    WRITE = 'write'".ai(),
-        "    ADMIN = 'admin'".ai(),
-        "".ai(),
-        "def has_permission(user_perms: list, required: str) -> bool:".ai(),
-        "    return required in user_perms".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C4 add permissions")
-        .unwrap();
-
-    // C5: AI creates serializers.py (8 AI lines)
-    let mut serializers = repo.filename("serializers.py");
-    serializers.set_contents(crate::lines![
-        "import json".ai(),
-        "".ai(),
-        "class JsonSerializer:".ai(),
-        "    @staticmethod".ai(),
-        "    def dumps(obj) -> str: return json.dumps(obj)".ai(),
-        "    @staticmethod".ai(),
-        "    def loads(s: str): return json.loads(s)".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C5 add JSON serializer")
-        .unwrap();
-
-    // Rebase — C3 will conflict on config.py (and possibly settings.py)
-    repo.git(&["checkout", "feature"]).unwrap();
-    let rebase_result = repo.git(&["rebase", &main_branch]);
-    assert!(rebase_result.is_err(), "rebase should conflict at C3");
-
-    // AI resolves config.py
-    let mut conflict_config = repo.filename("config.py");
-    conflict_config.set_contents(crate::lines![
-        "DEBUG = True".unattributed_human(),
-        "SECRET_KEY = 'ai-generated-secret-key-v2'".ai(),
-    ]);
-    // AI resolves settings.py
-    let mut conflict_settings = repo.filename("settings.py");
-    conflict_settings.set_contents(crate::lines![
-        "DATABASE_URL = 'postgres://localhost/feature_db'".ai(),
-        "CACHE_BACKEND = 'redis'".unattributed_human(),
-    ]);
-    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
-        .unwrap();
-
-    let chain = get_commit_chain(&repo, 5);
-
-    // C1': auth.py only (per-commit-delta)
-    assert_note_base_commit_matches(&repo, &chain[0], "c1_base");
-    assert_note_files_exact(&repo, &chain[0], "c1_files", &["auth.py"]);
-
-    // C2': middleware.py only
-    assert_note_base_commit_matches(&repo, &chain[1], "c2_base");
-    assert_note_files_exact(&repo, &chain[1], "c2_files", &["middleware.py"]);
-
-    // C3': config.py + settings.py (AI-resolved, both in same commit)
-    assert_note_base_commit_matches(&repo, &chain[2], "c3_base");
-    assert_note_files_exact(&repo, &chain[2], "c3_files", &["config.py", "settings.py"]);
-
-    // blame for config.py: DEBUG is human (unchanged), SECRET_KEY is AI
-    assert_blame_at_commit(
-        &repo,
-        &chain[2],
-        "config.py",
-        "c3_blame_config",
-        &[
-            ("DEBUG = True", false),
-            ("SECRET_KEY = 'ai-generated-secret-key-v2'", true),
-        ],
-    );
-
-    // blame for settings.py: DATABASE_URL is AI, CACHE_BACKEND is human
-    assert_blame_at_commit(
-        &repo,
-        &chain[2],
-        "settings.py",
-        "c3_blame_settings",
-        &[
-            ("DATABASE_URL = 'postgres://localhost/feature_db'", true),
-            ("CACHE_BACKEND = 'redis'", false),
-        ],
-    );
-
-    // C4': permissions.py only
-    assert_note_base_commit_matches(&repo, &chain[3], "c4_base");
-    assert_note_files_exact(&repo, &chain[3], "c4_files", &["permissions.py"]);
-
-    // C5': serializers.py only
-    assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
-    assert_note_files_exact(&repo, &chain[4], "c5_files", &["serializers.py"]);
-}
-
-/// Test 7: dispatcher.py — conflict on C2.  C3 and C4 also modify dispatcher.py
-/// (no further conflicts).  AI resolves C2 with 12-line process() implementation.
-/// Subsequent commits append more methods to dispatcher.py.
-#[test]
-fn test_conflict_ai_resolves_then_more_ai_builds_on_result_standard_human() {
-    let repo = TestRepo::new();
-
-    // Initial: dispatcher.py stub (human)
-    repo.commit_untracked_file(
-        "dispatcher.py",
-        "class Dispatcher:\n    pass\n",
-        "Initial commit",
-    );
-    let main_branch = repo.current_branch();
-
-    // Main: human implements process() differently → will conflict with feature's C2
-    repo.commit_untracked_file(
-        "dispatcher.py",
-        "class Dispatcher:\n    def process(self, msg): return msg.strip()\n",
-        "main: implement process() simply",
-    );
-    repo.commit_untracked_file(
-        "config.py",
-        "WORKERS = 4\nQUEUE_SIZE = 100\n",
-        "main: add config",
-    );
-    repo.commit_untracked_file(
-        "queue.py",
-        "import queue\nQ = queue.Queue()\n",
-        "main: add queue",
-    );
-    repo.commit_untracked_file(
-        "worker.py",
-        "class Worker:\n    def __init__(self, q): self.q = q\n",
-        "main: add worker",
-    );
-    repo.commit_untracked_file(
-        "monitor.py",
-        "class Monitor:\n    def check(self): return 'ok'\n",
-        "main: add monitor",
-    );
-
-    // Feature branch from base
-    let base_sha = repo
-        .git(&["rev-parse", "HEAD~5"])
-        .unwrap()
-        .trim()
-        .to_string();
-    repo.git(&["checkout", "-b", "feature", &base_sha]).unwrap();
-
-    // C1: AI creates base_handler.py (8 AI lines)
-    let mut base_handler = repo.filename("base_handler.py");
-    base_handler.set_contents(crate::lines![
-        "class BaseHandler:".ai(),
-        "    def __init__(self):".ai(),
-        "        self.middlewares = []".ai(),
-        "    def use(self, middleware):".ai(),
-        "        self.middlewares.append(middleware)".ai(),
-        "        return self".ai(),
-        "    def handle(self, msg): raise NotImplementedError".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C1 add BaseHandler")
-        .unwrap();
-
-    // C2: AI adds process() to dispatcher.py — WILL CONFLICT
-    let mut dispatcher_c2 = repo.filename("dispatcher.py");
-    dispatcher_c2.set_contents(crate::lines![
-        "class Dispatcher:".unattributed_human(),
-        "    def process(self, msg):".ai(),
-        "        msg = msg.strip()".ai(),
-        "        if not msg: raise ValueError('empty')".ai(),
-        "        tokens = msg.split()".ai(),
-        "        return {'cmd': tokens[0], 'args': tokens[1:]}".ai(),
-        "    pass".unattributed_human(),
-    ]);
-    repo.stage_all_and_commit("feat: C2 AI adds process() to Dispatcher")
-        .unwrap();
-
-    // C3: AI creates router.py (does NOT touch dispatcher.py — no conflict)
-    let mut router = repo.filename("router.py");
-    router.set_contents(crate::lines![
-        "from dispatcher import Dispatcher".ai(),
-        "".ai(),
-        "class Router:".ai(),
-        "    def __init__(self):".ai(),
-        "        self.dispatcher = Dispatcher()".ai(),
-        "    def register(self, cmd, fn): self.dispatcher.route(cmd, fn)".ai(),
-        "    def run(self, msg): return self.dispatcher.dispatch(msg)".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C3 AI adds Router")
-        .unwrap();
-
-    // C4: AI creates middleware.py (new file, no conflict)
-    let mut mw = repo.filename("middleware.py");
-    mw.set_contents(crate::lines![
-        "class Middleware:".ai(),
-        "    def __init__(self): self.chain = []".ai(),
-        "    def use(self, fn): self.chain.append(fn); return self".ai(),
-        "    def run(self, msg):".ai(),
-        "        for fn in self.chain: msg = fn(msg)".ai(),
-        "        return msg".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C4 AI adds Middleware")
-        .unwrap();
-
-    // C5: AI creates event_bus.py (new file, no conflict)
-    let mut bus = repo.filename("event_bus.py");
-    bus.set_contents(crate::lines![
-        "class EventBus:".ai(),
-        "    def __init__(self): self.handlers = {}".ai(),
-        "    def on(self, event, fn): self.handlers.setdefault(event, []).append(fn)".ai(),
-        "    def emit(self, event, *args):".ai(),
-        "        for fn in self.handlers.get(event, []): fn(*args)".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C5 AI adds EventBus")
-        .unwrap();
-
-    // Rebase — C2 will conflict on dispatcher.py
-    repo.git(&["checkout", "feature"]).unwrap();
-    let rebase_result = repo.git(&["rebase", &main_branch]);
-    assert!(
-        rebase_result.is_err(),
-        "rebase should conflict on dispatcher.py at C2"
-    );
-
-    // AI resolves C2: 12-line process() implementation (all .ai() except class line)
-    let mut conflict_dispatcher = repo.filename("dispatcher.py");
-    conflict_dispatcher.set_contents(crate::lines![
-        "class Dispatcher:".unattributed_human(),
-        "    def process(self, msg):".ai(),
-        "        # AI merge: validates and parses, as in feature branch".ai(),
-        "        msg = msg.strip()".ai(),
-        "        if not msg: raise ValueError('empty message')".ai(),
-        "        tokens = msg.split()".ai(),
-        "        cmd = tokens[0].lower()".ai(),
-        "        args = tokens[1:]".ai(),
-        "        return {'cmd': cmd, 'args': args, 'raw': msg}".ai(),
-        "    def _noop(self, args): return None".ai(),
-        "    def __repr__(self): return f'Dispatcher()'".ai(),
-        "    pass".unattributed_human(),
-    ]);
-    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
-        .unwrap();
-
-    let chain = get_commit_chain(&repo, 5);
-
-    // C1': base_handler.py only (per-commit-delta)
-    assert_note_base_commit_matches(&repo, &chain[0], "c1_base");
-    assert_note_files_exact(&repo, &chain[0], "c1_files", &["base_handler.py"]);
-
-    // C2': dispatcher.py only (AI-resolved: ~10 AI lines)
-    assert_note_base_commit_matches(&repo, &chain[1], "c2_base");
-    assert_note_files_exact(&repo, &chain[1], "c2_files", &["dispatcher.py"]);
-
-    // C3': router.py only
-    assert_note_base_commit_matches(&repo, &chain[2], "c3_base");
-    assert_note_files_exact(&repo, &chain[2], "c3_files", &["router.py"]);
-
-    // C4': middleware.py only
-    assert_note_base_commit_matches(&repo, &chain[3], "c4_base");
-    assert_note_files_exact(&repo, &chain[3], "c4_files", &["middleware.py"]);
-
-    // C5': event_bus.py only
-    assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
-    assert_note_files_exact(&repo, &chain[4], "c5_files", &["event_bus.py"]);
-}
-
-/// Test 8: models.rs struct fields — feature (C3) AI adds 4 new fields,
-/// main human adds 2 different fields.  AI resolution merges all 8 fields.
-/// The merged struct body is all .ai().
-#[test]
-fn test_conflict_ai_resolves_rust_struct_fields_standard_human() {
-    let repo = TestRepo::new();
-
-    // Initial: models.rs with a struct (2 original fields, human)
-    repo.commit_untracked_file(
-        "src/models.rs",
-        "pub struct User {\n    pub id: u64,\n    pub name: String,\n}\n",
-        "Initial commit",
-    );
-    let main_branch = repo.current_branch();
-
-    // Main: adds email and created_at fields → will conflict
-    repo.commit_untracked_file("src/models.rs",
-        "pub struct User {\n    pub id: u64,\n    pub name: String,\n    pub email: String,\n    pub created_at: u64,\n}\n",
-        "main: add email and created_at to User",
-    );
-    repo.commit_untracked_file(
-        "src/db.rs",
-        "pub struct Db { url: String }\n",
-        "main: add Db",
-    );
-    repo.commit_untracked_file(
-        "src/repo.rs",
-        "use crate::models::User;\npub struct UserRepo;\n",
-        "main: add UserRepo",
-    );
-    repo.commit_untracked_file(
-        "src/service.rs",
-        "pub struct UserService;\n",
-        "main: add UserService",
-    );
-    repo.commit_untracked_file(
-        "Cargo.toml",
-        "[package]\nname = \"models\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
-        "main: add Cargo.toml",
-    );
-
-    // Feature branch from base
-    let base_sha = repo
-        .git(&["rev-parse", "HEAD~5"])
-        .unwrap()
-        .trim()
-        .to_string();
-    repo.git(&["checkout", "-b", "feature", &base_sha]).unwrap();
-
-    // C1: AI creates traits.rs (8 AI lines)
-    let mut traits = repo.filename("src/traits.rs");
-    traits.set_contents(crate::lines![
-        "pub trait Entity {".ai(),
-        "    fn id(&self) -> u64;".ai(),
-        "    fn name(&self) -> &str;".ai(),
-        "}".ai(),
-        "".ai(),
-        "pub trait Persistable: Entity {".ai(),
-        "    fn save(&self) -> Result<(), String>;".ai(),
-        "    fn delete(&self) -> Result<(), String>;".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C1 add Entity and Persistable traits")
-        .unwrap();
-
-    // C2: AI creates impls.rs (8 AI lines)
-    let mut impls = repo.filename("src/impls.rs");
-    impls.set_contents(crate::lines![
-        "use crate::models::User;".ai(),
-        "use crate::traits::Entity;".ai(),
-        "".ai(),
-        "impl Entity for User {".ai(),
-        "    fn id(&self) -> u64 { self.id }".ai(),
-        "    fn name(&self) -> &str { &self.name }".ai(),
-        "}".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C2 impl Entity for User")
-        .unwrap();
-
-    // C3: AI adds 4 new fields to User struct — WILL CONFLICT with main's email/created_at
-    let mut models = repo.filename("src/models.rs");
-    models.set_contents(crate::lines![
-        "pub struct User {".unattributed_human(),
-        "    pub id: u64,".unattributed_human(),
-        "    pub name: String,".unattributed_human(),
-        "    pub active: bool,".ai(),
-        "    pub role: String,".ai(),
-        "    pub score: f64,".ai(),
-        "    pub metadata: std::collections::HashMap<String, String>,".ai(),
-        "}".unattributed_human(),
-    ]);
-    fs::write(
-        repo.path().join("src/models.rs"),
-        "pub struct User {\n    pub id: u64,\n    pub name: String,\n    pub active: bool,\n    pub role: String,\n    pub score: f64,\n    pub metadata: std::collections::HashMap<String, String>,\n}\n",
-    )
-    .unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", "src/models.rs"])
-        .unwrap();
-    repo.stage_all_and_commit("feat: C3 AI adds active/role/score/metadata fields")
-        .unwrap();
-
-    // C4: AI creates errors.rs (8 AI lines)
-    let mut errors = repo.filename("src/errors.rs");
-    errors.set_contents(crate::lines![
-        "#[derive(Debug)]".ai(),
-        "pub enum ModelError {".ai(),
-        "    NotFound(u64),".ai(),
-        "    InvalidField(String),".ai(),
-        "    DuplicateId(u64),".ai(),
-        "}".ai(),
-        "".ai(),
-        "impl std::fmt::Display for ModelError { fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result { write!(f, \"{:?}\", self) } }".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C4 add ModelError")
-        .unwrap();
-
-    // C5: AI creates utils.rs (8 AI lines)
-    let mut utils = repo.filename("src/utils.rs");
-    utils.set_contents(crate::lines![
-        "pub fn slugify(s: &str) -> String {".ai(),
-        "    s.to_lowercase()".ai(),
-        "        .chars()".ai(),
-        "        .map(|c| if c.is_alphanumeric() { c } else { '-' })".ai(),
-        "        .collect::<String>()".ai(),
-        "        .trim_matches('-')".ai(),
-        "        .to_string()".ai(),
-        "}".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C5 add slugify utility")
-        .unwrap();
-
-    // Rebase — C3 will conflict on src/models.rs
-    repo.git(&["checkout", "feature"]).unwrap();
-    let rebase_result = repo.git(&["rebase", &main_branch]);
-    assert!(
-        rebase_result.is_err(),
-        "rebase should conflict on src/models.rs at C3"
-    );
-
-    // AI resolves: merges ALL fields — original 2 + 4 feature + 2 main = 8 fields (all .ai() in struct body)
-    let mut conflict_models = repo.filename("src/models.rs");
-    conflict_models.set_contents(crate::lines![
-        "pub struct User {".unattributed_human(),
-        "    pub id: u64,".ai(),
-        "    pub name: String,".ai(),
-        "    pub email: String,".ai(),
-        "    pub created_at: u64,".ai(),
-        "    pub active: bool,".ai(),
-        "    pub role: String,".ai(),
-        "    pub score: f64,".ai(),
-        "    pub metadata: std::collections::HashMap<String, String>,".ai(),
-        "}".unattributed_human(),
-    ]);
-    fs::write(
-        repo.path().join("src/models.rs"),
-        "pub struct User {\n    pub id: u64,\n    pub name: String,\n    pub email: String,\n    pub created_at: u64,\n    pub active: bool,\n    pub role: String,\n    pub score: f64,\n    pub metadata: std::collections::HashMap<String, String>,\n}\n",
-    )
-    .unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", "src/models.rs"])
-        .unwrap();
-    repo.git(&["add", "src/models.rs"]).unwrap();
-    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
-        .unwrap();
-
-    let chain = get_commit_chain(&repo, 5);
-
-    // C1': traits.rs only (per-commit-delta)
-    assert_note_base_commit_matches(&repo, &chain[0], "c1_base");
-    assert_note_files_exact(&repo, &chain[0], "c1_files", &["src/traits.rs"]);
-
-    // C2': impls.rs only
-    assert_note_base_commit_matches(&repo, &chain[1], "c2_base");
-    assert_note_files_exact(&repo, &chain[1], "c2_files", &["src/impls.rs"]);
-
-    // C3': models.rs only (AI-resolved struct with merged fields)
-    assert_note_base_commit_matches(&repo, &chain[2], "c3_base");
-    assert_note_files_exact(&repo, &chain[2], "c3_files", &["src/models.rs"]);
-
-    // blame for models.rs: struct keyword is human, equal fields carry AI attribution, new fields are human
-    assert_blame_at_commit(
-        &repo,
-        &chain[2],
-        "src/models.rs",
-        "c3_blame_models",
-        &[
-            ("pub struct User {", false),
-            ("pub id: u64,", false),
-            ("pub name: String,", false),
-            ("pub email: String,", false),
-            ("pub created_at: u64,", false),
-            ("pub active: bool,", true),
-            ("pub role: String,", true),
-            ("pub score: f64,", true),
-            ("pub metadata:", true),
-            ("}", false),
-        ],
-    );
-
-    // C4': errors.rs only
-    assert_note_base_commit_matches(&repo, &chain[3], "c4_base");
-    assert_note_files_exact(&repo, &chain[3], "c4_files", &["src/errors.rs"]);
-
-    // C5': utils.rs only
-    assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
-    assert_note_files_exact(&repo, &chain[4], "c5_files", &["src/utils.rs"]);
-}
-
-/// Test 9: service.py process_payment — feature (C4) AI implements a 20-line
-/// function body; main also implements the same function (12 lines).
-/// AI resolution produces a 25-line merged implementation (all .ai()).
-/// Non-conflict commits: C1 models.py, C2 validators.py, C3 exceptions.py, C5 utils.py.
-#[test]
-fn test_conflict_ai_resolves_complex_function_with_error_handling_standard_human() {
-    let repo = TestRepo::new();
-
-    // Initial: service.py with a function stub (human)
-    repo.commit_untracked_file(
-        "service.py",
-        "def process_payment(amount, card):\n    pass\n",
-        "Initial commit",
-    );
-    let main_branch = repo.current_branch();
-
-    // Main: human implements process_payment differently → will conflict
-    repo.commit_untracked_file("service.py",
-        "def process_payment(amount, card):\n    if amount <= 0:\n        raise ValueError('amount must be positive')\n    return {'status': 'ok', 'amount': amount}\n",
-        "main: implement process_payment",
-    );
-    repo.commit_untracked_file("tests/test_service.py",
-        "from service import process_payment\ndef test_basic(): assert process_payment(10, '4111')['status'] == 'ok'\n",
-        "main: add service tests",
-    );
-    repo.commit_untracked_file(
-        "requirements.txt",
-        "stripe==5.0.0\nrequests==2.31.0\n",
-        "main: add requirements",
-    );
-    repo.commit_untracked_file(
-        ".env.example",
-        "STRIPE_KEY=sk_test_xxx\nDATABASE_URL=sqlite:///dev.db\n",
-        "main: add .env.example",
-    );
-    repo.commit_untracked_file(
-        "Makefile",
-        "test:\n\tpython -m pytest\nlint:\n\tflake8 .\n.PHONY: test lint\n",
-        "main: add Makefile",
-    );
-
-    // Feature branch from base
-    let base_sha = repo
-        .git(&["rev-parse", "HEAD~5"])
-        .unwrap()
-        .trim()
-        .to_string();
-    repo.git(&["checkout", "-b", "feature", &base_sha]).unwrap();
-
-    // C1: AI creates models.py (8 AI lines)
-    let mut models = repo.filename("models.py");
-    models.set_contents(crate::lines![
-        "from dataclasses import dataclass, field".ai(),
-        "".ai(),
-        "@dataclass".ai(),
-        "class PaymentResult:".ai(),
-        "    status: str".ai(),
-        "    transaction_id: str".ai(),
-        "    amount: float".ai(),
-        "    error: str = ''".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C1 add PaymentResult model")
-        .unwrap();
-
-    // C2: AI creates validators.py (8 AI lines)
-    let mut validators = repo.filename("validators.py");
-    validators.set_contents(crate::lines![
-        "import re".ai(),
-        "".ai(),
-        "def validate_card(card: str) -> bool:".ai(),
-        "    return bool(re.match(r'^[0-9]{13,19}$', card.replace(' ', '')))".ai(),
-        "".ai(),
-        "def validate_amount(amount: float) -> bool:".ai(),
-        "    return isinstance(amount, (int, float)) and 0 < amount <= 1_000_000".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C2 add payment validators")
-        .unwrap();
-
-    // C3: AI creates exceptions.py (8 AI lines)
-    let mut exceptions = repo.filename("exceptions.py");
-    exceptions.set_contents(crate::lines![
-        "class PaymentError(Exception):".ai(),
-        "    def __init__(self, msg: str, code: int = 400):".ai(),
-        "        super().__init__(msg)".ai(),
-        "        self.code = code".ai(),
-        "".ai(),
-        "class CardDeclinedError(PaymentError):".ai(),
-        "    def __init__(self): super().__init__('Card declined', 402)".ai(),
-        "".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C3 add payment exceptions")
-        .unwrap();
-
-    // C4: AI implements process_payment with 20 lines — WILL CONFLICT
-    let mut service = repo.filename("service.py");
-    service.set_contents(crate::lines![
-        "def process_payment(amount, card):".unattributed_human(),
-        "    from validators import validate_amount, validate_card".ai(),
-        "    from exceptions import PaymentError, CardDeclinedError".ai(),
-        "    import logging".ai(),
-        "    logger = logging.getLogger(__name__)".ai(),
-        "    logger.info(f'Processing payment: amount={amount}')".ai(),
-        "    if not validate_amount(amount):".ai(),
-        "        raise PaymentError(f'Invalid amount: {amount}')".ai(),
-        "    if not validate_card(card):".ai(),
-        "        raise PaymentError(f'Invalid card number')".ai(),
-        "    if str(card).startswith('0000'):".ai(),
-        "        raise CardDeclinedError()".ai(),
-        "    transaction_id = f'txn_{hash(card + str(amount)) % 10**9}'".ai(),
-        "    logger.info(f'Payment successful: {transaction_id}')".ai(),
-        "    return {'status': 'ok', 'transaction_id': transaction_id, 'amount': amount}".ai(),
-        "    # end process_payment".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C4 AI implements process_payment")
-        .unwrap();
-
-    // C5: AI creates utils.py (8 AI lines)
-    let mut utils = repo.filename("utils.py");
-    utils.set_contents(crate::lines![
-        "def mask_card(card: str) -> str:".ai(),
-        "    digits = card.replace(' ', '')".ai(),
-        "    return '*' * (len(digits) - 4) + digits[-4:]".ai(),
-        "".ai(),
-        "def format_amount(amount: float) -> str:".ai(),
-        "    return f'${amount:.2f}'".ai(),
-        "".ai(),
-        "def generate_receipt(result: dict) -> str: return f\"Receipt: {result['transaction_id']} {result['amount']}\"".ai(),
-    ]);
-    repo.stage_all_and_commit("feat: C5 add payment utils")
-        .unwrap();
-
-    // Rebase — C4 will conflict on service.py
-    repo.git(&["checkout", "feature"]).unwrap();
-    let rebase_result = repo.git(&["rebase", &main_branch]);
-    assert!(
-        rebase_result.is_err(),
-        "rebase should conflict on service.py at C4"
-    );
-
-    // AI resolves: 25-line merged implementation (all .ai() except function signature line)
-    let mut conflict_service = repo.filename("service.py");
-    conflict_service.set_contents(crate::lines![
-        "def process_payment(amount, card):".unattributed_human(),
-        "    from validators import validate_amount, validate_card".ai(),
-        "    from exceptions import PaymentError, CardDeclinedError".ai(),
-        "    from models import PaymentResult".ai(),
-        "    import logging".ai(),
-        "    logger = logging.getLogger(__name__)".ai(),
-        "    logger.info(f'Processing: amount={amount} card=***{str(card)[-4:]}')".ai(),
-        "    if amount <= 0:".ai(),
-        "        raise ValueError('amount must be positive')".ai(),
-        "    if not validate_amount(amount):".ai(),
-        "        raise PaymentError(f'Amount out of range: {amount}')".ai(),
-        "    if not validate_card(card):".ai(),
-        "        raise PaymentError('Invalid card number format')".ai(),
-        "    if str(card).startswith('0000'):".ai(),
-        "        raise CardDeclinedError()".ai(),
-        "    transaction_id = f'txn_{hash(str(card) + str(amount)) % 10**9}'".ai(),
-        "    logger.info(f'Payment OK: txn={transaction_id}')".ai(),
-        "    result = PaymentResult(".ai(),
-        "        status='ok',".ai(),
-        "        transaction_id=transaction_id,".ai(),
-        "        amount=amount,".ai(),
-        "    )".ai(),
-        "    return {'status': result.status, 'transaction_id': result.transaction_id, 'amount': result.amount}".ai(),
-        "    # AI merged: combined validation + result model".ai(),
-        "    # end process_payment".ai(),
-    ]);
-    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
-        .unwrap();
-
-    let chain = get_commit_chain(&repo, 5);
-
-    // C1': models.py only (per-commit-delta)
-    assert_note_base_commit_matches(&repo, &chain[0], "c1_base");
-    assert_note_files_exact(&repo, &chain[0], "c1_files", &["models.py"]);
-
-    // C2': validators.py only
-    assert_note_base_commit_matches(&repo, &chain[1], "c2_base");
-    assert_note_files_exact(&repo, &chain[1], "c2_files", &["validators.py"]);
-
-    // C3': exceptions.py only
-    assert_note_base_commit_matches(&repo, &chain[2], "c3_base");
-    assert_note_files_exact(&repo, &chain[2], "c3_files", &["exceptions.py"]);
-
-    // C4': service.py only (AI-resolved: 24 AI lines in function body)
-    assert_note_base_commit_matches(&repo, &chain[3], "c4_base");
-    assert_note_files_exact(&repo, &chain[3], "c4_files", &["service.py"]);
-
-    // blame at chain[3] for service.py: lines from parent (main's version) are human,
-    // all new lines written by AI during conflict resolution are AI.
-    assert_blame_at_commit(
-        &repo,
-        &chain[3],
-        "service.py",
-        "c4_blame_service",
-        &[
-            ("def process_payment", false),
-            ("validate_amount, validate_card", true),
-            ("PaymentError, CardDeclinedError", true),
-            ("PaymentResult", true),
-            ("import logging", true),
-            ("logger = logging", true),
-            ("Processing:", true),
-            ("if amount <= 0:", false),
-            ("must be positive", false),
-            ("if not validate_amount", true),
-            ("Amount out of range", true),
-            ("if not validate_card", true),
-            ("Invalid card number", true),
-            ("startswith('0000')", true),
-            ("CardDeclinedError()", true),
-            ("transaction_id = ", true),
-            ("Payment OK:", true),
-            ("result = PaymentResult(", true),
-            ("status='ok',", true),
-            ("transaction_id=transaction_id,", true),
-            ("amount=amount,", true),
-            (")", true),
-            ("return {", true),
-            ("AI merged", true),
-            ("end process_payment", true),
-        ],
-    );
-
-    // C5': utils.py only
-    assert_note_base_commit_matches(&repo, &chain[4], "c5_base");
-    assert_note_files_exact(&repo, &chain[4], "c5_files", &["utils.py"]);
-}
 
 crate::reuse_tests_in_worktree!(
     // Category 1: Fast Path
