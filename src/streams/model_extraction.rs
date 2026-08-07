@@ -354,7 +354,7 @@ impl CopilotModelCandidates {
 #[serde(default, rename_all = "camelCase")]
 struct CopilotChatSessionState {
     input_state: CopilotInputState,
-    requests: Vec<CopilotRequestModel>,
+    requests: CopilotRequestCandidates,
 }
 
 #[derive(Default, Deserialize)]
@@ -388,6 +388,43 @@ struct CopilotRequestMetadata {
     resolved_model: Option<String>,
 }
 
+#[derive(Default)]
+struct CopilotRequestCandidates {
+    latest: Option<CopilotModelEvidence>,
+}
+
+impl<'de> Deserialize<'de> for CopilotRequestCandidates {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct RequestVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for RequestVisitor {
+            type Value = CopilotRequestCandidates;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                formatter.write_str("a Copilot request array")
+            }
+
+            fn visit_seq<A>(self, mut sequence: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut candidates = CopilotModelCandidates::default();
+                while let Some(request) = sequence.next_element::<CopilotRequestModel>()? {
+                    candidates.record_request(request);
+                }
+                Ok(CopilotRequestCandidates {
+                    latest: candidates.latest_request,
+                })
+            }
+        }
+
+        deserializer.deserialize_seq(RequestVisitor)
+    }
+}
+
 #[derive(Default, Deserialize)]
 #[serde(default)]
 struct CopilotPatchHeader {
@@ -405,8 +442,8 @@ fn collect_copilot_session_state(
     candidates: &mut CopilotModelCandidates,
 ) {
     candidates.record_selected(state.input_state.selected_model.identifier.as_deref());
-    for request in state.requests {
-        candidates.record_request(request);
+    if state.requests.latest.is_some() {
+        candidates.latest_request = state.requests.latest;
     }
 }
 
@@ -433,11 +470,10 @@ fn collect_copilot_jsonl_line(line: &str, candidates: &mut CopilotModelCandidate
         }
         Some(2) if copilot_patch_path_matches(&header.k, &["requests"]) => {
             if let Ok(patch) =
-                serde_json::from_str::<CopilotPatchValue<Vec<CopilotRequestModel>>>(line)
+                serde_json::from_str::<CopilotPatchValue<CopilotRequestCandidates>>(line)
+                && patch.v.latest.is_some()
             {
-                for request in patch.v {
-                    candidates.record_request(request);
-                }
+                candidates.latest_request = patch.v.latest;
             }
         }
         Some(1)
@@ -495,14 +531,9 @@ fn extract_model_from_copilot_chat_session(
     let mut candidates = CopilotModelCandidates::default();
 
     if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
-        if file.metadata().map_or(true, |metadata| {
-            metadata.len() > MAX_COPILOT_SESSION_SCAN_BYTES
-        }) {
-            return Ok(None);
-        }
-        if let Ok(state) = serde_json::from_reader::<_, CopilotChatSessionState>(BufReader::new(
-            file.take(MAX_COPILOT_SESSION_SCAN_BYTES + 1),
-        )) {
+        if let Ok(state) =
+            serde_json::from_reader::<_, CopilotChatSessionState>(BufReader::new(file))
+        {
             collect_copilot_session_state(state, &mut candidates);
         }
         return Ok(candidates.best());
@@ -521,15 +552,17 @@ fn extract_model_from_copilot_chat_session(
     if file.take(read_size).read_to_end(&mut tail).is_err() {
         return Ok(None);
     }
-    let Ok(mut tail) = std::str::from_utf8(&tail) else {
-        return Ok(None);
-    };
-    if seek_pos > 0 {
-        let Some(first_newline) = tail.find('\n') else {
+    let tail = if seek_pos > 0 {
+        let Some(first_newline) = tail.iter().position(|byte| *byte == b'\n') else {
             return Ok(None);
         };
-        tail = &tail[first_newline + 1..];
-    }
+        &tail[first_newline + 1..]
+    } else {
+        &tail
+    };
+    let Ok(tail) = std::str::from_utf8(tail) else {
+        return Ok(None);
+    };
     for line in tail.lines() {
         let line = line.trim();
         if !line.is_empty() {
@@ -1693,7 +1726,7 @@ model = "profile-only-model"
     }
 
     #[test]
-    fn test_copilot_chat_session_json_rejects_oversized_document() {
+    fn test_copilot_chat_session_json_streams_large_document() {
         let dir = tempfile::tempdir().unwrap();
         let transcript_path = dir.path().join("oversized-session.json");
         std::fs::write(
@@ -1707,7 +1740,12 @@ model = "profile-only-model"
         .unwrap();
 
         let result = extract_model_from_copilot_chat_session(&transcript_path).unwrap();
-        assert_eq!(result, None);
+        assert_eq!(
+            result,
+            Some(CopilotModelEvidence::Concrete(
+                "copilot/claude-sonnet-5".to_string()
+            ))
+        );
     }
 
     #[test]
@@ -1728,6 +1766,34 @@ model = "profile-only-model"
             format!("{oversized_snapshot}\n{request}\n"),
         )
         .unwrap();
+
+        let result = extract_model_from_copilot_chat_session(&transcript_path).unwrap();
+        assert_eq!(
+            result,
+            Some(CopilotModelEvidence::Concrete(
+                "copilot/claude-sonnet-5".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn test_copilot_chat_session_jsonl_handles_utf8_at_tail_boundary() {
+        let dir = tempfile::tempdir().unwrap();
+        let transcript_path = dir.path().join("unicode-session.jsonl");
+        let request = format!(
+            "{}\n",
+            serde_json::json!({
+                "kind": 2,
+                "k": ["requests"],
+                "v": [{"modelId": "copilot/claude-sonnet-5"}]
+            })
+        );
+        let oversized_line_len = MAX_COPILOT_SESSION_SCAN_BYTES as usize + 10 - request.len();
+        let mut oversized_line = vec![b'x'; oversized_line_len];
+        oversized_line[8..12].copy_from_slice("😀".as_bytes());
+        oversized_line.push(b'\n');
+        oversized_line.extend_from_slice(request.as_bytes());
+        std::fs::write(&transcript_path, oversized_line).unwrap();
 
         let result = extract_model_from_copilot_chat_session(&transcript_path).unwrap();
         assert_eq!(
