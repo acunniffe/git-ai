@@ -7,9 +7,8 @@ use crate::authorship::authorship_log_serialization::generate_session_id;
 use crate::authorship::working_log::AgentId;
 use crate::commands::checkpoint_agent::bash_tool::ToolClass;
 use crate::error::GitAiError;
-use crate::streams::model_extraction;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
 // Legacy extension path (before_edit / after_edit)
@@ -105,14 +104,9 @@ pub(super) fn parse_legacy_extension_hooks(
         agent_id: AgentId {
             tool: "github-copilot".to_string(),
             id: session_id.clone(),
-            model: model_extraction::extract_model(
-                Path::new(chat_session_path),
-                crate::streams::sweep::StreamFormat::CopilotSessionJson,
-                None,
-            )
-            .ok()
-            .flatten()
-            .unwrap_or_else(|| "unknown".to_string()),
+            // The daemon resolves this from the session path so the short-lived hook
+            // process does not reread the transcript for every edit.
+            model: "unknown".to_string(),
         },
         external_session_id: session_id,
         trace_id: trace_id.to_string(),
@@ -476,10 +470,17 @@ mod tests {
 
     #[test]
     fn test_copilot_legacy_after_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        let chat_session_path = dir.path().join("sess-123.json");
+        std::fs::write(
+            &chat_session_path,
+            r#"{"requests":[{"modelId":"copilot/claude-sonnet-5"}]}"#,
+        )
+        .unwrap();
         let input = json!({
             "hook_event_name": "after_edit",
             "workspace_folder": "/home/user/project",
-            "chat_session_path": "/home/user/.vscode/sessions/sess-123.json",
+            "chat_session_path": chat_session_path,
             "session_id": "sess-123",
             "edited_filepaths": ["src/main.rs"]
         })
@@ -491,6 +492,7 @@ mod tests {
         match &events[0] {
             ParsedHookEvent::PostFileEdit(e) => {
                 assert_eq!(e.context.agent_id.tool, "github-copilot");
+                assert_eq!(e.context.agent_id.model, "unknown");
                 assert_eq!(e.context.external_session_id, "sess-123");
                 assert_eq!(
                     e.file_paths,

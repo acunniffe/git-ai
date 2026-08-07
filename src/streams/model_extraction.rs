@@ -328,11 +328,14 @@ impl CopilotModelCandidates {
             .as_deref()
             .and_then(CopilotModelEvidence::from_model);
 
-        self.latest_request = match request_model {
+        let latest_request = match request_model {
             Some(CopilotModelEvidence::Auto) => resolved_model.or(Some(CopilotModelEvidence::Auto)),
             Some(model) => Some(model),
             None => resolved_model,
         };
+        if latest_request.is_some() {
+            self.latest_request = latest_request;
+        }
     }
 
     fn record_selected(&mut self, model: Option<&str>) {
@@ -692,29 +695,37 @@ fn copilot_model_cache_entry(
     )
 }
 
+fn copilot_vscode_transcript_format(stream_path: &Path) -> StreamFormat {
+    let path = stream_path.to_string_lossy();
+    if stream_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        == Some("jsonl")
+        || path.contains("/workspaceStorage/")
+        || path.contains("\\workspaceStorage\\")
+    {
+        StreamFormat::CopilotEventStreamJsonl
+    } else {
+        StreamFormat::CopilotSessionJson
+    }
+}
+
 pub(crate) fn extract_cached_copilot_vscode_model(
     stream_path: &Path,
     chat_session_id: &str,
 ) -> Result<Option<String>, StreamError> {
     let entry = copilot_model_cache_entry(stream_path, chat_session_id);
+    let format = copilot_vscode_transcript_format(stream_path);
     let Ok(mut entry) = entry.lock() else {
-        return load_copilot_vscode_model(
-            stream_path,
-            StreamFormat::CopilotEventStreamJsonl,
-            chat_session_id,
-        )
-        .map(|model| model.map(|model| model.model().to_string()));
+        return load_copilot_vscode_model(stream_path, format, chat_session_id)
+            .map(|model| model.map(|model| model.model().to_string()));
     };
     let now = Instant::now();
     if let Some(model) = entry.cached_model(now) {
         return Ok(model);
     }
 
-    let model = load_copilot_vscode_model(
-        stream_path,
-        StreamFormat::CopilotEventStreamJsonl,
-        chat_session_id,
-    )?;
+    let model = load_copilot_vscode_model(stream_path, format, chat_session_id)?;
     Ok(entry.store(model, now))
 }
 
@@ -1622,6 +1633,53 @@ model = "profile-only-model"
             "session-abc",
         )
         .unwrap();
+        assert_eq!(result, Some("copilot/claude-sonnet-5".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_copilot_vscode_keeps_model_before_empty_request() {
+        let (_dir, transcript_path, _otel_db_path) = create_copilot_vscode_workspace();
+        let (chat_session_path, _) =
+            copilot_chat_session_paths(&transcript_path, "session-abc").unwrap();
+        std::fs::create_dir_all(chat_session_path.parent().unwrap()).unwrap();
+        std::fs::write(
+            chat_session_path,
+            concat!(
+                r#"{"kind":0,"v":{"inputState":{"selectedModel":{"identifier":"copilot/auto"}},"requests":[]}}"#,
+                "\n",
+                r#"{"kind":2,"k":["requests"],"v":[{"modelId":"copilot/claude-sonnet-5"}]}"#,
+                "\n",
+                r#"{"kind":2,"k":["requests"],"v":[{"requestId":"pending-request"}]}"#,
+                "\n"
+            ),
+        )
+        .unwrap();
+
+        let result = extract_model_from_copilot_vscode_transcript(
+            &transcript_path,
+            StreamFormat::CopilotEventStreamJsonl,
+            "session-abc",
+        )
+        .unwrap();
+        assert_eq!(result, Some("copilot/claude-sonnet-5".to_string()));
+    }
+
+    #[test]
+    fn test_cached_copilot_vscode_model_reads_legacy_json_transcript() {
+        let dir = tempfile::tempdir().unwrap();
+        let transcript_path = dir.path().join("legacy-session.json");
+        std::fs::write(
+            &transcript_path,
+            r#"{
+                "requests": [
+                    {"modelId": "copilot/claude-sonnet-5"}
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        let result =
+            extract_cached_copilot_vscode_model(&transcript_path, "legacy-session").unwrap();
         assert_eq!(result, Some("copilot/claude-sonnet-5".to_string()));
     }
 
