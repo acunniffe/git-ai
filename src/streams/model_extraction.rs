@@ -13,6 +13,7 @@ const MAX_JSONL_SCAN_BYTES: u64 = 50 * 1024;
 const MAX_JSONL_HEAD_SCAN_BYTES: usize = 1024 * 1024;
 const MAX_JSONL_HEAD_LINES: usize = 20;
 const MAX_CODEX_CONFIG_BYTES: u64 = 1024 * 1024;
+const MAX_COPILOT_SESSION_SCAN_BYTES: u64 = 1024 * 1024;
 const COPILOT_MODEL_CACHE_CAPACITY: usize = 1024;
 const COPILOT_MODEL_RETRY_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -487,32 +488,49 @@ fn collect_copilot_jsonl_line(line: &str, candidates: &mut CopilotModelCandidate
 fn extract_model_from_copilot_chat_session(
     path: &Path,
 ) -> Result<Option<CopilotModelEvidence>, StreamError> {
-    let file = match File::open(path) {
+    let mut file = match File::open(path) {
         Ok(file) => file,
         Err(_) => return Ok(None),
     };
     let mut candidates = CopilotModelCandidates::default();
 
     if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
-        if let Ok(state) =
-            serde_json::from_reader::<_, CopilotChatSessionState>(BufReader::new(file))
-        {
+        if file.metadata().map_or(true, |metadata| {
+            metadata.len() > MAX_COPILOT_SESSION_SCAN_BYTES
+        }) {
+            return Ok(None);
+        }
+        if let Ok(state) = serde_json::from_reader::<_, CopilotChatSessionState>(BufReader::new(
+            file.take(MAX_COPILOT_SESSION_SCAN_BYTES + 1),
+        )) {
             collect_copilot_session_state(state, &mut candidates);
         }
         return Ok(candidates.best());
     }
 
-    let mut reader = BufReader::new(file);
-    let mut line = String::new();
-    loop {
-        line.clear();
-        let bytes_read = match reader.read_line(&mut line) {
-            Ok(bytes_read) => bytes_read,
-            Err(_) => return Ok(None),
+    let file_size = match file.metadata() {
+        Ok(metadata) => metadata.len(),
+        Err(_) => return Ok(None),
+    };
+    let read_size = file_size.min(MAX_COPILOT_SESSION_SCAN_BYTES);
+    let seek_pos = file_size.saturating_sub(read_size);
+    if file.seek(SeekFrom::Start(seek_pos)).is_err() {
+        return Ok(None);
+    }
+    let mut tail = Vec::with_capacity(read_size as usize);
+    if file.take(read_size).read_to_end(&mut tail).is_err() {
+        return Ok(None);
+    }
+    let Ok(mut tail) = std::str::from_utf8(&tail) else {
+        return Ok(None);
+    };
+    if seek_pos > 0 {
+        let Some(first_newline) = tail.find('\n') else {
+            return Ok(None);
         };
-        if bytes_read == 0 {
-            break;
-        }
+        tail = &tail[first_newline + 1..];
+    }
+    for line in tail.lines() {
         let line = line.trim();
         if !line.is_empty() {
             collect_copilot_jsonl_line(line, &mut candidates);
@@ -702,6 +720,12 @@ fn copilot_vscode_transcript_format(stream_path: &Path) -> StreamFormat {
     if stream_path
         .extension()
         .and_then(|extension| extension.to_str())
+        == Some("json")
+    {
+        StreamFormat::CopilotSessionJson
+    } else if stream_path
+        .extension()
+        .and_then(|extension| extension.to_str())
         == Some("jsonl")
         || path.contains("/workspaceStorage/")
         || path.contains("\\workspaceStorage\\")
@@ -886,28 +910,8 @@ fn extract_model_from_copilot_otel_sqlite(
 }
 
 fn extract_model_from_copilot_session_json(path: &Path) -> Result<Option<String>, StreamError> {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => return Ok(None),
-    };
-
-    let json: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return Ok(None),
-    };
-
-    let model = json
-        .get("requests")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| {
-            arr.iter().find_map(|req| {
-                req.get("modelId")
-                    .and_then(|v| v.as_str())
-                    .map(String::from)
-            })
-        });
-
-    Ok(model)
+    extract_model_from_copilot_chat_session(path)
+        .map(|model| model.map(|model| model.model().to_string()))
 }
 
 fn extract_model_from_amp_thread_json(path: &Path) -> Result<Option<String>, StreamError> {
@@ -1669,7 +1673,10 @@ model = "profile-only-model"
     #[test]
     fn test_cached_copilot_vscode_model_reads_legacy_json_transcript() {
         let dir = tempfile::tempdir().unwrap();
-        let transcript_path = dir.path().join("legacy-session.json");
+        let transcript_path = dir
+            .path()
+            .join("workspaceStorage/workspace-id/chatSessions/legacy-session.json");
+        std::fs::create_dir_all(transcript_path.parent().unwrap()).unwrap();
         std::fs::write(
             &transcript_path,
             r#"{
@@ -1683,6 +1690,52 @@ model = "profile-only-model"
         let result =
             extract_cached_copilot_vscode_model(&transcript_path, "legacy-session").unwrap();
         assert_eq!(result, Some("copilot/claude-sonnet-5".to_string()));
+    }
+
+    #[test]
+    fn test_copilot_chat_session_json_rejects_oversized_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let transcript_path = dir.path().join("oversized-session.json");
+        std::fs::write(
+            &transcript_path,
+            serde_json::json!({
+                "padding": "x".repeat(MAX_JSONL_HEAD_SCAN_BYTES),
+                "requests": [{"modelId": "copilot/claude-sonnet-5"}]
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let result = extract_model_from_copilot_chat_session(&transcript_path).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_copilot_chat_session_jsonl_skips_oversized_snapshot() {
+        let dir = tempfile::tempdir().unwrap();
+        let transcript_path = dir.path().join("large-session.jsonl");
+        let oversized_snapshot = serde_json::json!({
+            "kind": 0,
+            "v": {"padding": "x".repeat(MAX_COPILOT_SESSION_SCAN_BYTES as usize)}
+        });
+        let request = serde_json::json!({
+            "kind": 2,
+            "k": ["requests"],
+            "v": [{"modelId": "copilot/claude-sonnet-5"}]
+        });
+        std::fs::write(
+            &transcript_path,
+            format!("{oversized_snapshot}\n{request}\n"),
+        )
+        .unwrap();
+
+        let result = extract_model_from_copilot_chat_session(&transcript_path).unwrap();
+        assert_eq!(
+            result,
+            Some(CopilotModelEvidence::Concrete(
+                "copilot/claude-sonnet-5".to_string()
+            ))
+        );
     }
 
     #[test]
