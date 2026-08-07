@@ -273,3 +273,57 @@ index eee..fff 100644
     assert_eq!(streamed[1].added_lines_by_file["g.txt"], vec![11, 12]);
     assert_eq!(streamed[2], DiffTreeResult::default());
 }
+
+#[test]
+fn test_batched_diff_tree_parser_drains_completed_chunks_without_losing_tail() {
+    let output = "\
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+diff --git a/a.txt b/a.txt
+@@ -1,0 +1 @@
++a
+cccccccccccccccccccccccccccccccccccccccc dddddddddddddddddddddddddddddddddddddddd
+diff --git a/b.txt b/b.txt
+@@ -1,0 +1 @@
++b
+eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee ffffffffffffffffffffffffffffffffffffffff
+diff --git a/c.txt b/c.txt
+@@ -1,0 +1 @@
++c
+";
+
+    let mut parser = BatchedDiffTreeParser::new(4);
+    let mut chunks = Vec::new();
+    for line in output.lines() {
+        parser.feed_line(line);
+        if parser.completed_count() >= 2 {
+            chunks.push(parser.take_completed());
+        }
+    }
+    chunks.push(parser.take_all());
+
+    assert_eq!(chunks.iter().map(Vec::len).collect::<Vec<_>>(), vec![2, 2]);
+    assert!(chunks[0][0].hunks_by_file.contains_key("a.txt"));
+    assert!(chunks[0][1].hunks_by_file.contains_key("b.txt"));
+    assert!(chunks[1][0].hunks_by_file.contains_key("c.txt"));
+    assert_eq!(chunks[1][1], DiffTreeResult::default());
+}
+
+#[test]
+fn test_batched_diff_tree_parser_drains_at_production_chunk_boundary() {
+    let pair_count = DIFF_TREE_STREAM_CHUNK_SIZE + 2;
+    let output = (0..pair_count)
+        .map(|index| format!("{:040x} {:040x}\n", index + 1, index + pair_count + 1))
+        .collect::<String>();
+    let mut parser = BatchedDiffTreeParser::new(pair_count);
+    let mut chunk_lengths = Vec::new();
+
+    for line in output.lines() {
+        parser.feed_line(line);
+        if parser.completed_count() >= DIFF_TREE_STREAM_CHUNK_SIZE {
+            chunk_lengths.push(parser.take_completed().len());
+        }
+    }
+    chunk_lengths.push(parser.take_all().len());
+
+    assert_eq!(chunk_lengths, vec![DIFF_TREE_STREAM_CHUNK_SIZE, 2]);
+}

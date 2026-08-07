@@ -12,6 +12,7 @@ use super::DiffTreeResult;
 mod tests;
 
 const EMPTY_TREE_SHA: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+const DIFF_TREE_STREAM_CHUNK_SIZE: usize = 50;
 
 fn empty_tree_sha() -> &'static str {
     EMPTY_TREE_SHA
@@ -117,11 +118,7 @@ fn build_diff_tree_stdin(
     Ok(stdin_data)
 }
 
-fn compute_diff_tree_stdin(
-    repo: &Repository,
-    stdin_data: String,
-    pair_count: usize,
-) -> Result<Vec<DiffTreeResult>, GitAiError> {
+fn build_diff_tree_stdin_args(repo: &Repository) -> Vec<String> {
     // Single git diff-tree --stdin call.
     //
     // We intentionally use the General profile (no PatchParse prefix forcing)
@@ -142,13 +139,21 @@ fn compute_diff_tree_stdin(
         "--no-color".to_string(),
         "-r".to_string(),
     ]);
+    args
+}
 
+fn compute_diff_tree_stdin(
+    repo: &Repository,
+    stdin_data: String,
+    pair_count: usize,
+) -> Result<Vec<DiffTreeResult>, GitAiError> {
     // Stream the output line-by-line into the parser instead of buffering it:
     // after a rebase across a large trunk delta, every pair's root-tree diff
     // contains that whole delta, so the batched output is
     // (trunk delta bytes) x (pair count) and buffering it has driven the
     // daemon to multi-GB RSS. The parsed hunk/line structures are a small
     // fraction of the raw patch text.
+    let args = build_diff_tree_stdin_args(repo);
     let mut parser = BatchedDiffTreeParser::new(pair_count);
     exec_git_stdin_streaming(&args, stdin_data.as_bytes(), |line| parser.feed_line(line))?;
     Ok(parser.finish())
@@ -170,6 +175,38 @@ pub(crate) fn compute_diff_trees_batch(
     compute_diff_tree_stdin(repo, stdin_data, pairs.len())
 }
 
+/// Compute all diff-tree pairs in one Git process while releasing parsed
+/// results in bounded chunks. The callback runs inline with stdout reads, so
+/// pausing to apply a chunk naturally back-pressures the child process.
+pub(super) fn compute_diff_trees_streaming(
+    repo: &Repository,
+    pairs: &[(String, String)],
+    mut apply_chunk: impl FnMut(Vec<DiffTreeResult>),
+) -> Result<(), GitAiError> {
+    if pairs.is_empty() {
+        return Ok(());
+    }
+
+    let unique_shas = unique_pair_shas(pairs);
+    let sha_to_tree = resolve_tree_shas(repo, &unique_shas)?;
+    let stdin_data = build_diff_tree_stdin(pairs, &sha_to_tree)?;
+    let args = build_diff_tree_stdin_args(repo);
+    let mut parser = BatchedDiffTreeParser::new(pairs.len());
+
+    exec_git_stdin_streaming(&args, stdin_data.as_bytes(), |line| {
+        parser.feed_line(line);
+        if parser.completed_count() >= DIFF_TREE_STREAM_CHUNK_SIZE {
+            apply_chunk(parser.take_completed());
+        }
+    })?;
+
+    let tail = parser.take_all();
+    if !tail.is_empty() {
+        apply_chunk(tail);
+    }
+    Ok(())
+}
+
 /// Incremental parser for the output of `git diff-tree --stdin`, which
 /// produces one patch per tree pair, each preceded by a "tree1 tree2"
 /// separator line. Results are positional: the Nth separator starts the Nth
@@ -186,7 +223,7 @@ impl BatchedDiffTreeParser {
     fn new(expected_pairs: usize) -> Self {
         Self {
             expected_pairs,
-            results: Vec::with_capacity(expected_pairs),
+            results: Vec::with_capacity(expected_pairs.min(DIFF_TREE_STREAM_CHUNK_SIZE)),
             current: DiffTreeChunkParser::default(),
             seen_first_header: false,
         }
@@ -205,19 +242,34 @@ impl BatchedDiffTreeParser {
         }
     }
 
-    fn finish(mut self) -> Vec<DiffTreeResult> {
-        // Push final chunk
+    fn completed_count(&self) -> usize {
+        self.results.len()
+    }
+
+    fn take_completed(&mut self) -> Vec<DiffTreeResult> {
+        let completed = std::mem::take(&mut self.results);
+        self.expected_pairs = self.expected_pairs.saturating_sub(completed.len());
+        self.results = Vec::with_capacity(self.expected_pairs.min(DIFF_TREE_STREAM_CHUNK_SIZE));
+        completed
+    }
+
+    fn take_all(&mut self) -> Vec<DiffTreeResult> {
         if self.seen_first_header {
-            self.results.push(self.current.finish());
+            let current = std::mem::take(&mut self.current);
+            self.results.push(current.finish());
+            self.seen_first_header = false;
         }
 
-        // If git produced fewer results than pairs, pad with empty results
-        // (happens when trees are identical — no separator line emitted)
-        while self.results.len() < self.expected_pairs {
-            self.results.push(DiffTreeResult::default());
+        let mut remaining = std::mem::take(&mut self.results);
+        while remaining.len() < self.expected_pairs {
+            remaining.push(DiffTreeResult::default());
         }
+        self.expected_pairs = 0;
+        remaining
+    }
 
-        self.results
+    fn finish(mut self) -> Vec<DiffTreeResult> {
+        self.take_all()
     }
 }
 
