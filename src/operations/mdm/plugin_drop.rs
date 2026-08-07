@@ -57,30 +57,21 @@ pub fn file_drop_check_hooks(
     let has_local_config = Path::new(spec.local_config_dir).exists();
 
     if !has_binary && !has_global_config && !has_local_config {
-        return Ok(HookCheckResult {
-            tool_installed: false,
-            hooks_installed: false,
-            hooks_up_to_date: false,
-        });
+        return Ok(HookCheckResult::tool_not_installed());
     }
 
     let dest_path = (spec.dest_path)();
     if !dest_path.exists() {
-        return Ok(HookCheckResult {
-            tool_installed: true,
-            hooks_installed: false,
-            hooks_up_to_date: false,
-        });
+        return Ok(HookCheckResult::installed_without_hooks());
     }
 
     let current_content = fs::read_to_string(&dest_path).unwrap_or_default();
     let expected_content = generate_content(spec, &params.binary_path);
 
-    Ok(HookCheckResult {
-        tool_installed: true,
-        hooks_installed: true,
-        hooks_up_to_date: current_content.trim() == expected_content.trim(),
-    })
+    Ok(HookCheckResult::installed(
+        true,
+        current_content.trim() == expected_content.trim(),
+    ))
 }
 
 /// Shared `HookInstaller::install_hooks` body for the file-drop archetype.

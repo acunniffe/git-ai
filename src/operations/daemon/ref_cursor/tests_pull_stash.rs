@@ -30,18 +30,7 @@ fn revert_span_starts_at_first_revert_when_expected_state_matches_second_revert(
 
     assert_eq!(
         cmd.ref_changes,
-        vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-        ]
+        vec![ref_change("HEAD", B, C), ref_change("HEAD", C, D)]
     );
 }
 
@@ -107,21 +96,9 @@ fn pull_rebase_span_starts_at_start_entry_when_expected_state_matches_pick() {
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/main".to_string(),
-                old: B.to_string(),
-                new: D.to_string(),
-            },
+            ref_change("HEAD", B, C),
+            ref_change("HEAD", C, D),
+            ref_change("refs/heads/main", B, D),
         ]
     );
 }
@@ -174,21 +151,9 @@ fn cold_pull_rebase_late_ingress_offset_still_recovers_start_and_branch_finish()
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/main".to_string(),
-                old: B.to_string(),
-                new: D.to_string(),
-            },
+            ref_change("HEAD", B, C),
+            ref_change("HEAD", C, D),
+            ref_change("refs/heads/main", B, D),
         ],
         "cold late pull-rebase enrichment must preserve the non-fast-forward local-tip to rebased-tip pair"
     );
@@ -257,21 +222,9 @@ fn cold_pull_rebase_true_boundary_does_not_replay_older_pull_span() {
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: D.to_string(),
-                new: E.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: E.to_string(),
-                new: F.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/main".to_string(),
-                old: D.to_string(),
-                new: F.to_string(),
-            },
+            ref_change("HEAD", D, E),
+            ref_change("HEAD", E, F),
+            ref_change("refs/heads/main", D, F),
         ],
         "true command-start boundary must not rewind into an older pull-rebase span"
     );
@@ -295,14 +248,7 @@ fn cold_stash_push_uses_message_to_skip_raw_stash_history() {
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: "refs/stash".to_string(),
-            old: B.to_string(),
-            new: C.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change("refs/stash", B, C)]);
     assert_eq!(cursor.stash_stack, vec![C.to_string()]);
 }
 
@@ -324,14 +270,7 @@ fn cold_stash_push_uses_command_reflog_boundary_without_message() {
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: "refs/stash".to_string(),
-            old: B.to_string(),
-            new: C.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change("refs/stash", B, C)]);
     assert_eq!(cursor.stash_stack, vec![C.to_string()]);
 }
 
@@ -353,13 +292,6 @@ fn cold_stash_save_uses_message_to_skip_raw_stash_history() {
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: "refs/stash".to_string(),
-            old: B.to_string(),
-            new: C.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change("refs/stash", B, C)]);
     assert_eq!(cursor.stash_stack, vec![C.to_string()]);
 }

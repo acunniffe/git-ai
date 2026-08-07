@@ -28,14 +28,7 @@ fn first_observed_head_boundary_skips_prior_reset_history() {
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: C.to_string(),
-            new: D.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change("HEAD", C, D)]);
 }
 
 #[test]
@@ -64,14 +57,7 @@ fn reset_late_reflog_offset_uses_command_message_not_stale_state() {
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: C.to_string(),
-            new: D.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change("HEAD", C, D)]);
 }
 
 #[test]
@@ -96,14 +82,7 @@ fn first_observed_common_boundary_skips_prior_update_ref_history() {
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: reference.to_string(),
-            old: C.to_string(),
-            new: D.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change(reference, C, D)]);
 }
 
 #[test]
@@ -136,18 +115,7 @@ fn direct_branch_update_ref_uses_argv_transition_when_reflog_cursor_starts_too_l
 
     assert_eq!(
         cmd.ref_changes,
-        vec![
-            RefChange {
-                reference: reference.to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-        ]
+        vec![ref_change(reference, C, D), ref_change("HEAD", C, D)]
     );
 }
 
@@ -181,14 +149,7 @@ fn direct_branch_update_ref_does_not_treat_stale_head_reflog_match_as_current_he
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: reference.to_string(),
-            old: C.to_string(),
-            new: D.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change(reference, C, D)]);
 }
 
 #[test]
@@ -203,11 +164,7 @@ fn direct_update_ref_consumes_matching_reflog_entry_before_later_unstructured_up
     cursor.enrich_command(&mut direct, &state).unwrap();
     assert_eq!(
         direct.ref_changes,
-        vec![RefChange {
-            reference: "refs/heads/main".to_string(),
-            old: A.to_string(),
-            new: B.to_string(),
-        }]
+        vec![ref_change("refs/heads/main", A, B)]
     );
 
     let mut later = command(&family, &["update-ref", "--stdin"]);
@@ -240,18 +197,7 @@ fn direct_branch_update_ref_consumes_head_mirror_before_later_unstructured_updat
     cursor.enrich_command(&mut direct, &state).unwrap();
     assert_eq!(
         direct.ref_changes,
-        vec![
-            RefChange {
-                reference: reference.to_string(),
-                old: A.to_string(),
-                new: B.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: A.to_string(),
-                new: B.to_string(),
-            },
-        ]
+        vec![ref_change(reference, A, B), ref_change("HEAD", A, B)]
     );
 
     let mut later = command_with_worktree(&family, Some(worktree), &["update-ref", "--stdin"]);
@@ -296,18 +242,7 @@ fn direct_head_update_ref_uses_argv_and_late_cursor_branch_mirror_once() {
     cursor.enrich_command(&mut direct, &state).unwrap();
     assert_eq!(
         direct.ref_changes,
-        vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: A.to_string(),
-                new: B.to_string(),
-            },
-            RefChange {
-                reference: reference.to_string(),
-                old: A.to_string(),
-                new: B.to_string(),
-            },
-        ]
+        vec![ref_change("HEAD", A, B), ref_change(reference, A, B)]
     );
 
     let mut later = command_with_worktree(&family, Some(worktree), &["update-ref", "--stdin"]);
@@ -351,31 +286,13 @@ fn direct_head_update_ref_uses_known_worktree_branch_when_other_branch_matches_s
     cursor.enrich_command(&mut direct, &state).unwrap();
     assert_eq!(
         direct.ref_changes,
-        vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: A.to_string(),
-                new: B.to_string(),
-            },
-            RefChange {
-                reference: current.to_string(),
-                old: A.to_string(),
-                new: B.to_string(),
-            },
-        ]
+        vec![ref_change("HEAD", A, B), ref_change(current, A, B)]
     );
 
     let mut later = command_with_worktree(&family, Some(worktree), &["update-ref", other, B, A]);
     cursor.enrich_command(&mut later, &state).unwrap();
 
-    assert_eq!(
-        later.ref_changes,
-        vec![RefChange {
-            reference: other.to_string(),
-            old: A.to_string(),
-            new: B.to_string(),
-        }]
-    );
+    assert_eq!(later.ref_changes, vec![ref_change(other, A, B)]);
 }
 
 #[test]
@@ -393,14 +310,7 @@ fn direct_head_update_ref_without_known_branch_does_not_guess_ambiguous_branch_m
     let mut direct = command_with_worktree(&family, Some(worktree), &["update-ref", "HEAD", B, A]);
     cursor.enrich_command(&mut direct, &state).unwrap();
 
-    assert_eq!(
-        direct.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: A.to_string(),
-            new: B.to_string(),
-        }]
-    );
+    assert_eq!(direct.ref_changes, vec![ref_change("HEAD", A, B)]);
 }
 
 #[test]
@@ -428,12 +338,5 @@ fn direct_branch_update_ref_does_not_attach_head_when_state_names_different_bran
     let mut direct = command_with_worktree(&family, Some(worktree), &["update-ref", updated, B, A]);
     cursor.enrich_command(&mut direct, &state).unwrap();
 
-    assert_eq!(
-        direct.ref_changes,
-        vec![RefChange {
-            reference: updated.to_string(),
-            old: A.to_string(),
-            new: B.to_string(),
-        }]
-    );
+    assert_eq!(direct.ref_changes, vec![ref_change(updated, A, B)]);
 }

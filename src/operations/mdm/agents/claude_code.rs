@@ -102,11 +102,7 @@ impl HookInstaller for ClaudeCodeInstaller {
         let has_dotfiles = claude_config_dir().exists();
 
         if !has_binary && !has_dotfiles {
-            return Ok(HookCheckResult {
-                tool_installed: false,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::tool_not_installed());
         }
 
         if has_binary
@@ -122,22 +118,17 @@ impl HookInstaller for ClaudeCodeInstaller {
 
         let settings_path = Self::settings_path();
         if !settings_path.exists() {
-            return Ok(HookCheckResult {
-                tool_installed: true,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::installed_without_hooks());
         }
 
         let content = fs::read_to_string(&settings_path)?;
         let existing: Value = serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
         let (hooks_installed, hooks_up_to_date) = Self::hook_status(&existing);
 
-        Ok(HookCheckResult {
-            tool_installed: true,
+        Ok(HookCheckResult::installed(
             hooks_installed,
             hooks_up_to_date,
-        })
+        ))
     }
 
     fn process_names(&self) -> Vec<&str> {

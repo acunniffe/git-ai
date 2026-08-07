@@ -46,21 +46,16 @@ impl HookInstaller for VisualStudioInstaller {
         let installations = find_visual_studio_installations();
 
         if installations.is_empty() {
-            return Ok(HookCheckResult {
-                tool_installed: false,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::tool_not_installed());
         }
 
         // Check if any installation has the extension
         let any_has_extension = installations.iter().any(is_extension_installed);
 
-        Ok(HookCheckResult {
-            tool_installed: true,
-            hooks_installed: any_has_extension,
-            hooks_up_to_date: any_has_extension,
-        })
+        Ok(HookCheckResult::installed(
+            any_has_extension,
+            any_has_extension,
+        ))
     }
 
     fn install_hooks(

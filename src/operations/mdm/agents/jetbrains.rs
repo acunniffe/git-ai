@@ -153,11 +153,7 @@ impl HookInstaller for JetBrainsInstaller {
         let installations = Self::get_installations();
 
         if installations.is_empty() {
-            return Ok(HookCheckResult {
-                tool_installed: false,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::tool_not_installed());
         }
 
         // Check if any compatible IDE exists
@@ -173,11 +169,7 @@ impl HookInstaller for JetBrainsInstaller {
 
         // JetBrains doesn't have config file hooks - only the plugin via install_extras
         // Always return hooks_installed: false so install_extras runs and shows proper messages
-        Ok(HookCheckResult {
-            tool_installed: true,
-            hooks_installed: false,
-            hooks_up_to_date: false,
-        })
+        Ok(HookCheckResult::installed_without_hooks())
     }
 
     fn install_hooks(

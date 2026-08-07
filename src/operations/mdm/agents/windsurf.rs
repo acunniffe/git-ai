@@ -163,11 +163,7 @@ impl HookInstaller for WindsurfInstaller {
             home_dir().join(".codeium").exists() || home_dir().join(".windsurf").exists();
 
         if !has_cli && !has_dotfiles {
-            return Ok(HookCheckResult {
-                tool_installed: false,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::tool_not_installed());
         }
 
         // Check all hook locations
@@ -205,11 +201,7 @@ impl HookInstaller for WindsurfInstaller {
             }
         }
 
-        Ok(HookCheckResult {
-            tool_installed: true,
-            hooks_installed: any_installed,
-            hooks_up_to_date: all_installed,
-        })
+        Ok(HookCheckResult::installed(any_installed, all_installed))
     }
 
     fn install_hooks(

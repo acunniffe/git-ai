@@ -76,11 +76,7 @@ fn cold_start_late_ingress_offset_does_not_skip_commit_on_uninitialized_head_cur
 
     assert_eq!(
         cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: B.to_string(),
-            new: C.to_string(),
-        }],
+        vec![ref_change("HEAD", B, C)],
         "cold-start late ingress offset must not seed the cursor past the commit's own entry"
     );
 }
@@ -192,11 +188,7 @@ fn late_ingress_offset_does_not_advance_in_order_cursor_past_own_commit() {
 
     assert_eq!(
         cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: B.to_string(),
-            new: C.to_string(),
-        }],
+        vec![ref_change("HEAD", B, C)],
         "late ingress offset must not skip the commit's own entry"
     );
 }
@@ -247,11 +239,7 @@ fn ingress_offset_hint_skips_untraced_duplicate_message_commit() {
 
     assert_eq!(
         cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: C.to_string(),
-            new: D.to_string(),
-        }],
+        vec![ref_change("HEAD", C, D)],
         "ingress hint must skip the untraced duplicate-message commit"
     );
 }
@@ -299,11 +287,7 @@ fn late_ingress_offset_skips_untraced_duplicate_message_commit() {
 
     assert_eq!(
         cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: C.to_string(),
-            new: D.to_string(),
-        }],
+        vec![ref_change("HEAD", C, D)],
         "late ingress hint must select the traced duplicate-message commit"
     );
 }
@@ -330,14 +314,7 @@ fn amend_without_message_does_not_match_plain_commit_reflog_entry() {
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: B.to_string(),
-            new: C.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change("HEAD", B, C)]);
 }
 
 #[test]
@@ -367,14 +344,7 @@ fn commit_with_exact_reflog_message_ignores_stale_daemon_head() {
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: C.to_string(),
-            new: D.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change("HEAD", C, D)]);
 }
 
 #[test]
@@ -403,14 +373,7 @@ fn commit_reflog_boundary_skips_untraced_duplicate_message() {
 
     cursor.enrich_command(&mut cmd, &state).unwrap();
 
-    assert_eq!(
-        cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: C.to_string(),
-            new: D.to_string(),
-        }]
-    );
+    assert_eq!(cmd.ref_changes, vec![ref_change("HEAD", C, D)]);
 }
 
 #[test]
@@ -450,11 +413,7 @@ fn eng_216_commit_reflog_subject_rewrite_falls_back_to_hinted_entry() {
 
     assert_eq!(
         cmd.ref_changes,
-        vec![RefChange {
-            reference: "HEAD".to_string(),
-            old: C.to_string(),
-            new: D.to_string(),
-        }],
+        vec![ref_change("HEAD", C, D)],
         "commit-msg hooks may rewrite the final subject used by Git's reflog"
     );
 }

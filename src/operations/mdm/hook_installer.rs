@@ -19,6 +19,28 @@ pub struct HookCheckResult {
     pub hooks_up_to_date: bool,
 }
 
+impl HookCheckResult {
+    pub(crate) fn tool_not_installed() -> Self {
+        Self {
+            tool_installed: false,
+            hooks_installed: false,
+            hooks_up_to_date: false,
+        }
+    }
+
+    pub(crate) fn installed_without_hooks() -> Self {
+        Self::installed(false, false)
+    }
+
+    pub(crate) fn installed(hooks_installed: bool, hooks_up_to_date: bool) -> Self {
+        Self {
+            tool_installed: true,
+            hooks_installed,
+            hooks_up_to_date,
+        }
+    }
+}
+
 /// Result of an install operation
 pub struct InstallResult {
     /// Whether changes were made
@@ -97,5 +119,32 @@ pub trait HookInstaller: Send + Sync {
         _dry_run: bool,
     ) -> Result<Vec<UninstallResult>, GitAiError> {
         Ok(vec![])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HookCheckResult;
+
+    #[test]
+    fn hook_check_result_constructors_encode_status_flags() {
+        let cases = [
+            (HookCheckResult::tool_not_installed(), false, false, false),
+            (
+                HookCheckResult::installed_without_hooks(),
+                true,
+                false,
+                false,
+            ),
+            (HookCheckResult::installed(false, false), true, false, false),
+            (HookCheckResult::installed(true, false), true, true, false),
+            (HookCheckResult::installed(true, true), true, true, true),
+        ];
+
+        for (result, tool_installed, hooks_installed, hooks_up_to_date) in cases {
+            assert_eq!(result.tool_installed, tool_installed);
+            assert_eq!(result.hooks_installed, hooks_installed);
+            assert_eq!(result.hooks_up_to_date, hooks_up_to_date);
+        }
     }
 }

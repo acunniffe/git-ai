@@ -49,11 +49,7 @@ impl HookInstaller for VSCodeInstaller {
             .any(|path| should_process_settings_target(path));
 
         if !has_cli && !has_dotfiles && !has_settings_targets {
-            return Ok(HookCheckResult {
-                tool_installed: false,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::tool_not_installed());
         }
 
         // If we have a CLI, check version
@@ -73,27 +69,15 @@ impl HookInstaller for VSCodeInstaller {
         if let Some(cli) = &resolved_cli {
             match is_vsc_editor_extension_installed(cli, GIT_AI_VSCODE_EXTENSION_ID) {
                 Ok(true) => {
-                    return Ok(HookCheckResult {
-                        tool_installed: true,
-                        hooks_installed: true,
-                        hooks_up_to_date: true,
-                    });
+                    return Ok(HookCheckResult::installed(true, true));
                 }
                 Ok(false) | Err(_) => {
-                    return Ok(HookCheckResult {
-                        tool_installed: true,
-                        hooks_installed: false,
-                        hooks_up_to_date: false,
-                    });
+                    return Ok(HookCheckResult::installed_without_hooks());
                 }
             }
         }
 
-        Ok(HookCheckResult {
-            tool_installed: true,
-            hooks_installed: false,
-            hooks_up_to_date: false,
-        })
+        Ok(HookCheckResult::installed_without_hooks())
     }
 
     fn process_names(&self) -> Vec<&str> {

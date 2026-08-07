@@ -62,6 +62,14 @@ pub(super) fn command_with_worktree(
     }
 }
 
+pub(super) fn ref_change(reference: &str, old: &str, new: &str) -> RefChange {
+    RefChange {
+        reference: reference.to_string(),
+        old: old.to_string(),
+        new: new.to_string(),
+    }
+}
+
 pub(super) fn append_reflog(common_dir: &Path, reference: &str, entries: &[(&str, &str, &str)]) {
     // Discovery only honors directory-form git dirs that carry a HEAD file,
     // so make the synthetic git dir valid before writing its reflog.
@@ -75,4 +83,13 @@ pub(super) fn append_reflog(common_dir: &Path, reference: &str, entries: &[(&str
         ));
     }
     fs::write(path, text).unwrap();
+}
+
+#[test]
+fn ref_change_fixture_builds_expected_values() {
+    let change = ref_change("refs/heads/main", A, B);
+
+    assert_eq!(change.reference, "refs/heads/main");
+    assert_eq!(change.old, A);
+    assert_eq!(change.new, B);
 }

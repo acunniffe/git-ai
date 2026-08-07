@@ -48,11 +48,7 @@ impl HookInstaller for CodexInstaller {
         let has_dotfiles = codex_home_dir().exists();
 
         if !has_binary && !has_dotfiles {
-            return Ok(HookCheckResult {
-                tool_installed: false,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::tool_not_installed());
         }
 
         let config_path = Self::config_path();
@@ -81,11 +77,10 @@ impl HookInstaller for CodexInstaller {
             let hooks_installed = Self::config_hooks_feature_enabled(&config) && has_json_hooks;
             let hooks_up_to_date = config == desired_config && hooks_json == desired_hooks_json;
 
-            return Ok(HookCheckResult {
-                tool_installed: true,
+            return Ok(HookCheckResult::installed(
                 hooks_installed,
                 hooks_up_to_date,
-            });
+            ));
         }
 
         let desired_config = Self::config_with_installed_hooks(&config, &params.binary_path)?;
@@ -95,11 +90,10 @@ impl HookInstaller for CodexInstaller {
             && (has_inline_hooks || has_legacy_hooks_json);
         let hooks_up_to_date = config == desired_config && !has_legacy_hooks_json;
 
-        Ok(HookCheckResult {
-            tool_installed: true,
+        Ok(HookCheckResult::installed(
             hooks_installed,
             hooks_up_to_date,
-        })
+        ))
     }
 
     fn install_hooks(
