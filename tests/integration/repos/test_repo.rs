@@ -71,8 +71,12 @@ const TEST_SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(120);
 #[cfg(not(windows))]
 const TEST_SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(60);
 
-fn poll_advanced(observed: (u64, usize), previous: (u64, usize)) -> bool {
-    observed.0 > previous.0 || observed.1 > previous.1
+type Progress = (u64, usize);
+
+fn advance_poll(last: &mut (Instant, Progress), next: Progress, now: impl FnOnce() -> Instant) {
+    if next.0 > last.1.0 || next.1 > last.1.1 {
+        *last = (now(), next);
+    }
 }
 
 fn poll_timed_out(start: Instant, progress: Instant, mut now: impl FnMut() -> Instant) -> bool {
@@ -2098,10 +2102,7 @@ impl TestRepo {
             if ready {
                 return Ok(observed);
             }
-            let progress = (observed, matched);
-            if poll_advanced(progress, last_progress.1) {
-                last_progress = (Instant::now(), progress);
-            }
+            advance_poll(&mut last_progress, (observed, matched), Instant::now);
             if poll_timed_out(started_at, last_progress.0, Instant::now) {
                 return Err(last_progress.1.0);
             }
@@ -3994,12 +3995,13 @@ mod tests {
         let start = Instant::now();
         let progress = start + Duration::from_millis(10);
         let idle = DAEMON_TEST_SYNC_IDLE_TIMEOUT;
-        assert!(poll_advanced((1, 0), (0, 0)));
-        assert!(poll_advanced((1, 1), (1, 0)));
-        assert!(!poll_advanced((1, 0), (1, 0)));
-        assert!(!poll_timed_out(start, progress, || progress + idle
-            - Duration::from_nanos(1)));
-        assert!(poll_timed_out(start, progress, || progress + idle));
+        let mut last = (start, (0, 0));
+        advance_poll(&mut last, (1, 0), || progress);
+        advance_poll(&mut last, (1, 1), || progress + Duration::from_millis(10));
+        advance_poll(&mut last, (1, 1), || panic!("equal progress reset idle"));
+        assert_eq!(last, (progress + Duration::from_millis(10), (1, 1)));
+        assert!(!poll_timed_out(start, last.0, || last.0 + idle / 2));
+        assert!(poll_timed_out(start, last.0, || last.0 + idle));
         assert!(poll_timed_out(start, start, || start + DAEMON_TEST_SYNC_TOTAL_TIMEOUT));
     }
 
@@ -4007,16 +4009,13 @@ mod tests {
     fn completion_log_waiters_preserve_caller_owned_policies() {
         let repo = TestRepo::new();
         let family = repo.daemon_family_key();
-        let path = repo.daemon_completion_log_path_for_family(&family);
         let log = "{\"status\":\"ok\"}\n{\"status\":\"error\",\"sync_tracked\":true,\"test_sync_session\":\"other\",\"error\":\"before baseline\"}\n{\"kind\":\"checkpoint\",\"status\":\"ok\",\"sync_tracked\":true,\"test_sync_session\":\"wanted\"}\n";
-        fs::write(path, log).unwrap();
-        let sessions = ["wanted".to_string()];
-
+        fs::write(repo.daemon_completion_log_path_for_family(&family), log).unwrap();
         assert_eq!(repo.wait_for_daemon_total_completion_count(2, 3), 3);
         assert_eq!(repo.wait_for_daemon_completion_count(&family, 1, 2), 2);
         assert_eq!(repo.wait_for_daemon_checkpoint_count(&family, 1), 1);
         assert_eq!(
-            repo.wait_for_daemon_completion_sessions(&family, &sessions),
+            repo.wait_for_daemon_completion_sessions(&family, &["wanted".to_string()]),
             2
         );
         let wait = || repo.wait_for_daemon_completion_count(&family, 0, 2);
