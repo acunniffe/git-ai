@@ -2870,13 +2870,17 @@ fn test_eng_279_reset_keep_discards_divergent_trunk_mappings() {
         "test setup must exceed the leading-drop bound:\n{range_diff}"
     );
 
-    let daemon_log_path = repo
-        .test_home_path()
-        .join(".git-ai")
-        .join("internal")
-        .join("daemon")
-        .join("daemon.test.stderr.log");
-    let daemon_log_len_before_reset = fs::metadata(&daemon_log_path).unwrap().len() as usize;
+    #[cfg(not(windows))]
+    let (daemon_log_path, daemon_log_len_before_reset) = {
+        let path = repo
+            .test_home_path()
+            .join(".git-ai")
+            .join("internal")
+            .join("daemon")
+            .join("daemon.test.stderr.log");
+        let len = fs::metadata(&path).unwrap().len() as usize;
+        (path, len)
+    };
 
     repo.git(&["reset", "--keep", &original_feature_tip])
         .unwrap();
@@ -2904,10 +2908,17 @@ fn test_eng_279_reset_keep_discards_divergent_trunk_mappings() {
         "divergent trunk mappings must not contaminate the feature note"
     );
 
-    let daemon_log = fs::read_to_string(&daemon_log_path).unwrap();
-    let reset_log = &daemon_log[daemon_log_len_before_reset..];
-    assert!(
-        reset_log.contains("shift_authorship_notes: 1 mappings"),
-        "restack undo must shift only the real feature mapping:\n{reset_log}"
-    );
+    // Windows test daemons do not reliably emit tracing diagnostics to their
+    // stderr file before shutdown. The cross-platform range-diff unit tests
+    // prove the mapping bound; keep this end-to-end diagnostic assertion on
+    // platforms where the daemon log is synchronously observable.
+    #[cfg(not(windows))]
+    {
+        let daemon_log = fs::read_to_string(&daemon_log_path).unwrap();
+        let reset_log = &daemon_log[daemon_log_len_before_reset..];
+        assert!(
+            reset_log.contains("shift_authorship_notes: 1 mappings"),
+            "restack undo must shift only the real feature mapping:\n{reset_log}"
+        );
+    }
 }
