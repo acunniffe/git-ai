@@ -570,6 +570,7 @@ fn unix_now() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::repository::sqlite::assert_persisted_schema_version;
     use tempfile::TempDir;
 
     /// Open a fresh in-memory database (via a temp file) without using the global singleton.
@@ -608,15 +609,7 @@ mod tests {
             .unwrap();
         assert_eq!(table_count, 1, "notes table should exist after init");
 
-        let version: String = db
-            .conn
-            .query_row(
-                "SELECT value FROM schema_metadata WHERE key = 'version'",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(version, "2");
+        assert_persisted_schema_version(&db.conn, "2");
     }
 
     #[test]

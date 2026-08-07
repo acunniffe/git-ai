@@ -112,6 +112,19 @@ pub fn read_schema_version(conn: &Connection) -> Option<usize> {
     .ok()
 }
 
+#[cfg(test)]
+#[track_caller]
+pub(crate) fn assert_persisted_schema_version(conn: &Connection, expected: &str) {
+    let actual: String = conn
+        .query_row(
+            "SELECT value FROM schema_metadata WHERE key = 'version'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(actual, expected);
+}
+
 /// Runs the version-guard-and-loop scaffold shared by the singleton stores'
 /// `initialize_schema`: succeeds immediately when `current` already matches
 /// `target`, fails closed with the standard schema-version error when the
@@ -267,6 +280,41 @@ mod tests {
         )
         .unwrap();
         assert_eq!(read_schema_version(&conn), Some(3));
+    }
+
+    fn persisted_schema_version_assertion_panics(conn: &Connection) -> bool {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            assert_persisted_schema_version(conn, "3");
+        }))
+        .is_err()
+    }
+
+    #[test]
+    fn persisted_schema_version_assertion_rejects_missing_table_and_row() {
+        let conn = Connection::open_in_memory().unwrap();
+        assert!(persisted_schema_version_assertion_panics(&conn));
+
+        ensure_schema_metadata_table(&conn).unwrap();
+        assert!(persisted_schema_version_assertion_panics(&conn));
+    }
+
+    #[test]
+    fn persisted_schema_version_assertion_compares_exact_text() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema_metadata_table(&conn).unwrap();
+
+        for (value, should_panic) in [("3", false), ("03", true), ("malformed", true)] {
+            conn.execute(
+                "INSERT OR REPLACE INTO schema_metadata (key, value) VALUES ('version', ?1)",
+                [value],
+            )
+            .unwrap();
+            assert_eq!(
+                persisted_schema_version_assertion_panics(&conn),
+                should_panic,
+                "stored value {value:?}"
+            );
+        }
     }
 
     // ----- migration_runner -----

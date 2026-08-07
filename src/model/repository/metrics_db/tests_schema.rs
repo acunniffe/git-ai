@@ -1,6 +1,7 @@
 use super::schema::column_exists;
 use super::test_support::*;
 use super::*;
+use crate::model::repository::sqlite::assert_persisted_schema_version;
 use rusqlite::params;
 use tempfile::TempDir;
 
@@ -20,15 +21,7 @@ fn test_initialize_schema() {
     assert_eq!(count, 1);
 
     // Verify schema_metadata exists with correct version
-    let version: String = db
-        .conn
-        .query_row(
-            "SELECT value FROM schema_metadata WHERE key = 'version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(version, "5");
+    assert_persisted_schema_version(&db.conn, "5");
 
     for column in [
         "delivered_ts",
@@ -116,15 +109,7 @@ fn test_initialize_schema_handles_preexisting_agent_usage_table() {
     let mut db = MetricsDatabase { conn };
     db.initialize_schema().unwrap();
 
-    let version: String = db
-        .conn
-        .query_row(
-            "SELECT value FROM schema_metadata WHERE key = 'version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(version, "5");
+    assert_persisted_schema_version(&db.conn, "5");
 }
 
 #[test]
@@ -155,15 +140,7 @@ fn test_migrates_version_2_to_row_level_retry_schema() {
     let mut db = MetricsDatabase { conn };
     db.initialize_schema().unwrap();
 
-    let version: String = db
-        .conn
-        .query_row(
-            "SELECT value FROM schema_metadata WHERE key = 'version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(version, "5");
+    assert_persisted_schema_version(&db.conn, "5");
     assert_eq!(db.count().unwrap(), 1);
     assert_eq!(db.count_retryable().unwrap(), 1);
 }
@@ -198,15 +175,7 @@ fn test_migrates_version_2_with_preexisting_retry_columns() {
     let mut db = MetricsDatabase { conn };
     db.initialize_schema().unwrap();
 
-    let version: String = db
-        .conn
-        .query_row(
-            "SELECT value FROM schema_metadata WHERE key = 'version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(version, "5");
+    assert_persisted_schema_version(&db.conn, "5");
 
     for column in [
         "delivered_ts",
@@ -267,15 +236,7 @@ fn test_migrates_version_3_to_event_metadata_schema_without_sync_backfill() {
     let mut db = MetricsDatabase { conn };
     db.initialize_schema().unwrap();
 
-    let version: String = db
-        .conn
-        .query_row(
-            "SELECT value FROM schema_metadata WHERE key = 'version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(version, "5");
+    assert_persisted_schema_version(&db.conn, "5");
     assert!(column_exists(&db.conn, "metrics", "event_ts").unwrap());
     assert!(column_exists(&db.conn, "metrics", "event_kind").unwrap());
     for index in [
@@ -326,15 +287,7 @@ fn test_migrates_version_4_to_retryable_only_index() {
 
     db.initialize_schema().unwrap();
 
-    let version: String = db
-        .conn
-        .query_row(
-            "SELECT value FROM schema_metadata WHERE key = 'version'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(version, "5");
+    assert_persisted_schema_version(&db.conn, "5");
     assert_metric_index_exists(&db, "metrics_retryable");
     assert_metric_index_missing(&db, "metrics_pending_retry");
     assert_eq!(db.count().unwrap(), 1);
