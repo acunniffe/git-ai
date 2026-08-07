@@ -25,7 +25,7 @@ pub struct BenchmarkResult {
 use insta::{Settings, assert_debug_snapshot};
 use rand::RngExt;
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -70,6 +70,15 @@ const DAEMON_TEST_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(10);
 const TEST_SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(120);
 #[cfg(not(windows))]
 const TEST_SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(60);
+
+fn poll_advanced(observed: (u64, usize), previous: (u64, usize)) -> bool {
+    observed.0 > previous.0 || observed.1 > previous.1
+}
+
+fn poll_timed_out(start: Instant, progress: Instant, mut now: impl FnMut() -> Instant) -> bool {
+    now().duration_since(start) >= DAEMON_TEST_SYNC_TOTAL_TIMEOUT
+        || now().duration_since(progress) >= DAEMON_TEST_SYNC_IDLE_TIMEOUT
+}
 
 /// A test-only real-Git process with explicit command setup.
 ///
@@ -2075,55 +2084,62 @@ impl TestRepo {
             .collect()
     }
 
+    fn poll_daemon_completion_log(
+        &self,
+        family_key: &str,
+        initial_observed: u64,
+        mut inspect: impl FnMut(&[DaemonTestCompletionLogEntry]) -> (bool, u64, usize),
+    ) -> Result<u64, u64> {
+        let started_at = Instant::now();
+        let mut last_progress = (started_at, (initial_observed, 0));
+        loop {
+            let entries = self.daemon_completion_entries_for_family(family_key);
+            let (ready, observed, matched) = inspect(&entries);
+            if ready {
+                return Ok(observed);
+            }
+            let progress = (observed, matched);
+            if poll_advanced(progress, last_progress.1) {
+                last_progress = (Instant::now(), progress);
+            }
+            if poll_timed_out(started_at, last_progress.0, Instant::now) {
+                return Err(last_progress.1.0);
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     fn wait_for_daemon_completion_count(
         &self,
         family_key: &str,
         baseline_count: u64,
         expected_count: u64,
     ) -> u64 {
-        let start = Instant::now();
-        let mut last_progress = start;
-        let mut last_observed_count = baseline_count;
-        loop {
-            let entries = self.daemon_completion_entries_for_family(family_key);
-            let tracked_entries = entries
-                .iter()
-                .filter(|entry| entry.sync_tracked)
-                .collect::<Vec<_>>();
+        self.poll_daemon_completion_log(family_key, baseline_count, |entries| {
+            let tracked_entries = entries.iter().filter(|entry| entry.sync_tracked);
             if let Some(error_entry) = tracked_entries
-                .iter()
+                .clone()
                 .skip(baseline_count as usize)
                 .find(|entry| entry.status == "error")
             {
+                let error = error_entry
+                    .error
+                    .as_deref()
+                    .unwrap_or("unknown completion error");
                 panic!(
                     "daemon completion log reported an error for family {}: {}",
-                    family_key,
-                    error_entry
-                        .error
-                        .as_deref()
-                        .unwrap_or("unknown completion error")
+                    family_key, error
                 );
             }
-            let observed_count = tracked_entries.len() as u64;
-            if observed_count >= expected_count {
-                return observed_count;
-            }
-            if observed_count > last_observed_count {
-                last_progress = Instant::now();
-                last_observed_count = observed_count;
-            }
-            if start.elapsed() >= DAEMON_TEST_SYNC_TOTAL_TIMEOUT
-                || last_progress.elapsed() >= DAEMON_TEST_SYNC_IDLE_TIMEOUT
-            {
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-
-        panic!(
-            "daemon completion log for family {} did not reach {} entries within timeout",
-            family_key, expected_count
-        );
+            let observed = tracked_entries.count() as u64;
+            (observed >= expected_count, observed, 0)
+        })
+        .unwrap_or_else(|_| {
+            panic!(
+                "daemon completion log for family {} did not reach {} entries within timeout",
+                family_key, expected_count
+            )
+        })
     }
 
     fn wait_for_daemon_checkpoint_count(
@@ -2131,63 +2147,37 @@ impl TestRepo {
         family_key: &str,
         expected_checkpoint_count: u64,
     ) -> u64 {
-        let start = Instant::now();
-        let mut last_progress = start;
-        let mut last_observed = 0u64;
-        loop {
-            let entries = self.daemon_completion_entries_for_family(family_key);
-            let checkpoint_entries: Vec<_> = entries
-                .iter()
-                .filter(|e| e.sync_tracked && e.kind == "checkpoint")
-                .collect();
-            if let Some(error_entry) = checkpoint_entries.iter().find(|e| e.status == "error") {
+        self.poll_daemon_completion_log(family_key, 0, |entries| {
+            let checkpoints =
+                entries.iter().filter(|e| e.sync_tracked && e.kind == "checkpoint");
+            if let Some(error_entry) = checkpoints.clone().find(|e| e.status == "error") {
+                let error = error_entry
+                    .error
+                    .as_deref()
+                    .unwrap_or("unknown checkpoint error");
                 panic!(
                     "daemon checkpoint completion reported an error for family {}: {}",
-                    family_key,
-                    error_entry
-                        .error
-                        .as_deref()
-                        .unwrap_or("unknown checkpoint error")
+                    family_key, error
                 );
             }
-            let observed = checkpoint_entries.len() as u64;
-            if observed >= expected_checkpoint_count {
-                return observed;
-            }
-            if observed > last_observed {
-                last_progress = Instant::now();
-                last_observed = observed;
-            }
-            if start.elapsed() >= DAEMON_TEST_SYNC_TOTAL_TIMEOUT
-                || last_progress.elapsed() >= DAEMON_TEST_SYNC_IDLE_TIMEOUT
-            {
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-
-        panic!(
-            "daemon checkpoint completions for family {} did not reach {} within timeout (observed {})",
-            family_key, expected_checkpoint_count, last_observed
-        );
+            let observed = checkpoints.count() as u64;
+            (observed >= expected_checkpoint_count, observed, 0)
+        })
+        .unwrap_or_else(|last_observed| {
+            panic!(
+                "daemon checkpoint completions for family {} did not reach {} within timeout (observed {})",
+                family_key, expected_checkpoint_count, last_observed
+            )
+        })
     }
 
     fn wait_for_daemon_completion_sessions(&self, family_key: &str, sessions: &[String]) -> u64 {
-        let expected: std::collections::HashSet<&str> =
-            sessions.iter().map(|session| session.as_str()).collect();
-        let start = Instant::now();
-        let mut last_progress = start;
-        let mut last_observed_count = 0usize;
-        let mut last_completed_count = 0usize;
-        loop {
-            let entries = self.daemon_completion_entries_for_family(family_key);
-            let tracked_entries = entries
-                .iter()
-                .filter(|entry| entry.sync_tracked)
-                .collect::<Vec<_>>();
-            let mut completed = std::collections::HashSet::<&str>::new();
+        let expected: HashSet<&str> = sessions.iter().map(String::as_str).collect();
+        self.poll_daemon_completion_log(family_key, 0, |entries| {
+            let tracked_entries = entries.iter().filter(|entry| entry.sync_tracked);
+            let mut completed = HashSet::<&str>::new();
 
-            for entry in &tracked_entries {
+            for entry in tracked_entries.clone() {
                 let Some(session) = entry.test_sync_session.as_deref() else {
                     continue;
                 };
@@ -2205,28 +2195,15 @@ impl TestRepo {
                 completed.insert(session);
             }
 
-            if completed.len() == expected.len() {
-                return tracked_entries.len() as u64;
-            }
-            if tracked_entries.len() > last_observed_count || completed.len() > last_completed_count
-            {
-                last_progress = Instant::now();
-                last_observed_count = tracked_entries.len();
-                last_completed_count = completed.len();
-            }
-            if start.elapsed() >= DAEMON_TEST_SYNC_TOTAL_TIMEOUT
-                || last_progress.elapsed() >= DAEMON_TEST_SYNC_IDLE_TIMEOUT
-            {
-                break;
-            }
-
-            thread::sleep(Duration::from_millis(10));
-        }
-
-        panic!(
-            "daemon completion log for family {} did not observe all sessions within timeout: {:?}",
-            family_key, sessions
-        );
+            let observed = tracked_entries.count() as u64;
+            (completed.len() == expected.len(), observed, completed.len())
+        })
+        .unwrap_or_else(|_| {
+            panic!(
+                "daemon completion log for family {} did not observe all sessions within timeout: {:?}",
+                family_key, sessions
+            )
+        })
     }
 
     pub(crate) fn wait_for_daemon_total_completion_count(
@@ -2235,39 +2212,27 @@ impl TestRepo {
         expected_count: u64,
     ) -> u64 {
         let family_key = self.daemon_family_key();
-        let start = Instant::now();
-        let mut last_progress = start;
-        let mut last_observed_count = baseline_count;
-        loop {
-            let entries = self.daemon_completion_entries_for_family(&family_key);
-            if let Some(error_entry) = entries
-                .iter()
-                .skip(baseline_count as usize)
-                .find(|entry| entry.status == "error")
-            {
-                panic!(
-                    "daemon completion log reported an error for family {}: {}",
-                    family_key,
-                    error_entry
+        if let Ok(observed) =
+            self.poll_daemon_completion_log(&family_key, baseline_count, |entries| {
+                if let Some(error_entry) = entries
+                    .iter()
+                    .skip(baseline_count as usize)
+                    .find(|entry| entry.status == "error")
+                {
+                    let error = error_entry
                         .error
                         .as_deref()
-                        .unwrap_or("unknown completion error")
-                );
-            }
-            let observed_count = entries.len() as u64;
-            if observed_count >= expected_count {
-                return observed_count;
-            }
-            if observed_count > last_observed_count {
-                last_progress = Instant::now();
-                last_observed_count = observed_count;
-            }
-            if start.elapsed() >= DAEMON_TEST_SYNC_TOTAL_TIMEOUT
-                || last_progress.elapsed() >= DAEMON_TEST_SYNC_IDLE_TIMEOUT
-            {
-                break;
-            }
-            thread::sleep(Duration::from_millis(10));
+                        .unwrap_or("unknown completion error");
+                    panic!(
+                        "daemon completion log reported an error for family {}: {}",
+                        family_key, error
+                    );
+                }
+                let observed = entries.len() as u64;
+                (observed >= expected_count, observed, 0)
+            })
+        {
+            return observed;
         }
 
         let final_entries = self.daemon_completion_entries_for_family(&family_key);
@@ -4023,6 +3988,40 @@ pub fn get_binary_path() -> &'static PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completion_log_polling_preserves_progress_and_deadline_boundaries() {
+        let start = Instant::now();
+        let progress = start + Duration::from_millis(10);
+        let idle = DAEMON_TEST_SYNC_IDLE_TIMEOUT;
+        assert!(poll_advanced((1, 0), (0, 0)));
+        assert!(poll_advanced((1, 1), (1, 0)));
+        assert!(!poll_advanced((1, 0), (1, 0)));
+        assert!(!poll_timed_out(start, progress, || progress + idle
+            - Duration::from_nanos(1)));
+        assert!(poll_timed_out(start, progress, || progress + idle));
+        assert!(poll_timed_out(start, start, || start + DAEMON_TEST_SYNC_TOTAL_TIMEOUT));
+    }
+
+    #[test]
+    fn completion_log_waiters_preserve_caller_owned_policies() {
+        let repo = TestRepo::new();
+        let family = repo.daemon_family_key();
+        let path = repo.daemon_completion_log_path_for_family(&family);
+        let log = "{\"status\":\"ok\"}\n{\"status\":\"error\",\"sync_tracked\":true,\"test_sync_session\":\"other\",\"error\":\"before baseline\"}\n{\"kind\":\"checkpoint\",\"status\":\"ok\",\"sync_tracked\":true,\"test_sync_session\":\"wanted\"}\n";
+        fs::write(path, log).unwrap();
+        let sessions = ["wanted".to_string()];
+
+        assert_eq!(repo.wait_for_daemon_total_completion_count(2, 3), 3);
+        assert_eq!(repo.wait_for_daemon_completion_count(&family, 1, 2), 2);
+        assert_eq!(repo.wait_for_daemon_checkpoint_count(&family, 1), 1);
+        assert_eq!(
+            repo.wait_for_daemon_completion_sessions(&family, &sessions),
+            2
+        );
+        let wait = || repo.wait_for_daemon_completion_count(&family, 0, 2);
+        assert!(std::panic::catch_unwind(wait).is_err());
+    }
 
     #[test]
     fn raw_git_command_supports_common_test_plumbing() {
