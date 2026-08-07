@@ -494,7 +494,9 @@ fn extract_model_from_copilot_chat_session(
     let mut candidates = CopilotModelCandidates::default();
 
     if path.extension().and_then(|extension| extension.to_str()) == Some("json") {
-        if let Ok(state) = serde_json::from_reader::<_, CopilotChatSessionState>(file) {
+        if let Ok(state) =
+            serde_json::from_reader::<_, CopilotChatSessionState>(BufReader::new(file))
+        {
             collect_copilot_session_state(state, &mut candidates);
         }
         return Ok(candidates.best());
