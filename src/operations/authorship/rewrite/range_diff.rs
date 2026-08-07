@@ -106,9 +106,15 @@ fn run_range_diff(
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
+/// Maximum number of unmatched old-range commits buffered before the first
+/// real range-diff match. Small leading groups can represent a valid squash,
+/// but a larger group indicates divergent history such as a restack undo.
+pub(super) const MAX_PENDING_DROPPED_COMMITS: usize = 64;
+
+pub(super) fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
     let mut mappings = Vec::new();
     let mut pending_dropped: Vec<String> = Vec::new();
+    let mut pending_overflowed = false;
     let mut previous_new_sha: Option<String> = None;
 
     for line in output.lines() {
@@ -134,8 +140,13 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
                 if !is_zero_oid(&old_sha) {
                     if let Some(new_sha) = previous_new_sha.as_ref() {
                         mappings.push((old_sha, new_sha.clone()));
-                    } else {
+                    } else if !pending_overflowed {
                         pending_dropped.push(old_sha);
+                        if pending_dropped.len() > MAX_PENDING_DROPPED_COMMITS {
+                            pending_dropped.clear();
+                            pending_dropped.shrink_to_fit();
+                            pending_overflowed = true;
+                        }
                     }
                 }
             }

@@ -1,6 +1,7 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::model::authorship_log::PromptRecord;
+use git_ai::model::authorship_log_serialization::AuthorshipLog;
 use git_ai::model::working_log::AgentId;
 use git_ai::operations::git::notes_api::write_note;
 use std::collections::HashMap;
@@ -2782,4 +2783,142 @@ fn test_rebase_same_file_then_ff_merge_preserves_attribution() {
         "ai append 2".ai(),
         "ai append 3".ai(),
     ]);
+}
+
+fn leading_dropped_commits_before_first_match(range_diff: &str) -> usize {
+    let mut dropped = 0;
+    for line in range_diff.lines() {
+        let mut parts = line.split_whitespace();
+        let (_ordinal, _old_sha, Some(status)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        match status {
+            "<" => dropped += 1,
+            "=" | "!" => break,
+            _ => {}
+        }
+    }
+    dropped
+}
+
+#[test]
+fn test_eng_279_reset_keep_discards_divergent_trunk_mappings() {
+    use std::fs;
+
+    const TRUNK_COMMIT_COUNT: usize = 65;
+
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_DEBUG", "1")]);
+    let mut base_file = repo.filename("base.txt");
+    base_file.set_contents(crate::lines!["base".human()]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    base_file.assert_committed_lines(crate::lines!["base".human()]);
+
+    let base_sha = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let default_branch = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let feature_path = repo.path().join("feature.txt");
+    fs::write(&feature_path, "ai feature line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "feature.txt"])
+        .unwrap();
+    repo.git(&["add", "-A"]).unwrap();
+    repo.commit("feature commit").unwrap();
+    let original_feature_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    let mut feature_file = repo.filename("feature.txt");
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+
+    repo.git(&["checkout", &default_branch]).unwrap();
+    let trunk_path = repo.path().join("trunk.txt");
+    let mut trunk_file = repo.filename("trunk.txt");
+    for commit_number in 1..=TRUNK_COMMIT_COUNT {
+        let contents = (1..=commit_number)
+            .map(|line| format!("ai trunk line {line}\n"))
+            .collect::<String>();
+        fs::write(&trunk_path, contents).unwrap();
+        repo.git_ai(&["checkpoint", "mock_ai", "trunk.txt"])
+            .unwrap();
+        repo.git(&["add", "-A"]).unwrap();
+        repo.commit(&format!("trunk commit {commit_number}"))
+            .unwrap();
+        trunk_file.assert_committed_lines(
+            (1..=commit_number)
+                .map(|line| format!("ai trunk line {line}").ai())
+                .collect(),
+        );
+    }
+
+    repo.git(&["checkout", "feature"]).unwrap();
+    repo.git(&["rebase", &default_branch]).unwrap();
+    let rebased_feature_tip = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
+    assert_ne!(original_feature_tip, rebased_feature_tip);
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+
+    let old_range = format!("{base_sha}..{rebased_feature_tip}");
+    let new_range = format!("{base_sha}..{original_feature_tip}");
+    let range_diff = repo
+        .git(&[
+            "range-diff",
+            "--no-abbrev",
+            "-s",
+            "--creation-factor=100",
+            &old_range,
+            &new_range,
+        ])
+        .unwrap();
+    assert!(
+        leading_dropped_commits_before_first_match(&range_diff) > 64,
+        "test setup must exceed the leading-drop bound:\n{range_diff}"
+    );
+
+    #[cfg(not(windows))]
+    let (daemon_log_path, daemon_log_len_before_reset) = {
+        let path = repo
+            .test_home_path()
+            .join(".git-ai")
+            .join("internal")
+            .join("daemon")
+            .join("daemon.test.stderr.log");
+        let len = fs::metadata(&path).unwrap().len() as usize;
+        (path, len)
+    };
+
+    repo.git(&["reset", "--keep", &original_feature_tip])
+        .unwrap();
+    repo.sync_daemon();
+    assert_eq!(
+        repo.git(&["rev-parse", "HEAD"]).unwrap().trim(),
+        original_feature_tip
+    );
+    assert!(!trunk_path.exists());
+    feature_file.assert_committed_lines(crate::lines!["ai feature line".ai()]);
+
+    let note = repo
+        .read_authorship_note(&original_feature_tip)
+        .expect("original feature commit should retain its authorship note");
+    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse authorship note");
+    assert!(
+        log.attestations
+            .iter()
+            .any(|attestation| attestation.file_path == "feature.txt")
+    );
+    assert!(
+        log.attestations
+            .iter()
+            .all(|attestation| attestation.file_path != "trunk.txt"),
+        "divergent trunk mappings must not contaminate the feature note"
+    );
+
+    // Windows test daemons do not reliably emit tracing diagnostics to their
+    // stderr file before shutdown. The cross-platform range-diff unit tests
+    // prove the mapping bound; keep this end-to-end diagnostic assertion on
+    // platforms where the daemon log is synchronously observable.
+    #[cfg(not(windows))]
+    {
+        let daemon_log = fs::read_to_string(&daemon_log_path).unwrap();
+        let reset_log = &daemon_log[daemon_log_len_before_reset..];
+        assert!(
+            reset_log.contains("shift_authorship_notes: 1 mappings"),
+            "restack undo must shift only the real feature mapping:\n{reset_log}"
+        );
+    }
 }

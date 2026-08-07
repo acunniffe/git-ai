@@ -6,7 +6,12 @@ use crate::model::hunk_shift::apply_hunk_shifts_to_file_attestation;
 use crate::operations::git::notes_api;
 use crate::operations::git::repository::Repository;
 
-use super::diff_tree::compute_diff_trees_batch;
+use super::diff_tree::compute_diff_trees_streaming;
+
+struct PendingShift {
+    new_sha: String,
+    log: AuthorshipLog,
+}
 
 /// Serialize `log` to a note, write it for `commit_sha`, and return the
 /// serialized string (used by the metrics path to attach the note text).
@@ -72,13 +77,6 @@ fn shift_authorship_notes_with_existing_mode(
         .collect();
     let notes_map = notes_api::read_notes_batch(repo, &all_shas)?;
 
-    // Determine which mappings need processing
-    struct PendingShift {
-        new_sha: String,
-        log: AuthorshipLog,
-        diff_pair_idx: usize,
-    }
-
     let mut pending: Vec<PendingShift> = Vec::new();
     let mut verbatim_writes: Vec<(String, String)> = Vec::new();
     let mut diff_pairs: Vec<(String, String)> = Vec::new();
@@ -112,12 +110,10 @@ fn shift_authorship_notes_with_existing_mode(
             continue;
         };
 
-        let diff_pair_idx = diff_pairs.len();
         diff_pairs.push((source_sha.clone(), new_sha.clone()));
         pending.push(PendingShift {
             new_sha: new_sha.clone(),
             log,
-            diff_pair_idx,
         });
     }
 
@@ -125,23 +121,40 @@ fn shift_authorship_notes_with_existing_mode(
         return Ok(Vec::new());
     }
 
-    // Single batched diff-tree call for all pairs
-    let diff_results = if !diff_pairs.is_empty() {
-        compute_diff_trees_batch(repo, &diff_pairs)?
-    } else {
-        Vec::new()
-    };
-
-    // Apply shifts and merge logs that share a target commit
+    // Stream all pairs through one diff-tree process. Parsed results are
+    // applied and dropped in bounded chunks while stdout is paused, which
+    // back-pressures Git without adding one process spawn per chunk.
     let mut merged_by_target = existing_by_target;
+    let mut pending_iter = pending.into_iter();
+    compute_diff_trees_streaming(repo, &diff_pairs, |chunk| {
+        apply_chunk_shifts(&mut merged_by_target, chunk, &mut pending_iter);
+    })?;
 
-    for shift in pending {
-        let diff_result = &diff_results[shift.diff_pair_idx];
+    let mut all_writes = verbatim_writes;
+    for (sha, log) in merged_by_target {
+        let serialized = log.serialize_to_string().map_err(|e| {
+            GitAiError::Generic(format!("failed to serialize shifted authorship log: {}", e))
+        })?;
+        all_writes.push((sha, serialized));
+    }
+
+    // Single batched write for all notes
+    notes_api::write_notes_batch(repo, &all_writes)?;
+
+    Ok(all_writes)
+}
+
+fn apply_chunk_shifts(
+    merged_by_target: &mut HashMap<String, AuthorshipLog>,
+    chunk: Vec<super::DiffTreeResult>,
+    pending_iter: &mut impl Iterator<Item = PendingShift>,
+) {
+    for (diff_result, shift) in chunk.into_iter().zip(pending_iter) {
         let mut log = shift.log;
 
-        for (old_path, new_path) in &diff_result.renames {
+        for (old_path, new_path) in diff_result.renames {
             for attestation in &mut log.attestations {
-                if attestation.file_path == *old_path {
+                if attestation.file_path == old_path {
                     attestation.file_path = new_path.clone();
                 }
             }
@@ -167,19 +180,6 @@ fn shift_authorship_notes_with_existing_mode(
             }
         }
     }
-
-    let mut all_writes = verbatim_writes;
-    for (sha, log) in merged_by_target {
-        let serialized = log.serialize_to_string().map_err(|e| {
-            GitAiError::Generic(format!("failed to serialize shifted authorship log: {}", e))
-        })?;
-        all_writes.push((sha, serialized));
-    }
-
-    // Single batched write for all notes
-    notes_api::write_notes_batch(repo, &all_writes)?;
-
-    Ok(all_writes)
 }
 
 pub(super) fn merge_authorship_logs(target: &mut AuthorshipLog, source: &AuthorshipLog) {
@@ -230,5 +230,68 @@ pub(super) fn merge_authorship_logs(target: &mut AuthorshipLog, source: &Authors
             .humans
             .entry(key.clone())
             .or_insert_with(|| record.clone());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::model::authorship_log::LineRange;
+    use crate::model::authorship_log_serialization::AttestationEntry;
+
+    use super::*;
+    use crate::operations::authorship::rewrite::DiffTreeResult;
+
+    fn log_for(file: &str, hash: &str) -> AuthorshipLog {
+        let mut log = AuthorshipLog::new();
+        log.get_or_create_file(file)
+            .add_entry(AttestationEntry::new(
+                hash.to_string(),
+                vec![LineRange::Single(1)],
+            ));
+        log
+    }
+
+    #[test]
+    fn apply_chunk_shifts_merges_sources_for_one_target_across_chunks() {
+        let target = "b".repeat(40);
+        let pending = vec![
+            PendingShift {
+                new_sha: target.clone(),
+                log: log_for("first.rs", "1111111111111111"),
+            },
+            PendingShift {
+                new_sha: target.clone(),
+                log: log_for("second.rs", "2222222222222222"),
+            },
+        ];
+        let mut pending_iter = pending.into_iter();
+        let mut merged_by_target = HashMap::new();
+
+        apply_chunk_shifts(
+            &mut merged_by_target,
+            vec![DiffTreeResult::default()],
+            &mut pending_iter,
+        );
+        apply_chunk_shifts(
+            &mut merged_by_target,
+            vec![DiffTreeResult::default()],
+            &mut pending_iter,
+        );
+
+        assert_eq!(pending_iter.count(), 0);
+        let merged = merged_by_target.get(&target).expect("merged target");
+        assert_eq!(merged.metadata.base_commit_sha, target);
+        assert!(
+            merged
+                .attestations
+                .iter()
+                .any(|attestation| attestation.file_path == "first.rs")
+        );
+        assert!(
+            merged
+                .attestations
+                .iter()
+                .any(|attestation| attestation.file_path == "second.rs")
+        );
     }
 }

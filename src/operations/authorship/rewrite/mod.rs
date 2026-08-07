@@ -7,6 +7,8 @@ use crate::operations::git::repository::Repository;
 mod diff_tree;
 mod note_shift;
 mod range_diff;
+#[cfg(test)]
+mod range_diff_memory_tests;
 mod squash_merge;
 
 pub(crate) use diff_tree::compute_diff_trees_batch;
