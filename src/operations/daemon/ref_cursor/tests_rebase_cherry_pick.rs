@@ -44,16 +44,8 @@ fn failed_explicit_branch_rebase_consumes_noop_start_marker_before_continue() {
     assert_eq!(
         failed.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: A.to_string(),
-                new: A.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/topic".to_string(),
-                old: D.to_string(),
-                new: D.to_string(),
-            },
+            ref_change("HEAD", A, A),
+            ref_change("refs/heads/topic", D, D),
         ]
     );
 
@@ -64,16 +56,8 @@ fn failed_explicit_branch_rebase_consumes_noop_start_marker_before_continue() {
     assert_eq!(
         continued.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: A.to_string(),
-                new: E.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/topic".to_string(),
-                old: D.to_string(),
-                new: E.to_string(),
-            },
+            ref_change("HEAD", A, E),
+            ref_change("refs/heads/topic", D, E),
         ]
     );
 }
@@ -124,21 +108,9 @@ fn cold_rebase_late_ingress_offset_still_recovers_start_and_branch_finish() {
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/topic".to_string(),
-                old: B.to_string(),
-                new: D.to_string(),
-            },
+            ref_change("HEAD", B, C),
+            ref_change("HEAD", C, D),
+            ref_change("refs/heads/topic", B, D),
         ],
         "cold late rebase enrichment must preserve the non-fast-forward local-tip to rebased-tip pair"
     );
@@ -204,21 +176,9 @@ fn cold_rebase_true_boundary_does_not_replay_older_rebase_span() {
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: D.to_string(),
-                new: E.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: E.to_string(),
-                new: F.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/topic".to_string(),
-                old: D.to_string(),
-                new: F.to_string(),
-            },
+            ref_change("HEAD", D, E),
+            ref_change("HEAD", E, F),
+            ref_change("refs/heads/topic", D, F),
         ],
         "true command-start boundary must not rewind into an older rebase span"
     );
@@ -261,21 +221,9 @@ fn rebase_span_stops_before_later_rebase_after_checkout() {
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/topic-2".to_string(),
-                old: B.to_string(),
-                new: D.to_string(),
-            },
+            ref_change("HEAD", B, C),
+            ref_change("HEAD", C, D),
+            ref_change("refs/heads/topic-2", B, D),
         ]
     );
 }
@@ -315,21 +263,9 @@ fn rebase_does_not_attach_unrelated_branch_with_same_new_tip() {
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/topic-2".to_string(),
-                old: B.to_string(),
-                new: D.to_string(),
-            },
+            ref_change("HEAD", B, C),
+            ref_change("HEAD", C, D),
+            ref_change("refs/heads/topic-2", B, D),
         ]
     );
 }
@@ -368,21 +304,9 @@ fn rebase_prefers_start_entry_when_expected_state_matches_pick() {
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/topic-3".to_string(),
-                old: B.to_string(),
-                new: D.to_string(),
-            },
+            ref_change("HEAD", B, C),
+            ref_change("HEAD", C, D),
+            ref_change("refs/heads/topic-3", B, D),
         ]
     );
 }
@@ -415,18 +339,7 @@ fn cherry_pick_span_starts_at_first_pick_when_expected_state_matches_second_pick
 
     assert_eq!(
         cmd.ref_changes,
-        vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-        ]
+        vec![ref_change("HEAD", B, C), ref_change("HEAD", C, D)]
     );
 }
 

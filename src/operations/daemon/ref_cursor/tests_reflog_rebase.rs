@@ -90,18 +90,7 @@ fn rebase_span_stops_at_new_rebase_start_before_finish() {
 
     assert_eq!(
         cmd.ref_changes,
-        vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-        ]
+        vec![ref_change("HEAD", B, C), ref_change("HEAD", C, D)]
     );
 }
 
@@ -209,21 +198,9 @@ fn rebase_span_continuation_skips_stale_abort_before_selected_start() {
     assert_eq!(
         rebase.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: D.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: E.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/feature".to_string(),
-                old: D.to_string(),
-                new: E.to_string(),
-            },
+            ref_change("HEAD", D, C),
+            ref_change("HEAD", C, E),
+            ref_change("refs/heads/feature", D, E),
         ],
         "rebase continuation must follow the selected start, not a stale untraced abort row before it"
     );
@@ -246,24 +223,13 @@ fn skipped_reflog_entry_remains_available_for_later_sequenced_command() {
 
     let mut first = command(&family, &["update-ref", "refs/heads/main", C, B]);
     cursor.enrich_command(&mut first, &state).unwrap();
-    assert_eq!(
-        first.ref_changes,
-        vec![RefChange {
-            reference: "refs/heads/main".to_string(),
-            old: B.to_string(),
-            new: C.to_string(),
-        }]
-    );
+    assert_eq!(first.ref_changes, vec![ref_change("refs/heads/main", B, C)]);
 
     let mut second = command(&family, &["update-ref", "refs/heads/main", B, A]);
     cursor.enrich_command(&mut second, &state).unwrap();
     assert_eq!(
         second.ref_changes,
-        vec![RefChange {
-            reference: "refs/heads/main".to_string(),
-            old: A.to_string(),
-            new: B.to_string(),
-        }]
+        vec![ref_change("refs/heads/main", A, B)]
     );
 }
 
@@ -284,14 +250,7 @@ fn reflog_generation_reset_with_same_byte_length_clears_sparse_consumption() {
 
     let mut first = command(&family, &["update-ref", "refs/heads/main", C, B]);
     cursor.enrich_command(&mut first, &state).unwrap();
-    assert_eq!(
-        first.ref_changes,
-        vec![RefChange {
-            reference: "refs/heads/main".to_string(),
-            old: B.to_string(),
-            new: C.to_string(),
-        }]
-    );
+    assert_eq!(first.ref_changes, vec![ref_change("refs/heads/main", B, C)]);
 
     let old_len = fs::metadata(temp.path().join("logs/refs/heads/main"))
         .unwrap()
@@ -315,11 +274,7 @@ fn reflog_generation_reset_with_same_byte_length_clears_sparse_consumption() {
     cursor.enrich_command(&mut second, &state).unwrap();
     assert_eq!(
         second.ref_changes,
-        vec![RefChange {
-            reference: "refs/heads/main".to_string(),
-            old: B.to_string(),
-            new: C.to_string(),
-        }]
+        vec![ref_change("refs/heads/main", B, C)]
     );
 }
 
@@ -340,16 +295,8 @@ fn update_ref_stdin_is_reconstructed_from_reflog_delta() {
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "refs/heads/main".to_string(),
-                old: A.to_string(),
-                new: B.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/topic".to_string(),
-                old: A.to_string(),
-                new: C.to_string(),
-            },
+            ref_change("refs/heads/main", A, B),
+            ref_change("refs/heads/topic", A, C),
         ]
     );
 }
@@ -384,21 +331,9 @@ fn rebase_does_not_consume_adjacent_checkout_head_entry() {
     assert_eq!(
         cmd.ref_changes,
         vec![
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: B.to_string(),
-                new: C.to_string(),
-            },
-            RefChange {
-                reference: "HEAD".to_string(),
-                old: C.to_string(),
-                new: D.to_string(),
-            },
-            RefChange {
-                reference: "refs/heads/topic-2".to_string(),
-                old: B.to_string(),
-                new: D.to_string(),
-            },
+            ref_change("HEAD", B, C),
+            ref_change("HEAD", C, D),
+            ref_change("refs/heads/topic-2", B, D),
         ]
     );
 }
