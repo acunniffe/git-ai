@@ -10,6 +10,11 @@ use crate::error::GitAiError;
 use crate::streams::model_extraction;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
+
+const VSCODE_POSTTOOLUSE_FALLBACK_SLEEP_MS: u64 = 80;
+const VSCODE_POSTTOOLUSE_MAX_WAIT_MS: u64 = 2_000;
+const VSCODE_POSTTOOLUSE_POLL_MS: u64 = 25;
 
 // ---------------------------------------------------------------------------
 // Legacy extension path (before_edit / after_edit)
@@ -314,12 +319,7 @@ pub(super) fn parse_vscode_native_hooks(
         )));
     }
 
-    // Workaround: VS Code Copilot fires PostToolUse before the file is written to disk.
-    // https://github.com/microsoft/vscode/issues/315926
-    tracing::debug!(
-        "Sleeping 80ms for VS Code Copilot PostToolUse file-write race (vscode#315926)"
-    );
-    std::thread::sleep(std::time::Duration::from_millis(80));
+    wait_for_vscode_posttooluse_file_write(tool_input, &extracted_paths, cwd);
 
     Ok(vec![ParsedHookEvent::PostFileEdit(PostFileEdit {
         context,
@@ -333,6 +333,152 @@ pub(super) fn parse_vscode_native_hooks(
 // ---------------------------------------------------------------------------
 // IDE-specific helpers
 // ---------------------------------------------------------------------------
+
+#[derive(Debug, Eq, PartialEq)]
+struct ExpectedFileContent {
+    path: Option<PathBuf>,
+    content: String,
+}
+
+fn wait_for_vscode_posttooluse_file_write(
+    tool_input: Option<&serde_json::Value>,
+    extracted_paths: &[PathBuf],
+    cwd: &str,
+) {
+    let mut expected_contents = Vec::new();
+    if let Some(tool_input) = tool_input {
+        collect_expected_posttooluse_contents(tool_input, cwd, &mut expected_contents);
+    }
+
+    if expected_contents.is_empty() {
+        tracing::debug!(
+            "Sleeping {}ms for VS Code Copilot PostToolUse file-write race (vscode#315926)",
+            VSCODE_POSTTOOLUSE_FALLBACK_SLEEP_MS
+        );
+        std::thread::sleep(Duration::from_millis(VSCODE_POSTTOOLUSE_FALLBACK_SLEEP_MS));
+        return;
+    }
+
+    let timeout = Duration::from_millis(VSCODE_POSTTOOLUSE_MAX_WAIT_MS);
+    let poll = Duration::from_millis(VSCODE_POSTTOOLUSE_POLL_MS);
+    let started = Instant::now();
+
+    loop {
+        if expected_contents
+            .iter()
+            .all(|expected| expected_content_is_visible(expected, extracted_paths))
+        {
+            tracing::debug!(
+                "Waited {:.1}ms for VS Code Copilot PostToolUse file contents",
+                started.elapsed().as_secs_f64() * 1000.0
+            );
+            return;
+        }
+
+        if started.elapsed() >= timeout {
+            tracing::debug!(
+                "Timed out after {}ms waiting for VS Code Copilot PostToolUse file contents",
+                VSCODE_POSTTOOLUSE_MAX_WAIT_MS
+            );
+            return;
+        }
+
+        std::thread::sleep(poll);
+    }
+}
+
+fn collect_expected_posttooluse_contents(
+    value: &serde_json::Value,
+    cwd: &str,
+    out: &mut Vec<ExpectedFileContent>,
+) {
+    match value {
+        serde_json::Value::Object(map) => {
+            if let Some(content) = expected_content_from_object(map)
+                && !content.is_empty()
+            {
+                let expected = ExpectedFileContent {
+                    path: path_from_object(map, cwd),
+                    content: content.to_string(),
+                };
+                if !out.contains(&expected) {
+                    out.push(expected);
+                }
+            }
+
+            for nested in map.values() {
+                collect_expected_posttooluse_contents(nested, cwd, out);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for nested in values {
+                collect_expected_posttooluse_contents(nested, cwd, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn expected_content_from_object(map: &serde_json::Map<String, serde_json::Value>) -> Option<&str> {
+    map.iter()
+        .find(|(key, _)| is_expected_posttooluse_content_key(key))
+        .and_then(|(_, value)| value.as_str())
+}
+
+fn is_expected_posttooluse_content_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "newstring" | "new_string" | "newstr" | "new_str" | "filetext" | "file_text"
+    )
+}
+
+fn path_from_object(
+    map: &serde_json::Map<String, serde_json::Value>,
+    cwd: &str,
+) -> Option<PathBuf> {
+    map.iter()
+        .find(|(key, _)| is_posttooluse_path_key(key))
+        .and_then(|(_, value)| value.as_str())
+        .and_then(|raw_path| super::normalize_hook_path(raw_path, cwd))
+        .map(PathBuf::from)
+}
+
+fn is_posttooluse_path_key(key: &str) -> bool {
+    matches!(
+        key.to_ascii_lowercase().as_str(),
+        "file_path" | "filepath" | "path" | "fspath"
+    )
+}
+
+fn expected_content_is_visible(
+    expected: &ExpectedFileContent,
+    extracted_paths: &[PathBuf],
+) -> bool {
+    if let Some(path) = expected.path.as_ref() {
+        return path_contains_expected_content(path, &expected.content);
+    }
+
+    extracted_paths
+        .iter()
+        .any(|path| path_contains_expected_content(path, &expected.content))
+}
+
+fn path_contains_expected_content(path: &Path, expected_content: &str) -> bool {
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    content_contains_expected_content(&content, expected_content)
+}
+
+fn content_contains_expected_content(content: &str, expected_content: &str) -> bool {
+    if content.contains(expected_content) {
+        return true;
+    }
+
+    let normalized_content = content.replace("\r\n", "\n");
+    let normalized_expected = expected_content.replace("\r\n", "\n");
+    normalized_content.contains(&normalized_expected)
+}
 
 fn transcript_path_from_hook_data(data: &serde_json::Value) -> Option<&str> {
     parse::optional_str_multi(
