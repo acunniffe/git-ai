@@ -13,6 +13,7 @@ use crate::operations::git::repository::{
 use crate::operations::git::trace2_validation::{
     check_trace2_global_config, run_trace2_file_self_check,
 };
+use crate::process_spawn::format_posix_shell_command as format_command_for_error;
 use crate::process_timeout::{TimedCommandOutput, run_command_with_timeout_and_env};
 use std::env;
 use std::fmt::Write as _;
@@ -1021,25 +1022,6 @@ fn strip_execute_prefix(error: &str) -> &str {
     error.strip_prefix("failed to execute: ").unwrap_or(error)
 }
 
-fn format_command_for_error(program: &str, args: &[&str]) -> String {
-    std::iter::once(program)
-        .chain(args.iter().copied())
-        .map(shell_quote_for_error)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn shell_quote_for_error(value: &str) -> String {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || "-_./:=@".contains(ch))
-    {
-        value.to_string()
-    } else {
-        format!("'{}'", value.replace('\'', "'\\''"))
-    }
-}
-
 #[derive(Default)]
 struct PlatformInfo {
     kernel: Option<String>,
@@ -1455,6 +1437,11 @@ mod tests {
                 "[Console]::Out.Write('out'); [Console]::Error.Write('err'); Start-Sleep -Seconds 60",
             ],
         )
+    }
+
+    #[test]
+    fn format_command_for_error_preserves_posix_shell_words() {
+        assert_eq!(format_command_for_error("g", &["a b"]), "g 'a b'");
     }
 
     #[test]
