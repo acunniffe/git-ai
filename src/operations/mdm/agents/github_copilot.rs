@@ -122,11 +122,7 @@ impl HookInstaller for GitHubCopilotInstaller {
             && !has_github_dotfiles
             && !has_settings_targets
         {
-            return Ok(HookCheckResult {
-                tool_installed: false,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::tool_not_installed());
         }
 
         // If we have a CLI, check version.
@@ -144,19 +140,11 @@ impl HookInstaller for GitHubCopilotInstaller {
         let hooks_path = Self::hooks_path();
         let legacy_path = Self::legacy_hooks_path();
         if !hooks_path.exists() && !legacy_path.exists() {
-            return Ok(HookCheckResult {
-                tool_installed: true,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::installed_without_hooks());
         }
 
         if !hooks_path.exists() && legacy_path.exists() {
-            return Ok(HookCheckResult {
-                tool_installed: true,
-                hooks_installed: true,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::installed(true, false));
         }
 
         let content = fs::read_to_string(&hooks_path)?;
@@ -199,11 +187,10 @@ impl HookInstaller for GitHubCopilotInstaller {
             })
             .unwrap_or(false);
 
-        Ok(HookCheckResult {
-            tool_installed: true,
-            hooks_installed: has_pre_installed || has_post_installed,
-            hooks_up_to_date: has_pre_up_to_date && has_post_up_to_date,
-        })
+        Ok(HookCheckResult::installed(
+            has_pre_installed || has_post_installed,
+            has_pre_up_to_date && has_post_up_to_date,
+        ))
     }
 
     fn install_hooks(

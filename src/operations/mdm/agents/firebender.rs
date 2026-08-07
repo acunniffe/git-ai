@@ -43,20 +43,12 @@ impl HookInstaller for FirebenderInstaller {
     fn check_hooks(&self, _params: &HookInstallerParams) -> Result<HookCheckResult, GitAiError> {
         let has_dotfiles = home_dir().join(".firebender").exists();
         if !has_dotfiles {
-            return Ok(HookCheckResult {
-                tool_installed: false,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::tool_not_installed());
         }
 
         let hooks_path = Self::hooks_path();
         if !hooks_path.exists() {
-            return Ok(HookCheckResult {
-                tool_installed: true,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::installed_without_hooks());
         }
 
         let content = fs::read_to_string(&hooks_path)?;
@@ -92,11 +84,10 @@ impl HookInstaller for FirebenderInstaller {
             })
             .unwrap_or(false);
 
-        Ok(HookCheckResult {
-            tool_installed: true,
-            hooks_installed: has_pre && has_post,
-            hooks_up_to_date: has_pre && has_post,
-        })
+        Ok(HookCheckResult::installed(
+            has_pre && has_post,
+            has_pre && has_post,
+        ))
     }
 
     fn install_hooks(

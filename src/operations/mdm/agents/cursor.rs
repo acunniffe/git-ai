@@ -78,11 +78,7 @@ impl HookInstaller for CursorInstaller {
             .any(|path| should_process_settings_target(path));
 
         if !has_cli && !has_dotfiles && !has_settings_targets {
-            return Ok(HookCheckResult {
-                tool_installed: false,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::tool_not_installed());
         }
 
         // If we have a CLI, check version
@@ -100,11 +96,7 @@ impl HookInstaller for CursorInstaller {
         // Check if hooks are installed
         let hooks_path = Self::hooks_path();
         if !hooks_path.exists() {
-            return Ok(HookCheckResult {
-                tool_installed: true,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+            return Ok(HookCheckResult::installed_without_hooks());
         }
 
         let content = fs::read_to_string(&hooks_path)?;
@@ -124,11 +116,7 @@ impl HookInstaller for CursorInstaller {
             })
             .unwrap_or(false);
 
-        Ok(HookCheckResult {
-            tool_installed: true,
-            hooks_installed: has_hooks,
-            hooks_up_to_date: has_hooks,
-        })
+        Ok(HookCheckResult::installed(has_hooks, has_hooks))
     }
 
     fn process_names(&self) -> Vec<&str> {
