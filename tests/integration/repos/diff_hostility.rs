@@ -4,9 +4,7 @@
 #![allow(dead_code)]
 
 use super::test_repo::TestRepo;
-use std::fs;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use super::write_executable_script;
 
 /// Configure an external diff helper that git will invoke instead of its
 /// built-in diff, writing `marker` to stdout. `helper_filename` names the
@@ -22,16 +20,8 @@ pub fn configure_repo_external_diff_helper(
         .expect("helper path must be valid UTF-8")
         .replace('\\', "/");
 
-    fs::write(&helper_path, format!("#!/bin/sh\necho {marker}\nexit 0\n"))
+    write_executable_script(&helper_path, format!("#!/bin/sh\necho {marker}\nexit 0\n"))
         .expect("should write external diff helper");
-    #[cfg(unix)]
-    {
-        let mut perms = fs::metadata(&helper_path)
-            .expect("helper metadata should exist")
-            .permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&helper_path, perms).expect("helper should be executable");
-    }
 
     repo.git_og(&["config", "diff.external", &helper_path_posix])
         .expect("configuring diff.external should succeed");

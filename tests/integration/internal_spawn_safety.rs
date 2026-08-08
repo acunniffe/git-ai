@@ -2,10 +2,10 @@
 use crate::repos::test_file::ExpectedLineExt;
 #[cfg(unix)]
 use crate::repos::test_repo::{TestRepo, real_git_executable};
+#[cfg(unix)]
+use crate::repos::write_executable_script;
 use regex::Regex;
 use std::fs;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -105,7 +105,7 @@ fn internal_git_spawns_disable_trace2_env() {
 
     let wrapper_path = repo.test_home_path().join("recording-git");
     let env_log_path = repo.test_home_path().join("internal-git-env.log");
-    fs::write(
+    write_executable_script(
         &wrapper_path,
         r#"#!/bin/sh
 {
@@ -118,9 +118,6 @@ exec "$GIT_AI_REAL_GIT" "$@"
 "#,
     )
     .unwrap();
-    let mut permissions = fs::metadata(&wrapper_path).unwrap().permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&wrapper_path, permissions).unwrap();
 
     let config_path = repo.test_home_path().join(".git-ai").join("config.json");
     fs::write(

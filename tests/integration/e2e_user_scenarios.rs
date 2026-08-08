@@ -1,5 +1,7 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+#[cfg(not(target_os = "windows"))]
+use crate::repos::write_executable_script;
 use crate::test_utils::extract_json_object;
 use git_ai::operations::authorship::stats::CommitStats;
 use std::fs;
@@ -772,15 +774,7 @@ def create_user():
     let script_content = "#!/bin/sh\n\
         sed -i.bak '2s/pick/squash/' \"$1\"\n";
     let script_path = repo.path().join("squash_script.sh");
-    fs::write(&script_path, script_content).unwrap();
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&script_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&script_path, perms).unwrap();
-    }
+    write_executable_script(&script_path, script_content).unwrap();
 
     repo.git_with_env(
         &["rebase", "-i", &base_sha],
