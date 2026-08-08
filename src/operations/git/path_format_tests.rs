@@ -531,3 +531,43 @@ fn test_normalize_to_posix_mixed() {
 fn test_normalize_to_posix_empty() {
     assert_eq!(normalize_to_posix(""), "");
 }
+
+#[test]
+fn test_normalize_diff_path_token_contract() {
+    let cases = [
+        ("a/file.txt", "file.txt"),
+        ("b/file.txt", "file.txt"),
+        ("c/file.txt", "file.txt"),
+        ("w/file.txt", "file.txt"),
+        ("i/file.txt", "file.txt"),
+        ("o/file.txt", "file.txt"),
+        ("a/b/file.txt", "b/file.txt"),
+        ("unprefixed.txt", "unprefixed.txt"),
+        ("b/trailing.txt \t", "trailing.txt"),
+        ("\"b/file with spaces.txt\"", "file with spaces.txt"),
+        ("\"b/\\344\\270\\255.txt\"", "中.txt"),
+        ("b/cafe\u{301}.txt", "café.txt"),
+    ];
+
+    for (input, expected) in cases {
+        assert_eq!(normalize_diff_path_token(input), expected);
+    }
+}
+
+#[test]
+fn test_parse_diff_path_from_header_line_contract() {
+    let cases: [(&str, &str, Option<Option<&str>>); 5] = [
+        ("+++ b/file.txt", "+++ ", Some(Some("file.txt"))),
+        ("--- c/old.txt", "--- ", Some(Some("old.txt"))),
+        ("+++ /dev/null\t", "+++ ", Some(None)),
+        ("+++ \"/dev/null\"", "+++ ", Some(Some("/dev/null"))),
+        ("--- b/file.txt", "+++ ", None),
+    ];
+
+    for (line, prefix, expected) in cases {
+        assert_eq!(
+            parse_diff_path_from_header_line(line, prefix),
+            expected.map(|path| path.map(str::to_owned))
+        );
+    }
+}

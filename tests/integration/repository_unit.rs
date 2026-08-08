@@ -91,99 +91,30 @@ fn test_list_commit_files_with_utf8_filename() {
     );
 }
 
-#[test]
-fn test_parse_diff_added_lines_with_insertions_standard_prefix() {
-    // Test diff with standard b/ prefix (commit-to-commit diff)
-    let diff = r#"diff --git a/test.txt b/test.txt
-index 0000000..abc1234 100644
---- a/test.txt
-+++ b/test.txt
-@@ -0,0 +1,2 @@
-+line 1
-+line 2"#;
-
-    let (added_lines, insertion_lines) = parse_diff_added_lines_with_insertions(diff).unwrap();
-    assert_eq!(added_lines.get("test.txt"), Some(&vec![1, 2]));
-    assert_eq!(insertion_lines.get("test.txt"), Some(&vec![1, 2]));
+macro_rules! pure_insertion_path_tests {
+    ($( $name:ident: ($old:literal, $new:literal, $index:literal, $count:literal, [$first_added:literal $(, $added:literal)*]) => ($path:literal, [$($line:literal),+]); )+) => {$(
+        #[test]
+        fn $name() {
+            let diff = concat!(
+                "diff --git ", $old, " ", $new, "\nindex ", $index, " 100644\n--- ",
+                $old, "\n+++ ", $new, "\n@@ -0,0 +1,", $count, " @@\n+", $first_added
+                $(, "\n+", $added)*
+            );
+            let (added_lines, insertion_lines) =
+                parse_diff_added_lines_with_insertions(diff).unwrap();
+            assert_eq!(added_lines.get($path), Some(&vec![$($line),+]));
+            assert_eq!(insertion_lines.get($path), Some(&vec![$($line),+]));
+        }
+    )+};
 }
 
-#[test]
-fn test_parse_diff_added_lines_with_insertions_workdir_prefix() {
-    // Test diff with w/ prefix (commit-to-workdir diff)
-    let diff = r#"diff --git c/test.txt w/test.txt
-index a751413..8adaa6c 100644
---- c/test.txt
-+++ w/test.txt
-@@ -0,0 +1,2 @@
-+// AI added line 1
-+// AI added line 2"#;
-
-    let (added_lines, insertion_lines) = parse_diff_added_lines_with_insertions(diff).unwrap();
-    assert_eq!(added_lines.get("test.txt"), Some(&vec![1, 2]));
-    assert_eq!(insertion_lines.get("test.txt"), Some(&vec![1, 2]));
-}
-
-#[test]
-fn test_parse_diff_added_lines_with_insertions_quoted_paths() {
-    // Test diff with quoted paths containing spaces
-    let diff = r#"diff --git "a/my file.txt" "b/my file.txt"
-index 0000000..abc1234 100644
---- "a/my file.txt"
-+++ "b/my file.txt"
-@@ -0,0 +1,3 @@
-+line 1
-+line 2
-+line 3"#;
-
-    let (added_lines, insertion_lines) = parse_diff_added_lines_with_insertions(diff).unwrap();
-    assert_eq!(added_lines.get("my file.txt"), Some(&vec![1, 2, 3]));
-    assert_eq!(insertion_lines.get("my file.txt"), Some(&vec![1, 2, 3]));
-}
-
-#[test]
-fn test_parse_diff_added_lines_with_insertions_quoted_workdir_paths() {
-    // Test diff with quoted w/ paths
-    let diff = r#"diff --git "c/my file.txt" "w/my file.txt"
-index 0000000..abc1234 100644
---- "c/my file.txt"
-+++ "w/my file.txt"
-@@ -0,0 +1,2 @@
-+line 1
-+line 2"#;
-
-    let (added_lines, insertion_lines) = parse_diff_added_lines_with_insertions(diff).unwrap();
-    assert_eq!(added_lines.get("my file.txt"), Some(&vec![1, 2]));
-    assert_eq!(insertion_lines.get("my file.txt"), Some(&vec![1, 2]));
-}
-
-#[test]
-fn test_parse_diff_added_lines_with_insertions_no_prefix_paths() {
-    let diff = r#"diff --git my-file.txt my-file.txt
-index 0000000..abc1234 100644
---- my-file.txt
-+++ my-file.txt
-@@ -0,0 +1,2 @@
-+line 1
-+line 2"#;
-
-    let (added_lines, insertion_lines) = parse_diff_added_lines_with_insertions(diff).unwrap();
-    assert_eq!(added_lines.get("my-file.txt"), Some(&vec![1, 2]));
-    assert_eq!(insertion_lines.get("my-file.txt"), Some(&vec![1, 2]));
-}
-
-#[test]
-fn test_parse_diff_added_lines_with_insertions_custom_prefix_paths() {
-    let diff = r#"diff --git SRC/my-file.txt DST/my-file.txt
-index 0000000..abc1234 100644
---- SRC/my-file.txt
-+++ DST/my-file.txt
-@@ -0,0 +1,2 @@
-+line 1
-+line 2"#;
-
-    let (added_lines, insertion_lines) = parse_diff_added_lines_with_insertions(diff).unwrap();
-    assert_eq!(added_lines.get("DST/my-file.txt"), Some(&vec![1, 2]));
-    assert_eq!(insertion_lines.get("DST/my-file.txt"), Some(&vec![1, 2]));
+pure_insertion_path_tests! {
+    test_parse_diff_added_lines_with_insertions_standard_prefix: ("a/test.txt", "b/test.txt", "0000000..abc1234", "2", ["line 1", "line 2"]) => ("test.txt", [1, 2]);
+    test_parse_diff_added_lines_with_insertions_workdir_prefix: ("c/test.txt", "w/test.txt", "a751413..8adaa6c", "2", ["// AI added line 1", "// AI added line 2"]) => ("test.txt", [1, 2]);
+    test_parse_diff_added_lines_with_insertions_quoted_paths: ("\"a/my file.txt\"", "\"b/my file.txt\"", "0000000..abc1234", "3", ["line 1", "line 2", "line 3"]) => ("my file.txt", [1, 2, 3]);
+    test_parse_diff_added_lines_with_insertions_quoted_workdir_paths: ("\"c/my file.txt\"", "\"w/my file.txt\"", "0000000..abc1234", "2", ["line 1", "line 2"]) => ("my file.txt", [1, 2]);
+    test_parse_diff_added_lines_with_insertions_no_prefix_paths: ("my-file.txt", "my-file.txt", "0000000..abc1234", "2", ["line 1", "line 2"]) => ("my-file.txt", [1, 2]);
+    test_parse_diff_added_lines_with_insertions_custom_prefix_paths: ("SRC/my-file.txt", "DST/my-file.txt", "0000000..abc1234", "2", ["line 1", "line 2"]) => ("DST/my-file.txt", [1, 2]);
 }
 
 #[test]
