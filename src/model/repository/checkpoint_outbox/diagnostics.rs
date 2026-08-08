@@ -349,6 +349,7 @@ mod tests {
     use crate::model::working_log::CheckpointKind;
     use std::collections::HashMap;
     use std::fs;
+    use std::io::ErrorKind::{Other, PermissionDenied, StorageFull};
 
     fn delivery(trace_id: &str, captured_at_unix_ms: u64) -> CheckpointDelivery {
         CheckpointDelivery::from_requests_at(
@@ -557,16 +558,22 @@ mod tests {
     }
 
     #[test]
-    fn error_classification_never_retains_error_details() {
-        let error = CheckpointOutboxError::Io {
-            operation: "write temporary record",
-            kind: std::io::ErrorKind::StorageFull,
-        };
+    fn io_error_conversion_preserves_the_redacted_contract() {
+        for kind in [PermissionDenied, StorageFull, Other] {
+            let source = std::io::Error::new(kind, "sensitive detail");
+            let error = CheckpointOutboxError::from_io("write temporary record", source);
 
-        assert_eq!(
-            OutboxFailureClass::from_error(&error),
-            OutboxFailureClass::Storage
-        );
-        assert!(!format!("{:?}", OutboxFailureClass::from_error(&error)).contains("temporary"));
+            let expected = format!("checkpoint outbox write temporary record failed ({kind:?})");
+            assert_eq!(error.to_string(), expected);
+            assert_eq!(
+                OutboxFailureClass::from_error(&error),
+                OutboxFailureClass::Storage
+            );
+            let actual = match error {
+                CheckpointOutboxError::Io { operation, kind } => (operation, kind),
+                _ => unreachable!(),
+            };
+            assert_eq!(actual, ("write temporary record", kind));
+        }
     }
 }
