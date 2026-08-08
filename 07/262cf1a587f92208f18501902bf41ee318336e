@@ -1,0 +1,19 @@
+tests/integration/session_event_attribution.rs
+  s_8e83c3b3c7c61d::t_e4635c977db09d 166-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.5",
+  "base_commit_sha": "07262cf1a587f92208f18501902bf41ee318336e",
+  "prompts": {},
+  "sessions": {
+    "s_8e83c3b3c7c61d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca8fbe89-bde1-483e-a6c0-549cee63008a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

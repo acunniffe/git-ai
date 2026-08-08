@@ -1,0 +1,23 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  38f87ecef93a4534 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.30",
+  "base_commit_sha": "31bf21b4ccef6abdcb07a7c6bf012e5a561733e3",
+  "prompts": {
+    "38f87ecef93a4534": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "740667ab-d44c-4267-a8b9-5f676aed69bf",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 5,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

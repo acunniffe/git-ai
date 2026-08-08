@@ -1,0 +1,30 @@
+.github/workflows/e2e-tests.yml
+  78b996e39b4b2d3b 36,39
+.github/workflows/release.yml
+  78b996e39b4b2d3b 74
+.github/workflows/github-integration-tests.yml
+  78b996e39b4b2d3b 23-25
+.github/workflows/test.yml
+  78b996e39b4b2d3b 25-28,62-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "78430e6d53dc6f89ad2f5728ceea7276a9d7f64d",
+  "prompts": {
+    "78b996e39b4b2d3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "096db0be-ede0-4292-8dee-251a94159623",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 7,
+      "accepted_lines": 13,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/100a2569b2d0d95ed8f22ca095f096a515fbcd89952aa0f8712592acebfc7a2d"
+    }
+  }
+}

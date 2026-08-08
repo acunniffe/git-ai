@@ -1,0 +1,33 @@
+tests/rebase.rs
+  20bfdd600ceee1ee 547-588
+tests/corehooks_wrapper_regression.rs
+  20bfdd600ceee1ee 8,20-23,28-53,65,73,97,101,108-131
+src/commands/core_hooks.rs
+  20bfdd600ceee1ee 12,91,109-139,292-295,311,504,536-539,564-566,571-575,577,586,589,642,796-800,1348-1377
+tests/stash_attribution.rs
+  20bfdd600ceee1ee 139-184
+tests/pull_rebase_ff.rs
+  20bfdd600ceee1ee 525-559
+tests/reset.rs
+  20bfdd600ceee1ee 545-567
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "3f3cff834067901160e9634821b576cfa4e50a17",
+  "prompts": {
+    "20bfdd600ceee1ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c5937-d4b5-7c41-affc-185fb237c579",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 302,
+      "total_deletions": 13,
+      "accepted_lines": 301,
+      "overriden_lines": 0
+    }
+  }
+}

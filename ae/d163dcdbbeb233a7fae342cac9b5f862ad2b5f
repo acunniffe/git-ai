@@ -1,0 +1,64 @@
+tests/notes_sync_regression.rs
+  s_f00ef7c0f45b07::t_25e5bfa01a545c 434-435
+  s_f00ef7c0f45b07::t_8e79751aded2a4 161-162,200
+  s_f00ef7c0f45b07::t_92105f2502160c 432-433,436
+  s_f00ef7c0f45b07::t_28b65ac1ffa0c8 5,39-40,89,152,222,295,376,537
+tests/windows_install_script.rs
+  s_f00ef7c0f45b07::t_970c8152c608c0 7,329,373,403,445,475
+tests/daemon_mode.rs
+  s_f00ef7c0f45b07::t_970c8152c608c0 12,789,844,914,1023,1061,1097,1224,1533,1571,1642,1933,1972,2084,2231,2282,2395,2506,2609,2669,2779,2866,2919,2977,3089,3204,3466,3651,3696,3778,3848,3958,4064,4105,4149,4184,4208,4265,4393,4482
+  s_f00ef7c0f45b07::t_dd8a63b3c4a842 718,725,783,1156,3336-3337
+tests/integration/repos/mod.rs
+  s_f00ef7c0f45b07::t_45ee115fde169c 26
+  s_f00ef7c0f45b07::t_9e3351e84172ac 76-77,187-188
+  s_f00ef7c0f45b07::t_3e6fbe8fa9e6f9 58,62,93-102,169,173,204-213,303,309
+  s_f00ef7c0f45b07::t_9e3bf33a73e941 48,159
+tests/integration/repos/test_repo.rs
+  s_f00ef7c0f45b07::t_798a68b645b6c2 2891,2940,3111
+  s_f00ef7c0f45b07::t_5331b19bb3115e 2476
+  s_f00ef7c0f45b07::t_970c8152c608c0 759,1502,1525
+  s_f00ef7c0f45b07::t_9fd3d78862a38d 1069,1139,1167,1272-1275,1294,1303,1335,1363
+  s_f00ef7c0f45b07::t_b94940062033e0 760
+  s_f00ef7c0f45b07::t_4f4b32a53cd098 1369,1372,1379,1443,1446,1452,1491,1494,1573,1576,1580
+  s_f00ef7c0f45b07::t_587ca5470390a4 1669,2216,2238
+tests/integration/checkpoint_perf.rs
+  s_f00ef7c0f45b07::t_9e3bf33a73e941 1
+  s_f00ef7c0f45b07::t_78ed8e73cf0e60 46,72,74,85-86,121,174,180
+  s_f00ef7c0f45b07::t_8b791a49fc6caa 170
+src/bin/git-ai-test-git-shim.rs
+  s_f00ef7c0f45b07::t_08351e8b3ab1dd 24,32,34,90,99,118,136,142,160
+.github/workflows/test.yml
+  s_f00ef7c0f45b07::t_a1e60d80f1b251 44,46,50,69,75-76,97,111
+  s_f00ef7c0f45b07::t_b871150e4988e3 138
+tests/integration/graphite.rs
+  s_f00ef7c0f45b07::t_970c8152c608c0 289
+  s_f00ef7c0f45b07::t_b2f18c4edbd28e 16-19,59,122,160,247-248,273,276,278,283,288,290-294,326-327
+  s_f00ef7c0f45b07::t_f720e2453adc03 161
+  s_f00ef7c0f45b07::t_0753f63336f621 528,649,805
+Taskfile.yml
+  s_f00ef7c0f45b07::t_7d439dbbe4a2ab 63
+tests/async_mode.rs
+  s_f00ef7c0f45b07::t_970c8152c608c0 11,239,261,281,323,357,437-438,462-463,510
+src/daemon/telemetry_handle.rs
+  s_f00ef7c0f45b07::t_c75b96bce7a4d8 122
+AGENTS.md
+  s_f00ef7c0f45b07::t_454ee7443db2b3 14-15
+docs/rewrite-simplification-spec.md
+  s_f00ef7c0f45b07::t_f8445d793c54a4 963
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "aed163dcdbbeb233a7fae342cac9b5f862ad2b5f",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

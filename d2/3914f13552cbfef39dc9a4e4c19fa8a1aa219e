@@ -1,0 +1,24 @@
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_d3dcc700b67169::t_41e8bc667a5fa9 99-101,113
+  s_d3dcc700b67169::t_9d7a87f4c422e1 222-225,230-231
+  s_d3dcc700b67169::t_bda780a7dee544 2
+  s_d3dcc700b67169::t_1affcc22826e86 226-229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "d23914f13552cbfef39dc9a4e4c19fa8a1aa219e",
+  "prompts": {},
+  "sessions": {
+    "s_d3dcc700b67169": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "61aaff49-496e-448c-9b32-f68d4cc4a623",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/987d8a051ace1827fc690d52bdf15ad6776fb45180d21fbb7066dd769e97d412"
+    }
+  }
+}

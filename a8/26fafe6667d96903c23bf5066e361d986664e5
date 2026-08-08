@@ -1,0 +1,47 @@
+src/commands/mod.rs
+  s_3b8401a0cbe012::t_6b2f0c53e7c16c 13
+src/daemon/event_loop.rs
+  s_3b8401a0cbe012::t_25499911f4fc61 342-356
+  s_3b8401a0cbe012::t_85e87597a8ae59 318-341
+  s_3b8401a0cbe012::t_396d2fa0f76c17 221
+  s_3b8401a0cbe012::t_e23618814e6518 170
+tests/integration/daemon_e2e.rs
+  s_3b8401a0cbe012::t_c55247429a576a 1233
+  s_3b8401a0cbe012::t_6171f42fa41c09 340
+  s_3b8401a0cbe012::t_761921e662f886 1044
+  s_3b8401a0cbe012::t_acd80e997ba155 155
+  s_3b8401a0cbe012::t_17a603285fca10 486
+  s_3b8401a0cbe012::t_a508d5b75ae286 1363
+  s_3b8401a0cbe012::t_7a280fe3469a2f 884
+src/main.rs
+  s_3b8401a0cbe012::t_8510850fb9a931 6-23,25-51
+  s_3b8401a0cbe012::t_feda3872c25ce7 71-72
+  s_3b8401a0cbe012::t_60fda8710901e4 167-193
+src/commands/checkpoint.rs
+  s_3b8401a0cbe012::t_120b0003312e8e 228,262-266
+  s_3b8401a0cbe012::t_ba4037b2109a00 12
+src/commands/git_hooks.rs
+  s_3b8401a0cbe012::t_f7d59ab00abd79 1-135
+install.ps1
+  s_3b8401a0cbe012::t_5867d10400d055 662-671
+install.sh
+  s_3b8401a0cbe012::t_87b47d1eebdf41 370-379
+tests/integration/repos/test_repo.rs
+  s_3b8401a0cbe012::t_b5bad5436e9145 2623-2632
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "a826fafe6667d96903c23bf5066e361d986664e5",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

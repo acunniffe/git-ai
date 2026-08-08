@@ -1,0 +1,26 @@
+src/authorship/virtual_attribution.rs
+  7cb497240c3524af 1959
+src/commands/hooks/cherry_pick_hooks.rs
+  7cb497240c3524af 54,84,496
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "a2e248a7574908251d06537f3c27a86f4aaf105a",
+  "prompts": {
+    "7cb497240c3524af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "824c14ec-df6d-4a75-ba4a-256448ada43e",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test Runner",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 26,
+      "accepted_lines": 4,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/f60d07cf7a50f8248faf63aa235b23c40a4d75445e96b1700944ba33eeff2b43"
+    }
+  }
+}

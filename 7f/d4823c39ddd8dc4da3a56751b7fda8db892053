@@ -1,0 +1,27 @@
+tests/claude_code.rs
+  2d29f59c41449cd6 11,101-166
+tests/github_copilot.rs
+  2d29f59c41449cd6 6-7,1126-1459
+src/commands/checkpoint_agent/agent_presets.rs
+  2d29f59c41449cd6 51-59,155-207,1535-1551,1563,1567-1568,1571-1572,1575-1586,1598,1711-1905,1909-1914,1926-2328,2693-2698,2984-3106,3110-3186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "7fd4823c39ddd8dc4da3a56751b7fda8db892053",
+  "prompts": {
+    "2d29f59c41449cd6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c5951-aaa7-7582-899a-9cba86d58fbf",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1514,
+      "total_deletions": 217,
+      "accepted_lines": 1322,
+      "overriden_lines": 0
+    }
+  }
+}

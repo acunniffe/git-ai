@@ -1,0 +1,80 @@
+src/commands/stats.rs
+  s_a73b2a35c101af::t_a46b98fac6559a 1
+  s_a73b2a35c101af::t_6162612f8a9e43 297
+tests/integration/non_utf8_files.rs
+  s_a73b2a35c101af::t_27c1504432ddd0 136-137
+tests/integration/daemon_lifecycle.rs
+  s_a73b2a35c101af::t_939620479c357e 389-391
+  s_a73b2a35c101af::t_66e113eee5561b 4,12
+  s_a73b2a35c101af::t_58d05a306f0e42 47
+src/daemon/stats.rs
+  s_a73b2a35c101af::t_62d2229474e5f3 95-96
+src/commands/checkpoint.rs
+  s_a73b2a35c101af::t_62138a3da6ac9a 18-22,24
+  s_a73b2a35c101af::t_039f11c877e2a1 592
+src/metrics/incremental.rs
+  s_a73b2a35c101af::t_cbec990c9da464 256-258,260
+tests/integration/daemon_e2e.rs
+  s_a73b2a35c101af::t_da2baff9dd46bd 2
+  s_a73b2a35c101af::t_034297de502c8c 20
+  s_a73b2a35c101af::t_fca3feb0c07a91 33
+src/commands/doctor.rs
+  s_a73b2a35c101af::t_1f02883b78e292 467
+  s_a73b2a35c101af::t_e914038ec39c2b 429
+  s_a73b2a35c101af::t_da465d0744af10 415
+  s_a73b2a35c101af::t_f78672a170599b 387
+  s_a73b2a35c101af::t_783b080c912c18 401
+  s_a73b2a35c101af::t_fcf3c3cd7a8f15 438
+  s_a73b2a35c101af::t_cd34563c74e6ec 447
+Taskfile.yml
+  s_a73b2a35c101af::t_aa96dc8d587bf2 26-30,38
+src/daemon/lifecycle.rs
+  s_a73b2a35c101af::t_a8ae6a43941617 299
+src/commands/internal.rs
+  s_a73b2a35c101af::t_be88a9844dfee0 434-435,440
+  s_a73b2a35c101af::t_644b812a905c38 148,157
+src/commands/blame.rs
+  s_a73b2a35c101af::t_bcd4b380986f15 124,133
+tests/integration/repos/test_repo.rs
+  s_a73b2a35c101af::t_5a26c5af6bb5ab 555
+src/core/post_commit.rs
+  s_a73b2a35c101af::t_ff0012805e1bde 574,580
+  s_a73b2a35c101af::t_91dd42bbb5b543 279-280
+src/ci/mod.rs
+  s_a73b2a35c101af::t_d747ad6ba5370d 398-400
+  s_a73b2a35c101af::t_549cbc725c16b6 301-302
+tests/integration/telemetry_e2e.rs
+  s_a73b2a35c101af::t_f464cd815ef398 95
+  s_a73b2a35c101af::t_8da15ac93c0516 7
+  s_a73b2a35c101af::t_dc7ed11fff8ed2 68,88-90
+src/commands/diff.rs
+  s_a73b2a35c101af::t_86361cecdfe6b2 81-83
+src/api/client.rs
+  s_a73b2a35c101af::t_97636d0c38302e 95,114
+src/commands/perf.rs
+  s_a73b2a35c101af::t_e451675bc322d5 44
+  s_a73b2a35c101af::t_7a6ac5c7a782c0 72
+  s_a73b2a35c101af::t_f25b9c7cdaa48b 98
+src/observability/perf_regression.rs
+  s_a73b2a35c101af::t_8ff59ca6faab4f 240
+  s_a73b2a35c101af::t_7b7298f6df44bf 355
+  s_a73b2a35c101af::t_6f376a6d031d91 338
+tests/integration/real_world_workflows.rs
+  s_a73b2a35c101af::t_7620f2afd303d3 371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "44376cdd8e7804af97c8835e5ffedbe4c3c51feb",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

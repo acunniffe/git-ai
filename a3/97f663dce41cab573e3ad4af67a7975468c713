@@ -1,0 +1,23 @@
+tests/cursor.rs
+  58f0283dd02fe69a 747-1154
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "a397f663dce41cab573e3ad4af67a7975468c713",
+  "prompts": {
+    "58f0283dd02fe69a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "880e492e-1f4e-4018-a40b-914c052bde99",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 410,
+      "total_deletions": 2,
+      "accepted_lines": 408,
+      "overriden_lines": 0
+    }
+  }
+}
