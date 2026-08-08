@@ -5,6 +5,7 @@
 use super::core::Repository;
 use crate::clients::git_cli::{InternalGitProfile, exec_git, exec_git_with_profile};
 use crate::error::GitAiError;
+use crate::operations::git::path_format::parse_diff_path_from_header_line;
 use crate::operations::git::status::MAX_PATHSPEC_ARGS;
 use std::collections::{HashMap, HashSet};
 use unicode_normalization::UnicodeNormalization;
@@ -278,7 +279,7 @@ fn parse_diff_added_lines_internal(diff_output: &str) -> ParsedDiffAddedLines {
     let mut total_deleted: usize = 0;
 
     for line in diff_output.lines() {
-        if let Some(path_opt) = parse_new_file_path_from_plus_header_line(line) {
+        if let Some(path_opt) = parse_diff_path_from_header_line(line, "+++ ") {
             current_file = path_opt;
             current_hunk = None;
         } else if line.starts_with("@@ ") {
@@ -348,26 +349,6 @@ pub fn parse_diff_added_lines_with_insertions(
 /// since NFC-normalised pathspecs may not match NFD entries in git's index.
 fn has_non_ascii_pathspec(paths: &HashSet<String>) -> bool {
     paths.iter().any(|s| !s.is_ascii())
-}
-
-fn normalize_diff_path_token(path: &str) -> String {
-    let unescaped = crate::operations::git::path_format::unescape_git_path(path.trim_end());
-    let prefixes = ["a/", "b/", "c/", "w/", "i/", "o/"];
-    let stripped = prefixes
-        .iter()
-        .find_map(|prefix| unescaped.strip_prefix(prefix))
-        .unwrap_or(&unescaped);
-    // Apply NFC normalization so decomposed (NFD) paths from git diff match
-    // NFC paths used internally (see normalize_to_posix).
-    stripped.nfc().collect()
-}
-
-fn parse_new_file_path_from_plus_header_line(line: &str) -> Option<Option<String>> {
-    let raw = line.strip_prefix("+++ ")?;
-    if raw.trim_end() == "/dev/null" {
-        return Some(None);
-    }
-    Some(Some(normalize_diff_path_token(raw)))
 }
 
 fn parse_hunk_header_counts(line: &str) -> Option<(u32, u32, u32)> {
