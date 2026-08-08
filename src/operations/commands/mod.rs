@@ -1,6 +1,7 @@
 pub mod analyze;
 pub mod r#await;
 pub mod blame;
+mod browser;
 pub mod checkpoint_agent;
 pub(crate) mod checkpoint_outbox_debug;
 pub mod ci_handlers;
