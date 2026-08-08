@@ -1810,6 +1810,9 @@ fn wltrace_captures_daemon_working_log_ops_when_enabled() {
     fs::write(&file_path, "AI content\n").unwrap();
     repo.git_ai(&["checkpoint", "mock_ai", "traced.txt"])
         .unwrap();
+    // The checkpoint is acknowledged at receipt, before the daemon executes
+    // it; wait for the daemon to drain so every traced op has been written.
+    repo.sync_daemon();
 
     let trace = fs::read_to_string(trace_file.path()).expect("read wltrace output");
     for op in [
