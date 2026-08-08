@@ -7,6 +7,7 @@
 //! them build on the [`DiagnosticCheckResult`] / [`CommandRecord`] /
 //! [`GitDiagnosticTarget`] types and command-running helpers defined here.
 
+use crate::process_spawn::format_posix_shell_command as format_command;
 use crate::process_timeout::run_command_with_timeout;
 use serde_json::Value;
 use std::fs;
@@ -521,25 +522,6 @@ pub(crate) fn sanitize_label(label: &str) -> String {
     }
 }
 
-fn format_command(program: &str, args: &[&str]) -> String {
-    std::iter::once(program)
-        .chain(args.iter().copied())
-        .map(shell_quote_for_display)
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-fn shell_quote_for_display(value: &str) -> String {
-    if value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || "-_./:=@".contains(ch))
-    {
-        value.to_string()
-    } else {
-        format!("'{}'", value.replace('\'', "'\\''"))
-    }
-}
-
 pub(crate) fn format_status(status: Option<i32>) -> String {
     status
         .map(|code| code.to_string())
@@ -568,6 +550,11 @@ mod tests {
                 "[Console]::Out.Write('out'); [Console]::Error.Write('err'); Start-Sleep -Seconds 60",
             ],
         )
+    }
+
+    #[test]
+    fn format_command_preserves_posix_shell_words() {
+        assert_eq!(format_command("g", &["a b", "x'y"]), "g 'a b' 'x'\\''y'");
     }
 
     #[test]

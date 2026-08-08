@@ -9,6 +9,7 @@ use crate::operations::mdm::version::{
 use crate::operations::mdm::vscode_settings::{
     settings_paths_for_products, should_process_settings_target,
 };
+use crate::process_spawn::quote_posix_shell_word;
 use serde_json::{Value, json};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -48,20 +49,9 @@ impl GitHubCopilotInstaller {
             .any(Self::is_github_copilot_checkpoint_command)
     }
 
-    fn shell_quote_path(path: &str) -> String {
-        if path
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || "-_./:=@".contains(character))
-        {
-            path.to_string()
-        } else {
-            format!("'{}'", path.replace('\'', "'\\''"))
-        }
-    }
-
     fn checkpoint_hook(binary_path: &Path, checkpoint_command: &str) -> Value {
         let binary_path = normalize_windows_path_for_shell(binary_path);
-        let shell_path = Self::shell_quote_path(&binary_path);
+        let shell_path = quote_posix_shell_word(&binary_path);
         let powershell_path = format!("'{}'", binary_path.replace('\'', "''"));
 
         json!({
@@ -448,11 +438,11 @@ mod tests {
 
     #[test]
     #[serial]
-    fn test_install_hooks_quotes_windows_home_path_with_spaces() {
+    fn test_install_hooks_quotes_windows_home_path_with_spaces_and_apostrophe() {
         with_temp_home(|home| {
             let installer = GitHubCopilotInstaller;
             let params = HookInstallerParams {
-                binary_path: PathBuf::from(r"C:\Users\test user\.git-ai\bin\git-ai.exe"),
+                binary_path: PathBuf::from(r"C:\Users\test user's\.git-ai\bin\git-ai.exe"),
             };
 
             installer.install_hooks(&params, false).unwrap();
@@ -465,13 +455,13 @@ mod tests {
             assert_eq!(
                 pre_hook.get("command").and_then(|v| v.as_str()),
                 Some(
-                    "'C:/Users/test user/.git-ai/bin/git-ai.exe' checkpoint github-copilot --hook-input stdin"
+                    "'C:/Users/test user'\\''s/.git-ai/bin/git-ai.exe' checkpoint github-copilot --hook-input stdin"
                 )
             );
             assert_eq!(
                 pre_hook.get("powershell").and_then(|v| v.as_str()),
                 Some(
-                    "& 'C:/Users/test user/.git-ai/bin/git-ai.exe' checkpoint github-copilot --hook-input stdin"
+                    "& 'C:/Users/test user''s/.git-ai/bin/git-ai.exe' checkpoint github-copilot --hook-input stdin"
                 )
             );
         });
