@@ -9,6 +9,8 @@
 
 use crate::bash_tool_common::{add_and_commit, post_hook, pre_hook, repo_root};
 use crate::repos::test_repo::TestRepo;
+#[cfg(unix)]
+use crate::repos::write_executable_script;
 use git_ai::operations::commands::checkpoint_agent::bash_tool::{
     BashCheckpointAction, BashPostHookResult, diff, git_status_fallback, snapshot,
 };
@@ -1248,11 +1250,7 @@ fn install_pre_commit_hook(repo: &TestRepo, script: &str) {
     };
     fs::create_dir_all(&hooks_dir).expect("create hooks dir");
     let hook_path = hooks_dir.join("pre-commit");
-    fs::write(&hook_path, script).expect("write pre-commit hook");
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms = fs::metadata(&hook_path).unwrap().permissions();
-    perms.set_mode(0o755);
-    fs::set_permissions(&hook_path, perms).expect("chmod hook");
+    write_executable_script(&hook_path, script).expect("write pre-commit hook");
 }
 
 /// Run a raw git command in the repo (without bypassing hooks).

@@ -1,5 +1,7 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+#[cfg(not(target_os = "windows"))]
+use crate::repos::write_executable_script;
 use git_ai::model::authorship_log::PromptRecord;
 use git_ai::model::authorship_log_serialization::AuthorshipLog;
 use git_ai::model::working_log::AgentId;
@@ -1297,8 +1299,6 @@ fn test_rebase_squash_preserves_all_authorship() {
     // Perform interactive rebase with squashing: pick first, squash second and third
     repo.git(&["checkout", "feature"]).unwrap();
 
-    use std::io::Write;
-
     // Create a script that modifies the rebase-todo to squash commits 2 and 3 into 1
     let script_content = r#"#!/bin/sh
 sed -i.bak '2s/pick/squash/' "$1"
@@ -1306,17 +1306,7 @@ sed -i.bak '3s/pick/squash/' "$1"
 "#;
 
     let script_path = repo.path().join("squash_script.sh");
-    let mut script_file = std::fs::File::create(&script_path).unwrap();
-    script_file.write_all(script_content.as_bytes()).unwrap();
-    drop(script_file);
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&script_path, perms).unwrap();
-    }
+    write_executable_script(&script_path, script_content).unwrap();
 
     let rebase_result = repo.git_with_env(
         &["rebase", "-i", &base_commit],
@@ -1408,17 +1398,7 @@ sed -i.bak '1s/pick/reword/' "$1"
 "#;
 
     let script_path = repo.path().join("reword_script.sh");
-    let mut script_file = std::fs::File::create(&script_path).unwrap();
-    script_file.write_all(script_content.as_bytes()).unwrap();
-    drop(script_file);
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&script_path, perms).unwrap();
-    }
+    write_executable_script(&script_path, script_content).unwrap();
 
     // Create a script that provides the new commit message
     let commit_msg_content = "AI commit 1 - RENAMED MESSAGE";
@@ -1435,21 +1415,7 @@ cat {} > "$1"
         commit_msg_path.to_str().unwrap()
     );
     let editor_script_path = repo.path().join("editor_script.sh");
-    let mut editor_file = std::fs::File::create(&editor_script_path).unwrap();
-    editor_file
-        .write_all(editor_script_content.as_bytes())
-        .unwrap();
-    drop(editor_file);
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&editor_script_path)
-            .unwrap()
-            .permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&editor_script_path, perms).unwrap();
-    }
+    write_executable_script(&editor_script_path, editor_script_content).unwrap();
 
     let rebase_result = repo.git_with_env(
         &["rebase", "-i", &base_commit],
@@ -2104,11 +2070,7 @@ fn test_rebase_interactive_drop_preserves_attribution() {
 sed -i.bak '2s/^pick/drop/' "$1"
 "#;
     let script_path = repo.path().join("drop_script.sh");
-    std::fs::write(&script_path, drop_script).unwrap();
-    use std::os::unix::fs::PermissionsExt;
-    let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
-    perms.set_mode(0o755);
-    std::fs::set_permissions(&script_path, perms).unwrap();
+    write_executable_script(&script_path, drop_script).unwrap();
 
     let rebase_result = repo.git_with_env(
         &["rebase", "-i", &base_commit],
@@ -2334,8 +2296,6 @@ fn test_rebase_preserves_authorship_with_multibyte_utf8_in_diff_context() {
 #[test]
 #[cfg(not(target_os = "windows"))]
 fn test_rebase_squash_preserves_human_attribution() {
-    use std::io::Write;
-
     let repo = TestRepo::new();
 
     // Create initial commit on default branch
@@ -2442,17 +2402,7 @@ sed -i.bak '3s/pick/fixup/' "$1"
 "#;
 
     let script_path = repo.path().join("squash_script.sh");
-    let mut script_file = std::fs::File::create(&script_path).unwrap();
-    script_file.write_all(script_content.as_bytes()).unwrap();
-    drop(script_file);
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&script_path, perms).unwrap();
-    }
+    write_executable_script(&script_path, script_content).unwrap();
 
     let rebase_result = repo.git_with_env(
         &["rebase", "-i", &base_commit],
@@ -2508,8 +2458,6 @@ sed -i.bak '3s/pick/fixup/' "$1"
 #[test]
 #[cfg(not(target_os = "windows"))]
 fn test_rebase_squash_preserves_session_attribution() {
-    use std::io::Write;
-
     let repo = TestRepo::new();
 
     // Create initial commit on default branch
@@ -2614,17 +2562,7 @@ sed -i.bak '3s/pick/fixup/' "$1"
 "#;
 
     let script_path = repo.path().join("squash_script.sh");
-    let mut script_file = std::fs::File::create(&script_path).unwrap();
-    script_file.write_all(script_content.as_bytes()).unwrap();
-    drop(script_file);
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
-        perms.set_mode(0o755);
-        std::fs::set_permissions(&script_path, perms).unwrap();
-    }
+    write_executable_script(&script_path, script_content).unwrap();
 
     let rebase_result = repo.git_with_env(
         &["rebase", "-i", &base_commit],

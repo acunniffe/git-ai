@@ -3,9 +3,9 @@ use crate::repos::test_file::ExpectedLineExt;
 #[cfg(unix)]
 use crate::repos::test_repo::TestRepo;
 #[cfg(unix)]
-use std::fs;
+use crate::repos::write_executable_script;
 #[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
+use std::fs;
 
 #[cfg(unix)]
 fn install_subject_rewriting_commit_msg_hook(repo: &TestRepo) {
@@ -13,7 +13,7 @@ fn install_subject_rewriting_commit_msg_hook(repo: &TestRepo) {
     fs::create_dir_all(&hooks_dir).expect("create Git hooks directory");
 
     let hook_path = hooks_dir.join("commit-msg");
-    fs::write(
+    write_executable_script(
         &hook_path,
         "#!/bin/sh\n\
          message_file=\"$1\"\n\
@@ -22,12 +22,6 @@ fn install_subject_rewriting_commit_msg_hook(repo: &TestRepo) {
          mv \"$rewritten\" \"$message_file\"\n",
     )
     .expect("write commit-msg hook");
-
-    let mut permissions = fs::metadata(&hook_path)
-        .expect("read commit-msg hook metadata")
-        .permissions();
-    permissions.set_mode(0o755);
-    fs::set_permissions(&hook_path, permissions).expect("make commit-msg hook executable");
 }
 
 #[cfg(unix)]

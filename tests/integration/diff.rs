@@ -3,13 +3,12 @@ use crate::repos::diff_hostility::{
 };
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::{NewCommit, TestRepo};
+use crate::repos::write_executable_script;
 use git_ai::model::transcript::{AiTranscript, Message};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 
 /// Helper to parse diff output and extract meaningful lines
 #[derive(Debug, PartialEq)]
@@ -491,16 +490,8 @@ fn assert_stats_exact(
 fn create_external_diff_helper_script(repo: &TestRepo, marker: &str) -> std::path::PathBuf {
     let helper_path = repo.path().join(format!("ext-env-helper-{marker}.sh"));
 
-    fs::write(&helper_path, format!("#!/bin/sh\necho {marker}\nexit 0\n"))
+    write_executable_script(&helper_path, format!("#!/bin/sh\necho {marker}\nexit 0\n"))
         .expect("should write external diff helper");
-    #[cfg(unix)]
-    {
-        let mut perms = fs::metadata(&helper_path)
-            .expect("helper metadata should exist")
-            .permissions();
-        perms.set_mode(0o755);
-        fs::set_permissions(&helper_path, perms).expect("helper should be executable");
-    }
 
     helper_path
 }

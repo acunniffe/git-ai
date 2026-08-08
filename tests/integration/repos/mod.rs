@@ -5,6 +5,24 @@ pub mod diff_hostility;
 pub mod test_repo;
 pub(crate) mod test_repo_adapters;
 
+use std::path::Path;
+
+/// Write a script fixture and make it executable on Unix.
+pub fn write_executable_script(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    std::fs::write(path, contents)?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mut permissions = std::fs::metadata(path)?.permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(path, permissions)?;
+    }
+
+    Ok(())
+}
+
 #[macro_export]
 macro_rules! subdir_test_variants {
     (
