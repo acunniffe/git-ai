@@ -1,0 +1,20 @@
+src/daemon/transcript_worker.rs
+  s_395f5898107085::t_856944f0b80662 591-593,602-611,618-622
+  s_395f5898107085::t_05a17aec154adf 724-736,739-746,749-750,763-770
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "18bf681018be54b5fedac37f65dfa8c93d8958bd",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

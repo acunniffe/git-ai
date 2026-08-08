@@ -1,0 +1,26 @@
+tests/integration/worktrees.rs
+  b7e149dae7f1e05c 592-689,741-802
+src/git/repository.rs
+  b7e149dae7f1e05c 4073-4076,4095,4102-4157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "7b99854f9e7918e2249f73391b2e58aa4e2c18e8",
+  "prompts": {
+    "b7e149dae7f1e05c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f6dea1b3-df33-4344-83c9-31f7bca4786d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 253,
+      "total_deletions": 35,
+      "accepted_lines": 225,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/492c6d14179cd629fc5cbe6df788b2c778c34c4bee6bb70741e68f732810ab96"
+    }
+  }
+}

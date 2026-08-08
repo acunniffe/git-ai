@@ -1,0 +1,34 @@
+tests/integration/checkpoint_debug_log.rs
+  s_a31db573b808f2::t_83555724f353d7 1-94
+tests/integration/main.rs
+  s_a31db573b808f2::t_2efbb7069b258f 27
+src/commands/checkpoint_agent/orchestrator.rs
+  s_a31db573b808f2::t_9feecb4606705c 303-306
+  s_a31db573b808f2::t_da207b14881e72 7,17
+  s_a31db573b808f2::t_c40dcca88607e6 45-54
+  s_a31db573b808f2::t_29a619502a2a50 242-302,307-310
+  s_a31db573b808f2::t_e94e38f85e82fd 206,212,231-238
+tests/integration/performance.rs
+  s_a31db573b808f2::t_bfcb05411e5f16 24
+src/feature_flags.rs
+  s_a31db573b808f2::t_271562a46fb7af 144,154
+  s_a31db573b808f2::t_35eefb99e19e50 214,224
+  s_a31db573b808f2::t_93efaff0ca3ba8 87
+  s_a31db573b808f2::t_03df6e834375ff 236,248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.7",
+  "base_commit_sha": "fa1531806a22a300f547ff19560660c775225a66",
+  "prompts": {},
+  "sessions": {
+    "s_a31db573b808f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec3a1f24-a0c8-41eb-ad85-781aeb99c10b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

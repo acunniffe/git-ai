@@ -1,0 +1,39 @@
+tests/diff.rs
+  dc6e606cd02eeb11 627-671,673-674
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "bd9984e0ccb703bd11a8a019ce8a0d45a2a4a186",
+  "prompts": {
+    "dc6e606cd02eeb11": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7bdef22a-79c7-42c9-8fa6-bcd16f06c776",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/diff.rs:625-627 can you write a test with TestRepo fixture where we add a line like this in a mock typrscript file\n\n\"text.split(\"\\n\")\"\ncommit\nand then we edit it and turn it into \n\"other_text.split(\"\\n\\n\")\ncommit\n\nThen we want to do the git-ai diff command on the last commit sha and show me the JSON output.",
+          "timestamp": "2025-12-13T17:45:47.635Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you write a test that follows the pattern you described. Let me first look at the existing test structure to understand how TestRepo works.",
+          "timestamp": "2025-12-13T17:45:54.198Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll write a test that creates a TypeScript file with your specific content, commits it, modifies it, commits again, and then runs `git-ai diff --json` to show the JSON output.",
+          "timestamp": "2025-12-13T17:46:02.990Z"
+        }
+      ],
+      "total_additions": 67,
+      "total_deletions": 1,
+      "accepted_lines": 48,
+      "overriden_lines": 2
+    }
+  }
+}

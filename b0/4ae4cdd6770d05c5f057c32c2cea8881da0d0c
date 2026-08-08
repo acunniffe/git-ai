@@ -1,0 +1,19 @@
+tests/async_mode.rs
+  s_c4cd7c7b169c22::t_8892cb48636128 547-551
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "b04ae4cdd6770d05c5f057c32c2cea8881da0d0c",
+  "prompts": {},
+  "sessions": {
+    "s_c4cd7c7b169c22": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb37b-c52d-7411-ad4e-63d8de2681cd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

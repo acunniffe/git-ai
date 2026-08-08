@@ -1,0 +1,26 @@
+installer/macos/scripts/postinstall
+  s_c07cec28a64ec3::t_318a49fd15c140 1-18
+installer/macos/build-pkg.sh
+  s_c07cec28a64ec3::t_053753a5f0db78 1-86
+.github/workflows/release.yml
+  s_c07cec28a64ec3::t_ed051ba5ed6a0f 305-360,363
+  s_c07cec28a64ec3::t_a3bfe852992520 517-518
+installer/macos/README.md
+  s_c07cec28a64ec3::t_e5611eb56ef276 1-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "dfba6126868d7f96eb71ed0f518d954cf9ac2747",
+  "prompts": {},
+  "sessions": {
+    "s_c07cec28a64ec3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf8ac124-a1bf-4ca4-97d5-ef2922cef132",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "admin <admin@git-ai-project.com>"
+    }
+  }
+}

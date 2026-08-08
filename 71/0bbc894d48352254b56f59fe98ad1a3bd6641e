@@ -1,0 +1,23 @@
+src/config.rs
+  8daad14b916916d9 1695-1699
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "710bbc894d48352254b56f59fe98ad1a3bd6641e",
+  "prompts": {
+    "8daad14b916916d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6c8163bf-34ef-4d84-ae37-39dae7207a9c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Andrew Churchill",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 4,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

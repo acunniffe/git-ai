@@ -1,0 +1,45 @@
+tests/integration/transcript_queue_memory.rs
+  s_59382cac373d67::t_0a619e31f93c20 1-11,13-104
+  s_59382cac373d67::t_9e78c91ef59ddd 12
+tests/integration/main.rs
+  s_59382cac373d67::t_0a619e31f93c20 141
+src/daemon/stream_worker.rs
+  s_59382cac373d67::t_c40de43444d8fc 1458,1468,1478
+  s_59382cac373d67::t_9d5ee4ebcf7d1f 19,28-29,32-33,265,319,332-334,339,361-370,377,383,395,406
+  s_59382cac373d67::t_32fbed598c0464 1544,1547,1551,1555,1576,1776
+  s_59382cac373d67::t_b4e3babddf61f7 34-85,87-108
+  s_59382cac373d67::t_ea16c519d4ab14 1794,1835
+  s_59382cac373d67::t_a5c55e9aa7f07f 1667
+  s_59382cac373d67::t_0b5665f2777869 1542-1543,1546,1549-1550,1552-1554,1556-1572,1639-1666,1668-1677
+  s_59382cac373d67::t_9e78c91ef59ddd 1678
+  s_59382cac373d67::t_6d8db106236c98 264,293,340,342
+  s_59382cac373d67::t_b16f3ce3396f06 1681-1700
+  s_59382cac373d67::t_d74a45304c85b8 1037-1040,1071,1334,1375,1392,1420-1422,1437
+  s_59382cac373d67::t_82c52703b89c34 31,526-530,547-551,555-559
+  s_59382cac373d67::t_ff092f42cd6368 475
+  s_59382cac373d67::t_33ca026c427bf1 382,394,411
+  s_59382cac373d67::t_f7d4e02638f06c 86
+  s_59382cac373d67::t_79e3c34b012bb2 525,531-546,552-554,560-564,640,685,724,824
+  s_59382cac373d67::t_c836da01df6d84 1459,1545,1548,1577,1777
+  s_59382cac373d67::t_8afd71e884ac97 1701-1712
+  s_59382cac373d67::t_e9a0253761dc5e 1679,2011-2039
+  s_59382cac373d67::t_e90a268fc3470e 30
+  s_59382cac373d67::t_5c41a672103356 1680
+  s_59382cac373d67::t_0354b94a7d01e8 2010
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "ddf6c452c3a99f7a124fb611faec4fec9419f7f5",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

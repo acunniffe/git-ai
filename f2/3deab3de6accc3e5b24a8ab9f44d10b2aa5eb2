@@ -1,0 +1,22 @@
+tests/integration/lite_mode.rs
+  s_c9fae768bb9b35::t_3f6933bb4a9f9b 610,642-645,658-659,662-666
+src/daemon.rs
+  s_c9fae768bb9b35::t_28d2eca7cbf816 2696,5091,5443-5445
+  s_c9fae768bb9b35::t_e5486ef1a11950 5108-5111,5447
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "f23deab3de6accc3e5b24a8ab9f44d10b2aa5eb2",
+  "prompts": {},
+  "sessions": {
+    "s_c9fae768bb9b35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf97-4dce-7972-ac6d-22bfc367a861",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
