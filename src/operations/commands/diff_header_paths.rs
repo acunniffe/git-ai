@@ -1,32 +1,16 @@
 //! Parsing of `git diff` header lines: `diff --git` path pairs and
 //! `---`/`+++` file-path tokens, normalized to repo-relative POSIX paths.
 
-use unicode_normalization::UnicodeNormalization;
-
-pub(super) fn normalize_diff_path_token(path: &str) -> String {
-    let unescaped = crate::operations::git::path_format::unescape_git_path(path.trim_end());
-    let prefixes = ["a/", "b/", "c/", "w/", "i/", "o/"];
-    let stripped = prefixes
-        .iter()
-        .find_map(|prefix| unescaped.strip_prefix(prefix))
-        .unwrap_or(&unescaped);
-    stripped.nfc().collect()
-}
+use crate::operations::git::path_format::{
+    normalize_diff_path_token, parse_diff_path_from_header_line,
+};
 
 pub(super) fn parse_new_file_path_from_plus_header_line(line: &str) -> Option<Option<String>> {
-    parse_file_path_from_header_line(line, "+++ ")
+    parse_diff_path_from_header_line(line, "+++ ")
 }
 
 pub(super) fn parse_old_file_path_from_minus_header_line(line: &str) -> Option<Option<String>> {
-    parse_file_path_from_header_line(line, "--- ")
-}
-
-fn parse_file_path_from_header_line(line: &str, prefix: &str) -> Option<Option<String>> {
-    let raw = line.strip_prefix(prefix)?;
-    if raw.trim_end() == "/dev/null" {
-        return Some(None);
-    }
-    Some(Some(normalize_diff_path_token(raw)))
+    parse_diff_path_from_header_line(line, "--- ")
 }
 
 pub(super) fn parse_diff_git_header_paths(line: &str) -> Option<(String, String)> {

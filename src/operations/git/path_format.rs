@@ -1,9 +1,29 @@
 //! Path formatting helpers for git-produced paths: POSIX separator
 //! normalization and git's C-style quoted-path unescaping.
 
+use unicode_normalization::UnicodeNormalization;
+
 #[inline]
 pub fn normalize_to_posix(path: &str) -> String {
     path.replace('\\', "/")
+}
+
+pub(crate) fn normalize_diff_path_token(path: &str) -> String {
+    let unescaped = unescape_git_path(path.trim_end());
+    let prefixes = ["a/", "b/", "c/", "w/", "i/", "o/"];
+    let stripped = prefixes
+        .iter()
+        .find_map(|prefix| unescaped.strip_prefix(prefix))
+        .unwrap_or(&unescaped);
+    stripped.nfc().collect()
+}
+
+pub(crate) fn parse_diff_path_from_header_line(line: &str, prefix: &str) -> Option<Option<String>> {
+    let raw = line.strip_prefix(prefix)?;
+    if raw.trim_end() == "/dev/null" {
+        return Some(None);
+    }
+    Some(Some(normalize_diff_path_token(raw)))
 }
 
 /// Unescape a git-quoted path that may contain octal escape sequences.
