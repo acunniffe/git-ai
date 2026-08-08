@@ -1052,6 +1052,12 @@ fn apply_checkpoint_side_effect(mut request: CheckpointRequest) -> Result<(), Gi
         return Ok(());
     }
 
+    if request.checkpoint_kind.is_ai()
+        && let Some(agent_id) = request.agent_id.as_mut()
+    {
+        crate::streams::model_extraction::enrich_copilot_agent_model(agent_id, &request.metadata);
+    }
+
     let repo_work_dir = &request.files[0].repo_work_dir;
     let repo = match discover_repository_in_path_no_git_exec(repo_work_dir) {
         Ok(repo) => repo,

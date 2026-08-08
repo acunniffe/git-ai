@@ -360,10 +360,15 @@ fn recover_bash_mtime(
             continue;
         }
 
+        let mut agent_id = candidate.agent_id.clone();
+        crate::streams::model_extraction::enrich_copilot_agent_model(
+            &mut agent_id,
+            &candidate.metadata,
+        );
         let trace_id = generate_trace_id();
-        let session_id = generate_session_id(&candidate.agent_id.id, &candidate.agent_id.tool);
+        let session_id = generate_session_id(&agent_id.id, &agent_id.tool);
         let author_id = format!("{}::{}", session_id, trace_id);
-        insert_session_record(authorship_log, &session_id, candidate, human_author);
+        insert_session_record(authorship_log, &session_id, &agent_id, human_author);
         add_attestation(authorship_log, &file_path, &author_id, &unknown_lines);
 
         let metadata = json!({
@@ -395,9 +400,9 @@ fn recover_bash_mtime(
             author_id: &author_id,
             session_id: &session_id,
             trace_id: &trace_id,
-            tool: &candidate.agent_id.tool,
-            model: &candidate.agent_id.model,
-            external_session_id: &candidate.agent_id.id,
+            tool: &agent_id.tool,
+            model: &agent_id.model,
+            external_session_id: &agent_id.id,
             external_tool_use_id: Some(&candidate.tool_use_id),
             edit_kind: "bash",
             checkpoint_type: "recovered_bash",
@@ -1515,7 +1520,7 @@ fn path_is_equal_or_child(child: &str, parent: &str) -> bool {
 fn insert_session_record(
     authorship_log: &mut AuthorshipLog,
     session_id: &str,
-    candidate: &BashCheckpointCall,
+    agent_id: &AgentId,
     human_author: &str,
 ) {
     authorship_log
@@ -1523,7 +1528,7 @@ fn insert_session_record(
         .sessions
         .entry(session_id.to_string())
         .or_insert_with(|| SessionRecord {
-            agent_id: candidate.agent_id.clone(),
+            agent_id: agent_id.clone(),
             human_author: Some(human_author.to_string()),
             custom_attributes: None,
         });

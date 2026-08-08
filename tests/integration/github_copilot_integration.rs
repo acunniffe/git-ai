@@ -1,6 +1,7 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use serde_json::json;
+use std::fs;
 
 /// Test human checkpoint via github-copilot preset with before_edit hook
 #[test]
@@ -275,6 +276,245 @@ fn test_github_copilot_human_checkpoint_with_clean_file() {
     ]);
 }
 
+fn setup_vscode_copilot_session(
+    session_id: &str,
+    request_model: &str,
+    resolved_model: Option<&str>,
+) -> (tempfile::TempDir, String, std::path::PathBuf) {
+    let storage = tempfile::tempdir().unwrap();
+    let workspace_storage = storage.path().join("workspaceStorage/workspace-id");
+    let transcript_path = workspace_storage
+        .join("GitHub.copilot-chat/transcripts")
+        .join(format!("{session_id}.jsonl"));
+    fs::create_dir_all(transcript_path.parent().unwrap()).unwrap();
+    fs::write(
+        &transcript_path,
+        format!(r#"{{"type":"session.start","data":{{"sessionId":"{session_id}"}}}}\n"#),
+    )
+    .unwrap();
+
+    let chat_session_path = workspace_storage
+        .join("chatSessions")
+        .join(format!("{session_id}.jsonl"));
+    fs::create_dir_all(chat_session_path.parent().unwrap()).unwrap();
+    write_vscode_chat_session(
+        &chat_session_path,
+        session_id,
+        request_model,
+        resolved_model,
+    );
+
+    let models_path = workspace_storage
+        .join("GitHub.copilot-chat/debug-logs")
+        .join(session_id)
+        .join("models.json");
+    fs::create_dir_all(models_path.parent().unwrap()).unwrap();
+    fs::write(
+        models_path,
+        r#"[{"id":"gpt-5.3-codex","is_chat_default":true}]"#,
+    )
+    .unwrap();
+
+    (
+        storage,
+        transcript_path.to_string_lossy().into_owned(),
+        chat_session_path,
+    )
+}
+
+fn write_vscode_chat_session(
+    chat_session_path: &std::path::Path,
+    session_id: &str,
+    request_model: &str,
+    resolved_model: Option<&str>,
+) {
+    let snapshot = json!({
+        "kind": 0,
+        "v": {
+            "sessionId": session_id,
+            "inputState": { "selectedModel": { "identifier": request_model } },
+            "requests": []
+        }
+    });
+    let request_patch = json!({
+        "kind": 2,
+        "k": ["requests"],
+        "v": [{
+            "requestId": "request-1",
+            "modelId": request_model,
+            "result": {
+                "metadata": {
+                    "sessionId": session_id,
+                    "resolvedModel": resolved_model
+                }
+            }
+        }]
+    });
+    fs::write(
+        chat_session_path,
+        format!("{}\n{}\n", snapshot, request_patch),
+    )
+    .unwrap();
+}
+
+fn native_edit_hook_input(
+    event_name: &str,
+    repo: &TestRepo,
+    file_path: &std::path::Path,
+    transcript_path: &str,
+    session_id: &str,
+    tool_use_id: &str,
+) -> String {
+    json!({
+        "hookEventName": event_name,
+        "cwd": repo.path(),
+        "toolName": "copilot_replaceString",
+        "toolUseId": tool_use_id,
+        "toolInput": { "file_path": file_path },
+        "sessionId": session_id,
+        "transcript_path": transcript_path
+    })
+    .to_string()
+}
+
+fn create_committed_human_file(repo: &TestRepo, filename: &str) -> std::path::PathBuf {
+    let file_path = repo.path().join(filename);
+    fs::write(&file_path, "const human = true;\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", filename])
+        .unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    repo.filename(filename)
+        .assert_committed_lines(crate::lines!["const human = true;".human()]);
+    file_path
+}
+
+fn checkpoint_native_copilot_edit(
+    repo: &TestRepo,
+    file_path: &std::path::Path,
+    contents: &str,
+    transcript_path: &str,
+    session_id: &str,
+    tool_use_id: &str,
+) {
+    for event_name in ["PreToolUse", "PostToolUse"] {
+        if event_name == "PostToolUse" {
+            fs::write(file_path, contents).unwrap();
+        }
+        let hook = native_edit_hook_input(
+            event_name,
+            repo,
+            file_path,
+            transcript_path,
+            session_id,
+            tool_use_id,
+        );
+        repo.git_ai(&["checkpoint", "github-copilot", "--hook-input", &hook])
+            .unwrap();
+    }
+}
+
+fn copilot_model(commit: &crate::repos::test_repo::NewCommit) -> &str {
+    commit
+        .authorship_log
+        .metadata
+        .sessions
+        .values()
+        .find(|session| session.agent_id.tool == "github-copilot")
+        .expect("Copilot session should be present")
+        .agent_id
+        .model
+        .as_str()
+}
+
+#[test]
+fn test_vscode_copilot_uses_selected_model_in_authorship() {
+    let repo = TestRepo::new();
+    let file_path = create_committed_human_file(&repo, "model.ts");
+    let mut file = repo.filename("model.ts");
+    let session_id = "selected-model-session";
+    let (_storage, transcript_path, _chat_session_path) =
+        setup_vscode_copilot_session(session_id, "copilot/claude-sonnet-5", None);
+    checkpoint_native_copilot_edit(
+        &repo,
+        &file_path,
+        "const human = true;\nconst generatedByClaude = true;\n",
+        &transcript_path,
+        session_id,
+        "tool-1",
+    );
+
+    let commit = repo.stage_all_and_commit("Add generated line").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "const human = true;".human(),
+        "const generatedByClaude = true;".ai(),
+    ]);
+    assert_eq!(copilot_model(&commit), "copilot/claude-sonnet-5");
+}
+
+#[test]
+fn test_vscode_copilot_auto_uses_resolved_model() {
+    let repo = TestRepo::new();
+    let file_path = create_committed_human_file(&repo, "auto.ts");
+    let mut file = repo.filename("auto.ts");
+    let session_id = "auto-model-session";
+    let (_storage, transcript_path, _chat_session_path) =
+        setup_vscode_copilot_session(session_id, "copilot/auto", Some("claude-sonnet-5"));
+    checkpoint_native_copilot_edit(
+        &repo,
+        &file_path,
+        "const human = true;\nconst generatedByAuto = true;\n",
+        &transcript_path,
+        session_id,
+        "tool-auto",
+    );
+
+    let commit = repo
+        .stage_all_and_commit("Add Auto-generated line")
+        .unwrap();
+    file.assert_committed_lines(crate::lines![
+        "const human = true;".human(),
+        "const generatedByAuto = true;".ai(),
+    ]);
+    assert_eq!(copilot_model(&commit), "claude-sonnet-5");
+}
+
+#[test]
+fn test_vscode_copilot_caches_first_concrete_session_model() {
+    let repo = TestRepo::new();
+    let file_path = create_committed_human_file(&repo, "cached.ts");
+    let mut file = repo.filename("cached.ts");
+    let session_id = "cached-model-session";
+    let (_storage, transcript_path, chat_session_path) =
+        setup_vscode_copilot_session(session_id, "copilot/claude-sonnet-5", None);
+    checkpoint_native_copilot_edit(
+        &repo,
+        &file_path,
+        "const human = true;\nconst firstGeneratedLine = true;\n",
+        &transcript_path,
+        session_id,
+        "tool-cache-1",
+    );
+    repo.sync_daemon_force();
+
+    write_vscode_chat_session(&chat_session_path, session_id, "copilot/gpt-5.4", None);
+    checkpoint_native_copilot_edit(
+        &repo,
+        &file_path,
+        "const human = true;\nconst firstGeneratedLine = true;\nconst secondGeneratedLine = true;\n",
+        &transcript_path,
+        session_id,
+        "tool-cache-2",
+    );
+
+    let commit = repo.stage_all_and_commit("Add cached-model lines").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "const human = true;".human(),
+        "const firstGeneratedLine = true;".ai(),
+        "const secondGeneratedLine = true;".ai(),
+    ]);
+    assert_eq!(copilot_model(&commit), "copilot/claude-sonnet-5");
+}
+
 crate::reuse_tests_in_worktree!(
     test_github_copilot_human_checkpoint_before_edit,
     test_github_copilot_human_checkpoint_scoped_to_files,
@@ -282,4 +522,7 @@ crate::reuse_tests_in_worktree!(
     test_github_copilot_multiple_files_with_dirty_files,
     test_github_copilot_empty_will_edit_filepaths_fails,
     test_github_copilot_human_checkpoint_with_clean_file,
+    test_vscode_copilot_uses_selected_model_in_authorship,
+    test_vscode_copilot_auto_uses_resolved_model,
+    test_vscode_copilot_caches_first_concrete_session_model,
 );
