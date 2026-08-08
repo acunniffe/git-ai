@@ -9,6 +9,28 @@ use super::{BlameHunk, GitAiBlameOptions};
 /// Batch size for git rev-parse --short calls used to resolve abbreviated SHAs.
 pub const BLAME_ABBREV_BATCH_SIZE: usize = 256;
 
+pub(super) struct BlameRenderPreparation {
+    pub(super) hunks: Vec<BlameHunk>,
+    pub(super) line_to_hunk: HashMap<u32, BlameHunk>,
+    pub(super) requested_lines: Vec<u32>,
+}
+
+fn prepare_blame_hunks(hunks: Vec<BlameHunk>) -> BlameRenderPreparation {
+    let mut line_to_hunk = HashMap::new();
+    for hunk in &hunks {
+        for line_num in hunk.range.0..=hunk.range.1 {
+            line_to_hunk.insert(line_num, hunk.clone());
+        }
+    }
+    let mut requested_lines = line_to_hunk.keys().copied().collect::<Vec<_>>();
+    requested_lines.sort_unstable();
+    BlameRenderPreparation {
+        hunks,
+        line_to_hunk,
+        requested_lines,
+    }
+}
+
 impl Repository {
     pub fn blame_hunks(
         &self,
@@ -122,6 +144,18 @@ impl Repository {
         let hunks = self.populate_ai_human_authors(hunks, file_path, options)?;
 
         Ok(hunks)
+    }
+
+    pub(super) fn prepare_blame_render(
+        &self,
+        file_path: &str,
+        line_ranges: &[(u32, u32)],
+        options: &GitAiBlameOptions,
+    ) -> Result<BlameRenderPreparation, GitAiError> {
+        let mut no_split_options = options.clone();
+        no_split_options.split_hunks_by_ai_author = false;
+        self.blame_hunks_for_ranges(file_path, line_ranges, &no_split_options)
+            .map(prepare_blame_hunks)
     }
 
     pub(super) fn blame_requested_abbrev_len(
@@ -437,4 +471,23 @@ fn parse_porcelain_blame_output(stdout: &str, file_path: &str) -> Vec<BlameHunk>
     }
 
     hunks
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_preparation_handles_empty_overlap_and_owned_sorting() {
+        let empty = prepare_blame_hunks(vec![]);
+        assert!(empty.hunks.is_empty() && empty.line_to_hunk.is_empty());
+        assert!(empty.requested_lines.is_empty());
+        let hunks = parse_porcelain_blame_output("a 2 2 2\nb 1 1 2", "f");
+        let mut prepared = prepare_blame_hunks(hunks);
+        assert_eq!(prepared.requested_lines, [1, 2, 3]);
+        assert_eq!(prepared.hunks[1].commit_sha, "b");
+        assert_eq!(prepared.line_to_hunk[&2].commit_sha, "b");
+        prepared.hunks[1].commit_sha = "changed".to_string();
+        assert_eq!(prepared.line_to_hunk[&2].commit_sha, "b");
+    }
 }

@@ -162,8 +162,7 @@ fn test_blame_line_range() {
     );
 }
 
-#[test]
-fn test_blame_multiple_line_ranges_default() {
+fn multiple_range_blame_repo() -> TestRepo {
     let repo = TestRepo::new();
     let mut file = repo.filename("test.txt");
 
@@ -180,182 +179,113 @@ fn test_blame_multiple_line_ranges_default() {
 
     repo.stage_all_and_commit("Initial commit").unwrap();
 
-    let args = ["blame", "-L", "2,3", "-L", "6,8", "test.txt"];
-    let git_output = repo.git(&args).unwrap();
-    let git_ai_output = repo.git_ai(&args).unwrap();
+    repo
+}
 
-    let git_norm = normalize_for_snapshot(&git_output);
-    let git_ai_norm = normalize_for_snapshot(&git_ai_output);
+fn assert_multiple_range_blame_matches_git(args: &[&str], message: &str) {
+    let repo = multiple_range_blame_repo();
+    let git_output = repo.git(args).unwrap();
+    let spawn_log = repo.test_home_path().join("blame-render-spawns.log");
+    let spawn_log = spawn_log.to_str().expect("spawn log path should be UTF-8");
+    let git_ai_output = repo
+        .git_ai_with_env(args, &[("GIT_AI_SPAWN_LOG", spawn_log)])
+        .unwrap();
+
     assert_eq!(
-        git_norm, git_ai_norm,
-        "Normalized blame outputs should match exactly for multiple -L ranges"
+        normalize_for_snapshot(&git_output),
+        normalize_for_snapshot(&git_ai_output),
+        "{message}"
+    );
+    let spawns = std::fs::read_to_string(spawn_log).expect("read blame spawn log");
+    assert_eq!(
+        spawns.lines().filter(|line| *line == "blame").count(),
+        2,
+        "each invocation should use one analysis blame and one renderer-preparation blame; spawns:\n{spawns}"
+    );
+}
+
+#[test]
+fn test_blame_multiple_line_ranges_default() {
+    assert_multiple_range_blame_matches_git(
+        &["blame", "-L", "2,3", "-L", "6,8", "test.txt"],
+        "Normalized blame outputs should match exactly for multiple -L ranges",
     );
 }
 
 #[test]
 fn test_blame_multiple_line_ranges_default_reversed_order() {
-    let repo = TestRepo::new();
-    let mut file = repo.filename("test.txt");
-
-    file.set_contents(crate::lines![
-        "Line 1",
-        "Line 2",
-        "Line 3",
-        "Line 4",
-        "Line 5".ai(),
-        "Line 6".ai(),
-        "Line 7",
-        "Line 8"
-    ]);
-
-    repo.stage_all_and_commit("Initial commit").unwrap();
-
-    let args = ["blame", "-L", "6,8", "-L", "2,3", "test.txt"];
-    let git_output = repo.git(&args).unwrap();
-    let git_ai_output = repo.git_ai(&args).unwrap();
-
-    let git_norm = normalize_for_snapshot(&git_output);
-    let git_ai_norm = normalize_for_snapshot(&git_ai_output);
-    assert_eq!(
-        git_norm, git_ai_norm,
-        "Normalized blame outputs should match exactly when -L ranges are specified out of order"
+    assert_multiple_range_blame_matches_git(
+        &["blame", "-L", "6,8", "-L", "2,3", "test.txt"],
+        "Normalized blame outputs should match exactly when -L ranges are specified out of order",
     );
 }
 
 #[test]
 fn test_blame_multiple_line_ranges_overlap_default() {
-    let repo = TestRepo::new();
-    let mut file = repo.filename("test.txt");
-
-    file.set_contents(crate::lines![
-        "Line 1",
-        "Line 2",
-        "Line 3",
-        "Line 4",
-        "Line 5".ai(),
-        "Line 6".ai(),
-        "Line 7",
-        "Line 8"
-    ]);
-
-    repo.stage_all_and_commit("Initial commit").unwrap();
-
-    let args = ["blame", "-L", "2,5", "-L", "4,7", "test.txt"];
-    let git_output = repo.git(&args).unwrap();
-    let git_ai_output = repo.git_ai(&args).unwrap();
-
-    let git_norm = normalize_for_snapshot(&git_output);
-    let git_ai_norm = normalize_for_snapshot(&git_ai_output);
-    assert_eq!(
-        git_norm, git_ai_norm,
-        "Normalized blame outputs should match exactly for overlapping -L ranges"
+    assert_multiple_range_blame_matches_git(
+        &["blame", "-L", "2,5", "-L", "4,7", "test.txt"],
+        "Normalized blame outputs should match exactly for overlapping -L ranges",
     );
 }
 
 #[test]
 fn test_blame_multiple_line_ranges_porcelain() {
-    let repo = TestRepo::new();
-    let mut file = repo.filename("test.txt");
-
-    file.set_contents(crate::lines![
-        "Line 1",
-        "Line 2",
-        "Line 3",
-        "Line 4",
-        "Line 5".ai(),
-        "Line 6".ai(),
-        "Line 7",
-        "Line 8"
-    ]);
-
-    repo.stage_all_and_commit("Initial commit").unwrap();
-
-    let args = ["blame", "--porcelain", "-L", "2,3", "-L", "6,8", "test.txt"];
-    let git_output = repo.git(&args).unwrap();
-    let git_ai_output = repo.git_ai(&args).unwrap();
-
-    let git_norm = normalize_for_snapshot(&git_output);
-    let git_ai_norm = normalize_for_snapshot(&git_ai_output);
-    assert_eq!(
-        git_norm, git_ai_norm,
-        "Porcelain output should match exactly for multiple -L ranges"
+    assert_multiple_range_blame_matches_git(
+        &["blame", "--porcelain", "-L", "2,3", "-L", "6,8", "test.txt"],
+        "Porcelain output should match exactly for multiple -L ranges",
     );
 }
 
 #[test]
 fn test_blame_multiple_line_ranges_line_porcelain() {
-    let repo = TestRepo::new();
-    let mut file = repo.filename("test.txt");
-
-    file.set_contents(crate::lines![
-        "Line 1",
-        "Line 2",
-        "Line 3",
-        "Line 4",
-        "Line 5".ai(),
-        "Line 6".ai(),
-        "Line 7",
-        "Line 8"
-    ]);
-
-    repo.stage_all_and_commit("Initial commit").unwrap();
-
-    let args = [
-        "blame",
-        "--line-porcelain",
-        "-L",
-        "2,3",
-        "-L",
-        "6,8",
-        "test.txt",
-    ];
-    let git_output = repo.git(&args).unwrap();
-    let git_ai_output = repo.git_ai(&args).unwrap();
-
-    let git_norm = normalize_for_snapshot(&git_output);
-    let git_ai_norm = normalize_for_snapshot(&git_ai_output);
-    assert_eq!(
-        git_norm, git_ai_norm,
-        "Line porcelain output should match exactly for multiple -L ranges"
+    assert_multiple_range_blame_matches_git(
+        &[
+            "blame",
+            "--line-porcelain",
+            "-L",
+            "2,3",
+            "-L",
+            "6,8",
+            "test.txt",
+        ],
+        "Line porcelain output should match exactly for multiple -L ranges",
     );
 }
 
 #[test]
 fn test_blame_multiple_line_ranges_incremental() {
-    let repo = TestRepo::new();
-    let mut file = repo.filename("test.txt");
-
-    file.set_contents(crate::lines![
-        "Line 1",
-        "Line 2",
-        "Line 3",
-        "Line 4",
-        "Line 5".ai(),
-        "Line 6".ai(),
-        "Line 7",
-        "Line 8"
-    ]);
-
-    repo.stage_all_and_commit("Initial commit").unwrap();
-
-    let args = [
-        "blame",
-        "--incremental",
-        "-L",
-        "2,3",
-        "-L",
-        "6,8",
-        "test.txt",
-    ];
-    let git_output = repo.git(&args).unwrap();
-    let git_ai_output = repo.git_ai(&args).unwrap();
-
-    let git_norm = normalize_for_snapshot(&git_output);
-    let git_ai_norm = normalize_for_snapshot(&git_ai_output);
-    assert_eq!(
-        git_norm, git_ai_norm,
-        "Incremental output should match exactly for multiple -L ranges"
+    assert_multiple_range_blame_matches_git(
+        &[
+            "blame",
+            "--incremental",
+            "-L",
+            "2,3",
+            "-L",
+            "6,8",
+            "test.txt",
+        ],
+        "Incremental output should match exactly for multiple -L ranges",
     );
+}
+
+#[test]
+fn test_blame_duplicate_line_ranges_match_git() {
+    assert_multiple_range_blame_matches_git(
+        &["blame", "-L", "2,3", "-L", "2,3", "test.txt"],
+        "Normalized blame output should match exactly for duplicate -L ranges",
+    );
+}
+
+#[test]
+fn test_blame_machine_format_output_matches_git_byte_for_byte() {
+    let repo = TestRepo::new();
+    repo.filename("test.txt")
+        .set_contents(crate::lines!["Line 1", "Line 2"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    for format in ["--porcelain", "--line-porcelain", "--incremental"] {
+        let args = ["blame", format, "test.txt"];
+        assert_eq!(repo.git(&args).unwrap(), repo.git_ai(&args).unwrap());
+    }
 }
 
 #[test]
@@ -1469,6 +1399,13 @@ fn test_blame_ai_human_author() {
             Some("First <first@example.com>".to_string()),
             Some("Second <second@example.com>".to_string())
         ]
+    );
+
+    let args = ["blame", "--line-porcelain", "-L", "1,2", "test.txt"];
+    assert_eq!(
+        normalize_for_snapshot(&repo.git(&args).unwrap()),
+        normalize_for_snapshot(&repo.git_ai(&args).unwrap()),
+        "renderer preparation must preserve Git's unsplit porcelain hunks"
     );
 }
 

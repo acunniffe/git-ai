@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use crate::error::GitAiError;
 use crate::operations::git::repository::Repository;
 
-use super::{BlameHunk, GitAiBlameOptions};
+use super::GitAiBlameOptions;
 
 pub(super) fn output_porcelain_format(
     repo: &Repository,
@@ -14,25 +14,12 @@ pub(super) fn output_porcelain_format(
     options: &GitAiBlameOptions,
     commits_with_notes: &HashSet<String>,
 ) -> Result<(), GitAiError> {
-    // Use options that don't split hunks to match git's native porcelain output
-    let mut no_split_options = options.clone();
-    no_split_options.split_hunks_by_ai_author = false;
-
-    // Build a map from line number to BlameHunk for fast lookup
-    let mut line_to_hunk: HashMap<u32, BlameHunk> = HashMap::new();
-    let hunks = repo.blame_hunks_for_ranges(file_path, line_ranges, &no_split_options)?;
-    for hunk in hunks {
-        for line_num in hunk.range.0..=hunk.range.1 {
-            line_to_hunk.insert(line_num, hunk.clone());
-        }
-    }
-    let mut requested_lines: Vec<u32> = line_to_hunk.keys().copied().collect();
-    requested_lines.sort_unstable();
+    let prepared = repo.prepare_blame_render(file_path, line_ranges, options)?;
 
     let mut last_hunk_id = None;
     let mut commit_summaries: HashMap<String, String> = HashMap::new();
     let mut seen_commits: HashSet<String> = HashSet::new();
-    for line_num in requested_lines {
+    for line_num in prepared.requested_lines {
         let line_index = (line_num - 1) as usize;
         let line_content = if line_index < lines.len() {
             lines[line_index]
@@ -40,7 +27,7 @@ pub(super) fn output_porcelain_format(
             ""
         };
 
-        if let Some(hunk) = line_to_hunk.get(&line_num) {
+        if let Some(hunk) = prepared.line_to_hunk.get(&line_num) {
             // For agent-detected commits (email matches known agent, no authorship note),
             // override the author name with the tool name. Otherwise use git's original author.
             // Only apply agent detection when no real authorship note exists for this commit.
@@ -158,26 +145,13 @@ pub(super) fn output_incremental_format(
     options: &GitAiBlameOptions,
     commits_with_notes: &HashSet<String>,
 ) -> Result<(), GitAiError> {
-    // Use options that don't split hunks to match git's native incremental output
-    let mut no_split_options = options.clone();
-    no_split_options.split_hunks_by_ai_author = false;
-
-    // Build a map from line number to BlameHunk for fast lookup
-    let mut line_to_hunk: HashMap<u32, BlameHunk> = HashMap::new();
-    let hunks = repo.blame_hunks_for_ranges(file_path, line_ranges, &no_split_options)?;
-    for hunk in hunks {
-        for line_num in hunk.range.0..=hunk.range.1 {
-            line_to_hunk.insert(line_num, hunk.clone());
-        }
-    }
-    let mut requested_lines: Vec<u32> = line_to_hunk.keys().copied().collect();
-    requested_lines.sort_unstable();
+    let prepared = repo.prepare_blame_render(file_path, line_ranges, options)?;
 
     let mut last_hunk_id = None;
     let mut commit_summaries: HashMap<String, String> = HashMap::new();
     let mut seen_commits: HashSet<String> = HashSet::new();
-    for line_num in requested_lines {
-        if let Some(hunk) = line_to_hunk.get(&line_num) {
+    for line_num in prepared.requested_lines {
+        if let Some(hunk) = prepared.line_to_hunk.get(&line_num) {
             // For agent-detected commits (email matches known agent, no authorship note),
             // override the author name with the tool name. Otherwise use git's original author.
             // Only apply agent detection when no real authorship note exists for this commit.
