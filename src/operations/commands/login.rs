@@ -41,7 +41,14 @@ pub fn handle_login(_args: &[String]) {
     eprintln!();
 
     // Try to open browser automatically
-    if open_browser(display_url).is_err() {
+    if super::browser::browser_command(display_url)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(drop)
+        .map_err(|e| e.to_string())
+        .is_err()
+    {
         eprintln!("  (Could not open browser automatically)");
         eprintln!();
     }
@@ -68,35 +75,4 @@ pub fn handle_login(_args: &[String]) {
             std::process::exit(1);
         }
     }
-}
-
-/// Attempt to open a URL in the system's default browser
-fn open_browser(url: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let mut cmd = {
-        let mut cmd = std::process::Command::new("open");
-        cmd.arg(url);
-        cmd
-    };
-
-    #[cfg(target_os = "linux")]
-    let mut cmd = {
-        let mut cmd = std::process::Command::new("xdg-open");
-        cmd.arg(url);
-        cmd
-    };
-
-    #[cfg(target_os = "windows")]
-    let mut cmd = {
-        let mut cmd = std::process::Command::new("cmd");
-        cmd.args(["/C", "start", "", url]);
-        cmd
-    };
-
-    cmd.stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
 }

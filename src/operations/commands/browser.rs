@@ -1,17 +1,15 @@
 use std::process::Command;
 
-#[allow(dead_code)]
 pub(super) fn browser_command(url: &str) -> Command {
     #[cfg(target_os = "macos")]
-    let mut command = Command::new("open");
+    let (program, prefix_args): (&str, &[&str]) = ("open", &[]);
     #[cfg(target_os = "linux")]
-    let mut command = Command::new("xdg-open");
+    let (program, prefix_args): (&str, &[&str]) = ("xdg-open", &[]);
     #[cfg(target_os = "windows")]
-    let mut command = Command::new("cmd");
-    #[cfg(target_os = "windows")]
-    command.args(["/C", "start", ""]);
+    let (program, prefix_args): (&str, &[&str]) = ("cmd", &["/C", "start", ""]);
 
-    command.arg(url);
+    let mut command = Command::new(program);
+    command.args(prefix_args).arg(url);
     command
 }
 
