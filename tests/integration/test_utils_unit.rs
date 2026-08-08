@@ -1,5 +1,7 @@
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::{CodexHookInput, DurationStatistics, read_jsonl_fixture};
+use crate::test_utils::{
+    CodexHookInput, DurationStatistics, read_jsonl_fixture, write_executable_script,
+};
 use git_ai::model::working_log::{AgentId, CheckpointKind};
 use git_ai::operations::commands::checkpoint_agent::orchestrator::{
     BaseCommit, CheckpointFile, CheckpointRequest,
@@ -340,4 +342,27 @@ fn read_jsonl_fixture_skips_blank_lines_and_rejects_malformed_jsonl() {
     fs::write(fixture.path(), "{\"event\":\"valid\"}\nnot-json\n").unwrap();
     let error = read_jsonl_fixture(fixture.path()).unwrap_err();
     assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+}
+
+#[test]
+fn write_executable_script_writes_exact_bytes_and_sets_unix_mode() {
+    let temp = tempfile::tempdir().unwrap();
+    let fixture = temp.path().join("fixture.sh");
+
+    write_executable_script(&fixture, b"#!/bin/sh\nprintf 'long fixture'\n").unwrap();
+    assert_eq!(
+        fs::read(&fixture).unwrap(),
+        b"#!/bin/sh\nprintf 'long fixture'\n"
+    );
+
+    write_executable_script(&fixture, b"#!/bin/sh\ntrue\n").unwrap();
+    assert_eq!(fs::read(&fixture).unwrap(), b"#!/bin/sh\ntrue\n");
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let mode = fs::metadata(&fixture).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o755);
+    }
 }
