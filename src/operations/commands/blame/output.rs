@@ -55,21 +55,7 @@ pub(super) fn output_default_format(
 ) -> Result<(), GitAiError> {
     let mut output = String::new();
 
-    // Use options that don't split hunks for formatting purposes
-    let mut no_split_options = options.clone();
-    no_split_options.split_hunks_by_ai_author = false;
-
-    let hunks = repo.blame_hunks_for_ranges(file_path, line_ranges, &no_split_options)?;
-
-    // Build a map from line number to BlameHunk for fast lookup
-    let mut line_to_hunk = HashMap::new();
-    for hunk in &hunks {
-        for line_num in hunk.range.0..=hunk.range.1 {
-            line_to_hunk.insert(line_num, hunk.clone());
-        }
-    }
-    let mut requested_lines: Vec<u32> = line_to_hunk.keys().copied().collect();
-    requested_lines.sort_unstable();
+    let prepared = repo.prepare_blame_render(file_path, line_ranges, options)?;
 
     // Calculate the maximum line number width for proper padding
     let max_line_num = lines.len() as u32;
@@ -77,7 +63,7 @@ pub(super) fn output_default_format(
 
     // Calculate the maximum author name width for proper padding
     let mut max_author_width = 0;
-    for hunk in &hunks {
+    for hunk in &prepared.hunks {
         let author = line_authors
             .get(&hunk.range.0)
             .unwrap_or(&hunk.original_author);
@@ -101,7 +87,7 @@ pub(super) fn output_default_format(
         ((options.abbrev.unwrap_or(7).max(1) as usize) + 1).min(40)
     };
 
-    for line_num in requested_lines {
+    for line_num in prepared.requested_lines {
         let line_index = (line_num - 1) as usize;
         let line_content = if line_index < lines.len() {
             lines[line_index]
@@ -109,7 +95,7 @@ pub(super) fn output_default_format(
             ""
         };
 
-        if let Some(hunk) = line_to_hunk.get(&line_num) {
+        if let Some(hunk) = prepared.line_to_hunk.get(&line_num) {
             let sha = &hunk.abbrev_sha;
 
             // Match git blame boundary formatting:

@@ -277,6 +277,18 @@ fn test_blame_duplicate_line_ranges_match_git() {
 }
 
 #[test]
+fn test_blame_machine_format_output_matches_git_byte_for_byte() {
+    let repo = TestRepo::new();
+    repo.filename("test.txt")
+        .set_contents(crate::lines!["Line 1", "Line 2"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    for format in ["--porcelain", "--line-porcelain", "--incremental"] {
+        let args = ["blame", format, "test.txt"];
+        assert_eq!(repo.git(&args).unwrap(), repo.git_ai(&args).unwrap());
+    }
+}
+
+#[test]
 fn test_blame_porcelain_multiple_hunks_same_commit_matches_git_filename_behavior() {
     let repo = TestRepo::new();
     let mut file = repo.filename("test.txt");
