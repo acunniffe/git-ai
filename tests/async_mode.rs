@@ -3,6 +3,8 @@
 mod repos;
 
 use git_ai::operations::daemon::control_api::CasSyncPayload;
+#[cfg(unix)]
+use git_ai::operations::daemon::send_control_request_with_timeout;
 use git_ai::operations::daemon::{
     ControlRequest, ControlResponse, DaemonConfig, TelemetryEnvelope,
     local_socket_connects_with_timeout, open_local_socket_stream_with_timeout,
@@ -232,6 +234,52 @@ fn wait_for_child_exit(child: &mut Child) {
     }
     let _ = child.kill();
     let _ = child.wait();
+}
+
+#[cfg(unix)]
+#[test]
+fn control_request_protocol_preserves_framing_and_errors() {
+    use git_ai::error::GitAiError;
+    const TIMEOUT: Duration = Duration::from_millis(30);
+
+    fn exchange(response: Option<(&'static str, u64)>) -> Result<ControlResponse, GitAiError> {
+        let dir = tempfile::tempdir().unwrap();
+        let socket = dir.path().join("control.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; b"{\"method\":\"ping\"}\n".len()];
+            stream.read_exact(&mut request).unwrap();
+            assert_eq!(&request, b"{\"method\":\"ping\"}\n");
+            if let Some((body, delay)) = response {
+                thread::sleep(Duration::from_millis(delay));
+                let _ = stream.write_all(body.as_bytes());
+            }
+        });
+        let result = send_control_request_with_timeout(&socket, &ControlRequest::Ping, TIMEOUT);
+        server.join().unwrap();
+        result
+    }
+
+    let missing = tempfile::tempdir().unwrap().path().join("missing");
+    let connect_error = send_control_request_with_timeout(&missing, &ControlRequest::Ping, TIMEOUT)
+        .unwrap_err()
+        .to_string();
+    assert!(connect_error.contains("timed out after 30ms connecting daemon socket"));
+
+    assert!(exchange(Some(("{\"ok\":true}\n", 0))).unwrap().ok);
+    let malformed = exchange(Some(("{\n", 0)));
+    assert!(matches!(malformed, Err(GitAiError::JsonError(_))));
+    let error = |response| exchange(response).unwrap_err().to_string();
+    assert_eq!(
+        error(Some(("\n", 0))),
+        "Generic error: empty daemon control response"
+    );
+    assert!(error(None).contains("closed without a response"));
+    assert!(
+        error(Some(("{\"ok\":true}\n", 80)))
+            .contains("timed out after 30ms reading daemon response")
+    );
 }
 
 #[test]
