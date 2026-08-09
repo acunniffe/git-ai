@@ -2,8 +2,9 @@ use crate::model::authorship_log::{HumanRecord, LineRange, PromptRecord, Session
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeMap;
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
+
+mod metadata_merge;
 
 /// Authorship log format version identifier
 pub const AUTHORSHIP_LOG_VERSION: &str = "authorship/3.0.0";
