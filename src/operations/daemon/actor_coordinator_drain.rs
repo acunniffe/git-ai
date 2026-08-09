@@ -164,14 +164,8 @@ impl ActorDaemonCoordinator {
                             );
                         }
                         Err(panic_payload) => {
-                            let panic_msg = if let Some(s) = panic_payload.downcast_ref::<String>()
-                            {
-                                s.clone()
-                            } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                                s.to_string()
-                            } else {
-                                "unknown panic".to_string()
-                            };
+                            let panic_msg = Self::panic_message(panic_payload);
+                            // This exact panic text is persisted through FamilyStatus.last_error.
                             let error = GitAiError::Generic(format!(
                                 "daemon command side effect panic: {}",
                                 panic_msg
@@ -291,14 +285,7 @@ impl ActorDaemonCoordinator {
                     let result = match checkpoint_request {
                         Ok(inner) => inner,
                         Err(panic_payload) => {
-                            let panic_msg = if let Some(s) = panic_payload.downcast_ref::<String>()
-                            {
-                                s.clone()
-                            } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                                s.to_string()
-                            } else {
-                                "unknown panic".to_string()
-                            };
+                            let panic_msg = Self::panic_message(panic_payload);
                             tracing::error!(
                                 component = "daemon",
                                 phase = "checkpoint_side_effect",
@@ -308,6 +295,7 @@ impl ActorDaemonCoordinator {
                                 order,
                                 "checkpoint side effect panic"
                             );
+                            // This exact panic text is surfaced in the checkpoint response.
                             Err(GitAiError::Generic(format!(
                                 "daemon checkpoint panic: {}",
                                 panic_msg

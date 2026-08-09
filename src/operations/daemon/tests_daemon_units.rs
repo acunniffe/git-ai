@@ -20,6 +20,14 @@ struct EnvVarGuard {
     original: Option<OsString>,
 }
 
+#[test]
+fn panic_message_preserves_payload_rendering() {
+    let render = ActorDaemonCoordinator::panic_message;
+    assert_eq!(render(Box::new(String::from("owned"))), "owned");
+    assert_eq!(render(Box::new("static")), "static");
+    assert_eq!(render(Box::new(42_u8)), "unknown panic");
+}
+
 impl EnvVarGuard {
     fn set(key: &'static str, value: &str) -> Self {
         let original = std::env::var_os(key);

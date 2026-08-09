@@ -335,14 +335,7 @@ impl ActorDaemonCoordinator {
                                 Err(error)
                             }
                             Err(panic_payload) => {
-                                let panic_msg =
-                                    if let Some(s) = panic_payload.downcast_ref::<String>() {
-                                        s.clone()
-                                    } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                                        s.to_string()
-                                    } else {
-                                        "unknown panic".to_string()
-                                    };
+                                let panic_msg = Self::panic_message(panic_payload);
                                 tracing::error!(
                                     component = "daemon",
                                     phase = "trace_ingest_worker",
@@ -351,6 +344,7 @@ impl ActorDaemonCoordinator {
                                     sequence = processed_seq,
                                     "trace ingest panic"
                                 );
+                                // This exact panic text is part of the trace catch-boundary contract.
                                 Err(GitAiError::Generic(format!(
                                     "trace ingest worker panic: {}",
                                     panic_msg

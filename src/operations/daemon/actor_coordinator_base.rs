@@ -424,6 +424,15 @@ impl ActorDaemonCoordinator {
             .to_string()
     }
 
+    pub(super) fn panic_message(panic_payload: Box<dyn std::any::Any + Send>) -> String {
+        panic_payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic_payload.downcast_ref::<&str>().copied())
+            .unwrap_or("unknown panic")
+            .to_string()
+    }
+
     pub(crate) fn register_pending_ai_edits(&self, family: &str, file_paths: &[String]) {
         let now_ns = now_unix_nanos();
         if let Ok(mut map) = self.pending_ai_edits_by_family.lock() {
