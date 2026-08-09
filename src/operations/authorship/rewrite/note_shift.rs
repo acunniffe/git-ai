@@ -209,28 +209,7 @@ pub(super) fn merge_authorship_logs(target: &mut AuthorshipLog, source: &Authors
             target.attestations.push(src_fa.clone());
         }
     }
-    // Merge all metadata maps
-    for (key, record) in &source.metadata.prompts {
-        target
-            .metadata
-            .prompts
-            .entry(key.clone())
-            .or_insert_with(|| record.clone());
-    }
-    for (key, record) in &source.metadata.sessions {
-        target
-            .metadata
-            .sessions
-            .entry(key.clone())
-            .or_insert_with(|| record.clone());
-    }
-    for (key, record) in &source.metadata.humans {
-        target
-            .metadata
-            .humans
-            .entry(key.clone())
-            .or_insert_with(|| record.clone());
-    }
+    target.metadata.merge_missing_from(&source.metadata);
 }
 
 #[cfg(test)]

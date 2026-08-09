@@ -119,30 +119,6 @@ fn merge_file_attestations(target: &mut AuthorshipLog, source: &AuthorshipLog) {
     }
 }
 
-fn merge_authorship_metadata(target: &mut AuthorshipLog, source: &AuthorshipLog) {
-    for (key, record) in &source.metadata.prompts {
-        target
-            .metadata
-            .prompts
-            .entry(key.clone())
-            .or_insert_with(|| record.clone());
-    }
-    for (key, record) in &source.metadata.humans {
-        target
-            .metadata
-            .humans
-            .entry(key.clone())
-            .or_insert_with(|| record.clone());
-    }
-    for (key, record) in &source.metadata.sessions {
-        target
-            .metadata
-            .sessions
-            .entry(key.clone())
-            .or_insert_with(|| record.clone());
-    }
-}
-
 pub fn merge_conflict_resolution_authorship(
     existing_shifted_log: Option<AuthorshipLog>,
     resolution_log: AuthorshipLog,
@@ -152,7 +128,7 @@ pub fn merge_conflict_resolution_authorship(
     let resolution_log = filter_resolution_log_to_uncovered_lines(resolution_log, &merged);
 
     merge_file_attestations(&mut merged, &resolution_log);
-    merge_authorship_metadata(&mut merged, &resolution_log);
+    merged.metadata.merge_missing_from(&resolution_log.metadata);
     merged.metadata.base_commit_sha = commit_sha.to_string();
     merged
 }
