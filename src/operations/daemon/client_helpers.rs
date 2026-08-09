@@ -291,52 +291,6 @@ fn read_daemon_client_line(
     }
 }
 
-#[cfg(windows)]
-fn send_control_request_with_timeouts_windows(
-    socket_path: &Path,
-    request: &ControlRequest,
-    connect_timeout: Duration,
-    response_timeout: Duration,
-) -> Result<ControlResponse, GitAiError> {
-    let mut stream = open_local_socket_stream_with_timeout(socket_path, connect_timeout)?;
-    set_daemon_client_stream_timeouts(&mut stream, socket_path, response_timeout)?;
-    let mut body = serde_json::to_vec(request)?;
-    body.push(b'\n');
-    write_all_daemon_client_stream(&mut stream, socket_path, &body)?;
-
-    let mut response_reader = BufReader::new(stream);
-    let line = read_daemon_client_line(&mut response_reader, socket_path, response_timeout)?;
-    if line.trim().is_empty() {
-        return Err(GitAiError::Generic(
-            "empty daemon control response".to_string(),
-        ));
-    }
-    serde_json::from_str(line.trim()).map_err(GitAiError::from)
-}
-
-#[cfg(not(windows))]
-fn send_control_request_with_timeouts_unix(
-    socket_path: &Path,
-    request: &ControlRequest,
-    connect_timeout: Duration,
-    response_timeout: Duration,
-) -> Result<ControlResponse, GitAiError> {
-    let mut stream = open_local_socket_stream_with_timeout(socket_path, connect_timeout)?;
-    set_daemon_client_stream_timeouts(&mut stream, socket_path, response_timeout)?;
-    let mut body = serde_json::to_vec(request)?;
-    body.push(b'\n');
-    write_all_daemon_client_stream(&mut stream, socket_path, &body)?;
-
-    let mut response_reader = BufReader::new(stream);
-    let line = read_daemon_client_line(&mut response_reader, socket_path, response_timeout)?;
-    if line.trim().is_empty() {
-        return Err(GitAiError::Generic(
-            "empty daemon control response".to_string(),
-        ));
-    }
-    serde_json::from_str(line.trim()).map_err(GitAiError::from)
-}
-
 pub fn local_socket_connects_with_timeout(
     socket_path: &Path,
     timeout: Duration,
@@ -359,25 +313,19 @@ fn send_control_request_with_timeouts(
     connect_timeout: Duration,
     response_timeout: Duration,
 ) -> Result<ControlResponse, GitAiError> {
-    #[cfg(windows)]
-    {
-        send_control_request_with_timeouts_windows(
-            socket_path,
-            request,
-            connect_timeout,
-            response_timeout,
-        )
-    }
+    let mut stream = open_local_socket_stream_with_timeout(socket_path, connect_timeout)?;
+    set_daemon_client_stream_timeouts(&mut stream, socket_path, response_timeout)?;
+    let mut body = serde_json::to_vec(request)?;
+    body.push(b'\n');
+    write_all_daemon_client_stream(&mut stream, socket_path, &body)?;
 
-    #[cfg(not(windows))]
-    {
-        send_control_request_with_timeouts_unix(
-            socket_path,
-            request,
-            connect_timeout,
-            response_timeout,
-        )
+    let mut response_reader = BufReader::new(stream);
+    let line = read_daemon_client_line(&mut response_reader, socket_path, response_timeout)?;
+    if line.trim().is_empty() {
+        // The rendered error is externally observable; keep it byte-stable.
+        return Err(GitAiError::Generic("empty daemon control response".into()));
     }
+    serde_json::from_str(line.trim()).map_err(GitAiError::from)
 }
 
 pub fn send_control_request(
