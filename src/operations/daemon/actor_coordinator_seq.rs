@@ -45,22 +45,10 @@ impl ActorDaemonCoordinator {
                     what: "family sequencer map",
                 }
             })?;
-            let state =
-                sequencers
-                    .entry(family.to_string())
-                    .or_insert_with(|| FamilySequencerState {
-                        next_ordinal: 1,
-                        entries: BTreeMap::new(),
-                    });
-            let order = FamilySequencerOrder {
-                started_at_ns,
-                ordinal: state.next_ordinal,
-            };
-            state.next_ordinal = state.next_ordinal.saturating_add(1);
-            state
-                .entries
-                .insert(order, FamilySequencerEntry::PendingRoot);
-            order
+            let state = sequencers
+                .entry(family.to_string())
+                .or_insert_with(FamilySequencerState::new);
+            state.insert_entry(started_at_ns, FamilySequencerEntry::PendingRoot)
         };
 
         self.pending_root_slots_by_root
@@ -149,21 +137,13 @@ impl ActorDaemonCoordinator {
                     what: "family sequencer map",
                 }
             })?;
-            let state =
-                sequencers
-                    .entry(family.to_string())
-                    .or_insert_with(|| FamilySequencerState {
-                        next_ordinal: 1,
-                        entries: BTreeMap::new(),
-                    });
-            let order = FamilySequencerOrder {
-                started_at_ns: command.started_at_ns,
-                ordinal: state.next_ordinal,
-            };
-            state.next_ordinal = state.next_ordinal.saturating_add(1);
-            state
-                .entries
-                .insert(order, FamilySequencerEntry::ReadyCommand(Box::new(command)));
+            let state = sequencers
+                .entry(family.to_string())
+                .or_insert_with(FamilySequencerState::new);
+            state.insert_entry(
+                command.started_at_ns,
+                FamilySequencerEntry::ReadyCommand(Box::new(command)),
+            );
         }
         self.drain_ready_family_sequencer_entries_locked(family)
             .await
@@ -224,10 +204,7 @@ impl ActorDaemonCoordinator {
             })?;
             let state = sequencers
                 .entry(family.clone())
-                .or_insert_with(|| FamilySequencerState {
-                    next_ordinal: 1,
-                    entries: BTreeMap::new(),
-                });
+                .or_insert_with(FamilySequencerState::new);
             let Some(entry) = state.entries.get_mut(&slot.order) else {
                 return Err(GitAiError::Generic(format!(
                     "missing pending root sequencer entry for sid={} family={} order={:?}",

@@ -4,7 +4,6 @@ use crate::error::GitAiError;
 use crate::model::checkpoint_request::{CheckpointRequest, PreparedPathRole};
 use crate::model::repository::error::PersistenceError;
 use crate::model::working_log::CheckpointKind;
-use std::collections::BTreeMap;
 use std::path::Path;
 use tokio::sync::oneshot;
 
@@ -28,20 +27,11 @@ impl ActorDaemonCoordinator {
                     what: "family sequencer map",
                 }
             })?;
-            let state =
-                sequencers
-                    .entry(family.to_string())
-                    .or_insert_with(|| FamilySequencerState {
-                        next_ordinal: 1,
-                        entries: BTreeMap::new(),
-                    });
-            let order = FamilySequencerOrder {
-                started_at_ns: now_unix_nanos(),
-                ordinal: state.next_ordinal,
-            };
-            state.next_ordinal = state.next_ordinal.saturating_add(1);
-            state.entries.insert(
-                order,
+            let state = sequencers
+                .entry(family.to_string())
+                .or_insert_with(FamilySequencerState::new);
+            state.insert_entry(
+                now_unix_nanos(),
                 FamilySequencerEntry::Checkpoint {
                     request: Box::new(request),
                     respond_to,
@@ -67,10 +57,7 @@ impl ActorDaemonCoordinator {
             })?;
             let state = map
                 .entry(family.to_string())
-                .or_insert_with(|| FamilySequencerState {
-                    next_ordinal: 1,
-                    entries: BTreeMap::new(),
-                });
+                .or_insert_with(FamilySequencerState::new);
             while let Some(first_entry) = state.entries.first_entry() {
                 if matches!(first_entry.get(), FamilySequencerEntry::PendingRoot) {
                     break;

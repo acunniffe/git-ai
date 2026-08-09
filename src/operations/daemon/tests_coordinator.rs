@@ -14,6 +14,19 @@ use std::time::Duration;
 // -----------------------------------------------------------------------
 
 #[test]
+fn family_sequencer_state_owns_semantic_ordering() {
+    let mut state = FamilySequencerState::new();
+    let canceled = || FamilySequencerEntry::Canceled;
+    let first = state.insert_entry(7, canceled());
+    let second = state.insert_entry(7, canceled());
+    assert_eq!((first.started_at_ns, first.ordinal), (7, 1));
+    assert_eq!((second.started_at_ns, second.ordinal), (7, 2));
+    state.next_ordinal = u64::MAX;
+    state.insert_entry(8, canceled());
+    assert_eq!(state.insert_entry(9, canceled()).ordinal, u64::MAX);
+}
+
+#[test]
 fn explicit_stop_overrides_prior_restart_intent() {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
