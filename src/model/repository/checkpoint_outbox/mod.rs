@@ -1,7 +1,7 @@
 use crate::model::checkpoint_delivery::{CheckpointDelivery, CheckpointDeliveryError};
 use sha2::{Digest, Sha256};
 use std::fmt;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 mod diagnostics;
@@ -50,8 +50,18 @@ pub enum CheckpointOutboxError {
     LockBusy,
     Io {
         operation: &'static str,
-        kind: std::io::ErrorKind,
+        kind: io::ErrorKind,
     },
+}
+
+impl CheckpointOutboxError {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    fn from_io(operation: &'static str, error: io::Error) -> Self {
+        Self::Io {
+            operation,
+            kind: error.kind(),
+        }
+    }
 }
 
 impl fmt::Display for CheckpointOutboxError {

@@ -1,5 +1,6 @@
 use super::platform_acl;
 use crate::model::repository::checkpoint_outbox::CheckpointOutboxError;
+use CheckpointOutboxError as E;
 use std::ffi::CString;
 use std::fs::{File, Metadata, OpenOptions};
 use std::io;
@@ -61,7 +62,7 @@ where
     }
 
     let mut directory = open_directory_path(Path::new("/"))
-        .map_err(|error| io_error("open root ancestor", error))?;
+        .map_err(|error| E::from_io("open root ancestor", error))?;
     platform_acl::reject_unsafe(&directory)?;
     for (index, component) in components.iter().enumerate() {
         let is_final = index + 1 == components.len();
@@ -69,20 +70,20 @@ where
             .map_err(|_| CheckpointOutboxError::UnsafeReadyRecord)?;
         let parent_metadata = directory
             .metadata()
-            .map_err(|error| io_error("inspect root ancestor", error))?;
+            .map_err(|error| E::from_io("inspect root ancestor", error))?;
         match open_directory_at(directory.as_raw_fd(), name.as_c_str()) {
             Ok(child) => {
                 let child_metadata = child
                     .metadata()
-                    .map_err(|error| io_error("inspect root component", error))?;
+                    .map_err(|error| E::from_io("inspect root component", error))?;
                 validate_parent_edge(&parent_metadata, Some(child_metadata.uid()), effective_uid)?;
                 platform_acl::reject_unsafe(&child)?;
-                sync_parent(&directory).map_err(|error| io_error("sync root parent", error))?;
+                sync_parent(&directory).map_err(|error| E::from_io("sync root parent", error))?;
                 directory = child;
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 if !create_missing {
-                    return Err(io_error("open root component", error));
+                    return Err(E::from_io("open root component", error));
                 }
                 validate_parent_edge(&parent_metadata, None, effective_uid)?;
                 let created = create_component(&directory, name.as_c_str())?;
@@ -95,11 +96,11 @@ where
                 }
                 let metadata = child
                     .metadata()
-                    .map_err(|error| io_error("inspect created root component", error))?;
+                    .map_err(|error| E::from_io("inspect created root component", error))?;
                 validate_root_metadata(&metadata, effective_uid)?;
                 validate_parent_edge(&parent_metadata, Some(metadata.uid()), effective_uid)?;
                 platform_acl::reject_unsafe(&child)?;
-                sync_parent(&directory).map_err(|error| io_error("sync root parent", error))?;
+                sync_parent(&directory).map_err(|error| E::from_io("sync root parent", error))?;
                 directory = child;
             }
             Err(error) => {
@@ -110,7 +111,7 @@ where
 
     let metadata = directory
         .metadata()
-        .map_err(|error| io_error("inspect root", error))?;
+        .map_err(|error| E::from_io("inspect root", error))?;
     validate_root_metadata(&metadata, effective_uid)?;
     platform_acl::reject_unsafe(&directory)?;
 
@@ -137,7 +138,7 @@ fn create_component(parent: &File, name: &std::ffi::CStr) -> Result<bool, Checkp
     if error.kind() == io::ErrorKind::AlreadyExists {
         Ok(false)
     } else {
-        Err(io_error("create root component", error))
+        Err(E::from_io("create root component", error))
     }
 }
 
@@ -153,7 +154,7 @@ fn classify_component_error(
         }
         Ok(_) if is_final => CheckpointOutboxError::RootIsNotDirectory,
         Ok(_) => CheckpointOutboxError::UnsafeReadyRecord,
-        Err(_) => io_error("open root component", error),
+        Err(_) => E::from_io("open root component", error),
     }
 }
 
@@ -175,10 +176,10 @@ fn component_file_type(parent_fd: RawFd, name: &std::ffi::CStr) -> Result<libc::
 }
 
 fn open_and_validate_existing_root(root: &Path) -> Result<File, CheckpointOutboxError> {
-    let directory = open_directory_path(root).map_err(|error| io_error("open root", error))?;
+    let directory = open_directory_path(root).map_err(|error| E::from_io("open root", error))?;
     let metadata = directory
         .metadata()
-        .map_err(|error| io_error("inspect root", error))?;
+        .map_err(|error| E::from_io("inspect root", error))?;
     validate_root_metadata(&metadata, unsafe { libc::geteuid() })?;
     platform_acl::reject_unsafe(&directory)?;
     Ok(directory)
@@ -226,13 +227,6 @@ fn open_directory_at(directory_fd: RawFd, name: &std::ffi::CStr) -> io::Result<F
         Err(io::Error::last_os_error())
     } else {
         Ok(unsafe { File::from_raw_fd(descriptor) })
-    }
-}
-
-fn io_error(operation: &'static str, error: io::Error) -> CheckpointOutboxError {
-    CheckpointOutboxError::Io {
-        operation,
-        kind: error.kind(),
     }
 }
 

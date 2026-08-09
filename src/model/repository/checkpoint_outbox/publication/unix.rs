@@ -3,6 +3,7 @@ pub(super) use super::unix_durability::validate_root_metadata;
 use super::unix_durability::{open_directory_path, open_secure_root_directory};
 use super::{OutboxLimits, PublishedRecord};
 use crate::model::repository::checkpoint_outbox::CheckpointOutboxError;
+use CheckpointOutboxError as E;
 use std::ffi::{CStr, CString, OsStr};
 use std::fs::{self, File, Metadata};
 use std::io::{self, Write};
@@ -46,7 +47,7 @@ pub(super) fn publish_encoded(
             )?;
             return Err(CheckpointOutboxError::AlreadyPublished);
         }
-        return Err(io_error("publish ready record", error));
+        return Err(E::from_io("publish ready record", error));
     }
     temporary.published = true;
     secure_root.sync_all()?;
@@ -74,7 +75,7 @@ pub(super) fn write_private_marker(
         temporary.name.as_c_str(),
         marker_name.as_c_str(),
     )
-    .map_err(|error| io_error("publish private marker", error))?;
+    .map_err(|error| E::from_io("publish private marker", error))?;
     temporary.published = true;
     secure_root.sync_all()?;
     validate_acknowledged_path(root, &secure_root, marker_name.as_c_str())?;
@@ -91,7 +92,7 @@ impl SecureRoot {
         let directory = open_secure_root_directory(root)?;
         let metadata = directory
             .metadata()
-            .map_err(|error| io_error("inspect root", error))?;
+            .map_err(|error| E::from_io("inspect root", error))?;
         Ok(Self {
             identity: FileIdentity::of(&metadata),
             directory,
@@ -107,7 +108,7 @@ impl SecureRoot {
             if error.kind() == io::ErrorKind::WouldBlock {
                 Err(CheckpointOutboxError::LockBusy)
             } else {
-                Err(io_error("lock root", error))
+                Err(E::from_io("lock root", error))
             }
         }
     }
@@ -115,7 +116,7 @@ impl SecureRoot {
     pub(super) fn sync_all(&self) -> Result<(), CheckpointOutboxError> {
         self.directory
             .sync_all()
-            .map_err(|error| io_error("sync outbox root", error))
+            .map_err(|error| E::from_io("sync outbox root", error))
     }
 
     fn directory(&self) -> &File {
@@ -157,7 +158,7 @@ impl DirectoryEntries {
             )
         };
         if descriptor < 0 {
-            return Err(io_error("scan root", io::Error::last_os_error()));
+            return Err(E::from_io("scan root", io::Error::last_os_error()));
         }
         let stream = unsafe { libc::fdopendir(descriptor) };
         if stream.is_null() {
@@ -165,7 +166,7 @@ impl DirectoryEntries {
             unsafe {
                 libc::close(descriptor);
             }
-            return Err(io_error("scan root", error));
+            return Err(E::from_io("scan root", error));
         }
         Ok(Self { stream })
     }
@@ -179,7 +180,7 @@ impl DirectoryEntries {
                 return if errno == 0 {
                     Ok(None)
                 } else {
-                    Err(io_error("scan root", io::Error::from_raw_os_error(errno)))
+                    Err(E::from_io("scan root", io::Error::from_raw_os_error(errno)))
                 };
             }
             let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
@@ -211,7 +212,10 @@ fn capacity_record_len(directory_fd: RawFd, name: &CStr) -> Result<u64, Checkpoi
         )
     };
     if result != 0 {
-        return Err(io_error("inspect ready record", io::Error::last_os_error()));
+        return Err(E::from_io(
+            "inspect ready record",
+            io::Error::last_os_error(),
+        ));
     }
     let metadata = unsafe { metadata.assume_init() };
     let mode = metadata.st_mode;
@@ -409,10 +413,10 @@ fn create_temporary_record(
         }
         let error = io::Error::last_os_error();
         if error.kind() != io::ErrorKind::AlreadyExists {
-            return Err(io_error("create temporary record", error));
+            return Err(E::from_io("create temporary record", error));
         }
     }
-    Err(io_error(
+    Err(E::from_io(
         "create temporary record",
         io::Error::new(io::ErrorKind::AlreadyExists, "temporary name collisions"),
     ))
@@ -424,15 +428,15 @@ fn write_synced_temporary_record(
 ) -> Result<TemporaryRecord, CheckpointOutboxError> {
     let (mut file, temporary) = create_temporary_record(directory)?;
     file.set_permissions(fs::Permissions::from_mode(RECORD_MODE))
-        .map_err(|error| io_error("set record permissions", error))?;
+        .map_err(|error| E::from_io("set record permissions", error))?;
     platform_acl::clear_inherited(&file)?;
     validate_record_file(&file)?;
     file.write_all(bytes)
-        .map_err(|error| io_error("write temporary record", error))?;
+        .map_err(|error| E::from_io("write temporary record", error))?;
     file.flush()
-        .map_err(|error| io_error("flush temporary record", error))?;
+        .map_err(|error| E::from_io("flush temporary record", error))?;
     file.sync_all()
-        .map_err(|error| io_error("sync temporary record", error))?;
+        .map_err(|error| E::from_io("sync temporary record", error))?;
     Ok(temporary)
 }
 
@@ -450,7 +454,7 @@ fn validate_record_metadata(metadata: &Metadata) -> Result<(), CheckpointOutboxE
 fn validate_record_file(file: &File) -> Result<Metadata, CheckpointOutboxError> {
     let metadata = file
         .metadata()
-        .map_err(|error| io_error("inspect ready record", error))?;
+        .map_err(|error| E::from_io("inspect ready record", error))?;
     validate_record_metadata(&metadata)?;
     platform_acl::reject_unsafe(file)?;
     Ok(metadata)
@@ -530,12 +534,5 @@ fn syscall_result(result: libc::c_int) -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::last_os_error())
-    }
-}
-
-fn io_error(operation: &'static str, error: io::Error) -> CheckpointOutboxError {
-    CheckpointOutboxError::Io {
-        operation,
-        kind: error.kind(),
     }
 }

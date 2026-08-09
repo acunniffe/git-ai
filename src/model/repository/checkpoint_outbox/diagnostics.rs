@@ -565,10 +565,8 @@ mod tests {
 
             let expected = format!("checkpoint outbox write temporary record failed ({kind:?})");
             assert_eq!(error.to_string(), expected);
-            assert_eq!(
-                OutboxFailureClass::from_error(&error),
-                OutboxFailureClass::Storage
-            );
+            let class = OutboxFailureClass::from_error(&error);
+            assert_eq!(class, OutboxFailureClass::Storage);
             let actual = match error {
                 CheckpointOutboxError::Io { operation, kind } => (operation, kind),
                 _ => unreachable!(),
