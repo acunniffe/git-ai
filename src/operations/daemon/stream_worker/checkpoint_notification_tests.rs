@@ -20,22 +20,6 @@ impl Drop for EnvRestore {
     }
 }
 
-fn make_worker(db: Arc<StreamsDatabase>) -> StreamWorker {
-    let (_checkpoint_tx, checkpoint_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (_sweep_tx, sweep_rx) = tokio::sync::mpsc::unbounded_channel();
-    let (_drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
-    StreamWorker::new(
-        db,
-        DaemonTelemetryWorkerHandle::new_noop(),
-        Arc::new(Notify::new()),
-        Arc::new(AtomicBool::new(false)),
-        checkpoint_rx,
-        sweep_rx,
-        drain_rx,
-        SweepTriggerGate::new(),
-    )
-}
-
 #[tokio::test]
 async fn test_handle_checkpoint_skips_subagent_sweep_for_non_claude() {
     let tmp = TempDir::new().unwrap();

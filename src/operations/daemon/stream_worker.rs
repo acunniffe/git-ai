@@ -1575,6 +1575,23 @@ mod scheduling_tests {
 }
 
 #[cfg(test)]
+fn make_worker(db: Arc<StreamsDatabase>) -> StreamWorker {
+    let (_checkpoint_tx, checkpoint_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (_sweep_tx, sweep_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (_drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
+    StreamWorker::new(
+        db,
+        DaemonTelemetryWorkerHandle::new_noop(),
+        Arc::new(Notify::new()),
+        Arc::new(AtomicBool::new(false)),
+        checkpoint_rx,
+        sweep_rx,
+        drain_rx,
+        SweepTriggerGate::new(),
+    )
+}
+
+#[cfg(test)]
 mod subagent_sweep_tests {
     use super::*;
     use std::io::Write;
@@ -1582,23 +1599,20 @@ mod subagent_sweep_tests {
     use tempfile::TempDir;
     use tokio::sync::mpsc::error::TryRecvError;
 
-    fn make_worker(db: Arc<StreamsDatabase>) -> StreamWorker {
-        let (_checkpoint_tx, checkpoint_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (_sweep_tx, sweep_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (_drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
-        let shutdown = Arc::new(Notify::new());
-        let shutdown_flag = Arc::new(AtomicBool::new(false));
-        let telemetry = DaemonTelemetryWorkerHandle::new_noop();
-        StreamWorker::new(
-            db,
-            telemetry,
-            shutdown,
-            shutdown_flag,
-            checkpoint_rx,
-            sweep_rx,
-            drain_rx,
-            SweepTriggerGate::new(),
-        )
+    #[test]
+    fn no_op_worker_fixture_starts_idle() {
+        let temp = TempDir::new().unwrap();
+        let db = Arc::new(StreamsDatabase::open(temp.path().join("streams.db")).unwrap());
+        let worker = super::make_worker(db);
+
+        assert!(worker.checkpoint_rx.is_empty() && worker.checkpoint_rx.is_closed());
+        assert!(worker.sweep_rx.is_empty() && worker.sweep_rx.is_closed());
+        assert!(worker.drain_rx.is_empty() && worker.drain_rx.is_closed());
+        assert_eq!(worker.telemetry_handle.metrics_buffer_len(), 0);
+        assert_eq!(Arc::strong_count(&worker.shutdown_notify), 1);
+        assert!(!worker.shutdown_flag.load(Ordering::Relaxed));
+        let gate = &worker.sweep_trigger_gate;
+        assert!(gate.try_mark_sweep_at(Instant::now(), "test"));
     }
 
     #[test]
