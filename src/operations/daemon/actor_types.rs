@@ -44,6 +44,28 @@ pub struct FamilySequencerState {
     pub(crate) entries: BTreeMap<FamilySequencerOrder, FamilySequencerEntry>,
 }
 
+impl FamilySequencerState {
+    pub(crate) fn new() -> Self {
+        Self {
+            next_ordinal: 1,
+            ..Self::default()
+        }
+    }
+    pub(crate) fn insert_entry(
+        &mut self,
+        started_at_ns: u128,
+        entry: FamilySequencerEntry,
+    ) -> FamilySequencerOrder {
+        let order = FamilySequencerOrder {
+            started_at_ns,
+            ordinal: self.next_ordinal,
+        };
+        self.next_ordinal = self.next_ordinal.saturating_add(1);
+        self.entries.insert(order, entry);
+        order
+    }
+}
+
 #[derive(Debug, Clone)]
 #[doc(hidden)]
 pub struct PendingRootSlot {
