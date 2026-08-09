@@ -1,4 +1,5 @@
 use crate::model::repository::checkpoint_outbox::CheckpointOutboxError;
+use CheckpointOutboxError as E;
 use std::ffi::OsString;
 use std::fs::{self, Metadata};
 use std::io;
@@ -80,19 +81,21 @@ pub(super) fn resolve_stable_root(
                     return Err(CheckpointOutboxError::RootIsSymlink);
                 }
                 let parent = fs::metadata(&existing_prefix)
-                    .map_err(|error| path_io_error("inspect root ancestor", error))?;
+                    .map_err(|error| E::from_io("inspect root ancestor", error))?;
                 validate_parent_edge(&parent, Some(child.uid()), effective_uid)?;
                 existing_prefix = candidate;
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => {
                 missing_suffix.push(name.to_os_string());
             }
-            Err(error) => return Err(path_io_error("inspect root component", error)),
+            Err(error) => {
+                return Err(E::from_io("inspect root component", error));
+            }
         }
     }
 
     let mut resolved = fs::canonicalize(&existing_prefix)
-        .map_err(|error| path_io_error("resolve root ancestor", error))?;
+        .map_err(|error| E::from_io("resolve root ancestor", error))?;
     for component in missing_suffix {
         resolved.push(component);
     }
@@ -108,7 +111,7 @@ fn validate_lexical_symlink_chain(
 
     let mut pending = normalized_components(root)?;
     let mut directory = super::open_directory_path(Path::new("/"))
-        .map_err(|error| path_io_error("open lexical root ancestor", error))?;
+        .map_err(|error| E::from_io("open lexical root ancestor", error))?;
     let mut resolved_parent = PathBuf::from("/");
     let mut followed_symlinks = 0usize;
 
@@ -119,7 +122,9 @@ fn validate_lexical_symlink_chain(
         let file_type = match super::component_file_type(directory.as_raw_fd(), name.as_c_str()) {
             Ok(file_type) => file_type,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
-            Err(error) => return Err(path_io_error("inspect lexical root component", error)),
+            Err(error) => {
+                return Err(E::from_io("inspect lexical root component", error));
+            }
         };
 
         if file_type == libc::S_IFLNK {
@@ -138,7 +143,7 @@ fn validate_lexical_symlink_chain(
             }
             pending = normalized_components(&redirected)?;
             directory = super::open_directory_path(Path::new("/"))
-                .map_err(|error| path_io_error("open lexical root ancestor", error))?;
+                .map_err(|error| E::from_io("open lexical root ancestor", error))?;
             resolved_parent = PathBuf::from("/");
             continue;
         }
@@ -148,12 +153,12 @@ fn validate_lexical_symlink_chain(
         }
         let parent_metadata = directory
             .metadata()
-            .map_err(|error| path_io_error("inspect lexical root ancestor", error))?;
+            .map_err(|error| E::from_io("inspect lexical root ancestor", error))?;
         let child = super::open_directory_at(directory.as_raw_fd(), name.as_c_str())
-            .map_err(|error| path_io_error("open lexical root component", error))?;
+            .map_err(|error| E::from_io("open lexical root component", error))?;
         let child_metadata = child
             .metadata()
-            .map_err(|error| path_io_error("inspect lexical root component", error))?;
+            .map_err(|error| E::from_io("inspect lexical root component", error))?;
         validate_parent_edge(&parent_metadata, Some(child_metadata.uid()), effective_uid)?;
         resolved_parent.push(&component);
         directory = child;
@@ -199,7 +204,7 @@ fn read_link_at(
             )
         };
         if length < 0 {
-            return Err(path_io_error(
+            return Err(E::from_io(
                 "read lexical root symlink",
                 io::Error::last_os_error(),
             ));
@@ -214,13 +219,6 @@ fn read_link_at(
             return Err(CheckpointOutboxError::UnsafeReadyRecord);
         }
         buffer.resize(buffer.len().saturating_mul(2).min(MAX_SYMLINK_BYTES), 0);
-    }
-}
-
-fn path_io_error(operation: &'static str, error: io::Error) -> CheckpointOutboxError {
-    CheckpointOutboxError::Io {
-        operation,
-        kind: error.kind(),
     }
 }
 

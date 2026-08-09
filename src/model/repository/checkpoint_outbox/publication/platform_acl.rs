@@ -14,6 +14,7 @@ pub(super) fn clear_inherited(_file: &File) -> Result<(), CheckpointOutboxError>
 #[cfg(target_os = "macos")]
 mod macos {
     use super::*;
+    use CheckpointOutboxError as E;
     use std::io;
     use std::os::fd::AsRawFd;
     use std::ptr;
@@ -106,10 +107,10 @@ mod macos {
 
     pub(super) fn reject_unsafe(file: &File) -> Result<(), CheckpointOutboxError> {
         let acl =
-            OwnedAcl::read(file).map_err(|error| acl_io_error("inspect extended ACL", error))?;
+            OwnedAcl::read(file).map_err(|error| E::from_io("inspect extended ACL", error))?;
         if acl
             .has_unsafe_allow()
-            .map_err(|error| acl_io_error("inspect extended ACL", error))?
+            .map_err(|error| E::from_io("inspect extended ACL", error))?
         {
             return Err(CheckpointOutboxError::UnsafeReadyRecord);
         }
@@ -117,21 +118,21 @@ mod macos {
     }
 
     pub(super) fn clear_inherited(file: &File) -> Result<(), CheckpointOutboxError> {
-        let empty = OwnedAcl::empty().map_err(|error| acl_io_error("allocate empty ACL", error))?;
+        let empty = OwnedAcl::empty().map_err(|error| E::from_io("allocate empty ACL", error))?;
         if unsafe { acl_set_fd_np(file.as_raw_fd(), empty.0, ACL_TYPE_EXTENDED) } != 0 {
-            return Err(acl_io_error(
+            return Err(E::from_io(
                 "clear inherited ACL",
                 io::Error::last_os_error(),
             ));
         }
         file.sync_all()
-            .map_err(|error| acl_io_error("sync cleared ACL", error))?;
+            .map_err(|error| E::from_io("sync cleared ACL", error))?;
 
         let current =
-            OwnedAcl::read(file).map_err(|error| acl_io_error("verify cleared ACL", error))?;
+            OwnedAcl::read(file).map_err(|error| E::from_io("verify cleared ACL", error))?;
         if current
             .has_entries()
-            .map_err(|error| acl_io_error("verify cleared ACL", error))?
+            .map_err(|error| E::from_io("verify cleared ACL", error))?
         {
             return Err(CheckpointOutboxError::UnsafeReadyRecord);
         }
@@ -141,13 +142,6 @@ mod macos {
     fn clear_errno() {
         unsafe {
             *libc::__error() = 0;
-        }
-    }
-
-    fn acl_io_error(operation: &'static str, error: io::Error) -> CheckpointOutboxError {
-        CheckpointOutboxError::Io {
-            operation,
-            kind: error.kind(),
         }
     }
 }
