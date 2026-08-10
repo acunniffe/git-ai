@@ -707,7 +707,7 @@ impl CiContext {
 
     fn fetch_authorship_history(&self, remote: &str) -> Result<(), GitAiError> {
         if crate::config::Config::fresh().notes_backend_enabled() {
-            crate::git::notes_api::warm_cache_for_remote(&self.repo, remote)
+            crate::git::notes_api::warm_cache_for_remote(&self.repo, remote).map(|_| ())
         } else {
             fetch_authorship_notes(&self.repo, remote).map(|_| ())
         }

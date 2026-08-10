@@ -86,6 +86,7 @@ pub fn read_authorship(repo: &Repository, commit_sha: &str) -> Option<Authorship
             AuthorshipLog::deserialize_from_string(&content)
                 .map_err(|e| tracing::debug!("notes deserialization error: {}", e))
                 .ok()
+                .and_then(|log| crate::git::refs::validate_authorship_log(log, commit_sha).ok())
         }),
         NotesBackendKind::GitNotes => crate::git::refs::get_authorship(repo, commit_sha),
     }
@@ -99,8 +100,9 @@ pub fn read_authorship_v3(
         NotesBackendKind::Http => {
             let content = http_read_note(commit_sha)
                 .ok_or_else(|| GitAiError::Generic("No authorship note found".to_string()))?;
-            AuthorshipLog::deserialize_from_string(&content)
-                .map_err(|e| GitAiError::Generic(format!("notes deserialization error: {}", e)))
+            let log = AuthorshipLog::deserialize_from_string(&content)
+                .map_err(|e| GitAiError::Generic(format!("notes deserialization error: {}", e)))?;
+            crate::git::refs::validate_authorship_log(log, commit_sha)
         }
         NotesBackendKind::GitNotes => {
             crate::git::refs::get_reference_as_authorship_log_v3(repo, commit_sha)
@@ -218,7 +220,8 @@ fn http_search_notes(repo: &Repository, pattern: &str) -> Result<Vec<String>, Gi
 ///
 /// This function is a best-effort operation: errors are logged but not propagated
 /// (callers should treat failure as a cache miss, not a hard error).
-pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitAiError> {
+/// Returns whether at least one note is available in the cache afterward.
+pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<bool, GitAiError> {
     use crate::git::repository::exec_git;
 
     // 1. Walk recent history. Prefer the remote's default branch; fall back to HEAD.
@@ -264,7 +267,7 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
 
     if all_shas.is_empty() {
         tracing::debug!("warm_cache_for_remote: no commits in HEAD history; skipping");
-        return Ok(());
+        return Ok(false);
     }
 
     // 2. Filter out SHAs already in notes-db.
@@ -277,7 +280,7 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
 
     if uncached.is_empty() {
         tracing::debug!("warm_cache_for_remote: all commits already cached; skipping");
-        return Ok(());
+        return Ok(!already_cached.is_empty());
     }
 
     tracing::info!(
@@ -292,8 +295,8 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
     );
 
     // 3+4. Batch-fetch from the HTTP backend and cache as synced rows.
-    http_fetch_and_cache_notes(&uncached);
-    Ok(())
+    let fetched = http_fetch_and_cache_notes(&uncached);
+    Ok(!already_cached.is_empty() || !fetched.is_empty())
 }
 
 /// Fetch authorship notes for the given commits from the HTTP notes backend
@@ -510,6 +513,56 @@ mod tests {
 
         unsafe {
             env::remove_var("GIT_AI_TEST_NOTES_DB_PATH");
+        }
+    }
+
+    #[test]
+    #[serial_test::serial(notes_db_env)]
+    fn http_authorship_reads_validate_schema_and_align_commit() {
+        use crate::authorship::authorship_log_serialization::AuthorshipLog;
+        use crate::git::test_utils::TmpRepo;
+
+        let tmp_db = tempfile::NamedTempFile::new().expect("tmp notes-db");
+        unsafe {
+            std::env::set_var("GIT_AI_TEST_NOTES_DB_PATH", tmp_db.path());
+        }
+        let repo = TmpRepo::new().expect("TmpRepo::new");
+        repo.write_file("schema.txt", "unique schema test", false)
+            .expect("write file");
+        let sha = repo.commit_all("schema validation").expect("commit");
+
+        unsafe {
+            std::env::set_var("GIT_AI_NOTES_BACKEND_KIND", "http");
+        }
+        let mut valid = AuthorshipLog::default();
+        valid.metadata.base_commit_sha = "stale-attachment".to_string();
+        http_write_note(
+            &sha,
+            &valid.serialize_to_string().expect("serialize valid log"),
+        )
+        .expect("cache valid log");
+
+        let aligned = read_authorship_v3(repo.gitai_repo(), &sha).expect("read valid log");
+        assert_eq!(aligned.metadata.base_commit_sha, sha);
+
+        valid.metadata.schema_version = "authorship/999.0.0".to_string();
+        http_write_note(
+            &sha,
+            &valid.serialize_to_string().expect("serialize future log"),
+        )
+        .expect("cache future log");
+        let error = read_authorship_v3(repo.gitai_repo(), &sha)
+            .expect_err("unsupported schema must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("Unsupported authorship log version")
+        );
+        assert!(read_authorship(repo.gitai_repo(), &sha).is_none());
+
+        unsafe {
+            std::env::remove_var("GIT_AI_NOTES_BACKEND_KIND");
+            std::env::remove_var("GIT_AI_TEST_NOTES_DB_PATH");
         }
     }
 
@@ -776,6 +829,7 @@ mod tests {
         // Execute.
         let result = warm_cache_for_remote(repo.gitai_repo(), "origin");
         assert!(result.is_ok(), "warm_cache_for_remote failed: {:?}", result);
+        assert!(result.unwrap());
 
         // Verify via NotesDatabase::global() (the same DB the function wrote to).
         let db = NotesDatabase::global().expect("global db");
@@ -916,6 +970,7 @@ mod tests {
 
         let result = warm_cache_for_remote(repo.gitai_repo(), "origin");
         assert!(result.is_ok(), "warm_cache_for_remote failed: {:?}", result);
+        assert!(result.unwrap());
 
         // Verify via the global DB.
         let db = NotesDatabase::global().expect("global db");
@@ -943,6 +998,40 @@ mod tests {
         // Cleanup.
         unsafe {
             std::env::remove_var("GIT_AI_TEST_NOTES_DB_PATH");
+            std::env::remove_var("GIT_AI_API_KEY");
+            std::env::remove_var("GIT_AI_NOTES_BACKEND_URL");
+        }
+    }
+
+    #[test]
+    #[serial_test::serial(notes_db_env)]
+    fn warm_cache_for_remote_reports_when_backend_has_no_notes() {
+        use crate::git::test_utils::TmpRepo;
+
+        let repo = TmpRepo::new().expect("TmpRepo::new");
+        repo.write_file("empty-backend.txt", "no remote note", false)
+            .expect("write file");
+        repo.commit_all("empty backend commit").expect("commit");
+
+        let mut server = mockito::Server::new();
+        let mock = server
+            .mock(
+                "GET",
+                mockito::Matcher::Regex(r"^/worker/notes/".to_string()),
+            )
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"notes": {}}"#)
+            .create();
+        unsafe {
+            std::env::set_var("GIT_AI_NOTES_BACKEND_URL", server.url());
+            std::env::set_var("GIT_AI_API_KEY", "empty-backend-test-key");
+        }
+
+        assert!(!warm_cache_for_remote(repo.gitai_repo(), "origin").expect("warm cache"));
+        mock.assert();
+
+        unsafe {
             std::env::remove_var("GIT_AI_API_KEY");
             std::env::remove_var("GIT_AI_NOTES_BACKEND_URL");
         }

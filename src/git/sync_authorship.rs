@@ -228,8 +228,15 @@ pub fn fetch_authorship_notes(
         tracing::debug!(
             "fetch_authorship_notes: warming HTTP notes cache instead of fetching refs/notes/ai"
         );
-        crate::git::notes_api::warm_cache_for_remote(repository, remote_name)?;
-        return Ok(NotesExistence::Found);
+        return crate::git::notes_api::warm_cache_for_remote(repository, remote_name).map(
+            |found| {
+                if found {
+                    NotesExistence::Found
+                } else {
+                    NotesExistence::NotFound
+                }
+            },
+        );
     }
     // Generate tracking ref for this remote
     let tracking_ref = tracking_ref_for_remote(remote_name);

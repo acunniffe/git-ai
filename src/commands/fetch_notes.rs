@@ -96,7 +96,7 @@ pub fn handle_fetch_notes(args: &[String]) {
     // from the HTTP backend instead of fetching refs/notes/ai.
     if crate::config::Config::fresh().notes_backend_kind() == NotesBackendKind::Http {
         match crate::git::notes_api::warm_cache_for_remote(&repo, &remote_name) {
-            Ok(()) => {
+            Ok(_) => {
                 let elapsed = start.elapsed();
                 if json_output {
                     let output = FetchNotesJsonOutput {

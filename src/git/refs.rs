@@ -752,10 +752,30 @@ pub(in crate::git) fn commits_with_authorship_notes(
 // Show an authorship note and return its JSON content if found, or None if it doesn't exist.
 pub(in crate::git) fn get_authorship(repo: &Repository, commit_sha: &str) -> Option<AuthorshipLog> {
     let content = show_authorship_note(repo, commit_sha)?;
-    let mut authorship_log = AuthorshipLog::deserialize_from_string(&content).ok()?;
-    // Keep metadata aligned with the commit where this note is attached.
+    let authorship_log = AuthorshipLog::deserialize_from_string(&content).ok()?;
+    validate_authorship_log(authorship_log, commit_sha).ok()
+}
+
+pub(in crate::git) fn align_authorship_log(
+    mut authorship_log: AuthorshipLog,
+    commit_sha: &str,
+) -> AuthorshipLog {
     authorship_log.metadata.base_commit_sha = commit_sha.to_string();
-    Some(authorship_log)
+    authorship_log
+}
+
+pub(in crate::git) fn validate_authorship_log(
+    authorship_log: AuthorshipLog,
+    commit_sha: &str,
+) -> Result<AuthorshipLog, GitAiError> {
+    if authorship_log.metadata.schema_version != AUTHORSHIP_LOG_VERSION {
+        return Err(GitAiError::Generic(format!(
+            "Unsupported authorship log version: {} (expected: {})",
+            authorship_log.metadata.schema_version, AUTHORSHIP_LOG_VERSION
+        )));
+    }
+
+    Ok(align_authorship_log(authorship_log, commit_sha))
 }
 
 #[allow(dead_code)]
@@ -777,7 +797,7 @@ pub(in crate::git) fn get_reference_as_authorship_log_v3(
         .ok_or_else(|| GitAiError::Generic("No authorship note found".to_string()))?;
 
     // Try to deserialize as AuthorshipLog
-    let mut authorship_log = match AuthorshipLog::deserialize_from_string(&content) {
+    let authorship_log = match AuthorshipLog::deserialize_from_string(&content) {
         Ok(log) => log,
         Err(_) => {
             return Err(GitAiError::Generic(
@@ -786,18 +806,7 @@ pub(in crate::git) fn get_reference_as_authorship_log_v3(
         }
     };
 
-    // Check version compatibility
-    if authorship_log.metadata.schema_version != AUTHORSHIP_LOG_VERSION {
-        return Err(GitAiError::Generic(format!(
-            "Unsupported authorship log version: {} (expected: {})",
-            authorship_log.metadata.schema_version, AUTHORSHIP_LOG_VERSION
-        )));
-    }
-
-    // Keep metadata aligned with the commit where this note is attached.
-    authorship_log.metadata.base_commit_sha = commit_sha.to_string();
-
-    Ok(authorship_log)
+    validate_authorship_log(authorship_log, commit_sha)
 }
 
 /// Sanitize a remote name to create a safe ref name
