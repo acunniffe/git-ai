@@ -1,0 +1,31 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  250ea23d18cbce4f 123-148,715-758,766-770,817-823
+src/mdm/agents/windsurf.rs
+  h_670eaf8bab379b 214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "c97ab1c6de5e8054508d3aaa061057ac35461c6f",
+  "prompts": {
+    "250ea23d18cbce4f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "38dadd2c-ec9e-4e5f-b3b5-fc13f88d5ec2",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 104,
+      "total_deletions": 22,
+      "accepted_lines": 83,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/44914e3a554ff5f448b8bffc58ecbf42725cd71902c44762ae04fa09462eaf46"
+    }
+  },
+  "humans": {
+    "h_670eaf8bab379b": {
+      "author": "Aidan Cunniffe"
+    }
+  }
+}

@@ -1,0 +1,36 @@
+src/daemon/sandbox.rs
+  s_b880de3a5e6407::t_3a5bda19282202 45-47,53,369-373
+  s_b880de3a5e6407::t_e0a0e8fea8f128 128-131,266
+  s_b880de3a5e6407::t_d50463c5974d61 1-44,48-52,54-127,132-146,155-239,243-249,268-293,349-356,358-368,374-378,380-390,392-400
+  s_b880de3a5e6407::t_a1226372ef357c 147-154,240-242,250-265,267,294-348,357,379,391
+src/daemon.rs
+  s_b880de3a5e6407::t_d50463c5974d61 66,7163-7172
+src/commands/daemon.rs
+  s_b880de3a5e6407::t_d50463c5974d61 109-119,324-333
+  s_b880de3a5e6407::t_0303f06f1c5961 334
+src/daemon/telemetry_worker.rs
+  s_b880de3a5e6407::t_66808b3a161937 928-938,941-943
+  s_b880de3a5e6407::t_d50463c5974d61 925-927,939-940,944-945
+tests/integration/main.rs
+  s_b880de3a5e6407::t_926ba7aed63142 53
+tests/integration/daemon_sandbox.rs
+  s_b880de3a5e6407::t_e70374860455f5 15-17,19-20
+  s_b880de3a5e6407::t_da87b143ca533d 21
+  s_b880de3a5e6407::t_926ba7aed63142 1-14,18,22-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.5",
+  "base_commit_sha": "a8122a6e7fb2f70b86e496a074953d1f856e84b7",
+  "prompts": {},
+  "sessions": {
+    "s_b880de3a5e6407": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19db-47e2-7340-a92b-59658d9d09e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

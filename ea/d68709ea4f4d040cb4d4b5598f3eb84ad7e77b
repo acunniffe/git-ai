@@ -1,0 +1,21 @@
+src/git/fast_reader.rs
+  s_22c662336d649a::t_991c21b5d5aca2 39-40
+  s_22c662336d649a::t_21784c48e71fd8 265
+  s_22c662336d649a::t_ef2cffccf7731a 195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "ead68709ea4f4d040cb4d4b5598f3eb84ad7e77b",
+  "prompts": {},
+  "sessions": {
+    "s_22c662336d649a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "374fbd35-b4a6-48a9-8d7a-f56eb450bfab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

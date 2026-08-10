@@ -1,0 +1,29 @@
+src/authorship/post_commit.rs
+  s_265a605c5598a3::t_7e1982a468267f 5
+tests/commit_tree_update_ref.rs
+  s_265a605c5598a3::t_028697f6eb9e2e 73-94,1780-1857
+  s_265a605c5598a3::t_16c46df0eeb3e5 1858
+src/authorship/virtual_attribution.rs
+  s_265a605c5598a3::t_abd97693ea86d2 6
+  s_265a605c5598a3::t_f818a27358ed05 2133-2138,2142,2168
+src/authorship/mod.rs
+  s_265a605c5598a3::t_73a388159f5d5f 9
+src/authorship/diff_base.rs
+  s_265a605c5598a3::t_652dfc2a1c9bc0 1-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.5",
+  "base_commit_sha": "7e26d2034a0c39479df496ceba8b905ecb1c0a4d",
+  "prompts": {},
+  "sessions": {
+    "s_265a605c5598a3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1ad2-b684-7bb2-9cdb-ace8798b8812",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

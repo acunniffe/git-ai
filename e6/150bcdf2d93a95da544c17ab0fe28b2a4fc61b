@@ -1,0 +1,23 @@
+src/utils.rs
+  4db65a5 10,111-149
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "e6150bcdf2d93a95da544c17ab0fe28b2a4fc61b",
+  "prompts": {
+    "4db65a5": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3b5744ab-cf2b-4575-a657-80bf3222b073",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 46,
+      "total_deletions": 5,
+      "accepted_lines": 41,
+      "overriden_lines": 0
+    }
+  }
+}

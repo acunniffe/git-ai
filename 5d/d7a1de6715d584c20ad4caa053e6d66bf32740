@@ -1,0 +1,86 @@
+src/commands/git_handlers.rs
+  baf41af08cd7f224 18,103-104,154-155,387-397,499-510
+tests/performance.rs
+  baf41af08cd7f224 22
+tests/switch_hooks_comprehensive.rs
+  baf41af08cd7f224 51-52,90-91,123-124,160-161,204-205,236-237,276-277,327-328,368-369,409-410,454-455,616-617,666-667,705-706,754-755
+src/commands/hooks/update_ref_hooks.rs
+  baf41af08cd7f224 1-358,360-398
+tests/graphite.rs
+  baf41af08cd7f224 447,565,604,718,758-760,797-799,895-896,1053,1194-1262
+src/commands/hooks/reset_hooks.rs
+  baf41af08cd7f224 148-159,161-177
+src/commands/hooks/rebase_hooks.rs
+  baf41af08cd7f224 242-267,269,278,317,332
+tests/rebase_hooks_comprehensive.rs
+  baf41af08cd7f224 69-70,114-115,152-153,201-202,237-238,293-294,337-338
+src/commands/hooks/mod.rs
+  baf41af08cd7f224 12
+src/feature_flags.rs
+  baf41af08cd7f224 56,223,230,239
+src/commands/git_hook_handlers.rs
+  baf41af08cd7f224 1458-1459
+tests/commit_hooks_comprehensive.rs
+  baf41af08cd7f224 132-133,181-182,218-219,254-255,300-301,343-344,378-379,687-688,743-744
+tests/checkout_hooks_comprehensive.rs
+  baf41af08cd7f224 51-52,90-91,122-123,152-153,198-199,228-229,268-269,312-313,356-357,411-412,455-456,498-499,714-715,767-768,820-821,859-860,900-901
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.8",
+  "base_commit_sha": "5dd7a1de6715d584c20ad4caa053e6d66bf32740",
+  "prompts": {
+    "35c02fd86f4916ab": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "29ec59c3-fe0a-4b0c-89e8-1bcb27af41a9",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 392,
+      "total_deletions": 0,
+      "accepted_lines": 366,
+      "overriden_lines": 5
+    },
+    "a35d6e0a17af85ab": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "68346207-6518-4b84-a325-76354ff7546e",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 94,
+      "total_deletions": 91,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    },
+    "baf41af08cd7f224": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "81a33cae-eb0b-4781-807f-34a8646a1b38",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 773,
+      "total_deletions": 103,
+      "accepted_lines": 673,
+      "overriden_lines": 2
+    },
+    "e15eea2ed094bd23": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "5b72ba98-e059-4e94-a4fa-ac46dd766f8a",
+        "model": "claude-4.6-opus-high-thinking"
+      },
+      "human_author": "Drew Bailey <drew@workweave.ai>",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 16,
+      "accepted_lines": 23,
+      "overriden_lines": 0
+    }
+  }
+}

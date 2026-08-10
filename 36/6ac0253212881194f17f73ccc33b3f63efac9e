@@ -1,0 +1,50 @@
+agent-support/vscode/src/blame-lens-manager.ts
+  7b073608dfd4be33 37,65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "366ac0253212881194f17f73ccc33b3f63efac9e",
+  "prompts": {
+    "7b073608dfd4be33": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6f20f940-32ed-4ae1-99f6-dd8d54c40e78",
+        "model": "gpt-5.1-codex-mini"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/blame-lens-manager.ts:26-69 replace the green colors with others. We don't want to conflict with the green one from Git plugin (for added lines)",
+          "timestamp": "2025-12-28T14:21:11.877Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 200,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": ""
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Replaced the two green hunk colors in `src/blame-lens-manager.ts` with a cool gray and coral shade so we no longer conflict with the Git plugin’s added-line green. No tests were run; let me know if you’d like me to smoke-test anything.",
+          "timestamp": "2025-12-28T14:21:33.371Z"
+        }
+      ],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,39 @@
+src/utils.rs
+  cabe3094fd50b289 12,98-102,104-109
+  a817440119dd5b55 11,74-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.39",
+  "base_commit_sha": "26302a71c9d2750c3eaa76abc7eed9cd87324554",
+  "prompts": {
+    "a817440119dd5b55": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e27be63e-a688-4f2a-b139-a572d75bd571",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 25,
+      "total_deletions": 0,
+      "accepted_lines": 25,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/c6aa9298c65c5015900dc3cf6bdeff122f719b9637fb551e4a9686ecf3af957b"
+    },
+    "cabe3094fd50b289": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae89f53c-6964-426d-a5bd-18ca0931d226",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 0,
+      "accepted_lines": 12,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/94074ced8c74e4d3017c7dcbca921cf93fb5bc1ecb5a01097bd8c09bc97f06fb"
+    }
+  }
+}
