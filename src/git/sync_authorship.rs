@@ -425,7 +425,7 @@ fn fetch_and_merge_tracking_notes(
     remote_name: &str,
     local_ref_lock: Option<&tokio::sync::Mutex<()>>,
 ) {
-    let tracking_ref = tracking_ref_for_remote(remote_name);
+    let tracking_ref = tracking_ref_for_remote(&tracking_identity(remote_name));
     let fetch_refspec = format!("+refs/notes/ai:{}", tracking_ref);
 
     let fetch_args = build_authorship_fetch_args(
@@ -480,6 +480,17 @@ fn fetch_and_merge_tracking_notes(
             tracing::debug!("pre-push fallback merge also failed: {}", e2);
         }
     }
+}
+
+fn tracking_identity(destination: &str) -> String {
+    if let Ok(normalized) = crate::repo_url::normalize_repo_url(destination) {
+        return normalized;
+    }
+    std::path::Path::new(destination)
+        .canonicalize()
+        .unwrap_or_else(|_| std::path::PathBuf::from(destination))
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn is_non_fast_forward_error(error: &GitAiError) -> bool {
@@ -763,6 +774,19 @@ mod tests {
             extract_repository_arg_from_args(&["HEAD:refs/heads/main".to_string()]),
             None
         );
+    }
+
+    #[test]
+    fn tracking_identity_converges_equivalent_remote_spellings() {
+        assert_eq!(
+            tracking_identity("git@example.com:org/repo.git"),
+            tracking_identity("ssh://git@example.com/org/repo.git")
+        );
+        assert_eq!(
+            tracking_identity("https://token@example.com/org/repo.git"),
+            "https://example.com/org/repo"
+        );
+        assert_eq!(tracking_identity("origin"), "origin");
     }
 
     #[test]
