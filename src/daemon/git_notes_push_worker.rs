@@ -1,7 +1,7 @@
 use crate::config::{Config, NotesBackendKind};
 use crate::error::GitAiError;
 use crate::git::find_repository_in_path;
-use crate::git::sync_authorship::push_authorship_notes;
+use crate::git::sync_authorship::push_authorship_notes_with_local_lock;
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::Instant;
@@ -11,11 +11,12 @@ const INGRESS_CAPACITY: usize = 128;
 const COMPLETION_CAPACITY: usize = 128;
 const MAX_PENDING_DESTINATIONS_PER_FAMILY: usize = 8;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct GitNotesPushJob {
     pub family: String,
     pub worktree: String,
     pub destination: String,
+    pub local_ref_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl GitNotesPushJob {
@@ -202,7 +203,12 @@ fn start_job(
     );
     tokio::task::spawn_blocking(move || {
         let started_at = Instant::now();
-        let result = executor(&job);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| executor(&job)))
+            .unwrap_or_else(|_| {
+                Err(GitAiError::Generic(
+                    "Git notes push executor panicked".to_string(),
+                ))
+            });
         let _ = completion_tx.blocking_send(Completion {
             job,
             started_at,
@@ -230,15 +236,11 @@ fn finish_job(
             "asynchronous Git notes push completed"
         ),
         Err(error) => {
-            let phase = if error.to_string().contains("timed out") {
-                "timeout"
-            } else {
-                "failure"
-            };
+            let (phase, reason) = sanitized_failure(&error);
             tracing::error!(
                 component = "git_notes_push_worker",
                 phase,
-                reason = %error,
+                %reason,
                 %family,
                 %destination,
                 duration_ms,
@@ -257,8 +259,28 @@ fn finish_job(
     }
 }
 
+fn sanitized_failure(error: &GitAiError) -> (&'static str, String) {
+    let timed_out = matches!(error, GitAiError::IoError(error) if error.kind() == std::io::ErrorKind::TimedOut)
+        || matches!(error, GitAiError::Generic(message) if message.contains("timed out"))
+        || matches!(error, GitAiError::GitCliError { stderr, .. } if stderr.contains("timed out"));
+    if timed_out {
+        return ("timeout", "Git notes transport timed out".to_string());
+    }
+
+    match error {
+        GitAiError::GitCliError {
+            code: Some(code), ..
+        } => ("failure", format!("Git exited with status {code}")),
+        GitAiError::GitCliError { code: None, .. } => (
+            "failure",
+            "Git terminated without an exit status".to_string(),
+        ),
+        _ => ("failure", "internal Git notes push failure".to_string()),
+    }
+}
+
 fn execute_push(job: &GitNotesPushJob) -> Result<(), GitAiError> {
-    if Config::fresh().notes_backend_kind() == NotesBackendKind::Http {
+    if Config::fresh_notes_backend_kind_cached() == NotesBackendKind::Http {
         tracing::info!(
             component = "git_notes_push_worker",
             phase = "backend_skip",
@@ -268,7 +290,7 @@ fn execute_push(job: &GitNotesPushJob) -> Result<(), GitAiError> {
         return Ok(());
     }
     let repository = find_repository_in_path(&job.worktree)?;
-    push_authorship_notes(&repository, &job.destination)
+    push_authorship_notes_with_local_lock(&repository, &job.destination, &job.local_ref_lock)
 }
 
 #[cfg(test)]
@@ -276,6 +298,15 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
+
+    fn job(family: &str, destination: &str) -> GitNotesPushJob {
+        GitNotesPushJob {
+            family: family.into(),
+            worktree: "/repo".into(),
+            destination: destination.into(),
+            local_ref_lock: Arc::new(tokio::sync::Mutex::new(())),
+        }
+    }
 
     #[tokio::test]
     async fn serializes_pushes_within_a_family_and_drain_waits() {
@@ -297,11 +328,7 @@ mod tests {
         };
         let worker = spawn_with_executor(executor);
         for destination in ["one", "two", "three"] {
-            worker.enqueue(GitNotesPushJob {
-                family: "family".into(),
-                worktree: "/repo".into(),
-                destination: destination.into(),
-            });
+            worker.enqueue(job("family", destination));
         }
 
         worker.drain().await.unwrap();
@@ -322,11 +349,7 @@ mod tests {
         };
         let worker = spawn_with_executor(executor);
         for _ in 0..10 {
-            worker.enqueue(GitNotesPushJob {
-                family: "family".into(),
-                worktree: "/repo".into(),
-                destination: "same".into(),
-            });
+            worker.enqueue(job("family", "same"));
         }
 
         worker.drain().await.unwrap();
@@ -350,11 +373,7 @@ mod tests {
         };
         let worker = spawn_with_executor(executor);
         for family in ["one", "two"] {
-            worker.enqueue(GitNotesPushJob {
-                family: family.into(),
-                worktree: "/repo".into(),
-                destination: family.into(),
-            });
+            worker.enqueue(job(family, family));
         }
 
         worker.drain().await.unwrap();
@@ -376,11 +395,7 @@ mod tests {
         for index in 0..20 {
             enqueue_job(
                 &mut families,
-                GitNotesPushJob {
-                    family: "family".into(),
-                    worktree: "/repo".into(),
-                    destination: format!("destination-{index}"),
-                },
+                job("family", &format!("destination-{index}")),
                 &completion_tx,
                 &executor,
             );
@@ -390,5 +405,39 @@ mod tests {
             families.get("family").unwrap().pending.len(),
             MAX_PENDING_DESTINATIONS_PER_FAMILY
         );
+    }
+
+    #[tokio::test]
+    async fn executor_panic_completes_the_job_and_starts_the_next_one() {
+        let attempts = Arc::new(AtomicUsize::new(0));
+        let executor: PushExecutor = {
+            let attempts = attempts.clone();
+            Arc::new(move |_| {
+                if attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+                    panic!("simulated push panic");
+                }
+                Ok(())
+            })
+        };
+        let worker = spawn_with_executor(executor);
+        worker.enqueue(job("family", "one"));
+        worker.enqueue(job("family", "two"));
+
+        worker.drain().await.unwrap();
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn git_failure_summary_does_not_include_credentials_or_command_arguments() {
+        let error = GitAiError::GitCliError {
+            code: Some(128),
+            stderr: "authentication failed for https://token@example.com/repo.git".into(),
+            args: vec!["push".into(), "https://token@example.com/repo.git".into()],
+        };
+
+        let (phase, reason) = sanitized_failure(&error);
+        assert_eq!(phase, "failure");
+        assert_eq!(reason, "Git exited with status 128");
+        assert!(!reason.contains("token"));
     }
 }

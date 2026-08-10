@@ -27,10 +27,9 @@ impl CommandAnalyzer for TransportAnalyzer {
                 strategy: infer_pull_strategy(cmd, &args),
             }),
             "push" => events.push(SemanticEvent::PushCompleted {
-                remote: cmd
-                    .transport_target
-                    .clone()
-                    .or_else(|| explicit_push_destination(&args)),
+                remote: cmd.transport_target.clone().or_else(|| {
+                    crate::git::sync_authorship::extract_repository_arg_from_args(&args)
+                }),
             }),
             "clone" => events.push(SemanticEvent::CloneCompleted {
                 target: infer_clone_target(&args)
@@ -55,16 +54,6 @@ impl CommandAnalyzer for TransportAnalyzer {
 
 fn first_positional(args: &[String]) -> Option<String> {
     args.iter().find(|arg| !arg.starts_with('-')).cloned()
-}
-
-fn explicit_push_destination(args: &[String]) -> Option<String> {
-    first_positional(args).filter(|value| {
-        value.contains("//")
-            || value.contains(':')
-            || value.starts_with('/')
-            || value.starts_with("./")
-            || value.starts_with("../")
-    })
 }
 
 fn infer_pull_strategy(cmd: &NormalizedCommand, args: &[String]) -> PullStrategy {

@@ -353,9 +353,26 @@ pub(crate) fn notes_transport_timeout() -> std::time::Duration {
 
 // for use with post-push hook
 pub fn push_authorship_notes(repository: &Repository, remote_name: &str) -> Result<(), GitAiError> {
+    push_authorship_notes_impl(repository, remote_name, None)
+}
+
+pub(crate) fn push_authorship_notes_with_local_lock(
+    repository: &Repository,
+    remote_name: &str,
+    local_ref_lock: &tokio::sync::Mutex<()>,
+) -> Result<(), GitAiError> {
+    push_authorship_notes_impl(repository, remote_name, Some(local_ref_lock))
+}
+
+fn push_authorship_notes_impl(
+    repository: &Repository,
+    remote_name: &str,
+    local_ref_lock: Option<&tokio::sync::Mutex<()>>,
+) -> Result<(), GitAiError> {
     // Belt-and-suspenders: when the HTTP backend is active, notes are not stored
     // in refs/notes/ai so there is nothing to push.
-    if crate::config::Config::fresh().notes_backend_kind() == crate::config::NotesBackendKind::Http
+    if crate::config::Config::fresh_notes_backend_kind_cached()
+        == crate::config::NotesBackendKind::Http
     {
         tracing::debug!("push_authorship_notes: skipping refs/notes/ai push (Http backend active)");
         return Ok(());
@@ -372,7 +389,7 @@ pub fn push_authorship_notes(repository: &Repository, remote_name: &str) -> Resu
             );
         }
 
-        fetch_and_merge_tracking_notes(repository, remote_name);
+        fetch_and_merge_tracking_notes(repository, remote_name, local_ref_lock);
 
         // Push notes without force (requires fast-forward)
         let push_args = build_authorship_push_args(repository.global_args_for_exec(), remote_name);
@@ -399,7 +416,11 @@ pub fn push_authorship_notes(repository: &Repository, remote_name: &str) -> Resu
 }
 
 /// Fetch remote notes into a tracking ref and merge into local refs/notes/ai.
-fn fetch_and_merge_tracking_notes(repository: &Repository, remote_name: &str) {
+fn fetch_and_merge_tracking_notes(
+    repository: &Repository,
+    remote_name: &str,
+    local_ref_lock: Option<&tokio::sync::Mutex<()>>,
+) {
     let tracking_ref = tracking_ref_for_remote(remote_name);
     let fetch_refspec = format!("+refs/notes/ai:{}", tracking_ref);
 
@@ -415,6 +436,11 @@ fn fetch_and_merge_tracking_notes(repository: &Repository, remote_name: &str) {
     if exec_git_with_timeout(&fetch_args, notes_transport_timeout()).is_err() {
         return;
     }
+
+    // The network fetch does not touch refs/notes/ai and deliberately runs
+    // outside the daemon family lock. Only serialize the local ref mutation
+    // with commit/rewrite side effects for this repository family.
+    let _local_ref_guard = local_ref_lock.map(tokio::sync::Mutex::blocking_lock);
 
     let local_notes_ref = "refs/notes/ai";
 
@@ -459,7 +485,7 @@ fn is_non_fast_forward_error(error: &GitAiError) -> bool {
     stderr.contains("non-fast-forward")
 }
 
-fn extract_repository_arg_from_args(args: &[String]) -> Option<String> {
+pub(crate) fn extract_repository_arg_from_args(args: &[String]) -> Option<String> {
     let mut after_double_dash = false;
 
     for arg in args {
@@ -712,6 +738,72 @@ mod tests {
         assert_eq!(
             extract_repository_arg_from_args(&["HEAD:refs/heads/main".to_string()]),
             None
+        );
+    }
+
+    #[test]
+    fn fetched_notes_wait_for_the_local_ref_lock_before_merging() {
+        use crate::git::find_repository_in_path;
+        use crate::git::test_utils::TmpRepo;
+        use std::sync::Arc;
+        use std::time::{Duration, Instant};
+
+        let source = TmpRepo::new().expect("source repo");
+        let remote = TmpRepo::new().expect("remote repo");
+        let sha = source.commit_all("source commit").expect("source commit");
+        remote
+            .git_command(&["config", "receive.denyCurrentBranch", "ignore"])
+            .expect("allow test push into working repository");
+        source
+            .git_command(&[
+                "remote",
+                "add",
+                "origin",
+                remote.path().to_str().expect("utf-8 remote path"),
+            ])
+            .expect("add remote");
+        source
+            .git_command(&["push", "origin", "main"])
+            .expect("seed remote commit");
+        remote
+            .git_command(&["notes", "--ref=ai", "add", "-m", "remote note", &sha])
+            .expect("seed remote note");
+
+        let local_ref_lock = Arc::new(tokio::sync::Mutex::new(()));
+        let guard = local_ref_lock.blocking_lock();
+        let source_path = source.path().to_string_lossy().to_string();
+        let worker_lock = local_ref_lock.clone();
+        let merge = std::thread::spawn(move || {
+            let repository = find_repository_in_path(&source_path).expect("reopen source repo");
+            fetch_and_merge_tracking_notes(&repository, "origin", Some(&worker_lock));
+        });
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while source
+            .git_command(&["show-ref", "--verify", "refs/notes/ai-remote/origin"])
+            .is_err()
+        {
+            assert!(
+                Instant::now() < deadline,
+                "background fetch did not create its tracking ref"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            source
+                .git_command(&["show-ref", "--verify", "refs/notes/ai"])
+                .is_err(),
+            "local notes ref must not change while the family lock is held"
+        );
+
+        drop(guard);
+        merge.join().expect("merge thread should finish");
+        assert_eq!(
+            source
+                .git_command(&["notes", "--ref=ai", "show", &sha])
+                .expect("merged local note")
+                .trim(),
+            "remote note"
         );
     }
 

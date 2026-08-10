@@ -1278,23 +1278,24 @@ fn parsed_invocation_for_normalized_command(
 }
 
 fn apply_push_side_effect(
+    coordinator: &ActorDaemonCoordinator,
     worker: Option<&crate::daemon::git_notes_push_worker::GitNotesPushWorkerHandle>,
     family: Option<&str>,
     worktree: &str,
     command: Option<&str>,
     args: &[String],
     destination: Option<&str>,
-) {
+) -> Result<(), GitAiError> {
     use crate::config::NotesBackendKind;
     use crate::git::cli_parser::is_dry_run;
 
-    if crate::config::Config::fresh().notes_backend_kind() == NotesBackendKind::Http {
+    if crate::config::Config::fresh_notes_backend_kind_cached() == NotesBackendKind::Http {
         tracing::debug!(
             component = "git_notes_push_worker",
             phase = "backend_skip",
             "not scheduling Git notes push because HTTP notes are enabled"
         );
-        return;
+        return Ok(());
     }
 
     let parsed = parsed_invocation_for_side_effect(command, args);
@@ -1306,7 +1307,7 @@ fn apply_push_side_effect(
             .any(|a| a == "-d" || a == "--delete")
         || parsed.command_args.iter().any(|a| a == "--mirror")
     {
-        return;
+        return Ok(());
     }
 
     let (Some(worker), Some(family), Some(destination)) = (worker, family, destination) else {
@@ -1316,15 +1317,18 @@ fn apply_push_side_effect(
             family = family.unwrap_or_default(),
             "skipping asynchronous Git notes push without an immutable trace destination"
         );
-        return;
+        return Ok(());
     };
 
+    let local_ref_lock = coordinator.side_effect_exec_lock(family)?;
     crate::commands::upgrade::maybe_schedule_background_update_check();
     worker.enqueue(crate::daemon::git_notes_push_worker::GitNotesPushJob {
         family: family.to_string(),
         worktree: worktree.to_string(),
         destination: destination.to_string(),
+        local_ref_lock,
     });
+    Ok(())
 }
 
 fn transcript_sweep_triggers_for_events(
@@ -6038,13 +6042,14 @@ impl ActorDaemonCoordinator {
                     }
                     crate::daemon::domain::SemanticEvent::PushCompleted { remote } => {
                         apply_push_side_effect(
+                            self,
                             self.git_notes_push_worker.as_ref(),
                             family,
                             &worktree,
                             cmd.invoked_command.as_deref(),
                             &cmd.invoked_args,
                             remote.as_deref(),
-                        );
+                        )?;
                     }
                     crate::daemon::domain::SemanticEvent::CherryPickComplete {
                         original_head,

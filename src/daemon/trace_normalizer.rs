@@ -828,34 +828,36 @@ fn transport_target_from_child_start(payload: &Value) -> Option<String> {
     match child_class {
         class if class.starts_with("remote-") => argv.last().cloned(),
         "transport/file" => argv
-            .iter()
-            .find_map(|arg| receive_pack_repository(arg))
+            .last()
+            .and_then(|arg| transport_service_repository(arg))
             .map(str::to_string),
         "transport/ssh" => ssh_transport_target(&argv),
         _ => None,
     }
 }
 
-fn receive_pack_repository(command: &str) -> Option<&str> {
-    let repository = command
-        .strip_prefix("git-receive-pack ")
-        .or_else(|| command.strip_prefix("git receive-pack "))?
-        .trim();
-    if repository.len() >= 2 {
-        let first = repository.as_bytes()[0];
-        let last = repository.as_bytes()[repository.len() - 1];
-        if (first == b'\'' && last == b'\'') || (first == b'\"' && last == b'\"') {
-            return repository.get(1..repository.len() - 1);
+fn transport_service_repository(command: &str) -> Option<&str> {
+    // Trace2 classifies this argv as a transport service, so the executable
+    // may be a custom receive-pack command rather than literally
+    // `git-receive-pack`. Git appends the immutable target as the final
+    // argument, quoting it when needed.
+    let command = command.trim();
+    let repository = match command.as_bytes().last().copied() {
+        Some(quote @ (b'\'' | b'"')) => {
+            let opening = command[..command.len() - 1].rfind(char::from(quote))?;
+            command.get(opening + 1..command.len() - 1)?
         }
+        _ => command.rsplit_once(char::is_whitespace)?.1.trim(),
+    };
+    if repository.is_empty() {
+        return None;
     }
     Some(repository)
 }
 
 fn ssh_transport_target(argv: &[String]) -> Option<String> {
-    let repository = argv.iter().find_map(|arg| receive_pack_repository(arg))?;
-    let service_index = argv
-        .iter()
-        .position(|arg| receive_pack_repository(arg).is_some())?;
+    let service_index = argv.len().checked_sub(1)?;
+    let repository = transport_service_repository(&argv[service_index])?;
     let host = argv[..service_index]
         .iter()
         .rev()
@@ -1438,6 +1440,33 @@ mod tests {
         assert_eq!(
             transport_target_from_child_start(&ssh_port).as_deref(),
             Some("ssh://git@example.com:2222/org/repo.git")
+        );
+
+        let custom_ssh = serde_json::json!({
+            "child_class":"transport/ssh",
+            "argv":["ssh","git@example.com","/opt/git/custom-receive --stateless '/org/repo.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&custom_ssh).as_deref(),
+            Some("git@example.com:org/repo.git")
+        );
+
+        let custom_file = serde_json::json!({
+            "child_class":"transport/file",
+            "argv":["/opt/git/custom-receive '/resolved/remote.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&custom_file).as_deref(),
+            Some("/resolved/remote.git")
+        );
+
+        let spaced_service = serde_json::json!({
+            "child_class":"transport/file",
+            "argv":["git receive-pack '/resolved/remote.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&spaced_service).as_deref(),
+            Some("/resolved/remote.git")
         );
     }
 
