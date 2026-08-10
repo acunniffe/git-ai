@@ -369,6 +369,11 @@ fn push_authorship_notes_impl(
     remote_name: &str,
     local_ref_lock: Option<&tokio::sync::Mutex<()>>,
 ) -> Result<(), GitAiError> {
+    if remote_name.is_empty() || remote_name.starts_with('-') {
+        return Err(GitAiError::Generic(
+            "Refusing unsafe Git notes push destination".to_string(),
+        ));
+    }
     // Belt-and-suspenders: when the HTTP backend is active, notes are not stored
     // in refs/notes/ai so there is nothing to push.
     if crate::config::Config::fresh_notes_backend_kind_cached()
@@ -377,7 +382,6 @@ fn push_authorship_notes_impl(
         tracing::debug!("push_authorship_notes: skipping refs/notes/ai push (Http backend active)");
         return Ok(());
     }
-
     let mut last_error = None;
 
     for attempt in 0..PUSH_NOTES_MAX_ATTEMPTS {
@@ -554,6 +558,7 @@ fn build_authorship_fetch_args(
     args.push("--no-write-fetch-head".to_string());
     args.push("--no-write-commit-graph".to_string());
     args.push("--no-auto-maintenance".to_string());
+    args.push("--".to_string());
     args.push(remote_name.to_string());
     args.push(fetch_refspec.to_string());
     args
@@ -566,6 +571,7 @@ fn build_authorship_push_args(global_args: Vec<String>, remote_name: &str) -> Ve
     args.push("--no-recurse-submodules".to_string());
     args.push("--no-verify".to_string());
     args.push("--no-signed".to_string());
+    args.push("--".to_string());
     args.push(remote_name.to_string());
     args.push(AI_AUTHORSHIP_PUSH_REFSPEC.to_string());
     args
@@ -704,6 +710,8 @@ mod tests {
                 .any(|pair| pair[0] == "-c" && pair[1] == disabled_hooks)
         );
         assert!(args.contains(&"fetch".to_string()));
+        let separator = args.iter().position(|arg| arg == "--").unwrap();
+        assert_eq!(args[separator + 1], "origin");
     }
 
     #[test]
@@ -717,6 +725,22 @@ mod tests {
                 .any(|pair| pair[0] == "-c" && pair[1] == disabled_hooks)
         );
         assert!(args.contains(&"push".to_string()));
+        let separator = args.iter().position(|arg| arg == "--").unwrap();
+        assert_eq!(args[separator + 1], "origin");
+    }
+
+    #[test]
+    fn notes_push_rejects_option_like_destination_before_spawning_git() {
+        use crate::git::test_utils::TmpRepo;
+
+        let repo = TmpRepo::new().expect("TmpRepo::new");
+        let error = push_authorship_notes(repo.gitai_repo(), "--upload-pack=attacker")
+            .expect_err("option-like destination must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("unsafe Git notes push destination")
+        );
     }
 
     #[test]
@@ -744,33 +768,58 @@ mod tests {
     #[test]
     fn fetched_notes_wait_for_the_local_ref_lock_before_merging() {
         use crate::git::find_repository_in_path;
+        use crate::git::repository::Repository;
         use crate::git::test_utils::TmpRepo;
         use std::sync::Arc;
         use std::time::{Duration, Instant};
 
+        fn git(repository: &Repository, args: &[&str]) -> Result<String, GitAiError> {
+            let mut command = repository.global_args_for_exec();
+            command.extend(args.iter().map(|arg| arg.to_string()));
+            let output = crate::git::repository::exec_git(&command)?;
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+        }
+
         let source = TmpRepo::new().expect("source repo");
         let remote = TmpRepo::new().expect("remote repo");
-        let sha = source.commit_all("source commit").expect("source commit");
-        remote
-            .git_command(&["config", "receive.denyCurrentBranch", "ignore"])
-            .expect("allow test push into working repository");
         source
-            .git_command(&[
+            .write_file("source.txt", "source", false)
+            .expect("write source");
+        git(source.gitai_repo(), &["add", "-A"]).expect("stage source");
+        git(source.gitai_repo(), &["commit", "-m", "source commit"]).expect("source commit");
+        let sha = git(source.gitai_repo(), &["rev-parse", "HEAD"])
+            .expect("source SHA")
+            .trim()
+            .to_string();
+        git(
+            remote.gitai_repo(),
+            &["config", "receive.denyCurrentBranch", "ignore"],
+        )
+        .expect("allow test push into working repository");
+        git(
+            source.gitai_repo(),
+            &[
                 "remote",
                 "add",
                 "origin",
                 remote.path().to_str().expect("utf-8 remote path"),
-            ])
-            .expect("add remote");
-        source
-            .git_command(&["push", "origin", "main"])
-            .expect("seed remote commit");
-        remote
-            .git_command(&["notes", "--ref=ai", "add", "-m", "remote note", &sha])
-            .expect("seed remote note");
+            ],
+        )
+        .expect("add remote");
+        git(source.gitai_repo(), &["push", "origin", "main"]).expect("seed remote commit");
+        git(
+            remote.gitai_repo(),
+            &["notes", "--ref=ai", "add", "-m", "remote note", &sha],
+        )
+        .expect("seed remote note");
 
         let local_ref_lock = Arc::new(tokio::sync::Mutex::new(()));
         let guard = local_ref_lock.blocking_lock();
+        let local_tip_before = git(
+            source.gitai_repo(),
+            &["rev-parse", "--verify", "refs/notes/ai"],
+        )
+        .ok();
         let source_path = source.path().to_string_lossy().to_string();
         let worker_lock = local_ref_lock.clone();
         let merge = std::thread::spawn(move || {
@@ -779,9 +828,11 @@ mod tests {
         });
 
         let deadline = Instant::now() + Duration::from_secs(5);
-        while source
-            .git_command(&["show-ref", "--verify", "refs/notes/ai-remote/origin"])
-            .is_err()
+        while git(
+            source.gitai_repo(),
+            &["show-ref", "--verify", "refs/notes/ai-remote/origin"],
+        )
+        .is_err()
         {
             assert!(
                 Instant::now() < deadline,
@@ -789,22 +840,32 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(10));
         }
-        assert!(
-            source
-                .git_command(&["show-ref", "--verify", "refs/notes/ai"])
-                .is_err(),
-            "local notes ref must not change while the family lock is held"
+        assert_eq!(
+            git(
+                source.gitai_repo(),
+                &["rev-parse", "--verify", "refs/notes/ai"],
+            )
+            .ok(),
+            local_tip_before,
+            "local notes ref tip must not change while the family lock is held"
         );
 
         drop(guard);
         merge.join().expect("merge thread should finish");
         assert_eq!(
-            source
-                .git_command(&["notes", "--ref=ai", "show", &sha])
-                .expect("merged local note")
-                .trim(),
+            git(
+                source.gitai_repo(),
+                &["notes", "--ref=ai-remote/origin", "show", &sha],
+            )
+            .expect("fetched tracking note")
+            .trim(),
             "remote note"
         );
+        git(
+            source.gitai_repo(),
+            &["show-ref", "--verify", "refs/notes/ai"],
+        )
+        .expect("local notes ref should exist after merging");
     }
 
     #[test]

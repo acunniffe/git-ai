@@ -6887,27 +6887,7 @@ impl ActorDaemonCoordinator {
             result.timed_out = true;
         }
 
-        // Phase 2: drain best-effort asynchronous Git notes pushes.
-        if !result.timed_out
-            && let Some(worker) = &self.git_notes_push_worker
-        {
-            let now = Instant::now();
-            if now < deadline {
-                let remaining = deadline - now;
-                maybe_log("Git notes pushes");
-                match timeout(remaining, worker.drain()).await {
-                    Ok(Ok(())) => {}
-                    Ok(Err(e)) => {
-                        tracing::warn!(error = %e, "await: Git notes push drain failed");
-                    }
-                    Err(_) => result.timed_out = true,
-                }
-            } else {
-                result.timed_out = true;
-            }
-        }
-
-        // Phase 3: drain the transcript/stream worker.
+        // Phase 2: drain the transcript/stream worker.
         if !result.timed_out
             && let Some(worker) = &self.stream_worker
         {
@@ -6929,7 +6909,7 @@ impl ActorDaemonCoordinator {
             }
         }
 
-        // Phase 4: flush telemetry and wait for the worker to finish.
+        // Phase 3: flush telemetry and wait for the worker to finish.
         if !result.timed_out
             && let Some(worker) = &self.telemetry_worker
         {
@@ -6948,6 +6928,27 @@ impl ActorDaemonCoordinator {
                     Err(_) => {
                         result.timed_out = true;
                     }
+                }
+            } else {
+                result.timed_out = true;
+            }
+        }
+
+        // Phase 4: drain best-effort asynchronous Git notes pushes last so an
+        // unreachable remote cannot starve transcript processing or telemetry.
+        if !result.timed_out
+            && let Some(worker) = &self.git_notes_push_worker
+        {
+            let now = Instant::now();
+            if now < deadline {
+                let remaining = deadline - now;
+                maybe_log("Git notes pushes");
+                match timeout(remaining, worker.drain()).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        tracing::warn!(error = %e, "await: Git notes push drain failed");
+                    }
+                    Err(_) => result.timed_out = true,
                 }
             } else {
                 result.timed_out = true;

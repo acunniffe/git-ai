@@ -249,7 +249,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             "start" => self.handle_start(payload, sid, &root_sid, ts),
             "def_repo" => self.handle_def_repo(payload, sid, &root_sid),
             "cmd_name" => self.handle_cmd_name(payload, sid, &root_sid),
-            "child_start" => self.handle_child_start(payload, &root_sid),
+            "child_start" => self.handle_child_start(payload, sid, &root_sid),
             "def_param" => self.handle_def_param(payload, &root_sid),
             "exec" => Ok(None),
             "exit" => self.handle_exit(payload, sid, &root_sid, ts, false),
@@ -343,8 +343,12 @@ impl<B: GitBackend> TraceNormalizer<B> {
     fn handle_child_start(
         &mut self,
         payload: &Value,
+        sid: &str,
         root_sid: &str,
     ) -> Result<Option<NormalizedCommand>, GitAiError> {
+        if sid != root_sid {
+            return Ok(None);
+        }
         let Some(pending) = self.state.pending.get_mut(root_sid) else {
             return Ok(None);
         };
@@ -825,7 +829,7 @@ fn transport_target_from_child_start(payload: &Value) -> Option<String> {
     let child_class = payload.get("child_class").and_then(Value::as_str)?;
     let argv = payload_argv(payload);
 
-    match child_class {
+    let target = match child_class {
         class if class.starts_with("remote-") => argv.last().cloned(),
         "transport/file" => argv
             .last()
@@ -833,7 +837,8 @@ fn transport_target_from_child_start(payload: &Value) -> Option<String> {
             .map(str::to_string),
         "transport/ssh" => ssh_transport_target(&argv),
         _ => None,
-    }
+    }?;
+    (!target.is_empty() && !target.starts_with('-')).then_some(target)
 }
 
 fn transport_service_repository(command: &str) -> Option<&str> {
@@ -1414,6 +1419,50 @@ mod tests {
     }
 
     #[test]
+    fn normalizer_ignores_nested_git_transport_destinations() {
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"start", "sid":"push-root", "ts":1,
+                "argv":["git","push","--recurse-submodules=on-demand","origin"],
+                "worktree":"/repo"
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"child_start", "sid":"push-root/submodule", "ts":2,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '/submodule/remote.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"child_start", "sid":"push-root", "ts":3,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '/superproject/remote.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"exit", "sid":"push-root", "ts":4, "code":0
+            }))
+            .unwrap();
+        let command = normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"atexit", "sid":"push-root", "ts":5, "code":0
+            }))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            command.transport_target.as_deref(),
+            Some("/superproject/remote.git")
+        );
+    }
+
+    #[test]
     fn extracts_http_and_ssh_push_destinations() {
         let http = serde_json::json!({
             "child_class":"remote-http",
@@ -1423,6 +1472,12 @@ mod tests {
             transport_target_from_child_start(&http).as_deref(),
             Some("https://example.com/org/repo.git")
         );
+
+        let option_like = serde_json::json!({
+            "child_class":"remote-http",
+            "argv":["git","remote-http","origin","--upload-pack=attacker"]
+        });
+        assert_eq!(transport_target_from_child_start(&option_like), None);
 
         let ssh = serde_json::json!({
             "child_class":"transport/ssh",
