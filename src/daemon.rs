@@ -62,6 +62,7 @@ pub mod daemon_log_layer;
 pub mod domain;
 pub mod family_actor;
 pub mod git_backend;
+pub mod git_notes_push_worker;
 pub mod global_actor;
 mod memory_watchdog;
 pub mod reducer;
@@ -1277,20 +1278,25 @@ fn parsed_invocation_for_normalized_command(
 }
 
 fn apply_push_side_effect(
+    worker: Option<&crate::daemon::git_notes_push_worker::GitNotesPushWorkerHandle>,
+    family: Option<&str>,
     worktree: &str,
     command: Option<&str>,
     args: &[String],
-) -> Result<(), GitAiError> {
+    destination: Option<&str>,
+) {
     use crate::config::NotesBackendKind;
     use crate::git::cli_parser::is_dry_run;
-    use crate::git::sync_authorship::{push_authorship_notes, push_remote_from_args};
 
-    if crate::config::Config::get().notes_backend_kind() == NotesBackendKind::Http {
-        tracing::debug!("apply_push_side_effect: skipping authorship push (Http backend)");
-        return Ok(());
+    if crate::config::Config::fresh().notes_backend_kind() == NotesBackendKind::Http {
+        tracing::debug!(
+            component = "git_notes_push_worker",
+            phase = "backend_skip",
+            "not scheduling Git notes push because HTTP notes are enabled"
+        );
+        return;
     }
 
-    let repo = find_repository_in_path(worktree)?;
     let parsed = parsed_invocation_for_side_effect(command, args);
 
     if is_dry_run(&parsed.command_args)
@@ -1300,15 +1306,25 @@ fn apply_push_side_effect(
             .any(|a| a == "-d" || a == "--delete")
         || parsed.command_args.iter().any(|a| a == "--mirror")
     {
-        return Ok(());
+        return;
     }
 
-    let remote = push_remote_from_args(&repo, &parsed)?;
+    let (Some(worker), Some(family), Some(destination)) = (worker, family, destination) else {
+        tracing::warn!(
+            component = "git_notes_push_worker",
+            phase = "missing_target",
+            family = family.unwrap_or_default(),
+            "skipping asynchronous Git notes push without an immutable trace destination"
+        );
+        return;
+    };
 
     crate::commands::upgrade::maybe_schedule_background_update_check();
-    tracing::debug!("started pushing authorship notes to remote: {}", remote);
-
-    push_authorship_notes(&repo, &remote)
+    worker.enqueue(crate::daemon::git_notes_push_worker::GitNotesPushJob {
+        family: family.to_string(),
+        worktree: worktree.to_string(),
+        destination: destination.to_string(),
+    });
 }
 
 fn transcript_sweep_triggers_for_events(
@@ -2774,6 +2790,7 @@ pub struct ActorDaemonCoordinator {
     // exits via the shutdown select! arm instead of relying on channel closure.
     trace_ingest_tx: std::sync::OnceLock<mpsc::Sender<Value>>,
     telemetry_worker: Option<crate::daemon::telemetry_worker::DaemonTelemetryWorkerHandle>,
+    git_notes_push_worker: Option<crate::daemon::git_notes_push_worker::GitNotesPushWorkerHandle>,
     stream_worker: Option<crate::daemon::stream_worker::StreamWorkerHandle>,
     transcript_shutdown_notify: std::sync::OnceLock<Arc<tokio::sync::Notify>>,
     streams_db: Option<Arc<crate::streams::db::StreamsDatabase>>,
@@ -2876,6 +2893,7 @@ impl ActorDaemonCoordinator {
             test_completion_log_lock: Mutex::new(()),
             trace_ingest_tx: std::sync::OnceLock::new(),
             telemetry_worker: None,
+            git_notes_push_worker: None,
             stream_worker: None,
             transcript_shutdown_notify: std::sync::OnceLock::new(),
             streams_db: None,
@@ -6018,12 +6036,15 @@ impl ActorDaemonCoordinator {
                             &cmd.invoked_args,
                         )?;
                     }
-                    crate::daemon::domain::SemanticEvent::PushCompleted { .. } => {
+                    crate::daemon::domain::SemanticEvent::PushCompleted { remote } => {
                         apply_push_side_effect(
+                            self.git_notes_push_worker.as_ref(),
+                            family,
                             &worktree,
                             cmd.invoked_command.as_deref(),
                             &cmd.invoked_args,
-                        )?;
+                            remote.as_deref(),
+                        );
                     }
                     crate::daemon::domain::SemanticEvent::CherryPickComplete {
                         original_head,
@@ -6861,7 +6882,27 @@ impl ActorDaemonCoordinator {
             result.timed_out = true;
         }
 
-        // Phase 2: drain the transcript/stream worker.
+        // Phase 2: drain best-effort asynchronous Git notes pushes.
+        if !result.timed_out
+            && let Some(worker) = &self.git_notes_push_worker
+        {
+            let now = Instant::now();
+            if now < deadline {
+                let remaining = deadline - now;
+                maybe_log("Git notes pushes");
+                match timeout(remaining, worker.drain()).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        tracing::warn!(error = %e, "await: Git notes push drain failed");
+                    }
+                    Err(_) => result.timed_out = true,
+                }
+            } else {
+                result.timed_out = true;
+            }
+        }
+
+        // Phase 3: drain the transcript/stream worker.
         if !result.timed_out
             && let Some(worker) = &self.stream_worker
         {
@@ -6883,7 +6924,7 @@ impl ActorDaemonCoordinator {
             }
         }
 
-        // Phase 3: flush telemetry and wait for the worker to finish.
+        // Phase 4: flush telemetry and wait for the worker to finish.
         if !result.timed_out
             && let Some(worker) = &self.telemetry_worker
         {
@@ -8572,6 +8613,10 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
     crate::daemon::telemetry_worker::set_daemon_internal_telemetry(telemetry_handle.clone());
     coordinator_inner.telemetry_worker = Some(telemetry_handle.clone());
 
+    coordinator_inner.git_notes_push_worker =
+        Some(crate::daemon::git_notes_push_worker::spawn_git_notes_push_worker());
+    tracing::info!("Git notes push worker spawned");
+
     // Spawn the transcript worker BEFORE wrapping coordinator in Arc
     if config::Config::get()
         .get_feature_flags()
@@ -9550,6 +9595,7 @@ mod tests {
             invoked_command: Some("rebase".to_string()),
             invoked_args: invoked_args.iter().map(|arg| (*arg).to_string()).collect(),
             observed_child_commands: Vec::new(),
+            transport_target: None,
             exit_code: 0,
             started_at_ns: 1,
             finished_at_ns: 2,

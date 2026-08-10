@@ -281,6 +281,7 @@ mod tests {
             invoked_command: Some("update-ref".to_string()),
             invoked_args: Vec::new(),
             observed_child_commands: Vec::new(),
+            transport_target: None,
             exit_code: 0,
             started_at_ns: 1,
             finished_at_ns: 2,

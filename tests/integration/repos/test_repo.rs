@@ -3168,6 +3168,23 @@ impl TestRepo {
         }
     }
 
+    pub fn wait_for_authorship_note_in_git_dir(
+        &self,
+        git_dir: &Path,
+        commit_sha: &str,
+    ) -> Option<String> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(note) = self.read_authorship_note_in_git_dir(git_dir, commit_sha) {
+                return Some(note);
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
     pub fn commit(&self, message: &str) -> Result<NewCommit, String> {
         self.commit_with_env(message, &[], None)
     }

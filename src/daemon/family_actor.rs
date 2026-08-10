@@ -184,6 +184,7 @@ mod tests {
             invoked_command: Some("status".to_string()),
             invoked_args: Vec::new(),
             observed_child_commands: Vec::new(),
+            transport_target: None,
             exit_code: 0,
             started_at_ns: seq,
             finished_at_ns: seq + 1,

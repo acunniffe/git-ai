@@ -27,7 +27,10 @@ impl CommandAnalyzer for TransportAnalyzer {
                 strategy: infer_pull_strategy(cmd, &args),
             }),
             "push" => events.push(SemanticEvent::PushCompleted {
-                remote: first_positional(&args),
+                remote: cmd
+                    .transport_target
+                    .clone()
+                    .or_else(|| explicit_push_destination(&args)),
             }),
             "clone" => events.push(SemanticEvent::CloneCompleted {
                 target: infer_clone_target(&args)
@@ -52,6 +55,16 @@ impl CommandAnalyzer for TransportAnalyzer {
 
 fn first_positional(args: &[String]) -> Option<String> {
     args.iter().find(|arg| !arg.starts_with('-')).cloned()
+}
+
+fn explicit_push_destination(args: &[String]) -> Option<String> {
+    first_positional(args).filter(|value| {
+        value.contains("//")
+            || value.contains(':')
+            || value.starts_with('/')
+            || value.starts_with("./")
+            || value.starts_with("../")
+    })
 }
 
 fn infer_pull_strategy(cmd: &NormalizedCommand, args: &[String]) -> PullStrategy {
@@ -136,6 +149,7 @@ mod tests {
             invoked_command: Some(primary.to_string()),
             invoked_args: argv.iter().skip(2).map(|s| s.to_string()).collect(),
             observed_child_commands: Vec::new(),
+            transport_target: None,
             exit_code: 0,
             started_at_ns: 1,
             finished_at_ns: 2,
@@ -166,5 +180,38 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn push_prefers_trace_resolved_destination_and_named_remote_fails_closed() {
+        let analyzer = TransportAnalyzer;
+        let mut resolved = command("push", &["git", "push", "origin", "main"]);
+        resolved.transport_target = Some("/resolved/remote.git".to_string());
+        let result = analyzer
+            .analyze(
+                &resolved,
+                AnalysisView {
+                    refs: &Default::default(),
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::PushCompleted { remote: Some(remote) }]
+                if remote == "/resolved/remote.git"
+        ));
+
+        let unresolved = analyzer
+            .analyze(
+                &command("push", &["git", "push", "origin", "main"]),
+                AnalysisView {
+                    refs: &Default::default(),
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            unresolved.events.as_slice(),
+            [SemanticEvent::PushCompleted { remote: None }]
+        ));
     }
 }

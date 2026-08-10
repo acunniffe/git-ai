@@ -2,6 +2,8 @@
 #[path = "integration/repos/mod.rs"]
 mod repos;
 
+use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
+use git_ai::config::ConfigPatch;
 use git_ai::notes::db::NotesDatabase;
 use git_ai::notes::reference_server::ReferenceServer;
 use repos::test_file::ExpectedLineExt;
@@ -11,6 +13,193 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+fn wait_for_daemon_log(local: &TestRepo, needle: &str) -> String {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let contents = local.daemon_stderr_contents();
+        if contents.contains(needle) {
+            return contents;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "daemon log did not contain {needle:?}; contents:\n{}",
+            contents
+        );
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+}
+
+#[test]
+fn notes_sync_http_backend_push_spawns_no_git_notes_transport() {
+    let server = ReferenceServer::start("127.0.0.1:0").expect("start notes reference server");
+    let backend_url = server.base_url();
+    let log_dir = tempfile::tempdir().expect("create spawn-log directory");
+    let spawn_log = log_dir.path().join("spawns.log");
+    let spawn_log_string = spawn_log.to_string_lossy().to_string();
+    let source = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_NOTES_BACKEND_KIND", "http"),
+        ("GIT_AI_NOTES_BACKEND_URL", backend_url.as_str()),
+        ("GIT_AI_API_KEY", "notes-sync-http-push-test-key"),
+        ("GIT_AI_SPAWN_LOG", spawn_log_string.as_str()),
+    ]);
+    let upstream = TestRepo::new_bare_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let upstream_path = upstream.path().to_string_lossy().to_string();
+    source
+        .git_og(&["remote", "add", "origin", upstream_path.as_str()])
+        .expect("add origin should succeed");
+
+    fs::write(
+        source.path().join("http-push.rs"),
+        "fn http_notes_only() {}\n",
+    )
+    .expect("write HTTP-backed AI file");
+    source
+        .git_ai(&["checkpoint", "mock_ai", "http-push.rs"])
+        .expect("AI checkpoint should succeed");
+    source.git(&["add", "-A"]).expect("add should succeed");
+    source
+        .git(&["commit", "-m", "HTTP notes push isolation"])
+        .expect("commit should succeed");
+    source.sync_daemon_force();
+    let commit_sha = source
+        .git(&["rev-parse", "HEAD"])
+        .expect("resolve committed SHA")
+        .trim()
+        .to_string();
+    assert_eq!(
+        source
+            .git(&["show", &format!("{}:http-push.rs", commit_sha)])
+            .expect("read committed file"),
+        "fn http_notes_only() {}\n",
+        "committed content must match after the commit"
+    );
+
+    let notes_db_path = source.test_home_path().join(".git-ai/internal/notes-db");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        if let Ok(db) = NotesDatabase::open_at_path(&notes_db_path)
+            && let Some(note) = db.get_note(&commit_sha).ok().flatten()
+        {
+            let log = AuthorshipLog::deserialize_from_string(&note)
+                .expect("parse SQLite-backed authorship note");
+            assert!(
+                log.attestations.iter().any(|file| {
+                    file.file_path == "http-push.rs"
+                        && file.entries.iter().any(|entry| {
+                            !entry.hash.starts_with("h_")
+                                && entry.line_ranges.iter().any(|range| range.contains(1))
+                        })
+                }),
+                "line 1 must retain AI attribution after the commit"
+            );
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "HTTP-backed authorship note was not written to SQLite"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+
+    fs::write(&spawn_log, "").expect("clear internal Git spawn log before push");
+    source
+        .git(&["push", "-u", "origin", "HEAD"])
+        .expect("branch push should succeed");
+    source.sync_daemon_force();
+
+    let spawned = fs::read_to_string(&spawn_log).unwrap_or_default();
+    assert!(
+        !spawned
+            .lines()
+            .any(|command| matches!(command, "fetch" | "push")),
+        "HTTP notes backend must not spawn Git notes fetch/push commands; spawns:\n{}",
+        spawned
+    );
+    assert!(
+        upstream.read_authorship_note(&commit_sha).is_none(),
+        "HTTP-backed authorship notes must not be published to refs/notes/ai"
+    );
+}
+
+#[test]
+fn notes_push_fetch_timeout_never_blocks_user_push_or_daemon() {
+    let upstream = TestRepo::new_bare_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let shim = env!("CARGO_BIN_EXE_git-ai-test-git-shim");
+    let patch = ConfigPatch {
+        git_path: Some(shim.to_string()),
+        feature_flags: Some(serde_json::json!({
+            "transcript_streaming": false,
+            "transcript_sweep": false
+        })),
+        ..Default::default()
+    };
+    let patch_json = serde_json::to_string(&patch).expect("serialize daemon config patch");
+    let source = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_TEST_CONFIG_PATCH", patch_json.as_str()),
+        ("GIT_AI_TEST_GIT_SHIM_TARGET", real_git_executable()),
+        (
+            "GIT_AI_TEST_GIT_SHIM_FALLBACK_TARGET",
+            real_git_executable(),
+        ),
+        ("GIT_AI_TEST_GIT_SHIM_DELAY_COMMANDS", "fetch,push"),
+        ("GIT_AI_TEST_GIT_SHIM_DELAY_MS", "1500"),
+        ("GIT_AI_TEST_NOTES_SYNC_TIMEOUT_MS", "150"),
+    ]);
+    let upstream_path = upstream.path().to_string_lossy().to_string();
+    source
+        .git_og(&["remote", "add", "origin", upstream_path.as_str()])
+        .expect("add origin should succeed");
+
+    let mut file = source.filename("async-push.rs");
+    file.set_contents(vec!["fn never_block_push() {}".ai()]);
+    let commit = source
+        .stage_all_and_commit("async notes push")
+        .expect("commit should succeed");
+    file.assert_committed_lines(vec!["fn never_block_push() {}".ai()]);
+
+    let push_started = std::time::Instant::now();
+    source
+        .git(&["push", "-u", "origin", "HEAD"])
+        .expect("user branch push should succeed");
+    assert!(
+        push_started.elapsed() < std::time::Duration::from_secs(1),
+        "background notes fetch/push delay must not be charged to the user push: {:?}",
+        push_started.elapsed()
+    );
+
+    let sync_started = std::time::Instant::now();
+    source.sync_daemon_force();
+    assert!(
+        sync_started.elapsed() < std::time::Duration::from_secs(1),
+        "family synchronization must not wait for the Git notes worker: {:?}",
+        sync_started.elapsed()
+    );
+
+    let await_started = std::time::Instant::now();
+    let await_output = source
+        .git_ai(&["await", "--timeout", "5"])
+        .expect("await should drain the timed-out best-effort notes push");
+    assert!(
+        await_output.contains("finished"),
+        "unexpected await output: {await_output}"
+    );
+    assert!(
+        await_started.elapsed() < std::time::Duration::from_secs(3),
+        "per-subprocess notes timeouts must bound await: {:?}",
+        await_started.elapsed()
+    );
+    assert!(
+        upstream.read_authorship_note(&commit.commit_sha).is_none(),
+        "timed-out Git notes push must not update the remote notes ref"
+    );
+    let daemon_log = wait_for_daemon_log(&source, "internal Git notes transport timed out");
+    assert!(
+        daemon_log.contains("git_notes_push_worker") && daemon_log.contains("phase=\"timeout\""),
+        "daemon log must report the worker timeout with structured context:\n{}",
+        daemon_log
+    );
+}
 
 fn unique_temp_path(prefix: &str) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -876,7 +1065,7 @@ worktree_test_wrappers! {
 }
 
 worktree_test_wrappers! {
-    fn notes_sync_push_reports_remote_note_update_failure() {
+    fn notes_sync_push_failure_is_best_effort_and_retries_on_later_push() {
         let (local, upstream) = TestRepo::new_with_remote();
 
         fs::write(local.path().join("push-locked.txt"), "local\n")
@@ -912,17 +1101,31 @@ worktree_test_wrappers! {
             .git(&["push", "-u", "origin", "HEAD"])
             .expect("branch push should succeed before daemon notes side effect runs");
 
-        let sync = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            local.sync_daemon_force();
-        }));
-        let panic_message = panic_payload_to_string(
-            sync.expect_err("daemon sync must fail when notes push cannot update remote refs/notes/ai"),
+        local.sync_daemon_force();
+        let daemon_log = wait_for_daemon_log(&local, "asynchronous Git notes push failed");
+        assert!(
+            local
+                .read_authorship_note_in_git_dir(upstream.path(), &commit_sha)
+                .is_none(),
+            "locked remote must not receive the authorship note"
         );
         assert!(
-            panic_message.contains("daemon completion log reported an error"),
-            "daemon sync must report notes push side-effect failure instead of silently leaving remote authorship missing for {}; got: {}",
-            commit_sha,
-            panic_message
+            daemon_log.contains("git_notes_push_worker")
+                && daemon_log.contains("asynchronous Git notes push failed"),
+            "daemon must log the best-effort notes push failure; log:\n{}",
+            daemon_log
+        );
+
+        fs::remove_file(remote_notes_dir.join("ai.lock"))
+            .expect("failed to unlock remote notes ref");
+        local
+            .git(&["push", "origin", "HEAD"])
+            .expect("later branch push should succeed");
+        assert!(
+            local
+                .wait_for_authorship_note_in_git_dir(upstream.path(), &commit_sha)
+                .is_some(),
+            "a later user push should retry and deliver the durable local note"
         );
     }
 }
@@ -964,8 +1167,8 @@ worktree_test_wrappers! {
                 "HEAD:refs/heads/main",
             ])
             .expect("branch push to explicit path should succeed");
-
-        let pushed_note = explicit_destination.read_authorship_note(&commit_sha);
+        let pushed_note = local
+            .wait_for_authorship_note_in_git_dir(explicit_destination.path(), &commit_sha);
         assert!(
             pushed_note.is_some(),
             "git push to an explicit repository path must push authorship notes to that same destination for {}",
@@ -1396,8 +1599,7 @@ worktree_test_wrappers! {
         local
             .git(&["push", "-u", "origin", "HEAD"])
             .expect("push should succeed");
-
-        let remote_note = local.read_authorship_note_in_git_dir(upstream.path(), &seed_sha);
+        let remote_note = local.wait_for_authorship_note_in_git_dir(upstream.path(), &seed_sha);
         assert!(
             remote_note.is_some(),
             "push should propagate authorship note for commit {} to upstream",

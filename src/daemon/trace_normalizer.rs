@@ -18,6 +18,7 @@ pub struct PendingTraceCommand {
     pub raw_argv: Vec<String>,
     pub root_cmd_name: Option<String>,
     pub observed_child_commands: Vec<String>,
+    pub transport_target: Option<String>,
     pub invocation_worktree: Option<PathBuf>,
     pub worktree: Option<PathBuf>,
     pub family_key: Option<FamilyKey>,
@@ -248,6 +249,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             "start" => self.handle_start(payload, sid, &root_sid, ts),
             "def_repo" => self.handle_def_repo(payload, sid, &root_sid),
             "cmd_name" => self.handle_cmd_name(payload, sid, &root_sid),
+            "child_start" => self.handle_child_start(payload, &root_sid),
             "def_param" => self.handle_def_param(payload, &root_sid),
             "exec" => Ok(None),
             "exit" => self.handle_exit(payload, sid, &root_sid, ts, false),
@@ -301,6 +303,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             raw_argv,
             root_cmd_name: None,
             observed_child_commands: Vec::new(),
+            transport_target: None,
             invocation_worktree: worktree.clone(),
             worktree,
             family_key,
@@ -334,6 +337,20 @@ impl<B: GitBackend> TraceNormalizer<B> {
                 .insert(root_sid.to_string(), deferred);
         }
 
+        Ok(None)
+    }
+
+    fn handle_child_start(
+        &mut self,
+        payload: &Value,
+        root_sid: &str,
+    ) -> Result<Option<NormalizedCommand>, GitAiError> {
+        let Some(pending) = self.state.pending.get_mut(root_sid) else {
+            return Ok(None);
+        };
+        if pending.transport_target.is_none() {
+            pending.transport_target = transport_target_from_child_start(payload);
+        }
         Ok(None)
     }
 
@@ -730,6 +747,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             invoked_command,
             invoked_args,
             observed_child_commands: pending.observed_child_commands,
+            transport_target: pending.transport_target,
             exit_code,
             started_at_ns: pending.started_at_ns,
             finished_at_ns,
@@ -801,6 +819,68 @@ fn payload_argv(payload: &Value) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn transport_target_from_child_start(payload: &Value) -> Option<String> {
+    let child_class = payload.get("child_class").and_then(Value::as_str)?;
+    let argv = payload_argv(payload);
+
+    match child_class {
+        class if class.starts_with("remote-") => argv.last().cloned(),
+        "transport/file" => argv
+            .iter()
+            .find_map(|arg| receive_pack_repository(arg))
+            .map(str::to_string),
+        "transport/ssh" => ssh_transport_target(&argv),
+        _ => None,
+    }
+}
+
+fn receive_pack_repository(command: &str) -> Option<&str> {
+    let repository = command
+        .strip_prefix("git-receive-pack ")
+        .or_else(|| command.strip_prefix("git receive-pack "))?
+        .trim();
+    if repository.len() >= 2 {
+        let first = repository.as_bytes()[0];
+        let last = repository.as_bytes()[repository.len() - 1];
+        if (first == b'\'' && last == b'\'') || (first == b'\"' && last == b'\"') {
+            return repository.get(1..repository.len() - 1);
+        }
+    }
+    Some(repository)
+}
+
+fn ssh_transport_target(argv: &[String]) -> Option<String> {
+    let repository = argv.iter().find_map(|arg| receive_pack_repository(arg))?;
+    let service_index = argv
+        .iter()
+        .position(|arg| receive_pack_repository(arg).is_some())?;
+    let host = argv[..service_index]
+        .iter()
+        .rev()
+        .find(|arg| !arg.starts_with('-') && arg.as_str() != "ssh")?;
+    let port = argv[..service_index]
+        .windows(2)
+        .find_map(|pair| (pair[0] == "-p").then_some(pair[1].as_str()))
+        .or_else(|| {
+            argv[..service_index].windows(2).find_map(|pair| {
+                pair[0]
+                    .eq_ignore_ascii_case("-o")
+                    .then(|| pair[1].strip_prefix("Port="))
+                    .flatten()
+            })
+        });
+    if let Some(port) = port {
+        Some(format!(
+            "ssh://{}:{}/{}",
+            host,
+            port,
+            repository.trim_start_matches('/')
+        ))
+    } else {
+        Some(format!("{}:{}", host, repository.trim_start_matches('/')))
+    }
 }
 
 /// Trace2 `def_repo` events carry a `repo` index: 1 is the process's primary
@@ -1294,6 +1374,71 @@ mod tests {
         assert_eq!(cmd.root_sid, "s1");
         assert_eq!(cmd.primary_command.as_deref(), Some("status"));
         assert_eq!(cmd.exit_code, 0);
+    }
+
+    #[test]
+    fn normalizer_captures_resolved_file_push_destination() {
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+        let start = serde_json::json!({
+            "event":"start", "sid":"push-file", "ts":1,
+            "argv":["git","push","origin","main"], "worktree":"/repo"
+        });
+        let child = serde_json::json!({
+            "event":"child_start", "sid":"push-file", "ts":2,
+            "child_class":"transport/file",
+            "argv":["git-receive-pack '/resolved/remote.git'"]
+        });
+
+        normalizer.ingest_payload(&start).unwrap();
+        normalizer.ingest_payload(&child).unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"exit", "sid":"push-file", "ts":3, "code":0
+            }))
+            .unwrap();
+        let command = normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"atexit", "sid":"push-file", "ts":4, "code":0
+            }))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            command.transport_target.as_deref(),
+            Some("/resolved/remote.git")
+        );
+    }
+
+    #[test]
+    fn extracts_http_and_ssh_push_destinations() {
+        let http = serde_json::json!({
+            "child_class":"remote-http",
+            "argv":["git","remote-http","origin","https://example.com/org/repo.git"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&http).as_deref(),
+            Some("https://example.com/org/repo.git")
+        );
+
+        let ssh = serde_json::json!({
+            "child_class":"transport/ssh",
+            "argv":["ssh","git@example.com","git-receive-pack '/org/repo.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&ssh).as_deref(),
+            Some("git@example.com:org/repo.git")
+        );
+
+        let ssh_port = serde_json::json!({
+            "child_class":"transport/ssh",
+            "argv":["ssh","-p","2222","git@example.com","git-receive-pack '/org/repo.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&ssh_port).as_deref(),
+            Some("ssh://git@example.com:2222/org/repo.git")
+        );
     }
 
     #[test]
