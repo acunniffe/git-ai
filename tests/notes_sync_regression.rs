@@ -1607,3 +1607,52 @@ worktree_test_wrappers! {
         );
     }
 }
+
+worktree_test_wrappers! {
+    fn notes_sync_push_propagates_authorship_notes_to_every_push_url() {
+        let (local, upstream) = TestRepo::new_with_remote();
+        let mirror = repos::test_repo::TestRepo::new_bare();
+        let upstream_path = upstream.path().to_string_lossy().to_string();
+        let mirror_path = mirror.path().to_string_lossy().to_string();
+        local
+            .git_og(&[
+                "config",
+                "--add",
+                "remote.origin.pushurl",
+                upstream_path.as_str(),
+            ])
+            .expect("first push URL should be configured");
+        local
+            .git_og(&[
+                "config",
+                "--add",
+                "remote.origin.pushurl",
+                mirror_path.as_str(),
+            ])
+            .expect("second push URL should be configured");
+
+        let mut file = local.filename("push-mirrors.txt");
+        file.set_contents(vec!["mirrored AI line".ai()]);
+        let commit = local
+            .stage_all_and_commit("push notes to every mirror")
+            .expect("commit should succeed");
+        let commit_sha = commit.commit_sha;
+        file.assert_committed_lines(vec!["mirrored AI line".ai()]);
+
+        local
+            .git(&["push", "-u", "origin", "HEAD"])
+            .expect("branch push to every push URL should succeed");
+        assert!(
+            local
+                .wait_for_authorship_note_in_git_dir(upstream.path(), &commit_sha)
+                .is_some(),
+            "first push URL should receive authorship notes for {commit_sha}"
+        );
+        assert!(
+            local
+                .wait_for_authorship_note_in_git_dir(mirror.path(), &commit_sha)
+                .is_some(),
+            "second push URL should receive authorship notes for {commit_sha}"
+        );
+    }
+}

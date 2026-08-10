@@ -9601,7 +9601,7 @@ mod tests {
             invoked_command: Some("rebase".to_string()),
             invoked_args: invoked_args.iter().map(|arg| (*arg).to_string()).collect(),
             observed_child_commands: Vec::new(),
-            transport_target: None,
+            transport_targets: Vec::new(),
             exit_code: 0,
             started_at_ns: 1,
             finished_at_ns: 2,

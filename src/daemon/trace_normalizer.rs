@@ -18,7 +18,7 @@ pub struct PendingTraceCommand {
     pub raw_argv: Vec<String>,
     pub root_cmd_name: Option<String>,
     pub observed_child_commands: Vec<String>,
-    pub transport_target: Option<String>,
+    pub transport_targets: Vec<String>,
     pub invocation_cwd: Option<PathBuf>,
     pub invocation_worktree: Option<PathBuf>,
     pub worktree: Option<PathBuf>,
@@ -61,6 +61,7 @@ pub struct TraceNormalizer<B: GitBackend> {
 }
 
 const COMPLETED_ROOT_RETENTION_LIMIT: usize = 16_384;
+const MAX_TRANSPORT_TARGETS_PER_COMMAND: usize = 8;
 
 impl<B: GitBackend> TraceNormalizer<B> {
     pub fn new(backend: Arc<B>) -> Self {
@@ -305,7 +306,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             raw_argv,
             root_cmd_name: None,
             observed_child_commands: Vec::new(),
-            transport_target: None,
+            transport_targets: Vec::new(),
             invocation_cwd,
             invocation_worktree: worktree.clone(),
             worktree,
@@ -355,15 +356,24 @@ impl<B: GitBackend> TraceNormalizer<B> {
         let Some(pending) = self.state.pending.get_mut(root_sid) else {
             return Ok(None);
         };
-        if pending.transport_target.is_none() {
-            pending.transport_target =
-                transport_target_from_child_start(payload).and_then(|target| {
-                    resolve_file_transport_target(
-                        payload,
-                        target,
-                        pending.invocation_cwd.as_deref(),
-                    )
-                });
+        let Some(target) = transport_target_from_child_start(payload).and_then(|target| {
+            resolve_file_transport_target(payload, target, pending.invocation_cwd.as_deref())
+        }) else {
+            return Ok(None);
+        };
+        if pending.transport_targets.contains(&target) {
+            return Ok(None);
+        }
+        if pending.transport_targets.len() >= MAX_TRANSPORT_TARGETS_PER_COMMAND {
+            tracing::warn!(
+                component = "trace_normalizer",
+                phase = "transport_target_overflow",
+                root_sid,
+                max_targets = MAX_TRANSPORT_TARGETS_PER_COMMAND,
+                "dropping traced transport destination because the command limit was reached"
+            );
+        } else {
+            pending.transport_targets.push(target);
         }
         Ok(None)
     }
@@ -761,7 +771,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             invoked_command,
             invoked_args,
             observed_child_commands: pending.observed_child_commands,
-            transport_target: pending.transport_target,
+            transport_targets: pending.transport_targets,
             exit_code,
             started_at_ns: pending.started_at_ns,
             finished_at_ns,
@@ -1426,7 +1436,7 @@ mod tests {
     }
 
     #[test]
-    fn normalizer_captures_resolved_file_push_destination() {
+    fn normalizer_captures_all_resolved_file_push_destinations() {
         let backend = Arc::new(MockBackend::default());
         backend.set_family("/repo", "/repo/.git");
         let mut normalizer = TraceNormalizer::new(backend);
@@ -1444,19 +1454,26 @@ mod tests {
         normalizer.ingest_payload(&child).unwrap();
         normalizer
             .ingest_payload(&serde_json::json!({
-                "event":"exit", "sid":"push-file", "ts":3, "code":0
+                "event":"child_start", "sid":"push-file", "ts":3,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '/resolved/mirror.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"exit", "sid":"push-file", "ts":4, "code":0
             }))
             .unwrap();
         let command = normalizer
             .ingest_payload(&serde_json::json!({
-                "event":"atexit", "sid":"push-file", "ts":4, "code":0
+                "event":"atexit", "sid":"push-file", "ts":5, "code":0
             }))
             .unwrap()
             .unwrap();
 
         assert_eq!(
-            command.transport_target.as_deref(),
-            Some("/resolved/remote.git")
+            command.transport_targets,
+            vec!["/resolved/remote.git", "/resolved/mirror.git"]
         );
     }
 
@@ -1491,10 +1508,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(
-            command.transport_target.as_deref(),
-            Some("/repo/remote.git")
-        );
+        assert_eq!(command.transport_targets, vec!["/repo/remote.git"]);
     }
 
     #[test]
@@ -1527,7 +1541,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(command.transport_target, None);
+        assert!(command.transport_targets.is_empty());
     }
 
     #[test]
@@ -1568,10 +1582,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        assert_eq!(
-            command.transport_target.as_deref(),
-            Some("/superproject/remote.git")
-        );
+        assert_eq!(command.transport_targets, vec!["/superproject/remote.git"]);
     }
 
     #[test]
