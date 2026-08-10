@@ -6,7 +6,7 @@ use crate::git::cli_parser::{
 };
 use crate::git::find_repository_in_path;
 use crate::git::reftable::{ReftableLogEntry, ReftableReader, reftable_stack_update_index};
-use crate::git::repo_state::{common_dir_for_worktree, git_dir_for_worktree, is_valid_git_oid};
+use crate::git::repo_state::{common_dir_for_git_dir, git_dir_for_worktree, is_valid_git_oid};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
@@ -251,6 +251,7 @@ impl RefCursor {
             self.replace_reftable_stack_entries(
                 &common_stack,
                 (main_worktree || had_common_head).then_some(common_git_dir.as_path()),
+                true,
                 common_logs,
             );
         }
@@ -264,7 +265,7 @@ impl RefCursor {
                 .cloned()
                 .collect::<Vec<_>>();
             for log in head_logs {
-                self.insert_reftable_entry(&common_stack, Some(&common_git_dir), log);
+                self.insert_reftable_entry(&common_stack, Some(&common_git_dir), true, log);
             }
         }
         if let Some(git_dir) = git_dir.as_deref()
@@ -272,7 +273,7 @@ impl RefCursor {
         {
             let head_stack = git_dir.join("reftable");
             if let Some(head_logs) = self.reftable_reader.read_logs_if_changed(&head_stack)? {
-                self.replace_reftable_stack_entries(&head_stack, Some(git_dir), head_logs);
+                self.replace_reftable_stack_entries(&head_stack, Some(git_dir), false, head_logs);
             }
         }
         Ok(())
@@ -282,6 +283,7 @@ impl RefCursor {
         &mut self,
         stack_dir: &Path,
         git_dir: Option<&Path>,
+        is_common_stack: bool,
         logs: Vec<ReftableLogEntry>,
     ) {
         let stack_list = stack_dir.join("tables.list");
@@ -290,8 +292,10 @@ impl RefCursor {
             !entries.is_empty()
         });
         for log in logs {
-            if log.reference != "HEAD" || git_dir.is_some() {
-                self.insert_reftable_entry(stack_dir, git_dir, log);
+            if (log.reference == "HEAD" && git_dir.is_some())
+                || (log.reference != "HEAD" && is_common_stack)
+            {
+                self.insert_reftable_entry(stack_dir, git_dir, is_common_stack, log);
             }
         }
     }
@@ -300,6 +304,7 @@ impl RefCursor {
         &mut self,
         stack_dir: &Path,
         git_dir: Option<&Path>,
+        is_common_stack: bool,
         log: ReftableLogEntry,
     ) {
         let key = if log.reference == "HEAD" {
@@ -307,8 +312,10 @@ impl RefCursor {
                 return;
             };
             head_key(git_dir)
-        } else {
+        } else if is_common_stack {
             common_key(&log.reference)
+        } else {
+            return;
         };
         self.reftable_entries
             .entry(key.clone())
@@ -528,7 +535,7 @@ impl RefCursor {
                 else {
                     return Ok(offset);
                 };
-                let entries = read_reflog_entries(key.to_string(), &path, reference, None)?;
+                let entries = self.read_entries(key.to_string(), &path, reference, None)?;
                 let log_end = entries
                     .last()
                     .map(|entry| entry.end_offset)
@@ -1222,6 +1229,7 @@ impl RefCursor {
         cmd: &mut NormalizedCommand,
     ) -> Result<(), GitAiError> {
         let key = common_key("refs/stash");
+        let cursor_boundary = self.offsets.get(&key).copied();
         let target_oid = cmd
             .stash_target_oid
             .clone()
@@ -1247,23 +1255,25 @@ impl RefCursor {
         }
 
         let Some(target_oid) = target_oid else {
-            self.sync_common_ref_cursor_to_log_end_after_rewrite("refs/stash")?;
+            self.sync_common_ref_cursor_after_rewrite("refs/stash", cursor_boundary)?;
             return Ok(());
         };
 
         let target_index = stash_target_index(target);
-        let old_top = self
-            .stash_stack
-            .first()
-            .cloned()
-            .or_else(|| (target_index.unwrap_or(0) == 0).then(|| target_oid.clone()));
-        if self.uses_reftable {
+        let old_top = self.stash_stack.first().cloned().or_else(|| {
+            (self.uses_reftable && cursor_boundary.is_some() && target_index.unwrap_or(0) == 0)
+                .then(|| target_oid.clone())
+        });
+        if self.uses_reftable
+            && let Some(cursor_boundary) = cursor_boundary
+        {
             self.stash_stack = self
                 .reftable_entries
                 .get(&key)
                 .into_iter()
                 .flatten()
                 .rev()
+                .filter(|entry| entry.end_offset <= cursor_boundary)
                 .filter(|entry| valid_non_zero_oid(&entry.new))
                 .map(|entry| entry.new.clone())
                 .collect();
@@ -1283,7 +1293,7 @@ impl RefCursor {
             cmd.stash_target_oid = Some(target_oid);
         }
 
-        self.sync_common_ref_cursor_to_log_end_after_rewrite("refs/stash")?;
+        self.sync_common_ref_cursor_after_rewrite("refs/stash", cursor_boundary)?;
         Ok(())
     }
 
@@ -2491,17 +2501,16 @@ impl RefCursor {
         Ok(None)
     }
 
-    fn sync_common_ref_cursor_to_log_end_after_rewrite(
+    fn sync_common_ref_cursor_after_rewrite(
         &mut self,
         reference: &str,
+        upper_bound: Option<u64>,
     ) -> Result<(), GitAiError> {
         let key = common_key(reference);
         let path = self.common_dir().join("logs").join(reference);
         if self.uses_reftable {
-            if let Some(entry) = self
-                .reftable_entries
-                .get(&key)
-                .and_then(|entries| entries.last())
+            if let Some(entry) = upper_bound
+                .and_then(|upper_bound| self.reftable_entry_at_or_before(&key, upper_bound))
                 .cloned()
             {
                 self.advance_cursor_to_entry(&entry);
@@ -2630,27 +2639,32 @@ impl RefCursor {
 }
 
 pub(crate) fn capture_reflog_start_offsets_for_worktree(worktree: &Path) -> HashMap<String, u64> {
+    let Some(git_dir) = git_dir_for_worktree(worktree) else {
+        return HashMap::new();
+    };
+    let common_dir = common_dir_for_git_dir(&git_dir);
+    capture_reflog_start_offsets(&git_dir, common_dir.as_deref())
+}
+
+fn capture_reflog_start_offsets(git_dir: &Path, common_dir: Option<&Path>) -> HashMap<String, u64> {
     let mut offsets = HashMap::new();
 
-    let Some(common_dir) = common_dir_for_worktree(worktree) else {
+    let head_log = git_dir.join("logs").join("HEAD");
+    if let Ok(metadata) = fs::metadata(&head_log) {
+        offsets.insert(head_key(git_dir), metadata.len());
+    }
+
+    let Some(common_dir) = common_dir else {
         return offsets;
     };
     if let Ok(Some(position)) = reftable_stack_update_index(&common_dir.join("reftable")) {
         offsets.insert(reftable_common_key(), position);
-        if let Some(git_dir) = git_dir_for_worktree(worktree)
-            && git_dir != common_dir
+        if git_dir != common_dir
             && let Ok(Some(head_position)) = reftable_stack_update_index(&git_dir.join("reftable"))
         {
-            offsets.insert(reftable_head_key(&git_dir), head_position);
+            offsets.insert(reftable_head_key(git_dir), head_position);
         }
         return offsets;
-    }
-
-    if let Some(git_dir) = git_dir_for_worktree(worktree) {
-        let path = git_dir.join("logs").join("HEAD");
-        if let Ok(metadata) = fs::metadata(&path) {
-            offsets.insert(head_key(&git_dir), metadata.len());
-        }
     }
 
     let logs = common_dir.join("logs");
@@ -4165,6 +4179,20 @@ mod tests {
     }
 
     #[test]
+    fn captures_worktree_head_offset_without_a_common_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let git_dir = temp.path().join("checkout.git");
+        let head_log = git_dir.join("logs/HEAD");
+        fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+        fs::write(&head_log, "one reflog entry\n").unwrap();
+
+        assert_eq!(
+            capture_reflog_start_offsets(&git_dir, None),
+            HashMap::from([(head_key(&git_dir), 17)])
+        );
+    }
+
+    #[test]
     fn commit_subject_matches_git_reflog_trailing_whitespace_cleanup() {
         assert_eq!(commit_subject("subject \t"), Some("subject".to_string()));
         assert_eq!(
@@ -4275,6 +4303,17 @@ mod tests {
         }
     }
 
+    fn reftable_log_entry(reference: &str, update_index: u64) -> ReftableLogEntry {
+        ReftableLogEntry {
+            reference: reference.to_string(),
+            update_index,
+            old_oid: A.to_string(),
+            new_oid: B.to_string(),
+            message: "test update".to_string(),
+            timestamp_secs: 0,
+        }
+    }
+
     #[test]
     fn reftable_cursor_keeps_stack_watermark_between_ref_updates() {
         let temp = tempfile::tempdir().unwrap();
@@ -4322,6 +4361,44 @@ mod tests {
         assert!(
             cursor.reftable_entries.contains_key(&head_key(&common_dir)),
             "main-worktree HEAD history should be materialized from the cached stack"
+        );
+    }
+
+    #[test]
+    fn reftable_worktree_stack_only_materializes_head_history() {
+        let temp = tempfile::tempdir().unwrap();
+        let common_dir = temp.path().join("common");
+        let worktree_git_dir = temp.path().join("worktrees/linked");
+        let worktree_stack = worktree_git_dir.join("reftable");
+        let family = FamilyKey::new(common_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        cursor.uses_reftable = true;
+
+        cursor.replace_reftable_stack_entries(
+            &worktree_stack,
+            Some(&worktree_git_dir),
+            false,
+            vec![
+                reftable_log_entry("HEAD", 5),
+                reftable_log_entry("ORIG_HEAD", 2),
+                reftable_log_entry("refs/worktree/topic", 3),
+            ],
+        );
+
+        assert!(
+            cursor
+                .reftable_entries
+                .contains_key(&head_key(&worktree_git_dir))
+        );
+        assert!(
+            !cursor
+                .reftable_entries
+                .contains_key(&common_key("ORIG_HEAD"))
+        );
+        assert!(
+            !cursor
+                .reftable_entries
+                .contains_key(&common_key("refs/worktree/topic"))
         );
     }
 
@@ -4377,6 +4454,84 @@ mod tests {
             }]
         );
         assert_eq!(cursor.stash_stack, vec![B.to_string()]);
+    }
+
+    #[test]
+    fn reftable_stash_drop_excludes_future_pushes_from_stack_and_cursor() {
+        let temp = tempfile::tempdir().unwrap();
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        cursor.uses_reftable = true;
+        let key = common_key("refs/stash");
+        let path = temp.path().join("reftable/tables.list");
+        let existing = reftable_cursor_entry(&key, &path, 4);
+        let mut future = reftable_cursor_entry(&key, &path, 7);
+        future.old = B.to_string();
+        future.new = D.to_string();
+        cursor
+            .reftable_entries
+            .insert(key.clone(), vec![existing, future]);
+        cursor.offsets.insert(key.clone(), 5);
+        cursor.stash_stack = vec![C.to_string(), B.to_string()];
+        let mut cmd = command(&family, &["stash", "drop"]);
+        cmd.stash_target_oid = Some(C.to_string());
+
+        cursor
+            .consume_destructive_stash_operation(None, &mut cmd)
+            .unwrap();
+
+        assert_eq!(
+            cmd.ref_changes,
+            vec![RefChange {
+                reference: "refs/stash".to_string(),
+                old: C.to_string(),
+                new: B.to_string(),
+            }]
+        );
+        assert_eq!(cursor.stash_stack, vec![B.to_string()]);
+        assert_eq!(cursor.offsets.get(&key), Some(&4));
+    }
+
+    #[test]
+    fn cold_reftable_stash_push_clamps_late_stack_watermark() {
+        let temp = tempfile::tempdir().unwrap();
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        cursor.uses_reftable = true;
+        let key = common_key("refs/stash");
+        let path = temp.path().join("reftable/tables.list");
+        let mut entry = reftable_cursor_entry(&key, &path, 5);
+        entry.message = "WIP on main".to_string();
+        cursor.reftable_entries.insert(key.clone(), vec![entry]);
+        let cmd = command(&family, &["stash", "push", "--", "a.txt"]);
+
+        let seed = cursor.clamp_seed_to_own_entry(&key, 5, &cmd).unwrap();
+
+        assert_eq!(seed, 4);
+    }
+
+    #[test]
+    fn cold_files_stash_drop_does_not_invent_an_empty_stack() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let stash_log = git_dir.join("logs/refs/stash");
+        fs::create_dir_all(stash_log.parent().unwrap()).unwrap();
+        fs::write(&stash_log, "").unwrap();
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        cursor.offsets.insert(common_key("refs/stash"), 100);
+        let mut cmd = command(&family, &["stash", "drop"]);
+        cmd.stash_target_oid = Some(C.to_string());
+
+        cursor
+            .consume_destructive_stash_operation(None, &mut cmd)
+            .unwrap();
+
+        assert!(
+            cmd.ref_changes.is_empty(),
+            "an uninitialized files-backend stash stack cannot prove the new top"
+        );
     }
 
     #[test]

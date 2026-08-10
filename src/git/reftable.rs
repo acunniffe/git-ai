@@ -84,10 +84,15 @@ pub(crate) struct ReftableLogEntry {
 
 #[derive(Debug, Default)]
 pub(crate) struct ReftableReader {
+    table_bytes: HashMap<PathBuf, Vec<u8>>,
     parsed_refs: HashMap<(std::path::PathBuf, String), Option<ReftableRefValue>>,
     parsed_logs: HashMap<std::path::PathBuf, Vec<ParsedLogRecord>>,
     unreadable_log_tables: HashSet<std::path::PathBuf>,
     log_snapshots: HashMap<PathBuf, ReftableLogSnapshot>,
+    #[cfg(test)]
+    table_read_count: usize,
+    #[cfg(test)]
+    stack_read_count: usize,
 }
 
 #[derive(Debug)]
@@ -117,7 +122,7 @@ impl ReftableReader {
         stack_dir: &Path,
     ) -> Result<Option<Vec<ReftableLogEntry>>, GitAiError> {
         for attempt in 0..2 {
-            let active_paths = active_table_paths(stack_dir)?;
+            let active_paths = self.active_table_paths(stack_dir)?;
             if self
                 .log_snapshots
                 .get(stack_dir)
@@ -127,7 +132,7 @@ impl ReftableReader {
             }
             let mut visible = BTreeMap::<(String, u64), ReftableLogEntry>::new();
             let mut retry_stack = false;
-            let mut cache_snapshot = true;
+            let mut snapshot_complete = true;
             for table_path in &active_paths {
                 if self.unreadable_log_tables.contains(table_path) {
                     continue;
@@ -146,7 +151,7 @@ impl ReftableReader {
                             // deterministic. I/O failures can be transient and must
                             // be retried by the next command rather than poisoning
                             // this repo family's reader for its whole lifetime.
-                            cache_snapshot = false;
+                            snapshot_complete = false;
                         }
                         tracing::warn!(
                             path = %table_path.display(),
@@ -177,6 +182,12 @@ impl ReftableReader {
             if retry_stack {
                 continue;
             }
+            if !snapshot_complete {
+                // A transient failure means `visible` is only a partial view.
+                // Keep the last complete snapshot authoritative and retry the
+                // changed stack on the next command.
+                return Ok(None);
+            }
             self.prune_stack_cache(stack_dir, &active_paths);
             let mut logs = visible.into_values().collect::<Vec<_>>();
             logs.sort_by(|left, right| {
@@ -184,17 +195,13 @@ impl ReftableReader {
                     .cmp(&right.update_index)
                     .then_with(|| left.reference.cmp(&right.reference))
             });
-            if cache_snapshot {
-                self.log_snapshots.insert(
-                    stack_dir.to_path_buf(),
-                    ReftableLogSnapshot {
-                        active_paths,
-                        logs: logs.clone(),
-                    },
-                );
-            } else {
-                self.log_snapshots.remove(stack_dir);
-            }
+            self.log_snapshots.insert(
+                stack_dir.to_path_buf(),
+                ReftableLogSnapshot {
+                    active_paths,
+                    logs: logs.clone(),
+                },
+            );
             return Ok(Some(logs));
         }
         Ok(Some(Vec::new()))
@@ -207,44 +214,27 @@ impl ReftableReader {
     }
 
     pub(crate) fn reset_log_cache(&mut self) {
+        self.table_bytes.clear();
         self.parsed_refs.clear();
         self.parsed_logs.clear();
         self.unreadable_log_tables.clear();
         self.log_snapshots.clear();
     }
 
-    fn read_ref(
+    fn read_ref_at_snapshot(
         &mut self,
-        stack_dir: &Path,
+        active_paths: &[PathBuf],
         reference: &str,
     ) -> Result<Option<ReftableRefValue>, GitAiError> {
-        for attempt in 0..2 {
-            let active_paths = active_table_paths(stack_dir)?;
-            let mut value = None;
-            let mut retry_stack = false;
-            for table_path in &active_paths {
-                let entry = match self.parsed_ref(table_path, reference) {
-                    Ok(entry) => entry,
-                    Err(error) if attempt == 0 && is_not_found(&error) => {
-                        retry_stack = true;
-                        break;
-                    }
-                    Err(error) if is_not_found(&error) => continue,
-                    Err(error) => return Err(error),
-                };
-                match entry {
-                    Some(ReftableRefValue::Deletion) => value = None,
-                    Some(entry) => value = Some(entry),
-                    None => {}
-                }
+        let mut value = None;
+        for table_path in active_paths {
+            match self.parsed_ref(table_path, reference)? {
+                Some(ReftableRefValue::Deletion) => value = None,
+                Some(entry) => value = Some(entry),
+                None => {}
             }
-            if retry_stack {
-                continue;
-            }
-            self.prune_stack_cache(stack_dir, &active_paths);
-            return Ok(value);
         }
-        Ok(None)
+        Ok(value)
     }
 
     fn parsed_ref(
@@ -255,7 +245,7 @@ impl ReftableReader {
         let key = (table_path.to_path_buf(), reference.to_string());
         if !self.parsed_refs.contains_key(&key) {
             let value =
-                parse_table_ref(&fs::read(table_path)?, reference)?.map(|entry| entry.value);
+                parse_table_ref(self.table_bytes(table_path)?, reference)?.map(|entry| entry.value);
             self.parsed_refs.insert(key.clone(), value);
         }
         Ok(self
@@ -267,7 +257,7 @@ impl ReftableReader {
 
     fn parsed_logs(&mut self, table_path: &Path) -> Result<&Vec<ParsedLogRecord>, GitAiError> {
         if !self.parsed_logs.contains_key(table_path) {
-            let logs = parse_table_logs(&fs::read(table_path)?)?;
+            let logs = parse_table_logs(self.table_bytes(table_path)?)?;
             self.parsed_logs.insert(table_path.to_path_buf(), logs);
         }
         Ok(self
@@ -276,8 +266,37 @@ impl ReftableReader {
             .expect("cached reftable logs must be present"))
     }
 
+    fn table_bytes(&mut self, table_path: &Path) -> Result<&[u8], GitAiError> {
+        if !self.table_bytes.contains_key(table_path) {
+            let bytes = self.read_table(table_path)?;
+            self.table_bytes.insert(table_path.to_path_buf(), bytes);
+        }
+        Ok(self
+            .table_bytes
+            .get(table_path)
+            .expect("cached reftable bytes must be present"))
+    }
+
+    fn read_table(&mut self, table_path: &Path) -> Result<Vec<u8>, GitAiError> {
+        #[cfg(test)]
+        {
+            self.table_read_count += 1;
+        }
+        Ok(fs::read(table_path)?)
+    }
+
+    fn active_table_paths(&mut self, stack_dir: &Path) -> Result<Vec<PathBuf>, GitAiError> {
+        #[cfg(test)]
+        {
+            self.stack_read_count += 1;
+        }
+        active_table_paths(stack_dir)
+    }
+
     fn prune_stack_cache(&mut self, stack_dir: &Path, active_paths: &[std::path::PathBuf]) {
         let active_paths = active_paths.iter().cloned().collect::<HashSet<_>>();
+        self.table_bytes
+            .retain(|path, _| !path.starts_with(stack_dir) || active_paths.contains(path));
         self.parsed_refs
             .retain(|(path, _), _| !path.starts_with(stack_dir) || active_paths.contains(path));
         self.parsed_logs
@@ -293,23 +312,50 @@ impl ReftableReader {
         common_stack: &Path,
         worktree_stack: &Path,
     ) -> Result<Option<(String, Option<String>)>, GitAiError> {
-        let mut head = self.read_ref(common_stack, "HEAD")?;
-        if worktree_stack != common_stack
-            && let Some(worktree_head) = self.read_ref(worktree_stack, "HEAD")?
-        {
-            head = Some(worktree_head);
-        }
-        match head {
-            Some(ReftableRefValue::Direct(oid)) => Ok(Some((oid, None))),
-            Some(ReftableRefValue::Symbolic(target)) => {
-                let Some(ReftableRefValue::Direct(oid)) = self.read_ref(common_stack, &target)?
-                else {
-                    return Ok(None);
-                };
-                Ok(Some((oid, Some(target))))
+        for attempt in 0..2 {
+            let common_paths = self.active_table_paths(common_stack)?;
+            let worktree_paths = if worktree_stack == common_stack {
+                None
+            } else {
+                Some(self.active_table_paths(worktree_stack)?)
+            };
+            let result = (|| {
+                let mut head = self.read_ref_at_snapshot(&common_paths, "HEAD")?;
+                if let Some(worktree_paths) = &worktree_paths
+                    && let Some(worktree_head) =
+                        self.read_ref_at_snapshot(worktree_paths, "HEAD")?
+                {
+                    head = Some(worktree_head);
+                }
+                match head {
+                    Some(ReftableRefValue::Direct(oid)) => Ok(Some((oid, None))),
+                    Some(ReftableRefValue::Symbolic(target)) => {
+                        let Some(ReftableRefValue::Direct(oid)) =
+                            self.read_ref_at_snapshot(&common_paths, &target)?
+                        else {
+                            return Ok(None);
+                        };
+                        Ok(Some((oid, Some(target))))
+                    }
+                    _ => Ok(None),
+                }
+            })();
+            match result {
+                Ok(head) => {
+                    self.prune_stack_cache(common_stack, &common_paths);
+                    if let Some(worktree_paths) = &worktree_paths {
+                        self.prune_stack_cache(worktree_stack, worktree_paths);
+                    }
+                    return Ok(head);
+                }
+                Err(error) if attempt == 0 && is_not_found(&error) => continue,
+                // A table disappearing means compaction raced this snapshot.
+                // Fail closed if a complete replacement snapshot cannot be read.
+                Err(error) if is_not_found(&error) => return Ok(None),
+                Err(error) => return Err(error),
             }
-            _ => Ok(None),
         }
+        Ok(None)
     }
 }
 
@@ -1045,6 +1091,37 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn transient_log_table_io_error_preserves_last_complete_snapshot() {
+        let source = native_reftable_repo("sha1");
+        let source_stack = source.path().join(".git/reftable");
+        let source_table = active_table_paths(&source_stack).unwrap().pop().unwrap();
+        let table_name = source_table.file_name().unwrap().to_string_lossy();
+        let table_bytes = fs::read(&source_table).unwrap();
+        let stack = tempfile::tempdir().unwrap();
+        let table = stack.path().join(table_name.as_ref());
+        fs::write(&table, &table_bytes).unwrap();
+        fs::write(stack.path().join("tables.list"), format!("{table_name}\n")).unwrap();
+        let mut reader = ReftableReader::default();
+        let initial = reader.read_logs_if_changed(stack.path()).unwrap().unwrap();
+
+        let transient_name = "transient.ref";
+        let transient_table = stack.path().join(transient_name);
+        fs::create_dir(&transient_table).unwrap();
+        fs::write(
+            stack.path().join("tables.list"),
+            format!("{table_name}\n{transient_name}\n"),
+        )
+        .unwrap();
+
+        assert!(reader.read_logs_if_changed(stack.path()).unwrap().is_none());
+        assert_eq!(reader.cached_logs(stack.path()), Some(initial.as_slice()));
+
+        fs::remove_dir(&transient_table).unwrap();
+        fs::write(&transient_table, table_bytes).unwrap();
+        assert!(reader.read_logs_if_changed(stack.path()).unwrap().is_some());
+    }
+
+    #[test]
     fn truncated_log_block_header_returns_error() {
         let temp = native_reftable_repo("sha1");
         let stack = temp.path().join(".git/reftable");
@@ -1160,6 +1237,18 @@ pub(crate) mod tests {
             ReftableReader::default().read_head(&stack, &stack).unwrap(),
             Some(expected)
         );
+    }
+
+    #[test]
+    fn symbolic_head_resolution_uses_one_stack_snapshot_and_table_read() {
+        let temp = native_reftable_repo("sha1");
+        let stack = temp.path().join(".git/reftable");
+        let table_count = active_table_paths(&stack).unwrap().len();
+        let mut reader = ReftableReader::default();
+
+        assert!(reader.read_head(&stack, &stack).unwrap().is_some());
+        assert_eq!(reader.stack_read_count, 1);
+        assert_eq!(reader.table_read_count, table_count);
     }
 
     #[test]

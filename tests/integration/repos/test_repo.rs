@@ -1311,6 +1311,12 @@ impl TestRepo {
         Self::new_reftable_with_object_format("sha1")
     }
 
+    pub fn new_reftable_with_daemon_env(daemon_env: &[(&str, &str)]) -> Self {
+        Self::new_with_daemon_env_and_template(daemon_env, |path| {
+            clone_reftable_template_to(path, "sha1");
+        })
+    }
+
     pub fn new_reftable_sha256() -> Self {
         Self::new_reftable_with_object_format("sha256")
     }
@@ -1503,6 +1509,13 @@ impl TestRepo {
     }
 
     pub fn new_with_daemon_env(daemon_env: &[(&str, &str)]) -> Self {
+        Self::new_with_daemon_env_and_template(daemon_env, clone_template_to)
+    }
+
+    fn new_with_daemon_env_and_template(
+        daemon_env: &[(&str, &str)],
+        clone_template: impl FnOnce(&Path),
+    ) -> Self {
         ensure_isolated_process_home();
 
         let mut rng = rand::rng();
@@ -1512,7 +1525,7 @@ impl TestRepo {
         let test_home = base.join(format!("{}-home", n));
         let test_db_path = resolve_test_db_path(&base, n, &test_home);
 
-        clone_template_to(&path);
+        clone_template(&path);
 
         let mut repo = Self {
             path,

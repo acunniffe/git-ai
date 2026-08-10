@@ -1,5 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+use std::fs;
 
 #[test]
 fn reftable_commit_preserves_mixed_attribution_across_commits() {
@@ -95,12 +96,45 @@ fn reftable_checkout_switch_and_branch_history_preserve_attribution() {
 }
 
 #[test]
+fn reftable_squash_merge_uses_ordered_refs_when_async_snapshot_is_late() {
+    let repo = TestRepo::new_reftable_with_daemon_env(&[(
+        "GIT_AI_TEST_TRACE_LISTENER_WORKER_SPAWN_DELAY_MS",
+        "500",
+    )]);
+    let mut file = repo.filename("delayed-squash.txt");
+    fs::write(repo.path().join("delayed-squash.txt"), "base\n").unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+    file.assert_committed_lines(lines!["base".unattributed_human()]);
+    let default_branch = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    repo.git_ai(&["checkpoint", "human", "delayed-squash.txt"])
+        .unwrap();
+    fs::write(repo.path().join("delayed-squash.txt"), "base\nfeature ai\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "delayed-squash.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("feature ai").unwrap();
+    file.assert_committed_lines(lines!["base".unattributed_human(), "feature ai".ai()]);
+
+    repo.git(&["checkout", &default_branch]).unwrap();
+    repo.git(&["merge", "--squash", "feature"]).unwrap();
+    repo.commit("squash feature").unwrap();
+    file.assert_committed_lines(lines!["base".unattributed_human(), "feature ai".ai()]);
+}
+
+#[test]
 fn reftable_stash_push_apply_pop_and_drop_preserve_attribution() {
-    let repo = TestRepo::new_reftable();
+    let repo = TestRepo::new_reftable_with_daemon_env(&[(
+        "GIT_AI_TEST_TRACE_LISTENER_WORKER_SPAWN_DELAY_MS",
+        "500",
+    )]);
     let mut file = repo.filename("stash.txt");
+    let mut future_file = repo.filename("future-stash.txt");
     file.set_contents(lines!["Human root", ""]);
+    future_file.set_contents(lines!["Future root", ""]);
     repo.stage_all_and_commit("root").unwrap();
     file.assert_committed_lines(lines!["Human root".human()]);
+    future_file.assert_committed_lines(lines!["Future root".human()]);
 
     file.insert_at(1, lines!["AI popped".ai()]);
     repo.git(&["stash", "push", "-m", "pop me"]).unwrap();
@@ -112,12 +146,36 @@ fn reftable_stash_push_apply_pop_and_drop_preserve_attribution() {
     repo.git(&["stash", "push", "-m", "apply me"]).unwrap();
     repo.git(&["stash", "apply", "stash@{0}"]).unwrap();
     repo.git(&["stash", "drop", "stash@{0}"]).unwrap();
+
+    // Create a later stash before the delayed daemon processes the drop above.
+    // The drop must stay bounded to its own cursor rather than rebuilding from
+    // this newer repository state.
+    future_file.insert_at(1, lines!["AI future stash".ai()]);
+    repo.git(&[
+        "stash",
+        "push",
+        "-m",
+        "future stash",
+        "--",
+        "future-stash.txt",
+    ])
+    .unwrap();
     repo.stage_all_and_commit("applied").unwrap();
     file.assert_committed_lines(lines![
         "Human root".human(),
         "AI popped".ai(),
         "AI applied".ai(),
     ]);
+    future_file.assert_committed_lines(lines!["Future root".human()]);
+
+    repo.git(&["stash", "pop"]).unwrap();
+    repo.stage_all_and_commit("future stash").unwrap();
+    file.assert_committed_lines(lines![
+        "Human root".human(),
+        "AI popped".ai(),
+        "AI applied".ai(),
+    ]);
+    future_file.assert_committed_lines(lines!["Future root".human(), "AI future stash".ai(),]);
 }
 
 #[test]
