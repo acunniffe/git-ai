@@ -885,8 +885,10 @@ fn ssh_transport_target(argv: &[String]) -> Option<String> {
             port,
             repository.trim_start_matches('/')
         ))
+    } else if repository.starts_with('/') {
+        Some(format!("ssh://{}{}", host, repository))
     } else {
-        Some(format!("{}:{}", host, repository.trim_start_matches('/')))
+        Some(format!("{}:{}", host, repository))
     }
 }
 
@@ -1485,7 +1487,7 @@ mod tests {
         });
         assert_eq!(
             transport_target_from_child_start(&ssh).as_deref(),
-            Some("git@example.com:org/repo.git")
+            Some("ssh://git@example.com/org/repo.git")
         );
 
         let ssh_port = serde_json::json!({
@@ -1503,6 +1505,15 @@ mod tests {
         });
         assert_eq!(
             transport_target_from_child_start(&custom_ssh).as_deref(),
+            Some("ssh://git@example.com/org/repo.git")
+        );
+
+        let relative_ssh = serde_json::json!({
+            "child_class":"transport/ssh",
+            "argv":["ssh","git@example.com","git-receive-pack 'org/repo.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&relative_ssh).as_deref(),
             Some("git@example.com:org/repo.git")
         );
 
