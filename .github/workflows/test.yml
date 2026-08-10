@@ -118,14 +118,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Install Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: '22'
-
-      - name: Install Graphite CLI
-        run: npm install -g @withgraphite/graphite-cli@stable
-
       - name: Install Task
         uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2
 
@@ -166,8 +158,14 @@ jobs:
           shard_count=${{ matrix.shard_count }}
           module_infos=()
           module_names=()
+          # Graphite compatibility runs in its own cross-platform workflow.
+          skip_args=(--skip "graphite::")
 
           while IFS= read -r name; do
+            if [ "$name" = "graphite" ]; then
+              continue
+            fi
+
             module_names+=("$name")
             weight=0
             path="tests/integration/$name.rs"
@@ -213,7 +211,6 @@ jobs:
           done < <(printf '%s\n' "${module_infos[@]}" | sort -t: -k1,1nr -k2,2)
 
           selected_modules=" ${shard_modules[$shard_index]} "
-          skip_args=()
           for name in "${module_names[@]}"; do
             if [[ "$selected_modules" != *" $name "* ]]; then
               skip_args+=(--skip "$name::")
@@ -270,6 +267,11 @@ jobs:
           Get-Content "tests/integration/main.rs" | ForEach-Object {
             if ($_ -match '^mod\s+([A-Za-z0-9_]+);') {
               $name = $Matches[1]
+              # Graphite compatibility runs in its own cross-platform workflow.
+              if ($name -eq "graphite") {
+                return
+              }
+
               $path = Join-Path "tests/integration" "$name.rs"
               $moduleDir = Join-Path "tests/integration" $name
               $weight = 0
@@ -311,11 +313,12 @@ jobs:
           }
 
           $selectedModules = @($shards[$shardIndex].Modules)
-          $skipArgs = @(
+          $skipArgs = @("--skip graphite::") + @(
             $moduleInfos |
               Where-Object { $selectedModules -notcontains $_.Name } |
               ForEach-Object { "--skip $($_.Name)::" }
-          ) -join " "
+          )
+          $skipArgs = $skipArgs -join " "
 
           Write-Host "Running Windows integration shard $($shardIndex + 1)/$shardCount"
           Write-Host "Estimated source-test load: $($shards[$shardIndex].Load)"
