@@ -2,6 +2,7 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use git_ai::config::{NotesBackendConfig, NotesBackendKind};
 use git_ai::notes::db::NotesDatabase;
+use std::fs;
 
 #[test]
 fn log_default_shows_stats_without_raw_note() {
@@ -194,5 +195,74 @@ fn log_http_backend_reads_notes_db_without_git_notes_ref() {
         output.contains("schema_version"),
         "raw note content should come from notes-db:\n{}",
         output
+    );
+}
+
+#[test]
+fn http_backend_cache_miss_never_consults_git_notes_refs() {
+    let mut repo = TestRepo::new();
+    let mut file = repo.filename("http-isolation.txt");
+    file.set_contents(lines!["AI content that only exists in Git notes".ai()]);
+    repo.stage_all_and_commit("feat: isolate HTTP notes")
+        .unwrap();
+    file.assert_lines_and_blame(lines!["AI content that only exists in Git notes".ai()]);
+
+    let sha = repo
+        .git(&["rev-parse", "HEAD"])
+        .expect("resolve committed SHA")
+        .trim()
+        .to_string();
+    assert!(
+        repo.read_authorship_note(&sha).is_some(),
+        "precondition failed: legacy authorship note should exist only in refs/notes/ai"
+    );
+
+    repo.patch_git_ai_config(|patch| {
+        patch.notes_backend = Some(NotesBackendConfig {
+            kind: NotesBackendKind::Http,
+            backend_url: None,
+        });
+    });
+
+    let notes_db = tempfile::NamedTempFile::new().expect("create isolated empty notes db");
+    let notes_db_path = notes_db.path().to_string_lossy().to_string();
+    let spawn_args = tempfile::NamedTempFile::new().expect("create internal Git argument log");
+    let spawn_args_path = spawn_args.path().to_string_lossy().to_string();
+    let env = [
+        ("GIT_AI_TEST_NOTES_DB_PATH", notes_db_path.as_str()),
+        ("GIT_AI_SPAWN_ARGS_LOG", spawn_args_path.as_str()),
+    ];
+
+    let log_output = repo
+        .git_ai_with_env(&["log", "--no-pager", "--raw", "-n", "1"], &env)
+        .expect("HTTP-backed log should succeed without cached authorship");
+    assert!(log_output.contains("feat: isolate HTTP notes"));
+    assert!(
+        !log_output.contains("schema_version")
+            && !log_output.contains("s_")
+            && log_output.contains("Authorship note:\n      (none)"),
+        "HTTP log must not fall back to the legacy Git note:\n{log_output}"
+    );
+
+    let show_output = repo
+        .git_ai_with_env(&["show", "HEAD"], &env)
+        .expect("HTTP-backed show should succeed without cached authorship");
+    assert!(
+        show_output.contains("No authorship data found"),
+        "HTTP show must not fall back to the legacy Git note:\n{show_output}"
+    );
+
+    repo.git_ai_with_env(&["stats", "HEAD", "--json"], &env)
+        .expect("HTTP-backed stats should succeed without cached authorship");
+    let _ = repo.git_ai_with_env(&["diff", "HEAD", "--json"], &env);
+    let _ = repo.git_ai_with_env(&["show-prompt", "s_missing_http_isolation"], &env);
+
+    let spawned_args =
+        fs::read_to_string(spawn_args.path()).expect("read internal Git argument log");
+    assert!(
+        !spawned_args
+            .lines()
+            .any(|line| line.contains("refs/notes/") || line.contains("--ref=ai")),
+        "ordinary HTTP paths must never target a Git notes ref; spawns:\n{spawned_args}"
     );
 }

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::authorship::authorship_log_serialization::AuthorshipLog;
 use crate::error::GitAiError;
-use crate::git::notes_api::{commits_with_notes, read_note_blob_oids};
+use crate::git::notes_api::{commits_with_notes, read_notes_batch};
 #[cfg(test)]
 use crate::git::repository::exec_git;
 use crate::git::repository::{Repository, exec_git_stdin};
@@ -18,25 +18,14 @@ pub async fn load_ai_touched_files_for_commits(
             return Ok(HashSet::new());
         }
 
-        let note_blob_map = read_note_blob_oids(&repo, &commit_shas)?;
-        if note_blob_map.is_empty() {
+        let notes = read_notes_batch(&repo, &commit_shas)?;
+        if notes.is_empty() {
             return Ok(HashSet::new());
         }
 
-        let mut unique_blob_oids = HashSet::new();
-        for blob_oid in note_blob_map.values() {
-            unique_blob_oids.insert(blob_oid.clone());
-        }
-        let mut blob_oids: Vec<String> = unique_blob_oids.into_iter().collect();
-        blob_oids.sort();
-
-        let blob_contents = batch_read_blobs_with_oids(&repo.global_args_for_exec(), &blob_oids)?;
-
         let mut all_files = HashSet::new();
-        for blob_oid in note_blob_map.into_values() {
-            if let Some(content) = blob_contents.get(&blob_oid) {
-                extract_file_paths_from_note(content, &mut all_files);
-            }
+        for content in notes.into_values() {
+            extract_file_paths_from_note(&content, &mut all_files);
         }
 
         Ok(all_files)

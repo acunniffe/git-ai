@@ -7,8 +7,9 @@ use crate::git::refs::{
 };
 use crate::git::repository::{
     CommitRange, Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin,
+    exec_git_with_timeout,
 };
-use crate::git::sync_authorship::fetch_authorship_notes;
+use crate::git::sync_authorship::{fetch_authorship_notes, notes_transport_timeout};
 use std::fs;
 use std::path::PathBuf;
 
@@ -119,7 +120,7 @@ impl CiContext {
                 } else {
                     println!("Fetching authorship history");
                     // Ensure we have the full authorship history before checking for existing notes
-                    fetch_authorship_notes(&self.repo, "origin")?;
+                    self.fetch_authorship_history("origin")?;
                     println!("Fetched authorship history");
                 }
 
@@ -406,7 +407,7 @@ impl CiContext {
                     println!("Skipping authorship history fetch");
                 } else {
                     println!("Fetching authorship history");
-                    fetch_authorship_notes(&self.repo, "origin")?;
+                    self.fetch_authorship_history("origin")?;
                     println!("Fetched authorship history");
                 }
 
@@ -575,6 +576,12 @@ impl CiContext {
     /// Returns Ok(true) if notes were found and fetched,
     /// Ok(false) if no notes exist on the fork.
     fn fetch_fork_notes(repo: &Repository, fork_url: &str) -> Result<bool, GitAiError> {
+        if crate::config::Config::fresh().notes_backend_enabled() {
+            tracing::debug!(
+                "fetch_fork_notes: skipping refs/notes/ai transport (HTTP backend active)"
+            );
+            return Ok(false);
+        }
         let tracking_ref = AI_AUTHORSHIP_FORK_TRACKING_REF;
 
         // Check if the fork has notes
@@ -583,9 +590,9 @@ impl CiContext {
         ls_remote_args.push(fork_url.to_string());
         ls_remote_args.push("refs/notes/ai".to_string());
 
-        match exec_git(&ls_remote_args) {
+        match exec_git_with_timeout(&ls_remote_args, notes_transport_timeout()) {
             Ok(output) => {
-                let result = String::from_utf8_lossy(&output.stdout).to_string();
+                let result = output.stdout;
                 if result.trim().is_empty() {
                     return Ok(false);
                 }
@@ -612,7 +619,7 @@ impl CiContext {
         fetch_args.push(fork_url.to_string());
         fetch_args.push(fetch_refspec);
 
-        exec_git(&fetch_args)?;
+        exec_git_with_timeout(&fetch_args, notes_transport_timeout())?;
 
         Ok(true)
     }
@@ -629,6 +636,19 @@ impl CiContext {
         if commit_shas.is_empty() {
             println!("No PR commits found; skipping fork authorship note import");
             return Ok(0);
+        }
+
+        if crate::config::Config::fresh().notes_backend_enabled() {
+            if options.skip_fetch_fork_notes {
+                println!("Skipping fork authorship notes HTTP cache warm");
+                return Ok(0);
+            }
+            let cached = crate::git::notes_api::warm_cache_for_commits(commit_shas)?;
+            println!(
+                "Cached {} fork authorship note(s) from the HTTP backend",
+                cached.len()
+            );
+            return Ok(cached.len());
         }
 
         let source_ref_available = if options.skip_fetch_fork_notes {
@@ -683,6 +703,14 @@ impl CiContext {
         // Backend-aware: on the HTTP backend notes live in the notes-db cache,
         // so a refs/notes/ai-only check would always report "no notes".
         Ok(!crate::git::notes_api::commits_with_notes(&self.repo, commit_shas)?.is_empty())
+    }
+
+    fn fetch_authorship_history(&self, remote: &str) -> Result<(), GitAiError> {
+        if crate::config::Config::fresh().notes_backend_enabled() {
+            crate::git::notes_api::warm_cache_for_remote(&self.repo, remote)
+        } else {
+            fetch_authorship_notes(&self.repo, remote).map(|_| ())
+        }
     }
 
     fn original_pr_commits(

@@ -19,7 +19,7 @@ pub use crate::git::refs::CommitAuthorship;
 // --- Writes ---
 
 pub fn write_note(repo: &Repository, commit_sha: &str, content: &str) -> Result<(), GitAiError> {
-    match Config::get().notes_backend_kind() {
+    match Config::fresh().notes_backend_kind() {
         NotesBackendKind::Http => http_write_note(commit_sha, content),
         NotesBackendKind::GitNotes => crate::git::refs::notes_add(repo, commit_sha, content),
     }
@@ -32,7 +32,7 @@ pub fn write_notes_batch(
     if entries.is_empty() {
         return Ok(());
     }
-    match Config::get().notes_backend_kind() {
+    match Config::fresh().notes_backend_kind() {
         NotesBackendKind::Http => http_write_batch(entries),
         NotesBackendKind::GitNotes => crate::git::refs::notes_add_batch(repo, entries),
     }
@@ -41,9 +41,8 @@ pub fn write_notes_batch(
 // --- Reads ---
 
 pub fn read_note(repo: &Repository, commit_sha: &str) -> Option<String> {
-    match Config::get().notes_backend_kind() {
-        NotesBackendKind::Http => http_read_note(commit_sha)
-            .or_else(|| crate::git::refs::show_authorship_note(repo, commit_sha)),
+    match Config::fresh().notes_backend_kind() {
+        NotesBackendKind::Http => http_read_note(commit_sha),
         NotesBackendKind::GitNotes => crate::git::refs::show_authorship_note(repo, commit_sha),
     }
 }
@@ -52,7 +51,7 @@ pub fn read_note(repo: &Repository, commit_sha: &str) -> Option<String> {
 /// Returns a map of commit_sha → note_content for commits that have notes.
 ///
 /// On the HTTP backend this checks the local cache, then fetches-and-caches any
-/// misses from the remote, and finally falls back to local git notes; on the
+/// misses from the remote, without consulting local git notes; on the
 /// GitNotes backend it reads directly via the batched `notes_for_commits` path.
 pub fn read_notes_batch(
     repo: &Repository,
@@ -62,7 +61,7 @@ pub fn read_notes_batch(
         return Ok(HashMap::new());
     }
 
-    match Config::get().notes_backend_kind() {
+    match Config::fresh().notes_backend_kind() {
         NotesBackendKind::Http => {
             let mut notes = http_read_notes(commit_shas);
 
@@ -75,18 +74,6 @@ pub fn read_notes_batch(
                 notes.extend(http_fetch_and_cache_notes(&missing_after_cache));
             }
 
-            let missing_after_http: Vec<String> = commit_shas
-                .iter()
-                .filter(|sha| !notes.contains_key(*sha))
-                .cloned()
-                .collect();
-            if !missing_after_http.is_empty()
-                && let Ok(git_notes) =
-                    crate::git::refs::notes_for_commits(repo, &missing_after_http)
-            {
-                notes.extend(git_notes);
-            }
-
             Ok(notes)
         }
         NotesBackendKind::GitNotes => crate::git::refs::notes_for_commits(repo, commit_shas),
@@ -94,17 +81,12 @@ pub fn read_notes_batch(
 }
 
 pub fn read_authorship(repo: &Repository, commit_sha: &str) -> Option<AuthorshipLog> {
-    match Config::get().notes_backend_kind() {
-        NotesBackendKind::Http => {
-            // Check the cache first; fall through to git notes on miss.
-            if let Some(content) = http_read_note(commit_sha) {
-                AuthorshipLog::deserialize_from_string(&content)
-                    .map_err(|e| tracing::debug!("notes deserialization error: {}", e))
-                    .ok()
-            } else {
-                crate::git::refs::get_authorship(repo, commit_sha)
-            }
-        }
+    match Config::fresh().notes_backend_kind() {
+        NotesBackendKind::Http => http_read_note(commit_sha).and_then(|content| {
+            AuthorshipLog::deserialize_from_string(&content)
+                .map_err(|e| tracing::debug!("notes deserialization error: {}", e))
+                .ok()
+        }),
         NotesBackendKind::GitNotes => crate::git::refs::get_authorship(repo, commit_sha),
     }
 }
@@ -113,14 +95,12 @@ pub fn read_authorship_v3(
     repo: &Repository,
     commit_sha: &str,
 ) -> Result<AuthorshipLog, GitAiError> {
-    match Config::get().notes_backend_kind() {
+    match Config::fresh().notes_backend_kind() {
         NotesBackendKind::Http => {
-            if let Some(content) = http_read_note(commit_sha) {
-                AuthorshipLog::deserialize_from_string(&content)
-                    .map_err(|e| GitAiError::Generic(format!("notes deserialization error: {}", e)))
-            } else {
-                crate::git::refs::get_reference_as_authorship_log_v3(repo, commit_sha)
-            }
+            let content = http_read_note(commit_sha)
+                .ok_or_else(|| GitAiError::Generic("No authorship note found".to_string()))?;
+            AuthorshipLog::deserialize_from_string(&content)
+                .map_err(|e| GitAiError::Generic(format!("notes deserialization error: {}", e)))
         }
         NotesBackendKind::GitNotes => {
             crate::git::refs::get_reference_as_authorship_log_v3(repo, commit_sha)
@@ -130,29 +110,14 @@ pub fn read_authorship_v3(
 
 /// Return a map of commit SHA → note-blob OID for the given commits.
 ///
-/// # Audit results (Phase 2)
-///
-/// All callers of this function use the returned blob OIDs as *git object IDs*
-/// to subsequently read note content via `batch_read_blob_contents` /
-/// `batch_read_blobs_with_oids`.  They are NOT purely presence checks.
-///
-/// Call sites and how they use the OIDs:
-///
-/// 1. `authorship_traversal::load_ai_touched_files_for_commits` — passes OIDs
-///    to `batch_read_blobs_with_oids`; must be real git OIDs.
-/// 2. `rewrite::shift_authorship_notes` — reads notes by OID;
-///    must be real git OIDs.
-///
 /// **HTTP backend**: notes do not live in `refs/notes/ai`, so there are no
-/// git blob OIDs to return.  Returning an empty map causes callers to handle
-/// the "no notes available" case (skip or use slow-path reads).  This is
-/// safe and correct for the transition period — callers that need note content
-/// will fall back to `read_note` / `read_authorship` which hit the cache.
+/// git blob OIDs to return. Backend-neutral callers should use
+/// [`read_notes_batch`] to obtain note content instead.
 pub fn read_note_blob_oids(
     repo: &Repository,
     commit_shas: &[String],
 ) -> Result<HashMap<String, String>, GitAiError> {
-    match Config::get().notes_backend_kind() {
+    match Config::fresh().notes_backend_kind() {
         // For Http, notes are in notes-db not in git — no blob OIDs exist.
         // Return an empty map; callers handle this as "no notes in git".
         NotesBackendKind::Http => Ok(HashMap::new()),
@@ -166,22 +131,8 @@ pub fn commits_with_notes(
     repo: &Repository,
     commit_shas: &[String],
 ) -> Result<HashSet<String>, GitAiError> {
-    match Config::get().notes_backend_kind() {
-        NotesBackendKind::Http => {
-            // Check the cache first; fall through to git notes for misses.
-            let cached = http_check_exists(commit_shas);
-            if cached.len() == commit_shas.len() {
-                return Ok(cached);
-            }
-            // For commits not in the cache, check git notes as fallback.
-            let missing: Vec<String> = commit_shas
-                .iter()
-                .filter(|sha| !cached.contains(*sha))
-                .cloned()
-                .collect();
-            let from_git = crate::git::refs::commits_with_authorship_notes(repo, &missing)?;
-            Ok(cached.into_iter().chain(from_git).collect())
-        }
+    match Config::fresh().notes_backend_kind() {
+        NotesBackendKind::Http => Ok(http_check_exists(commit_shas)),
         NotesBackendKind::GitNotes => {
             crate::git::refs::commits_with_authorship_notes(repo, commit_shas)
         }
@@ -192,49 +143,34 @@ pub fn filter_commits_with_notes(
     repo: &Repository,
     commit_shas: &[String],
 ) -> Result<Vec<CommitAuthorship>, GitAiError> {
-    match Config::get().notes_backend_kind() {
+    match Config::fresh().notes_backend_kind() {
         NotesBackendKind::Http => {
-            // `CommitAuthorship` requires a git_author that is only available from
-            // `git rev-list`. Call the underlying git function which handles author
-            // lookup, then patch in cache hits for commits whose `authorship_log`
-            // would otherwise be absent (because refs/notes/ai is empty).
-            //
-            // The git function calls `get_authorship(repo, sha)` (refs.rs, not
-            // notes_api), so for Http the results will be `CommitAuthorship::NoLog`
-            // for all commits. We promote any commit that has a cache entry to
-            // `CommitAuthorship::Log`.
-            let cached_map = http_read_notes(commit_shas);
-
-            let git_results =
-                crate::git::refs::get_commits_with_notes_from_list(repo, commit_shas)?;
-
-            // Promote NoLog entries that are in the cache to Log entries.
-            let results = git_results
-                .into_iter()
-                .map(|ca| match ca {
-                    CommitAuthorship::NoLog {
-                        ref sha,
-                        ref git_author,
-                    } => {
-                        if let Some(content) = cached_map.get(sha)
-                            && let Ok(authorship_log) =
-                                AuthorshipLog::deserialize_from_string(content)
-                                    .map_err(|e| GitAiError::Generic(e.to_string()))
-                        {
-                            return CommitAuthorship::Log {
+            let notes = read_notes_batch(repo, commit_shas)?;
+            let authors = crate::git::refs::commit_authors_for_list(repo, commit_shas)?;
+            Ok(commit_shas
+                .iter()
+                .map(|sha| {
+                    let git_author = authors
+                        .get(sha)
+                        .cloned()
+                        .unwrap_or_else(|| "Unknown".to_string());
+                    notes
+                        .get(sha)
+                        .and_then(|content| AuthorshipLog::deserialize_from_string(content).ok())
+                        .map(|mut authorship_log| {
+                            authorship_log.metadata.base_commit_sha = sha.clone();
+                            CommitAuthorship::Log {
                                 sha: sha.clone(),
                                 git_author: git_author.clone(),
                                 authorship_log,
-                            };
-                        }
-                        ca
-                    }
-                    // Already has a log (shouldn't happen for Http, but keep it).
-                    CommitAuthorship::Log { .. } => ca,
+                            }
+                        })
+                        .unwrap_or_else(|| CommitAuthorship::NoLog {
+                            sha: sha.clone(),
+                            git_author,
+                        })
                 })
-                .collect();
-
-            Ok(results)
+                .collect())
         }
         NotesBackendKind::GitNotes => {
             crate::git::refs::get_commits_with_notes_from_list(repo, commit_shas)
@@ -247,18 +183,17 @@ pub fn filter_commits_with_notes(
 /// Search authorship-note content for a literal substring and return matching
 /// commit SHAs, newest first.
 ///
-/// On the HTTP backend this searches the notes-db cache and unions in any
-/// matches from local git notes (transition-period repos may have both); on
+/// On the HTTP backend this searches only the notes-db cache; on
 /// the GitNotes backend it greps `refs/notes/ai` directly.
 pub fn search_notes(repo: &Repository, pattern: &str) -> Result<Vec<String>, GitAiError> {
-    match Config::get().notes_backend_kind() {
+    match Config::fresh().notes_backend_kind() {
         NotesBackendKind::Http => http_search_notes(repo, pattern),
         NotesBackendKind::GitNotes => crate::git::refs::grep_ai_notes(repo, pattern),
     }
 }
 
 fn http_search_notes(repo: &Repository, pattern: &str) -> Result<Vec<String>, GitAiError> {
-    let mut shas: HashSet<String> = {
+    let shas: HashSet<String> = {
         let db = crate::notes::db::NotesDatabase::global()?;
         let db_lock = db
             .lock()
@@ -266,104 +201,7 @@ fn http_search_notes(repo: &Repository, pattern: &str) -> Result<Vec<String>, Gi
         db_lock.search_notes_content(pattern)?.into_iter().collect()
     };
 
-    // Union in matches from local git notes for transition-period repos.
-    if let Ok(git_shas) = crate::git::refs::grep_ai_notes(repo, pattern) {
-        shas.extend(git_shas);
-    }
-
     crate::git::refs::sort_commit_shas_by_date_desc(repo, shas)
-}
-
-// --- Materialization (for git ai log) ---
-
-/// Materialize notes from the local cache into a one-off git ref
-/// `refs/notes/ai-display` so that `git log --notes=ai-display` can render
-/// them without requiring them to be in `refs/notes/ai`.
-///
-/// Only the most recent `limit` commits reachable from HEAD are considered.
-///
-/// The ref is left in place after the call; callers use it with `--notes=ai-display`.
-/// It is safe to call repeatedly — each call starts from an empty tree via
-/// `from 0000...` so stale notes from prior calls are discarded.
-///
-/// Returns the number of notes that were written into `refs/notes/ai-display`.
-pub fn materialize_notes_for_display(repo: &Repository, limit: usize) -> Result<usize, GitAiError> {
-    use crate::git::repository::exec_git;
-    use crate::git::repository::exec_git_stdin;
-
-    // 1. Get recent commits via rev-list.
-    let rev_list_args: Vec<String> = repo
-        .global_args_for_exec()
-        .into_iter()
-        .chain([
-            "rev-list".to_string(),
-            format!("--max-count={}", limit),
-            "HEAD".to_string(),
-        ])
-        .collect();
-
-    let output = exec_git(&rev_list_args)?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let commit_shas: Vec<String> = stdout
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect();
-
-    if commit_shas.is_empty() {
-        return Ok(0);
-    }
-
-    // 2. Look up which commits are in the local notes-db cache.
-    let cached_map = http_read_notes(&commit_shas);
-    if cached_map.is_empty() {
-        return Ok(0);
-    }
-
-    // 3. Build a git fast-import stream.
-    //    Structure:
-    //      - One `blob` stanza per note (each gets a mark ID).
-    //      - One `commit` stanza with `from 0000...` (empty tree) that attaches all blobs.
-    let mut stream = String::new();
-    let mut marks: Vec<(usize, String)> = Vec::new(); // (mark_id, commit_sha)
-
-    for (idx, (commit_sha, content)) in cached_map.iter().enumerate() {
-        let mark_id = idx + 1;
-        // Blob stanza: `data <exact-byte-count>\n<content-bytes>\n`
-        // The trailing \n after content is a fast-import stream separator, not part of the data.
-        stream.push_str(&format!(
-            "blob\nmark :{}\ndata {}\n{}\n",
-            mark_id,
-            content.len(),
-            content
-        ));
-        marks.push((mark_id, commit_sha.clone()));
-    }
-
-    // Commit stanza — mirrors the pattern used in refs.rs notes_add_batch().
-    // Use `from` with an all-zeros SHA to start from an empty tree, ensuring
-    // stale notes from prior materializations are removed.
-    stream.push_str("commit refs/notes/ai-display\n");
-    stream.push_str("committer git-ai <git-ai@localhost> 1000000000 +0000\n");
-    stream.push_str("data 0\n");
-    stream.push_str("from 0000000000000000000000000000000000000000\n");
-
-    let count = marks.len();
-    for (mark_id, commit_sha) in &marks {
-        stream.push_str(&format!("M 100644 :{} {}\n", mark_id, commit_sha));
-    }
-    stream.push('\n');
-
-    // 4. Feed to git fast-import.
-    let fast_import_args: Vec<String> = repo
-        .global_args_for_exec()
-        .into_iter()
-        .chain(["fast-import".to_string(), "--quiet".to_string()])
-        .collect();
-
-    exec_git_stdin(&fast_import_args, stream.as_bytes())?;
-
-    Ok(count)
 }
 
 // --- Cache warming ---
@@ -812,57 +650,6 @@ mod tests {
         assert!(
             result.is_err(),
             "git notes --ref=ai show should fail (note not in git) for Http backend"
-        );
-
-        unsafe {
-            env::remove_var("GIT_AI_TEST_NOTES_DB_PATH");
-        }
-    }
-
-    /// Integration test: `materialize_notes_for_display` writes notes from the
-    /// notes-db cache into `refs/notes/ai-display` so that `git log --notes=ai-display`
-    /// can show them.
-    #[test]
-    #[serial_test::serial(notes_db_env)]
-    fn integration_materialize_notes_for_display() {
-        use crate::git::repository::exec_git;
-        use crate::git::test_utils::TmpRepo;
-        use std::env;
-
-        // Isolated notes-db.
-        let tmp_db = tempfile::NamedTempFile::new().expect("tmp db file");
-        unsafe {
-            env::set_var("GIT_AI_TEST_NOTES_DB_PATH", tmp_db.path().to_str().unwrap());
-        }
-
-        let repo = TmpRepo::new().expect("TmpRepo::new");
-
-        // Create a real commit.
-        repo.write_file("b.txt", "world", false)
-            .expect("write file");
-        let sha = repo.commit_all("test commit").expect("commit");
-
-        // Put a note in the cache for this commit.
-        http_write_note(&sha, "display-note-content").expect("write note");
-
-        // Materialize the cache into refs/notes/ai-display.
-        let count = materialize_notes_for_display(repo.gitai_repo(), 50).expect("materialize");
-        assert_eq!(count, 1, "should have materialized 1 note");
-
-        // Confirm git can read the note from refs/notes/ai-display.
-        let mut args = repo.gitai_repo().global_args_for_exec();
-        args.extend([
-            "notes".to_string(),
-            "--ref=ai-display".to_string(),
-            "show".to_string(),
-            sha.clone(),
-        ]);
-        let output = exec_git(&args).expect("git notes show ai-display");
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            stdout.trim() == "display-note-content",
-            "refs/notes/ai-display should contain the materialized note, got: {:?}",
-            stdout
         );
 
         unsafe {

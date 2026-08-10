@@ -4,7 +4,7 @@ use crate::git::refs::{
 };
 use crate::{
     error::GitAiError,
-    git::{cli_parser::ParsedGitInvocation, repository::exec_git},
+    git::{cli_parser::ParsedGitInvocation, repository::exec_git_with_timeout},
 };
 
 use super::repository::Repository;
@@ -145,17 +145,20 @@ pub fn fetch_missing_notes_for_commits(
     // every source note.
     if crate::config::Config::fresh().notes_backend_enabled() {
         let missing_owned: Vec<String> = missing.iter().map(|sha| sha.to_string()).collect();
-        match crate::git::notes_api::warm_cache_for_commits(&missing_owned) {
+        return match crate::git::notes_api::warm_cache_for_commits(&missing_owned) {
             Ok(cached) => {
                 let cached: HashSet<String> = cached.into_iter().collect();
                 if missing_owned.iter().all(|sha| cached.contains(sha)) {
-                    return Ok(());
+                    Ok(())
+                } else {
+                    Err(GitAiError::Generic(format!(
+                        "HTTP notes backend did not return source notes for {:?}",
+                        missing_owned
+                    )))
                 }
             }
-            Err(e) => {
-                tracing::debug!("HTTP backend fetch for missing source notes failed: {}", e);
-            }
-        }
+            Err(e) => Err(e),
+        };
     }
 
     tracing::debug!(
@@ -221,6 +224,12 @@ pub fn fetch_authorship_notes(
     repository: &Repository,
     remote_name: &str,
 ) -> Result<NotesExistence, GitAiError> {
+    if crate::config::Config::fresh().notes_backend_enabled() {
+        tracing::debug!(
+            "fetch_authorship_notes: skipping refs/notes/ai fetch (HTTP backend active)"
+        );
+        return Ok(NotesExistence::NotFound);
+    }
     // Generate tracking ref for this remote
     let tracking_ref = tracking_ref_for_remote(remote_name);
 
@@ -250,16 +259,10 @@ pub fn fetch_authorship_notes(
 
     tracing::debug!("fetch command: {:?}", fetch_authorship);
 
-    match exec_git(&fetch_authorship) {
+    match exec_git_with_timeout(&fetch_authorship, notes_transport_timeout()) {
         Ok(output) => {
-            tracing::debug!(
-                "fetch stdout: '{}'",
-                String::from_utf8_lossy(&output.stdout)
-            );
-            tracing::debug!(
-                "fetch stderr: '{}'",
-                String::from_utf8_lossy(&output.stderr)
-            );
+            tracing::debug!("fetch stdout: '{}'", output.stdout);
+            tracing::debug!("fetch stderr: '{}'", output.stderr);
         }
         Err(e) => {
             if is_missing_remote_notes_ref_error(&e) {
@@ -329,11 +332,23 @@ fn is_missing_remote_notes_ref_error(error: &GitAiError) -> bool {
 /// even after a successful merge, so we retry the full cycle.
 const PUSH_NOTES_MAX_ATTEMPTS: usize = 3;
 
+pub(crate) fn notes_transport_timeout() -> std::time::Duration {
+    #[cfg(any(test, feature = "test-support"))]
+    if let Ok(timeout_ms) = std::env::var("GIT_AI_TEST_NOTES_SYNC_TIMEOUT_MS")
+        && let Ok(timeout_ms) = timeout_ms.parse::<u64>()
+        && timeout_ms > 0
+    {
+        return std::time::Duration::from_millis(timeout_ms);
+    }
+    std::time::Duration::from_secs(30)
+}
+
 // for use with post-push hook
 pub fn push_authorship_notes(repository: &Repository, remote_name: &str) -> Result<(), GitAiError> {
     // Belt-and-suspenders: when the HTTP backend is active, notes are not stored
     // in refs/notes/ai so there is nothing to push.
-    if crate::config::Config::get().notes_backend_kind() == crate::config::NotesBackendKind::Http {
+    if crate::config::Config::fresh().notes_backend_kind() == crate::config::NotesBackendKind::Http
+    {
         tracing::debug!("push_authorship_notes: skipping refs/notes/ai push (Http backend active)");
         return Ok(());
     }
@@ -356,7 +371,7 @@ pub fn push_authorship_notes(repository: &Repository, remote_name: &str) -> Resu
 
         tracing::debug!("pushing authorship refs (no force): {:?}", &push_args);
 
-        match exec_git(&push_args) {
+        match exec_git_with_timeout(&push_args, notes_transport_timeout()) {
             Ok(_) => return Ok(()),
             Err(e) => {
                 tracing::debug!("authorship push failed: {}", e);
@@ -389,7 +404,7 @@ fn fetch_and_merge_tracking_notes(repository: &Repository, remote_name: &str) {
     tracing::debug!("pre-push authorship fetch: {:?}", &fetch_args);
 
     // Fetch is best-effort; if it fails (e.g., no remote notes yet), continue
-    if exec_git(&fetch_args).is_err() {
+    if exec_git_with_timeout(&fetch_args, notes_transport_timeout()).is_err() {
         return;
     }
 

@@ -629,43 +629,7 @@ pub(in crate::git) fn get_commits_with_notes_from_list(
         return Ok(Vec::new());
     }
 
-    // Get the git authors for all commits using git rev-list
-    // This approach works in both bare and normal repositories
-    let mut args = repo.global_args_for_exec();
-    args.push("rev-list".to_string());
-    args.push("--no-walk".to_string());
-    args.push("--pretty=format:%H%n%an%n%ae".to_string());
-    for sha in commit_shas {
-        args.push(sha.clone());
-    }
-
-    let output = exec_git(&args)?;
-    let stdout = String::from_utf8(output.stdout)
-        .map_err(|_| GitAiError::Generic("Failed to parse git rev-list output".to_string()))?;
-
-    let mut commit_authors = HashMap::new();
-    let lines: Vec<&str> = stdout.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        let line = lines[i];
-        // Skip commit headers (start with "commit ")
-        if line.starts_with("commit ") {
-            i += 1;
-            if i + 2 < lines.len() {
-                let sha = lines[i].to_string();
-                let name = lines[i + 1].to_string();
-                let email = lines[i + 2].to_string();
-                let author = format!("{} <{}>", name, email);
-                commit_authors.insert(sha, author);
-                i += 3;
-            } else {
-                break;
-            }
-        } else {
-            i += 1;
-        }
-    }
-
+    let commit_authors = commit_authors_for_list(repo, commit_shas)?;
     let note_blob_oids = note_blob_oids_for_commits(repo, commit_shas)?;
     let mut unique_blob_oids = Vec::new();
     let mut seen_blob_oids = HashSet::new();
@@ -703,6 +667,55 @@ pub(in crate::git) fn get_commits_with_notes_from_list(
     }
 
     Ok(result)
+}
+
+/// Resolve commit authors in one Git invocation without consulting any notes ref.
+pub(in crate::git) fn commit_authors_for_list(
+    repo: &Repository,
+    commit_shas: &[String],
+) -> Result<HashMap<String, String>, GitAiError> {
+    if commit_shas.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Get the git authors for all commits using git rev-list. This works in both
+    // bare and normal repositories and is independent of the configured notes backend.
+    let mut args = repo.global_args_for_exec();
+    args.push("rev-list".to_string());
+    args.push("--no-walk".to_string());
+    args.push("--pretty=format:%H%n%an%n%ae".to_string());
+    for sha in commit_shas {
+        args.push(sha.clone());
+    }
+
+    let output = exec_git(&args)?;
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|_| GitAiError::Generic("Failed to parse git rev-list output".to_string()))?;
+
+    let mut commit_authors = HashMap::new();
+    let lines: Vec<&str> = stdout.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        // Skip commit headers (start with "commit ")
+        if line.starts_with("commit ") {
+            i += 1;
+            if i + 2 < lines.len() {
+                let sha = lines[i].to_string();
+                let name = lines[i + 1].to_string();
+                let email = lines[i + 2].to_string();
+                let author = format!("{} <{}>", name, email);
+                commit_authors.insert(sha, author);
+                i += 3;
+            } else {
+                break;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    Ok(commit_authors)
 }
 
 // Show an authorship note and return its JSON content if found, or None if it doesn't exist.
@@ -1018,6 +1031,7 @@ pub(crate) fn sort_commit_shas_by_date_desc(
     let mut sha_vec: Vec<String> = shas.into_iter().collect();
     let mut args = repo.global_args_for_exec();
     args.push("log".to_string());
+    args.push("--no-notes".to_string());
     args.push("--format=%H".to_string());
     args.push("--date-order".to_string());
     args.push("--no-walk".to_string());
