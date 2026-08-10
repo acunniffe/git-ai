@@ -86,7 +86,7 @@ pub fn read_authorship(repo: &Repository, commit_sha: &str) -> Option<Authorship
             AuthorshipLog::deserialize_from_string(&content)
                 .map_err(|e| tracing::debug!("notes deserialization error: {}", e))
                 .ok()
-                .and_then(|log| crate::git::refs::validate_authorship_log(log, commit_sha).ok())
+                .map(|log| crate::git::refs::align_authorship_log(log, commit_sha))
         }),
         NotesBackendKind::GitNotes => crate::git::refs::get_authorship(repo, commit_sha),
     }
@@ -558,7 +558,9 @@ mod tests {
                 .to_string()
                 .contains("Unsupported authorship log version")
         );
-        assert!(read_authorship(repo.gitai_repo(), &sha).is_none());
+        let lenient = read_authorship(repo.gitai_repo(), &sha)
+            .expect("display read should preserve lenient schema handling");
+        assert_eq!(lenient.metadata.base_commit_sha, sha);
 
         unsafe {
             std::env::remove_var("GIT_AI_NOTES_BACKEND_KIND");

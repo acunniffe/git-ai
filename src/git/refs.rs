@@ -753,7 +753,7 @@ pub(in crate::git) fn commits_with_authorship_notes(
 pub(in crate::git) fn get_authorship(repo: &Repository, commit_sha: &str) -> Option<AuthorshipLog> {
     let content = show_authorship_note(repo, commit_sha)?;
     let authorship_log = AuthorshipLog::deserialize_from_string(&content).ok()?;
-    validate_authorship_log(authorship_log, commit_sha).ok()
+    Some(align_authorship_log(authorship_log, commit_sha))
 }
 
 pub(in crate::git) fn align_authorship_log(
