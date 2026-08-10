@@ -19,6 +19,7 @@ pub struct PendingTraceCommand {
     pub root_cmd_name: Option<String>,
     pub observed_child_commands: Vec<String>,
     pub transport_target: Option<String>,
+    pub invocation_cwd: Option<PathBuf>,
     pub invocation_worktree: Option<PathBuf>,
     pub worktree: Option<PathBuf>,
     pub family_key: Option<FamilyKey>,
@@ -273,6 +274,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
         }
 
         let raw_argv = payload_argv(payload);
+        let invocation_cwd = payload_invocation_cwd(payload);
         let worktree = payload_worktree(payload)
             .or_else(|| worktree_from_argv(&raw_argv))
             .or_else(|| payload_cwd(payload))
@@ -304,6 +306,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             root_cmd_name: None,
             observed_child_commands: Vec::new(),
             transport_target: None,
+            invocation_cwd,
             invocation_worktree: worktree.clone(),
             worktree,
             family_key,
@@ -353,7 +356,14 @@ impl<B: GitBackend> TraceNormalizer<B> {
             return Ok(None);
         };
         if pending.transport_target.is_none() {
-            pending.transport_target = transport_target_from_child_start(payload);
+            pending.transport_target =
+                transport_target_from_child_start(payload).and_then(|target| {
+                    resolve_file_transport_target(
+                        payload,
+                        target,
+                        pending.invocation_cwd.as_deref(),
+                    )
+                });
         }
         Ok(None)
     }
@@ -841,6 +851,33 @@ fn transport_target_from_child_start(payload: &Value) -> Option<String> {
     (!target.is_empty() && !target.starts_with('-')).then_some(target)
 }
 
+fn resolve_file_transport_target(
+    payload: &Value,
+    target: String,
+    invocation_cwd: Option<&Path>,
+) -> Option<String> {
+    if payload.get("child_class").and_then(Value::as_str) != Some("transport/file")
+        || Path::new(&target).is_absolute()
+    {
+        return Some(target);
+    }
+
+    let cwd = invocation_cwd.filter(|cwd| cwd.is_absolute())?;
+    let mut resolved = PathBuf::new();
+    for component in cwd.components().chain(Path::new(&target).components()) {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !resolved.pop() {
+                    return None;
+                }
+            }
+            _ => resolved.push(component.as_os_str()),
+        }
+    }
+    Some(resolved.to_string_lossy().into_owned())
+}
+
 fn transport_service_repository(command: &str) -> Option<&str> {
     // Trace2 classifies this argv as a transport service, so the executable
     // may be a custom receive-pack command rather than literally
@@ -914,11 +951,14 @@ fn payload_worktree(payload: &Value) -> Option<PathBuf> {
 }
 
 fn payload_cwd(payload: &Value) -> Option<PathBuf> {
+    payload_invocation_cwd(payload).map(|path| worktree_root_for_path(&path).unwrap_or(path))
+}
+
+fn payload_invocation_cwd(payload: &Value) -> Option<PathBuf> {
     payload
         .get("cwd")
         .and_then(Value::as_str)
         .map(PathBuf::from)
-        .map(|path| worktree_root_for_path(&path).unwrap_or(path))
 }
 
 fn payload_reflog_start_offsets(payload: &Value) -> HashMap<String, u64> {
@@ -1418,6 +1458,76 @@ mod tests {
             command.transport_target.as_deref(),
             Some("/resolved/remote.git")
         );
+    }
+
+    #[test]
+    fn normalizer_resolves_relative_file_push_destination_from_invocation_cwd() {
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"start", "sid":"push-relative-file", "ts":1,
+                "argv":["git","push","origin","main"],
+                "worktree":"/repo", "cwd":"/repo/subdir"
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"child_start", "sid":"push-relative-file", "ts":2,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '../remote.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"exit", "sid":"push-relative-file", "ts":3, "code":0
+            }))
+            .unwrap();
+        let command = normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"atexit", "sid":"push-relative-file", "ts":4, "code":0
+            }))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            command.transport_target.as_deref(),
+            Some("/repo/remote.git")
+        );
+    }
+
+    #[test]
+    fn normalizer_rejects_relative_file_push_destination_without_invocation_cwd() {
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"start", "sid":"push-relative-file", "ts":1,
+                "argv":["git","push","origin","main"], "worktree":"/repo"
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"child_start", "sid":"push-relative-file", "ts":2,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '../remote.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"exit", "sid":"push-relative-file", "ts":3, "code":0
+            }))
+            .unwrap();
+        let command = normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"atexit", "sid":"push-relative-file", "ts":4, "code":0
+            }))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(command.transport_target, None);
     }
 
     #[test]
