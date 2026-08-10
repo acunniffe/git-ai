@@ -4,6 +4,7 @@ mod repos;
 
 use git_ai::notes::db::NotesDatabase;
 use git_ai::notes::reference_server::ReferenceServer;
+use repos::test_file::ExpectedLineExt;
 use repos::test_repo::{DaemonTestScope, TestRepo, real_git_executable};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -549,6 +550,74 @@ fn notes_sync_http_backend_clone_warms_notes_cache() {
         "daemon log should record the HTTP notes fetch\npath: {}\ncontents:\n{}",
         daemon_log_path.display(),
         daemon_log
+    );
+}
+
+#[test]
+fn notes_sync_http_backend_internal_fetch_warms_notes_cache() {
+    let server = ReferenceServer::start("127.0.0.1:0").expect("start notes reference server");
+    let backend_url = server.base_url();
+    let upstream = TestRepo::new_bare_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let seed = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let upstream_str = upstream.path().to_string_lossy().to_string();
+    seed.git_og(&["remote", "add", "origin", upstream_str.as_str()])
+        .expect("add seed origin");
+    fs::write(seed.path().join("internal-fetch.txt"), "seed\n").expect("write seed file");
+    seed.git_og(&["add", "internal-fetch.txt"])
+        .expect("stage seed file");
+    seed.git_og(&["commit", "-m", "internal fetch seed"])
+        .expect("commit seed file");
+    let mut seed_file = seed.filename("internal-fetch.txt");
+    seed_file.assert_committed_lines(vec!["seed".unattributed_human()]);
+    seed.git_og(&["push", "-u", "origin", "HEAD"])
+        .expect("push seed branch");
+    let seed_sha = seed
+        .git_og(&["rev-parse", "HEAD"])
+        .expect("resolve seed SHA")
+        .trim()
+        .to_string();
+    let remote_note = "internal-http-note".to_string();
+    server.store().put(seed_sha.clone(), remote_note.clone());
+
+    let local = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_NOTES_BACKEND_KIND", "http"),
+        ("GIT_AI_NOTES_BACKEND_URL", backend_url.as_str()),
+        ("GIT_AI_API_KEY", "notes-sync-http-internal-fetch-test-key"),
+    ]);
+    local
+        .git_og(&["remote", "add", "origin", upstream_str.as_str()])
+        .expect("add local origin");
+    local
+        .git_og(&["fetch", "origin"])
+        .expect("fetch branch before warming notes");
+    local
+        .git_og(&["checkout", "--detach", seed_sha.as_str()])
+        .expect("check out fetched seed commit");
+
+    let notes_db_path = local.test_home_path().join(".git-ai/internal/notes-db");
+    let db = NotesDatabase::open_at_path(&notes_db_path).expect("open notes db before fetch");
+    assert_eq!(db.get_note(&seed_sha).expect("read empty cache"), None);
+    drop(db);
+
+    let request = serde_json::json!({ "remote_name": "origin" }).to_string();
+    let output = local
+        .git_ai_with_env(
+            &["fetch-authorship-notes", "--json", request.as_str()],
+            &[
+                ("GIT_AI_NOTES_BACKEND_KIND", "http"),
+                ("GIT_AI_NOTES_BACKEND_URL", backend_url.as_str()),
+                ("GIT_AI_API_KEY", "notes-sync-http-internal-fetch-test-key"),
+            ],
+        )
+        .expect("internal HTTP fetch should succeed");
+    let response: serde_json::Value =
+        serde_json::from_str(output.trim()).expect("parse internal fetch response");
+    assert_eq!(response["notes_existence"], "found");
+
+    let db = NotesDatabase::open_at_path(&notes_db_path).expect("open notes db after fetch");
+    assert_eq!(
+        db.get_note(&seed_sha).expect("read warmed cache"),
+        Some(remote_note)
     );
 }
 

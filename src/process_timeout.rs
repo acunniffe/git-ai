@@ -1,6 +1,8 @@
 use std::io::Read;
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -96,6 +98,10 @@ pub(crate) fn run_command_with_timeout_and_env(
     }
     if let Some(cwd) = cwd {
         command.current_dir(cwd);
+    }
+    #[cfg(windows)]
+    if !crate::utils::is_interactive_terminal() {
+        command.creation_flags(crate::utils::CREATE_NO_WINDOW);
     }
     #[cfg(unix)]
     command.process_group(0);

@@ -226,9 +226,10 @@ pub fn fetch_authorship_notes(
 ) -> Result<NotesExistence, GitAiError> {
     if crate::config::Config::fresh().notes_backend_enabled() {
         tracing::debug!(
-            "fetch_authorship_notes: skipping refs/notes/ai fetch (HTTP backend active)"
+            "fetch_authorship_notes: warming HTTP notes cache instead of fetching refs/notes/ai"
         );
-        return Ok(NotesExistence::NotFound);
+        crate::git::notes_api::warm_cache_for_remote(repository, remote_name)?;
+        return Ok(NotesExistence::Found);
     }
     // Generate tracking ref for this remote
     let tracking_ref = tracking_ref_for_remote(remote_name);
