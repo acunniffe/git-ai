@@ -1,0 +1,24 @@
+src/commands/blame.rs
+  2555b083092278bb 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "5c982eadc3830b7a318c15f9dd2c6cc851721a06",
+  "prompts": {
+    "2555b083092278bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c174fb23-3d9c-45c1-b114-305db49012b3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 0,
+      "accepted_lines": 8,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/f0a2a598a2ec7a1aece98dcee946fab3cc007848b407ea3ca9114fff36925e97"
+    }
+  }
+}

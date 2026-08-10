@@ -1,0 +1,23 @@
+tests/integration/cursor.rs
+  f1b0dfb48f40611f 189,192-195,202-203,207,305-306,337,385-386,492-493
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.22",
+  "base_commit_sha": "c948a96501df045ab22942331eb16e77e8d8afe7",
+  "prompts": {
+    "f1b0dfb48f40611f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ec3d83d9-f232-496c-8d10-430720fc2fd2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 7,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}

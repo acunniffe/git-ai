@@ -1,0 +1,29 @@
+src/authorship/stats.rs
+  s_1f93bcb5fd13ff::t_fdc62079e6a409 590-609,637
+tests/integration/stats.rs
+  s_1f93bcb5fd13ff::t_25c94159856cdd 861
+  s_1f93bcb5fd13ff::t_9b8a2a6ef9a58d 767-840
+src/authorship/range_authorship.rs
+  s_1f93bcb5fd13ff::t_2cffcf5d2f84cd 346-348,355-356,358-359
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "842dfd81c45d16921292d3754f2bbafd11de065e",
+  "prompts": {},
+  "humans": {
+    "h_9440633a297247": {
+      "author": "Sachin Lubana <sachin.lubana@deliveryhero.com>"
+    }
+  },
+  "sessions": {
+    "s_1f93bcb5fd13ff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a609ec90-e902-4741-a369-3db723f29f38",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Sachin Lubana <sachin.lubana@deliveryhero.com>"
+    }
+  }
+}

@@ -1,0 +1,22 @@
+src/daemon/control_api.rs
+  dacf127c97d5a34b 1-2,8,15,37-43,37-59,45-51,55-59,95-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "85d5a0000d8117574370fcf293532be456d126fd",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 42,
+      "total_deletions": 49,
+      "accepted_lines": 37,
+      "overriden_lines": 0
+    }
+  }
+}

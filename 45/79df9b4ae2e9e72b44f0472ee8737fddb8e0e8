@@ -1,0 +1,164 @@
+docs/ci-workflows.mdx
+  96e7501 1-4,6,10,12,14,16,18-20,22,24-29,33,35,37-44,46,48-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "3dc4c51040f46a336a89cd3fc041e0e02985b6c4",
+  "prompts": {
+    "96e7501": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b727cf19-48e5-469a-98f7-8e30a7059682",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "assistant",
+          "text": "I'll research the CI workflows code and create user documentation explaining the GitHub workflow installation and local CI usage.",
+          "timestamp": "2025-10-27T15:26:36.175Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/ci/github.rs"
+          },
+          "timestamp": "2025-10-27T15:26:36.761Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/ci/ci_context.rs"
+          },
+          "timestamp": "2025-10-27T15:26:37.590Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Glob",
+          "input": {
+            "pattern": "**/*.yml"
+          },
+          "timestamp": "2025-10-27T15:26:37.686Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Glob",
+          "input": {
+            "pattern": "**/*.yaml"
+          },
+          "timestamp": "2025-10-27T15:26:37.876Z"
+        },
+        {
+          "type": "user",
+          "text": "     1→use crate::ci::ci_context::{CiContext, CiEvent};\n     2→use crate::error::GitAiError;\n     3→use crate::git::repository::exec_git;\n     4→use serde::{Deserialize, Serialize};\n     5→use crate::git::repository::find_repository_in_path;\n     6→use std::path::PathBuf;\n     7→use std::fs;\n     8→\n     9→const GITHUB_CI_TEMPLATE_YAML: &str = include_str!(\"workflow_templates/github.yaml\");\n    10→\n    11→#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]\n    12→struct GithubCiEventPayload {\n    13→    #[serde(default)]\n    14→    pull_request: Option<GithubCiPullRequest>,\n    15→}\n    16→\n    17→#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]\n    18→struct GithubCiPullRequest {\n    19→    base: GithubCiPullRequestReference,\n    20→    head: GithubCiPullRequestReference,\n    21→    merged: bool,\n    22→    merge_commit_sha: Option<String>,\n    23→}\n    24→\n    25→#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]\n    26→struct GithubCiPullRequestReference {\n    27→    #[serde(rename = \"ref\")]\n    28→    ref_name: String,\n    29→    sha: String,\n    30→    repo: GithubCiRepository,\n    31→}\n    32→\n    33→#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]\n    34→struct GithubCiRepository {\n    35→    clone_url: String,\n    36→}\n    37→\n    38→pub fn get_github_ci_context() -> Result<Option<CiContext>, GitAiError> {\n    39→    let env_event_name = std::env::var(\"GITHUB_EVENT_NAME\").unwrap_or_default();\n    40→    let env_event_path = std::env::var(\"GITHUB_EVENT_PATH\").unwrap_or_default();\n    41→\n    42→    if env_event_name != \"pull_request\" {\n    43→        return Ok(None);\n    44→    }\n    45→\n    46→    let event_payload = serde_json::from_str::<GithubCiEventPayload>(&std::fs::read_to_string(env_event_path)?).unwrap_or_default();\n    47→    if event_payload.pull_request.is_none() {\n    48→        return Ok(None);\n    49→    }\n    50→\n    51→    let pull_request = event_payload.pull_request.unwrap();\n    52→\n    53→    if !pull_request.merged || pull_request.merge_commit_sha.is_none() {\n    54→        return Ok(None);\n    55→    }\n    56→\n    57→    let head_ref = pull_request.head.ref_name;\n    58→    let head_sha = pull_request.head.sha;\n    59→    let base_ref = pull_request.base.ref_name;\n    60→    let clone_url = pull_request.base.repo.clone_url.clone();\n    61→\n    62→    let clone_dir = \"git-ai-ci-clone\".to_string();\n    63→\n    64→    // Clone the repo\n    65→    exec_git(&[\n    66→        \"clone\".to_string(),\n    67→        \"--branch\".to_string(),\n    68→        base_ref.clone(),\n    69→        clone_url,\n    70→        clone_dir.clone(),\n    71→    ])?;\n    72→\n    73→    let repo = find_repository_in_path(&clone_dir.clone())?;\n    74→\n    75→    Ok(Some(CiContext {\n    76→        repo,\n    77→        event: CiEvent::Merge {\n    78→            merge_commit_sha: pull_request.merge_commit_sha.unwrap(),\n    79→            head_ref: head_ref.clone(),\n    80→            head_sha: head_sha.clone(),\n    81→            base_ref: base_ref.clone(),\n    82→            base_sha: pull_request.base.sha.clone(),\n    83→        },\n    84→        temp_dir: PathBuf::from(clone_dir),\n    85→    }))\n    86→}\n    87→\n    88→/// Install or update the GitHub Actions workflow in the current repository\n    89→/// Writes the embedded template to .github/workflows/git-ai.yaml at the repo root\n    90→pub fn install_github_ci_workflow() -> Result<PathBuf, GitAiError> {\n    91→    // Discover repository at current working directory\n    92→    let repo = find_repository_in_path(\".\")?;\n    93→    let workdir = repo.workdir()?;\n    94→\n    95→    // Ensure destination directory exists\n    96→    let workflows_dir = workdir.join(\".github\").join(\"workflows\");\n    97→    fs::create_dir_all(&workflows_dir)\n    98→        .map_err(|e| GitAiError::Generic(format!(\"Failed to create workflows dir: {}\", e)))?;\n    99→\n   100→    // Write template\n   101→    let dest_path = workflows_dir.join(\"git-ai.yaml\");\n   102→    fs::write(&dest_path, GITHUB_CI_TEMPLATE_YAML)\n   103→        .map_err(|e| GitAiError::Generic(format!(\"Failed to write workflow file: {}\", e)))?;\n   104→\n   105→    Ok(dest_path)\n   106→}\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>\n",
+          "timestamp": "2025-10-27T15:26:37.929Z"
+        },
+        {
+          "type": "user",
+          "text": "     1→use crate::git::repository::Repository;\n     2→use crate::error::GitAiError;\n     3→use crate::authorship::rebase_authorship::rewrite_authorship_after_squash_or_rebase;\n     4→use crate::git::sync_authorship::fetch_authorship_notes;\n     5→use std::fs;\n     6→use std::path::PathBuf;\n     7→\n     8→#[derive(Debug)]\n     9→pub enum CiEvent {\n    10→    Merge {\n    11→        merge_commit_sha: String,\n    12→        head_ref: String,\n    13→        head_sha: String,\n    14→        base_ref: String,\n    15→        base_sha: String,\n    16→    }\n    17→}\n    18→\n    19→#[derive(Debug)]\n    20→pub struct CiContext {\n    21→    pub repo: Repository,\n    22→    pub event: CiEvent,\n    23→    pub temp_dir: PathBuf,\n    24→}\n    25→\n    26→impl CiContext {\n    27→    pub fn run(&self) -> Result<(), GitAiError> {\n    28→        match &self.event {\n    29→            CiEvent::Merge { merge_commit_sha, head_ref, head_sha, base_ref, base_sha: _ } => {\n    30→                // Only handle squash or rebase-like merges.\n    31→                // Skip simple merge commits (2+ parents) and fast-forward merges (merge commit == head).\n    32→                let merge_commit = self.repo.find_commit(merge_commit_sha.clone())?;\n    33→                let parent_count = merge_commit.parents().count();\n    34→                if parent_count > 1 {\n    35→                    println!(\"{} has {} parents (simple merge)\", merge_commit_sha, parent_count);\n    36→                    return Ok(());\n    37→                }\n    38→\n    39→                if merge_commit_sha == head_sha {\n    40→                    println!(\"{} equals head {} (fast-forward)\", merge_commit_sha, head_sha);\n    41→                    return Ok(());\n    42→                }\n    43→                println!(\"Rewriting authorship for {} -> {} (squash or rebase-like merge)\", head_sha, merge_commit_sha);\n    44→                println!(\"Fetching base branch {}\", base_ref);\n    45→                // Ensure we have all the required commits from the base branch\n    46→                self.repo.fetch_branch(base_ref, \"origin\")?;\n    47→                println!(\"Fetched base branch. Fetching authorship history\");\n    48→                // Ensure we have the full authorship history\n    49→                fetch_authorship_notes(&self.repo, \"origin\")?;\n    50→                println!(\"Fetched authorship history\");\n    51→                // Rewrite authorship\n    52→                rewrite_authorship_after_squash_or_rebase(&self.repo, &head_ref, &head_sha, &merge_commit_sha, false)?;\n    53→                println!(\"Rewrote authorship. Pushing authorship...\");\n    54→                // Push authorship\n    55→                self.repo.push_authorship(\"origin\")?;\n    56→                println!(\"Pushed authorship. Done.\");\n    57→                Ok(())\n    58→            }\n    59→        }\n    60→    }\n    61→\n    62→    pub fn teardown(&self) -> Result<(), GitAiError> {\n    63→        fs::remove_dir_all(self.temp_dir.clone())?;\n    64→        Ok(())\n    65→    }\n    66→}\n    67→\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>\n",
+          "timestamp": "2025-10-27T15:26:37.929Z"
+        },
+        {
+          "type": "user",
+          "text": "/Users/svarlamov/projects/git-ai/src/ci/workflow_templates/github.yaml",
+          "timestamp": "2025-10-27T15:26:38.354Z"
+        },
+        {
+          "type": "user",
+          "text": "/Users/svarlamov/projects/git-ai/Taskfile.yml",
+          "timestamp": "2025-10-27T15:26:38.527Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/ci/workflow_templates/github.yaml"
+          },
+          "timestamp": "2025-10-27T15:26:42.808Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Glob",
+          "input": {
+            "pattern": "docs/*.mdx"
+          },
+          "timestamp": "2025-10-27T15:26:43.114Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Glob",
+          "input": {
+            "pattern": "docs/*.md"
+          },
+          "timestamp": "2025-10-27T15:26:43.171Z"
+        },
+        {
+          "type": "user",
+          "text": "     1→name: Git AI\n     2→\n     3→on:\n     4→  pull_request:\n     5→    types: [closed]\n     6→\n     7→jobs:\n     8→  git-ai:\n     9→    runs-on: ubuntu-latest\n    10→    permissions:\n    11→      contents: write\n    12→\n    13→    steps:\n    14→      - name: Install git-ai\n    15→        run: |\n    16→          curl -fsSL https://raw.githubusercontent.com/acunniffe/git-ai/main/install.sh | bash\n    17→          echo \"$HOME/.git-ai/bin\" >> $GITHUB_PATH\n    18→      - name: Run git-ai\n    19→        id: run-git-ai\n    20→        run: |\n    21→          git config --global user.name \"github-actions[bot]\"\n    22→          git config --global user.email \"github-actions[bot]@users.noreply.github.com\"\n    23→          git-ai ci github run\n    24→\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>\n",
+          "timestamp": "2025-10-27T15:26:43.207Z"
+        },
+        {
+          "type": "user",
+          "text": "/Users/svarlamov/projects/git-ai/docs/add-your-agent.mdx\n/Users/svarlamov/projects/git-ai/docs/claude-code.mdx\n/Users/svarlamov/projects/git-ai/docs/cursor.mdx\n/Users/svarlamov/projects/git-ai/docs/enterprise-configuration.mdx\n/Users/svarlamov/projects/git-ai/docs/enterprise-deployment-hooks.mdx\n/Users/svarlamov/projects/git-ai/docs/enterprise-performance.mdx\n/Users/svarlamov/projects/git-ai/docs/how-git-ai-works.mdx\n/Users/svarlamov/projects/git-ai/docs/index.mdx\n/Users/svarlamov/projects/git-ai/docs/limitations.mdx\n/Users/svarlamov/projects/git-ai/docs/performance.mdx\n/Users/svarlamov/projects/git-ai/docs/reference.mdx\n/Users/svarlamov/projects/git-ai/docs/vs-code-github-copilot.mdx\n/Users/svarlamov/projects/git-ai/docs/enterprise-deployment-wrapper.mdx",
+          "timestamp": "2025-10-27T15:26:43.213Z"
+        },
+        {
+          "type": "user",
+          "text": "No files found",
+          "timestamp": "2025-10-27T15:26:43.212Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/ci-workflows.mdx"
+          },
+          "timestamp": "2025-10-27T15:26:52.136Z"
+        },
+        {
+          "type": "user",
+          "text": "<tool_use_error>File does not exist.</tool_use_error>",
+          "timestamp": "2025-10-27T15:26:52.261Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/index.mdx"
+          },
+          "timestamp": "2025-10-27T15:26:56.352Z"
+        },
+        {
+          "type": "user",
+          "text": "     1→---\n     2→title: Get Started\n     3→description: Git AI accurately tracks AI code contributions across your development workflow. Install in seconds and start measuring AI-generated code that lands in production.\n     4→keywords: git ai, ai code tracking, ai authorship, code attribution, cursor integration, claude code, github copilot, developer tools\n     5→---\n     6→\n     7→{README.md}\n     8→\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>\n",
+          "timestamp": "2025-10-27T15:26:56.416Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll create comprehensive user documentation for the CI workflows feature.",
+          "timestamp": "2025-10-27T15:27:00.253Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Write",
+          "input": {
+            "content": "---\ntitle: CI Workflows\ndescription: Automate authorship tracking in your CI/CD pipeline with Git AI's continuous integration workflows\nkeywords: git ai, ci cd, github actions, continuous integration, automation, authorship tracking\n---\n\n# CI Workflows\n\nGit AI provides CI workflow integration to automatically track and preserve authorship information when pull requests are merged. This ensures that AI-assisted code contributions are properly attributed even when commits are squashed or rebased during merge.\n\n## GitHub Actions\n\nThe GitHub Actions workflow automatically runs when pull requests are merged, detecting squash and rebase merges and rewriting authorship accordingly.\n\n### Installation\n\nInstall the GitHub Actions workflow in your repository:\n\n```bash\ngit-ai ci github install\n```\n\nThis creates `.github/workflows/git-ai.yaml` in your repository with the following configuration:\n\n- **Trigger**: Runs on pull request close events\n- **Permissions**: Requires `contents: write` to push authorship notes\n- **Actions**:\n  1. Installs git-ai from the official install script\n  2. Configures git user as `github-actions[bot]`\n  3. Runs `git-ai ci github run` to process the merge\n\n### How It Works\n\nWhen a pull request is merged via squash or rebase:\n\n1. The workflow detects the merge event from `GITHUB_EVENT_NAME` and `GITHUB_EVENT_PATH`\n2. Clones the repository at the base branch\n3. Fetches the base branch and authorship history from origin\n4. Rewrites authorship for the merge commit based on the original commits\n5. Pushes the updated authorship notes to the remote\n\n**Note**: The workflow automatically skips:\n- Simple merge commits (with 2+ parents)\n- Fast-forward merges (where merge commit SHA equals head SHA)\n\n### Manual Invocation\n\nYou can manually run the GitHub CI workflow in a GitHub Actions environment:\n\n```bash\ngit-ai ci github run\n```\n\nThis reads the GitHub event context from environment variables (`GITHUB_EVENT_NAME`, `GITHUB_EVENT_PATH`) and processes the merge accordingly.\n\n## Local CI (For Other CI/CD Platforms)\n\nIf you're using a CI/CD platform other than GitHub Actions (e.g., GitLab CI, Jenkins, CircleCI, Buildkite), you can use the local CI command to integrate Git AI into your pipeline.\n\n### Usage\n\n```bash\ngit-ai ci local merge \\\n  --merge-commit-sha <sha> \\\n  --base-ref <ref> \\\n  --head-ref <ref> \\\n  --head-sha <sha> \\\n  --base-sha <sha>\n```\n\n### Parameters\n\n| Parameter | Description | Example |\n|-----------|-------------|---------|\n| `--merge-commit-sha` | SHA of the merge commit created in the base branch | `abc123def456...` |\n| `--base-ref` | Name of the base branch (target branch) | `main` or `develop` |\n| `--head-ref` | Name of the source branch (PR branch) | `feature/new-login` |\n| `--head-sha` | SHA of the last commit in the source branch before merge | `789ghi012jkl...` |\n| `--base-sha` | SHA of the base branch before the merge | `345mno678pqr...` |\n\n### Example\n\n```bash\ngit-ai ci local merge \\\n  --merge-commit-sha a1b2c3d4e5f6 \\\n  --base-ref main \\\n  --head-ref feature/auth \\\n  --head-sha f6e5d4c3b2a1 \\\n  --base-sha 123456789abc\n```\n\n### Integration Examples\n\n#### GitLab CI\n\nAdd to your `.gitlab-ci.yml`:\n\n```yaml\nauthorship-tracking:\n  stage: post-merge\n  only:\n    - merge_requests\n  when: on_success\n  script:\n    - curl -fsSL https://raw.githubusercontent.com/acunniffe/git-ai/main/install.sh | bash\n    - export PATH=\"$HOME/.git-ai/bin:$PATH\"\n    - git config --global user.name \"gitlab-ci\"\n    - git config --global user.email \"ci@gitlab.com\"\n    - git-ai ci local merge\n        --merge-commit-sha $CI_MERGE_REQUEST_TARGET_BRANCH_SHA\n        --base-ref $CI_MERGE_REQUEST_TARGET_BRANCH_NAME\n        --head-ref $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME\n        --head-sha $CI_MERGE_REQUEST_SOURCE_BRANCH_SHA\n        --base-sha $CI_MERGE_REQUEST_DIFF_BASE_SHA\n```\n\n#### Jenkins\n\nAdd to your Jenkinsfile:\n\n```groovy\nstage('Track Authorship') {\n    when {\n        expression { env.CHANGE_ID != null }\n    }\n    steps {\n        sh '''\n            curl -fsSL https://raw.githubusercontent.com/acunniffe/git-ai/main/install.sh | bash\n            export PATH=\"$HOME/.git-ai/bin:$PATH\"\n            git config --global user.name \"jenkins\"\n            git config --global user.email \"ci@jenkins.io\"\n            git-ai ci local merge \\\n                --merge-commit-sha ${GIT_COMMIT} \\\n                --base-ref ${CHANGE_TARGET} \\\n                --head-ref ${CHANGE_BRANCH} \\\n                --head-sha ${GIT_PREVIOUS_COMMIT} \\\n                --base-sha ${GIT_BASE_COMMIT}\n        '''\n    }\n}\n```\n\n### How Local CI Works\n\nThe local CI command:\n\n1. Opens the git repository in the current directory\n2. Parses the provided merge event parameters\n3. Fetches the base branch and authorship history\n4. Calls the same authorship rewriting logic as the GitHub workflow\n5. Pushes the updated authorship notes to origin\n\nUnlike the GitHub workflow, the local command does not clone a fresh copy of the repository—it operates on the existing repository in the current directory.\n\n## Troubleshooting\n\n### Workflow Not Running\n\n- Ensure the workflow file exists at `.github/workflows/git-ai.yaml`\n- Verify the repository has Actions enabled\n- Check that PRs are being merged (not just closed without merge)\n\n### Permission Errors\n\n- The workflow requires `contents: write` permission to push authorship notes\n- Ensure your repository settings allow Actions to write to the repository\n\n### Authorship Not Updating\n\n- Verify that authorship notes were initialized with `git-ai init`\n- Check that the merge is a squash or rebase (not a simple merge or fast-forward)\n- Enable debug logging by setting `GIT_AI_DEBUG=1` environment variable\n\n## See Also\n\n- [How Git AI Works](/docs/how-git-ai-works) - Learn about authorship tracking internals\n- [Performance](/docs/performance) - Understanding Git AI's performance characteristics\n- [Reference](/docs/reference) - Complete command reference\n",
+            "file_path": "/Users/svarlamov/projects/git-ai/docs/ci-workflows.mdx"
+          },
+          "timestamp": "2025-10-27T15:27:26.046Z"
+        },
+        {
+          "type": "user",
+          "text": "File created successfully at: /Users/svarlamov/projects/git-ai/docs/ci-workflows.mdx",
+          "timestamp": "2025-10-27T15:28:54.301Z"
+        }
+      ],
+      "total_additions": 133,
+      "total_deletions": 0,
+      "accepted_lines": 37,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,8 @@
+src/authorship/range_authorship.rs
+  7876fb6 369
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "a2438624ffa1c4a5159a77963ff753adb9dd3322",
+  "prompts": {}
+}
