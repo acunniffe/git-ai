@@ -308,6 +308,23 @@ struct CachedAuthorConfig {
 
 static AUTHOR_CONFIG_CACHE: OnceLock<Mutex<Option<CachedAuthorConfig>>> = OnceLock::new();
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct NotesBackendKindCacheKey {
+    config_path: Option<PathBuf>,
+    config_fingerprint: Option<AuthorConfigFileFingerprint>,
+    env_kind: Option<String>,
+    #[cfg(any(test, feature = "test-support"))]
+    test_patch: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct CachedNotesBackendKind {
+    key: NotesBackendKindCacheKey,
+    kind: NotesBackendKind,
+}
+
+static NOTES_BACKEND_KIND_CACHE: OnceLock<Mutex<Option<CachedNotesBackendKind>>> = OnceLock::new();
+
 #[cfg(any(test, feature = "test-support"))]
 static TEST_FEATURE_FLAGS_OVERRIDE: RwLock<Option<FeatureFlags>> = RwLock::new(None);
 
@@ -400,9 +417,42 @@ impl Config {
         build_config().author
     }
 
+    /// Return the current notes backend without rebuilding the full config on
+    /// every note lookup.
+    ///
+    /// The cache key fingerprints the config file and the backend environment
+    /// override, so long-lived daemon processes still observe backend changes
+    /// before dispatching a note operation.
+    pub fn fresh_notes_backend_kind_cached() -> NotesBackendKind {
+        let key = notes_backend_kind_cache_key();
+        let cache = NOTES_BACKEND_KIND_CACHE.get_or_init(|| Mutex::new(None));
+        if let Ok(mut guard) = cache.lock() {
+            if let Some(cached) = guard.as_ref()
+                && cached.key == key
+            {
+                return cached.kind;
+            }
+
+            let kind = build_config().notes_backend_kind();
+            *guard = Some(CachedNotesBackendKind { key, kind });
+            return kind;
+        }
+
+        build_config().notes_backend_kind()
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     pub fn clear_author_config_cache_for_tests() {
         if let Some(cache) = AUTHOR_CONFIG_CACHE.get()
+            && let Ok(mut guard) = cache.lock()
+        {
+            *guard = None;
+        }
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn clear_notes_backend_kind_cache_for_tests() {
+        if let Some(cache) = NOTES_BACKEND_KIND_CACHE.get()
             && let Ok(mut guard) = cache.lock()
         {
             *guard = None;
@@ -945,6 +995,21 @@ fn author_config_cache_key() -> AuthorConfigCacheKey {
     AuthorConfigCacheKey {
         config_path,
         config_fingerprint,
+        #[cfg(any(test, feature = "test-support"))]
+        test_patch: env::var("GIT_AI_TEST_CONFIG_PATCH").ok(),
+    }
+}
+
+fn notes_backend_kind_cache_key() -> NotesBackendKindCacheKey {
+    let config_path = config_file_path();
+    let config_fingerprint = config_path
+        .as_ref()
+        .and_then(|path| author_config_file_fingerprint(path));
+
+    NotesBackendKindCacheKey {
+        config_path,
+        config_fingerprint,
+        env_kind: env::var("GIT_AI_NOTES_BACKEND_KIND").ok(),
         #[cfg(any(test, feature = "test-support"))]
         test_patch: env::var("GIT_AI_TEST_CONFIG_PATCH").ok(),
     }
@@ -2699,6 +2764,31 @@ mod tests {
             NotesBackendKind::Http,
             "GIT_AI_NOTES_BACKEND_KIND=http should override the default git_notes"
         );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_cached_notes_backend_kind_observes_environment_changes() {
+        let old = std::env::var("GIT_AI_NOTES_BACKEND_KIND").ok();
+        Config::clear_notes_backend_kind_cache_for_tests();
+
+        unsafe { std::env::set_var("GIT_AI_NOTES_BACKEND_KIND", "git_notes") };
+        assert_eq!(
+            Config::fresh_notes_backend_kind_cached(),
+            NotesBackendKind::GitNotes
+        );
+
+        unsafe { std::env::set_var("GIT_AI_NOTES_BACKEND_KIND", "http") };
+        assert_eq!(
+            Config::fresh_notes_backend_kind_cached(),
+            NotesBackendKind::Http
+        );
+
+        match old {
+            Some(value) => unsafe { std::env::set_var("GIT_AI_NOTES_BACKEND_KIND", value) },
+            None => unsafe { std::env::remove_var("GIT_AI_NOTES_BACKEND_KIND") },
+        }
+        Config::clear_notes_backend_kind_cache_for_tests();
     }
 
     #[test]

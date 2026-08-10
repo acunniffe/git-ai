@@ -82,6 +82,10 @@ pub(crate) fn run_command_with_timeout_and_env(
     let mut command = Command::new(program);
     command
         .args(args)
+        // Match Command::output() semantics used by the non-timed path. These
+        // internal best-effort transports must never compete for the caller's
+        // terminal or stall on a credential/passphrase prompt.
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     for key in env_remove {
@@ -286,6 +290,23 @@ fn drain_output_events(rx: &Receiver<OutputEvent>, output: &mut OutputState) {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn timed_commands_do_not_inherit_caller_stdin() {
+        let output = run_command_with_timeout(
+            "sh",
+            &["-c", "readlink /proc/self/fd/0"],
+            None,
+            Duration::from_secs(1),
+            Duration::from_millis(10),
+            &[],
+        )
+        .expect("timed command should start");
+
+        assert_eq!(output.status, Some(0));
+        assert_eq!(output.stdout, "/dev/null");
+    }
 
     #[test]
     fn timeout_kills_and_reaps_the_child_process_group() {

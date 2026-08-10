@@ -19,7 +19,7 @@ pub use crate::git::refs::CommitAuthorship;
 // --- Writes ---
 
 pub fn write_note(repo: &Repository, commit_sha: &str, content: &str) -> Result<(), GitAiError> {
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         NotesBackendKind::Http => http_write_note(commit_sha, content),
         NotesBackendKind::GitNotes => crate::git::refs::notes_add(repo, commit_sha, content),
     }
@@ -32,7 +32,7 @@ pub fn write_notes_batch(
     if entries.is_empty() {
         return Ok(());
     }
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         NotesBackendKind::Http => http_write_batch(entries),
         NotesBackendKind::GitNotes => crate::git::refs::notes_add_batch(repo, entries),
     }
@@ -41,7 +41,7 @@ pub fn write_notes_batch(
 // --- Reads ---
 
 pub fn read_note(repo: &Repository, commit_sha: &str) -> Option<String> {
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         NotesBackendKind::Http => http_read_note(commit_sha),
         NotesBackendKind::GitNotes => crate::git::refs::show_authorship_note(repo, commit_sha),
     }
@@ -61,7 +61,7 @@ pub fn read_notes_batch(
         return Ok(HashMap::new());
     }
 
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         NotesBackendKind::Http => {
             let mut notes = http_read_notes(commit_shas);
 
@@ -81,7 +81,7 @@ pub fn read_notes_batch(
 }
 
 pub fn read_authorship(repo: &Repository, commit_sha: &str) -> Option<AuthorshipLog> {
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         NotesBackendKind::Http => http_read_note(commit_sha).and_then(|content| {
             AuthorshipLog::deserialize_from_string(&content)
                 .map_err(|e| tracing::debug!("notes deserialization error: {}", e))
@@ -95,7 +95,7 @@ pub fn read_authorship_v3(
     repo: &Repository,
     commit_sha: &str,
 ) -> Result<AuthorshipLog, GitAiError> {
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         NotesBackendKind::Http => {
             let content = http_read_note(commit_sha)
                 .ok_or_else(|| GitAiError::Generic("No authorship note found".to_string()))?;
@@ -117,7 +117,7 @@ pub fn read_note_blob_oids(
     repo: &Repository,
     commit_shas: &[String],
 ) -> Result<HashMap<String, String>, GitAiError> {
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         // For Http, notes are in notes-db not in git — no blob OIDs exist.
         // Return an empty map; callers handle this as "no notes in git".
         NotesBackendKind::Http => Ok(HashMap::new()),
@@ -131,7 +131,7 @@ pub fn commits_with_notes(
     repo: &Repository,
     commit_shas: &[String],
 ) -> Result<HashSet<String>, GitAiError> {
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         NotesBackendKind::Http => Ok(http_check_exists(commit_shas)),
         NotesBackendKind::GitNotes => {
             crate::git::refs::commits_with_authorship_notes(repo, commit_shas)
@@ -143,7 +143,7 @@ pub fn filter_commits_with_notes(
     repo: &Repository,
     commit_shas: &[String],
 ) -> Result<Vec<CommitAuthorship>, GitAiError> {
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         NotesBackendKind::Http => {
             let notes = read_notes_batch(repo, commit_shas)?;
             let authors = crate::git::refs::commit_authors_for_list(repo, commit_shas)?;
@@ -186,7 +186,7 @@ pub fn filter_commits_with_notes(
 /// On the HTTP backend this searches only the notes-db cache; on
 /// the GitNotes backend it greps `refs/notes/ai` directly.
 pub fn search_notes(repo: &Repository, pattern: &str) -> Result<Vec<String>, GitAiError> {
-    match Config::fresh().notes_backend_kind() {
+    match Config::fresh_notes_backend_kind_cached() {
         NotesBackendKind::Http => http_search_notes(repo, pattern),
         NotesBackendKind::GitNotes => crate::git::refs::grep_ai_notes(repo, pattern),
     }
