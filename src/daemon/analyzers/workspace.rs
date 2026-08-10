@@ -1,4 +1,6 @@
-use crate::daemon::analyzers::{AnalysisView, CommandAnalyzer, command_args, normalized_args};
+use crate::daemon::analyzers::{
+    AnalysisView, CommandAnalyzer, checkout_is_path_checkout, command_args, normalized_args,
+};
 use crate::daemon::domain::{
     AnalysisResult, CommandClass, Confidence, NormalizedCommand, SemanticEvent, StashOpKind,
 };
@@ -14,7 +16,6 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
         state: AnalysisView<'_>,
     ) -> Result<AnalysisResult, GitAiError> {
         let name = cmd.primary_command.as_deref().unwrap_or_default();
-        let args = command_args(cmd);
 
         let mut events = Vec::new();
         match name {
@@ -26,7 +27,7 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
                 });
             }
             "checkout" => {
-                if is_path_checkout(&args) {
+                if checkout_is_path_checkout(cmd) {
                     events.push(SemanticEvent::CheckoutPaths);
                 } else if let Some(change) = cmd.ref_changes.first() {
                     events.push(SemanticEvent::RefUpdated {
@@ -85,13 +86,6 @@ fn infer_stash_kind(args: &[String]) -> StashOpKind {
         "show" => StashOpKind::Show,
         _ => StashOpKind::Unknown,
     }
-}
-
-fn is_path_checkout(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--")
-        || args
-            .iter()
-            .any(|arg| arg.starts_with("--pathspec") || arg == "--ours" || arg == "--theirs")
 }
 
 fn current_head_for_workspace_command(

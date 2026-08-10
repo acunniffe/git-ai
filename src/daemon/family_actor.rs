@@ -110,17 +110,10 @@ pub fn spawn_family_actor(family_key: FamilyKey) -> FamilyActorHandle {
             match msg {
                 FamilyMsg::Apply(cmd, respond_to) => {
                     let mut cmd = *cmd;
-                    let result = ref_cursor.enrich_command(&mut cmd, &state).and_then(
-                        |command_start_refs| {
-                            reducer::reduce_family_command_with_ref_snapshot(
-                                &mut state,
-                                cmd,
-                                &analyzers,
-                                &command_start_refs,
-                            )
+                    let result = ref_cursor.enrich_command(&mut cmd, &state).and_then(|()| {
+                        reducer::reduce_family_command(&mut state, cmd, &analyzers)
                             .map(|(applied, _)| applied)
-                        },
-                    );
+                    });
                     let _ = respond_to.send(result);
                 }
                 FamilyMsg::ApplyCheckpoint(respond_to) => {

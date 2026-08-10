@@ -1291,11 +1291,19 @@ fn test_stash_apply_shift_uses_final_commit_tree_after_later_edit() {
 /// entire stash attribution restore -- silently dropping the AI note.
 #[test]
 fn test_stash_apply_shift_survives_case_colliding_target_tree() {
-    let repo = TestRepo::new();
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_TRACE_LISTENER_WORKER_SPAWN_DELAY_MS",
+        "500",
+    )]);
     let file_path = repo.path().join("example.txt");
+    let mut file = repo.filename("example.txt");
 
     fs::write(&file_path, "root\nanchor\n").unwrap();
     repo.stage_all_and_commit("initial").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "root".unattributed_human(),
+        "anchor".unattributed_human(),
+    ]);
 
     // Stash an AI change against the current base.
     fs::write(&file_path, "root\nAI stashed\nanchor\n").unwrap();
@@ -1311,6 +1319,10 @@ fn test_stash_apply_shift_survives_case_colliding_target_tree() {
     let mut readme = repo.filename("README.md");
     readme.set_contents(vec!["# Test Repo".to_string()]);
     repo.stage_all_and_commit("add README").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "root".unattributed_human(),
+        "anchor".unattributed_human(),
+    ]);
 
     let readme_blob = repo
         .git_og(&["rev-parse", "HEAD:README.md"])
@@ -1324,8 +1336,15 @@ fn test_stash_apply_shift_survives_case_colliding_target_tree() {
         &format!("100644,{readme_blob},readme.md"),
     ])
     .unwrap();
-    repo.git_og(&["commit", "-m", "add case-colliding readme.md"])
+    // Route the ref-moving plumbing commit through trace2. `git_og` deliberately
+    // bypasses the test daemon; using it here made the old test depend on a later
+    // mutable-ref sample discovering an operation Git AI never observed.
+    repo.git(&["commit", "-m", "add case-colliding readme.md"])
         .unwrap();
+    file.assert_committed_lines(crate::lines![
+        "root".unattributed_human(),
+        "anchor".unattributed_human(),
+    ]);
 
     // Apply the stash onto the new HEAD and commit.
     repo.git(&["stash", "apply"])
@@ -1334,7 +1353,6 @@ fn test_stash_apply_shift_survives_case_colliding_target_tree() {
     let commit = repo.commit("apply stash onto case-colliding tree").unwrap();
 
     // The AI attribution must survive despite the case-colliding target tree.
-    let mut file = repo.filename("example.txt");
     file.assert_committed_lines(crate::lines![
         "root".unattributed_human(),
         "AI stashed".ai(),
@@ -1623,7 +1641,10 @@ fn test_partial_stash_trims_unstashed_initial_metadata() {
 /// for the stashed paths and leave unstashed attribution live.
 #[test]
 fn test_stash_push_pathspec_excludes_unstashed_file_from_stash_log() {
-    let repo = TestRepo::new();
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_TRACE_LISTENER_WORKER_SPAWN_DELAY_MS",
+        "500",
+    )]);
     let mut readme = repo.filename("README.md");
     readme.set_contents(vec!["# Test Repo".to_string()]);
     repo.stage_all_and_commit("initial commit").unwrap();
