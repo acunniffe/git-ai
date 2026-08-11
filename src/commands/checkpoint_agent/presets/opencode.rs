@@ -587,7 +587,7 @@ mod tests {
         std::fs::create_dir_all(&live_path).unwrap();
 
         let stale_db = stale_path.join("opencode.db");
-        let stale_conn = rusqlite::Connection::open(&stale_db).unwrap();
+        let stale_conn = crate::sqlite::open_with_memory_limits(&stale_db).unwrap();
         stale_conn
             .execute(
                 "CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT)",
