@@ -41,3 +41,7 @@ fuzz/corpus/
 .worktrees/
 .claude/worktrees/
 
+# .NET build output (Visual Studio extension)
+agent-support/visualstudio/**/bin/
+agent-support/visualstudio/**/obj/
+
