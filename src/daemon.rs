@@ -970,6 +970,7 @@ fn post_conflict_resolution_working_log(
             supress_output: true,
             compute_stats: false,
             recover_attribution: false,
+            write_note: true,
         },
         precomputed_parent_diff,
         move |resolution_log| {
@@ -6139,7 +6140,7 @@ impl ActorDaemonCoordinator {
                                     if let Some(head_sha) = push_head.as_deref() {
                                         let pathspecs = Self::stash_pathspecs_from_command(cmd);
                                         crate::authorship::rewrite_stash::handle_stash_create(
-                                            &repo, stash_sha, head_sha, pathspecs,
+                                            &repo, stash_sha, head_sha, pathspecs, true,
                                         )?;
                                     }
                                 }
@@ -6304,6 +6305,7 @@ impl ActorDaemonCoordinator {
                                     true,
                                     recovery_file_timestamps.as_ref(),
                                     Some(&recovery_preflight),
+                                    None,
                                 )
                             })?;
 

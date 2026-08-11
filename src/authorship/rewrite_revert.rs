@@ -132,13 +132,16 @@ pub(crate) fn handle_revert_commits_with_metrics(
     }
 
     // Batch-read all source notes in one call.
-    let source_base_shas: Vec<String> = {
-        let mut v: Vec<String> = resolved.iter().map(|r| r.source_base_sha.clone()).collect();
+    let note_shas: Vec<String> = {
+        let mut v: Vec<String> = resolved
+            .iter()
+            .flat_map(|r| [r.source_base_sha.clone(), r.revert_commit.clone()])
+            .collect();
         v.sort();
         v.dedup();
         v
     };
-    let notes = notes_api::read_notes_batch(repo, &source_base_shas)?;
+    let notes = notes_api::read_notes_batch(repo, &note_shas)?;
 
     // Build one batched diff-tree request covering, for each reverted commit:
     //  - (source_base, revert_commit): hunks to shift the source note forward,
@@ -148,13 +151,13 @@ pub(crate) fn handle_revert_commits_with_metrics(
     let mut shift_idx: Vec<Option<usize>> = Vec::new();
     let mut added_idx: Vec<usize> = Vec::new();
     for r in &resolved {
-        // Only need the shift pair if the source note exists.
-        let shift = if notes.contains_key(&r.source_base_sha) {
+        // The direct-note path and the history-aware fallback both shift from
+        // the source base into the revert commit. Keep all pairs in this one
+        // batched diff invocation.
+        let shift = {
             let idx = diff_pairs.len();
             diff_pairs.push((r.source_base_sha.clone(), r.revert_commit.clone()));
             Some(idx)
-        } else {
-            None
         };
         shift_idx.push(shift);
         let aidx = diff_pairs.len();
@@ -164,19 +167,10 @@ pub(crate) fn handle_revert_commits_with_metrics(
     let diff_results = compute_diff_trees_batch(repo, &diff_pairs)?;
 
     // Per-commit reconstruction is now pure in-memory.
-    let mut writes: Vec<(String, String)> = Vec::new();
+    let mut reconstructed_by_commit: HashMap<String, AuthorshipLog> = HashMap::new();
+    let mut added_lines_by_commit: HashMap<String, HashMap<String, Vec<u32>>> = HashMap::new();
     let mut metric_commits: Vec<RewriteMetricCommit> = Vec::new();
     for (i, r) in resolved.iter().enumerate() {
-        let Some(shift) = shift_idx[i] else {
-            continue;
-        };
-        let Some(source_note) = notes.get(&r.source_base_sha) else {
-            continue;
-        };
-        let Ok(mut log) = AuthorshipLog::deserialize_from_string(source_note) else {
-            continue;
-        };
-
         // Added lines re-introduced by the revert (new-side hunk ranges of the
         // parent->revert diff), keyed by file.
         let added_lines = added_lines_from_diff_result(&diff_results[added_idx[i]]);
@@ -184,39 +178,43 @@ pub(crate) fn handle_revert_commits_with_metrics(
             continue;
         }
 
-        let shift_result = &diff_results[shift];
-        for (old_path, new_path) in &shift_result.renames {
-            for attestation in &mut log.attestations {
-                if attestation.file_path == *old_path {
-                    attestation.file_path = new_path.clone();
+        let log = shift_idx[i]
+            .and_then(|shift| {
+                notes
+                    .get(&r.source_base_sha)
+                    .and_then(|note| AuthorshipLog::deserialize_from_string(note).ok())
+                    .map(|log| {
+                        shift_and_clip_revert_log(
+                            log,
+                            &diff_results[shift],
+                            &added_lines,
+                            &r.revert_commit,
+                        )
+                    })
+            })
+            .unwrap_or_default();
+
+        let commit_added = added_lines_by_commit
+            .entry(r.revert_commit.clone())
+            .or_default();
+        for (path, lines) in &added_lines {
+            let target = commit_added.entry(path.clone()).or_default();
+            target.extend(lines.iter().copied());
+            target.sort_unstable();
+            target.dedup();
+        }
+        if log.attestations.is_empty() {
+            reconstructed_by_commit
+                .entry(r.revert_commit.clone())
+                .or_default();
+        } else {
+            match reconstructed_by_commit.get_mut(&r.revert_commit) {
+                Some(existing) => crate::authorship::rewrite::merge_authorship_logs(existing, &log),
+                None => {
+                    reconstructed_by_commit.insert(r.revert_commit.clone(), log);
                 }
             }
         }
-        if !shift_result.hunks_by_file.is_empty() {
-            log.attestations = log
-                .attestations
-                .iter()
-                .filter_map(|fa| match shift_result.hunks_by_file.get(&fa.file_path) {
-                    Some(hunks) => apply_hunk_shifts_to_file_attestation(fa, hunks),
-                    None => Some(fa.clone()),
-                })
-                .collect();
-        }
-
-        log.metadata.base_commit_sha = r.revert_commit.clone();
-        log.attestations = log
-            .attestations
-            .iter()
-            .filter_map(|file| clip_file_attestation_to_lines(file, &added_lines))
-            .collect();
-        if log.attestations.is_empty() {
-            continue;
-        }
-
-        let Ok(note_str) = log.serialize_to_string() else {
-            continue;
-        };
-        writes.push((r.revert_commit.clone(), note_str.clone()));
         if collect_metrics {
             metric_commits.push(
                 RewriteMetricCommit::new(
@@ -225,16 +223,188 @@ pub(crate) fn handle_revert_commits_with_metrics(
                     RewriteMetricOperation::Revert,
                 )
                 .with_parent_sha(r.parent_sha.clone())
-                .with_authorship_note(note_str)
                 .with_parent_diff(diff_results[added_idx[i]].clone()),
             );
         }
+    }
+
+    // Direct source-base notes are intentionally the constant-time fast path.
+    // If they do not cover every restored line, scan the ORIGINAL pre-revert
+    // history once, batch-read all reachable notes, and batch-compute every
+    // required note->destination shift. Processing notes newest-first and only
+    // filling uncovered ranges reproduces blame precedence without spawning a
+    // git process per reverted commit or per file.
+    let needs_history_fallback = added_lines_by_commit.iter().any(|(commit, added)| {
+        reconstructed_by_commit
+            .get(commit)
+            .is_none_or(|log| !uncovered_added_lines(added, log).is_empty())
+    });
+    if needs_history_fallback {
+        let history_tip = resolved
+            .first()
+            .map(|r| r.parent_sha.as_str())
+            .unwrap_or_default();
+        let history_commits = rev_list_for_revert_fallback(repo, history_tip)?;
+        let history_notes = notes_api::read_notes_batch(repo, &history_commits)?;
+        let noted_commits = history_commits
+            .iter()
+            .filter(|commit| history_notes.contains_key(*commit))
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut fallback_pairs = Vec::new();
+        let mut fallback_pair_index = HashMap::new();
+        for destination in added_lines_by_commit.keys() {
+            for source in &noted_commits {
+                fallback_pair_index
+                    .insert((destination.clone(), source.clone()), fallback_pairs.len());
+                fallback_pairs.push((source.clone(), destination.clone()));
+            }
+        }
+        let fallback_diffs = compute_diff_trees_batch(repo, &fallback_pairs)?;
+
+        for (destination, added) in &added_lines_by_commit {
+            let target = reconstructed_by_commit
+                .entry(destination.clone())
+                .or_default();
+            for source in &noted_commits {
+                let missing = uncovered_added_lines(added, target);
+                if missing.is_empty() {
+                    break;
+                }
+                let Some(note) = history_notes.get(source) else {
+                    continue;
+                };
+                let Ok(log) = AuthorshipLog::deserialize_from_string(note) else {
+                    continue;
+                };
+                let Some(index) = fallback_pair_index
+                    .get(&(destination.clone(), source.clone()))
+                    .copied()
+                else {
+                    continue;
+                };
+                let shifted =
+                    shift_and_clip_revert_log(log, &fallback_diffs[index], &missing, destination);
+                crate::authorship::rewrite::merge_authorship_logs(target, &shifted);
+            }
+        }
+    }
+
+    let mut writes = Vec::new();
+    for (commit, source_log) in reconstructed_by_commit {
+        let final_log = notes
+            .get(&commit)
+            .and_then(|note| AuthorshipLog::deserialize_from_string(note).ok())
+            .map(|resolution_log| {
+                crate::authorship::conflict_resolution::merge_conflict_resolution_authorship(
+                    Some(source_log.clone()),
+                    resolution_log,
+                    &commit,
+                )
+            })
+            .unwrap_or(source_log);
+        let note = final_log.serialize_to_string().map_err(|error| {
+            GitAiError::Generic(format!(
+                "failed to serialize revert authorship log: {error}"
+            ))
+        })?;
+        for metric in metric_commits
+            .iter_mut()
+            .filter(|metric| metric.new_sha == commit)
+        {
+            metric.authorship_note = Some(note.clone());
+        }
+        writes.push((commit, note));
     }
 
     if !writes.is_empty() {
         notes_api::write_notes_batch(repo, &writes)?;
     }
     Ok(metric_commits)
+}
+
+fn rev_list_for_revert_fallback(
+    repo: &Repository,
+    history_tip: &str,
+) -> Result<Vec<String>, GitAiError> {
+    if history_tip.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut args = repo.global_args_for_exec();
+    args.extend([
+        "rev-list".to_string(),
+        "--topo-order".to_string(),
+        "--date-order".to_string(),
+        history_tip.to_string(),
+    ]);
+    let output = exec_git(&args)?;
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect())
+}
+
+fn uncovered_added_lines(
+    added_lines: &HashMap<String, Vec<u32>>,
+    log: &AuthorshipLog,
+) -> HashMap<String, Vec<u32>> {
+    let mut covered: HashMap<&str, HashSet<u32>> = HashMap::new();
+    for file in &log.attestations {
+        let lines = covered.entry(&file.file_path).or_default();
+        for entry in &file.entries {
+            for range in &entry.line_ranges {
+                lines.extend(range.expand());
+            }
+        }
+    }
+    added_lines
+        .iter()
+        .filter_map(|(path, lines)| {
+            let covered = covered.get(path.as_str());
+            let missing = lines
+                .iter()
+                .copied()
+                .filter(|line| covered.is_none_or(|covered| !covered.contains(line)))
+                .collect::<Vec<_>>();
+            (!missing.is_empty()).then(|| (path.clone(), missing))
+        })
+        .collect()
+}
+
+fn shift_and_clip_revert_log(
+    mut log: AuthorshipLog,
+    shift_result: &crate::authorship::rewrite::DiffTreeResult,
+    added_lines: &HashMap<String, Vec<u32>>,
+    revert_commit: &str,
+) -> AuthorshipLog {
+    for (old_path, new_path) in &shift_result.renames {
+        for attestation in &mut log.attestations {
+            if attestation.file_path == *old_path {
+                attestation.file_path = new_path.clone();
+            }
+        }
+    }
+    if !shift_result.hunks_by_file.is_empty() {
+        log.attestations = log
+            .attestations
+            .iter()
+            .filter_map(
+                |file| match shift_result.hunks_by_file.get(&file.file_path) {
+                    Some(hunks) => apply_hunk_shifts_to_file_attestation(file, hunks),
+                    None => Some(file.clone()),
+                },
+            )
+            .collect();
+    }
+    log.metadata.base_commit_sha = revert_commit.to_string();
+    log.attestations = log
+        .attestations
+        .iter()
+        .filter_map(|file| clip_file_attestation_to_lines(file, added_lines))
+        .collect();
+    log
 }
 
 fn legacy_revert_metric_original_sha(parent_sha: &str) -> Option<String> {

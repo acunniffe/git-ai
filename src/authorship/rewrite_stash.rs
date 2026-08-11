@@ -1,13 +1,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::authorship::attribution_tracker::LineAttribution;
 use crate::authorship::authorship_log::{HumanRecord, PromptRecord, SessionRecord};
 use crate::authorship::imara_diff_utils::{DiffOp, capture_diff_slices};
-use crate::authorship::working_log::{Checkpoint, CheckpointKind};
+use crate::authorship::working_log::CheckpointKind;
 use crate::error::GitAiError;
 use crate::git::repo_storage::{InitialAttributions, PersistedWorkingLog};
 use crate::git::repository::{
@@ -46,10 +45,6 @@ fn stash_metadata_path(repo: &Repository, stash_sha: &str) -> PathBuf {
     stash_entry_dir(repo, stash_sha).join("metadata.json")
 }
 
-fn filtered_stash_working_log_base(stash_sha: &str) -> String {
-    format!("_stash_filter_{}", stash_sha)
-}
-
 fn working_log_for_dir(repo: &Repository, dir: PathBuf, base_commit: &str) -> PersistedWorkingLog {
     let canonical_workdir = repo
         .storage
@@ -67,52 +62,32 @@ fn working_log_for_dir(repo: &Repository, dir: PathBuf, base_commit: &str) -> Pe
 
 fn path_matches_any(path: &str, pathspecs: &[String]) -> bool {
     pathspecs.iter().any(|spec| {
-        // Trailing-`*` prefix glob (e.g. `src/foo*`, or a bare `*`), matching
-        // the pathspec semantics the pre-rewrite stash matcher supported.
         if let Some(prefix) = spec.strip_suffix('*') {
             return path.starts_with(prefix);
         }
         let normalized = spec.trim_end_matches('/');
-        path == spec || path == normalized || {
-            let prefix = format!("{}/", normalized);
-            path.starts_with(&prefix)
-        }
+        path == spec || path == normalized || path.starts_with(&format!("{normalized}/"))
     })
 }
 
-fn clean_working_log_for_stash(
+fn remove_stashed_paths_from_live_log(
     repo: &Repository,
     head_sha: &str,
     pathspecs: &[String],
 ) -> Result<(), GitAiError> {
-    if !repo.storage.has_working_log(head_sha) {
-        return Ok(());
-    }
-
     let persisted = repo.storage.working_log_for_base_commit(head_sha)?;
     let mut initial = persisted.read_initial_attributions();
-
-    if pathspecs.is_empty() {
-        initial.files.clear();
-        initial.file_blobs.clear();
-    } else {
-        initial
-            .files
-            .retain(|path, _| !path_matches_any(path, pathspecs));
-        initial
-            .file_blobs
-            .retain(|path, _| !path_matches_any(path, pathspecs));
-    }
-
+    initial
+        .files
+        .retain(|path, _| !path_matches_any(path, pathspecs));
+    initial
+        .file_blobs
+        .retain(|path, _| !path_matches_any(path, pathspecs));
     trim_initial_metadata_to_referenced_authors(&mut initial);
     persisted.write_initial(initial)?;
 
-    if pathspecs.is_empty() {
-        return persisted.write_all_checkpoints(&[]);
-    }
-
-    let checkpoints = persisted.read_all_checkpoints()?;
-    let filtered = checkpoints
+    let checkpoints = persisted
+        .read_all_checkpoints()?
         .into_iter()
         .map(|mut checkpoint| {
             checkpoint
@@ -122,8 +97,7 @@ fn clean_working_log_for_stash(
         })
         .filter(|checkpoint| !checkpoint.entries.is_empty())
         .collect::<Vec<_>>();
-    persisted.write_all_checkpoints(&filtered)?;
-    Ok(())
+    persisted.write_all_checkpoints(&checkpoints)
 }
 
 pub fn handle_stash_create(
@@ -131,6 +105,7 @@ pub fn handle_stash_create(
     stash_sha: &str,
     head_sha: &str,
     pathspecs: Vec<String>,
+    partition_live_by_tree: bool,
 ) -> Result<(), GitAiError> {
     cleanup_legacy_stashes_dir(repo);
 
@@ -150,12 +125,158 @@ pub fn handle_stash_create(
     let json = serde_json::to_string_pretty(&metadata)?;
     fs::write(&metadata_path, json)?;
 
-    // Save compact stashed file attributions before cleaning them from the working log.
-    save_stash_attributions(repo, stash_sha, head_sha, &pathspecs)?;
-
-    clean_working_log_for_stash(repo, head_sha, &pathspecs)?;
+    // Partition provenance by the contents Git actually put in the stash and
+    // left in the worktree. Pathspecs alone are insufficient for --staged,
+    // --keep-index, and --patch because those modes split a file by index or
+    // hunk rather than only by pathname.
+    partition_stash_attributions(
+        repo,
+        stash_sha,
+        head_sha,
+        &pathspecs,
+        partition_live_by_tree,
+    )?;
 
     Ok(())
+}
+
+fn partition_stash_attributions(
+    repo: &Repository,
+    stash_sha: &str,
+    head_sha: &str,
+    pathspecs: &[String],
+    partition_live_by_tree: bool,
+) -> Result<(), GitAiError> {
+    use crate::authorship::virtual_attribution::VirtualAttributions;
+
+    if !repo.storage.has_working_log(head_sha) {
+        return Ok(());
+    }
+
+    let va =
+        VirtualAttributions::from_persisted_working_log(repo.clone(), head_sha.to_string(), None)?;
+    let source_initial = va.to_initial_working_log_only();
+    if source_initial.files.is_empty() {
+        return Ok(());
+    }
+
+    let source_contents = source_initial
+        .files
+        .keys()
+        .filter_map(|path| {
+            va.get_file_content(path)
+                .cloned()
+                .map(|content| (path.clone(), content))
+        })
+        .collect::<HashMap<_, _>>();
+    let paths = source_initial.files.keys().cloned().collect::<Vec<_>>();
+
+    let mut stashed_contents = stash_snapshot_contents(repo, stash_sha, &paths)?;
+    if !pathspecs.is_empty() {
+        // A path-limited stash can still record a full WIP tree internally;
+        // only the explicit pathspecs are restored by Git.
+        stashed_contents.retain(|path, _| path_matches_any(path, pathspecs));
+    }
+    let stash_initial = shift_initial_to_target_contents(
+        source_initial.clone(),
+        &source_contents,
+        &stashed_contents,
+    );
+    let stash_log = working_log_for_dir(repo, stash_entry_dir(repo, stash_sha), head_sha);
+    write_initial_with_contents(&stash_log, stash_initial, stashed_contents)?;
+
+    if !pathspecs.is_empty() && !partition_live_by_tree {
+        return remove_stashed_paths_from_live_log(repo, head_sha, pathspecs);
+    }
+
+    let workdir = repo.workdir()?;
+    let live_contents = paths
+        .iter()
+        .filter_map(|path| {
+            fs::read_to_string(workdir.join(path))
+                .ok()
+                .map(|content| (path.clone(), content))
+        })
+        .collect::<HashMap<_, _>>();
+    let live_initial =
+        shift_initial_to_target_contents(source_initial, &source_contents, &live_contents);
+    let live_log = repo.storage.working_log_for_base_commit(head_sha)?;
+    write_initial_with_contents(&live_log, live_initial, live_contents)?;
+    live_log.write_all_checkpoints(&[])?;
+    Ok(())
+}
+
+fn stash_snapshot_contents(
+    repo: &Repository,
+    stash_sha: &str,
+    paths: &[String],
+) -> Result<HashMap<String, String>, GitAiError> {
+    let untracked_parent = format!("{stash_sha}^3");
+    let requests = paths
+        .iter()
+        .flat_map(|path| {
+            [
+                (stash_sha.to_string(), path.clone()),
+                (untracked_parent.clone(), path.clone()),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let mut snapshots = batch_read_paths_at_treeishes(repo, &requests)?;
+    let mut result = HashMap::new();
+    for path in paths {
+        if let Some(content) = snapshots.remove(&(stash_sha.to_string(), path.clone())) {
+            result.insert(path.clone(), content);
+        } else if let Some(content) = snapshots.remove(&(untracked_parent.clone(), path.clone())) {
+            // `stash --include-untracked/--all` stores new files in the third
+            // parent rather than the main WIP tree.
+            result.insert(path.clone(), content);
+        }
+    }
+    Ok(result)
+}
+
+fn shift_initial_to_target_contents(
+    mut initial: InitialAttributions,
+    source_contents: &HashMap<String, String>,
+    target_contents: &HashMap<String, String>,
+) -> InitialAttributions {
+    initial.files = initial
+        .files
+        .into_iter()
+        .filter_map(|(path, attrs)| {
+            let source = source_contents.get(&path)?;
+            let target = target_contents.get(&path)?;
+            let shifted = if source == target {
+                attrs
+            } else {
+                let hunks = crate::authorship::virtual_attribution::diff_hunks_between_contents(
+                    source, target,
+                );
+                crate::authorship::hunk_shift::apply_hunk_shifts_to_line_attributions(
+                    &attrs, &hunks,
+                )
+            };
+            (!shifted.is_empty()).then_some((path, shifted))
+        })
+        .collect();
+    initial.file_blobs.clear();
+    trim_initial_metadata_to_referenced_authors(&mut initial);
+    initial
+}
+
+fn write_initial_with_contents(
+    log: &PersistedWorkingLog,
+    initial: InitialAttributions,
+    mut contents: HashMap<String, String>,
+) -> Result<(), GitAiError> {
+    contents.retain(|path, _| initial.files.contains_key(path));
+    log.write_initial_attributions_with_contents(
+        initial.files,
+        initial.prompts,
+        initial.humans,
+        contents,
+        initial.sessions,
+    )
 }
 
 pub fn handle_stash_pop_or_apply_with_head(
@@ -198,162 +319,9 @@ pub fn handle_stash_drop(repo: &Repository, stash_sha: &str) -> Result<(), GitAi
     Ok(())
 }
 
-fn save_stash_attributions(
-    repo: &Repository,
-    stash_sha: &str,
-    head_sha: &str,
-    pathspecs: &[String],
-) -> Result<(), GitAiError> {
-    if !repo.storage.has_working_log(head_sha) {
-        return Ok(());
-    }
-
-    let filtered_base = if pathspecs.is_empty() {
-        None
-    } else {
-        let filtered_base = filtered_stash_working_log_base(stash_sha);
-        if let Err(err) = write_path_filtered_working_log(repo, head_sha, &filtered_base, pathspecs)
-        {
-            let _ = fs::remove_dir_all(repo.storage.working_logs.join(&filtered_base));
-            return Err(err);
-        }
-        Some(filtered_base)
-    };
-
-    let base_commit = filtered_base.as_deref().unwrap_or(head_sha);
-    let result =
-        compact_stash_attributions_from_working_log(repo, stash_sha, head_sha, base_commit);
-
-    if let Some(filtered_base) = filtered_base {
-        let _ = fs::remove_dir_all(repo.storage.working_logs.join(filtered_base));
-    }
-
-    result
-}
-
-fn compact_stash_attributions_from_working_log(
-    repo: &Repository,
-    stash_sha: &str,
-    stash_base_commit: &str,
-    working_log_base_commit: &str,
-) -> Result<(), GitAiError> {
-    use crate::authorship::virtual_attribution::VirtualAttributions;
-
-    let va = VirtualAttributions::from_persisted_working_log(
-        repo.clone(),
-        working_log_base_commit.to_string(),
-        None,
-    )?;
-    let initial = va.to_initial_working_log_only();
-
-    if initial.files.is_empty() {
-        return Ok(());
-    }
-
-    let mut file_contents = HashMap::new();
-    for file_path in initial.files.keys() {
-        if let Some(content) = va.get_file_content(file_path).cloned() {
-            file_contents.insert(file_path.clone(), content);
-        }
-    }
-
-    let stash_log = working_log_for_dir(repo, stash_entry_dir(repo, stash_sha), stash_base_commit);
-    stash_log.write_initial_attributions_with_contents(
-        initial.files,
-        initial.prompts,
-        initial.humans,
-        file_contents,
-        initial.sessions,
-    )
-}
-
-fn write_path_filtered_working_log(
-    repo: &Repository,
-    source_base_commit: &str,
-    filtered_base_commit: &str,
-    pathspecs: &[String],
-) -> Result<(), GitAiError> {
-    let source_log = repo
-        .storage
-        .working_log_for_base_commit(source_base_commit)?;
-    let filtered_dir = repo.storage.working_logs.join(filtered_base_commit);
-    let _ = fs::remove_dir_all(&filtered_dir);
-    let filtered_log = repo
-        .storage
-        .working_log_for_base_commit(filtered_base_commit)?;
-
-    let mut initial = source_log.read_initial_attributions();
-    initial
-        .files
-        .retain(|path, _| path_matches_any(path, pathspecs));
-    initial
-        .file_blobs
-        .retain(|path, _| path_matches_any(path, pathspecs));
-    trim_initial_metadata_to_referenced_authors(&mut initial);
-    copy_initial_blobs(&source_log, &filtered_log, &initial)?;
-    filtered_log.write_initial(initial)?;
-
-    write_path_filtered_checkpoints(&source_log, &filtered_log, pathspecs)
-}
-
-fn write_path_filtered_checkpoints(
-    source_log: &PersistedWorkingLog,
-    filtered_log: &PersistedWorkingLog,
-    pathspecs: &[String],
-) -> Result<(), GitAiError> {
-    let source_checkpoints = source_log.dir.join("checkpoints.jsonl");
-    let filtered_checkpoints = filtered_log.dir.join("checkpoints.jsonl");
-    source_log.ensure_checkpoints_file_size_limit()?;
-    if !source_checkpoints.exists() {
-        return filtered_log.write_all_checkpoints(&[]);
-    }
-
-    fs::create_dir_all(&filtered_log.dir)?;
-    let input = fs::File::open(source_checkpoints)?;
-    let mut output = BufWriter::new(fs::File::create(filtered_checkpoints)?);
-    let mut copied_blobs = HashSet::new();
-
-    for line in BufReader::new(input).lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            continue;
-        }
-
-        let mut checkpoint: Checkpoint = serde_json::from_str(&line)?;
-        checkpoint
-            .entries
-            .retain(|entry| path_matches_any(&entry.file, pathspecs));
-        if checkpoint.entries.is_empty() {
-            continue;
-        }
-
-        checkpoint.diff.clear();
-        for entry in &checkpoint.entries {
-            copy_blob_sha(source_log, filtered_log, &entry.blob_sha, &mut copied_blobs)?;
-        }
-
-        serde_json::to_writer(&mut output, &checkpoint)?;
-        output.write_all(b"\n")?;
-    }
-
-    output.flush()?;
-    Ok(())
-}
-
-fn copy_blob_sha(
-    source_log: &PersistedWorkingLog,
-    target_log: &PersistedWorkingLog,
-    blob_sha: &str,
-    copied_blobs: &mut HashSet<String>,
-) -> Result<(), GitAiError> {
-    if blob_sha.is_empty() || !copied_blobs.insert(blob_sha.to_string()) {
-        return Ok(());
-    }
-
-    let source = source_log.dir.join("blobs").join(blob_sha);
-    let target_blobs = target_log.dir.join("blobs");
-    fs::create_dir_all(&target_blobs)?;
-    fs::copy(source, target_blobs.join(blob_sha))?;
+pub fn handle_stash_clear(repo: &Repository) -> Result<(), GitAiError> {
+    cleanup_legacy_stashes_dir(repo);
+    let _ = fs::remove_dir_all(stashes_v2_dir(repo));
     Ok(())
 }
 
@@ -749,54 +717,6 @@ fn run_isolated_git(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_path_matches_any_exact() {
-        let specs = vec!["src/main.rs".to_string()];
-        assert!(path_matches_any("src/main.rs", &specs));
-        assert!(!path_matches_any("src/lib.rs", &specs));
-    }
-
-    #[test]
-    fn test_path_matches_any_directory_prefix() {
-        let specs = vec!["src/".to_string()];
-        assert!(path_matches_any("src/main.rs", &specs));
-        assert!(path_matches_any("src/lib.rs", &specs));
-        assert!(!path_matches_any("tests/main.rs", &specs));
-    }
-
-    #[test]
-    fn test_path_matches_any_directory_without_slash() {
-        let specs = vec!["src".to_string()];
-        assert!(path_matches_any("src/main.rs", &specs));
-        assert!(!path_matches_any("src2/main.rs", &specs));
-    }
-
-    #[test]
-    fn test_path_matches_any_trailing_slash_normalized() {
-        let specs = vec!["dir/".to_string()];
-        assert!(path_matches_any("dir", &specs));
-        assert!(path_matches_any("dir/file.txt", &specs));
-    }
-
-    #[test]
-    fn test_path_matches_any_empty_specs() {
-        let specs: Vec<String> = vec![];
-        assert!(!path_matches_any("anything", &specs));
-    }
-
-    #[test]
-    fn test_path_matches_any_trailing_glob() {
-        // Regression (#5): the pre-rewrite matcher honored a trailing `*`
-        // prefix-glob; path_matches_any dropped it, so `git stash push --
-        // 'src/foo*'` no longer matched src/foobar.txt.
-        let specs = vec!["src/foo*".to_string()];
-        assert!(path_matches_any("src/foobar.txt", &specs));
-        assert!(path_matches_any("src/foo.rs", &specs));
-        assert!(!path_matches_any("src/bar.rs", &specs));
-        // A bare `*` matches anything.
-        assert!(path_matches_any("anything/at/all.txt", &["*".to_string()]));
-    }
 
     #[test]
     fn test_stash_metadata_serialization_roundtrip() {

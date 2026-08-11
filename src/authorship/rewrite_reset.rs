@@ -18,6 +18,14 @@ pub fn reconstruct_working_log_after_backward_reset(
     old_tip: &str,
     new_tip: &str,
 ) -> Result<(), GitAiError> {
+    // Pending checkpoints are normally keyed by the command's pre-move HEAD.
+    // Move them before reconstructing attribution from the commits being
+    // unwound. The destination can already contain a log (for example after a
+    // branch was previously checked out), and rename_working_log deliberately
+    // merges in that case. Doing this up front also preserves pending edits
+    // when the unwound commits have no usable authorship notes.
+    repo.storage.rename_working_log(old_tip, new_tip)?;
+
     // List all commits being "un-done" (between new_tip exclusive and old_tip inclusive)
     let commits = list_commits_in_range(repo, new_tip, old_tip);
     if commits.is_empty() {
