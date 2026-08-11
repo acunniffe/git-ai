@@ -46,6 +46,14 @@ pub(super) fn derive_mappings_from_range_diff(
     let merge_mappings = derive_merge_commit_mappings(repo, &base, old_tip, new_tip, &mappings)?;
     mappings.extend(merge_mappings);
 
+    // `gt split --by-file` creates an additional parent commit whose tree is
+    // a deletion-only subset of the old commit. Add the bounded split mapping
+    // so note shifting can preserve the selected file on both sides.
+    let split_mappings = super::split_by_file::derive_split_commit_mappings(
+        repo, &base, old_tip, new_tip, &mappings,
+    )?;
+    mappings.extend(split_mappings);
+
     Ok(mappings)
 }
 

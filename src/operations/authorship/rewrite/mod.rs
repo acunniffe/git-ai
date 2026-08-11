@@ -9,6 +9,7 @@ mod note_shift;
 mod range_diff;
 #[cfg(test)]
 mod range_diff_memory_tests;
+mod split_by_file;
 mod squash_merge;
 
 pub(crate) use diff_tree::compute_diff_trees_batch;

@@ -1704,6 +1704,82 @@ fn test_graphite_style_multi_commit_single_update_ref() {
     file_b.assert_lines_and_blame(lines!["b1 ai".ai(), "b2 ai".ai()]);
 }
 
+/// Test the split-by-file shape Graphite creates: one old commit becomes a
+/// parent commit containing the selected file and a child commit containing
+/// the remaining files. Both new branches must retain the old attribution.
+#[test]
+fn test_graphite_style_split_by_file_preserves_attribution() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+
+    repo.git(&["checkout", "-b", "split-branch"])
+        .expect("checkout split branch");
+    let mut ai_file = repo.filename("split_ai.txt");
+    ai_file.set_contents(lines!["ai content 1".ai(), "ai content 2".ai()]);
+    let mut human_file = repo.filename("split_human.txt");
+    human_file.set_contents(lines!["human content 1".human(), "human content 2".human(),]);
+    repo.stage_all_and_commit("branch with two files")
+        .expect("split source commit");
+    let old_head = head_sha(&repo);
+    let base = repo
+        .git(&["rev-parse", &format!("{}^", old_head)])
+        .expect("source parent")
+        .trim()
+        .to_string();
+
+    // Model Graphite's extracted parent: the selected file is replayed on the
+    // original parent, while the remaining files stay in the child commit.
+    repo.git(&["read-tree", &base])
+        .expect("read source parent tree");
+    repo.git(&["add", "--", "split_ai.txt"])
+        .expect("stage extracted file");
+    let extracted_tree = repo.git(&["write-tree"]).expect("write extracted tree");
+    let extracted_parent = repo
+        .git(&[
+            "commit-tree",
+            extracted_tree.trim(),
+            "-p",
+            &base,
+            "-m",
+            "extract split_ai.txt",
+        ])
+        .expect("commit extracted parent")
+        .trim()
+        .to_string();
+    let rewritten_child = commit_tree_from_existing_tree(
+        &repo,
+        &old_head,
+        &extracted_parent,
+        "branch with remaining files",
+    );
+
+    repo.git(&["update-ref", "refs/heads/split-parent", &extracted_parent])
+        .expect("create extracted parent ref");
+    repo.git(&[
+        "update-ref",
+        "refs/heads/split-branch",
+        &rewritten_child,
+        &old_head,
+    ])
+    .expect("rewrite split branch ref");
+    repo.git(&["reset", "--hard", &rewritten_child])
+        .expect("reset to rewritten child");
+    repo.sync_daemon();
+
+    repo.git(&["checkout", "split-parent"])
+        .expect("checkout extracted parent");
+    assert_note_has_ai_for_file(&repo, &extracted_parent, "split_ai.txt");
+    ai_file.assert_lines_and_blame(lines!["ai content 1".ai(), "ai content 2".ai()]);
+    assert!(!repo.path().join("split_human.txt").exists());
+
+    repo.git(&["checkout", "split-branch"])
+        .expect("checkout rewritten child");
+    assert_note_has_ai_for_file(&repo, &rewritten_child, "split_ai.txt");
+    ai_file.assert_lines_and_blame(lines!["ai content 1".ai(), "ai content 2".ai()]);
+    human_file
+        .assert_lines_and_blame(lines!["human content 1".human(), "human content 2".human(),]);
+}
+
 #[test]
 fn test_update_ref_head_with_new_content_then_amend_preserves_attribution() {
     use std::fs;

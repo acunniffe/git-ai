@@ -21,8 +21,8 @@
 /// and full stack workflows.
 ///
 /// Remaining known issues (still `#[ignore]`):
-///   - `gt absorb` and `gt split --by-file` lose attribution (update-ref hook cannot
-///     reconstruct the mapping for these more complex rewrite patterns)
+///   - `gt absorb` loses attribution (update-ref hook cannot reconstruct the
+///     mapping for this more complex rewrite pattern)
 ///   - `gt delete --force` and `gt undo` require interactive mode even with `--no-interactive`
 ///
 /// ## Commands NOT tested (require GitHub authentication / remote):
@@ -69,7 +69,7 @@
 /// - `gt restack` - Rebase stack to ensure parent lineage
 /// - `gt fold` - Fold branch into parent
 /// - `gt move` - Move branch to new parent
-/// - `gt split --by-file` - Split branch by file (KNOWN_ISSUE: loses attribution)
+/// - `gt split --by-file` - Split branch by file
 /// - `gt absorb` - Absorb staged changes into stack (KNOWN_ISSUE: loses attribution)
 /// - `gt checkout` / `gt up` / `gt down` / `gt top` / `gt bottom` - Navigation
 /// - `gt delete` - Delete branch, restack children (KNOWN_ISSUE: requires interactive mode)
@@ -267,6 +267,26 @@ fn commit_id(repo: &TestRepo, revision: &str) -> String {
         .expect("git rev-parse should succeed")
         .trim()
         .to_string()
+}
+
+fn branch_names(repo: &TestRepo) -> Vec<String> {
+    repo.git(&["for-each-ref", "--format=%(refname:short)", "refs/heads"])
+        .expect("list branches should succeed")
+        .lines()
+        .map(str::trim)
+        .filter(|branch| !branch.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn tree_paths(repo: &TestRepo, branch: &str) -> Vec<String> {
+    repo.git(&["ls-tree", "-r", "--name-only", branch])
+        .expect("list branch tree should succeed")
+        .lines()
+        .map(str::trim)
+        .filter(|path| !path.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 /// Execute a `gt` command inside the given TestRepo directory.
@@ -919,10 +939,7 @@ fn test_gt_move_preserves_attribution() {
 // Group 7: gt split --by-file — Split branch by files
 // ===========================================================================
 
-/// KNOWN_ISSUE:COMMIT_TREE — `gt split` uses `git commit-tree` + `git update-ref`
-/// instead of `git rebase`, bypassing git-ai attribution tracking entirely.
 #[test]
-#[ignore]
 fn test_gt_split_by_file_preserves_attribution() {
     require_gt!();
     let repo = TestRepo::new();
@@ -944,11 +961,46 @@ fn test_gt_split_by_file_preserves_attribution() {
     // Split by file — extract the AI file into a new parent branch
     gt(&repo, &["split", "--by-file", "split_ai.txt"]).expect("gt split --by-file should succeed");
 
-    // After split, we should be able to verify the AI file on the new parent
-    // and the human file remains on the current branch
-    // The exact branch structure depends on gt's behavior, but attribution
-    // on both files should be preserved regardless of which branch we're on
+    // Graphite chooses the generated parent branch name. Identify both sides
+    // by their trees so this remains stable across Graphite CLI versions.
+    let mut extracted_branch = None;
+    let mut remaining_branch = None;
+    for branch in branch_names(&repo) {
+        if branch == "main" {
+            continue;
+        }
+        let paths = tree_paths(&repo, &branch);
+        let has_ai_file = paths.iter().any(|path| path == "split_ai.txt");
+        let has_human_file = paths.iter().any(|path| path == "split_human.txt");
+        if has_ai_file && !has_human_file {
+            extracted_branch = Some(branch);
+        } else if has_ai_file && has_human_file {
+            remaining_branch = Some(branch);
+        }
+    }
+
+    let extracted_branch = extracted_branch.expect("split should create an AI-only parent branch");
+    let remaining_branch = remaining_branch.expect("split should retain a branch with both files");
+    assert_ne!(
+        extracted_branch, remaining_branch,
+        "split should create distinct parent and child branches"
+    );
+
+    repo.git(&["checkout", &extracted_branch])
+        .expect("checkout extracted branch should succeed");
     ai_file.assert_lines_and_blame(crate::lines!["ai content 1".ai(), "ai content 2".ai(),]);
+    assert!(
+        !repo.path().join("split_human.txt").exists(),
+        "extracted branch should not contain the remaining human file"
+    );
+
+    repo.git(&["checkout", &remaining_branch])
+        .expect("checkout remaining branch should succeed");
+    ai_file.assert_lines_and_blame(crate::lines!["ai content 1".ai(), "ai content 2".ai(),]);
+    human_file.assert_lines_and_blame(crate::lines![
+        "human content 1".human(),
+        "human content 2".human(),
+    ]);
 }
 
 // ===========================================================================
