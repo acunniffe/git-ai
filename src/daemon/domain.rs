@@ -53,6 +53,8 @@ pub struct NormalizedCommand {
     pub finished_at_ns: u128,
     #[serde(default)]
     pub reflog_start_offsets: HashMap<String, u64>,
+    #[serde(default)]
+    pub index_tree_at_start: Option<String>,
     pub stash_target_oid: Option<String>,
     pub cherry_pick_source_oids: Vec<String>,
     pub revert_source_oids: Vec<String>,
@@ -93,9 +95,12 @@ pub enum PullStrategy {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StashOpKind {
     Push,
+    Create,
+    Store,
     Apply,
     Pop,
     Drop,
+    Clear,
     List,
     Branch,
     Show,
@@ -104,6 +109,10 @@ pub enum StashOpKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SemanticEvent {
+    AmApplied {
+        original_head: String,
+        new_commits: Vec<String>,
+    },
     CommitCreated {
         base: Option<String>,
         new_head: String,
@@ -125,9 +134,31 @@ pub enum SemanticEvent {
     RebaseAbort {
         head: String,
     },
+    RebasePrepared {
+        head: String,
+    },
+    RebaseQuit {
+        head: String,
+    },
+    RebaseSkip {
+        head: String,
+    },
     MergeSquash {
         source_head: String,
         onto: String,
+    },
+    MergePrepared {
+        head: String,
+    },
+    MergeComplete {
+        original_head: String,
+        new_head: String,
+    },
+    MergeAbort {
+        head: String,
+    },
+    MergeQuit {
+        head: String,
     },
     CherryPickComplete {
         original_head: String,
@@ -139,7 +170,33 @@ pub enum SemanticEvent {
         source_commits: Vec<String>,
         head: String,
     },
+    CherryPickPrepared {
+        head: String,
+    },
     CherryPickAbort {
+        head: String,
+    },
+    CherryPickQuit {
+        head: String,
+    },
+    CherryPickSkip {
+        head: String,
+    },
+    RevertNoCommit {
+        source_commits: Vec<String>,
+        head: String,
+    },
+    RevertPrepared {
+        source_commits: Vec<String>,
+        head: String,
+    },
+    RevertAbort {
+        head: String,
+    },
+    RevertQuit {
+        head: String,
+    },
+    RevertSkip {
         head: String,
     },
     RefUpdated {
@@ -176,8 +233,21 @@ pub enum SemanticEvent {
     NotesUpdated,
     ReplaceUpdated,
     CheckoutPaths,
-    RestorePaths,
-    CleanedWorkspace,
+    ApplyPaths,
+    RestorePaths {
+        head: Option<String>,
+    },
+    CleanedWorkspace {
+        head: Option<String>,
+        index_tree_at_start: Option<String>,
+    },
+    RemovedWorkspacePaths {
+        head: Option<String>,
+        index_tree_at_start: Option<String>,
+    },
+    MovedWorkspacePaths {
+        head: Option<String>,
+    },
     StashOperation {
         kind: StashOpKind,
         head: Option<String>,

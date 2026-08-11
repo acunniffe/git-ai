@@ -14,7 +14,27 @@ pub fn tracks_primary_command_for_test_sync(
     };
 
     match primary_command {
+        "add" => !crate::git::command_classification::is_definitely_read_only_git_invocation(
+            "add",
+            invoked_args,
+        ),
         "branch" => !invoked_args.iter().any(|arg| arg == "--show-current"),
+        "am" => !crate::git::command_classification::is_definitely_read_only_git_invocation(
+            "am",
+            invoked_args,
+        ),
+        "apply" => !crate::git::command_classification::is_definitely_read_only_git_invocation(
+            "apply",
+            invoked_args,
+        ),
+        "restore" => true,
+        "clean" => !invoked_args
+            .iter()
+            .any(|arg| arg == "-n" || arg == "--dry-run"),
+        "rm" => !invoked_args
+            .iter()
+            .any(|arg| arg == "-n" || arg == "--dry-run"),
+        "mv" => true,
         "checkout" | "cherry-pick" | "clone" | "commit" | "fetch" | "init" | "merge" | "pull"
         | "push" | "rebase" | "reset" | "revert" | "switch" | "tag" | "update-ref" => true,
         // `git worktree list` is classified as readonly by the daemon's fast-path
@@ -32,6 +52,16 @@ pub fn tracks_primary_command_for_test_sync(
         "stash" => !invoked_args
             .first()
             .is_some_and(|subcommand| matches!(subcommand.as_str(), "list" | "show")),
+        "submodule" => !crate::git::command_classification::is_definitely_read_only_git_invocation(
+            "submodule",
+            invoked_args,
+        ),
+        "config" | "gc" | "maintenance" | "pack-refs" | "reflog" | "repack" => {
+            !crate::git::command_classification::is_definitely_read_only_git_invocation(
+                primary_command,
+                invoked_args,
+            )
+        }
         _ => false,
     }
 }
@@ -49,7 +79,7 @@ pub fn tracked_parsed_git_invocation_for_test_sync(
         return parsed;
     }
 
-    let repo_lookup = resolve_repo_lookup_for_git_invocation(&parsed, cwd);
+    let repo_lookup = repo_lookup_for_parsed_git_invocation(&parsed, cwd);
     resolve_alias_invocation_no_git_exec(&parsed, &repo_lookup).unwrap_or(parsed)
 }
 
@@ -86,7 +116,7 @@ fn test_sync_session_from_config_arg(config_arg: &str) -> Option<String> {
     (key == TEST_SYNC_SESSION_CONFIG_KEY).then(|| value.to_string())
 }
 
-fn resolve_repo_lookup_for_git_invocation(parsed: &ParsedGitInvocation, cwd: &Path) -> PathBuf {
+pub fn repo_lookup_for_parsed_git_invocation(parsed: &ParsedGitInvocation, cwd: &Path) -> PathBuf {
     let base = resolve_command_base_dir_from_cwd(&parsed.global_args, cwd);
     if base.is_dir() {
         base
@@ -310,5 +340,40 @@ mod tests {
             !ai_dir.exists(),
             "tracking helper should not create .git/ai while checking aliases"
         );
+    }
+
+    #[test]
+    fn submodule_lifecycle_is_tracked_but_status_is_not() {
+        assert!(tracks_primary_command_for_test_sync(
+            Some("submodule"),
+            &["update".to_string(), "--init".to_string()]
+        ));
+        assert!(!tracks_primary_command_for_test_sync(
+            Some("submodule"),
+            &["status".to_string()]
+        ));
+    }
+
+    #[test]
+    fn admin_mutations_are_tracked_but_queries_are_not() {
+        for (command, args) in [
+            ("config", vec!["test.key", "value"]),
+            ("gc", vec!["--prune=now"]),
+            ("repack", vec!["-Ad"]),
+            ("maintenance", vec!["run"]),
+            ("pack-refs", vec!["--all"]),
+            ("reflog", vec!["expire", "--all"]),
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(tracks_primary_command_for_test_sync(Some(command), &args));
+        }
+        assert!(!tracks_primary_command_for_test_sync(
+            Some("config"),
+            &["--get".to_string(), "test.key".to_string()]
+        ));
+        assert!(!tracks_primary_command_for_test_sync(
+            Some("reflog"),
+            &["show".to_string(), "HEAD".to_string()]
+        ));
     }
 }
