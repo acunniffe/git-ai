@@ -1,0 +1,78 @@
+id,priority,family,semantic_partition,observed_occurrences,observed_shapes,status,required_oracle,notes
+AM-01,P0,am,single mailbox inside agent Bash,24,9,covered-new,line attribution + exact Bash session + base preservation,Real Codex hooks and TestRepo traced am
+AM-02,P0,am,multi-message mailbox every destination note,unbounded,unbounded,covered-new,note and exact session on every commit + final blame,Batched diff and note path
+AM-03,P0,am,outside agent Bash negative control,unbounded,unbounded,covered-new,no AI session + unknown imported line,am alone is not AI evidence
+AM-04,P0,am,--3way and --keep-cr,18,4,covered-new,line attribution + exact session,Covers dominant observed option mode
+AM-05,P0,am,nonzero after successful prefix,unbounded,unbounded,covered-new,prefix notes + conflict state,Processes actual completed commits on exit 1
+AM-06,P0,am,--continue,4,2,covered-new,resolved and remaining commit notes,Covers observed global user.name config form
+AM-07,P0,am,--abort,10,1,covered-new,pre-am HEAD and working log restored,Abandoned tip working log is discarded
+AM-08,P0,am,--skip and --quit,unbounded,unbounded,covered-new,only surviving commits retain notes,State-machine completeness
+AM-09,P0,am,--show-current-patch and --help,3,3,covered-new,no completion wait or working-log delta,Inspection preserves HEAD and note; classifier covers help
+AM-10,P0,am,-C / timeout / conditional wrappers,4,4,covered-new,same-repo Bash correlation,Parent-CWD explicit -C plus an actually executed conditional and timeout wrapper retain the exact Bash session
+AM-11,P0,am,long-running open Bash call,unbounded,unbounded,covered-new,exact session after >3 seconds,Command-window matcher removes synthetic cap
+AM-12,P0,am,early-added then later-deleted file,unbounded,unbounded,covered-new,early commit note remains AI,Proves no final-mtime dependency
+AM-13,P0,am,malformed and incompatible options,1,1,covered-new,no commit or attribution mutation,Includes --3way plus --reject failure
+AM-14,P0,am,simultaneous Bash call in another repo,unbounded,unbounded,covered-new,no cross-repo attribution stealing,Explicit discovered repo is authoritative over timing
+COMMIT-01,P0,commit,normal staged commit,103887,707,covered-existing,exact line note and working-log carry,Strong simple additions coverage
+COMMIT-02,P0,commit,--amend variants,6909,213,covered-existing,replaced and untouched attribution,Strong amend suite
+COMMIT-03,P0,commit,pathspec --only and partial index,1287,34,covered-new,committed subset exact + residual working log,NUL pathspec-from-file supplements existing --only and partial-index carry coverage
+COMMIT-04,P1,commit,-a fixup squash reuse allow-empty,928,71,covered-new,content provenance + graph + no-op semantics,Covers -a fixup squash -C -c reuse-message and empty-boundary carry
+APPLY-01,P0,apply,worktree patch inside Bash,4116,136,covered-new,checkpoint then committed line attribution,Plain worktree apply is checkpointed and retains AI through a later commit
+APPLY-02,P0,apply,--cached or --index then commit in same Bash,309,39,covered-new,AI attribution without worktree checkpoint,Pre-tool index tree prevents claiming pre-staged human lines even in the same file
+APPLY-03,P1,apply,--3way reverse reject partial failure,113,13,covered-new,actual index/worktree state attribution,Three-way reverse partial reject and stdin patch forms run inside Codex Bash with exact committed-line oracles
+APPLY-04,P2,apply,--check,765,90,covered-new,no state or attribution mutation,Successful check is read-only and failed check cannot leak provenance
+RESTORE-01,P0,restore,worktree only,2168,68,covered-new,discarded/revealed line attribution,Discarded AI bytes cannot reappear when a human recreates identical content
+RESTORE-02,P0,restore,--staged,902,18,covered-new,index-only preservation + later commit,Staged-only restore retains the AI worktree checkpoint through re-add and commit
+RESTORE-03,P0,restore,--staged --worktree and conflict stages,411,25,covered-new,exact index/worktree attribution,Source copy NUL pathspec-file and real merge-stage ours/theirs selection retain exact source provenance and unrelated pending AI
+CLEAN-01,P0,clean,-f explicit files,466,76,covered-new,deleted checkpoint removal + recreate negative,Explicit deletion and dry-run retention covered
+CLEAN-02,P1,clean,-fd -fdx ignored directories,441,68,covered-new,no stale attribution after recreation,Ignored recreation race and pre-staged ignored-file preservation use command-start index tree
+RESET-01,P0,reset,--hard backward/forward/no-op,2521,57,covered-existing,notes graph and working-log deletion,Strong hard-reset tests
+RESET-02,P0,reset,--soft and mixed,2121,91,covered-existing,reconstructed staged/unstaged attribution,Strong current suite
+RESET-03,P0,reset,--merge and --keep,33,2,covered-new,dirty conflict retention and graph,Real modes discard unwound provenance while carrying non-overlapping local AI work
+RESET-04,P1,reset,pathspec index reset,165,12,covered-existing,target subset + untouched state,Current pathspec suite
+REBASE-01,P0,rebase,linear and --onto rewrite,10986,unknown,covered-existing,every rewritten note + exact lines,Broad current suite
+REBASE-02,P0,rebase,interactive reorder drop edit squash fixup,286,unknown,covered-existing,every surviving destination note,Broad current suite
+REBASE-03,P0,rebase,conflict continue abort skip,4907,unknown,covered-new,phase state + resolution attribution,Attempt snapshot prevents skipped or aborted AI resolution from leaking into a later ordinary commit
+REBASE-04,P1,rebase,--quit --update-refs rebase-merges refs,167,unknown,covered-new,all updated branch notes and working logs,Quit keeps live resolution; update-refs and rebase-merges move intermediate refs while preserving rewritten notes
+CHERRY-01,P0,cherry-pick,single multi and range,2452,83,covered-existing,source provenance mapped to every destination,Strong current suite
+CHERRY-02,P0,cherry-pick,conflict continue abort skip,546,unknown,covered-new,actual surviving commits and resolution lines,Attempt snapshot removes abandoned resolution provenance on abort/single skip; quit retains it
+CHERRY-03,P1,cherry-pick,--no-commit,440,40,covered-existing,deferred commit preserves source and resolution,Current coverage
+CHERRY-04,P1,cherry-pick,--quit stdin -x mainline empty policies,197,unknown,covered-new,state and source mapping,Multi-stdin patch-id fallback; single/multi -m; allow-empty and empty drop/keep; constant mainline spawn count
+REVERT-01,P0,revert,single multi and revision expression,342,unknown,covered-existing,restored source attribution + every revert note,Current rewrite suite
+REVERT-02,P1,revert,--no-commit conflict controls mainline,186,unknown,covered-new,deferred/surviving commit attribution,Single/multi no-commit; continue abort quit skip; -m 1 history fallback; constant spawn count verified
+MERGE-01,P0,merge,fast-forward merge commit and conflict,5578,unknown,covered-new,source + resolution provenance,Multi-generation merge unignored; dirty working-log carry covered for FF and merge commits
+MERGE-02,P0,merge,--squash then commit,49,unknown,covered-existing,squashed source mapping,Strong squash suite
+MERGE-03,P0,merge,abandoned --squash via reset/checkout,unbounded,unbounded,covered-new,no source metadata leaks into later unrelated commit,Reset regression plus reset/checkout pending-state clearing
+MERGE-04,P1,merge,--no-commit continue abort quit ff-only reject,2553,unknown,covered-new,phase state and exact surviving graph,Rollback snapshot distinguishes abort from quit; continue recognizes commit (merge) reflog entries
+STASH-01,P0,stash,push pop apply named/default,12963,unknown,covered-existing,line attribution across branches and conflicts,Strong stash suite
+STASH-02,P1,stash,keep-index staged patch all index,634,unknown,covered-new,index/worktree partition attribution,Tree-based stash/live partition covers keep-index staged two-hunk patch ignored files and apply --index in normal and linked worktrees
+STASH-03,P1,stash,create store drop clear legacy save,838,unknown,covered-new,stack lifecycle and no attribution leak,Explicit create/store/clear semantics; store copies without consuming live provenance; targeted drop and clear delete compact state
+CHECKOUT-01,P0,checkout,branch switch create reset detach,35500,unknown,covered-new,working-log migration and ref graph,-B detach orphan successful/failed track and existing branch migration all retain exact pending attribution
+CHECKOUT-02,P0,checkout,path restore ours theirs force,11678,118,covered-new,discard/reveal exact line attribution,Conflict-stage ours/theirs select the correct human/AI source while unrelated pending AI survives; force and pathspec controls remain green
+SWITCH-01,P1,switch,create reset detach orphan track,11385,112,covered-new,working-log migration and ref graph,-c -C detach orphan successful/failed track and force-discard semantics covered
+BRANCH-01,P1,branch,create force reset delete recreate,5224,unknown,covered-new,ref cursor and note graph,Create force-reset safe/forced delete multi-delete and recreate preserve pending attribution and cursor ordering
+BRANCH-02,P1,branch,rename copy multi-delete upstream-only,3722,unknown,covered-new,no lost/misattributed working logs,Current/explicit rename current/explicit/forced copy attached/separate upstream unset track and no-track covered
+WORKTREE-01,P1,worktree,add normal branch detach orphan no-checkout,7113,222,covered-new,shared notes + isolated working logs,Traced TestRepo add variants commit from linked cwd and verify exact shared-note AI blame
+WORKTREE-02,P1,worktree,remove force move prune repair lock,5337,77,covered-new,no sibling corruption + cursor cleanup,Clean/forced remove move lock/unlock repair prune and same-path recreation covered; delayed removed-path rewrite scan fixed
+PLUMB-01,P0,plumbing,commit-tree then update-ref one-to-one,378,61,covered-existing,source note migration + checked-out log,Direct TestRepo target covers reparent notes and dirty working-log migration without Graphite
+PLUMB-02,P0,plumbing,multi-commit N-to-N and update-ref stdin,1097,39,covered-existing,every destination source mapping,Direct target covers three replayed commits behind one atomic update-ref plus stdin HEAD update
+PLUMB-03,P0,plumbing,update-index read-tree write-tree commit-tree,1044,unknown,covered-new,Bash-fill unknown but preserve pre-existing staged source,Cacheinfo to normal commit and cacheinfo/write-tree/commit-tree/update-ref both use exact pre-index scoping
+PLUMB-04,P1,plumbing,fast-import and filter rewrite,62,unknown,covered-new,batch source mapping + unknown fill,Single/multi fast-import Bash attribution with external negative; filter-branch root/multi/prune-empty rewrite mapping across disconnected histories
+ADD-01,P1,add,-A default -u and partial,111517,150,covered-new,later commit exact staged subset,Existing partial suite plus -u pathspec-from-file NUL residual carry and dry-run ordering
+RM-01,P1,rm,worktree/index --cached recursive,2703,152,covered-new,deletion and same-path recreation safety,Plain and recursive deletion prune vanished paths only; --cached and dry-run preserve worktree provenance
+MV-01,P1,mv,rename directory case-only force,3921,16,covered-new,note follows path and edits,Directory case-only force-overwrite chained moves and Bash rename-plus-edit preserve exact provenance
+SPARSE-01,P2,sparse-checkout,set add init reapply disable,1437,156,covered-new,hidden/revealed paths retain attribution,Cone/no-cone sparse-index stdin linked-worktree and dirty excluded-path cases preserve exact notes; invalid add --no-cone is non-mutating
+SUBMODULE-01,P2,submodule,add update deinit absorbgitdirs,328,41,covered-new,superproject and nested repo isolation,Traced add/remote-update/deinit/reinit/absorbgitdirs plus nested-family commit preserve exact parent and child attribution
+TRANSPORT-01,P1,pull,ff-only merge rebase autostash,5726,99,covered-new,note sync + graph + working-log carry,Existing FF/rebase/autostash suite plus successful merge-pull dirty carry and ff-only rejection
+TRANSPORT-02,P1,push,normal upstream force delete atomic failure,60437,446,covered-new,notes pushed without local corruption,Existing upstream suite plus force-with-lease note publication delete and atomic all-or-none rejection
+TRANSPORT-03,P1,fetch,normal prune refspec shallow force,42720,557,covered-new,notes/ref cursor updated without attribution loss,Explicit refspec forced rewind and prune preserve pending attribution; depth covered through shallow clone
+TRANSPORT-04,P2,clone-init,normal bare no-checkout,4020,310,covered-new,initial repository tracking and notes,Normal/no-checkout/bare/shallow clones plus normal/bare init targets use traced TestRepo routing
+REF-01,P2,tag,create force delete annotated,722,31,covered-new,no working-log or source-note corruption,Lightweight annotated force-update and multi-delete preserve pending AI
+REF-02,P2,notes,add append copy remove prune merge,102,17,covered-new,authorship ref self-protection and sync,Auxiliary default-note lifecycle cannot damage the refs/notes/ai source note
+REF-03,P2,symbolic-ref-replace,set delete rewrite,121,unknown,covered-new,checked-out branch and source notes,Custom symbolic refs and replace lifecycle are inert; moving symbolic HEAD across tips carries pending AI through backward-log reconstruction
+ADMIN-01,P3,remote-config,add remove rename set-url,3784,unknown,covered-new,no authorship change + repo URL correctness,Remote add/rename/set-url/remove and local config add/get/unset preserve exact pending attribution
+ADMIN-02,P3,gc-maintenance,gc repack maintenance pack-refs reflog expire,69,unknown,covered-new,notes and working logs survive,Object repack packed refs reflog truncation and maintenance lifecycle retain source notes and live logs
+INVOC-01,P0,invocation,global -C -c git-dir work-tree bare,9588,unknown,covered-new,same semantic result and correct repo routing,Global config/C and explicit git-dir/work-tree commits retain exact attribution; bare targets covered by clone/init/admin suites
+INVOC-02,P0,invocation,nested cwd parent cwd sibling repo,unbounded,unbounded,covered-new,no cross-repo attribution stealing,Parsed -C target drives TestRepo family registration across parent and sibling CWDs
+INVOC-03,P1,invocation,env timeout command nohup nested shell,unbounded,unbounded,covered-new,trace root and Bash correlation,Bounded shell helper injects real Git sync marker through every representative wrapper
+INVOC-04,P1,invocation,conditional pipeline stdin background,unbounded,unbounded,covered-new,actual completion timing and exact repo,Conditional commit update-ref stdin pipeline and detached nohup background commit all wait for actual Git completion
