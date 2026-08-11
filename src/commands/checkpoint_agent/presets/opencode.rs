@@ -133,27 +133,40 @@ impl OpenCodePreset {
             Self::opencode_data_paths().ok()?
         };
 
+        Self::resolve_stream_source_from_paths(session_id, opencode_paths)
+    }
+
+    fn resolve_stream_source_from_paths(
+        session_id: &str,
+        opencode_paths: Vec<PathBuf>,
+    ) -> Option<(StreamSource, PathBuf)> {
+        let mut fallback = None;
+
         for opencode_path in opencode_paths {
             let Some(db_path) = Self::resolve_sqlite_db_path(&opencode_path) else {
                 continue;
             };
-            let parent_id = Self::lookup_parent_session(&db_path, session_id);
-            return Some((
-                StreamSource {
-                    path: db_path,
-                    format: StreamFormat::OpenCodeSqlite,
-                    session_id: generate_session_id(session_id, "opencode"),
-                    external_session_id: session_id.to_string(),
-                    external_parent_session_id: parent_id,
-                },
-                opencode_path,
-            ));
+
+            if fallback.is_none() {
+                fallback = Some((db_path.clone(), opencode_path.clone()));
+            }
+
+            if let Some(parent_id) = Self::lookup_session_parent(&db_path, session_id) {
+                return Some(Self::stream_source(
+                    session_id,
+                    db_path,
+                    opencode_path,
+                    parent_id,
+                ));
+            }
         }
 
-        None
+        fallback.map(|(db_path, opencode_path)| {
+            Self::stream_source(session_id, db_path, opencode_path, None)
+        })
     }
 
-    fn lookup_parent_session(db_path: &Path, session_id: &str) -> Option<String> {
+    fn lookup_session_parent(db_path: &Path, session_id: &str) -> Option<Option<String>> {
         let conn = crate::streams::agents::opencode::open_sqlite_readonly(db_path).ok()?;
         conn.query_row(
             "SELECT parent_id FROM session WHERE id = ?",
@@ -161,7 +174,24 @@ impl OpenCodePreset {
             |row| row.get::<_, Option<String>>(0),
         )
         .ok()
-        .flatten()
+    }
+
+    fn stream_source(
+        session_id: &str,
+        db_path: PathBuf,
+        opencode_path: PathBuf,
+        parent_id: Option<String>,
+    ) -> (StreamSource, PathBuf) {
+        (
+            StreamSource {
+                path: db_path,
+                format: StreamFormat::OpenCodeSqlite,
+                session_id: generate_session_id(session_id, "opencode"),
+                external_session_id: session_id.to_string(),
+                external_parent_session_id: parent_id,
+            },
+            opencode_path,
+        )
     }
 
     fn opencode_data_paths() -> Result<Vec<PathBuf>, GitAiError> {
@@ -546,5 +576,47 @@ mod tests {
                 local_app_data.join("opencode"),
             ]
         );
+    }
+
+    #[test]
+    fn test_resolve_stream_source_prefers_database_containing_session() {
+        let temp = tempfile::tempdir().unwrap();
+        let stale_path = temp.path().join("stale");
+        let live_path = temp.path().join("live");
+        std::fs::create_dir_all(&stale_path).unwrap();
+        std::fs::create_dir_all(&live_path).unwrap();
+
+        let stale_db = stale_path.join("opencode.db");
+        let stale_conn = rusqlite::Connection::open(&stale_db).unwrap();
+        stale_conn
+            .execute(
+                "CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT)",
+                [],
+            )
+            .unwrap();
+        drop(stale_conn);
+
+        let fixture_db = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("opencode-sqlite")
+            .join("opencode.db");
+        std::fs::copy(&fixture_db, live_path.join("opencode.db")).unwrap();
+
+        let (source, resolved_path) = OpenCodePreset::resolve_stream_source_from_paths(
+            "test-session-123",
+            vec![stale_path.clone(), live_path.clone()],
+        )
+        .expect("the database containing the session should be selected");
+
+        assert_eq!(resolved_path, live_path);
+        assert_eq!(source.path, live_path.join("opencode.db"));
+
+        let (_, fallback_path) = OpenCodePreset::resolve_stream_source_from_paths(
+            "missing-session",
+            vec![stale_path.clone(), live_path],
+        )
+        .expect("the first existing database should remain the fallback");
+        assert_eq!(fallback_path, stale_path);
     }
 }

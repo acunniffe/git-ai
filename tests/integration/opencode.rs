@@ -485,7 +485,8 @@ fn test_opencode_e2e_checkpoint_and_commit() {
 }
 
 #[test]
-fn test_opencode_checkpoint_finds_model_in_xdg_data_path() {
+#[serial_test::serial]
+fn test_opencode_checkpoint_finds_model_in_platform_data_path() {
     let repo = TestRepo::new();
     let repo_root = repo.canonical_path();
     let file_path = repo_root.join("index.ts");
@@ -507,6 +508,13 @@ fn test_opencode_checkpoint_finds_model_in_xdg_data_path() {
     )
     .unwrap();
     let xdg_data_home = storage_path.parent().unwrap().to_str().unwrap();
+    // Linux resolves OpenCode data through XDG_DATA_HOME. On macOS and Windows,
+    // TestRepo redirects HOME/USERPROFILE to the same isolated test home.
+    let checkpoint_env = if cfg!(target_os = "linux") {
+        vec![("XDG_DATA_HOME", xdg_data_home)]
+    } else {
+        vec![]
+    };
 
     let pre_hook_input = json!({
         "hook_event_name": "PreToolUse",
@@ -518,7 +526,7 @@ fn test_opencode_checkpoint_finds_model_in_xdg_data_path() {
     .to_string();
     repo.git_ai_with_env(
         &["checkpoint", "opencode", "--hook-input", &pre_hook_input],
-        &[("XDG_DATA_HOME", xdg_data_home)],
+        &checkpoint_env,
     )
     .unwrap();
 
@@ -534,7 +542,7 @@ fn test_opencode_checkpoint_finds_model_in_xdg_data_path() {
     .to_string();
     repo.git_ai_with_env(
         &["checkpoint", "opencode", "--hook-input", &post_hook_input],
-        &[("XDG_DATA_HOME", xdg_data_home)],
+        &checkpoint_env,
     )
     .unwrap();
 
