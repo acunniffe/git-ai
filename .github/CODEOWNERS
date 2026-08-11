@@ -1,2 +1,5 @@
-# GitHub automation controls CI, releases, and repository policy metadata.
-.github/ @svarlamov @acunniffe
+# You can use this CODEOWNERS file to define individuals or teams responsible for the code in your repository.
+# For more information on how to use the CODEOWNERS file:
+# https://docs.github.com/en/free-pro-team@latest/github/creating-cloning-and-archiving-repositories/about-code-owners, e.g.
+*   @asosteam/developer-experience-team @asosteam/release-engineering-team
+# Disable code ownership of certain files so dependabot PRs can be auto approved

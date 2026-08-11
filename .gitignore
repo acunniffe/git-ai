@@ -33,6 +33,11 @@ node_modules/
 tasks.json
 tasks/
 
+# .NET build output
+[Bb]in/
+[Oo]bj/
+*.user
+
 # Fuzz testing
 fuzz/artifacts/
 fuzz/corpus/
