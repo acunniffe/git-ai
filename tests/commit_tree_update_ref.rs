@@ -874,7 +874,7 @@ fn delayed_checkout_switch_merge_trace_replay_does_not_attribute_later_uncheckpo
     file.assert_committed_lines(lines![
         "one feature".human(),
         "two ai".ai(),
-        "later untracked".ai(),
+        "later untracked".unattributed_human(),
     ]);
 }
 
@@ -1079,7 +1079,7 @@ fn test_delayed_multi_cherry_pick_trace_replay_starts_at_first_pick_when_interme
     assert_note_has_ai_for_file(&repo, &picked_commits[0], "multi-picked.txt");
     assert_note_has_ai_for_file(&repo, &picked_commits[1], "multi-picked.txt");
     file.assert_committed_lines(lines![
-        "base".ai(),
+        "base".human(),
         "first picked ai".ai(),
         "second picked ai".ai(),
     ]);
@@ -1213,7 +1213,7 @@ fn test_delayed_pull_rebase_trace_replay_starts_at_start_when_intermediate_ref_k
     assert_note_has_ai_for_file(&local, &rebased_commits[0], "pull-rebase-picked.txt");
     assert_note_has_ai_for_file(&local, &rebased_commits[1], "pull-rebase-picked.txt");
     file.assert_committed_lines(lines![
-        "base".ai(),
+        "base".human(),
         "first local ai".ai(),
         "second local ai".ai(),
     ]);
