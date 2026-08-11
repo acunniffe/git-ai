@@ -42,6 +42,25 @@
 /// ## Commands NOT tested (require interactive terminal):
 /// - `gt undo` - Requires interactive mode even with `--no-interactive` flag
 ///
+/// ## Manual interactive compatibility procedure
+///
+/// `gt delete` and `gt undo` remain ignored because this harness invokes
+/// Graphite through `Command::output` with `--no-interactive`, and the
+/// repository has no cross-platform PTY dependency. To exercise them, install
+/// `@withgraphite/graphite-cli@stable` and run the following from a real
+/// terminal in an isolated temporary repository:
+///
+/// 1. Initialize `main`, make an initial commit, and run `gt init --trunk main`.
+/// 2. For delete, create `del-a`, `del-b`, and `del-c`; check out `del-b`; run
+///    `gt delete --force` and accept the prompt. Check out `del-c`, verify
+///    `git rev-parse del-c^` equals `git rev-parse del-a`, and inspect
+///    `git-ai blame del_c.txt`.
+/// 3. For undo, create `undo-branch` with `gt create`; run `gt undo` and
+///    accept the prompt. Verify `git branch --list undo-branch` is empty and
+///    inspect `git-ai blame undo_base.txt`.
+/// 4. Record the OS, `gt --version`, command output, branch topology, and
+///    attribution results with the compatibility report.
+///
 /// ## Commands tested:
 /// - `gt init` - Initialize Graphite in a repo
 /// - `gt create` - Create new branch with commit
@@ -241,6 +260,13 @@ fn assert_worktree_clean(repo: &TestRepo) {
         "expected clean worktree, found:\n{}",
         status
     );
+}
+
+fn commit_id(repo: &TestRepo, revision: &str) -> String {
+    repo.git(&["rev-parse", revision])
+        .expect("git rev-parse should succeed")
+        .trim()
+        .to_string()
 }
 
 /// Execute a `gt` command inside the given TestRepo directory.
@@ -554,13 +580,25 @@ fn test_gt_modify_restacks_children_preserves_attribution() {
     parent_file2.set_contents(crate::lines!["parent2 ai".ai()]);
     repo.git(&["add", "-A"]).unwrap();
     gt(&repo, &["modify", "-m", "modified parent"]).expect("gt modify parent should succeed");
+    assert_head_branch(&repo, "parent-branch");
+    assert_worktree_clean(&repo);
+    let modified_parent_id = commit_id(&repo, "HEAD");
 
     // Verify parent attribution
     parent_file.assert_lines_and_blame(crate::lines!["parent ai".ai(), "parent human".human(),]);
+    parent_file2.assert_lines_and_blame(crate::lines!["parent2 ai".ai(),]);
 
     // Check child branch attribution after restack
     gt(&repo, &["checkout", "child-branch"]).unwrap();
+    assert_head_branch(&repo, "child-branch");
+    assert_worktree_clean(&repo);
+    assert_eq!(
+        commit_id(&repo, "HEAD^"),
+        modified_parent_id,
+        "child should be restacked onto the modified parent"
+    );
     child_file.assert_lines_and_blame(crate::lines!["child ai".ai(), "child human".human(),]);
+    parent_file2.assert_lines_and_blame(crate::lines!["parent2 ai".ai(),]);
 }
 
 // ===========================================================================
@@ -713,8 +751,41 @@ fn test_gt_restack_three_branch_stack() {
     repo.git(&["add", "-A"]).unwrap();
     gt(&repo, &["create", "stack-c", "-m", "branch c"]).expect("gt create c should succeed");
 
-    // Restack from the top
+    let old_stack_a_id = commit_id(&repo, "stack-a");
+    let old_stack_b_id = commit_id(&repo, "stack-b");
+    let old_stack_c_id = commit_id(&repo, "stack-c");
+
+    // Advance trunk so restack has real work to do instead of being a no-op.
+    repo.git(&["checkout", "main"]).unwrap();
+    let mut trunk_file = repo.filename("trunk_update.txt");
+    trunk_file.set_contents(crate::lines!["trunk update"]);
+    repo.stage_all_and_commit("advance trunk").unwrap();
+    let main_id = commit_id(&repo, "main");
+
+    // Restack from the top and prove every branch was rewritten onto trunk.
+    gt(&repo, &["checkout", "stack-c"]).unwrap();
     gt(&repo, &["restack"]).expect("gt restack should succeed");
+    assert_head_branch(&repo, "stack-c");
+    assert_worktree_clean(&repo);
+
+    let new_stack_a_id = commit_id(&repo, "stack-a");
+    let new_stack_b_id = commit_id(&repo, "stack-b");
+    let new_stack_c_id = commit_id(&repo, "stack-c");
+    assert_ne!(
+        old_stack_a_id, new_stack_a_id,
+        "stack-a should be rewritten"
+    );
+    assert_ne!(
+        old_stack_b_id, new_stack_b_id,
+        "stack-b should be rewritten"
+    );
+    assert_ne!(
+        old_stack_c_id, new_stack_c_id,
+        "stack-c should be rewritten"
+    );
+    assert_eq!(commit_id(&repo, "stack-a^"), main_id);
+    assert_eq!(commit_id(&repo, "stack-b^"), new_stack_a_id);
+    assert_eq!(commit_id(&repo, "stack-c^"), new_stack_b_id);
 
     // Verify all branches
     file_c.assert_lines_and_blame(crate::lines!["c ai".ai(), "c human".human()]);
@@ -1188,15 +1259,23 @@ fn test_gt_full_stack_workflow() {
     repo.git(&["add", "-A"]).unwrap();
     gt(&repo, &["modify", "-m", "modified wf-1 with extra file"])
         .expect("gt modify should succeed");
+    assert_head_branch(&repo, "wf-1");
+    assert_worktree_clean(&repo);
+    let wf1_head_id = commit_id(&repo, "wf-1");
 
     // Step 3: Verify the entire stack has correct attribution
     gt(&repo, &["checkout", "wf-3"]).unwrap();
+    assert_head_branch(&repo, "wf-3");
+    assert_worktree_clean(&repo);
+    assert_eq!(commit_id(&repo, "wf-2^"), wf1_head_id);
+    assert_eq!(commit_id(&repo, "wf-3^"), commit_id(&repo, "wf-2"));
 
     file1.assert_lines_and_blame(crate::lines![
         "workflow1 ai line 1".ai(),
         "workflow1 human line 1".human(),
         "workflow1 ai line 2".ai(),
     ]);
+    file1_extra.assert_lines_and_blame(crate::lines!["extra ai".ai(),]);
     file2.assert_lines_and_blame(crate::lines![
         "workflow2 human line 1".human(),
         "workflow2 ai line 1".ai(),
