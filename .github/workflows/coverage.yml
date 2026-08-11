@@ -42,25 +42,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-coverage-
 
-      - name: Install Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
-        with:
-          node-version: '22'
-
-      - name: Install Graphite CLI
-        run: npm install -g @withgraphite/graphite-cli@stable
-
       - name: Install cargo-llvm-cov
         run: cargo install cargo-llvm-cov --locked
 
       - name: Run tests with coverage
+        # Graphite compatibility runs in graphite-compatibility.yml; keep this
+        # Rust coverage job independent of the external CLI.
         run: |
           cargo llvm-cov test \
             --ignore-filename-regex='tests/.*|benches/.*|examples/.*' \
             --lcov \
             --output-path lcov.info \
             --fail-under-lines $COVERAGE_THRESHOLD \
-            -- --skip performance_regression
+            -- --skip performance_regression --skip graphite::
 
       - name: Generate HTML coverage report
         if: always()

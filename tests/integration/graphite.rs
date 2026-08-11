@@ -7,6 +7,8 @@
 /// - The `gt` CLI must be installed and available in PATH
 /// - When the `CI` environment variable is set, tests will FAIL if `gt` is not available
 /// - When not in CI, tests will be SKIPPED if `gt` is not available
+/// - To opt in locally, install `@withgraphite/graphite-cli@stable` and run
+///   `task test TEST_FILTER=graphite:: CARGO_TEST_ARGS="--test integration"`
 ///
 /// ## Graphite's `commit-tree` + `update-ref` plumbing path
 ///

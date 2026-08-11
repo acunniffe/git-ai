@@ -1,0 +1,134 @@
+name: Graphite compatibility
+
+permissions:
+  contents: read
+
+# Required checks use a pinned CLI version. Scheduled and manually dispatched
+# runs use the stable tag to detect upstream Graphite CLI drift.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+env:
+  GRAPHITE_CLI_VERSION: 1.8.6
+
+jobs:
+  compatibility:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'merge_group'
+    name: Graphite compatibility (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            test_threads: 4
+          - os: macos-latest
+            test_threads: 2
+          - os: windows-latest
+            test_threads: 4
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: stable
+
+      - name: Cache dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ runner.os != 'Windows' && 'target' || '' }}
+          key: ${{ runner.os }}-cargo-graphite-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-graphite-
+
+      - name: Install Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Install pinned Graphite CLI
+        run: npm install --global @withgraphite/graphite-cli@${{ env.GRAPHITE_CLI_VERSION }}
+
+      - name: Verify Graphite CLI
+        run: gt --version
+
+      - name: Install Task
+        uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2
+
+      - name: Run Graphite compatibility tests, including rebase/restack coverage
+        run: task test CARGO_TEST_ARGS="--test integration" TEST_FILTER="graphite::" TEST_THREADS=${{ matrix.test_threads }} NO_CAPTURE=true
+        env:
+          CARGO_INCREMENTAL: 0
+          GIT_AI_TEST_ARTIFACT_DIR: ${{ runner.temp }}/git-ai-test-artifacts
+
+  stable-canary:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Graphite stable canary (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            test_threads: 4
+          - os: macos-latest
+            test_threads: 2
+          - os: windows-latest
+            test_threads: 4
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        with:
+          toolchain: stable
+
+      - name: Cache dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ runner.os != 'Windows' && 'target' || '' }}
+          key: ${{ runner.os }}-cargo-graphite-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-graphite-
+
+      - name: Install Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: '22'
+
+      - name: Install Graphite CLI from stable
+        run: npm install --global @withgraphite/graphite-cli@stable
+
+      - name: Verify Graphite CLI
+        run: gt --version
+
+      - name: Install Task
+        uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2
+
+      - name: Run Graphite stable canary, including rebase/restack coverage
+        run: task test CARGO_TEST_ARGS="--test integration" TEST_FILTER="graphite::" TEST_THREADS=${{ matrix.test_threads }} NO_CAPTURE=true
+        env:
+          CARGO_INCREMENTAL: 0
+          GIT_AI_TEST_ARTIFACT_DIR: ${{ runner.temp }}/git-ai-test-artifacts
