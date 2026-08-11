@@ -2051,9 +2051,10 @@ impl TestRepo {
                 }
                 if entry.status == "error" {
                     panic!(
-                        "daemon completion log reported an error for family {} session {}: {}",
+                        "daemon completion log reported an error for family {} session {} primary {:?}: {}",
                         family_key,
                         session,
+                        entry.primary_command,
                         entry.error.as_deref().unwrap_or("unknown completion error")
                     );
                 }
@@ -2214,10 +2215,30 @@ impl TestRepo {
         }
 
         let family_key = self.daemon_family_key();
+        self.record_daemon_expected_completion_session_for_family(&family_key, session);
+    }
+
+    fn record_daemon_expected_completion_session_for_repo_path(
+        &self,
+        repo_path: &Path,
+        session: &str,
+    ) {
+        if !self.has_active_daemon() {
+            return;
+        }
+        let family_key = self.daemon_family_key_for_repo_path(repo_path);
+        self.record_daemon_expected_completion_session_for_family(&family_key, session);
+    }
+
+    fn record_daemon_expected_completion_session_for_family(
+        &self,
+        family_key: &str,
+        session: &str,
+    ) {
         let mut registry = daemon_sync_registry()
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        registry.record_expected_completion_session(&family_key, session);
+        registry.record_expected_completion_session(family_key, session);
     }
 
     fn record_pending_checkpoint_completions(&self, count: u64) {
@@ -2294,6 +2315,17 @@ impl TestRepo {
         self.sync_daemon_family(&self.path);
         self.sync_pending_daemon_sessions(&family_key);
         self.sync_daemon_family(&self.path);
+    }
+
+    fn sync_daemon_force_for_repo_path(&self, repo_path: &Path) {
+        if !self.has_active_daemon() {
+            return;
+        }
+
+        let family_key = self.daemon_family_key_for_repo_path(repo_path);
+        self.sync_daemon_family(repo_path);
+        self.sync_pending_daemon_sessions(&family_key);
+        self.sync_daemon_family(repo_path);
     }
 
     pub(crate) fn sync_daemon_external_completion_sessions(&self, sessions: &[String]) {
@@ -2582,6 +2614,60 @@ impl TestRepo {
         self.git_with_env(args, &[], None)
     }
 
+    /// Run a traced Git command with bytes on stdin. This is the TestRepo E2E
+    /// path for mutators such as `cherry-pick --stdin` and `update-ref --stdin`.
+    pub fn git_with_stdin(&self, args: &[&str], stdin_data: &[u8]) -> Result<String, String> {
+        let tracked_invocation =
+            self.parsed_git_invocation_for_tracking(args, Some(self.path.as_path()));
+        if git_invocation_requires_daemon_sync(&tracked_invocation) {
+            self.sync_daemon_force();
+        }
+        let command_affects_daemon = self.has_active_daemon()
+            && git_ai::daemon::test_sync::tracks_parsed_git_invocation_for_test_sync(
+                &tracked_invocation,
+            );
+        let session = command_affects_daemon.then(new_daemon_test_sync_session_id);
+        let mut command = Command::new(real_git_executable());
+        let mut command_args = Vec::<String>::new();
+        if let Some(session) = session.as_deref() {
+            self.append_daemon_test_sync_session_args(&mut command_args, session);
+        }
+        command_args.extend(["-C".to_string(), self.path.to_string_lossy().to_string()]);
+        command_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        command.args(command_args);
+        self.configure_command_env(&mut command);
+        if let Some(patch) = &self.config_patch
+            && let Ok(patch_json) = serde_json::to_string(patch)
+        {
+            command.env("GIT_AI_TEST_CONFIG_PATCH", patch_json);
+        }
+        command.env("GIT_AI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+        command.env("GITAI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+
+        let output = run_command_output_with_stdin(
+            &mut command,
+            &format!("git stdin {:?}", args),
+            stdin_data,
+        )?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let combined = if stdout.is_empty() {
+            stderr
+        } else if stderr.is_empty() {
+            stdout
+        } else {
+            format!("{}{}", stdout, stderr)
+        };
+        if output.status.success() {
+            if let Some(session) = session.as_deref() {
+                self.record_daemon_family_expected_completion_session(session);
+            }
+            Ok(combined)
+        } else {
+            Err(combined)
+        }
+    }
+
     pub fn git_without_test_sync_for_test(
         &self,
         args: &[&str],
@@ -2628,6 +2714,67 @@ impl TestRepo {
         args: &[&str],
     ) -> Result<String, String> {
         self.git_with_env(args, &[], Some(working_dir))
+    }
+
+    /// Run a shell wrapper around one or more traced Git commands. Every
+    /// literal `{git}` token is replaced with a Git invocation carrying the
+    /// deterministic daemon test-sync marker. This keeps wrapper E2Es bounded
+    /// even when the shell returns before a background Git child completes.
+    pub fn shell_git(&self, script: &str) -> Result<String, String> {
+        self.shell_git_from_working_dir(self.path(), script)
+    }
+
+    pub fn shell_git_from_working_dir(
+        &self,
+        working_dir: &Path,
+        script: &str,
+    ) -> Result<String, String> {
+        self.sync_daemon_force();
+        let session = new_daemon_test_sync_session_id();
+        let git = format!(
+            "git -c {}={}",
+            git_ai::daemon::test_sync::TEST_SYNC_SESSION_CONFIG_KEY,
+            session
+        );
+        let rendered = script.replace("{git}", &git);
+        assert_ne!(
+            rendered, script,
+            "shell_git script must contain at least one literal {{git}} token"
+        );
+
+        let canonical_working_dir = working_dir.canonicalize().map_err(|error| {
+            format!(
+                "Failed to canonicalize shell working directory {}: {}",
+                working_dir.display(),
+                error
+            )
+        })?;
+        let mut command = Command::new("sh");
+        command
+            .args(["-c", &rendered])
+            .current_dir(canonical_working_dir);
+        self.configure_command_env(&mut command);
+        command.env("GIT_AI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+        command.env("GITAI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+        let output = run_command_output(&mut command, &format!("shell git: {rendered}"))?;
+
+        self.record_daemon_family_expected_completion_session(&session);
+        self.sync_daemon_force();
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let combined = if stdout.is_empty() {
+            stderr
+        } else if stderr.is_empty() {
+            stdout
+        } else {
+            format!("{}{}", stdout, stderr)
+        };
+        if output.status.success() {
+            Ok(combined)
+        } else {
+            Err(combined)
+        }
     }
 
     pub fn git_og(&self, args: &[&str]) -> Result<String, String> {
@@ -2785,9 +2932,13 @@ impl TestRepo {
             .as_deref()
             .or(Some(self.path.as_path()));
         let tracked_invocation = self.parsed_git_invocation_for_tracking(args, command_context);
+        let command_repo_context = git_ai::daemon::test_sync::repo_lookup_for_parsed_git_invocation(
+            &tracked_invocation,
+            command_context.expect("git command should always have working-directory context"),
+        );
 
         if git_invocation_requires_daemon_sync(&tracked_invocation) {
-            self.sync_daemon_force();
+            self.sync_daemon_force_for_repo_path(&command_repo_context);
         }
 
         let retry_limit = 8usize;
@@ -2862,7 +3013,8 @@ impl TestRepo {
                             self.sync_daemon_clone_target(&target_repo_path);
                         }
                     } else if daemon_command_pending {
-                        self.record_daemon_family_expected_completion_session(
+                        self.record_daemon_expected_completion_session_for_repo_path(
+                            &command_repo_context,
                             daemon_test_sync_session.as_deref().expect(
                                 "daemon test sync session should exist for tracked command",
                             ),
@@ -2878,7 +3030,8 @@ impl TestRepo {
             }
 
             if daemon_command_pending {
-                self.record_daemon_family_expected_completion_session(
+                self.record_daemon_expected_completion_session_for_repo_path(
+                    &command_repo_context,
                     daemon_test_sync_session
                         .as_deref()
                         .expect("daemon test sync session should exist for tracked command"),
@@ -2896,7 +3049,7 @@ impl TestRepo {
         args: &[&str],
     ) -> Result<String, String> {
         if git_ai_command_requires_daemon_sync(args) {
-            self.sync_daemon_force();
+            self.sync_daemon_force_for_repo_path(working_dir);
         }
 
         let is_checkpoint = git_ai_primary_command(args) == Some("checkpoint");
