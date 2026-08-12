@@ -2,6 +2,12 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use std::fs;
 
+fn write_ai_edit(repo: &TestRepo, path: &str, contents: &str) {
+    repo.git_ai(&["checkpoint", "human", path]).unwrap();
+    fs::write(repo.path().join(path), contents).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", path]).unwrap();
+}
+
 fn conflicting_cherry_pick_repo() -> (TestRepo, String) {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
@@ -26,8 +32,7 @@ fn conflicting_cherry_pick_repo() -> (TestRepo, String) {
 fn test_git_cherry_pick_abort_discards_ai_resolution_checkpoint() {
     let (repo, source) = conflicting_cherry_pick_repo();
     assert!(repo.git(&["cherry-pick", &source]).is_err());
-    let mut file = repo.filename("conflict.txt");
-    file.set_contents_no_stage(lines!["discarded AI cherry resolution".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "discarded AI cherry resolution\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["cherry-pick", "--abort"]).unwrap();
 
@@ -48,8 +53,7 @@ fn test_git_cherry_pick_abort_discards_ai_resolution_checkpoint() {
 fn test_git_cherry_pick_quit_keeps_ai_resolution_for_ordinary_commit() {
     let (repo, source) = conflicting_cherry_pick_repo();
     assert!(repo.git(&["cherry-pick", &source]).is_err());
-    let mut file = repo.filename("conflict.txt");
-    file.set_contents_no_stage(lines!["AI cherry resolution after quit".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "AI cherry resolution after quit\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["cherry-pick", "--quit"]).unwrap();
     repo.git(&["commit", "-m", "Commit resolution after cherry-pick quit"])
@@ -65,8 +69,7 @@ fn test_git_cherry_pick_single_skip_discards_resolution_but_keeps_unrelated_ai()
     let mut unrelated = repo.filename("unrelated.txt");
     unrelated.set_contents_no_stage(lines!["unrelated AI".ai()]);
     assert!(repo.git(&["cherry-pick", &source]).is_err());
-    let mut file = repo.filename("conflict.txt");
-    file.set_contents_no_stage(lines!["discarded AI cherry skip".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "discarded AI cherry skip\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["cherry-pick", "--skip"]).unwrap();
 
@@ -239,6 +242,7 @@ fn test_git_cherry_pick_allow_empty_carries_unrelated_ai_checkpoint() {
     dirty.set_contents_no_stage(lines!["dirty AI around empty pick".ai()]);
     repo.git(&["cherry-pick", "--allow-empty", empty_source.trim()])
         .unwrap();
+    repo.assert_file_committed_lines("base.txt", lines!["base".human()]);
     repo.git(&["add", "--", "dirty.txt"]).unwrap();
     repo.git(&["commit", "-m", "Commit dirty AI after empty pick"])
         .unwrap();
@@ -273,6 +277,7 @@ fn test_git_cherry_pick_empty_drop_and_keep_carry_unrelated_ai_checkpoint() {
 
         let option = format!("--empty={policy}");
         repo.git(&["cherry-pick", &option, &source]).unwrap();
+        repo.assert_file_committed_lines("same.txt", lines!["already applied".human()]);
         repo.git(&["add", "--", "dirty.txt"]).unwrap();
         repo.git(&["commit", "-m", "Commit dirty AI after empty policy"])
             .unwrap();

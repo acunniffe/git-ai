@@ -2,6 +2,12 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use std::fs;
 
+fn write_ai_edit(repo: &TestRepo, path: &str, contents: &str) {
+    repo.git_ai(&["checkpoint", "human", path]).unwrap();
+    fs::write(repo.path().join(path), contents).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", path]).unwrap();
+}
+
 fn divergent_conflict_repo() -> (TestRepo, String) {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
@@ -57,8 +63,7 @@ fn test_git_merge_no_commit_then_commit_preserves_source_attribution() {
 fn test_git_merge_continue_attributes_ai_conflict_resolution() {
     let (repo, _main) = divergent_conflict_repo();
     assert!(repo.git(&["merge", "feature"]).is_err());
-    let mut conflict = repo.filename("conflict.txt");
-    conflict.set_contents_no_stage(lines!["resolved by AI".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "resolved by AI\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
 
     repo.git_with_env(&["merge", "--continue"], &[("GIT_EDITOR", "true")], None)
@@ -74,8 +79,7 @@ fn test_git_merge_continue_attributes_ai_conflict_resolution() {
 fn test_git_merge_abort_discards_ai_resolution_checkpoint() {
     let (repo, _main) = divergent_conflict_repo();
     assert!(repo.git(&["merge", "feature"]).is_err());
-    let mut conflict = repo.filename("conflict.txt");
-    conflict.set_contents_no_stage(lines!["discarded AI resolution".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "discarded AI resolution\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["merge", "--abort"]).unwrap();
 
@@ -94,8 +98,7 @@ fn test_git_merge_abort_discards_ai_resolution_checkpoint() {
 fn test_git_merge_quit_keeps_ai_resolution_for_ordinary_commit() {
     let (repo, _main) = divergent_conflict_repo();
     assert!(repo.git(&["merge", "feature"]).is_err());
-    let mut conflict = repo.filename("conflict.txt");
-    conflict.set_contents_no_stage(lines!["AI resolution after quit".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "AI resolution after quit\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["merge", "--quit"]).unwrap();
     repo.git(&["commit", "-m", "Commit resolution without merge metadata"])
@@ -115,6 +118,7 @@ fn test_git_merge_ff_only_rejection_preserves_unrelated_ai_checkpoint() {
     repo.git(&["add", "--", "unrelated.txt"]).unwrap();
     repo.git(&["commit", "-m", "Commit after rejected ff-only"])
         .unwrap();
+    repo.assert_file_committed_lines("conflict.txt", lines!["main human".human()]);
     let mut unrelated = repo.filename("unrelated.txt");
     unrelated.assert_committed_lines(lines!["unrelated AI".ai()]);
 }

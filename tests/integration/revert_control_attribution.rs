@@ -2,6 +2,12 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use std::fs;
 
+fn write_ai_edit(repo: &TestRepo, path: &str, contents: &str) {
+    repo.git_ai(&["checkpoint", "human", path]).unwrap();
+    fs::write(repo.path().join(path), contents).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", path]).unwrap();
+}
+
 fn conflicting_revert_repo() -> (TestRepo, String) {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
@@ -94,8 +100,7 @@ fn test_git_revert_no_commit_multiple_sources_merges_restored_provenance() {
 fn test_git_revert_continue_attributes_ai_conflict_resolution() {
     let (repo, source_commit) = conflicting_revert_repo();
     assert!(repo.git(&["revert", &source_commit]).is_err());
-    let mut file = repo.filename("conflict.txt");
-    file.set_contents_no_stage(lines!["AI revert resolution".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "AI revert resolution\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git_with_env(&["revert", "--continue"], &[("GIT_EDITOR", "true")], None)
         .unwrap();
@@ -108,8 +113,7 @@ fn test_git_revert_continue_attributes_ai_conflict_resolution() {
 fn test_git_revert_abort_discards_ai_resolution_checkpoint() {
     let (repo, source_commit) = conflicting_revert_repo();
     assert!(repo.git(&["revert", &source_commit]).is_err());
-    let mut file = repo.filename("conflict.txt");
-    file.set_contents_no_stage(lines!["discarded AI revert resolution".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "discarded AI revert resolution\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["revert", "--abort"]).unwrap();
 
@@ -130,8 +134,7 @@ fn test_git_revert_abort_discards_ai_resolution_checkpoint() {
 fn test_git_revert_quit_keeps_ai_resolution_for_ordinary_commit() {
     let (repo, source_commit) = conflicting_revert_repo();
     assert!(repo.git(&["revert", &source_commit]).is_err());
-    let mut file = repo.filename("conflict.txt");
-    file.set_contents_no_stage(lines!["AI revert resolution after quit".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "AI revert resolution after quit\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["revert", "--quit"]).unwrap();
     repo.git(&["commit", "-m", "Commit resolution after revert quit"])
@@ -147,8 +150,7 @@ fn test_git_revert_skip_preserves_unrelated_ai_checkpoint() {
     let mut unrelated = repo.filename("unrelated.txt");
     unrelated.set_contents_no_stage(lines!["unrelated AI".ai()]);
     assert!(repo.git(&["revert", &source_commit]).is_err());
-    let mut conflict = repo.filename("conflict.txt");
-    conflict.set_contents_no_stage(lines!["discarded AI skipped resolution".ai()]);
+    write_ai_edit(&repo, "conflict.txt", "discarded AI skipped resolution\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["revert", "--skip"]).unwrap();
     fs::write(
@@ -186,6 +188,7 @@ fn test_git_revert_mainline_restores_first_parent_ai_attribution() {
     repo.git(&["commit", "-m", "Delete AI file on feature"])
         .unwrap();
     repo.assert_file_committed_lines("base.txt", lines!["base".human()]);
+    assert!(!repo.path().join("restored.txt").exists());
 
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("main.txt"), "main human\n").unwrap();
