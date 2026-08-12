@@ -203,11 +203,7 @@ pub(crate) fn handle_revert_commits_with_metrics(
             target.sort_unstable();
             target.dedup();
         }
-        if log.attestations.is_empty() {
-            reconstructed_by_commit
-                .entry(r.revert_commit.clone())
-                .or_default();
-        } else {
+        if !log.attestations.is_empty() {
             match reconstructed_by_commit.get_mut(&r.revert_commit) {
                 Some(existing) => crate::authorship::rewrite::merge_authorship_logs(existing, &log),
                 None => {
@@ -240,21 +236,39 @@ pub(crate) fn handle_revert_commits_with_metrics(
             .is_none_or(|log| !uncovered_added_lines(added, log).is_empty())
     });
     if needs_history_fallback {
-        let history_tip = resolved
-            .first()
-            .map(|r| r.parent_sha.as_str())
-            .unwrap_or_default();
-        let history_commits = rev_list_for_revert_fallback(repo, history_tip)?;
-        let history_notes = notes_api::read_notes_batch(repo, &history_commits)?;
-        let noted_commits = history_commits
+        let history_tips = resolved
             .iter()
-            .filter(|commit| history_notes.contains_key(*commit))
-            .cloned()
+            .map(|r| r.parent_sha.clone())
+            .collect::<Vec<_>>();
+        let relevant_paths = added_lines_by_commit
+            .values()
+            .flat_map(|added| added.keys().cloned())
+            .collect::<HashSet<_>>();
+        let history_commits = rev_list_for_revert_fallback(repo, &history_tips, &relevant_paths)?;
+        let history_notes = notes_api::read_notes_batch(repo, &history_commits)?;
+        let history_logs = history_commits
+            .iter()
+            .filter_map(|commit| {
+                let note = history_notes.get(commit)?;
+                let log = AuthorshipLog::deserialize_from_string(note).ok()?;
+                log.attestations
+                    .iter()
+                    .any(|file| relevant_paths.contains(&file.file_path))
+                    .then(|| (commit.clone(), log))
+            })
             .collect::<Vec<_>>();
         let mut fallback_pairs = Vec::new();
         let mut fallback_pair_index = HashMap::new();
-        for destination in added_lines_by_commit.keys() {
-            for source in &noted_commits {
+        for (destination, added) in &added_lines_by_commit {
+            for (source, log) in &history_logs {
+                if source == destination
+                    || !log
+                        .attestations
+                        .iter()
+                        .any(|file| added.contains_key(&file.file_path))
+                {
+                    continue;
+                }
                 fallback_pair_index
                     .insert((destination.clone(), source.clone()), fallback_pairs.len());
                 fallback_pairs.push((source.clone(), destination.clone()));
@@ -266,25 +280,23 @@ pub(crate) fn handle_revert_commits_with_metrics(
             let target = reconstructed_by_commit
                 .entry(destination.clone())
                 .or_default();
-            for source in &noted_commits {
+            for (source, log) in &history_logs {
                 let missing = uncovered_added_lines(added, target);
                 if missing.is_empty() {
                     break;
                 }
-                let Some(note) = history_notes.get(source) else {
-                    continue;
-                };
-                let Ok(log) = AuthorshipLog::deserialize_from_string(note) else {
-                    continue;
-                };
                 let Some(index) = fallback_pair_index
                     .get(&(destination.clone(), source.clone()))
                     .copied()
                 else {
                     continue;
                 };
-                let shifted =
-                    shift_and_clip_revert_log(log, &fallback_diffs[index], &missing, destination);
+                let shifted = shift_and_clip_revert_log(
+                    log.clone(),
+                    &fallback_diffs[index],
+                    &missing,
+                    destination,
+                );
                 crate::authorship::rewrite::merge_authorship_logs(target, &shifted);
             }
         }
@@ -325,9 +337,12 @@ pub(crate) fn handle_revert_commits_with_metrics(
 
 fn rev_list_for_revert_fallback(
     repo: &Repository,
-    history_tip: &str,
+    history_tips: &[String],
+    relevant_paths: &HashSet<String>,
 ) -> Result<Vec<String>, GitAiError> {
-    if history_tip.is_empty() {
+    const MAX_REVERT_FALLBACK_COMMITS: usize = 256;
+
+    if history_tips.is_empty() || relevant_paths.is_empty() {
         return Ok(Vec::new());
     }
     let mut args = repo.global_args_for_exec();
@@ -335,8 +350,11 @@ fn rev_list_for_revert_fallback(
         "rev-list".to_string(),
         "--topo-order".to_string(),
         "--date-order".to_string(),
-        history_tip.to_string(),
+        format!("--max-count={MAX_REVERT_FALLBACK_COMMITS}"),
     ]);
+    args.extend(history_tips.iter().filter(|tip| !tip.is_empty()).cloned());
+    args.push("--".to_string());
+    args.extend(relevant_paths.iter().cloned());
     let output = exec_git(&args)?;
     Ok(String::from_utf8_lossy(&output.stdout)
         .lines()

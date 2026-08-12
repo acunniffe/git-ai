@@ -105,7 +105,7 @@ pub fn handle_stash_create(
     stash_sha: &str,
     head_sha: &str,
     pathspecs: Vec<String>,
-    partition_live_by_tree: bool,
+    keep_index: bool,
 ) -> Result<(), GitAiError> {
     cleanup_legacy_stashes_dir(repo);
 
@@ -125,17 +125,7 @@ pub fn handle_stash_create(
     let json = serde_json::to_string_pretty(&metadata)?;
     fs::write(&metadata_path, json)?;
 
-    // Partition provenance by the contents Git actually put in the stash and
-    // left in the worktree. Pathspecs alone are insufficient for --staged,
-    // --keep-index, and --patch because those modes split a file by index or
-    // hunk rather than only by pathname.
-    partition_stash_attributions(
-        repo,
-        stash_sha,
-        head_sha,
-        &pathspecs,
-        partition_live_by_tree,
-    )?;
+    partition_stash_attributions(repo, stash_sha, head_sha, &pathspecs, keep_index)?;
 
     Ok(())
 }
@@ -145,7 +135,7 @@ fn partition_stash_attributions(
     stash_sha: &str,
     head_sha: &str,
     pathspecs: &[String],
-    partition_live_by_tree: bool,
+    keep_index: bool,
 ) -> Result<(), GitAiError> {
     use crate::authorship::virtual_attribution::VirtualAttributions;
 
@@ -183,19 +173,43 @@ fn partition_stash_attributions(
         &stashed_contents,
     );
     let stash_log = working_log_for_dir(repo, stash_entry_dir(repo, stash_sha), head_sha);
-    write_initial_with_contents(&stash_log, stash_initial, stashed_contents)?;
+    write_initial_with_contents(&stash_log, stash_initial, stashed_contents.clone())?;
 
-    if !pathspecs.is_empty() && !partition_live_by_tree {
+    // Path-limited stashes leave every non-matching path untouched. Preserve
+    // those exact persisted checkpoints instead of rebuilding from the live
+    // worktree, which may already contain edits made after the stash command.
+    if !pathspecs.is_empty() {
         return remove_stashed_paths_from_live_log(repo, head_sha, pathspecs);
     }
 
-    let workdir = repo.workdir()?;
+    // Reconstruct the post-stash worktree from immutable snapshots. The stash
+    // tree is the selected change, source_contents is the complete pre-command
+    // worktree, and the target baseline is HEAD (or the index parent for
+    // --keep-index / the default --patch behavior). Rebasing the un-stashed
+    // delta onto that baseline avoids observing later edits from disk.
+    let live_baseline = if keep_index {
+        format!("{stash_sha}^2")
+    } else {
+        head_sha.to_string()
+    };
+    let baseline_requests = paths
+        .iter()
+        .map(|path| (live_baseline.clone(), path.clone()))
+        .collect::<Vec<_>>();
+    let baseline_contents = batch_read_paths_at_treeishes(repo, &baseline_requests)?;
     let live_contents = paths
         .iter()
         .filter_map(|path| {
-            fs::read_to_string(workdir.join(path))
-                .ok()
-                .map(|content| (path.clone(), content))
+            let source = source_contents.get(path)?;
+            let stashed = stashed_contents.get(path).map(String::as_str).unwrap_or("");
+            let baseline = baseline_contents
+                .get(&(live_baseline.clone(), path.clone()))
+                .map(String::as_str)
+                .unwrap_or("");
+            let live = crate::authorship::virtual_attribution::checkout_merge_rebased_content(
+                stashed, baseline, source,
+            );
+            (!live.is_empty()).then(|| (path.clone(), live))
         })
         .collect::<HashMap<_, _>>();
     let live_initial =
@@ -262,6 +276,22 @@ fn shift_initial_to_target_contents(
     initial.file_blobs.clear();
     trim_initial_metadata_to_referenced_authors(&mut initial);
     initial
+}
+
+#[cfg(test)]
+mod pathspec_tests {
+    use super::path_matches_any;
+
+    #[test]
+    fn stash_pathspec_matching_covers_exact_directories_and_prefix_globs() {
+        assert!(path_matches_any("src/lib.rs", &["src/lib.rs".into()]));
+        assert!(path_matches_any("src/nested/lib.rs", &["src".into()]));
+        assert!(path_matches_any("src/nested/lib.rs", &["src/".into()]));
+        assert!(path_matches_any("src/foo.rs", &["src/foo*".into()]));
+        assert!(path_matches_any("anything", &["*".into()]));
+        assert!(!path_matches_any("src/lib.rs", &[]));
+        assert!(!path_matches_any("other/lib.rs", &["src".into()]));
+    }
 }
 
 fn write_initial_with_contents(

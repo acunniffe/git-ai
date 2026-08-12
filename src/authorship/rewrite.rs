@@ -8,7 +8,8 @@ use crate::error::GitAiError;
 use crate::git::notes_api;
 use crate::git::repo_state::is_valid_git_oid;
 use crate::git::repository::{
-    Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin_streaming,
+    Repository, batch_read_paths_at_treeishes, exec_git, exec_git_allow_nonzero,
+    exec_git_stdin_streaming,
 };
 
 const EMPTY_TREE_SHA: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -1061,8 +1062,6 @@ pub(crate) fn apply_copied_path_mappings(
     use crate::authorship::virtual_attribution::{
         VirtualAttributions, diff_hunks_between_contents,
     };
-    use std::path::Path;
-
     if source_sha.is_empty() || target_sha.is_empty() || mappings.is_empty() {
         return Ok(());
     }
@@ -1090,6 +1089,18 @@ pub(crate) fn apply_copied_path_mappings(
 
     let source_tree = repo.find_commit(source_sha.to_string())?.tree()?.id();
     let target_tree = repo.find_commit(target_sha.to_string())?.tree()?.id();
+    let source_treeish = source_tree.to_string();
+    let target_treeish = target_tree.to_string();
+    let content_requests = mappings
+        .iter()
+        .flat_map(|(source, destination)| {
+            [
+                (source_treeish.clone(), source.clone()),
+                (target_treeish.clone(), destination.clone()),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let contents = batch_read_paths_at_treeishes(repo, &content_requests)?;
     source_log.attestations = source_log
         .attestations
         .iter()
@@ -1097,16 +1108,9 @@ pub(crate) fn apply_copied_path_mappings(
             let (_, destination) = mappings
                 .iter()
                 .find(|(source, _)| source == &file.file_path)?;
-            let old_content = repo
-                .read_file_blob_at_tree(&source_tree, Path::new(&file.file_path))
-                .ok()?;
-            let new_content = repo
-                .read_file_blob_at_tree(&target_tree, Path::new(destination))
-                .ok()?;
-            let hunks = diff_hunks_between_contents(
-                &String::from_utf8_lossy(&old_content),
-                &String::from_utf8_lossy(&new_content),
-            );
+            let old_content = contents.get(&(source_treeish.clone(), file.file_path.clone()))?;
+            let new_content = contents.get(&(target_treeish.clone(), destination.clone()))?;
+            let hunks = diff_hunks_between_contents(old_content, new_content);
             let mut shifted = apply_hunk_shifts_to_file_attestation(file, &hunks)?;
             shifted.file_path = destination.clone();
             Some(shifted)

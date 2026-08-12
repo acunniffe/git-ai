@@ -1846,7 +1846,7 @@ fn fill_line_ending_only_mappings(
     }
 }
 
-fn checkout_merge_rebased_content(
+pub(crate) fn checkout_merge_rebased_content(
     base_content: &str,
     target_content: &str,
     observed_content: &str,
