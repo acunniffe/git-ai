@@ -2964,11 +2964,13 @@ impl TestRepo {
             &tracked_invocation,
             command_context.expect("git command should always have working-directory context"),
         );
-        // Resolve the family while the command context is guaranteed to exist.
-        // Commands may remove their launch subdirectory before returning.
+        // Resolve an existing family while the command context is guaranteed to
+        // exist. Commands may remove their launch subdirectory before returning,
+        // while init-like commands only acquire a family after they succeed.
         let command_family_key = self
             .has_active_daemon()
-            .then(|| self.daemon_family_key_for_repo_path(&command_repo_context));
+            .then(|| self.maybe_daemon_family_key_for_repo_path(&command_repo_context))
+            .flatten();
 
         if git_invocation_requires_daemon_sync(&tracked_invocation) {
             self.sync_daemon_force_for_repo_path(&command_repo_context);
@@ -3046,10 +3048,13 @@ impl TestRepo {
                             self.sync_daemon_clone_target(&target_repo_path);
                         }
                     } else if daemon_command_pending {
+                        let family_key = command_family_key.clone().or_else(|| {
+                            self.maybe_daemon_family_key_for_repo_path(&command_repo_context)
+                        });
                         self.record_daemon_expected_completion_session_for_family(
-                            command_family_key
-                                .as_deref()
-                                .expect("tracked daemon command should have a resolved family key"),
+                            family_key.as_deref().expect(
+                                "successful tracked daemon command should resolve a family",
+                            ),
                             daemon_test_sync_session.as_deref().expect(
                                 "daemon test sync session should exist for tracked command",
                             ),
@@ -3064,11 +3069,9 @@ impl TestRepo {
                 continue;
             }
 
-            if daemon_command_pending {
+            if daemon_command_pending && let Some(family_key) = command_family_key.as_deref() {
                 self.record_daemon_expected_completion_session_for_family(
-                    command_family_key
-                        .as_deref()
-                        .expect("tracked daemon command should have a resolved family key"),
+                    family_key,
                     daemon_test_sync_session
                         .as_deref()
                         .expect("daemon test sync session should exist for tracked command"),
