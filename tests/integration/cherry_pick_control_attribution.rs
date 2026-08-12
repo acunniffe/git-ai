@@ -2,12 +2,6 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use std::fs;
 
-fn write_ai_edit(repo: &TestRepo, path: &str, contents: &str) {
-    repo.git_ai(&["checkpoint", "human", path]).unwrap();
-    fs::write(repo.path().join(path), contents).unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", path]).unwrap();
-}
-
 fn conflicting_cherry_pick_repo() -> (TestRepo, String) {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
@@ -32,7 +26,7 @@ fn conflicting_cherry_pick_repo() -> (TestRepo, String) {
 fn test_git_cherry_pick_abort_discards_ai_resolution_checkpoint() {
     let (repo, source) = conflicting_cherry_pick_repo();
     assert!(repo.git(&["cherry-pick", &source]).is_err());
-    write_ai_edit(&repo, "conflict.txt", "discarded AI cherry resolution\n");
+    repo.write_ai_edit("conflict.txt", "discarded AI cherry resolution\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["cherry-pick", "--abort"]).unwrap();
 
@@ -53,7 +47,7 @@ fn test_git_cherry_pick_abort_discards_ai_resolution_checkpoint() {
 fn test_git_cherry_pick_quit_keeps_ai_resolution_for_ordinary_commit() {
     let (repo, source) = conflicting_cherry_pick_repo();
     assert!(repo.git(&["cherry-pick", &source]).is_err());
-    write_ai_edit(&repo, "conflict.txt", "AI cherry resolution after quit\n");
+    repo.write_ai_edit("conflict.txt", "AI cherry resolution after quit\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["cherry-pick", "--quit"]).unwrap();
     repo.git(&["commit", "-m", "Commit resolution after cherry-pick quit"])
@@ -69,7 +63,7 @@ fn test_git_cherry_pick_single_skip_discards_resolution_but_keeps_unrelated_ai()
     let mut unrelated = repo.filename("unrelated.txt");
     unrelated.set_contents_no_stage(lines!["unrelated AI".ai()]);
     assert!(repo.git(&["cherry-pick", &source]).is_err());
-    write_ai_edit(&repo, "conflict.txt", "discarded AI cherry skip\n");
+    repo.write_ai_edit("conflict.txt", "discarded AI cherry skip\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["cherry-pick", "--skip"]).unwrap();
 

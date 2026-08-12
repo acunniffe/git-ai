@@ -3320,6 +3320,15 @@ impl TestRepo {
         self.filename(filename).assert_committed_lines(lines);
     }
 
+    /// Reproduce an agent's real pre-edit and post-edit checkpoint flow around
+    /// an explicit file write. Use this when checkpoint ordering is material to
+    /// the integration test instead of the convenience TestFile edit helpers.
+    pub fn write_ai_edit(&self, filename: &str, contents: &str) {
+        self.git_ai(&["checkpoint", "human", filename]).unwrap();
+        fs::write(self.path.join(filename), contents).unwrap();
+        self.git_ai(&["checkpoint", "mock_ai", filename]).unwrap();
+    }
+
     pub fn current_working_logs(&self) -> PersistedWorkingLog {
         let commit_sha = {
             let repo = GitAiRepository::find_repository_in_path(self.path.to_str().unwrap())

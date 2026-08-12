@@ -2,12 +2,6 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use std::fs;
 
-fn write_ai_edit(repo: &TestRepo, path: &str, contents: &str) {
-    repo.git_ai(&["checkpoint", "human", path]).unwrap();
-    fs::write(repo.path().join(path), contents).unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", path]).unwrap();
-}
-
 fn divergent_conflict_repo() -> (TestRepo, String) {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
@@ -63,7 +57,7 @@ fn test_git_merge_no_commit_then_commit_preserves_source_attribution() {
 fn test_git_merge_continue_attributes_ai_conflict_resolution() {
     let (repo, _main) = divergent_conflict_repo();
     assert!(repo.git(&["merge", "feature"]).is_err());
-    write_ai_edit(&repo, "conflict.txt", "resolved by AI\n");
+    repo.write_ai_edit("conflict.txt", "resolved by AI\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
 
     repo.git_with_env(&["merge", "--continue"], &[("GIT_EDITOR", "true")], None)
@@ -79,7 +73,7 @@ fn test_git_merge_continue_attributes_ai_conflict_resolution() {
 fn test_git_merge_abort_discards_ai_resolution_checkpoint() {
     let (repo, _main) = divergent_conflict_repo();
     assert!(repo.git(&["merge", "feature"]).is_err());
-    write_ai_edit(&repo, "conflict.txt", "discarded AI resolution\n");
+    repo.write_ai_edit("conflict.txt", "discarded AI resolution\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["merge", "--abort"]).unwrap();
 
@@ -98,7 +92,7 @@ fn test_git_merge_abort_discards_ai_resolution_checkpoint() {
 fn test_git_merge_quit_keeps_ai_resolution_for_ordinary_commit() {
     let (repo, _main) = divergent_conflict_repo();
     assert!(repo.git(&["merge", "feature"]).is_err());
-    write_ai_edit(&repo, "conflict.txt", "AI resolution after quit\n");
+    repo.write_ai_edit("conflict.txt", "AI resolution after quit\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["merge", "--quit"]).unwrap();
     repo.git(&["commit", "-m", "Commit resolution without merge metadata"])

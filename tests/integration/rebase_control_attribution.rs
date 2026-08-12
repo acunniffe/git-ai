@@ -2,12 +2,6 @@ use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use std::fs;
 
-fn write_ai_edit(repo: &TestRepo, path: &str, contents: &str) {
-    repo.git_ai(&["checkpoint", "human", path]).unwrap();
-    fs::write(repo.path().join(path), contents).unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", path]).unwrap();
-}
-
 fn conflicting_rebase_repo() -> TestRepo {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
@@ -31,7 +25,7 @@ fn conflicting_rebase_repo() -> TestRepo {
 #[test]
 fn test_git_rebase_quit_keeps_ai_resolution_for_ordinary_commit() {
     let repo = conflicting_rebase_repo();
-    write_ai_edit(&repo, "conflict.txt", "AI rebase resolution after quit\n");
+    repo.write_ai_edit("conflict.txt", "AI rebase resolution after quit\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["rebase", "--quit"]).unwrap();
     repo.git(&["commit", "-m", "Commit resolution after rebase quit"])
@@ -44,7 +38,7 @@ fn test_git_rebase_quit_keeps_ai_resolution_for_ordinary_commit() {
 #[test]
 fn test_git_rebase_abort_discards_ai_resolution_checkpoint() {
     let repo = conflicting_rebase_repo();
-    write_ai_edit(&repo, "conflict.txt", "discarded AI rebase resolution\n");
+    repo.write_ai_edit("conflict.txt", "discarded AI rebase resolution\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["rebase", "--abort"]).unwrap();
 
@@ -64,7 +58,7 @@ fn test_git_rebase_abort_discards_ai_resolution_checkpoint() {
 #[test]
 fn test_git_rebase_skip_discards_ai_resolution_checkpoint() {
     let repo = conflicting_rebase_repo();
-    write_ai_edit(&repo, "conflict.txt", "discarded AI rebase skip\n");
+    repo.write_ai_edit("conflict.txt", "discarded AI rebase skip\n");
     repo.git(&["add", "--", "conflict.txt"]).unwrap();
     repo.git(&["rebase", "--skip"]).unwrap();
 
