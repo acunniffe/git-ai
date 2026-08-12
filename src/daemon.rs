@@ -5140,14 +5140,19 @@ impl ActorDaemonCoordinator {
         // synchronization session, including read-only commands. Let those
         // explicitly marked roots reach the completion log so the helper can
         // wait for every command without guessing at shell syntax.
-        let has_test_sync_session = if argv.is_empty() {
-            false
-        } else {
-            let parsed = crate::git::cli_parser::parse_git_cli_args(trace_invocation_args(&argv));
-            crate::daemon::test_sync::test_sync_session_from_invocation(&parsed).is_some()
-        };
-        let event_is_read_only = !has_test_sync_session
-            && trace_invocation_is_definitely_read_only(early_primary.as_deref(), &argv);
+        let event_is_read_only =
+            trace_invocation_is_definitely_read_only(early_primary.as_deref(), &argv) && {
+                // Only test-only read-only roots need the second parse. Mutating
+                // commands retain the normal single-parse ingestion path.
+                let has_test_sync_session = if argv.is_empty() {
+                    false
+                } else {
+                    let parsed =
+                        crate::git::cli_parser::parse_git_cli_args(trace_invocation_args(&argv));
+                    crate::daemon::test_sync::test_sync_session_from_invocation(&parsed).is_some()
+                };
+                !has_test_sync_session
+            };
         let mut ingress = match self.trace_ingress_state.lock() {
             Ok(guard) => guard,
             Err(_) => return false,

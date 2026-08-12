@@ -2218,18 +2218,6 @@ impl TestRepo {
         self.record_daemon_expected_completion_session_for_family(&family_key, session);
     }
 
-    fn record_daemon_expected_completion_session_for_repo_path(
-        &self,
-        repo_path: &Path,
-        session: &str,
-    ) {
-        if !self.has_active_daemon() {
-            return;
-        }
-        let family_key = self.daemon_family_key_for_repo_path(repo_path);
-        self.record_daemon_expected_completion_session_for_family(&family_key, session);
-    }
-
     fn record_daemon_expected_completion_session_for_family(
         &self,
         family_key: &str,
@@ -2783,6 +2771,11 @@ impl TestRepo {
             .args(["-c", &rendered_with_wait])
             .current_dir(canonical_working_dir);
         self.configure_command_env(&mut command);
+        if let Some(patch) = &self.config_patch
+            && let Ok(patch_json) = serde_json::to_string(patch)
+        {
+            command.env("GIT_AI_TEST_CONFIG_PATCH", patch_json);
+        }
         command.env("GIT_AI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
         command.env("GITAI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
         let output = run_command_output(&mut command, &format!("shell git: {rendered}"))?;
@@ -2971,6 +2964,11 @@ impl TestRepo {
             &tracked_invocation,
             command_context.expect("git command should always have working-directory context"),
         );
+        // Resolve the family while the command context is guaranteed to exist.
+        // Commands may remove their launch subdirectory before returning.
+        let command_family_key = self
+            .has_active_daemon()
+            .then(|| self.daemon_family_key_for_repo_path(&command_repo_context));
 
         if git_invocation_requires_daemon_sync(&tracked_invocation) {
             self.sync_daemon_force_for_repo_path(&command_repo_context);
@@ -3048,8 +3046,10 @@ impl TestRepo {
                             self.sync_daemon_clone_target(&target_repo_path);
                         }
                     } else if daemon_command_pending {
-                        self.record_daemon_expected_completion_session_for_repo_path(
-                            &command_repo_context,
+                        self.record_daemon_expected_completion_session_for_family(
+                            command_family_key
+                                .as_deref()
+                                .expect("tracked daemon command should have a resolved family key"),
                             daemon_test_sync_session.as_deref().expect(
                                 "daemon test sync session should exist for tracked command",
                             ),
@@ -3065,8 +3065,10 @@ impl TestRepo {
             }
 
             if daemon_command_pending {
-                self.record_daemon_expected_completion_session_for_repo_path(
-                    &command_repo_context,
+                self.record_daemon_expected_completion_session_for_family(
+                    command_family_key
+                        .as_deref()
+                        .expect("tracked daemon command should have a resolved family key"),
                     daemon_test_sync_session
                         .as_deref()
                         .expect("daemon test sync session should exist for tracked command"),
