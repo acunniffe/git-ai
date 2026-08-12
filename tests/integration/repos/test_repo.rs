@@ -2710,10 +2710,12 @@ impl TestRepo {
     /// literal `{git}` token is replaced with a Git invocation carrying the
     /// deterministic daemon test-sync marker. This keeps wrapper E2Es bounded
     /// even when the shell returns before a background Git child completes.
+    #[cfg(unix)]
     pub fn shell_git(&self, script: &str) -> Result<String, String> {
         self.shell_git_from_working_dir(self.path(), script)
     }
 
+    #[cfg(unix)]
     pub fn shell_git_from_working_dir(
         &self,
         working_dir: &Path,

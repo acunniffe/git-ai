@@ -103,6 +103,7 @@ fn branch_tracking_and_upstream_only_mutations_preserve_pending_ai() {
 }
 
 #[test]
+#[cfg(unix)]
 fn shell_wrapper_waits_for_read_only_and_each_mutating_command() {
     let repo = TestRepo::new();
     let mut seed = repo.filename("seed.txt");
