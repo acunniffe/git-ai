@@ -1,6 +1,9 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::fixture_path;
+use crate::test_utils::{
+    codex_bash_hook_input as shared_codex_bash_hook_input, fixture_path,
+    isolated_bash_history_db_path,
+};
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::git::find_repository_in_path;
 use serde_json::json;
@@ -8,28 +11,20 @@ use std::fs;
 use std::thread;
 use std::time::Duration;
 
-fn isolated_bash_history_db_path() -> (tempfile::TempDir, String) {
-    let dir = tempfile::tempdir().expect("failed to create isolated bash history db dir");
-    let path = dir.path().join("bash-history.db");
-    (dir, path.to_string_lossy().to_string())
-}
-
 fn codex_bash_hook_input(
     repo: &TestRepo,
     transcript_path: &std::path::Path,
     hook_event_name: &str,
     command: &str,
 ) -> String {
-    json!({
-        "session_id": "git-am-bash-session",
-        "cwd": repo.canonical_path().to_string_lossy().to_string(),
-        "hook_event_name": hook_event_name,
-        "tool_name": "Bash",
-        "tool_use_id": "git-am-bash-tool",
-        "tool_input": { "command": command },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string()
+    shared_codex_bash_hook_input(
+        repo,
+        transcript_path,
+        "git-am-bash-session",
+        "git-am-bash-tool",
+        hook_event_name,
+        command,
+    )
 }
 
 fn assert_codex_bash_session(repo: &TestRepo, commit_sha: &str) {
