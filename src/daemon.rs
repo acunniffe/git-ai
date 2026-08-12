@@ -835,17 +835,21 @@ fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<Strin
     if !index.is_file() {
         return None;
     }
-    let snapshot = tempfile::Builder::new()
-        .prefix("git-ai-index-snapshot-")
-        .tempfile_in(&git_dir)
-        .ok()?;
-    let snapshot_path = snapshot.path().to_path_buf();
-    snapshot.close().ok()?;
     // Git updates the index by atomically replacing its directory entry. A
     // hard link retains the pre-command inode in O(1) without reading index
     // contents, taking an index lock, spawning Git, or writing objects.
-    fs::hard_link(&index, &snapshot_path).ok()?;
-    Some(snapshot_path.to_string_lossy().into_owned())
+    for _ in 0..4 {
+        let snapshot_path = git_dir.join(format!(
+            "git-ai-index-snapshot-{}",
+            crate::uuid::generate_v4()
+        ));
+        match fs::hard_link(&index, &snapshot_path) {
+            Ok(()) => return Some(snapshot_path.to_string_lossy().into_owned()),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        }
+    }
+    None
 }
 
 pub(crate) fn is_daemon_index_snapshot_path(path: &Path) -> bool {
