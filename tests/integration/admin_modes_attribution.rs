@@ -6,6 +6,7 @@ fn repo_with_source_and_pending() -> (TestRepo, String) {
     let mut source = repo.filename("source.txt");
     source.set_contents(vec!["durable source AI".ai()]);
     let source_commit = repo.stage_all_and_commit("source").unwrap().commit_sha;
+    source.assert_committed_lines(lines!["durable source AI".ai()]);
     let mut pending = repo.filename("pending.txt");
     pending.set_contents(vec!["pending through admin operation".ai()]);
     (repo, source_commit)

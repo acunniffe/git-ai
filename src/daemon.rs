@@ -818,6 +818,15 @@ fn trace_invocation_starts_control_attempt(primary_command: Option<&str>, argv: 
         .any(|arg| matches!(arg.as_str(), "--abort" | "--continue" | "--quit" | "--skip"))
 }
 
+fn capture_index_tree_for_workspace_command(worktree: &Path) -> Option<String> {
+    let repo = find_repository_in_path(&worktree.to_string_lossy()).ok()?;
+    let mut args = repo.global_args_for_exec();
+    args.push("write-tree".to_string());
+    let tree = String::from_utf8(crate::git::repository::exec_git(&args).ok()?.stdout).ok()?;
+    let tree = tree.trim();
+    crate::git::repo_state::is_valid_git_oid(tree).then(|| tree.to_string())
+}
+
 fn matches_any_pathspec(file: &str, pathspecs: &[String]) -> bool {
     pathspecs.iter().any(|pathspec| {
         file == pathspec
@@ -1536,6 +1545,7 @@ fn prune_working_log_paths_after_clean(
         let mut ignore_args = repository.global_args_for_exec();
         ignore_args.extend([
             "check-ignore".to_string(),
+            "--no-index".to_string(),
             "-z".to_string(),
             "--stdin".to_string(),
         ]);
@@ -5227,6 +5237,18 @@ impl ActorDaemonCoordinator {
                 };
                 !has_test_sync_session
             };
+        // Clean and non-cached rm can be processed after later index changes.
+        // Snapshot the command's index boundary at its root start so pruning
+        // never consults a future index state.
+        let index_tree_at_start = (event == "start"
+            && sid == root
+            && matches!(early_primary.as_deref(), Some("clean" | "rm")))
+        .then(|| {
+            worktree_hint
+                .as_deref()
+                .and_then(capture_index_tree_for_workspace_command)
+        })
+        .flatten();
         let mut ingress = match self.trace_ingress_state.lock() {
             Ok(guard) => guard,
             Err(_) => return false,
@@ -5255,6 +5277,9 @@ impl ActorDaemonCoordinator {
 
         if event == "start" && sid == root && !argv.is_empty() {
             ingress.root_argv.insert(root.clone(), argv.clone());
+            if let Some(tree) = index_tree_at_start {
+                ingress.root_index_tree_at_start.insert(root.clone(), tree);
+            }
             if event_is_read_only {
                 ingress.root_definitely_read_only.insert(root.clone());
             }

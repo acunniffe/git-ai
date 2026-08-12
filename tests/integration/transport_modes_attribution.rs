@@ -15,17 +15,21 @@ fn diverged_remote() -> DivergedRemote {
     let mut pending = local.filename("pending.txt");
     pending.set_contents(vec!["pending base AI".ai()]);
     let initial = local.stage_all_and_commit("initial").unwrap().commit_sha;
+    seed.assert_committed_lines(lines!["seed".human()]);
+    pending.assert_committed_lines(lines!["pending base AI".ai()]);
     local.git(&["push", "-u", "origin", "HEAD"]).unwrap();
 
     let mut local_file = local.filename("local.txt");
     local_file.set_contents(vec!["local committed AI".ai()]);
     local.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     let local_tip = local.stage_all_and_commit("local AI").unwrap().commit_sha;
+    local_file.assert_committed_lines(lines!["local committed AI".ai()]);
 
     local.git(&["reset", "--hard", &initial]).unwrap();
     let mut remote_file = local.filename("remote.txt");
     remote_file.set_contents(vec!["remote side".human()]);
     local.stage_all_and_commit("remote side").unwrap();
+    remote_file.assert_committed_lines(lines!["remote side".human()]);
     let branch = local.current_branch();
     local
         .git(&["push", "--force", "origin", &format!("HEAD:{branch}")])
@@ -100,10 +104,12 @@ fn push_force_with_lease_and_delete_preserve_local_notes_and_publish_new_note() 
     let mut seed = local.filename("seed.txt");
     seed.set_contents(vec!["seed".human()]);
     local.stage_all_and_commit("initial").unwrap();
+    seed.assert_committed_lines(lines!["seed".human()]);
     let mut file = local.filename("force.txt");
     file.set_contents(vec!["first remote AI".ai()]);
     local.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     let first = local.stage_all_and_commit("first").unwrap().commit_sha;
+    file.assert_committed_lines(lines!["first remote AI".ai()]);
     local.git(&["push", "-u", "origin", "HEAD"]).unwrap();
 
     let initial = local
@@ -119,6 +125,7 @@ fn push_force_with_lease_and_delete_preserve_local_notes_and_publish_new_note() 
         .stage_all_and_commit("replacement")
         .unwrap()
         .commit_sha;
+    file.assert_committed_lines(lines!["replacement remote AI".ai()]);
     local
         .git(&["push", "--force-with-lease", "origin", "HEAD:main"])
         .unwrap();
@@ -147,12 +154,14 @@ fn atomic_push_failure_updates_no_refs_and_keeps_pending_ai() {
     let mut file = local.filename("history.txt");
     file.set_contents(vec!["initial".human()]);
     let initial = local.stage_all_and_commit("initial").unwrap().commit_sha;
+    file.assert_committed_lines(lines!["initial".human()]);
     local.git(&["push", "-u", "origin", "HEAD"]).unwrap();
     file.set_contents(vec!["initial".human(), "remote current".human()]);
     let remote_main = local
         .stage_all_and_commit("remote current")
         .unwrap()
         .commit_sha;
+    file.assert_committed_lines(lines!["initial".human(), "remote current".human()]);
     local.git(&["push", "origin", "HEAD"]).unwrap();
 
     let mut pending = local.filename("pending.txt");
@@ -191,10 +200,12 @@ fn fetch_refspec_force_and_prune_preserve_pending_ai() {
     let mut seed = local.filename("seed.txt");
     seed.set_contents(vec!["seed".human()]);
     let initial = local.stage_all_and_commit("initial").unwrap().commit_sha;
+    seed.assert_committed_lines(lines!["seed".human()]);
     local.git(&["push", "-u", "origin", "HEAD"]).unwrap();
     let mut second = local.filename("second.txt");
     second.set_contents(vec!["second".human()]);
     let tip = local.stage_all_and_commit("second").unwrap().commit_sha;
+    second.assert_committed_lines(lines!["second".human()]);
     local.git(&["push", "origin", "HEAD"]).unwrap();
 
     upstream
@@ -261,6 +272,7 @@ fn normal_and_no_checkout_clone_fetch_source_authorship_notes() {
     file.set_contents(vec!["cloned source AI".ai()]);
     source.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     let source_commit = source.stage_all_and_commit("source").unwrap().commit_sha;
+    file.assert_committed_lines(lines!["cloned source AI".ai()]);
 
     let temp = tempfile::tempdir().unwrap();
     let normal_path = temp.path().join("normal");
@@ -302,9 +314,11 @@ fn bare_and_shallow_clone_and_init_targets_are_routed_safely() {
     file.set_contents(vec!["one".ai()]);
     source.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     source.stage_all_and_commit("one").unwrap();
+    file.assert_committed_lines(lines!["one".ai()]);
     file.set_contents(vec!["one".ai(), "two".ai()]);
     source.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     let tip = source.stage_all_and_commit("two").unwrap().commit_sha;
+    file.assert_committed_lines(lines!["one".ai(), "two".ai()]);
 
     let temp = tempfile::tempdir().unwrap();
     let bare_path = temp.path().join("bare.git");
@@ -342,6 +356,8 @@ fn bare_and_shallow_clone_and_init_targets_are_routed_safely() {
     assert!(shallow_path.join(".git/shallow").is_file());
     let shallow = TestRepo::new_at_path(&shallow_path);
     assert!(shallow.read_authorship_note(&tip).is_some());
+    let mut shallow_history = shallow.filename("history.txt");
+    shallow_history.assert_committed_lines(lines!["one".ai(), "two".ai()]);
 
     let init_path = temp.path().join("initialized");
     fs::create_dir_all(&init_path).unwrap();
