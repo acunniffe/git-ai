@@ -159,17 +159,9 @@ fn detect_macos_ide(ide: &'static JetBrainsIde, app_path: &Path) -> Option<Detec
 fn get_macos_build_metadata(app_path: &Path) -> (Option<String>, Option<u32>, Option<String>) {
     // Try product-info.json first (newer JetBrains IDEs)
     let product_info_path = app_path.join("Contents/Resources/product-info.json");
-    if product_info_path.exists()
-        && let Ok(content) = std::fs::read_to_string(&product_info_path)
-        && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
-        && let Some(build) = json.get("buildNumber").and_then(|v| v.as_str())
-    {
-        let major = parse_major_build(build);
-        let data_directory_name = json
-            .get("dataDirectoryName")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned);
-        return (Some(build.to_string()), major, data_directory_name);
+    let product_info_metadata = read_product_info_build_metadata(&product_info_path);
+    if product_info_metadata.0.is_some() {
+        return product_info_metadata;
     }
 
     // Fall back to Info.plist
@@ -292,7 +284,8 @@ fn detect_windows_ide(ide: &'static JetBrainsIde, install_path: &Path) -> Option
         return None;
     }
 
-    let (build_number, major_build, data_directory_name) = get_windows_build_metadata(install_path);
+    let (build_number, major_build, data_directory_name) =
+        read_product_info_build_metadata(&install_path.join("product-info.json"));
     let plugins_dir = get_plugins_dir(
         data_directory_name.as_deref(),
         ide.product_code,
@@ -307,27 +300,6 @@ fn detect_windows_ide(ide: &'static JetBrainsIde, install_path: &Path) -> Option
         major_build,
         plugins_dir,
     })
-}
-
-#[cfg(windows)]
-fn get_windows_build_metadata(
-    install_path: &Path,
-) -> (Option<String>, Option<u32>, Option<String>) {
-    let product_info_path = install_path.join("product-info.json");
-    if product_info_path.exists()
-        && let Ok(content) = std::fs::read_to_string(&product_info_path)
-        && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
-        && let Some(build) = json.get("buildNumber").and_then(|v| v.as_str())
-    {
-        let major = parse_major_build(build);
-        let data_directory_name = json
-            .get("dataDirectoryName")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned);
-        return (Some(build.to_string()), major, data_directory_name);
-    }
-
-    (None, None, None)
 }
 
 // ===== Linux Detection =====
@@ -430,7 +402,8 @@ fn detect_linux_ide(ide: &'static JetBrainsIde, install_path: &Path) -> Option<D
         return None;
     }
 
-    let (build_number, major_build, data_directory_name) = get_linux_build_metadata(install_path);
+    let (build_number, major_build, data_directory_name) =
+        read_product_info_build_metadata(&install_path.join("product-info.json"));
     let plugins_dir = get_plugins_dir(
         data_directory_name.as_deref(),
         ide.product_code,
@@ -447,25 +420,6 @@ fn detect_linux_ide(ide: &'static JetBrainsIde, install_path: &Path) -> Option<D
     })
 }
 
-#[cfg(all(unix, not(target_os = "macos")))]
-fn get_linux_build_metadata(install_path: &Path) -> (Option<String>, Option<u32>, Option<String>) {
-    let product_info_path = install_path.join("product-info.json");
-    if product_info_path.exists()
-        && let Ok(content) = std::fs::read_to_string(&product_info_path)
-        && let Ok(json) = serde_json::from_str::<serde_json::Value>(&content)
-        && let Some(build) = json.get("buildNumber").and_then(|v| v.as_str())
-    {
-        let major = parse_major_build(build);
-        let data_directory_name = json
-            .get("dataDirectoryName")
-            .and_then(|v| v.as_str())
-            .map(ToOwned::to_owned);
-        return (Some(build.to_string()), major, data_directory_name);
-    }
-
-    (None, None, None)
-}
-
 // ===== Shared Utilities =====
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -474,6 +428,24 @@ enum JetBrainsPlatform {
     Macos,
     Windows,
     Linux,
+}
+
+fn read_product_info_build_metadata(
+    product_info_path: &Path,
+) -> (Option<String>, Option<u32>, Option<String>) {
+    if !product_info_path.exists() {
+        return Default::default();
+    }
+    std::fs::read_to_string(product_info_path)
+        .ok()
+        .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+        .and_then(|json| {
+            let build = json["buildNumber"].as_str()?.to_owned();
+            let major_build = parse_major_build(&build);
+            let data_directory_name = json["dataDirectoryName"].as_str().map(str::to_owned);
+            Some((Some(build), major_build, data_directory_name))
+        })
+        .unwrap_or_default()
 }
 
 /// Parse the major build number from a build string like "252.12345.67"
@@ -733,6 +705,33 @@ pub fn is_plugin_installed(detected: &DetectedIde) -> bool {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn test_read_product_info_build_metadata() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("product-info.json");
+        assert_eq!(read_product_info_build_metadata(&path), (None, None, None));
+        std::fs::create_dir(&path).unwrap();
+        assert_eq!(read_product_info_build_metadata(&path), (None, None, None));
+        std::fs::remove_dir(&path).unwrap();
+        for (json, expected) in [
+            ("{", (None, None, None)),
+            (r#"{}"#, (None, None, None)),
+            (r#"{"buildNumber":252}"#, (None, None, None)),
+            (r#"{"buildNumber":"x"}"#, (Some("x".into()), None, None)),
+            (
+                r#"{"buildNumber":"252.1"}"#,
+                (Some("252.1".into()), Some(252), None),
+            ),
+            (
+                r#"{"buildNumber":"2","dataDirectoryName":"I"}"#,
+                (Some("2".into()), Some(2), Some("I".into())),
+            ),
+        ] {
+            std::fs::write(&path, json).unwrap();
+            assert_eq!(read_product_info_build_metadata(&path), expected);
+        }
+    }
 
     #[test]
     fn test_plugin_version_suffix_prefers_product_info_data_directory_name() {
