@@ -90,7 +90,13 @@ pub(crate) fn invocation_has_short_flag(command_args: &[String], expected: char)
         .any(|arg| {
             arg.starts_with('-')
                 && !arg.starts_with("--")
-                && arg.chars().skip(1).any(|flag| flag == expected)
+                // `git clean -e<pattern>` uses the remainder of the token as
+                // an exclude value, not a cluster of boolean flags.
+                && arg
+                    .chars()
+                    .skip(1)
+                    .take_while(|flag| *flag != 'e')
+                    .any(|flag| flag == expected)
         })
 }
 
@@ -669,6 +675,10 @@ mod tests {
             "clean",
             &["-nefoo".to_string(), "-fd".to_string()]
         ));
+
+        let exclude = ["-fd".to_string(), "-e*.xls".to_string()];
+        assert!(!invocation_has_short_flag(&exclude, 'x'));
+        assert!(!invocation_has_short_flag(&exclude, 'X'));
     }
 
     #[test]

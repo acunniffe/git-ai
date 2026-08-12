@@ -265,6 +265,8 @@ fn is_builtin_primary_command(command: &str) -> bool {
     matches!(
         command,
         "add"
+            | "am"
+            | "apply"
             | "blame"
             | "branch"
             | "cat-file"
@@ -755,6 +757,19 @@ mod tests {
         let backend = SystemGitBackend::new();
         let missing_worktree = PathBuf::from("/definitely/missing/git-ai-backend-test");
         for command in ["gc", "maintenance", "pack-refs", "reflog", "repack"] {
+            let argv = vec!["git".to_string(), command.to_string()];
+            let resolved = backend
+                .resolve_primary_command(&missing_worktree, &argv)
+                .expect("builtin commands should not require repository discovery");
+            assert_eq!(resolved.as_deref(), Some(command));
+        }
+    }
+
+    #[test]
+    fn patch_application_commands_are_builtin() {
+        let backend = SystemGitBackend::new();
+        let missing_worktree = PathBuf::from("/definitely/missing/git-ai-backend-test");
+        for command in ["am", "apply"] {
             let argv = vec!["git".to_string(), command.to_string()];
             let resolved = backend
                 .resolve_primary_command(&missing_worktree, &argv)
