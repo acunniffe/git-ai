@@ -831,6 +831,7 @@ fn capture_index_tree_for_workspace_command(worktree: &Path) -> Option<String> {
 
 fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<String> {
     let git_dir = git_dir_for_worktree(worktree)?;
+    sweep_stale_index_snapshots(&git_dir);
     let index = git_dir.join("index");
     if !index.is_file() {
         return None;
@@ -852,6 +853,28 @@ fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<Strin
     None
 }
 
+fn sweep_stale_index_snapshots(git_dir: &Path) {
+    const STALE_AFTER: Duration = Duration::from_secs(10 * 60);
+    let Ok(entries) = fs::read_dir(git_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !is_daemon_index_snapshot_path(&path) {
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .ok()
+            .and_then(|metadata| metadata.modified().ok())
+            .and_then(|modified| modified.elapsed().ok())
+            .is_some_and(|age| age >= STALE_AFTER);
+        if stale {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
 pub(crate) fn is_daemon_index_snapshot_path(path: &Path) -> bool {
     path.parent()
         .is_some_and(|parent| parent.join("HEAD").is_file())
@@ -870,6 +893,18 @@ impl Drop for IndexSnapshotCleanup {
         {
             let _ = fs::remove_file(path);
         }
+    }
+}
+
+fn cleanup_index_snapshot_from_payload(payload: &Value) {
+    let snapshot = payload
+        .get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD)
+        .and_then(Value::as_str)
+        .map(Path::new);
+    if let Some(snapshot) = snapshot
+        && is_daemon_index_snapshot_path(snapshot)
+    {
+        let _ = fs::remove_file(snapshot);
     }
 }
 
@@ -5112,10 +5147,12 @@ impl ActorDaemonCoordinator {
     }
 
     fn enqueue_trace_payload(&self, payload: Value) -> Result<(), GitAiError> {
-        let tx =
-            self.trace_ingest_tx.get().cloned().ok_or_else(|| {
-                GitAiError::Generic("trace ingest worker not started".to_string())
-            })?;
+        let Some(tx) = self.trace_ingest_tx.get().cloned() else {
+            cleanup_index_snapshot_from_payload(&payload);
+            return Err(GitAiError::Generic(
+                "trace ingest worker not started".to_string(),
+            ));
+        };
         let permit = match tx.try_reserve() {
             Ok(permit) => permit,
             Err(tokio::sync::mpsc::error::TrySendError::Closed(())) => {
@@ -5126,6 +5163,7 @@ impl ActorDaemonCoordinator {
                     "trace ingest queue send failed: worker may have crashed"
                 );
                 self.request_shutdown();
+                cleanup_index_snapshot_from_payload(&payload);
                 return Err(GitAiError::Generic(
                     "trace ingest queue send failed: worker may have crashed".to_string(),
                 ));
@@ -5138,12 +5176,16 @@ impl ActorDaemonCoordinator {
                     "trace ingest queue is full"
                 );
                 self.request_shutdown();
+                cleanup_index_snapshot_from_payload(&payload);
                 return Err(GitAiError::Generic(
                     "trace ingest queue is full; daemon shutting down".to_string(),
                 ));
             }
         };
-        self.record_trace_payload_enqueued(&payload)?;
+        if let Err(error) = self.record_trace_payload_enqueued(&payload) {
+            cleanup_index_snapshot_from_payload(&payload);
+            return Err(error);
+        }
         let mut payload = payload;
         if let Some(object) = payload.as_object_mut()
             && object.get(TRACE_INGEST_SEQ_FIELD).is_none()
@@ -5309,6 +5351,7 @@ impl ActorDaemonCoordinator {
         let index_snapshot_at_start = (!event_is_read_only
             && event == "start"
             && sid == root
+            && !argv.is_empty()
             && early_primary.as_deref() == Some("clean"))
         .then(|| {
             worktree_hint
@@ -5344,10 +5387,12 @@ impl ActorDaemonCoordinator {
 
         if event == "start" && sid == root && !argv.is_empty() {
             ingress.root_argv.insert(root.clone(), argv.clone());
-            if let Some(snapshot) = index_snapshot_at_start {
-                ingress
+            if let Some(snapshot) = index_snapshot_at_start
+                && let Some(previous) = ingress
                     .root_index_snapshot_at_start
-                    .insert(root.clone(), snapshot);
+                    .insert(root.clone(), snapshot)
+            {
+                let _ = fs::remove_file(previous);
             }
             if event_is_read_only {
                 ingress.root_definitely_read_only.insert(root.clone());
@@ -7694,11 +7739,16 @@ impl ActorDaemonCoordinator {
                             .filter(|head| !head.is_empty())
                             .unwrap_or(repo.head()?.target()?);
                         let parsed = parsed_invocation_for_normalized_command(cmd);
+                        let removal_paths =
+                            restore_pathspecs(&parsed.command_args, Some(Path::new(&worktree)));
+                        if removal_paths.is_empty() {
+                            continue;
+                        }
                         // Reuse the race-safe path selection with ignored-file
                         // removal enabled: a successful non-cached `rm` removes
                         // tracked operands regardless of ignore rules.
-                        let mut removal_args = parsed.command_args;
-                        removal_args.push("-x".to_string());
+                        let mut removal_args = vec!["-x".to_string(), "--".to_string()];
+                        removal_args.extend(removal_paths);
                         prune_working_log_paths_after_clean(
                             &repo,
                             &head,
@@ -12311,17 +12361,85 @@ mod tests {
     #[tokio::test]
     async fn enqueue_before_worker_start_returns_error() {
         let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        let snapshot = temp.path().join("git-ai-index-snapshot-enqueue-failure");
+        std::fs::write(&snapshot, "index snapshot").unwrap();
         // Worker never started → OnceLock is empty → enqueue must fail
         let payload = serde_json::json!({
             "event": "start",
             "sid": "20260411T120000.000000-Ptest0001",
             "__git_ai_ingest_seq": 1_u64,
             "argv": ["git", "commit", "-m", "test"],
+            TRACE_ROOT_INDEX_SNAPSHOT_FIELD: snapshot.to_string_lossy().to_string(),
         });
         assert!(
             coord.enqueue_trace_payload(payload).is_err(),
             "enqueue before worker start must return an error"
         );
+        assert!(
+            !snapshot.exists(),
+            "failed enqueue must remove its snapshot"
+        );
+    }
+
+    #[tokio::test]
+    async fn clean_snapshot_capture_requires_argv_and_replaces_duplicate_root_snapshot() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(git_dir.join("index"), "index contents").unwrap();
+
+        let empty_sid = "20260411T120000.000000-Pemptyclean";
+        let mut empty_start = serde_json::json!({
+            "event": "start",
+            "sid": empty_sid,
+            "name": "clean",
+            "argv": [],
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut empty_start));
+        assert!(empty_start.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none());
+        coord.clear_trace_root_tracking(empty_sid).unwrap();
+
+        let sid = "20260411T120000.000000-Pduplicateclean";
+        let mut first_start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "clean", "-fd"],
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut first_start));
+        let first_snapshot = PathBuf::from(
+            first_start[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
+                .as_str()
+                .expect("clean start should contain a snapshot"),
+        );
+        assert!(first_snapshot.is_file());
+
+        let mut second_start = first_start.clone();
+        second_start
+            .as_object_mut()
+            .unwrap()
+            .remove(TRACE_ROOT_INDEX_SNAPSHOT_FIELD);
+        assert!(coord.prepare_trace_payload_for_ingest(&mut second_start));
+        let second_snapshot = PathBuf::from(
+            second_start[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
+                .as_str()
+                .expect("duplicate clean start should contain a snapshot"),
+        );
+        assert_ne!(first_snapshot, second_snapshot);
+        assert!(
+            !first_snapshot.exists(),
+            "duplicate start must remove the old snapshot"
+        );
+        assert!(second_snapshot.is_file());
+
+        coord.clear_trace_root_tracking(sid).unwrap();
+        assert!(!second_snapshot.exists());
     }
 
     #[tokio::test]

@@ -94,6 +94,47 @@ fn test_git_rm_recursive_prunes_only_removed_paths() {
     kept.assert_committed_lines(lines!["kept AI edit".ai()]);
 }
 
+/// Path lists select explicit operands just like command-line pathspecs. The
+/// daemon must not interpret the option-only argv as "remove everything".
+#[test]
+fn test_git_rm_pathspec_file_prunes_only_listed_paths() {
+    let target = TestRepo::new();
+    fs::write(target.path().join("removed.txt"), "base removed\n").unwrap();
+    fs::write(target.path().join("kept.txt"), "base kept\n").unwrap();
+    target.stage_all_and_commit("Initial commit").unwrap();
+    target
+        .filename("removed.txt")
+        .assert_committed_lines(lines!["base removed".unattributed_human()]);
+    target
+        .filename("kept.txt")
+        .assert_committed_lines(lines!["base kept".unattributed_human()]);
+
+    target
+        .filename("removed.txt")
+        .set_contents_no_stage(lines!["discarded list AI".ai()]);
+    target
+        .filename("kept.txt")
+        .set_contents_no_stage(lines!["kept list AI".ai()]);
+    fs::write(target.path().join("remove-paths.txt"), "removed.txt\n").unwrap();
+
+    target
+        .git(&["rm", "-f", "--pathspec-from-file=remove-paths.txt"])
+        .unwrap();
+    fs::write(target.path().join("removed.txt"), "discarded list AI\n").unwrap();
+    target.git_og(&["add", "removed.txt", "kept.txt"]).unwrap();
+    fs::remove_file(target.path().join("remove-paths.txt")).unwrap();
+    target
+        .git(&["commit", "-m", "Commit after pathspec-file removal"])
+        .unwrap();
+
+    target
+        .filename("removed.txt")
+        .assert_committed_lines(lines!["discarded list AI".unattributed_human()]);
+    target
+        .filename("kept.txt")
+        .assert_committed_lines(lines!["kept list AI".ai()]);
+}
+
 /// Dry-run is observational and must not disturb the worktree or provenance.
 #[test]
 fn test_git_rm_dry_run_preserves_ai_attribution() {

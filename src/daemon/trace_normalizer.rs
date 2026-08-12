@@ -97,7 +97,12 @@ impl<B: GitBackend> TraceNormalizer<B> {
 
     pub fn remove_pending_root(&mut self, root_sid: &str) -> Option<PendingTraceCommand> {
         let removed = self.state.pending.remove(root_sid);
-        if removed.is_some() {
+        if let Some(pending) = removed.as_ref() {
+            if let Some(snapshot) = pending.index_snapshot_at_start.as_deref()
+                && crate::daemon::is_daemon_index_snapshot_path(Path::new(snapshot))
+            {
+                let _ = fs::remove_file(snapshot);
+            }
             let _ = self.state.sid_to_worktree.remove(root_sid);
             let _ = self.state.sid_to_family.remove(root_sid);
             let _ = self.state.prestart_root_cmd_names.remove(root_sid);
