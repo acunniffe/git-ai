@@ -1035,6 +1035,10 @@ fn test_delayed_multi_cherry_pick_trace_replay_starts_at_first_pick_when_interme
     let default_branch = repo.current_branch();
 
     repo.git(&["checkout", "-b", "feature"]).unwrap();
+    // Record an explicit human checkpoint for the adjacent inherited line.
+    // This keeps edge recovery focused on the new AI line below.
+    file.replace_at(0, "temporary human anchor".human());
+    file.replace_at(0, "base".human());
     // Anchor the adjacent base line as human before replacing a placeholder
     // with AI content. A direct adjacent AI insertion is a single diff hunk
     // and would intentionally attribute the whole hunk to the checkpoint.
@@ -1162,6 +1166,10 @@ fn test_delayed_pull_rebase_trace_replay_starts_at_start_when_intermediate_ref_k
         .git(&["push", "-u", "origin", "HEAD"])
         .expect("push initial commit should succeed");
 
+    // Record an explicit human checkpoint for the adjacent inherited line.
+    // This keeps edge recovery focused on the new AI line below.
+    file.replace_at(0, "temporary human anchor".human());
+    file.replace_at(0, "base".human());
     file.insert_at(1, lines!["first local ai".human()]);
     file.replace_at(1, "||__AI LINE__ PENDING__||".human());
     file.replace_at(1, "first local ai".ai());
