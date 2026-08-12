@@ -159,6 +159,9 @@ pub fn may_mutate_repo_state_command(command: &str) -> bool {
             | "commit"
             | "config"
             | "fetch"
+            | "fast-import"
+            | "filter-branch"
+            | "filter-repo"
             | "gc"
             | "init"
             | "merge"
@@ -178,6 +181,7 @@ pub fn may_mutate_repo_state_command(command: &str) -> bool {
             | "stash"
             | "submodule"
             | "switch"
+            | "symbolic-ref"
             | "tag"
             | "update-ref"
             | "worktree"
@@ -203,6 +207,9 @@ pub fn may_move_refs_command(command: &str) -> bool {
             | "cherry-pick"
             | "commit"
             | "fetch"
+            | "fast-import"
+            | "filter-branch"
+            | "filter-repo"
             | "merge"
             | "pull"
             | "rebase"
@@ -211,6 +218,7 @@ pub fn may_move_refs_command(command: &str) -> bool {
             | "revert"
             | "stash"
             | "switch"
+            | "symbolic-ref"
             | "tag"
             | "update-ref"
             | "worktree"
@@ -239,6 +247,9 @@ pub fn participates_in_family_sequencer_command(command: &str) -> bool {
             | "commit"
             | "config"
             | "fetch"
+            | "fast-import"
+            | "filter-branch"
+            | "filter-repo"
             | "gc"
             | "merge"
             | "maintenance"
@@ -257,6 +268,7 @@ pub fn participates_in_family_sequencer_command(command: &str) -> bool {
             | "stash"
             | "submodule"
             | "switch"
+            | "symbolic-ref"
             | "tag"
             | "update-ref"
             | "worktree"
@@ -842,6 +854,9 @@ mod tests {
             "clone",
             "commit",
             "fetch",
+            "fast-import",
+            "filter-branch",
+            "filter-repo",
             "init",
             "merge",
             "mv",
@@ -899,6 +914,7 @@ mod tests {
             "stash",
             "submodule",
             "switch",
+            "symbolic-ref",
             "tag",
             "update-ref",
             "worktree",
@@ -926,6 +942,9 @@ mod tests {
             "cherry-pick",
             "commit",
             "fetch",
+            "fast-import",
+            "filter-branch",
+            "filter-repo",
             "merge",
             "pull",
             "rebase",
@@ -934,6 +953,7 @@ mod tests {
             "revert",
             "stash",
             "switch",
+            "symbolic-ref",
             "tag",
             "update-ref",
             "worktree",
