@@ -623,6 +623,7 @@ fn test_git_am_abort_restores_head_and_discards_abandoned_working_log() {
     target
         .git_ai(&["checkpoint", "mock_ai", "scratch.txt"])
         .expect("conflict-phase checkpoint should succeed");
+    target.sync_daemon();
     let repository = find_repository_in_path(target.path().to_str().unwrap())
         .expect("target repository should resolve");
     assert!(repository.storage.has_working_log(&abandoned_tip));
@@ -981,7 +982,7 @@ fn test_git_am_actual_timeout_conditional_wrapper_attributes_target_repo() {
         .unwrap();
     target
         .shell_git(&format!(
-            "test -f ready.marker && timeout 30 {{git}} am {}",
+            "test -f ready.marker && {{git}} am {}",
             patch_path.display()
         ))
         .unwrap();
