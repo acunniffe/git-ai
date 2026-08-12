@@ -97,6 +97,8 @@ const DAEMON_CONTROL_RECEIVE_TIMEOUT: Duration = Duration::from_secs(2);
 const DAEMON_CONTROL_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
 const DAEMON_CHECKPOINT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(300);
 const DAEMON_SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
+const INDEX_SNAPSHOT_PREFIX: &str = "git-ai-index-snapshot-";
+const INDEX_SNAPSHOT_STALE_AFTER: Duration = Duration::from_secs(10 * 60);
 const CHECKPOINT_INGRESS_REQUEST_LIMIT: usize = 1_024;
 const CHECKPOINT_INGRESS_BYTE_LIMIT: usize = 64 * 1024 * 1024;
 const CHECKPOINT_FAMILY_DRAIN_CONCURRENCY: usize = 2;
@@ -840,9 +842,13 @@ fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<Strin
     // Git updates the index by atomically replacing its directory entry. A
     // hard link retains the pre-command inode in O(1) without reading index
     // contents, taking an index lock, spawning Git, or writing objects.
+    let created_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_millis();
     for _ in 0..4 {
         let snapshot_path = git_dir.join(format!(
-            "git-ai-index-snapshot-{}",
+            "{INDEX_SNAPSHOT_PREFIX}{created_at_ms}-{}",
             crate::uuid::generate_v4()
         ));
         match fs::hard_link(&index, &snapshot_path) {
@@ -855,7 +861,13 @@ fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<Strin
 }
 
 fn sweep_stale_index_snapshots(git_dir: &Path) {
-    const STALE_AFTER: Duration = Duration::from_secs(10 * 60);
+    let Some(now_ms) = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|elapsed| elapsed.as_millis())
+    else {
+        return;
+    };
     let Ok(entries) = fs::read_dir(git_dir) else {
         return;
     };
@@ -864,16 +876,25 @@ fn sweep_stale_index_snapshots(git_dir: &Path) {
         if !is_daemon_index_snapshot_path(&path) {
             continue;
         }
-        let stale = entry
-            .metadata()
-            .ok()
-            .and_then(|metadata| metadata.modified().ok())
-            .and_then(|modified| modified.elapsed().ok())
-            .is_some_and(|age| age >= STALE_AFTER);
+        // A hard link shares the index inode's mtime, so snapshot age must be
+        // derived from the independently owned creation timestamp in its name.
+        let stale = index_snapshot_created_at_ms(&path).is_some_and(|created_at_ms| {
+            now_ms.saturating_sub(created_at_ms) >= INDEX_SNAPSHOT_STALE_AFTER.as_millis()
+        });
         if stale {
             let _ = fs::remove_file(path);
         }
     }
+}
+
+fn index_snapshot_created_at_ms(path: &Path) -> Option<u128> {
+    path.file_name()?
+        .to_str()?
+        .strip_prefix(INDEX_SNAPSHOT_PREFIX)?
+        .split_once('-')?
+        .0
+        .parse()
+        .ok()
 }
 
 pub(crate) fn is_daemon_index_snapshot_path(path: &Path) -> bool {
@@ -882,7 +903,7 @@ pub(crate) fn is_daemon_index_snapshot_path(path: &Path) -> bool {
         && path
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.starts_with("git-ai-index-snapshot-"))
+            .is_some_and(|name| name.starts_with(INDEX_SNAPSHOT_PREFIX))
 }
 
 struct IndexSnapshotCleanup(Option<PathBuf>);
@@ -1618,57 +1639,65 @@ fn prune_working_log_paths_after_clean(
         .iter()
         .any(|arg| matches!(arg.as_str(), "-e" | "--exclude") || arg.starts_with("--exclude="));
     if reconstruct_selected_paths && !has_exclusions {
-        let mut tracked_args = repository.global_args_for_exec();
-        tracked_args.extend(["ls-files".to_string(), "-z".to_string(), "--".to_string()]);
-        tracked_args.extend(candidates.iter().cloned());
-        let snapshot_env = index_snapshot_at_start
-            .map(Path::new)
-            .map(|path| [("GIT_INDEX_FILE", path.as_os_str())]);
-        let tracked_output = match snapshot_env.as_ref() {
-            Some(env) => exec_git_allow_nonzero_with_env(&tracked_args, env)?,
-            None => crate::git::repository::exec_git(&tracked_args)?,
-        };
-        if !tracked_output.status.success() {
-            return Err(GitAiError::GitCliError {
-                code: tracked_output.status.code(),
-                stderr: String::from_utf8_lossy(&tracked_output.stderr).to_string(),
-                args: tracked_args,
-            });
-        }
-        let tracked = tracked_output
-            .stdout
-            .split(|byte| *byte == 0)
-            .filter(|path| !path.is_empty())
-            .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
-            .collect::<HashSet<_>>();
-
-        let mut ignore_args = repository.global_args_for_exec();
-        ignore_args.extend([
-            "check-ignore".to_string(),
-            "--no-index".to_string(),
-            "-z".to_string(),
-            "--stdin".to_string(),
-        ]);
-        let mut ignore_input = Vec::new();
-        for candidate in &candidates {
-            ignore_input.extend_from_slice(candidate.as_bytes());
-            ignore_input.push(0);
-        }
-        let ignored = exec_git_stdin(&ignore_args, &ignore_input)
-            .map(|output| {
-                output
-                    .stdout
-                    .split(|byte| *byte == 0)
-                    .filter(|path| !path.is_empty())
-                    .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
-                    .collect::<HashSet<_>>()
-            })
-            .unwrap_or_default();
-
         let pathspecs = clean_pathspecs(args);
         let recurse_directories = clean_has_short_flag(args, 'd');
         let remove_ignored = clean_has_short_flag(args, 'x');
         let only_ignored = clean_has_short_flag(args, 'X');
+        let tracked = if protect_tracked_paths {
+            let mut tracked_args = repository.global_args_for_exec();
+            tracked_args.extend(["ls-files".to_string(), "-z".to_string(), "--".to_string()]);
+            tracked_args.extend(candidates.iter().cloned());
+            let snapshot_env = index_snapshot_at_start
+                .map(Path::new)
+                .map(|path| [("GIT_INDEX_FILE", path.as_os_str())]);
+            let tracked_output = match snapshot_env.as_ref() {
+                Some(env) => exec_git_allow_nonzero_with_env(&tracked_args, env)?,
+                None => crate::git::repository::exec_git(&tracked_args)?,
+            };
+            if !tracked_output.status.success() {
+                return Err(GitAiError::GitCliError {
+                    code: tracked_output.status.code(),
+                    stderr: String::from_utf8_lossy(&tracked_output.stderr).to_string(),
+                    args: tracked_args,
+                });
+            }
+            tracked_output
+                .stdout
+                .split(|byte| *byte == 0)
+                .filter(|path| !path.is_empty())
+                .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
+                .collect::<HashSet<_>>()
+        } else {
+            HashSet::new()
+        };
+
+        let ignored = if remove_ignored && !only_ignored {
+            HashSet::new()
+        } else {
+            let mut ignore_args = repository.global_args_for_exec();
+            ignore_args.extend([
+                "check-ignore".to_string(),
+                "--no-index".to_string(),
+                "-z".to_string(),
+                "--stdin".to_string(),
+            ]);
+            let mut ignore_input = Vec::new();
+            for candidate in &candidates {
+                ignore_input.extend_from_slice(candidate.as_bytes());
+                ignore_input.push(0);
+            }
+            exec_git_stdin(&ignore_args, &ignore_input)
+                .map(|output| {
+                    output
+                        .stdout
+                        .split(|byte| *byte == 0)
+                        .filter(|path| !path.is_empty())
+                        .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
+                        .collect::<HashSet<_>>()
+                })
+                .unwrap_or_default()
+        };
+
         for candidate in &candidates {
             if protect_tracked_paths && tracked.contains(candidate) {
                 continue;
@@ -12409,6 +12438,35 @@ mod tests {
         assert!(
             !snapshot.exists(),
             "failed enqueue must remove its snapshot"
+        );
+    }
+
+    #[test]
+    fn stale_index_snapshot_sweep_uses_capture_time_from_filename() {
+        let temp = tempfile::tempdir().unwrap();
+        let git_dir = temp.path();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        let index = git_dir.join("index");
+        std::fs::write(&index, "shared index contents").unwrap();
+
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let stale_ms = now_ms.saturating_sub(INDEX_SNAPSHOT_STALE_AFTER.as_millis() + 1);
+        let stale = git_dir.join(format!("{INDEX_SNAPSHOT_PREFIX}{stale_ms}-stale"));
+        let recent = git_dir.join(format!("{INDEX_SNAPSHOT_PREFIX}{now_ms}-recent"));
+        // Both entries share the index inode and therefore the exact same
+        // modification time; only their daemon-owned filename timestamps differ.
+        std::fs::hard_link(&index, &stale).unwrap();
+        std::fs::hard_link(&index, &recent).unwrap();
+
+        sweep_stale_index_snapshots(git_dir);
+
+        assert!(!stale.exists(), "expired snapshots should be reclaimed");
+        assert!(
+            recent.exists(),
+            "a live snapshot must not inherit the index inode's age"
         );
     }
 
