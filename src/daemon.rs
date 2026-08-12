@@ -1649,6 +1649,11 @@ fn prune_working_log_paths_after_clean(
             tracked_args.extend(candidates.iter().cloned());
             let snapshot_env = index_snapshot_at_start
                 .map(Path::new)
+                // Enqueue failure or crash recovery can leave a later payload
+                // carrying a snapshot path whose file was already reclaimed.
+                // Missing GIT_INDEX_FILE paths look like empty indexes to Git;
+                // fall back to the live index so tracked paths stay protected.
+                .filter(|path| path.is_file())
                 .map(|path| [("GIT_INDEX_FILE", path.as_os_str())]);
             let tracked_output = match snapshot_env.as_ref() {
                 Some(env) => exec_git_allow_nonzero_with_env(&tracked_args, env)?,
