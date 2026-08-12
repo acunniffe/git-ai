@@ -28,12 +28,7 @@ pub fn tracks_primary_command_for_test_sync(
             invoked_args,
         ),
         "restore" => true,
-        "clean" => !invoked_args
-            .iter()
-            .any(|arg| arg == "-n" || arg == "--dry-run"),
-        "rm" => !invoked_args
-            .iter()
-            .any(|arg| arg == "-n" || arg == "--dry-run"),
+        "clean" | "rm" => !crate::git::command_classification::invocation_has_dry_run(invoked_args),
         "mv" => true,
         "checkout" | "cherry-pick" | "clone" | "commit" | "fetch" | "init" | "merge" | "pull"
         | "push" | "rebase" | "reset" | "revert" | "switch" | "tag" | "update-ref" => true,
@@ -374,6 +369,18 @@ mod tests {
         assert!(!tracks_primary_command_for_test_sync(
             Some("reflog"),
             &["show".to_string(), "HEAD".to_string()]
+        ));
+    }
+
+    #[test]
+    fn bundled_cleanup_dry_runs_are_not_waited_on() {
+        assert!(!tracks_primary_command_for_test_sync(
+            Some("clean"),
+            &["-ndx".to_string(), "build".to_string()]
+        ));
+        assert!(!tracks_primary_command_for_test_sync(
+            Some("rm"),
+            &["-nr".to_string(), "file.txt".to_string()]
         ));
     }
 }

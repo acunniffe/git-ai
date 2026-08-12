@@ -66,10 +66,6 @@ impl CommandAnalyzer for HistoryAnalyzer {
                     events.push(SemanticEvent::RevertQuit {
                         head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
                     });
-                } else if args.iter().any(|arg| arg == "--skip") {
-                    events.push(SemanticEvent::RevertSkip {
-                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
-                    });
                 } else if args.iter().any(|arg| arg == "--no-commit" || arg == "-n") {
                     events.push(SemanticEvent::RevertNoCommit {
                         source_commits: cmd.revert_source_oids.clone(),
@@ -79,6 +75,10 @@ impl CommandAnalyzer for HistoryAnalyzer {
                     events.push(SemanticEvent::CommitCreated {
                         base: sanitize_base(Some(old_head), &new_head),
                         new_head,
+                    });
+                } else if args.iter().any(|arg| arg == "--skip") {
+                    events.push(SemanticEvent::RevertSkip {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
                     });
                 } else if cmd.exit_code != 0 {
                     events.push(SemanticEvent::RevertPrepared {
@@ -789,6 +789,31 @@ mod tests {
                     | ("--skip", SemanticEvent::RevertSkip { .. })
             )));
         }
+    }
+
+    #[test]
+    fn revert_skip_with_created_commits_emits_commit_transition() {
+        let analyzer = HistoryAnalyzer;
+        let mut cmd = command("revert", &["git", "revert", "--skip"]);
+        cmd.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "1111111111111111111111111111111111111111".to_string(),
+            new: "2222222222222222222222222222222222222222".to_string(),
+        }];
+        let result = analyzer
+            .analyze(
+                &cmd,
+                AnalysisView {
+                    refs: &Default::default(),
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::CommitCreated { base, new_head }]
+                if base.as_deref() == Some("1111111111111111111111111111111111111111")
+                    && new_head == "2222222222222222222222222222222222222222"
+        ));
     }
 
     #[test]

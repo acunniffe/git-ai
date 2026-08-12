@@ -59,9 +59,7 @@ pub fn is_definitely_read_only_git_invocation(command: &str, command_args: &[Str
         "am" => am_invocation_is_read_only(command_args),
         "apply" => apply_invocation_is_read_only(command_args),
         "branch" => branch_invocation_is_read_only(command_args),
-        "clean" => command_args
-            .iter()
-            .any(|arg| arg == "-n" || arg == "--dry-run"),
+        "clean" => invocation_has_dry_run(command_args),
         "config" => config_invocation_is_read_only(command_args),
         "notes" => matches!(
             command_args.first().map(String::as_str),
@@ -75,15 +73,51 @@ pub fn is_definitely_read_only_git_invocation(command: &str, command_args: &[Str
         "mv" => command_args
             .iter()
             .any(|arg| arg == "-h" || arg == "--help"),
-        "rm" => command_args
-            .iter()
-            .any(|arg| arg == "-n" || arg == "--dry-run"),
+        "rm" => invocation_has_dry_run(command_args),
         "stash" => stash_invocation_is_read_only(command_args),
         "submodule" => submodule_invocation_is_read_only(command_args),
+        "symbolic-ref" => symbolic_ref_invocation_is_read_only(command_args),
         "tag" => tag_invocation_is_read_only(command_args),
         "worktree" => worktree_invocation_is_read_only(command_args),
         _ => false,
     }
+}
+
+pub(crate) fn invocation_has_short_flag(command_args: &[String], expected: char) -> bool {
+    command_args
+        .iter()
+        .take_while(|arg| arg.as_str() != "--")
+        .any(|arg| {
+            arg.starts_with('-')
+                && !arg.starts_with("--")
+                && arg.chars().skip(1).any(|flag| flag == expected)
+        })
+}
+
+pub(crate) fn invocation_has_dry_run(command_args: &[String]) -> bool {
+    command_args.iter().any(|arg| arg == "--dry-run")
+        || invocation_has_short_flag(command_args, 'n')
+}
+
+fn symbolic_ref_invocation_is_read_only(command_args: &[String]) -> bool {
+    if command_args.iter().any(|arg| arg == "--delete") {
+        return false;
+    }
+
+    let mut positionals = 0usize;
+    let mut skip_value = false;
+    for arg in command_args {
+        if skip_value {
+            skip_value = false;
+            continue;
+        }
+        if arg == "-m" {
+            skip_value = true;
+        } else if !arg.starts_with('-') {
+            positionals += 1;
+        }
+    }
+    positionals < 2
 }
 
 /// Returns true when a Git command may mutate repository state and therefore
@@ -597,6 +631,40 @@ mod tests {
         }
         // stash with no subcommand defaults to stash push (mutating)
         assert!(!is_definitely_read_only_git_invocation("stash", &[]));
+    }
+
+    #[test]
+    fn bundled_dry_run_flags_are_read_only_for_clean_and_rm() {
+        for (command, args) in [
+            ("clean", vec!["-ndx", "build"]),
+            ("clean", vec!["-fdn", "build"]),
+            ("rm", vec!["-nr", "file.txt"]),
+        ] {
+            assert!(is_definitely_read_only_git_invocation(
+                command,
+                &args.into_iter().map(str::to_string).collect::<Vec<_>>()
+            ));
+        }
+    }
+
+    #[test]
+    fn symbolic_ref_queries_are_read_only_but_updates_are_not() {
+        for args in [vec!["HEAD"], vec!["--short", "HEAD"], vec!["-q", "HEAD"]] {
+            assert!(is_definitely_read_only_git_invocation(
+                "symbolic-ref",
+                &args.into_iter().map(str::to_string).collect::<Vec<_>>()
+            ));
+        }
+        for args in [
+            vec!["HEAD", "refs/heads/main"],
+            vec!["-m", "switch", "HEAD", "refs/heads/main"],
+            vec!["--delete", "refs/heads/alias"],
+        ] {
+            assert!(!is_definitely_read_only_git_invocation(
+                "symbolic-ref",
+                &args.into_iter().map(str::to_string).collect::<Vec<_>>()
+            ));
+        }
     }
 
     #[test]

@@ -1442,18 +1442,7 @@ fn remove_working_log_attributions_for_pathspecs(
 }
 
 fn clean_has_short_flag(args: &[String], expected: char) -> bool {
-    for arg in args {
-        if arg == "--" {
-            break;
-        }
-        if arg.starts_with('-')
-            && !arg.starts_with("--")
-            && arg.chars().skip(1).any(|flag| flag == expected)
-        {
-            return true;
-        }
-    }
-    false
+    crate::git::command_classification::invocation_has_short_flag(args, expected)
 }
 
 fn clean_pathspecs(args: &[String]) -> Vec<String> {
@@ -5154,17 +5143,6 @@ impl ActorDaemonCoordinator {
             trace_payload_primary_command(payload).or_else(|| trace_argv_primary_command(&argv));
         let event_is_read_only =
             trace_invocation_is_definitely_read_only(early_primary.as_deref(), &argv);
-        let index_tree_at_start = if event == "start"
-            && sid == root
-            && matches!(early_primary.as_deref(), Some("clean" | "rm"))
-        {
-            worktree_hint
-                .as_deref()
-                .and_then(crate::commands::checkpoint_agent::bash_tool::capture_index_tree)
-        } else {
-            None
-        };
-
         let mut ingress = match self.trace_ingress_state.lock() {
             Ok(guard) => guard,
             Err(_) => return false,
@@ -5193,9 +5171,6 @@ impl ActorDaemonCoordinator {
 
         if event == "start" && sid == root && !argv.is_empty() {
             ingress.root_argv.insert(root.clone(), argv.clone());
-            if let Some(tree) = index_tree_at_start {
-                ingress.root_index_tree_at_start.insert(root.clone(), tree);
-            }
             if event_is_read_only {
                 ingress.root_definitely_read_only.insert(root.clone());
             }

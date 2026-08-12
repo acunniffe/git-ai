@@ -34,7 +34,7 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
                 head: current_head_for_workspace_command(cmd, state.refs),
             }),
             "clean" => events.push(
-                if args.iter().any(|arg| arg == "-n" || arg == "--dry-run") {
+                if crate::git::command_classification::invocation_has_dry_run(&args) {
                     SemanticEvent::ReadOnlyCommand
                 } else {
                     SemanticEvent::CleanedWorkspace {
@@ -44,7 +44,7 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
                 },
             ),
             "rm" => events.push(
-                if args.iter().any(|arg| arg == "-n" || arg == "--dry-run") {
+                if crate::git::command_classification::invocation_has_dry_run(&args) {
                     SemanticEvent::ReadOnlyCommand
                 } else if args.iter().any(|arg| arg == "--cached") {
                     // Index-only removal leaves the attributed worktree bytes intact.
@@ -309,6 +309,25 @@ mod tests {
             )
             .unwrap();
         assert_eq!(dry_run.events, vec![SemanticEvent::ReadOnlyCommand]);
+
+        let bundled_dry_run = analyzer
+            .analyze(
+                &command("rm", &["git", "rm", "-nr", "file.txt"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(bundled_dry_run.events, vec![SemanticEvent::ReadOnlyCommand]);
+
+        let clean_bundled_dry_run = analyzer
+            .analyze(
+                &command("clean", &["git", "clean", "-ndx", "build"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(
+            clean_bundled_dry_run.events,
+            vec![SemanticEvent::ReadOnlyCommand]
+        );
     }
 
     #[test]

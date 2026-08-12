@@ -151,7 +151,12 @@ impl RefCursor {
         let Some(primary) = cmd.primary_command.as_deref() else {
             return Ok(command_start_refs);
         };
-        if !command_uses_ref_cursor(primary) {
+        if !command_uses_ref_cursor(primary)
+            || crate::git::command_classification::is_definitely_read_only_git_invocation(
+                primary,
+                &command_args(cmd),
+            )
+        {
             return Ok(command_start_refs);
         }
 
@@ -768,7 +773,7 @@ impl RefCursor {
             return Ok(());
         }
 
-        let source_limit = if unresolved_explicit_sources {
+        let source_limit = if unresolved_explicit_sources || is_continue || is_skip {
             usize::MAX
         } else {
             cmd.revert_source_oids.len().max(1)
