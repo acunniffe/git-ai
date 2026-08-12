@@ -27,9 +27,13 @@ pub fn tracks_primary_command_for_test_sync(
             "apply",
             invoked_args,
         ),
-        "restore" => true,
+        "restore" | "mv" => {
+            !crate::git::command_classification::is_definitely_read_only_git_invocation(
+                primary_command,
+                invoked_args,
+            )
+        }
         "clean" | "rm" => !crate::git::command_classification::invocation_has_dry_run(invoked_args),
-        "mv" => true,
         "checkout" | "cherry-pick" | "clone" | "commit" | "fetch" | "init" | "merge" | "pull"
         | "push" | "rebase" | "reset" | "revert" | "switch" | "tag" | "update-ref" => true,
         // `git worktree list` is classified as readonly by the daemon's fast-path
@@ -382,5 +386,17 @@ mod tests {
             Some("rm"),
             &["-nr".to_string(), "file.txt".to_string()]
         ));
+    }
+
+    #[test]
+    fn workspace_help_invocations_are_not_waited_on() {
+        for command in ["restore", "mv"] {
+            for help in ["-h", "--help"] {
+                assert!(!tracks_primary_command_for_test_sync(
+                    Some(command),
+                    &[help.to_string()]
+                ));
+            }
+        }
     }
 }

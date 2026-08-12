@@ -27,6 +27,7 @@ pub struct RefCursor {
     command_start_hints: HashMap<String, u64>,
     stash_stack: Vec<String>,
     pending_cherry_pick_source_oids: Vec<String>,
+    pending_revert_source_oids: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -131,6 +132,7 @@ impl RefCursor {
             command_start_hints: HashMap::new(),
             stash_stack: Vec::new(),
             pending_cherry_pick_source_oids: Vec::new(),
+            pending_revert_source_oids: Vec::new(),
         }
     }
 
@@ -512,7 +514,7 @@ impl RefCursor {
                     return None;
                 }
                 let limit = if args.iter().any(|arg| arg == "--continue") {
-                    usize::MAX
+                    self.pending_revert_source_oids.len().max(1)
                 } else {
                     revert_source_args(&args).len().max(1)
                 };
@@ -747,12 +749,16 @@ impl RefCursor {
             .iter()
             .any(|arg| matches!(arg.as_str(), "--abort" | "--quit"))
         {
+            self.pending_revert_source_oids.clear();
             return Ok(());
         }
 
         let is_no_commit = args.iter().any(|arg| arg == "--no-commit" || arg == "-n");
         let is_continue = args.iter().any(|arg| arg == "--continue");
         let is_skip = args.iter().any(|arg| arg == "--skip");
+        if is_skip && !self.pending_revert_source_oids.is_empty() {
+            self.pending_revert_source_oids.remove(0);
+        }
         // Continue/skip do not repeat source OIDs on argv. The daemon persists
         // the resolved list with the attempt snapshot and reuses it when the
         // sequencer later creates destination commits.
@@ -767,13 +773,18 @@ impl RefCursor {
             resolve_cherry_pick_source_oids_from_sources(cmd, state, &source_args)?
         };
         let unresolved_explicit_sources = !source_args.is_empty() && explicit_sources.is_none();
-        cmd.revert_source_oids = explicit_sources.unwrap_or_default();
+        let explicit_sources = explicit_sources.unwrap_or_default();
+        cmd.revert_source_oids = if explicit_sources.is_empty() && !unresolved_explicit_sources {
+            self.pending_revert_source_oids.clone()
+        } else {
+            explicit_sources
+        };
 
         if is_no_commit {
             return Ok(());
         }
 
-        let source_limit = if unresolved_explicit_sources || is_continue || is_skip {
+        let source_limit = if unresolved_explicit_sources {
             usize::MAX
         } else {
             cmd.revert_source_oids.len().max(1)
@@ -784,7 +795,26 @@ impl RefCursor {
             revert_reflog_prefixes(&args),
             self.head_expected_transition(cmd, state),
             source_limit,
-        )
+        )?;
+
+        let applied_count = cmd
+            .ref_changes
+            .iter()
+            .filter(|change| change.reference == "HEAD")
+            .count();
+        if cmd.exit_code != 0 {
+            self.pending_revert_source_oids = cmd
+                .revert_source_oids
+                .iter()
+                .skip(applied_count.min(cmd.revert_source_oids.len()))
+                .cloned()
+                .collect();
+        } else if is_continue || is_skip || !cmd.revert_source_oids.is_empty() || applied_count > 0
+        {
+            self.pending_revert_source_oids.clear();
+        }
+
+        Ok(())
     }
 
     fn enrich_branch(
@@ -6141,6 +6171,54 @@ mod tests {
                     new: D.to_string(),
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn revert_continue_does_not_consume_following_plain_commit() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        fs::create_dir_all(git_dir.join("logs")).unwrap();
+        append_reflog(
+            &git_dir,
+            "HEAD",
+            &[
+                (B, C, "commit: Revert one"),
+                (C, D, "commit: Unrelated follow-up"),
+            ],
+        );
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        cursor.pending_revert_source_oids = vec![A.to_string()];
+        let mut continued =
+            command_with_worktree(&family, Some(worktree.clone()), &["revert", "--continue"]);
+
+        cursor.enrich_command(&mut continued, &state).unwrap();
+
+        assert_eq!(
+            continued.ref_changes,
+            vec![RefChange {
+                reference: "HEAD".to_string(),
+                old: B.to_string(),
+                new: C.to_string(),
+            }]
+        );
+
+        let mut ordinary = command_with_worktree(
+            &family,
+            Some(worktree),
+            &["commit", "-m", "Unrelated follow-up"],
+        );
+        cursor.enrich_command(&mut ordinary, &state).unwrap();
+        assert_eq!(
+            ordinary.ref_changes,
+            vec![RefChange {
+                reference: "HEAD".to_string(),
+                old: C.to_string(),
+                new: D.to_string(),
+            }]
         );
     }
 

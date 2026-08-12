@@ -19,12 +19,9 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
         let mut events = Vec::new();
         match name {
             "apply" => events.push(
-                if args.iter().any(|arg| {
-                    matches!(
-                        arg.as_str(),
-                        "--check" | "--stat" | "--numstat" | "--summary"
-                    )
-                }) {
+                if crate::git::command_classification::is_definitely_read_only_git_invocation(
+                    "apply", &args,
+                ) {
                     SemanticEvent::ReadOnlyCommand
                 } else {
                     SemanticEvent::ApplyPaths
