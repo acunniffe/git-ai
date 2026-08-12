@@ -11,7 +11,8 @@ use crate::git::repo_state::{
     common_dir_for_worktree, git_dir_for_worktree, worktree_root_for_path,
 };
 use crate::git::repository::{
-    Repository, discover_repository_in_path_no_git_exec, exec_git, exec_git_stdin,
+    Repository, discover_repository_in_path_no_git_exec, exec_git, exec_git_allow_nonzero_with_env,
+    exec_git_stdin,
 };
 use crate::git::sync_authorship::{fetch_authorship_notes, fetch_remote_from_args};
 use crate::utils::LockFile;
@@ -87,6 +88,7 @@ const TRACE_ROOT_ARGV_FIELD: &str = "git_ai_root_argv";
 const TRACE_ROOT_STARTED_AT_NS_FIELD: &str = "git_ai_root_started_at_ns";
 const TRACE_ROOT_WORKTREE_FIELD: &str = "git_ai_root_worktree";
 pub(crate) const TRACE_ROOT_REFLOG_START_OFFSETS_FIELD: &str = "git_ai_root_reflog_start_offsets";
+pub(crate) const TRACE_ROOT_INDEX_SNAPSHOT_FIELD: &str = "git_ai_root_index_snapshot_at_start";
 const TRACE_CONNECTION_CLOSED_EVENT: &str = "git_ai_connection_closed";
 const DAEMON_CONTROL_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const DAEMON_CONTROL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -827,6 +829,46 @@ fn capture_index_tree_for_workspace_command(worktree: &Path) -> Option<String> {
     crate::git::repo_state::is_valid_git_oid(tree).then(|| tree.to_string())
 }
 
+fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<String> {
+    let git_dir = git_dir_for_worktree(worktree)?;
+    let index = git_dir.join("index");
+    if !index.is_file() {
+        return None;
+    }
+    let snapshot = tempfile::Builder::new()
+        .prefix("git-ai-index-snapshot-")
+        .tempfile_in(&git_dir)
+        .ok()?;
+    let snapshot_path = snapshot.path().to_path_buf();
+    snapshot.close().ok()?;
+    // Git updates the index by atomically replacing its directory entry. A
+    // hard link retains the pre-command inode in O(1) without reading index
+    // contents, taking an index lock, spawning Git, or writing objects.
+    fs::hard_link(&index, &snapshot_path).ok()?;
+    Some(snapshot_path.to_string_lossy().into_owned())
+}
+
+pub(crate) fn is_daemon_index_snapshot_path(path: &Path) -> bool {
+    path.parent()
+        .is_some_and(|parent| parent.join("HEAD").is_file())
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("git-ai-index-snapshot-"))
+}
+
+struct IndexSnapshotCleanup(Option<PathBuf>);
+
+impl Drop for IndexSnapshotCleanup {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take()
+            && is_daemon_index_snapshot_path(&path)
+        {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
 fn matches_any_pathspec(file: &str, pathspecs: &[String]) -> bool {
     pathspecs.iter().any(|pathspec| {
         file == pathspec
@@ -1505,7 +1547,10 @@ fn prune_working_log_paths_after_clean(
     repository: &Repository,
     head: &str,
     args: &[String],
+    index_snapshot_at_start: Option<&str>,
+    protect_tracked_paths: bool,
 ) -> Result<(), GitAiError> {
+    let _snapshot_cleanup = IndexSnapshotCleanup(index_snapshot_at_start.map(PathBuf::from));
     let working_log = repository.storage.working_log_for_base_commit(head)?;
     let initial = working_log.read_initial_attributions();
     let mut candidates = initial.files.keys().cloned().collect::<HashSet<_>>();
@@ -1535,7 +1580,21 @@ fn prune_working_log_paths_after_clean(
         let mut tracked_args = repository.global_args_for_exec();
         tracked_args.extend(["ls-files".to_string(), "-z".to_string(), "--".to_string()]);
         tracked_args.extend(candidates.iter().cloned());
-        let tracked = crate::git::repository::exec_git(&tracked_args)?
+        let snapshot_env = index_snapshot_at_start
+            .map(Path::new)
+            .map(|path| [("GIT_INDEX_FILE", path.as_os_str())]);
+        let tracked_output = match snapshot_env.as_ref() {
+            Some(env) => exec_git_allow_nonzero_with_env(&tracked_args, env)?,
+            None => crate::git::repository::exec_git(&tracked_args)?,
+        };
+        if !tracked_output.status.success() {
+            return Err(GitAiError::GitCliError {
+                code: tracked_output.status.code(),
+                stderr: String::from_utf8_lossy(&tracked_output.stderr).to_string(),
+                args: tracked_args,
+            });
+        }
+        let tracked = tracked_output
             .stdout
             .split(|byte| *byte == 0)
             .filter(|path| !path.is_empty())
@@ -1570,7 +1629,7 @@ fn prune_working_log_paths_after_clean(
         let remove_ignored = clean_has_short_flag(args, 'x');
         let only_ignored = clean_has_short_flag(args, 'X');
         for candidate in &candidates {
-            if tracked.contains(candidate) {
+            if protect_tracked_paths && tracked.contains(candidate) {
                 continue;
             }
             if !pathspecs.is_empty() && !matches_any_pathspec(candidate, &pathspecs) {
@@ -3452,6 +3511,7 @@ struct TraceIngressState {
     root_argv: HashMap<String, Vec<String>>,
     root_started_at_ns: HashMap<String, u128>,
     root_reflog_start_offsets: HashMap<String, HashMap<String, u64>>,
+    root_index_snapshot_at_start: HashMap<String, String>,
     root_mutating: HashMap<String, bool>,
     root_target_repo_only: HashMap<String, bool>,
     root_last_activity_ns: HashMap<String, u64>,
@@ -4426,6 +4486,9 @@ impl ActorDaemonCoordinator {
         ingress.root_argv.remove(root_sid);
         ingress.root_started_at_ns.remove(root_sid);
         ingress.root_reflog_start_offsets.remove(root_sid);
+        if let Some(snapshot) = ingress.root_index_snapshot_at_start.remove(root_sid) {
+            let _ = fs::remove_file(snapshot);
+        }
         ingress.root_mutating.remove(root_sid);
         ingress.root_target_repo_only.remove(root_sid);
         ingress.root_last_activity_ns.remove(root_sid);
@@ -5237,16 +5300,16 @@ impl ActorDaemonCoordinator {
                 };
                 !has_test_sync_session
             };
-        // Clean and non-cached rm can be processed after later index changes.
-        // Snapshot the command's index boundary at its root start so pruning
-        // never consults a future index state.
-        let index_tree_at_start = (event == "start"
+        // Clean can be processed after later index changes. Snapshot its
+        // index boundary at root start so pruning never consults future state.
+        let index_snapshot_at_start = (!event_is_read_only
+            && event == "start"
             && sid == root
-            && matches!(early_primary.as_deref(), Some("clean" | "rm")))
+            && early_primary.as_deref() == Some("clean"))
         .then(|| {
             worktree_hint
                 .as_deref()
-                .and_then(capture_index_tree_for_workspace_command)
+                .and_then(capture_index_snapshot_for_workspace_command)
         })
         .flatten();
         let mut ingress = match self.trace_ingress_state.lock() {
@@ -5277,8 +5340,10 @@ impl ActorDaemonCoordinator {
 
         if event == "start" && sid == root && !argv.is_empty() {
             ingress.root_argv.insert(root.clone(), argv.clone());
-            if let Some(tree) = index_tree_at_start {
-                ingress.root_index_tree_at_start.insert(root.clone(), tree);
+            if let Some(snapshot) = index_snapshot_at_start {
+                ingress
+                    .root_index_snapshot_at_start
+                    .insert(root.clone(), snapshot);
             }
             if event_is_read_only {
                 ingress.root_definitely_read_only.insert(root.clone());
@@ -5345,6 +5410,7 @@ impl ActorDaemonCoordinator {
             ingress.root_started_at_ns.get(&root).copied(),
             ingress.root_reflog_start_offsets.get(&root).cloned(),
             ingress.root_worktrees.get(&root).cloned(),
+            ingress.root_index_snapshot_at_start.get(&root).cloned(),
         );
         if terminal {
             ingress.root_worktrees.remove(&root);
@@ -5352,6 +5418,7 @@ impl ActorDaemonCoordinator {
             ingress.root_argv.remove(&root);
             ingress.root_started_at_ns.remove(&root);
             ingress.root_reflog_start_offsets.remove(&root);
+            ingress.root_index_snapshot_at_start.remove(&root);
             ingress.root_mutating.remove(&root);
             ingress.root_target_repo_only.remove(&root);
             ingress.root_last_activity_ns.remove(&root);
@@ -5402,6 +5469,11 @@ impl ActorDaemonCoordinator {
                     TRACE_ROOT_WORKTREE_FIELD.to_string(),
                     json!(worktree.to_string_lossy().to_string()),
                 );
+            }
+            if object.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none()
+                && let Some(snapshot) = inherited.4
+            {
+                object.insert(TRACE_ROOT_INDEX_SNAPSHOT_FIELD.to_string(), json!(snapshot));
             }
         }
 
@@ -6775,6 +6847,8 @@ impl ActorDaemonCoordinator {
         let cmd = &applied.command;
         let events = &applied.analysis.events;
         let mut control_attempt_boundary = self.take_control_attempt_boundary(&cmd.root_sid)?;
+        let _index_snapshot_cleanup =
+            IndexSnapshotCleanup(cmd.index_snapshot_at_start.clone().map(PathBuf::from));
 
         let primary = cmd.primary_command.as_deref().unwrap_or("unknown");
         let lite_mode = config::Config::get().get_feature_flags().lite_mode;
@@ -7588,16 +7662,28 @@ impl ActorDaemonCoordinator {
                             }
                         }
                     }
-                    crate::daemon::domain::SemanticEvent::CleanedWorkspace { head } => {
+                    crate::daemon::domain::SemanticEvent::CleanedWorkspace {
+                        head,
+                        index_snapshot_at_start,
+                    } => {
                         let repo = find_repository_in_path(&worktree)?;
                         let head = head
                             .clone()
                             .filter(|head| !head.is_empty())
                             .unwrap_or(repo.head()?.target()?);
                         let parsed = parsed_invocation_for_normalized_command(cmd);
-                        prune_working_log_paths_after_clean(&repo, &head, &parsed.command_args)?;
+                        prune_working_log_paths_after_clean(
+                            &repo,
+                            &head,
+                            &parsed.command_args,
+                            index_snapshot_at_start.as_deref(),
+                            true,
+                        )?;
                     }
-                    crate::daemon::domain::SemanticEvent::RemovedWorkspacePaths { head } => {
+                    crate::daemon::domain::SemanticEvent::RemovedWorkspacePaths {
+                        head,
+                        index_snapshot_at_start,
+                    } => {
                         let repo = find_repository_in_path(&worktree)?;
                         let head = head
                             .clone()
@@ -7609,7 +7695,13 @@ impl ActorDaemonCoordinator {
                         // tracked operands regardless of ignore rules.
                         let mut removal_args = parsed.command_args;
                         removal_args.push("-x".to_string());
-                        prune_working_log_paths_after_clean(&repo, &head, &removal_args)?;
+                        prune_working_log_paths_after_clean(
+                            &repo,
+                            &head,
+                            &removal_args,
+                            index_snapshot_at_start.as_deref(),
+                            false,
+                        )?;
                     }
                     crate::daemon::domain::SemanticEvent::MovedWorkspacePaths { head } => {
                         let repo = find_repository_in_path(&worktree)?;
@@ -11310,6 +11402,7 @@ mod tests {
             started_at_ns: 1,
             finished_at_ns: 2,
             reflog_start_offsets: HashMap::new(),
+            index_snapshot_at_start: None,
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),

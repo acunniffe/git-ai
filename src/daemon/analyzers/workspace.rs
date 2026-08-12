@@ -36,6 +36,7 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
                 } else {
                     SemanticEvent::CleanedWorkspace {
                         head: current_head_for_workspace_command(cmd, state.refs),
+                        index_snapshot_at_start: cmd.index_snapshot_at_start.clone(),
                     }
                 },
             ),
@@ -48,6 +49,7 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
                 } else {
                     SemanticEvent::RemovedWorkspacePaths {
                         head: current_head_for_workspace_command(cmd, state.refs),
+                        index_snapshot_at_start: cmd.index_snapshot_at_start.clone(),
                     }
                 },
             ),
@@ -179,6 +181,7 @@ mod tests {
             started_at_ns: 1,
             finished_at_ns: 2,
             reflog_start_offsets: std::collections::HashMap::new(),
+            index_snapshot_at_start: None,
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),
@@ -269,7 +272,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             cleaned.events,
-            vec![SemanticEvent::CleanedWorkspace { head: None }]
+            vec![SemanticEvent::CleanedWorkspace {
+                head: None,
+                index_snapshot_at_start: None,
+            }]
         );
     }
 
@@ -285,7 +291,10 @@ mod tests {
             .unwrap();
         assert_eq!(
             removed.events,
-            vec![SemanticEvent::RemovedWorkspacePaths { head: None }]
+            vec![SemanticEvent::RemovedWorkspacePaths {
+                head: None,
+                index_snapshot_at_start: None,
+            }]
         );
 
         let cached = analyzer

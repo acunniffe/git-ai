@@ -20,8 +20,11 @@ fn test_git_rm_discards_deleted_path_ai_attribution() {
     assert!(target.read_file("removed.txt").is_none());
     target.sync_daemon();
     fs::write(target.path().join("removed.txt"), "discarded AI bytes\n").unwrap();
+    // Stage before the daemon processes `rm`; the post-command index must not
+    // make the removed operand look protected.
+    target.git_og(&["add", "removed.txt"]).unwrap();
     target
-        .stage_all_and_commit("Human recreates removed path")
+        .git(&["commit", "-m", "Human recreates removed path"])
         .unwrap();
 
     let mut removed = target.filename("removed.txt");
