@@ -2310,7 +2310,9 @@ impl TestRepo {
             return;
         }
 
-        let family_key = self.daemon_family_key_for_repo_path(repo_path);
+        let Some(family_key) = self.maybe_daemon_family_key_for_repo_path(repo_path) else {
+            return;
+        };
         self.sync_daemon_family(repo_path);
         self.sync_pending_daemon_sessions(&family_key);
         self.sync_daemon_family(repo_path);
@@ -3089,7 +3091,13 @@ impl TestRepo {
         args: &[&str],
     ) -> Result<String, String> {
         if git_ai_command_requires_daemon_sync(args) {
-            self.sync_daemon_force_for_repo_path(working_dir);
+            let target_family = self.daemon_family_key();
+            self.sync_daemon_force();
+            if let Some(working_family) = self.maybe_daemon_family_key_for_repo_path(working_dir)
+                && working_family != target_family
+            {
+                self.sync_daemon_force_for_repo_path(working_dir);
+            }
         }
 
         let is_checkpoint = git_ai_primary_command(args) == Some("checkpoint");

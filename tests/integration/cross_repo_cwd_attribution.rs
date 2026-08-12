@@ -36,6 +36,17 @@ fn create_unique_workspace(prefix: &str) -> PathBuf {
     path
 }
 
+#[test]
+fn read_from_non_repo_cwd_returns_an_error_without_sync_panicking() {
+    let non_repo_cwd = create_unique_workspace("git-ai-read-non-repo-cwd");
+    let repo = TestRepo::new();
+
+    let result = repo.git_ai_from_working_dir(&non_repo_cwd, &["status"]);
+
+    assert!(result.is_err(), "status outside a repository should fail");
+    let _ = fs::remove_dir_all(&non_repo_cwd);
+}
+
 // ---------------------------------------------------------------------------
 // Scenario 1: CWD != repo root, single repo edit, attribution correct
 // ---------------------------------------------------------------------------
