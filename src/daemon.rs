@@ -5452,6 +5452,7 @@ impl ActorDaemonCoordinator {
         // Pathspec files can disappear or change before asynchronous side
         // effects run. Resolve rm operands at the same pre-command boundary.
         if !event_is_read_only
+            && !ingress.root_definitely_read_only.contains(&root)
             && !terminal
             && sid == root
             && !effective_argv.is_empty()
@@ -12633,6 +12634,46 @@ mod tests {
             serde_json::json!(["removed.txt"]),
             "later file changes must not alter the command's original selection"
         );
+    }
+
+    #[tokio::test]
+    async fn dry_run_rm_does_not_resolve_pathspec_file() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(repo.join("remove-paths.txt"), "removed.txt\n").unwrap();
+
+        let sid = "20260411T120000.000000-Pdryrun-rm";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "-n", "--pathspec-from-file=remove-paths.txt"],
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut start));
+
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert!(
+            def_repo.get(TRACE_ROOT_WORKSPACE_PATHS_FIELD).is_none(),
+            "preview-only rm must not resolve or persist pathspec-file entries"
+        );
+        assert!(
+            !coord
+                .trace_ingress_state
+                .lock()
+                .unwrap()
+                .root_workspace_paths_at_start
+                .contains_key(sid)
+        );
+
+        coord.clear_trace_root_tracking(sid).unwrap();
     }
 
     #[tokio::test]
