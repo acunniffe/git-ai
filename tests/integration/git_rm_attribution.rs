@@ -18,6 +18,7 @@ fn test_git_rm_discards_deleted_path_ai_attribution() {
 
     target.git(&["rm", "-f", "--", "removed.txt"]).unwrap();
     assert!(target.read_file("removed.txt").is_none());
+    target.sync_daemon();
     fs::write(target.path().join("removed.txt"), "discarded AI bytes\n").unwrap();
     target
         .stage_all_and_commit("Human recreates removed path")
