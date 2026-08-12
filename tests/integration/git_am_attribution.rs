@@ -1,9 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::{
-    codex_bash_hook_input as shared_codex_bash_hook_input, fixture_path,
-    isolated_bash_history_db_path,
-};
+use crate::test_utils::{checkpoint_codex_bash_hook, setup_codex_bash_repo};
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::git::find_repository_in_path;
 use serde_json::json;
@@ -11,20 +8,20 @@ use std::fs;
 use std::thread;
 use std::time::Duration;
 
-fn codex_bash_hook_input(
+fn checkpoint_git_am_bash_hook(
     repo: &TestRepo,
     transcript_path: &std::path::Path,
-    hook_event_name: &str,
+    event: &str,
     command: &str,
-) -> String {
-    shared_codex_bash_hook_input(
+) {
+    checkpoint_codex_bash_hook(
         repo,
         transcript_path,
         "git-am-bash-session",
         "git-am-bash-tool",
-        hook_event_name,
+        event,
         command,
-    )
+    );
 }
 
 fn assert_codex_bash_session(repo: &TestRepo, commit_sha: &str) {
@@ -62,32 +59,15 @@ fn test_git_am_inside_codex_bash_attributes_applied_commit_to_ai() {
     let patch_path = patch_dir.path().join("incoming.patch");
     fs::write(&patch_path, patch).expect("patch should be writable");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
-    fs::write(target.path().join("base.txt"), "existing base\n")
-        .expect("target base should be writable");
-    target
-        .stage_all_and_commit("Initial target commit")
-        .expect("target commit should succeed");
-
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should be copied");
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Initial target commit");
     let command = format!("git am {}", patch_path.display());
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
 
     target
         .git(&["am", patch_path.to_str().unwrap()])
         .expect("git am should succeed");
 
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", &command);
     target.sync_daemon();
 
     let applied_commit = target
@@ -100,7 +80,7 @@ fn test_git_am_inside_codex_bash_attributes_applied_commit_to_ai() {
     let mut file = target.filename("from-am.txt");
     file.assert_committed_lines(lines!["created by patch".ai()]);
     let mut base = target.filename("base.txt");
-    base.assert_committed_lines(lines!["existing base".unattributed_human()]);
+    base.assert_committed_lines(lines!["base".unattributed_human()]);
 }
 
 /// A mailbox can contain an arbitrary commit series. Every destination commit
@@ -126,31 +106,18 @@ fn test_git_am_series_inside_codex_bash_writes_ai_note_for_every_commit() {
     let patch_path = patch_dir.path().join("series.patch");
     fs::write(&patch_path, patch).expect("patch should be writable");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
-    fs::write(target.path().join("base.txt"), "existing base\n")
-        .expect("target base should be writable");
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Initial target commit");
     let base_commit = target
-        .stage_all_and_commit("Initial target commit")
-        .expect("target commit should succeed")
-        .commit_sha;
-
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should be copied");
+        .git(&["rev-parse", "HEAD"])
+        .expect("target base should resolve")
+        .trim()
+        .to_string();
     let command = format!("git am {}", patch_path.display());
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
     target
         .git(&["am", patch_path.to_str().unwrap()])
         .expect("git am series should succeed");
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", &command);
     target.sync_daemon();
 
     let commits = target
@@ -235,29 +202,13 @@ fn test_git_am_three_way_keep_cr_inside_codex_bash_attributes_applied_commit() {
     let patch_path = patch_dir.path().join("three-way.patch");
     fs::write(&patch_path, patch).expect("patch should be writable");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
-    fs::write(target.path().join("base.txt"), "existing base\n")
-        .expect("target base should be writable");
-    target
-        .stage_all_and_commit("Initial target commit")
-        .expect("target commit should succeed");
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should be copied");
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Initial target commit");
     let command = format!("git am --3way --keep-cr {}", patch_path.display());
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
     target
         .git(&["am", "--3way", "--keep-cr", patch_path.to_str().unwrap()])
         .expect("git am --3way --keep-cr should succeed");
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", &command);
 
     let applied_commit = target
         .git(&["rev-parse", "HEAD"])
@@ -308,9 +259,7 @@ fn test_git_am_nonzero_after_successful_prefix_attributes_prefix_commit() {
     let patch_path = patch_dir.path().join("partial-series.patch");
     fs::write(&patch_path, patch).expect("patch should be writable");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Harness base");
     fs::write(target.path().join("conflict.txt"), "base value\n")
         .expect("target base should be writable");
     target
@@ -329,20 +278,11 @@ fn test_git_am_nonzero_after_successful_prefix_attributes_prefix_commit() {
         .filename("conflict.txt")
         .assert_committed_lines(lines!["target side".unattributed_human()]);
 
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should be copied");
     let command = format!("git am {}", patch_path.display());
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
     let am_result = target.git(&["am", patch_path.to_str().unwrap()]);
     assert!(am_result.is_err(), "the mailbox tail should conflict");
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", &command);
 
     let commits = target
         .git(&["rev-list", "--reverse", &format!("{head_before_am}..HEAD")])
@@ -386,9 +326,7 @@ fn test_git_am_continue_inside_codex_bash_attributes_resolution_and_tail() {
     let patch_path = patch_dir.path().join("continue-series.patch");
     fs::write(&patch_path, patch).expect("patch should be writable");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Harness base");
     fs::write(target.path().join("conflict.txt"), "base value\n")
         .expect("target base should be writable");
     target
@@ -405,15 +343,9 @@ fn test_git_am_continue_inside_codex_bash_attributes_resolution_and_tail() {
         "first patch should conflict"
     );
 
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should be copied");
     let command =
         "printf 'resolved by ai\\n' > conflict.txt && git add conflict.txt && git am --continue";
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", command);
     fs::write(target.path().join("conflict.txt"), "resolved by ai\n")
         .expect("resolution should be writable");
     target
@@ -422,10 +354,7 @@ fn test_git_am_continue_inside_codex_bash_attributes_resolution_and_tail() {
     target
         .git(&["-c", "user.name=Test User", "am", "--continue"])
         .expect("git am --continue should succeed");
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", command);
 
     let commits = target
         .git(&["rev-list", "--reverse", &format!("{head_before_am}..HEAD")])
@@ -477,29 +406,18 @@ fn test_git_am_series_attributes_early_file_deleted_before_command_returns() {
     let patch_path = patch_dir.path().join("delete-series.patch");
     fs::write(&patch_path, patch).expect("patch should be writable");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
-    fs::write(target.path().join("base.txt"), "base\n").expect("target base should write");
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Target base");
     let target_base = target
-        .stage_all_and_commit("Target base")
-        .expect("target base commit should succeed")
-        .commit_sha;
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should be copied");
+        .git(&["rev-parse", "HEAD"])
+        .expect("target base should resolve")
+        .trim()
+        .to_string();
     let command = format!("git am {}", patch_path.display());
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
     target
         .git(&["am", patch_path.to_str().unwrap()])
         .expect("git am should succeed");
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", &command);
 
     let commits = target
         .git(&["rev-list", "--reverse", &format!("{target_base}..HEAD")])
@@ -545,29 +463,14 @@ fn test_git_am_after_long_open_bash_window_keeps_ai_attribution() {
     let patch_path = patch_dir.path().join("long.patch");
     fs::write(&patch_path, patch).expect("patch should be writable");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
-    fs::write(target.path().join("base.txt"), "base\n").expect("target base should write");
-    target
-        .stage_all_and_commit("Target base")
-        .expect("target base commit should succeed");
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should be copied");
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Target base");
     let command = format!("sleep 4 && git am {}", patch_path.display());
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
     thread::sleep(Duration::from_millis(3_500));
     target
         .git(&["am", patch_path.to_str().unwrap()])
         .expect("git am should succeed");
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post-hook checkpoint should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", &command);
 
     let applied_commit = target
         .git(&["rev-parse", "HEAD"])
@@ -617,9 +520,7 @@ fn test_git_am_abort_restores_head_and_discards_abandoned_working_log() {
     let patch_path = patch_dir.path().join("abort-series.patch");
     fs::write(&patch_path, patch).expect("patch should write");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
+    let target = TestRepo::new();
     fs::write(target.path().join("conflict.txt"), "base value\n")
         .expect("target base should write");
     target
@@ -711,9 +612,7 @@ fn test_git_am_skip_inside_codex_bash_attributes_remaining_tail_only() {
     let patch_path = patch_dir.path().join("skip-series.patch");
     fs::write(&patch_path, patch).expect("patch should write");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Harness base");
     fs::write(target.path().join("conflict.txt"), "base value\n")
         .expect("target base should write");
     target
@@ -727,21 +626,12 @@ fn test_git_am_skip_inside_codex_bash_attributes_remaining_tail_only() {
         .commit_sha;
     assert!(target.git(&["am", patch_path.to_str().unwrap()]).is_err());
 
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should copy");
     let command = "git am --skip";
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre hook should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", command);
     target
         .git(&["am", "--skip"])
         .expect("git am --skip should apply the tail");
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post hook should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", command);
 
     let commits = target
         .git(&["rev-list", "--reverse", &format!("{head_before_am}..HEAD")])
@@ -789,9 +679,7 @@ fn test_git_am_quit_keeps_successful_prefix_and_its_attribution() {
     let patch_path = patch_dir.path().join("quit-series.patch");
     fs::write(&patch_path, patch).expect("patch should write");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Harness base");
     fs::write(target.path().join("conflict.txt"), "base value\n")
         .expect("target base should write");
     target
@@ -808,19 +696,10 @@ fn test_git_am_quit_keeps_successful_prefix_and_its_attribution() {
     target
         .filename("conflict.txt")
         .assert_committed_lines(lines!["target side".unattributed_human()]);
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should copy");
     let command = format!("git am {}", patch_path.display());
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre hook should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
     assert!(target.git(&["am", patch_path.to_str().unwrap()]).is_err());
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post hook should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", &command);
     let prefix_commit = target
         .git(&["rev-parse", "HEAD"])
         .expect("prefix should resolve")
@@ -881,36 +760,24 @@ fn test_git_am_incompatible_failure_inside_bash_does_not_mutate_attribution() {
     let patch_path = patch_dir.path().join("malformed.patch");
     fs::write(&patch_path, "not an email patch\n").expect("malformed patch should write");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
-    fs::write(target.path().join("base.txt"), "base remains human\n")
-        .expect("target base should write");
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Target base");
     let base_commit = target
-        .stage_all_and_commit("Target base")
-        .expect("target base should commit")
-        .commit_sha;
+        .git(&["rev-parse", "HEAD"])
+        .expect("target base should resolve")
+        .trim()
+        .to_string();
     let base_note_before = target
         .read_authorship_note(&base_commit)
         .expect("base should have a note");
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should copy");
     let command = format!("git am --3way --reject {}", patch_path.display());
-    let pre_hook_input = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("codex pre hook should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
     assert!(
         target
             .git(&["am", "--3way", "--reject", patch_path.to_str().unwrap()])
             .is_err(),
         "incompatible options should fail"
     );
-    let post_hook_input = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("codex post hook should succeed");
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", &command);
 
     assert_eq!(
         target
@@ -925,7 +792,7 @@ fn test_git_am_incompatible_failure_inside_bash_does_not_mutate_attribution() {
         "failed am must not rewrite the existing note"
     );
     let mut base = target.filename("base.txt");
-    base.assert_committed_lines(lines!["base remains human".unattributed_human()]);
+    base.assert_committed_lines(lines!["base".unattributed_human()]);
 }
 
 #[test]
@@ -943,13 +810,7 @@ fn test_git_am_from_parent_cwd_with_timeout_and_explicit_c_attributes_target_rep
     let patch_path = patch_dir.path().join("parent-cwd.patch");
     fs::write(&patch_path, patch).expect("patch should write");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
-    fs::write(target.path().join("base.txt"), "base\n").expect("target base should write");
-    target
-        .stage_all_and_commit("Target base")
-        .expect("target base should commit");
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("Target base");
     let target_root = target.canonical_path();
     let parent_cwd = target_root.parent().unwrap().to_path_buf();
     let repo_name = target_root
@@ -957,9 +818,6 @@ fn test_git_am_from_parent_cwd_with_timeout_and_explicit_c_attributes_target_rep
         .unwrap()
         .to_string_lossy()
         .to_string();
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should copy");
     let command = format!(
         "timeout 30 git -C {} am {}",
         repo_name,
@@ -1030,32 +888,20 @@ fn test_git_am_actual_timeout_conditional_wrapper_attributes_target_repo() {
     let patch_path = patch_dir.path().join("conditional.patch");
     fs::write(&patch_path, patch).unwrap();
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let target = TestRepo::new_with_daemon_env(&env);
-    fs::write(target.path().join("base.txt"), "base\n").unwrap();
-    target.stage_all_and_commit("base").unwrap();
+    let (_bash_db_dir, target, transcript_path) = setup_codex_bash_repo("base");
     fs::write(target.path().join("ready.marker"), "ready\n").unwrap();
-    let transcript_path = target.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path).unwrap();
     let command = format!(
         "test -f ready.marker && timeout 30 git am {}",
         patch_path.display()
     );
-    let pre = codex_bash_hook_input(&target, &transcript_path, "PreToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre])
-        .unwrap();
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
     target
         .shell_git(&format!(
             "test -f ready.marker && {{git}} am {}",
             patch_path.display()
         ))
         .unwrap();
-    let post = codex_bash_hook_input(&target, &transcript_path, "PostToolUse", &command);
-    target
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post])
-        .unwrap();
+    checkpoint_git_am_bash_hook(&target, &transcript_path, "PostToolUse", &command);
 
     let commit = target
         .git(&["rev-parse", "HEAD"])
@@ -1085,39 +931,34 @@ fn test_git_am_does_not_steal_overlapping_bash_call_from_another_repo() {
     let patch_path = patch_dir.path().join("other-repo.patch");
     fs::write(&patch_path, patch).expect("patch should write");
 
-    let (_bash_db_dir, bash_db_path) = isolated_bash_history_db_path();
-    let env = [("GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH", bash_db_path.as_str())];
-    let bash_repo = TestRepo::new_with_daemon_env(&env);
+    let (bash_db_dir, bash_repo, transcript_path) = setup_codex_bash_repo("Bash repo base");
+    let bash_db_path = bash_db_dir.path().join("bash-history.db");
+    let bash_db_value = bash_db_path.to_string_lossy().to_string();
+    let env = [(
+        "GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH",
+        bash_db_value.as_str(),
+    )];
     let target = TestRepo::new_with_daemon_env(&env);
     fs::write(target.path().join("base.txt"), "base\n").expect("target base should write");
     target
         .stage_all_and_commit("Target base")
         .expect("target base should commit");
-    let transcript_path = bash_repo.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
-        .expect("transcript fixture should copy");
     let unrelated_command = "git status && echo unrelated";
-    let pre_hook_input = codex_bash_hook_input(
+    checkpoint_git_am_bash_hook(
         &bash_repo,
         &transcript_path,
         "PreToolUse",
         unrelated_command,
     );
-    bash_repo
-        .git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
-        .expect("other-repo pre hook should succeed");
     target
         .git(&["am", patch_path.to_str().unwrap()])
         .expect("target git am should succeed");
-    let post_hook_input = codex_bash_hook_input(
+    checkpoint_git_am_bash_hook(
         &bash_repo,
         &transcript_path,
         "PostToolUse",
         unrelated_command,
     );
-    bash_repo
-        .git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
-        .expect("other-repo post hook should succeed");
 
     let applied_commit = target
         .git(&["rev-parse", "HEAD"])
