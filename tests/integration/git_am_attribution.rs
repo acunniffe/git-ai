@@ -873,6 +873,7 @@ fn test_git_am_from_parent_cwd_with_timeout_and_explicit_c_attributes_target_rep
 }
 
 #[test]
+#[cfg(unix)]
 fn test_git_am_actual_timeout_conditional_wrapper_attributes_target_repo() {
     let source = TestRepo::new();
     fs::write(
