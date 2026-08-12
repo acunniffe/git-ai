@@ -55,6 +55,8 @@ pub struct NormalizedCommand {
     pub reflog_start_offsets: HashMap<String, u64>,
     #[serde(default)]
     pub index_snapshot_at_start: Option<String>,
+    #[serde(default)]
+    pub workspace_paths_at_start: Vec<String>,
     pub stash_target_oid: Option<String>,
     pub cherry_pick_source_oids: Vec<String>,
     pub revert_source_oids: Vec<String>,

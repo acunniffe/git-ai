@@ -89,6 +89,7 @@ const TRACE_ROOT_STARTED_AT_NS_FIELD: &str = "git_ai_root_started_at_ns";
 const TRACE_ROOT_WORKTREE_FIELD: &str = "git_ai_root_worktree";
 pub(crate) const TRACE_ROOT_REFLOG_START_OFFSETS_FIELD: &str = "git_ai_root_reflog_start_offsets";
 pub(crate) const TRACE_ROOT_INDEX_SNAPSHOT_FIELD: &str = "git_ai_root_index_snapshot_at_start";
+pub(crate) const TRACE_ROOT_WORKSPACE_PATHS_FIELD: &str = "git_ai_root_workspace_paths_at_start";
 const TRACE_CONNECTION_CLOSED_EVENT: &str = "git_ai_connection_closed";
 const DAEMON_CONTROL_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const DAEMON_CONTROL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -1588,6 +1589,7 @@ fn prune_working_log_paths_after_clean(
     args: &[String],
     index_snapshot_at_start: Option<&str>,
     protect_tracked_paths: bool,
+    reconstruct_selected_paths: bool,
 ) -> Result<(), GitAiError> {
     let _snapshot_cleanup = IndexSnapshotCleanup(index_snapshot_at_start.map(PathBuf::from));
     let working_log = repository.storage.working_log_for_base_commit(head)?;
@@ -1615,7 +1617,7 @@ fn prune_working_log_paths_after_clean(
     let has_exclusions = args
         .iter()
         .any(|arg| matches!(arg.as_str(), "-e" | "--exclude") || arg.starts_with("--exclude="));
-    if !has_exclusions {
+    if reconstruct_selected_paths && !has_exclusions {
         let mut tracked_args = repository.global_args_for_exec();
         tracked_args.extend(["ls-files".to_string(), "-z".to_string(), "--".to_string()]);
         tracked_args.extend(candidates.iter().cloned());
@@ -3551,6 +3553,7 @@ struct TraceIngressState {
     root_started_at_ns: HashMap<String, u128>,
     root_reflog_start_offsets: HashMap<String, HashMap<String, u64>>,
     root_index_snapshot_at_start: HashMap<String, String>,
+    root_workspace_paths_at_start: HashMap<String, Vec<String>>,
     root_mutating: HashMap<String, bool>,
     root_target_repo_only: HashMap<String, bool>,
     root_last_activity_ns: HashMap<String, u64>,
@@ -4528,6 +4531,7 @@ impl ActorDaemonCoordinator {
         if let Some(snapshot) = ingress.root_index_snapshot_at_start.remove(root_sid) {
             let _ = fs::remove_file(snapshot);
         }
+        ingress.root_workspace_paths_at_start.remove(root_sid);
         ingress.root_mutating.remove(root_sid);
         ingress.root_target_repo_only.remove(root_sid);
         ingress.root_last_activity_ns.remove(root_sid);
@@ -5346,19 +5350,6 @@ impl ActorDaemonCoordinator {
                 };
                 !has_test_sync_session
             };
-        // Clean can be processed after later index changes. Snapshot its
-        // index boundary at root start so pruning never consults future state.
-        let index_snapshot_at_start = (!event_is_read_only
-            && event == "start"
-            && sid == root
-            && !argv.is_empty()
-            && early_primary.as_deref() == Some("clean"))
-        .then(|| {
-            worktree_hint
-                .as_deref()
-                .and_then(capture_index_snapshot_for_workspace_command)
-        })
-        .flatten();
         let mut ingress = match self.trace_ingress_state.lock() {
             Ok(guard) => guard,
             Err(_) => return false,
@@ -5387,13 +5378,6 @@ impl ActorDaemonCoordinator {
 
         if event == "start" && sid == root && !argv.is_empty() {
             ingress.root_argv.insert(root.clone(), argv.clone());
-            if let Some(snapshot) = index_snapshot_at_start
-                && let Some(previous) = ingress
-                    .root_index_snapshot_at_start
-                    .insert(root.clone(), snapshot)
-            {
-                let _ = fs::remove_file(previous);
-            }
             if event_is_read_only {
                 ingress.root_definitely_read_only.insert(root.clone());
             }
@@ -5408,6 +5392,45 @@ impl ActorDaemonCoordinator {
             early_primary.or_else(|| trace_argv_primary_command(&effective_argv));
         let command_mutates_repo_state =
             trace_invocation_may_mutate_repo_state(effective_primary.as_deref(), &effective_argv);
+        let terminal = is_terminal_root_trace_event(&event, &sid, &root);
+        let command_worktree = worktree_hint
+            .clone()
+            .or_else(|| ingress.root_worktrees.get(&root).cloned());
+
+        // `start` has argv but a normal Git trace does not report the repository
+        // until `def_repo`. Capture at the first non-terminal root event that
+        // has both pieces, before the workspace command mutates repository state.
+        if !event_is_read_only
+            && !terminal
+            && sid == root
+            && !effective_argv.is_empty()
+            && effective_primary.as_deref() == Some("clean")
+            && !ingress.root_index_snapshot_at_start.contains_key(&root)
+            && let Some(worktree) = command_worktree.as_deref()
+            && let Some(snapshot) = capture_index_snapshot_for_workspace_command(worktree)
+        {
+            ingress
+                .root_index_snapshot_at_start
+                .insert(root.clone(), snapshot);
+        }
+
+        // Pathspec files can disappear or change before asynchronous side
+        // effects run. Resolve rm operands at the same pre-command boundary.
+        if !event_is_read_only
+            && !terminal
+            && sid == root
+            && !effective_argv.is_empty()
+            && effective_primary.as_deref() == Some("rm")
+            && !ingress.root_workspace_paths_at_start.contains_key(&root)
+            && let Some(worktree) = command_worktree.as_deref()
+        {
+            let command_args =
+                trace_invocation_command_args(effective_primary.as_deref(), &effective_argv);
+            ingress.root_workspace_paths_at_start.insert(
+                root.clone(),
+                restore_pathspecs(&command_args, Some(worktree)),
+            );
+        }
         let command_mutates_refs =
             trace_invocation_may_mutate_refs(effective_primary.as_deref(), &effective_argv);
         if let Some(primary) = effective_primary.as_deref() {
@@ -5421,11 +5444,6 @@ impl ActorDaemonCoordinator {
                 .entry(root.clone())
                 .or_insert(target_repo_only);
         }
-
-        let terminal = is_terminal_root_trace_event(&event, &sid, &root);
-        let command_worktree = worktree_hint
-            .clone()
-            .or_else(|| ingress.root_worktrees.get(&root).cloned());
 
         // Conflict side effects may be processed after the caller has already
         // run `--skip`. Remember that control state existed at the terminal
@@ -5460,6 +5478,7 @@ impl ActorDaemonCoordinator {
             ingress.root_reflog_start_offsets.get(&root).cloned(),
             ingress.root_worktrees.get(&root).cloned(),
             ingress.root_index_snapshot_at_start.get(&root).cloned(),
+            ingress.root_workspace_paths_at_start.get(&root).cloned(),
         );
         if terminal {
             ingress.root_worktrees.remove(&root);
@@ -5468,6 +5487,7 @@ impl ActorDaemonCoordinator {
             ingress.root_started_at_ns.remove(&root);
             ingress.root_reflog_start_offsets.remove(&root);
             ingress.root_index_snapshot_at_start.remove(&root);
+            ingress.root_workspace_paths_at_start.remove(&root);
             ingress.root_mutating.remove(&root);
             ingress.root_target_repo_only.remove(&root);
             ingress.root_last_activity_ns.remove(&root);
@@ -5523,6 +5543,11 @@ impl ActorDaemonCoordinator {
                 && let Some(snapshot) = inherited.4
             {
                 object.insert(TRACE_ROOT_INDEX_SNAPSHOT_FIELD.to_string(), json!(snapshot));
+            }
+            if object.get(TRACE_ROOT_WORKSPACE_PATHS_FIELD).is_none()
+                && let Some(paths) = inherited.5
+            {
+                object.insert(TRACE_ROOT_WORKSPACE_PATHS_FIELD.to_string(), json!(paths));
             }
         }
 
@@ -7727,6 +7752,7 @@ impl ActorDaemonCoordinator {
                             &parsed.command_args,
                             index_snapshot_at_start.as_deref(),
                             true,
+                            true,
                         )?;
                     }
                     crate::daemon::domain::SemanticEvent::RemovedWorkspacePaths {
@@ -7739,11 +7765,12 @@ impl ActorDaemonCoordinator {
                             .filter(|head| !head.is_empty())
                             .unwrap_or(repo.head()?.target()?);
                         let parsed = parsed_invocation_for_normalized_command(cmd);
-                        let removal_paths =
-                            restore_pathspecs(&parsed.command_args, Some(Path::new(&worktree)));
-                        if removal_paths.is_empty() {
-                            continue;
-                        }
+                        let removal_paths = if cmd.workspace_paths_at_start.is_empty() {
+                            restore_pathspecs(&parsed.command_args, Some(Path::new(&worktree)))
+                        } else {
+                            cmd.workspace_paths_at_start.clone()
+                        };
+                        let reconstruct_selected_paths = !removal_paths.is_empty();
                         // Reuse the race-safe path selection with ignored-file
                         // removal enabled: a successful non-cached `rm` removes
                         // tracked operands regardless of ignore rules.
@@ -7755,6 +7782,7 @@ impl ActorDaemonCoordinator {
                             &removal_args,
                             index_snapshot_at_start.as_deref(),
                             false,
+                            reconstruct_selected_paths,
                         )?;
                     }
                     crate::daemon::domain::SemanticEvent::MovedWorkspacePaths { head } => {
@@ -11457,6 +11485,7 @@ mod tests {
             finished_at_ns: 2,
             reflog_start_offsets: HashMap::new(),
             index_snapshot_at_start: None,
+            workspace_paths_at_start: Vec::new(),
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),
@@ -12384,7 +12413,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn clean_snapshot_capture_requires_argv_and_replaces_duplicate_root_snapshot() {
+    async fn workspace_boundaries_are_captured_at_realistic_def_repo_event() {
         let coord = ActorDaemonCoordinator::new();
         let temp = tempfile::tempdir().unwrap();
         let repo = temp.path().join("repo");
@@ -12404,6 +12433,35 @@ mod tests {
         assert!(coord.prepare_trace_payload_for_ingest(&mut empty_start));
         assert!(empty_start.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none());
         coord.clear_trace_root_tracking(empty_sid).unwrap();
+
+        let realistic_sid = "20260411T120000.000000-Prealisticclean";
+        let mut realistic_start = serde_json::json!({
+            "event": "start",
+            "sid": realistic_sid,
+            "argv": ["git", "clean", "-fd"],
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut realistic_start));
+        assert!(
+            realistic_start
+                .get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD)
+                .is_none(),
+            "real Git start events do not yet identify the worktree"
+        );
+        let mut realistic_def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": realistic_sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut realistic_def_repo));
+        let realistic_snapshot = PathBuf::from(
+            realistic_def_repo[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
+                .as_str()
+                .expect("def_repo should capture the pre-clean index"),
+        );
+        assert!(realistic_snapshot.is_file());
+        coord.clear_trace_root_tracking(realistic_sid).unwrap();
+        assert!(!realistic_snapshot.exists());
 
         let sid = "20260411T120000.000000-Pduplicateclean";
         let mut first_start = serde_json::json!({
@@ -12431,15 +12489,54 @@ mod tests {
                 .as_str()
                 .expect("duplicate clean start should contain a snapshot"),
         );
-        assert_ne!(first_snapshot, second_snapshot);
+        assert_eq!(first_snapshot, second_snapshot);
         assert!(
-            !first_snapshot.exists(),
-            "duplicate start must remove the old snapshot"
+            first_snapshot.exists(),
+            "duplicate events must retain the original boundary snapshot"
         );
         assert!(second_snapshot.is_file());
 
         coord.clear_trace_root_tracking(sid).unwrap();
         assert!(!second_snapshot.exists());
+    }
+
+    #[tokio::test]
+    async fn rm_pathspec_file_is_resolved_before_async_processing() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(repo.join("remove-paths.txt"), "removed.txt\n").unwrap();
+
+        let sid = "20260411T120000.000000-Prmpathspec";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "--pathspec-from-file=remove-paths.txt"],
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert_eq!(
+            def_repo[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["removed.txt"])
+        );
+
+        std::fs::write(repo.join("remove-paths.txt"), "different.txt\n").unwrap();
+        let mut atexit = make_atexit_payload(sid);
+        assert!(coord.prepare_trace_payload_for_ingest(&mut atexit));
+        assert_eq!(
+            atexit[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["removed.txt"]),
+            "later file changes must not alter the command's original selection"
+        );
     }
 
     #[tokio::test]

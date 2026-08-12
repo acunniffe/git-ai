@@ -26,6 +26,7 @@ pub struct PendingTraceCommand {
     pub finished_at_ns: Option<u128>,
     pub reflog_start_offsets: HashMap<String, u64>,
     pub index_snapshot_at_start: Option<String>,
+    pub workspace_paths_at_start: Vec<String>,
     pub saw_def_repo: bool,
 }
 
@@ -315,6 +316,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             finished_at_ns: None,
             reflog_start_offsets: payload_reflog_start_offsets(payload),
             index_snapshot_at_start: payload_index_snapshot_at_start(payload),
+            workspace_paths_at_start: payload_workspace_paths_at_start(payload),
             saw_def_repo: false,
         };
         trace_debug_lifecycle(&format!(
@@ -445,6 +447,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
         if let Some(pending) = self.state.pending.get_mut(root_sid) {
             merge_reflog_start_offsets_from_payload(pending, payload);
             merge_index_snapshot_from_payload(pending, payload);
+            merge_workspace_paths_from_payload(pending, payload);
             pending.saw_def_repo = true;
             pending.worktree = Some(repo);
             if let Some(family) = family.as_ref() {
@@ -475,6 +478,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             if let Some(pending) = self.state.pending.get_mut(root_sid) {
                 merge_reflog_start_offsets_from_payload(pending, payload);
                 merge_index_snapshot_from_payload(pending, payload);
+                merge_workspace_paths_from_payload(pending, payload);
                 pending.root_cmd_name = Some(cmd);
             } else {
                 self.state
@@ -513,6 +517,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
         if let Some(pending) = self.state.pending.get_mut(root_sid) {
             merge_reflog_start_offsets_from_payload(pending, payload);
             merge_index_snapshot_from_payload(pending, payload);
+            merge_workspace_paths_from_payload(pending, payload);
         }
 
         let exit_code = payload
@@ -745,6 +750,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             finished_at_ns,
             reflog_start_offsets: pending.reflog_start_offsets,
             index_snapshot_at_start: pending.index_snapshot_at_start,
+            workspace_paths_at_start: pending.workspace_paths_at_start,
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),
@@ -864,6 +870,20 @@ fn payload_index_snapshot_at_start(payload: &Value) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn payload_workspace_paths_at_start(payload: &Value) -> Vec<String> {
+    payload
+        .get(crate::daemon::TRACE_ROOT_WORKSPACE_PATHS_FIELD)
+        .and_then(Value::as_array)
+        .map(|paths| {
+            paths
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn merge_reflog_start_offsets_from_payload(pending: &mut PendingTraceCommand, payload: &Value) {
     for (key, offset) in payload_reflog_start_offsets(payload) {
         pending.reflog_start_offsets.entry(key).or_insert(offset);
@@ -873,6 +893,12 @@ fn merge_reflog_start_offsets_from_payload(pending: &mut PendingTraceCommand, pa
 fn merge_index_snapshot_from_payload(pending: &mut PendingTraceCommand, payload: &Value) {
     if pending.index_snapshot_at_start.is_none() {
         pending.index_snapshot_at_start = payload_index_snapshot_at_start(payload);
+    }
+}
+
+fn merge_workspace_paths_from_payload(pending: &mut PendingTraceCommand, payload: &Value) {
+    if pending.workspace_paths_at_start.is_empty() {
+        pending.workspace_paths_at_start = payload_workspace_paths_at_start(payload);
     }
 }
 

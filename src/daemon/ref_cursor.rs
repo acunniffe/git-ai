@@ -4308,6 +4308,7 @@ mod tests {
             finished_at_ns: 2,
             reflog_start_offsets: HashMap::new(),
             index_snapshot_at_start: None,
+            workspace_paths_at_start: Vec::new(),
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),
