@@ -989,10 +989,7 @@ fn takes_value_option(token: &str) -> bool {
 fn command_may_mutate_refs(primary_command: Option<&str>, raw_argv: &[String]) -> bool {
     primary_command.is_some_and(|command| {
         let (_invoked_command, invoked_args) = canonical_invocation(raw_argv, Some(command));
-        crate::git::command_classification::git_invocation_may_mutate_repo_state(
-            command,
-            &invoked_args,
-        )
+        crate::git::command_classification::git_invocation_may_move_refs(command, &invoked_args)
     })
 }
 

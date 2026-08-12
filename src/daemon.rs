@@ -753,6 +753,15 @@ fn trace_invocation_is_definitely_read_only(
 
 fn trace_invocation_may_mutate_refs(primary_command: Option<&str>, argv: &[String]) -> bool {
     primary_command.is_some_and(|cmd| {
+        crate::git::command_classification::git_invocation_may_move_refs(
+            cmd,
+            &trace_invocation_command_args(Some(cmd), argv),
+        )
+    })
+}
+
+fn trace_invocation_may_mutate_repo_state(primary_command: Option<&str>, argv: &[String]) -> bool {
+    primary_command.is_some_and(|cmd| {
         crate::git::command_classification::git_invocation_may_mutate_repo_state(
             cmd,
             &trace_invocation_command_args(Some(cmd), argv),
@@ -4458,7 +4467,7 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
-    fn has_open_trace_roots_that_may_mutate_refs(&self) -> bool {
+    fn has_open_trace_roots_that_may_mutate_repo_state(&self) -> bool {
         let Ok(ingress) = self.trace_ingress_state.lock() else {
             return false;
         };
@@ -4469,7 +4478,7 @@ impl ActorDaemonCoordinator {
         })
     }
 
-    /// As [`Self::has_open_trace_roots_that_may_mutate_refs`], but scoped to
+    /// As [`Self::has_open_trace_roots_that_may_mutate_repo_state`], but scoped to
     /// one family: roots already attributed to a DIFFERENT family (via their
     /// `def_repo` worktree) cannot mutate this family's refs and are ignored.
     /// Roots with no family attribution yet fail closed and block everyone.
@@ -5040,12 +5049,12 @@ impl ActorDaemonCoordinator {
             let target = self.next_trace_ingest_seq.load(Ordering::Acquire) as u64;
             self.wait_for_trace_ingest_seq(target).await;
 
-            if !self.has_open_trace_roots_that_may_mutate_refs() {
+            if !self.has_open_trace_roots_that_may_mutate_repo_state() {
                 return;
             }
 
             let progress = self.trace_ingest_progress_notify.notified();
-            if !self.has_open_trace_roots_that_may_mutate_refs() {
+            if !self.has_open_trace_roots_that_may_mutate_repo_state() {
                 return;
             }
             tokio::select! {
@@ -5168,13 +5177,15 @@ impl ActorDaemonCoordinator {
         };
         let effective_primary =
             early_primary.or_else(|| trace_argv_primary_command(&effective_argv));
+        let command_mutates_repo_state =
+            trace_invocation_may_mutate_repo_state(effective_primary.as_deref(), &effective_argv);
         let command_mutates_refs =
             trace_invocation_may_mutate_refs(effective_primary.as_deref(), &effective_argv);
         if let Some(primary) = effective_primary.as_deref() {
             ingress
                 .root_mutating
                 .entry(root.clone())
-                .or_insert(command_mutates_refs);
+                .or_insert(command_mutates_repo_state);
             let target_repo_only = trace_command_uses_target_repo_context_only(Some(primary));
             ingress
                 .root_target_repo_only
@@ -8495,7 +8506,7 @@ impl ActorDaemonCoordinator {
         {
             return true;
         }
-        if self.has_open_trace_roots_that_may_mutate_refs() {
+        if self.has_open_trace_roots_that_may_mutate_repo_state() {
             return true;
         }
         if let Ok(map) = self.inflight_effects_by_family.lock()
@@ -11620,6 +11631,46 @@ mod tests {
                 .get("common:refs/heads/main")
                 .and_then(Value::as_u64),
             Some(old_branch_reflog.len() as u64)
+        );
+    }
+
+    #[tokio::test]
+    async fn index_only_mutation_skips_reflog_scan_but_still_blocks_fences() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(git_dir.join("logs/refs/heads")).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(git_dir.join("logs/HEAD"), "old HEAD reflog entry\n").unwrap();
+        std::fs::write(
+            git_dir.join("logs/refs/heads/main"),
+            "old branch reflog entry\n",
+        )
+        .unwrap();
+
+        let sid = "20260411T120000.000000-Psid-index-only";
+        let mut payload = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "add", "file.txt"],
+            "worktree": repo,
+        });
+
+        assert!(coord.prepare_trace_payload_for_ingest(&mut payload));
+        assert!(
+            payload.get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD).is_none(),
+            "index-only mutations must not scan or attach reflog offsets"
+        );
+        assert_eq!(
+            coord
+                .trace_ingress_state
+                .lock()
+                .unwrap()
+                .root_mutating
+                .get(sid),
+            Some(&true),
+            "index-only mutations must still block checkpoint fences"
         );
     }
 

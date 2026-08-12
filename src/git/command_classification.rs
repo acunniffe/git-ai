@@ -70,9 +70,12 @@ pub fn is_definitely_read_only_git_invocation(command: &str, command_args: &[Str
         "restore" => command_args
             .iter()
             .any(|arg| arg == "-h" || arg == "--help"),
-        "mv" => command_args
-            .iter()
-            .any(|arg| arg == "-h" || arg == "--help"),
+        "mv" => {
+            invocation_has_dry_run(command_args)
+                || command_args
+                    .iter()
+                    .any(|arg| arg == "-h" || arg == "--help")
+        }
         "rm" => invocation_has_dry_run(command_args),
         "stash" => stash_invocation_is_read_only(command_args),
         "submodule" => submodule_invocation_is_read_only(command_args),
@@ -186,6 +189,37 @@ pub fn may_mutate_repo_state_command(command: &str) -> bool {
 pub fn git_invocation_may_mutate_repo_state(command: &str, command_args: &[String]) -> bool {
     may_mutate_repo_state_command(command)
         && !is_definitely_read_only_git_invocation(command, command_args)
+}
+
+/// Returns true when a Git command may move refs in the repository where the
+/// invocation runs. This is narrower than repository-state mutation: index,
+/// worktree, config, object maintenance, and remote-only operations do not
+/// require a pre-command reflog scan.
+pub fn may_move_refs_command(command: &str) -> bool {
+    matches!(
+        command,
+        "am" | "branch"
+            | "checkout"
+            | "cherry-pick"
+            | "commit"
+            | "fetch"
+            | "merge"
+            | "pull"
+            | "rebase"
+            | "remote"
+            | "reset"
+            | "revert"
+            | "stash"
+            | "switch"
+            | "tag"
+            | "update-ref"
+            | "worktree"
+    )
+}
+
+/// Returns true when a full Git invocation may move refs in its repository.
+pub fn git_invocation_may_move_refs(command: &str, command_args: &[String]) -> bool {
+    may_move_refs_command(command) && !is_definitely_read_only_git_invocation(command, command_args)
 }
 
 /// Returns true when a Git command must be ordered inside an existing repo
@@ -880,6 +914,62 @@ mod tests {
                 !may_mutate_repo_state_command(cmd),
                 "{cmd} should not be treated as mutating"
             );
+        }
+    }
+
+    #[test]
+    fn reflog_scans_are_limited_to_commands_that_may_move_refs() {
+        for command in [
+            "am",
+            "branch",
+            "checkout",
+            "cherry-pick",
+            "commit",
+            "fetch",
+            "merge",
+            "pull",
+            "rebase",
+            "remote",
+            "reset",
+            "revert",
+            "stash",
+            "switch",
+            "tag",
+            "update-ref",
+            "worktree",
+        ] {
+            assert!(may_move_refs_command(command), "git {command}");
+        }
+
+        for command in [
+            "add",
+            "apply",
+            "clean",
+            "config",
+            "gc",
+            "maintenance",
+            "mv",
+            "pack-refs",
+            "push",
+            "reflog",
+            "repack",
+            "restore",
+            "rm",
+            "submodule",
+        ] {
+            assert!(!may_move_refs_command(command), "git {command}");
+        }
+    }
+
+    #[test]
+    fn mv_preview_is_read_only() {
+        for args in [["-n", "old", "new"], ["--dry-run", "old", "new"]] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(is_definitely_read_only_git_invocation("mv", &args));
+            assert!(!git_invocation_may_mutate_repo_state("mv", &args));
+            assert!(!git_invocation_participates_in_family_sequencer(
+                "mv", &args
+            ));
         }
     }
 
