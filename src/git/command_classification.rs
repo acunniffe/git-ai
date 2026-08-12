@@ -111,7 +111,10 @@ pub(crate) fn invocation_has_dry_run(command_args: &[String]) -> bool {
 }
 
 fn symbolic_ref_invocation_is_read_only(command_args: &[String]) -> bool {
-    if command_args.iter().any(|arg| arg == "--delete") {
+    if command_args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--delete" | "-d"))
+    {
         return false;
     }
 
@@ -702,6 +705,7 @@ mod tests {
             vec!["HEAD", "refs/heads/main"],
             vec!["-m", "switch", "HEAD", "refs/heads/main"],
             vec!["--delete", "refs/heads/alias"],
+            vec!["-d", "refs/heads/alias"],
         ] {
             assert!(!is_definitely_read_only_git_invocation(
                 "symbolic-ref",
