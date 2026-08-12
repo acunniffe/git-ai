@@ -4229,7 +4229,6 @@ mod tests {
             started_at_ns: 1,
             finished_at_ns: 2,
             reflog_start_offsets: HashMap::new(),
-            index_tree_at_start: None,
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),

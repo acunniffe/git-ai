@@ -87,7 +87,6 @@ const TRACE_ROOT_ARGV_FIELD: &str = "git_ai_root_argv";
 const TRACE_ROOT_STARTED_AT_NS_FIELD: &str = "git_ai_root_started_at_ns";
 const TRACE_ROOT_WORKTREE_FIELD: &str = "git_ai_root_worktree";
 pub(crate) const TRACE_ROOT_REFLOG_START_OFFSETS_FIELD: &str = "git_ai_root_reflog_start_offsets";
-pub(crate) const TRACE_ROOT_INDEX_TREE_FIELD: &str = "git_ai_root_index_tree_at_start";
 const TRACE_CONNECTION_CLOSED_EVENT: &str = "git_ai_connection_closed";
 const DAEMON_CONTROL_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const DAEMON_CONTROL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -1478,7 +1477,6 @@ fn prune_working_log_paths_after_clean(
     repository: &Repository,
     head: &str,
     args: &[String],
-    index_tree_at_start: Option<&str>,
 ) -> Result<(), GitAiError> {
     let working_log = repository.storage.working_log_for_base_commit(head)?;
     let initial = working_log.read_initial_attributions();
@@ -1507,18 +1505,7 @@ fn prune_working_log_paths_after_clean(
         .any(|arg| matches!(arg.as_str(), "-e" | "--exclude") || arg.starts_with("--exclude="));
     if !has_exclusions {
         let mut tracked_args = repository.global_args_for_exec();
-        if let Some(index_tree) = index_tree_at_start {
-            tracked_args.extend([
-                "ls-tree".to_string(),
-                "-r".to_string(),
-                "--name-only".to_string(),
-                "-z".to_string(),
-                index_tree.to_string(),
-                "--".to_string(),
-            ]);
-        } else {
-            tracked_args.extend(["ls-files".to_string(), "-z".to_string(), "--".to_string()]);
-        }
+        tracked_args.extend(["ls-files".to_string(), "-z".to_string(), "--".to_string()]);
         tracked_args.extend(candidates.iter().cloned());
         let tracked = crate::git::repository::exec_git(&tracked_args)?
             .stdout
@@ -3381,7 +3368,6 @@ struct TraceIngressState {
     root_argv: HashMap<String, Vec<String>>,
     root_started_at_ns: HashMap<String, u128>,
     root_reflog_start_offsets: HashMap<String, HashMap<String, u64>>,
-    root_index_tree_at_start: HashMap<String, String>,
     root_mutating: HashMap<String, bool>,
     root_target_repo_only: HashMap<String, bool>,
     root_last_activity_ns: HashMap<String, u64>,
@@ -4346,7 +4332,6 @@ impl ActorDaemonCoordinator {
         ingress.root_argv.remove(root_sid);
         ingress.root_started_at_ns.remove(root_sid);
         ingress.root_reflog_start_offsets.remove(root_sid);
-        ingress.root_index_tree_at_start.remove(root_sid);
         ingress.root_mutating.remove(root_sid);
         ingress.root_target_repo_only.remove(root_sid);
         ingress.root_last_activity_ns.remove(root_sid);
@@ -5219,7 +5204,6 @@ impl ActorDaemonCoordinator {
             ingress.root_started_at_ns.get(&root).copied(),
             ingress.root_reflog_start_offsets.get(&root).cloned(),
             ingress.root_worktrees.get(&root).cloned(),
-            ingress.root_index_tree_at_start.get(&root).cloned(),
         );
         if terminal {
             ingress.root_worktrees.remove(&root);
@@ -5227,7 +5211,6 @@ impl ActorDaemonCoordinator {
             ingress.root_argv.remove(&root);
             ingress.root_started_at_ns.remove(&root);
             ingress.root_reflog_start_offsets.remove(&root);
-            ingress.root_index_tree_at_start.remove(&root);
             ingress.root_mutating.remove(&root);
             ingress.root_target_repo_only.remove(&root);
             ingress.root_last_activity_ns.remove(&root);
@@ -5268,11 +5251,6 @@ impl ActorDaemonCoordinator {
                     TRACE_ROOT_WORKTREE_FIELD.to_string(),
                     json!(worktree.to_string_lossy().to_string()),
                 );
-            }
-            if object.get(TRACE_ROOT_INDEX_TREE_FIELD).is_none()
-                && let Some(tree) = inherited.4
-            {
-                object.insert(TRACE_ROOT_INDEX_TREE_FIELD.to_string(), json!(tree));
             }
         }
 
@@ -7425,27 +7403,16 @@ impl ActorDaemonCoordinator {
                             }
                         }
                     }
-                    crate::daemon::domain::SemanticEvent::CleanedWorkspace {
-                        head,
-                        index_tree_at_start,
-                    } => {
+                    crate::daemon::domain::SemanticEvent::CleanedWorkspace { head } => {
                         let repo = find_repository_in_path(&worktree)?;
                         let head = head
                             .clone()
                             .filter(|head| !head.is_empty())
                             .unwrap_or(repo.head()?.target()?);
                         let parsed = parsed_invocation_for_normalized_command(cmd);
-                        prune_working_log_paths_after_clean(
-                            &repo,
-                            &head,
-                            &parsed.command_args,
-                            index_tree_at_start.as_deref(),
-                        )?;
+                        prune_working_log_paths_after_clean(&repo, &head, &parsed.command_args)?;
                     }
-                    crate::daemon::domain::SemanticEvent::RemovedWorkspacePaths {
-                        head,
-                        index_tree_at_start,
-                    } => {
+                    crate::daemon::domain::SemanticEvent::RemovedWorkspacePaths { head } => {
                         let repo = find_repository_in_path(&worktree)?;
                         let head = head
                             .clone()
@@ -7457,12 +7424,7 @@ impl ActorDaemonCoordinator {
                         // tracked operands regardless of ignore rules.
                         let mut removal_args = parsed.command_args;
                         removal_args.push("-x".to_string());
-                        prune_working_log_paths_after_clean(
-                            &repo,
-                            &head,
-                            &removal_args,
-                            index_tree_at_start.as_deref(),
-                        )?;
+                        prune_working_log_paths_after_clean(&repo, &head, &removal_args)?;
                     }
                     crate::daemon::domain::SemanticEvent::MovedWorkspacePaths { head } => {
                         let repo = find_repository_in_path(&worktree)?;
@@ -11158,7 +11120,6 @@ mod tests {
             started_at_ns: 1,
             finished_at_ns: 2,
             reflog_start_offsets: HashMap::new(),
-            index_tree_at_start: None,
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),

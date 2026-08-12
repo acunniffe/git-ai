@@ -25,7 +25,6 @@ pub struct PendingTraceCommand {
     pub exit_code: Option<i32>,
     pub finished_at_ns: Option<u128>,
     pub reflog_start_offsets: HashMap<String, u64>,
-    pub index_tree_at_start: Option<String>,
     pub saw_def_repo: bool,
 }
 
@@ -309,7 +308,6 @@ impl<B: GitBackend> TraceNormalizer<B> {
             exit_code: None,
             finished_at_ns: None,
             reflog_start_offsets: payload_reflog_start_offsets(payload),
-            index_tree_at_start: payload_index_tree_at_start(payload),
             saw_def_repo: false,
         };
         trace_debug_lifecycle(&format!(
@@ -439,7 +437,6 @@ impl<B: GitBackend> TraceNormalizer<B> {
         }
         if let Some(pending) = self.state.pending.get_mut(root_sid) {
             merge_reflog_start_offsets_from_payload(pending, payload);
-            merge_index_tree_from_payload(pending, payload);
             pending.saw_def_repo = true;
             pending.worktree = Some(repo);
             if let Some(family) = family.as_ref() {
@@ -469,7 +466,6 @@ impl<B: GitBackend> TraceNormalizer<B> {
         if sid == root_sid {
             if let Some(pending) = self.state.pending.get_mut(root_sid) {
                 merge_reflog_start_offsets_from_payload(pending, payload);
-                merge_index_tree_from_payload(pending, payload);
                 pending.root_cmd_name = Some(cmd);
             } else {
                 self.state
@@ -507,7 +503,6 @@ impl<B: GitBackend> TraceNormalizer<B> {
 
         if let Some(pending) = self.state.pending.get_mut(root_sid) {
             merge_reflog_start_offsets_from_payload(pending, payload);
-            merge_index_tree_from_payload(pending, payload);
         }
 
         let exit_code = payload
@@ -739,7 +734,6 @@ impl<B: GitBackend> TraceNormalizer<B> {
             started_at_ns: pending.started_at_ns,
             finished_at_ns,
             reflog_start_offsets: pending.reflog_start_offsets,
-            index_tree_at_start: pending.index_tree_at_start,
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),
@@ -851,23 +845,9 @@ fn payload_reflog_start_offsets(payload: &Value) -> HashMap<String, u64> {
         .unwrap_or_default()
 }
 
-fn payload_index_tree_at_start(payload: &Value) -> Option<String> {
-    payload
-        .get(crate::daemon::TRACE_ROOT_INDEX_TREE_FIELD)
-        .and_then(Value::as_str)
-        .filter(|tree| crate::git::repo_state::is_valid_git_oid(tree))
-        .map(ToString::to_string)
-}
-
 fn merge_reflog_start_offsets_from_payload(pending: &mut PendingTraceCommand, payload: &Value) {
     for (key, offset) in payload_reflog_start_offsets(payload) {
         pending.reflog_start_offsets.entry(key).or_insert(offset);
-    }
-}
-
-fn merge_index_tree_from_payload(pending: &mut PendingTraceCommand, payload: &Value) {
-    if pending.index_tree_at_start.is_none() {
-        pending.index_tree_at_start = payload_index_tree_at_start(payload);
     }
 }
 
@@ -1408,27 +1388,6 @@ mod tests {
             cmd.reflog_start_offsets.get("common:refs/stash"),
             Some(&123)
         );
-    }
-
-    #[test]
-    fn normalizer_preserves_command_start_index_tree() {
-        let backend = Arc::new(MockBackend::default());
-        backend.set_family("/repo", "/repo/.git");
-        let mut normalizer = TraceNormalizer::new(backend);
-        let tree = "1111111111111111111111111111111111111111";
-        let start = serde_json::json!({
-            "event":"start",
-            "sid":"s-index-tree",
-            "ts":1,
-            "argv":["git","clean","-fdx"],
-            "worktree":"/repo",
-            crate::daemon::TRACE_ROOT_INDEX_TREE_FIELD: tree,
-        });
-        let atexit = atexit_payload("s-index-tree", 2);
-
-        assert!(normalizer.ingest_payload(&start).unwrap().is_none());
-        let cmd = normalizer.ingest_payload(&atexit).unwrap().unwrap();
-        assert_eq!(cmd.index_tree_at_start.as_deref(), Some(tree));
     }
 
     #[test]

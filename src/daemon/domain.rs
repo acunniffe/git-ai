@@ -53,8 +53,6 @@ pub struct NormalizedCommand {
     pub finished_at_ns: u128,
     #[serde(default)]
     pub reflog_start_offsets: HashMap<String, u64>,
-    #[serde(default)]
-    pub index_tree_at_start: Option<String>,
     pub stash_target_oid: Option<String>,
     pub cherry_pick_source_oids: Vec<String>,
     pub revert_source_oids: Vec<String>,
@@ -239,11 +237,9 @@ pub enum SemanticEvent {
     },
     CleanedWorkspace {
         head: Option<String>,
-        index_tree_at_start: Option<String>,
     },
     RemovedWorkspacePaths {
         head: Option<String>,
-        index_tree_at_start: Option<String>,
     },
     MovedWorkspacePaths {
         head: Option<String>,

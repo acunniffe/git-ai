@@ -39,7 +39,6 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
                 } else {
                     SemanticEvent::CleanedWorkspace {
                         head: current_head_for_workspace_command(cmd, state.refs),
-                        index_tree_at_start: cmd.index_tree_at_start.clone(),
                     }
                 },
             ),
@@ -52,13 +51,18 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
                 } else {
                     SemanticEvent::RemovedWorkspacePaths {
                         head: current_head_for_workspace_command(cmd, state.refs),
-                        index_tree_at_start: cmd.index_tree_at_start.clone(),
                     }
                 },
             ),
-            "mv" => events.push(SemanticEvent::MovedWorkspacePaths {
-                head: current_head_for_workspace_command(cmd, state.refs),
-            }),
+            "mv" => events.push(
+                if crate::git::command_classification::invocation_has_dry_run(&args) {
+                    SemanticEvent::ReadOnlyCommand
+                } else {
+                    SemanticEvent::MovedWorkspacePaths {
+                        head: current_head_for_workspace_command(cmd, state.refs),
+                    }
+                },
+            ),
             "stash" => {
                 let stash_args = stash_command_args(cmd);
                 events.push(SemanticEvent::StashOperation {
@@ -178,7 +182,6 @@ mod tests {
             started_at_ns: 1,
             finished_at_ns: 2,
             reflog_start_offsets: std::collections::HashMap::new(),
-            index_tree_at_start: None,
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),
@@ -269,10 +272,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             cleaned.events,
-            vec![SemanticEvent::CleanedWorkspace {
-                head: None,
-                index_tree_at_start: None,
-            }]
+            vec![SemanticEvent::CleanedWorkspace { head: None }]
         );
     }
 
@@ -288,10 +288,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             removed.events,
-            vec![SemanticEvent::RemovedWorkspacePaths {
-                head: None,
-                index_tree_at_start: None,
-            }]
+            vec![SemanticEvent::RemovedWorkspacePaths { head: None }]
         );
 
         let cached = analyzer
@@ -344,5 +341,16 @@ mod tests {
             moved.events,
             vec![SemanticEvent::MovedWorkspacePaths { head: None }]
         );
+
+        let preview = analyzer
+            .analyze(
+                &command(
+                    "mv",
+                    &["git", "mv", "--dry-run", "source.txt", "target.txt"],
+                ),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(preview.events, vec![SemanticEvent::ReadOnlyCommand]);
     }
 }
