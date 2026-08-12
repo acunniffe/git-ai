@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use serde_json::json;
 
@@ -29,6 +30,43 @@ pub fn codex_bash_hook_input(
         "transcript_path": transcript_path.to_string_lossy().to_string()
     })
     .to_string()
+}
+
+pub fn setup_codex_bash_repo(
+    initial_commit_message: &str,
+) -> (tempfile::TempDir, TestRepo, PathBuf) {
+    let (db_dir, db_value) = isolated_bash_history_db_path();
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH",
+        db_value.as_str(),
+    )]);
+    std::fs::write(repo.path().join("base.txt"), "base\n").unwrap();
+    repo.stage_all_and_commit(initial_commit_message).unwrap();
+    repo.filename("base.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
+    let transcript = repo.path().join("codex-transcript.jsonl");
+    std::fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript).unwrap();
+    (db_dir, repo, transcript)
+}
+
+pub fn checkpoint_codex_bash_hook(
+    repo: &TestRepo,
+    transcript_path: &std::path::Path,
+    session_id: &str,
+    tool_use_id: &str,
+    event: &str,
+    command: &str,
+) {
+    let input = codex_bash_hook_input(
+        repo,
+        transcript_path,
+        session_id,
+        tool_use_id,
+        event,
+        command,
+    );
+    repo.git_ai(&["checkpoint", "codex", "--hook-input", &input])
+        .unwrap();
 }
 
 /// Get the path to a test fixture file

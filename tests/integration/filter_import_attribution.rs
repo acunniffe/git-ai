@@ -1,35 +1,7 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::{codex_bash_hook_input, fixture_path, isolated_bash_history_db_path};
+use crate::test_utils::{checkpoint_codex_bash_hook, setup_codex_bash_repo};
 use std::fs;
-
-fn setup_bash_repo() -> (tempfile::TempDir, TestRepo, std::path::PathBuf) {
-    let (db_dir, db_value) = isolated_bash_history_db_path();
-    let repo = TestRepo::new_with_daemon_env(&[(
-        "GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH",
-        db_value.as_str(),
-    )]);
-    fs::write(repo.path().join("base.txt"), "base\n").unwrap();
-    repo.stage_all_and_commit("initial").unwrap();
-    let mut base = repo.filename("base.txt");
-    base.assert_committed_lines(lines!["base".unattributed_human()]);
-    let transcript = repo.path().join("codex-transcript.jsonl");
-    fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript).unwrap();
-    (db_dir, repo, transcript)
-}
-
-fn bash_hook(repo: &TestRepo, transcript: &std::path::Path, event: &str, command: &str) {
-    let input = codex_bash_hook_input(
-        repo,
-        transcript,
-        "fast-import-bash-session",
-        "fast-import-bash-tool",
-        event,
-        command,
-    );
-    repo.git_ai(&["checkpoint", "codex", "--hook-input", &input])
-        .unwrap();
-}
 
 fn fast_import_stream(repo: &TestRepo, content: &str, message: &str) -> Vec<u8> {
     let old = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
@@ -72,14 +44,28 @@ fn multi_fast_import_stream(repo: &TestRepo) -> Vec<u8> {
 
 #[test]
 fn fast_import_inside_codex_bash_attributes_imported_commit() {
-    let (_db, repo, transcript) = setup_bash_repo();
+    let (_db, repo, transcript) = setup_codex_bash_repo("initial");
     let content = "fast import AI\n";
     let stream = fast_import_stream(&repo, content, "fast import commit");
     let command = "git fast-import --quiet < stream";
-    bash_hook(&repo, &transcript, "PreToolUse", command);
+    checkpoint_codex_bash_hook(
+        &repo,
+        &transcript,
+        "fast-import-bash-session",
+        "fast-import-bash-tool",
+        "PreToolUse",
+        command,
+    );
     repo.git_with_stdin(&["fast-import", "--quiet"], &stream)
         .unwrap();
-    bash_hook(&repo, &transcript, "PostToolUse", command);
+    checkpoint_codex_bash_hook(
+        &repo,
+        &transcript,
+        "fast-import-bash-session",
+        "fast-import-bash-tool",
+        "PostToolUse",
+        command,
+    );
     repo.sync_daemon();
     repo.git_og(&["reset", "--hard", "HEAD"]).unwrap();
 
@@ -106,14 +92,28 @@ fn fast_import_outside_agent_bash_does_not_invent_ai_attribution() {
 
 #[test]
 fn multi_commit_fast_import_inside_bash_notes_every_imported_commit() {
-    let (_db, repo, transcript) = setup_bash_repo();
+    let (_db, repo, transcript) = setup_codex_bash_repo("initial");
     let base = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
     let stream = multi_fast_import_stream(&repo);
     let command = "git fast-import --quiet < two-commit-stream";
-    bash_hook(&repo, &transcript, "PreToolUse", command);
+    checkpoint_codex_bash_hook(
+        &repo,
+        &transcript,
+        "fast-import-bash-session",
+        "fast-import-bash-tool",
+        "PreToolUse",
+        command,
+    );
     repo.git_with_stdin(&["fast-import", "--quiet"], &stream)
         .unwrap();
-    bash_hook(&repo, &transcript, "PostToolUse", command);
+    checkpoint_codex_bash_hook(
+        &repo,
+        &transcript,
+        "fast-import-bash-session",
+        "fast-import-bash-tool",
+        "PostToolUse",
+        command,
+    );
     repo.sync_daemon();
 
     let commits = repo
