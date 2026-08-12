@@ -216,7 +216,9 @@ mod tests {
     fn test_ignored_gemini_hook_produces_no_checkpoint_requests() {
         let input = make_gemini_hook_input("AfterTool", "read_file");
         let requests = crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
-            "gemini", &input,
+            "gemini",
+            &input,
+            &Default::default(),
         )
         .unwrap();
         assert!(requests.is_empty());

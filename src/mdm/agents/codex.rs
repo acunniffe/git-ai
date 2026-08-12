@@ -956,11 +956,22 @@ impl HookInstaller for CodexInstaller {
 
         let mut checks = Vec::with_capacity(profile_roots.len());
         for profile_root in profile_roots {
-            checks.push(Self::check_hooks_at(
-                params,
-                &profile_root,
-                config.codex_hooks_format(),
-            )?);
+            match Self::check_hooks_at(params, &profile_root, config.codex_hooks_format()) {
+                Ok(check) => checks.push(check),
+                Err(error) => {
+                    eprintln!(
+                        "Warning: Failed to check Codex hooks for profile {}: {}",
+                        profile_root.display(),
+                        error
+                    );
+                    // 保留失败状态以触发后续安装，同时继续检查其余 profile。
+                    checks.push(HookCheckResult {
+                        tool_installed: true,
+                        hooks_installed: false,
+                        hooks_up_to_date: false,
+                    });
+                }
+            }
         }
 
         Ok(HookCheckResult {
@@ -978,13 +989,37 @@ impl HookInstaller for CodexInstaller {
     ) -> Result<Option<String>, GitAiError> {
         let config = Config::fresh();
         let mut diffs = Vec::new();
+        let mut any_profile_succeeded = false;
+        let mut first_error = None;
         for profile_root in install_profile_roots(AgentProfile::Codex, &config) {
-            if let Some(diff) =
-                Self::install_hooks_at(params, dry_run, &profile_root, config.codex_hooks_format())?
-            {
-                diffs.push(format!("{}:\n{}", profile_root.display(), diff));
+            match Self::install_hooks_at(
+                params,
+                dry_run,
+                &profile_root,
+                config.codex_hooks_format(),
+            ) {
+                Ok(diff) => {
+                    any_profile_succeeded = true;
+                    if let Some(diff) = diff {
+                        diffs.push(format!("{}:\n{}", profile_root.display(), diff));
+                    }
+                }
+                Err(error) => {
+                    eprintln!(
+                        "Warning: Failed to install Codex hooks for profile {}: {}",
+                        profile_root.display(),
+                        error
+                    );
+                    // 单个损坏的额外 profile 不应阻塞其余有效 profile 的 hook 安装。
+                    first_error.get_or_insert(error);
+                }
             }
         }
+
+        if !any_profile_succeeded && let Some(error) = first_error {
+            return Err(error);
+        }
+
         Ok((!diffs.is_empty()).then(|| diffs.join("\n")))
     }
 
@@ -1556,6 +1591,58 @@ codex_hooks = true
                     "hook command should identify its own profile root: {content}"
                 );
             }
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_install_hooks_continues_after_malformed_configured_profile() {
+        with_temp_home(|home| {
+            let default_home = home.join(".codex");
+            let malformed_home = home.join(".codex-broken");
+            for profile in [&default_home, &malformed_home] {
+                fs::create_dir_all(profile).unwrap();
+            }
+            fs::write(default_home.join("config.toml"), "model = \"gpt-5\"\n").unwrap();
+            fs::write(
+                malformed_home.join("config.toml"),
+                "this is not valid = [toml",
+            )
+            .unwrap();
+            fs::create_dir_all(home.join(".git-ai")).unwrap();
+            fs::write(
+                home.join(".git-ai/config.json"),
+                serde_json::json!({
+                    "agent_profile_roots": {
+                        "codex": [malformed_home]
+                    }
+                })
+                .to_string(),
+            )
+            .unwrap();
+
+            let installer = CodexInstaller;
+            let params = HookInstallerParams {
+                binary_path: test_binary_path(),
+            };
+            let check = installer
+                .check_hooks(&params)
+                .expect("one malformed profile should not block checking remaining profiles");
+            assert!(!check.hooks_installed);
+            assert!(!check.hooks_up_to_date);
+
+            installer
+                .install_hooks(&params, false)
+                .expect("one malformed profile should not block remaining profiles");
+
+            let default_config = CodexInstaller::parse_config_toml(
+                &fs::read_to_string(default_home.join("config.toml")).unwrap(),
+            )
+            .unwrap();
+            assert!(
+                CodexInstaller::config_has_inline_hooks(&default_config),
+                "official default profile should still receive hooks"
+            );
         });
     }
 

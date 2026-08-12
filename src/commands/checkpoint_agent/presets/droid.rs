@@ -358,7 +358,9 @@ mod tests {
     fn test_ignored_droid_hook_produces_no_checkpoint_requests() {
         let input = make_droid_hook_input("PostToolUse", "Read");
         let requests = crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
-            "droid", &input,
+            "droid",
+            &input,
+            &Default::default(),
         )
         .unwrap();
         assert!(requests.is_empty());
