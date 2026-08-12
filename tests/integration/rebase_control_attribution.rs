@@ -1,19 +1,26 @@
-use crate::repos::test_file::ExpectedLineExt;
+use crate::repos::test_file::{ExpectedLine, ExpectedLineExt};
 use crate::repos::test_repo::TestRepo;
 use std::fs;
+
+fn assert_committed(repo: &TestRepo, path: &str, lines: Vec<ExpectedLine>) {
+    repo.filename(path).assert_committed_lines(lines);
+}
 
 fn conflicting_rebase_repo() -> TestRepo {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    assert_committed(&repo, "conflict.txt", lines!["base".human()]);
     let main = repo.current_branch();
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     let mut file = repo.filename("conflict.txt");
     file.set_contents_no_stage(lines!["feature AI".ai()]);
     repo.stage_all_and_commit("Feature AI").unwrap();
+    assert_committed(&repo, "conflict.txt", lines!["feature AI".ai()]);
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("conflict.txt"), "main human\n").unwrap();
     repo.stage_all_and_commit("Main human").unwrap();
+    assert_committed(&repo, "conflict.txt", lines!["main human".human()]);
     repo.git(&["checkout", "feature"]).unwrap();
     assert!(repo.git(&["rebase", &main]).is_err());
     repo
@@ -78,20 +85,24 @@ fn test_git_rebase_update_refs_moves_intermediate_branch_and_notes() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    assert_committed(&repo, "base.txt", lines!["base".human()]);
     let main = repo.current_branch();
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     let mut first = repo.filename("first.txt");
     first.set_contents_no_stage(lines!["first AI".ai()]);
     repo.stage_all_and_commit("First feature AI").unwrap();
+    assert_committed(&repo, "first.txt", lines!["first AI".ai()]);
     repo.git(&["branch", "intermediate"]).unwrap();
     let old_intermediate = repo.git(&["rev-parse", "intermediate"]).unwrap();
     let mut second = repo.filename("second.txt");
     second.set_contents_no_stage(lines!["second AI".ai()]);
     repo.stage_all_and_commit("Second feature AI").unwrap();
+    assert_committed(&repo, "second.txt", lines!["second AI".ai()]);
 
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("main.txt"), "main human\n").unwrap();
     repo.stage_all_and_commit("Advance main").unwrap();
+    assert_committed(&repo, "main.txt", lines!["main human".human()]);
     repo.git(&["checkout", "feature"]).unwrap();
     repo.git(&["rebase", "--update-refs", &main]).unwrap();
 
@@ -112,23 +123,28 @@ fn test_git_rebase_merges_update_refs_moves_side_branch_with_attribution() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    assert_committed(&repo, "base.txt", lines!["base".human()]);
     let main = repo.current_branch();
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     let mut feature = repo.filename("feature.txt");
     feature.set_contents_no_stage(lines!["feature AI".ai()]);
     repo.stage_all_and_commit("Feature AI").unwrap();
+    assert_committed(&repo, "feature.txt", lines!["feature AI".ai()]);
     repo.git(&["checkout", "-b", "side"]).unwrap();
     let mut side = repo.filename("side.txt");
     side.set_contents_no_stage(lines!["side AI".ai()]);
     repo.stage_all_and_commit("Side AI").unwrap();
+    assert_committed(&repo, "side.txt", lines!["side AI".ai()]);
     let old_side = repo.git(&["rev-parse", "side"]).unwrap();
     repo.git(&["checkout", "feature"]).unwrap();
     repo.git(&["merge", "--no-ff", "-m", "Merge side", "side"])
         .unwrap();
+    assert_committed(&repo, "side.txt", lines!["side AI".ai()]);
 
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("main.txt"), "main human\n").unwrap();
     repo.stage_all_and_commit("Advance main").unwrap();
+    assert_committed(&repo, "main.txt", lines!["main human".human()]);
     repo.git(&["checkout", "feature"]).unwrap();
     repo.git(&["rebase", "--rebase-merges", "--update-refs", &main])
         .unwrap();

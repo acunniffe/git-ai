@@ -1,21 +1,28 @@
-use crate::repos::test_file::ExpectedLineExt;
+use crate::repos::test_file::{ExpectedLine, ExpectedLineExt};
 use crate::repos::test_repo::TestRepo;
 use std::fs;
+
+fn assert_committed(repo: &TestRepo, path: &str, lines: Vec<ExpectedLine>) {
+    repo.filename(path).assert_committed_lines(lines);
+}
 
 fn conflicting_cherry_pick_repo() -> (TestRepo, String) {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    assert_committed(&repo, "conflict.txt", lines!["base".human()]);
     let main = repo.current_branch();
 
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     let mut file = repo.filename("conflict.txt");
     file.set_contents_no_stage(lines!["feature AI".ai()]);
     let source = repo.stage_all_and_commit("Feature AI").unwrap().commit_sha;
+    assert_committed(&repo, "conflict.txt", lines!["feature AI".ai()]);
 
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("conflict.txt"), "main human\n").unwrap();
     repo.stage_all_and_commit("Main human").unwrap();
+    assert_committed(&repo, "conflict.txt", lines!["main human".human()]);
     (repo, source)
 }
 
@@ -87,11 +94,13 @@ fn test_git_cherry_pick_x_preserves_source_attribution() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    assert_committed(&repo, "base.txt", lines!["base".human()]);
     let main = repo.current_branch();
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     let mut file = repo.filename("picked.txt");
     file.set_contents_no_stage(lines!["picked AI".ai()]);
     let source = repo.stage_all_and_commit("Feature AI").unwrap().commit_sha;
+    assert_committed(&repo, "picked.txt", lines!["picked AI".ai()]);
     repo.git(&["checkout", &main]).unwrap();
 
     repo.git(&["cherry-pick", "-x", &source]).unwrap();
@@ -104,6 +113,7 @@ fn test_git_cherry_pick_stdin_preserves_every_source_commit() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    assert_committed(&repo, "base.txt", lines!["base".human()]);
     let main = repo.current_branch();
     repo.git(&["checkout", "-b", "feature"]).unwrap();
 
@@ -113,12 +123,14 @@ fn test_git_cherry_pick_stdin_preserves_every_source_commit() {
         .stage_all_and_commit("First stdin source")
         .unwrap()
         .commit_sha;
+    assert_committed(&repo, "first.txt", lines!["first stdin AI".ai()]);
     let mut second = repo.filename("second.txt");
     second.set_contents_no_stage(lines!["second stdin AI".ai()]);
     let second_source = repo
         .stage_all_and_commit("Second stdin source")
         .unwrap()
         .commit_sha;
+    assert_committed(&repo, "second.txt", lines!["second stdin AI".ai()]);
     repo.git(&["checkout", &main]).unwrap();
 
     let input = format!("{first_source}\n{second_source}\n");
@@ -136,18 +148,22 @@ fn test_git_cherry_pick_mainline_preserves_merged_ai_source() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    assert_committed(&repo, "base.txt", lines!["base".human()]);
     let main = repo.current_branch();
     repo.git(&["branch", "target"]).unwrap();
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     let mut merged = repo.filename("merged.txt");
     merged.set_contents_no_stage(lines!["merged AI".ai()]);
     repo.stage_all_and_commit("Feature AI").unwrap();
+    assert_committed(&repo, "merged.txt", lines!["merged AI".ai()]);
 
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("main.txt"), "main human\n").unwrap();
     repo.stage_all_and_commit("Diverge main").unwrap();
+    assert_committed(&repo, "main.txt", lines!["main human".human()]);
     repo.git(&["merge", "--no-ff", "-m", "Merge feature", "feature"])
         .unwrap();
+    assert_committed(&repo, "merged.txt", lines!["merged AI".ai()]);
     let merge_commit = repo.git(&["rev-parse", "HEAD"]).unwrap();
 
     repo.git(&["checkout", "target"]).unwrap();
@@ -162,6 +178,7 @@ fn test_git_cherry_pick_multiple_mainline_merges_preserves_each_ai_source() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    assert_committed(&repo, "base.txt", lines!["base".human()]);
     let main = repo.current_branch();
     repo.git(&["branch", "target"]).unwrap();
 
@@ -169,22 +186,28 @@ fn test_git_cherry_pick_multiple_mainline_merges_preserves_each_ai_source() {
     let mut first = repo.filename("first-merge.txt");
     first.set_contents_no_stage(lines!["first merged AI".ai()]);
     repo.stage_all_and_commit("First feature AI").unwrap();
+    assert_committed(&repo, "first-merge.txt", lines!["first merged AI".ai()]);
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("main-one.txt"), "main one\n").unwrap();
     repo.stage_all_and_commit("First main divergence").unwrap();
+    assert_committed(&repo, "main-one.txt", lines!["main one".human()]);
     repo.git(&["merge", "--no-ff", "-m", "First merge", "feature-one"])
         .unwrap();
+    assert_committed(&repo, "first-merge.txt", lines!["first merged AI".ai()]);
     let first_merge = repo.git(&["rev-parse", "HEAD"]).unwrap();
 
     repo.git(&["checkout", "-b", "feature-two"]).unwrap();
     let mut second = repo.filename("second-merge.txt");
     second.set_contents_no_stage(lines!["second merged AI".ai()]);
     repo.stage_all_and_commit("Second feature AI").unwrap();
+    assert_committed(&repo, "second-merge.txt", lines!["second merged AI".ai()]);
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("main-two.txt"), "main two\n").unwrap();
     repo.stage_all_and_commit("Second main divergence").unwrap();
+    assert_committed(&repo, "main-two.txt", lines!["main two".human()]);
     repo.git(&["merge", "--no-ff", "-m", "Second merge", "feature-two"])
         .unwrap();
+    assert_committed(&repo, "second-merge.txt", lines!["second merged AI".ai()]);
     let second_merge = repo.git(&["rev-parse", "HEAD"]).unwrap();
 
     repo.git(&["checkout", "target"]).unwrap();
@@ -207,10 +230,12 @@ fn test_git_cherry_pick_allow_empty_carries_unrelated_ai_checkpoint() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    assert_committed(&repo, "base.txt", lines!["base".human()]);
     let main = repo.current_branch();
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     repo.git(&["commit", "--allow-empty", "-m", "Intentional empty source"])
         .unwrap();
+    assert_committed(&repo, "base.txt", lines!["base".human()]);
     let empty_source = repo.git(&["rev-parse", "HEAD"]).unwrap();
     repo.git(&["checkout", &main]).unwrap();
 
@@ -231,6 +256,7 @@ fn test_git_cherry_pick_empty_drop_and_keep_carry_unrelated_ai_checkpoint() {
         let repo = TestRepo::new();
         fs::write(repo.path().join("same.txt"), "base\n").unwrap();
         repo.stage_all_and_commit("Initial commit").unwrap();
+        assert_committed(&repo, "same.txt", lines!["base".human()]);
         let main = repo.current_branch();
         repo.git(&["checkout", "-b", "feature"]).unwrap();
         let mut same = repo.filename("same.txt");
@@ -239,11 +265,13 @@ fn test_git_cherry_pick_empty_drop_and_keep_carry_unrelated_ai_checkpoint() {
             .stage_all_and_commit("Feature change")
             .unwrap()
             .commit_sha;
+        assert_committed(&repo, "same.txt", lines!["already applied".ai()]);
 
         repo.git(&["checkout", &main]).unwrap();
         fs::write(repo.path().join("same.txt"), "already applied").unwrap();
         repo.stage_all_and_commit("Apply same change as human")
             .unwrap();
+        assert_committed(&repo, "same.txt", lines!["already applied".human()]);
         let mut dirty = repo.filename("dirty.txt");
         dirty.set_contents_no_stage(lines!["dirty AI around empty policy".ai()]);
 
@@ -272,6 +300,7 @@ fn cherry_pick_mainline_spawn_count_is_constant_in_merge_count() {
             TestRepo::new_with_daemon_env(&[("GIT_AI_SPAWN_LOG", log_path.to_str().unwrap())]);
         fs::write(repo.path().join("base.txt"), "base\n").unwrap();
         repo.stage_all_and_commit("Initial commit").unwrap();
+        assert_committed(&repo, "base.txt", lines!["base".human()]);
         let main = repo.current_branch();
         repo.git(&["branch", "target"]).unwrap();
         let mut merges = Vec::new();
@@ -283,6 +312,7 @@ fn cherry_pick_mainline_spawn_count_is_constant_in_merge_count() {
             file.set_contents_no_stage(lines![format!("AI {index}").ai()]);
             repo.stage_all_and_commit(&format!("Feature AI {index}"))
                 .unwrap();
+            assert_committed(&repo, &filename, lines![format!("AI {index}").ai()]);
             repo.git(&["checkout", &main]).unwrap();
             fs::write(
                 repo.path().join(format!("main-{index}.txt")),
@@ -291,6 +321,11 @@ fn cherry_pick_mainline_spawn_count_is_constant_in_merge_count() {
             .unwrap();
             repo.stage_all_and_commit(&format!("Main divergence {index}"))
                 .unwrap();
+            assert_committed(
+                &repo,
+                &format!("main-{index}.txt"),
+                lines![format!("main {index}").human()],
+            );
             repo.git(&[
                 "merge",
                 "--no-ff",
@@ -299,6 +334,7 @@ fn cherry_pick_mainline_spawn_count_is_constant_in_merge_count() {
                 &feature,
             ])
             .unwrap();
+            assert_committed(&repo, &filename, lines![format!("AI {index}").ai()]);
             merges.push(repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string());
         }
         repo.git(&["checkout", "target"]).unwrap();
