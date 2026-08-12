@@ -281,16 +281,25 @@ fn test_git_am_nonzero_after_successful_prefix_attributes_prefix_commit() {
         .stage_all_and_commit("Patch base")
         .expect("source base commit should succeed")
         .commit_sha;
+    source
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["base value".human()]);
     fs::write(source.path().join("prefix.txt"), "successful prefix\n")
         .expect("prefix source file should be writable");
     source
         .stage_all_and_commit("Successful prefix")
         .expect("prefix source commit should succeed");
+    source
+        .filename("prefix.txt")
+        .assert_committed_lines(lines!["successful prefix".human()]);
     fs::write(source.path().join("conflict.txt"), "patch side\n")
         .expect("conflicting source file should be writable");
     source
         .stage_all_and_commit("Conflicting tail")
         .expect("conflicting source commit should succeed");
+    source
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["patch side".human()]);
     let range = format!("{source_base}..HEAD");
     let patch = source
         .git_og(&["format-patch", "--stdout", &range])
@@ -307,12 +316,18 @@ fn test_git_am_nonzero_after_successful_prefix_attributes_prefix_commit() {
     target
         .stage_all_and_commit("Target base")
         .expect("target base commit should succeed");
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["base value".human()]);
     fs::write(target.path().join("conflict.txt"), "target side\n")
         .expect("target divergence should be writable");
     let head_before_am = target
         .stage_all_and_commit("Target divergence")
         .expect("target divergence commit should succeed")
         .commit_sha;
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["target side".human()]);
 
     let transcript_path = target.path().join("codex-transcript.jsonl");
     fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
@@ -576,16 +591,25 @@ fn test_git_am_abort_restores_head_and_discards_abandoned_working_log() {
         .stage_all_and_commit("Patch base")
         .expect("source base commit should succeed")
         .commit_sha;
+    source
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["base value".human()]);
     fs::write(source.path().join("prefix.txt"), "successful prefix\n")
         .expect("prefix file should write");
     source
         .stage_all_and_commit("Successful prefix")
         .expect("prefix source commit should succeed");
+    source
+        .filename("prefix.txt")
+        .assert_committed_lines(lines!["successful prefix".human()]);
     fs::write(source.path().join("conflict.txt"), "patch side\n")
         .expect("conflicting source file should write");
     source
         .stage_all_and_commit("Conflicting tail")
         .expect("conflicting source commit should succeed");
+    source
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["patch side".human()]);
     let patch = source
         .git_og(&["format-patch", "--stdout", &format!("{source_base}..HEAD")])
         .expect("format-patch should succeed");
@@ -601,12 +625,18 @@ fn test_git_am_abort_restores_head_and_discards_abandoned_working_log() {
     target
         .stage_all_and_commit("Target base")
         .expect("target base commit should succeed");
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["base value".human()]);
     fs::write(target.path().join("conflict.txt"), "target side\n")
         .expect("target divergence should write");
     let head_before_am = target
         .stage_all_and_commit("Target divergence")
         .expect("target divergence commit should succeed")
         .commit_sha;
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["target side".human()]);
     assert!(
         target.git(&["am", patch_path.to_str().unwrap()]).is_err(),
         "mailbox tail should conflict"
@@ -617,6 +647,9 @@ fn test_git_am_abort_restores_head_and_discards_abandoned_working_log() {
         .trim()
         .to_string();
     assert_ne!(abandoned_tip, head_before_am);
+    target
+        .filename("prefix.txt")
+        .assert_committed_lines(lines!["successful prefix".human()]);
 
     fs::write(target.path().join("scratch.txt"), "conflict phase ai\n")
         .expect("scratch file should write");
@@ -639,6 +672,9 @@ fn test_git_am_abort_restores_head_and_discards_abandoned_working_log() {
             .trim(),
         head_before_am
     );
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["target side".human()]);
     let repository = find_repository_in_path(target.path().to_str().unwrap())
         .expect("target repository should resolve after abort");
     assert!(
@@ -656,6 +692,9 @@ fn test_git_am_skip_inside_codex_bash_attributes_remaining_tail_only() {
         .stage_all_and_commit("Patch base")
         .expect("source base should commit")
         .commit_sha;
+    source
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["base value".human()]);
     fs::write(source.path().join("conflict.txt"), "patch side\n")
         .expect("conflicting source should write");
     source
@@ -725,15 +764,24 @@ fn test_git_am_quit_keeps_successful_prefix_and_its_attribution() {
         .stage_all_and_commit("Patch base")
         .expect("source base should commit")
         .commit_sha;
+    source
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["base value".human()]);
     fs::write(source.path().join("prefix.txt"), "prefix before quit\n")
         .expect("prefix should write");
     source
         .stage_all_and_commit("Prefix before quit")
         .expect("prefix should commit");
+    source
+        .filename("prefix.txt")
+        .assert_committed_lines(lines!["prefix before quit".human()]);
     fs::write(source.path().join("conflict.txt"), "patch side\n").expect("conflict should write");
     source
         .stage_all_and_commit("Conflict before quit")
         .expect("conflict should commit");
+    source
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["patch side".human()]);
     let patch = source
         .git_og(&["format-patch", "--stdout", &format!("{source_base}..HEAD")])
         .expect("format-patch should succeed");
@@ -749,11 +797,17 @@ fn test_git_am_quit_keeps_successful_prefix_and_its_attribution() {
     target
         .stage_all_and_commit("Target base")
         .expect("target base should commit");
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["base value".human()]);
     fs::write(target.path().join("conflict.txt"), "target side\n")
         .expect("target divergence should write");
     target
         .stage_all_and_commit("Target divergence")
         .expect("target divergence should commit");
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["target side".human()]);
     let transcript_path = target.path().join("codex-transcript.jsonl");
     fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript_path)
         .expect("transcript fixture should copy");
@@ -773,6 +827,12 @@ fn test_git_am_quit_keeps_successful_prefix_and_its_attribution() {
         .trim()
         .to_string();
     assert_codex_bash_session(&target, &prefix_commit);
+    target
+        .filename("prefix.txt")
+        .assert_committed_lines(lines!["prefix before quit".ai()]);
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["target side".human()]);
     let prefix_note_before_show = target
         .read_authorship_note(&prefix_commit)
         .expect("prefix note should exist");
@@ -803,6 +863,12 @@ fn test_git_am_quit_keeps_successful_prefix_and_its_attribution() {
         prefix_commit
     );
     assert_codex_bash_session(&target, &prefix_commit);
+    target
+        .filename("prefix.txt")
+        .assert_committed_lines(lines!["prefix before quit".ai()]);
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["target side".human()]);
     assert!(
         target.git(&["am", "--show-current-patch"]).is_err(),
         "quit should remove the am state"
