@@ -477,6 +477,7 @@ where
                 before_external_recovery: context.before_external_recovery,
                 bash_command_window: context.bash_command_window,
                 bash_scope_to_pre_index: context.bash_scope_to_pre_index,
+                allow_edge_recovery: !parent_working_log.is_empty(),
             },
         )?;
         authorship_log.metadata.base_commit_sha = commit_sha.clone();
@@ -908,6 +909,7 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
             before_external_recovery,
             bash_command_window: None,
             bash_scope_to_pre_index: false,
+            allow_edge_recovery: true,
         },
     )?;
     authorship_log.metadata.base_commit_sha = amended_commit.to_string();

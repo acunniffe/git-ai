@@ -106,6 +106,7 @@ pub fn handle_stash_create(
     head_sha: &str,
     pathspecs: Vec<String>,
     keep_index: bool,
+    consume_live: bool,
 ) -> Result<(), GitAiError> {
     cleanup_legacy_stashes_dir(repo);
 
@@ -125,7 +126,14 @@ pub fn handle_stash_create(
     let json = serde_json::to_string_pretty(&metadata)?;
     fs::write(&metadata_path, json)?;
 
-    partition_stash_attributions(repo, stash_sha, head_sha, &pathspecs, keep_index)?;
+    partition_stash_attributions(
+        repo,
+        stash_sha,
+        head_sha,
+        &pathspecs,
+        keep_index,
+        consume_live,
+    )?;
 
     Ok(())
 }
@@ -136,6 +144,7 @@ fn partition_stash_attributions(
     head_sha: &str,
     pathspecs: &[String],
     keep_index: bool,
+    consume_live: bool,
 ) -> Result<(), GitAiError> {
     use crate::authorship::virtual_attribution::VirtualAttributions;
 
@@ -174,6 +183,13 @@ fn partition_stash_attributions(
     );
     let stash_log = working_log_for_dir(repo, stash_entry_dir(repo, stash_sha), head_sha);
     write_initial_with_contents(&stash_log, stash_initial, stashed_contents.clone())?;
+
+    // `git stash store` only publishes a commit previously created by
+    // `git stash create`; it does not touch the index or worktree. Archive a
+    // restorable attribution snapshot without consuming the live provenance.
+    if !consume_live {
+        return Ok(());
+    }
 
     // Path-limited stashes leave every non-matching path untouched. Preserve
     // those exact persisted checkpoints instead of rebuilding from the live

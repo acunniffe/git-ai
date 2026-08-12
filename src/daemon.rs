@@ -7632,7 +7632,7 @@ impl ActorDaemonCoordinator {
                                         let pathspecs = Self::stash_pathspecs_from_command(cmd);
                                         let keep_index = Self::stash_keeps_index(cmd);
                                         crate::authorship::rewrite_stash::handle_stash_create(
-                                            &repo, stash_sha, head_sha, pathspecs, keep_index,
+                                            &repo, stash_sha, head_sha, pathspecs, keep_index, true,
                                         )?;
                                     }
                                 }
@@ -7648,6 +7648,7 @@ impl ActorDaemonCoordinator {
                                         head_sha,
                                         Vec::new(),
                                         true,
+                                        false,
                                     )?;
                                 }
                             }

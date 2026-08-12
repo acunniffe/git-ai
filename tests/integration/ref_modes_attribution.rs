@@ -8,7 +8,6 @@ fn repo_with_pending_ai() -> TestRepo {
     repo.stage_all_and_commit("initial").unwrap();
     let mut pending = repo.filename("pending.txt");
     pending.set_contents(vec!["pending ref-safe AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     repo
 }
 
@@ -35,7 +34,6 @@ fn auxiliary_notes_add_append_copy_remove_and_prune_preserve_authorship() {
     let repo = TestRepo::new();
     let mut source = repo.filename("source.txt");
     source.set_contents(vec!["source AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     let source_commit = repo.stage_all_and_commit("source").unwrap().commit_sha;
     repo.git(&["commit", "--allow-empty", "-m", "target"])
         .unwrap();
@@ -80,7 +78,6 @@ fn symbolic_ref_head_to_different_tip_carries_pending_ai_to_new_base() {
 
     let mut pending = repo.filename("pending.txt");
     pending.set_contents(vec!["pending ref-safe AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     repo.git(&["symbolic-ref", "HEAD", "refs/heads/other"])
         .unwrap();
     assert_eq!(repo.current_branch(), "other");
@@ -92,7 +89,6 @@ fn replace_create_graft_and_delete_preserve_pending_ai_and_source_note() {
     let repo = TestRepo::new();
     let mut source = repo.filename("source.txt");
     source.set_contents(vec!["source AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     let first = repo.stage_all_and_commit("source").unwrap().commit_sha;
     repo.git(&["commit", "--allow-empty", "-m", "replacement"])
         .unwrap();
@@ -105,7 +101,6 @@ fn replace_create_graft_and_delete_preserve_pending_ai_and_source_note() {
 
     let mut pending = repo.filename("pending.txt");
     pending.set_contents(vec!["pending ref-safe AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     commit_and_assert_pending(&repo, "after replace lifecycle");
     source.assert_lines_and_blame(vec!["source AI".ai()]);
 }

@@ -1031,18 +1031,26 @@ fn test_delayed_multi_cherry_pick_trace_replay_starts_at_first_pick_when_interme
 
     file.set_contents(lines!["base"]);
     let base = repo.stage_all_and_commit("base").unwrap();
+    file.assert_committed_lines(lines!["base".human()]);
     let default_branch = repo.current_branch();
 
     repo.git(&["checkout", "-b", "feature"]).unwrap();
-    file.set_contents(lines!["base", "first picked ai".ai()]);
+    // Anchor the adjacent base line as human before replacing a placeholder
+    // with AI content. A direct adjacent AI insertion is a single diff hunk
+    // and would intentionally attribute the whole hunk to the checkpoint.
+    file.insert_at(1, lines!["first picked ai".human()]);
+    file.replace_at(1, "||__AI LINE__ PENDING__||".human());
+    file.replace_at(1, "first picked ai".ai());
     repo.stage_all_and_commit("first picked ai").unwrap();
+    file.assert_committed_lines(lines!["base".human(), "first picked ai".ai()]);
     let source_one = head_sha(&repo);
-    file.set_contents(lines![
-        "base",
+    file.insert_at(2, lines!["second picked ai".ai()]);
+    repo.stage_all_and_commit("second picked ai").unwrap();
+    file.assert_committed_lines(lines![
+        "base".human(),
         "first picked ai".ai(),
         "second picked ai".ai(),
     ]);
-    repo.stage_all_and_commit("second picked ai").unwrap();
     let source_two = head_sha(&repo);
 
     repo.git(&["checkout", &default_branch]).unwrap();
@@ -1149,18 +1157,23 @@ fn test_delayed_pull_rebase_trace_replay_starts_at_start_when_intermediate_ref_k
 
     file.set_contents(lines!["base"]);
     let initial = local.stage_all_and_commit("initial").unwrap();
+    file.assert_committed_lines(lines!["base".human()]);
     local
         .git(&["push", "-u", "origin", "HEAD"])
         .expect("push initial commit should succeed");
 
-    file.set_contents(lines!["base", "first local ai".ai()]);
+    file.insert_at(1, lines!["first local ai".human()]);
+    file.replace_at(1, "||__AI LINE__ PENDING__||".human());
+    file.replace_at(1, "first local ai".ai());
     local.stage_all_and_commit("first local ai").unwrap();
-    file.set_contents(lines![
-        "base",
+    file.assert_committed_lines(lines!["base".human(), "first local ai".ai()]);
+    file.insert_at(2, lines!["second local ai".ai()]);
+    let local_tip = local.stage_all_and_commit("second local ai").unwrap();
+    file.assert_committed_lines(lines![
+        "base".human(),
         "first local ai".ai(),
         "second local ai".ai(),
     ]);
-    let local_tip = local.stage_all_and_commit("second local ai").unwrap();
     let branch = local.current_branch();
 
     local
