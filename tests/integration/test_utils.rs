@@ -2,6 +2,35 @@
 
 use std::path::PathBuf;
 
+use crate::repos::test_repo::TestRepo;
+use serde_json::json;
+
+pub fn isolated_bash_history_db_path() -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().expect("failed to create isolated bash history db dir");
+    let path = dir.path().join("bash-history.db");
+    (dir, path.to_string_lossy().to_string())
+}
+
+pub fn codex_bash_hook_input(
+    repo: &TestRepo,
+    transcript_path: &std::path::Path,
+    session_id: &str,
+    tool_use_id: &str,
+    hook_event_name: &str,
+    command: &str,
+) -> String {
+    json!({
+        "session_id": session_id,
+        "cwd": repo.canonical_path().to_string_lossy().to_string(),
+        "hook_event_name": hook_event_name,
+        "tool_name": "Bash",
+        "tool_use_id": tool_use_id,
+        "tool_input": { "command": command },
+        "transcript_path": transcript_path.to_string_lossy().to_string()
+    })
+    .to_string()
+}
+
 /// Get the path to a test fixture file
 ///
 /// # Example

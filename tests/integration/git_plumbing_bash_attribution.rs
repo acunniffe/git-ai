@@ -1,38 +1,32 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::fixture_path;
-use serde_json::json;
+use crate::test_utils::{codex_bash_hook_input, fixture_path, isolated_bash_history_db_path};
 use std::fs;
 
 fn setup() -> (tempfile::TempDir, TestRepo, std::path::PathBuf) {
-    let db_dir = tempfile::tempdir().unwrap();
-    let db_value = db_dir
-        .path()
-        .join("bash-history.db")
-        .to_string_lossy()
-        .to_string();
+    let (db_dir, db_value) = isolated_bash_history_db_path();
     let repo = TestRepo::new_with_daemon_env(&[(
         "GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH",
         db_value.as_str(),
     )]);
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    let mut base = repo.filename("base.txt");
+    base.assert_committed_lines(lines!["base".unattributed_human()]);
     let transcript = repo.path().join("codex-transcript.jsonl");
     fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript).unwrap();
     (db_dir, repo, transcript)
 }
 
 fn hook(repo: &TestRepo, transcript: &std::path::Path, event: &str, command: &str) {
-    let input = json!({
-        "session_id": "plumbing-bash-session",
-        "cwd": repo.canonical_path().to_string_lossy().to_string(),
-        "hook_event_name": event,
-        "tool_name": "Bash",
-        "tool_use_id": "plumbing-bash-tool",
-        "tool_input": { "command": command },
-        "transcript_path": transcript.to_string_lossy().to_string()
-    })
-    .to_string();
+    let input = codex_bash_hook_input(
+        repo,
+        transcript,
+        "plumbing-bash-session",
+        "plumbing-bash-tool",
+        event,
+        command,
+    );
     repo.git_ai(&["checkpoint", "codex", "--hook-input", &input])
         .unwrap();
 }

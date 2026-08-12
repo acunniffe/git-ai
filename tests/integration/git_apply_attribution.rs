@@ -1,14 +1,10 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::fixture_path;
-use serde_json::json;
+use crate::test_utils::{
+    codex_bash_hook_input as shared_codex_bash_hook_input, fixture_path,
+    isolated_bash_history_db_path,
+};
 use std::fs;
-
-fn isolated_bash_history_db_path() -> (tempfile::TempDir, String) {
-    let dir = tempfile::tempdir().expect("failed to create isolated bash history db dir");
-    let path = dir.path().join("bash-history.db");
-    (dir, path.to_string_lossy().to_string())
-}
 
 fn codex_bash_hook_input(
     repo: &TestRepo,
@@ -16,16 +12,14 @@ fn codex_bash_hook_input(
     hook_event_name: &str,
     command: &str,
 ) -> String {
-    json!({
-        "session_id": "git-apply-bash-session",
-        "cwd": repo.canonical_path().to_string_lossy().to_string(),
-        "hook_event_name": hook_event_name,
-        "tool_name": "Bash",
-        "tool_use_id": "git-apply-bash-tool",
-        "tool_input": { "command": command },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string()
+    shared_codex_bash_hook_input(
+        repo,
+        transcript_path,
+        "git-apply-bash-session",
+        "git-apply-bash-tool",
+        hook_event_name,
+        command,
+    )
 }
 
 fn begin_codex_bash(repo: &TestRepo, command: &str) -> std::path::PathBuf {
@@ -56,6 +50,8 @@ fn test_git_apply_cached_then_commit_attributes_only_applied_patch_to_ai() {
     target
         .stage_all_and_commit("Initial target commit")
         .expect("target commit should succeed");
+    let mut base = target.filename("base.txt");
+    base.assert_committed_lines(lines!["existing base".unattributed_human()]);
 
     // This work was staged before the AI tool call and must not be claimed by
     // the overlapping Bash session.
@@ -129,6 +125,11 @@ fn test_git_apply_index_preserves_pre_staged_human_line_in_same_file() {
     target
         .stage_all_and_commit("Initial target commit")
         .expect("target commit should succeed");
+    let mut mixed = target.filename("mixed.txt");
+    mixed.assert_committed_lines(lines![
+        "base one".unattributed_human(),
+        "base two".unattributed_human(),
+    ]);
 
     fs::write(target.path().join("mixed.txt"), "human staged\nbase two\n")
         .expect("human edit should be writable");
@@ -175,7 +176,6 @@ fn test_git_apply_index_preserves_pre_staged_human_line_in_same_file() {
         .expect("codex post-hook checkpoint should succeed");
     target.sync_daemon();
 
-    let mut mixed = target.filename("mixed.txt");
     mixed.assert_committed_lines(lines![
         "human staged".unattributed_human(),
         "changed in index and worktree by AI".ai(),
@@ -193,6 +193,8 @@ fn test_git_apply_check_failure_does_not_attribute_later_human_commit() {
     target
         .stage_all_and_commit("Initial target commit")
         .expect("target commit should succeed");
+    let mut base = target.filename("base.txt");
+    base.assert_committed_lines(lines!["base".unattributed_human()]);
 
     let patch_dir = tempfile::tempdir().expect("patch tempdir should be created");
     let patch_path = patch_dir.path().join("does-not-apply.patch");
@@ -248,6 +250,11 @@ fn test_git_apply_worktree_then_later_commit_retains_ai_line() {
     target
         .stage_all_and_commit("Initial target commit")
         .expect("target commit should succeed");
+    let mut plain = target.filename("plain.txt");
+    plain.assert_committed_lines(lines![
+        "human base".unattributed_human(),
+        "old value".unattributed_human(),
+    ]);
     let patch_dir = tempfile::tempdir().expect("patch tempdir should be created");
     let patch_path = patch_dir.path().join("plain.patch");
     fs::write(
@@ -283,7 +290,6 @@ fn test_git_apply_worktree_then_later_commit_retains_ai_line() {
         .stage_all_and_commit("Commit applied worktree patch")
         .expect("later commit should succeed");
 
-    let mut plain = target.filename("plain.txt");
     plain.assert_committed_lines(lines![
         "human base".unattributed_human(),
         "AI patched value".ai()
@@ -297,6 +303,8 @@ fn test_git_apply_check_success_is_read_only() {
     target
         .stage_all_and_commit("Initial target commit")
         .expect("target commit should succeed");
+    let mut checked = target.filename("checked.txt");
+    checked.assert_committed_lines(lines!["old".unattributed_human()]);
     let head_before = target
         .git(&["rev-parse", "HEAD"])
         .expect("HEAD should resolve");
@@ -341,6 +349,8 @@ fn test_git_apply_three_way_inside_bash_attributes_result() {
     let target = TestRepo::new_with_daemon_env(&env);
     fs::write(target.path().join("threeway.txt"), "base\n").unwrap();
     target.stage_all_and_commit("base").unwrap();
+    let mut file = target.filename("threeway.txt");
+    file.assert_committed_lines(lines!["base".unattributed_human()]);
     fs::write(target.path().join("threeway.txt"), "threeway AI\n").unwrap();
     let patch = target
         .git_og(&["diff", "--full-index", "--binary", "--", "threeway.txt"])
@@ -356,7 +366,6 @@ fn test_git_apply_three_way_inside_bash_attributes_result() {
         .unwrap();
     end_codex_bash(&target, &transcript, &command);
     target.git(&["commit", "-m", "threeway apply"]).unwrap();
-    let mut file = target.filename("threeway.txt");
     file.assert_committed_lines(lines!["threeway AI".ai()]);
 }
 
@@ -367,9 +376,12 @@ fn test_git_apply_reverse_inside_bash_attributes_restored_bytes() {
     let target = TestRepo::new_with_daemon_env(&env);
     fs::write(target.path().join("reverse.txt"), "old value\n").unwrap();
     target.stage_all_and_commit("old").unwrap();
+    let mut file = target.filename("reverse.txt");
+    file.assert_committed_lines(lines!["old value".unattributed_human()]);
     fs::write(target.path().join("reverse.txt"), "forward value\n").unwrap();
     let patch = target.git_og(&["diff", "--", "reverse.txt"]).unwrap();
     target.stage_all_and_commit("forward human").unwrap();
+    file.assert_committed_lines(lines!["forward value".unattributed_human()]);
     let patch_dir = tempfile::tempdir().unwrap();
     let patch_path = patch_dir.path().join("reverse.patch");
     fs::write(&patch_path, patch).unwrap();
@@ -380,7 +392,6 @@ fn test_git_apply_reverse_inside_bash_attributes_restored_bytes() {
         .unwrap();
     end_codex_bash(&target, &transcript, &command);
     target.stage_all_and_commit("reverse apply").unwrap();
-    let mut file = target.filename("reverse.txt");
     file.assert_committed_lines(lines!["old value".ai()]);
 }
 
@@ -395,6 +406,17 @@ fn test_git_apply_reject_partial_success_attributes_only_applied_hunk() {
     )
     .unwrap();
     target.stage_all_and_commit("base").unwrap();
+    let mut file = target.filename("reject.txt");
+    file.assert_committed_lines(lines![
+        "one".unattributed_human(),
+        "two".unattributed_human(),
+        "three".unattributed_human(),
+        "four".unattributed_human(),
+        "five".unattributed_human(),
+        "six".unattributed_human(),
+        "seven".unattributed_human(),
+        "eight".unattributed_human(),
+    ]);
     let patch_dir = tempfile::tempdir().unwrap();
     let patch_path = patch_dir.path().join("partial.patch");
     fs::write(
@@ -428,7 +450,6 @@ fn test_git_apply_reject_partial_success_attributes_only_applied_hunk() {
     target
         .git(&["commit", "-m", "partial reject apply"])
         .unwrap();
-    let mut file = target.filename("reject.txt");
     file.assert_committed_lines(lines![
         "one".unattributed_human(),
         "two applied AI".ai(),
@@ -448,6 +469,8 @@ fn test_git_apply_stdin_inside_bash_attributes_result() {
     let target = TestRepo::new_with_daemon_env(&env);
     fs::write(target.path().join("stdin.txt"), "old\n").unwrap();
     target.stage_all_and_commit("base").unwrap();
+    let mut file = target.filename("stdin.txt");
+    file.assert_committed_lines(lines!["old".unattributed_human()]);
     let patch = concat!(
         "diff --git a/stdin.txt b/stdin.txt\n",
         "--- a/stdin.txt\n",
@@ -463,6 +486,5 @@ fn test_git_apply_stdin_inside_bash_attributes_result() {
         .unwrap();
     end_codex_bash(&target, &transcript, command);
     target.stage_all_and_commit("stdin apply").unwrap();
-    let mut file = target.filename("stdin.txt");
     file.assert_committed_lines(lines!["stdin apply AI".ai()]);
 }

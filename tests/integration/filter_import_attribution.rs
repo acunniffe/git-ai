@@ -1,35 +1,32 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::fixture_path;
-use serde_json::json;
+use crate::test_utils::{codex_bash_hook_input, fixture_path, isolated_bash_history_db_path};
 use std::fs;
 
 fn setup_bash_repo() -> (tempfile::TempDir, TestRepo, std::path::PathBuf) {
-    let db_dir = tempfile::tempdir().unwrap();
-    let db_path = db_dir.path().join("bash-history.db");
-    let db_value = db_path.to_string_lossy().to_string();
+    let (db_dir, db_value) = isolated_bash_history_db_path();
     let repo = TestRepo::new_with_daemon_env(&[(
         "GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH",
         db_value.as_str(),
     )]);
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("initial").unwrap();
+    let mut base = repo.filename("base.txt");
+    base.assert_committed_lines(lines!["base".unattributed_human()]);
     let transcript = repo.path().join("codex-transcript.jsonl");
     fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript).unwrap();
     (db_dir, repo, transcript)
 }
 
 fn bash_hook(repo: &TestRepo, transcript: &std::path::Path, event: &str, command: &str) {
-    let input = json!({
-        "session_id": "fast-import-bash-session",
-        "cwd": repo.canonical_path().to_string_lossy().to_string(),
-        "hook_event_name": event,
-        "tool_name": "Bash",
-        "tool_use_id": "fast-import-bash-tool",
-        "tool_input": { "command": command },
-        "transcript_path": transcript.to_string_lossy().to_string()
-    })
-    .to_string();
+    let input = codex_bash_hook_input(
+        repo,
+        transcript,
+        "fast-import-bash-session",
+        "fast-import-bash-tool",
+        event,
+        command,
+    );
     repo.git_ai(&["checkpoint", "codex", "--hook-input", &input])
         .unwrap();
 }
@@ -95,6 +92,8 @@ fn fast_import_outside_agent_bash_does_not_invent_ai_attribution() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("initial").unwrap();
+    let mut base = repo.filename("base.txt");
+    base.assert_committed_lines(lines!["base".unattributed_human()]);
     let stream = fast_import_stream(&repo, "external import\n", "external import");
     repo.git_with_stdin(&["fast-import", "--quiet"], &stream)
         .unwrap();
@@ -144,6 +143,7 @@ fn filter_branch_rewrite_preserves_existing_ai_line_attribution() {
     source.set_contents(vec!["source AI".ai()]);
     repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     let original = repo.stage_all_and_commit("source").unwrap().commit_sha;
+    source.assert_committed_lines(lines!["source AI".ai()]);
 
     repo.git_with_env(
         &[
@@ -171,10 +171,12 @@ fn filter_branch_multi_commit_rewrite_preserves_every_ai_source_note() {
     first.set_contents(vec!["first AI".ai()]);
     repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     repo.stage_all_and_commit("first").unwrap();
+    first.assert_committed_lines(lines!["first AI".ai()]);
     let mut second = repo.filename("second.txt");
     second.set_contents(vec!["second AI".ai()]);
     repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     repo.stage_all_and_commit("second").unwrap();
+    second.assert_committed_lines(lines!["second AI".ai()]);
 
     repo.git_with_env(
         &[
@@ -201,10 +203,12 @@ fn filter_branch_index_filter_prune_preserves_surviving_ai_history() {
     keep.set_contents(vec!["kept AI".ai()]);
     repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     repo.stage_all_and_commit("keep").unwrap();
+    keep.assert_committed_lines(lines!["kept AI".ai()]);
     let mut remove = repo.filename("remove.txt");
     remove.set_contents(vec!["removed AI".ai()]);
     repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     repo.stage_all_and_commit("remove").unwrap();
+    remove.assert_committed_lines(lines!["removed AI".ai()]);
 
     repo.git_with_env(
         &[
