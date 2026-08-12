@@ -893,6 +893,49 @@ fn test_delayed_checkout_merge_trace_replay_does_not_attribute_later_uncheckpoin
 }
 
 #[test]
+fn switch_recovery_boundary_survives_partial_commit_carryover() {
+    let repo = TestRepo::new();
+    let mut base = repo.filename("base.txt");
+    base.set_contents(lines!["base"]);
+    repo.stage_all_and_commit("base").unwrap();
+    base.assert_committed_lines(lines!["base".human()]);
+    let default_branch = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let mut feature = repo.filename("feature.txt");
+    feature.set_contents(lines!["feature"]);
+    repo.stage_all_and_commit("feature").unwrap();
+    feature.assert_committed_lines(lines!["feature".human()]);
+    repo.git(&["checkout", &default_branch]).unwrap();
+
+    let mut first = repo.filename("first.txt");
+    first.set_contents_no_stage(lines!["first carried AI".ai()]);
+    let mut second = repo.filename("second.txt");
+    second.set_contents_no_stage(lines!["second carried AI".ai()]);
+    repo.git_ai(&["checkpoint", "mock_ai", "--", "first.txt", "second.txt"])
+        .unwrap();
+
+    repo.git(&["switch", "feature"]).unwrap();
+    repo.git(&["add", "--", "first.txt"]).unwrap();
+    repo.git(&["commit", "-m", "commit part of carried AI"])
+        .unwrap();
+    first.assert_committed_lines(lines!["first carried AI".ai()]);
+
+    fs::write(
+        repo.path().join("second.txt"),
+        "second carried AI\nlater human\n",
+    )
+    .unwrap();
+    repo.git(&["add", "--", "second.txt"]).unwrap();
+    repo.git(&["commit", "-m", "commit remaining carried AI"])
+        .unwrap();
+    second.assert_committed_lines(lines![
+        "second carried AI".ai(),
+        "later human".unattributed_human(),
+    ]);
+}
+
+#[test]
 fn test_delayed_switch_trace_replay_renames_working_log_for_uncommitted_attribution() {
     let repo = TestRepo::new();
     setup_initial_commit(&repo);

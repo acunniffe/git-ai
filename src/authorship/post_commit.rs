@@ -354,6 +354,7 @@ where
     // Initialize the new storage system
     let repo_storage = &repo.storage;
     let working_log = repo_storage.working_log_for_base_commit(&parent_sha)?;
+    let edge_recovery_blocked = working_log.edge_recovery_blocked();
 
     let parent_working_log = working_log.read_all_checkpoints()?;
 
@@ -477,7 +478,7 @@ where
                 before_external_recovery: context.before_external_recovery,
                 bash_command_window: context.bash_command_window,
                 bash_scope_to_pre_index: context.bash_scope_to_pre_index,
-                allow_edge_recovery: !working_log.edge_recovery_blocked(),
+                allow_edge_recovery: !edge_recovery_blocked,
             },
         )?;
         authorship_log.metadata.base_commit_sha = commit_sha.clone();
@@ -603,6 +604,9 @@ where
             initial_file_contents,
             initial_attributions.sessions,
         )?;
+        if edge_recovery_blocked {
+            new_working_log.block_edge_recovery()?;
+        }
     }
 
     // // Clean up old working log
@@ -798,6 +802,7 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
 ) -> Result<PostCommitAmendResult, GitAiError> {
     let repo_storage = &repo.storage;
     let working_log = repo_storage.working_log_for_base_commit(original_commit)?;
+    let edge_recovery_blocked = working_log.edge_recovery_blocked();
 
     // Compute pathspecs: changed files in the amended commit + working log touched files
     let changed_files = repo.list_commit_files(amended_commit, None)?;
@@ -909,7 +914,7 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
             before_external_recovery,
             bash_command_window: None,
             bash_scope_to_pre_index: false,
-            allow_edge_recovery: !working_log.edge_recovery_blocked(),
+            allow_edge_recovery: !edge_recovery_blocked,
         },
     )?;
     authorship_log.metadata.base_commit_sha = amended_commit.to_string();
@@ -974,6 +979,9 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
             initial_file_contents,
             initial_attributions.sessions,
         )?;
+        if edge_recovery_blocked {
+            new_working_log.block_edge_recovery()?;
+        }
     }
 
     // Clean up old working log

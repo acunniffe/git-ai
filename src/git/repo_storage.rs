@@ -242,6 +242,8 @@ impl RepoStorage {
             canonical,
             None,
         );
+        let preserve_edge_recovery_block =
+            old_log.edge_recovery_blocked() || new_log.edge_recovery_blocked();
 
         // Preserve OLD-base entries first (per rename_working_log's contract):
         // start from the old INITIAL and only insert a new-base entry when its
@@ -270,6 +272,9 @@ impl RepoStorage {
         let mut checkpoints = old_log.read_all_checkpoints()?;
         checkpoints.extend(new_log.read_all_checkpoints()?);
         new_log.write_all_checkpoints(&checkpoints)?;
+        if preserve_edge_recovery_block {
+            new_log.block_edge_recovery()?;
+        }
         Ok(())
     }
 }
@@ -967,6 +972,7 @@ mod tests {
             .file_blobs
             .insert("shared.txt".into(), "OLD CONTENT".into());
         old_log.write_initial(old_initial).unwrap();
+        old_log.block_edge_recovery().unwrap();
 
         // NEW base: shared.txt -> new author (conflict), plus a unique new-only file.
         let new_log = storage.working_log_for_base_commit(new_sha).unwrap();
@@ -1007,6 +1013,13 @@ mod tests {
         // Both sides' unique entries survive.
         assert!(merged.files.contains_key("old_only.txt"));
         assert!(merged.files.contains_key("new_only.txt"));
+        assert!(
+            storage
+                .working_log_for_base_commit(new_sha)
+                .unwrap()
+                .edge_recovery_blocked(),
+            "merged working logs must preserve the source recovery boundary"
+        );
     }
 
     #[test]
