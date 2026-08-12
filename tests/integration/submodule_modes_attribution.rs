@@ -186,6 +186,12 @@ fn nested_submodule_commit_is_attributed_in_nested_family_not_superproject() {
         .git_from_working_dir(&nested, &["add", "nested.txt"])
         .unwrap();
     superproject
+        .git_from_working_dir(&nested, &["config", "user.name", "Test User"])
+        .unwrap();
+    superproject
+        .git_from_working_dir(&nested, &["config", "user.email", "test@example.com"])
+        .unwrap();
+    superproject
         .git_from_working_dir(&nested, &["commit", "-m", "nested AI commit"])
         .unwrap();
     let nested_note = superproject
