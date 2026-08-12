@@ -3,6 +3,12 @@ use crate::repos::test_repo::TestRepo;
 use crate::test_utils::{checkpoint_codex_bash_hook, setup_codex_bash_repo};
 use std::fs;
 
+fn write_ai_edit(repo: &TestRepo, path: &str, contents: &str) {
+    repo.git_ai(&["checkpoint", "human", path]).unwrap();
+    fs::write(repo.path().join(path), contents).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", path]).unwrap();
+}
+
 fn fast_import_stream(repo: &TestRepo, content: &str, message: &str) -> Vec<u8> {
     let old = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
     let branch = repo.current_branch();
@@ -140,8 +146,7 @@ fn multi_commit_fast_import_inside_bash_notes_every_imported_commit() {
 fn filter_branch_rewrite_preserves_existing_ai_line_attribution() {
     let repo = TestRepo::new();
     let mut source = repo.filename("source.txt");
-    source.set_contents(vec!["source AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
+    write_ai_edit(&repo, "source.txt", "source AI\n");
     let original = repo.stage_all_and_commit("source").unwrap().commit_sha;
     source.assert_committed_lines(lines!["source AI".ai()]);
 
@@ -168,13 +173,11 @@ fn filter_branch_rewrite_preserves_existing_ai_line_attribution() {
 fn filter_branch_multi_commit_rewrite_preserves_every_ai_source_note() {
     let repo = TestRepo::new();
     let mut first = repo.filename("first.txt");
-    first.set_contents(vec!["first AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
+    write_ai_edit(&repo, "first.txt", "first AI\n");
     repo.stage_all_and_commit("first").unwrap();
     first.assert_committed_lines(lines!["first AI".ai()]);
     let mut second = repo.filename("second.txt");
-    second.set_contents(vec!["second AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
+    write_ai_edit(&repo, "second.txt", "second AI\n");
     repo.stage_all_and_commit("second").unwrap();
     second.assert_committed_lines(lines!["second AI".ai()]);
 
@@ -200,13 +203,11 @@ fn filter_branch_multi_commit_rewrite_preserves_every_ai_source_note() {
 fn filter_branch_index_filter_prune_preserves_surviving_ai_history() {
     let repo = TestRepo::new();
     let mut keep = repo.filename("keep.txt");
-    keep.set_contents(vec!["kept AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
+    write_ai_edit(&repo, "keep.txt", "kept AI\n");
     repo.stage_all_and_commit("keep").unwrap();
     keep.assert_committed_lines(lines!["kept AI".ai()]);
     let mut remove = repo.filename("remove.txt");
-    remove.set_contents(vec!["removed AI".ai()]);
-    repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
+    write_ai_edit(&repo, "remove.txt", "removed AI\n");
     repo.stage_all_and_commit("remove").unwrap();
     remove.assert_committed_lines(lines!["removed AI".ai()]);
 
