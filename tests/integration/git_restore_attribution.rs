@@ -12,6 +12,9 @@ fn test_git_restore_worktree_discards_stale_ai_attribution() {
     target
         .stage_all_and_commit("Initial commit")
         .expect("initial commit should succeed");
+    target
+        .filename("restored.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
     let mut restored = target.filename("restored.txt");
     restored.set_contents_no_stage(lines!["discarded AI bytes".ai()]);
     target
@@ -37,6 +40,9 @@ fn test_git_restore_staged_preserves_uncommitted_ai_attribution() {
     target
         .stage_all_and_commit("Initial commit")
         .expect("initial commit should succeed");
+    target
+        .filename("unstaged.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
 
     let mut unstaged = target.filename("unstaged.txt");
     unstaged.set_contents_no_stage(lines!["AI worktree edit".ai()]);
@@ -68,6 +74,9 @@ fn test_git_restore_source_staged_worktree_preserves_source_attribution() {
     target
         .stage_all_and_commit("Initial commit")
         .expect("initial commit should succeed");
+    target
+        .filename("sourced.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
     let main_branch = target.current_branch();
     target
         .git(&["branch", "source"])
@@ -80,6 +89,7 @@ fn test_git_restore_source_staged_worktree_preserves_source_attribution() {
     target
         .stage_all_and_commit("AI source commit")
         .expect("source commit should succeed");
+    sourced.assert_committed_lines(lines!["authored on source".ai()]);
     target
         .git(&["checkout", &main_branch])
         .expect("main checkout should succeed");
@@ -106,14 +116,20 @@ fn conflicted_restore_repo() -> (TestRepo, String) {
     let target = TestRepo::new();
     fs::write(target.path().join("conflict.txt"), "base\n").unwrap();
     target.stage_all_and_commit("base").unwrap();
+    target
+        .filename("conflict.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
     let main = target.current_branch();
     target.git(&["checkout", "-b", "side"]).unwrap();
     let mut conflict = target.filename("conflict.txt");
     conflict.set_contents(lines!["side AI".ai()]);
     target.stage_all_and_commit("side AI").unwrap();
+    conflict.assert_committed_lines(lines!["side AI".ai()]);
     target.git(&["checkout", &main]).unwrap();
     fs::write(target.path().join("conflict.txt"), "main human\n").unwrap();
     target.stage_all_and_commit("main human").unwrap();
+    conflict = target.filename("conflict.txt");
+    conflict.assert_committed_lines(lines!["main human".unattributed_human()]);
     assert!(target.git(&["merge", "side"]).is_err());
     (target, main)
 }
@@ -154,6 +170,12 @@ fn test_git_restore_source_with_nul_pathspec_file_preserves_each_source_note() {
     fs::write(target.path().join("one.txt"), "one base\n").unwrap();
     fs::write(target.path().join("two.txt"), "two base\n").unwrap();
     target.stage_all_and_commit("base").unwrap();
+    target
+        .filename("one.txt")
+        .assert_committed_lines(lines!["one base".unattributed_human()]);
+    target
+        .filename("two.txt")
+        .assert_committed_lines(lines!["two base".unattributed_human()]);
     let main = target.current_branch();
     target.git(&["checkout", "-b", "source-pathspec"]).unwrap();
     let mut one = target.filename("one.txt");
@@ -161,6 +183,8 @@ fn test_git_restore_source_with_nul_pathspec_file_preserves_each_source_note() {
     one.set_contents(lines!["one source AI".ai()]);
     two.set_contents(lines!["two source AI".ai()]);
     target.stage_all_and_commit("source paths").unwrap();
+    one.assert_committed_lines(lines!["one source AI".ai()]);
+    two.assert_committed_lines(lines!["two source AI".ai()]);
     target.git(&["checkout", &main]).unwrap();
 
     let pathspec_dir = tempfile::tempdir().unwrap();

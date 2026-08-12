@@ -6,6 +6,7 @@ fn repo_with_pending_ai() -> TestRepo {
     let mut seed = repo.filename("seed.txt");
     seed.set_contents(vec!["seed".human()]);
     repo.stage_all_and_commit("initial").unwrap();
+    seed.assert_lines_and_blame(vec!["seed".human()]);
     let mut pending = repo.filename("pending.txt");
     pending.set_contents(vec!["branch-safe ai".ai()]);
     repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
@@ -74,6 +75,7 @@ fn branch_tracking_and_upstream_only_mutations_preserve_pending_ai() {
     let mut seed = repo.filename("seed.txt");
     seed.set_contents(vec!["seed".human()]);
     repo.stage_all_and_commit("initial").unwrap();
+    seed.assert_lines_and_blame(vec!["seed".human()]);
 
     let main = default_branchname();
     let remote_ref = format!("refs/remotes/origin/{main}");
@@ -98,4 +100,27 @@ fn branch_tracking_and_upstream_only_mutations_preserve_pending_ai() {
     repo.git(&["branch", "--no-track", "untracked", &upstream])
         .unwrap();
     commit_and_assert_pending(&repo, "after upstream configuration");
+}
+
+#[test]
+fn shell_wrapper_waits_for_read_only_and_each_mutating_command() {
+    let repo = TestRepo::new();
+    let mut seed = repo.filename("seed.txt");
+    seed.set_contents(vec!["seed".human()]);
+    repo.stage_all_and_commit("initial").unwrap();
+    seed.assert_lines_and_blame(vec!["seed".human()]);
+
+    repo.shell_git("false && {git} status --short || true")
+        .unwrap();
+    repo.shell_git("{git} status --short && {git} branch first && {git} branch second")
+        .unwrap();
+
+    assert!(
+        repo.git_og(&["show-ref", "--verify", "refs/heads/first"])
+            .is_ok()
+    );
+    assert!(
+        repo.git_og(&["show-ref", "--verify", "refs/heads/second"])
+            .is_ok()
+    );
 }

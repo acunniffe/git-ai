@@ -10,6 +10,9 @@ fn test_git_rm_discards_deleted_path_ai_attribution() {
     let target = TestRepo::new();
     fs::write(target.path().join("removed.txt"), "base\n").unwrap();
     target.stage_all_and_commit("Initial commit").unwrap();
+    target
+        .filename("removed.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
     let mut removed = target.filename("removed.txt");
     removed.set_contents_no_stage(lines!["discarded AI bytes".ai()]);
 
@@ -31,6 +34,9 @@ fn test_git_rm_cached_preserves_worktree_ai_attribution() {
     let target = TestRepo::new();
     fs::write(target.path().join("cached.txt"), "base\n").unwrap();
     target.stage_all_and_commit("Initial commit").unwrap();
+    target
+        .filename("cached.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
     let mut cached = target.filename("cached.txt");
     cached.set_contents_no_stage(lines!["AI worktree replacement".ai()]);
     target.git_og(&["add", "cached.txt"]).unwrap();
@@ -55,6 +61,12 @@ fn test_git_rm_recursive_prunes_only_removed_paths() {
     fs::write(target.path().join("pkg/deleted.txt"), "base deleted\n").unwrap();
     fs::write(target.path().join("kept.txt"), "base kept\n").unwrap();
     target.stage_all_and_commit("Initial commit").unwrap();
+    target
+        .filename("pkg/deleted.txt")
+        .assert_committed_lines(lines!["base deleted".unattributed_human()]);
+    target
+        .filename("kept.txt")
+        .assert_committed_lines(lines!["base kept".unattributed_human()]);
     let mut deleted = target.filename("pkg/deleted.txt");
     deleted.set_contents_no_stage(lines!["discarded directory AI".ai()]);
     let mut kept = target.filename("kept.txt");
@@ -83,6 +95,9 @@ fn test_git_rm_dry_run_preserves_ai_attribution() {
     let target = TestRepo::new();
     fs::write(target.path().join("dry.txt"), "base\n").unwrap();
     target.stage_all_and_commit("Initial commit").unwrap();
+    target
+        .filename("dry.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
     let mut dry = target.filename("dry.txt");
     dry.set_contents_no_stage(lines!["AI edit kept by dry run".ai()]);
 

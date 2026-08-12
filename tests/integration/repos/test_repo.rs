@@ -2658,10 +2658,10 @@ impl TestRepo {
         } else {
             format!("{}{}", stdout, stderr)
         };
+        if let Some(session) = session.as_deref() {
+            self.record_daemon_family_expected_completion_session(session);
+        }
         if output.status.success() {
-            if let Some(session) = session.as_deref() {
-                self.record_daemon_family_expected_completion_session(session);
-            }
             Ok(combined)
         } else {
             Err(combined)
@@ -2730,15 +2730,42 @@ impl TestRepo {
         script: &str,
     ) -> Result<String, String> {
         self.sync_daemon_force();
-        let session = new_daemon_test_sync_session_id();
-        let git = format!(
-            "git -c {}={}",
-            git_ai::daemon::test_sync::TEST_SYNC_SESSION_CONFIG_KEY,
-            session
-        );
-        let rendered = script.replace("{git}", &git);
-        assert_ne!(
-            rendered, script,
+        let wrapper_dir = tempfile::tempdir()
+            .map_err(|error| format!("Failed to create shell Git wrapper directory: {error}"))?;
+        let mut sessions = Vec::new();
+        let mut execution_markers = Vec::new();
+        let mut rendered = String::with_capacity(script.len());
+        let mut remaining = script;
+        while let Some(token_index) = remaining.find("{git}") {
+            rendered.push_str(&remaining[..token_index]);
+            let session = new_daemon_test_sync_session_id();
+            let wrapper_index = sessions.len();
+            let wrapper_path = wrapper_dir.path().join(format!("git-{wrapper_index}.sh"));
+            let marker_path = wrapper_dir.path().join(format!("git-{wrapper_index}.ran"));
+            let shell_quote = |value: &str| format!("'{}'", value.replace('\'', "'\\''"));
+            let wrapper = format!(
+                "#!/bin/sh\n: > {}\nexec git -c {}={} \"$@\"\n",
+                shell_quote(&marker_path.to_string_lossy()),
+                git_ai::daemon::test_sync::TEST_SYNC_SESSION_CONFIG_KEY,
+                session
+            );
+            fs::write(&wrapper_path, wrapper).map_err(|error| {
+                format!(
+                    "Failed to write shell Git wrapper {}: {error}",
+                    wrapper_path.display()
+                )
+            })?;
+            rendered.push_str(&format!(
+                "sh {}",
+                shell_quote(&wrapper_path.to_string_lossy())
+            ));
+            sessions.push(session);
+            execution_markers.push(marker_path);
+            remaining = &remaining[token_index + "{git}".len()..];
+        }
+        rendered.push_str(remaining);
+        assert!(
+            !sessions.is_empty(),
             "shell_git script must contain at least one literal {{git}} token"
         );
 
@@ -2750,16 +2777,24 @@ impl TestRepo {
             )
         })?;
         let mut command = Command::new("sh");
+        let rendered_with_wait =
+            format!("{rendered}\nshell_git_status=$?\nwait\nexit \"$shell_git_status\"");
         command
-            .args(["-c", &rendered])
+            .args(["-c", &rendered_with_wait])
             .current_dir(canonical_working_dir);
         self.configure_command_env(&mut command);
         command.env("GIT_AI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
         command.env("GITAI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
         let output = run_command_output(&mut command, &format!("shell git: {rendered}"))?;
 
-        self.record_daemon_family_expected_completion_session(&session);
-        self.sync_daemon_force();
+        if self.has_active_daemon() {
+            for (session, marker) in sessions.iter().zip(&execution_markers) {
+                if marker.exists() {
+                    self.record_daemon_family_expected_completion_session(session);
+                }
+            }
+            self.sync_daemon_force();
+        }
 
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();

@@ -6,6 +6,7 @@ fn repo_with_pending_ai() -> TestRepo {
     let mut seed = repo.filename("seed.txt");
     seed.set_contents(vec!["seed".human()]);
     repo.stage_all_and_commit("initial").unwrap();
+    seed.assert_lines_and_blame(vec!["seed".human()]);
 
     let mut pending = repo.filename("pending.txt");
     pending.set_contents(vec!["generated one".ai(), "generated two".ai()]);
@@ -119,15 +120,18 @@ fn repo_with_ai_feature_conflict() -> TestRepo {
     let mut conflict = repo.filename("conflict.txt");
     conflict.set_contents(vec!["base".human()]);
     repo.stage_all_and_commit("base").unwrap();
+    conflict.assert_lines_and_blame(vec!["base".human()]);
 
     repo.git(&["checkout", "-b", "ai-feature"]).unwrap();
     conflict.set_contents(vec!["feature ai".ai()]);
     repo.git_ai(&["checkpoint", "mock_ai"]).unwrap();
     repo.stage_all_and_commit("AI feature").unwrap();
+    conflict.assert_lines_and_blame(vec!["feature ai".ai()]);
 
     repo.git(&["checkout", default_branchname()]).unwrap();
     conflict.set_contents(vec!["main human".human()]);
     repo.stage_all_and_commit("human main").unwrap();
+    conflict.assert_lines_and_blame(vec!["main human".human()]);
 
     let mut carry = repo.filename("carry.txt");
     carry.set_contents(vec!["unrelated pending ai".ai()]);

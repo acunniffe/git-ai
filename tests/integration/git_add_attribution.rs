@@ -8,6 +8,10 @@ fn test_git_add_update_stages_tracked_only_and_preserves_untracked_ai_for_later(
     fs::write(repo.path().join("tracked-a.txt"), "base a\n").unwrap();
     fs::write(repo.path().join("tracked-b.txt"), "base b\n").unwrap();
     repo.stage_all_and_commit("Initial files").unwrap();
+    repo.filename("tracked-a.txt")
+        .assert_committed_lines(lines!["base a".unattributed_human()]);
+    repo.filename("tracked-b.txt")
+        .assert_committed_lines(lines!["base b".unattributed_human()]);
 
     let mut tracked_a = repo.filename("tracked-a.txt");
     tracked_a.set_contents_no_stage(lines!["tracked A AI".ai()]);
@@ -37,6 +41,8 @@ fn test_git_add_pathspec_from_file_nul_commits_selected_file_and_carries_residua
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    repo.filename("base.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
     let mut selected = repo.filename("selected name.txt");
     selected.set_contents_no_stage(lines!["selected AI".ai()]);
     let mut residual = repo.filename("residual.txt");
@@ -67,6 +73,8 @@ fn test_git_add_dry_run_does_not_stage_or_discard_ai_attribution() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("dry.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    repo.filename("dry.txt")
+        .assert_committed_lines(lines!["base".unattributed_human()]);
     let mut dry = repo.filename("dry.txt");
     dry.set_contents_no_stage(lines!["AI edit".ai()]);
 

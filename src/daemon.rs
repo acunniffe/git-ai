@@ -4282,13 +4282,14 @@ impl ActorDaemonCoordinator {
         result: &Result<(), GitAiError>,
         error_order: u64,
     ) -> Result<(), GitAiError> {
-        let sync_tracked = crate::daemon::test_sync::tracks_primary_command_for_test_sync(
-            applied.command.primary_command.as_deref(),
-            &applied.command.invoked_args,
-        );
         let test_sync_session = crate::daemon::test_sync::test_sync_session_from_invocation(
             &parsed_invocation_for_normalized_command(&applied.command),
         );
+        let sync_tracked = test_sync_session.is_some()
+            || crate::daemon::test_sync::tracks_primary_command_for_test_sync(
+                applied.command.primary_command.as_deref(),
+                &applied.command.invoked_args,
+            );
         let log_entry = TestCompletionLogEntry {
             seq: applied.seq,
             family_key: family.to_string(),
@@ -5135,8 +5136,18 @@ impl ActorDaemonCoordinator {
         let started_at_ns = trace_payload_time_ns(payload);
         let early_primary =
             trace_payload_primary_command(payload).or_else(|| trace_argv_primary_command(&argv));
-        let event_is_read_only =
-            trace_invocation_is_definitely_read_only(early_primary.as_deref(), &argv);
+        // Shell-wrapper E2Es stamp every literal Git invocation with a unique
+        // synchronization session, including read-only commands. Let those
+        // explicitly marked roots reach the completion log so the helper can
+        // wait for every command without guessing at shell syntax.
+        let has_test_sync_session = if argv.is_empty() {
+            false
+        } else {
+            let parsed = crate::git::cli_parser::parse_git_cli_args(trace_invocation_args(&argv));
+            crate::daemon::test_sync::test_sync_session_from_invocation(&parsed).is_some()
+        };
+        let event_is_read_only = !has_test_sync_session
+            && trace_invocation_is_definitely_read_only(early_primary.as_deref(), &argv);
         let mut ingress = match self.trace_ingress_state.lock() {
             Ok(guard) => guard,
             Err(_) => return false,
