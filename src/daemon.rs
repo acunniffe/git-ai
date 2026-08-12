@@ -1623,9 +1623,11 @@ fn apply_checkout_switch_working_log_side_effect(
             // special `initial` working log. Bridge the pending checkpoint log
             // to that slot instead of losing it with the former base commit.
             repo.storage.rename_working_log(&old_head, "initial")?;
-            repo.storage
-                .working_log_for_base_commit("initial")?
-                .block_edge_recovery()?;
+            if repo.storage.has_working_log("initial") {
+                repo.storage
+                    .working_log_for_base_commit("initial")?
+                    .block_edge_recovery()?;
+            }
         }
         return Ok(());
     }
@@ -1685,9 +1687,11 @@ fn apply_checkout_switch_working_log_side_effect(
     }
 
     repo.storage.rename_working_log(&old_head, &new_head)?;
-    repo.storage
-        .working_log_for_base_commit(&new_head)?
-        .block_edge_recovery()?;
+    if repo.storage.has_working_log(&new_head) {
+        repo.storage
+            .working_log_for_base_commit(&new_head)?
+            .block_edge_recovery()?;
+    }
     Ok(())
 }
 
