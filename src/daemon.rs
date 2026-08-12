@@ -5435,6 +5435,7 @@ impl ActorDaemonCoordinator {
         // until `def_repo`. Capture at the first non-terminal root event that
         // has both pieces, before the workspace command mutates repository state.
         if !event_is_read_only
+            && !ingress.root_definitely_read_only.contains(&root)
             && !terminal
             && sid == root
             && !effective_argv.is_empty()
@@ -12525,6 +12526,38 @@ mod tests {
         assert!(realistic_snapshot.is_file());
         coord.clear_trace_root_tracking(realistic_sid).unwrap();
         assert!(!realistic_snapshot.exists());
+
+        let dry_run_sid = "20260411T120000.000000-Pdryrun-clean";
+        let mut dry_run_start = serde_json::json!({
+            "event": "start",
+            "sid": dry_run_sid,
+            "argv": ["git", "clean", "-ndx"],
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut dry_run_start));
+        let mut dry_run_def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": dry_run_sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut dry_run_def_repo));
+        assert!(
+            dry_run_def_repo
+                .get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD)
+                .is_none(),
+            "a read-only clean root must not capture an index snapshot at def_repo"
+        );
+        assert!(
+            std::fs::read_dir(&git_dir).unwrap().all(|entry| {
+                !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(INDEX_SNAPSHOT_PREFIX)
+            }),
+            "preview-only clean must not leave a snapshot in the repository"
+        );
+        coord.clear_trace_root_tracking(dry_run_sid).unwrap();
 
         let sid = "20260411T120000.000000-Pduplicateclean";
         let mut first_start = serde_json::json!({
