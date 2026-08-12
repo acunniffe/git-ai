@@ -205,9 +205,9 @@ pub(crate) struct AttributionRecoveryContext<'a> {
     /// Require a pre-tool index boundary so unrelated pre-staged lines cannot
     /// be claimed by a regular commit executed inside the Bash call.
     pub(crate) bash_scope_to_pre_index: bool,
-    /// Edge extension is only safe when this commit has a fresh checkpoint.
-    /// INITIAL-only attribution was carried from an earlier workspace state;
-    /// extending it would claim unrelated edits made after that state.
+    /// A checkout/switch boundary can transplant AI attribution next to edits
+    /// made later. Disable edge extension for that carried state while keeping
+    /// it available for ordinary same-workspace commit carryover.
     pub(crate) allow_edge_recovery: bool,
 }
 
@@ -1518,41 +1518,13 @@ fn recover_adjacent_edges(
     committed_hunks: &HashMap<String, Vec<LineRange>>,
 ) {
     let unknown = unknown_lines_by_file(authorship_log, committed_hunks);
-    let content_requests = unknown
-        .keys()
-        .flat_map(|file_path| {
-            let mut requests = vec![(commit_sha.to_string(), file_path.clone())];
-            if parent_sha != "initial" {
-                requests.push((parent_sha.to_string(), file_path.clone()));
-            }
-            requests
-        })
-        .collect::<Vec<_>>();
-    let contents = crate::git::repository::batch_read_paths_at_treeishes(repo, &content_requests)
-        .unwrap_or_default();
     for (file_path, unknown_lines) in unknown {
         let line_to_author = line_author_map(authorship_log, &file_path);
-        let parent_content = contents
-            .get(&(parent_sha.to_string(), file_path.clone()))
-            .map(String::as_str)
-            .unwrap_or_default();
-        let commit_content = contents
-            .get(&(commit_sha.to_string(), file_path.clone()))
-            .map(String::as_str)
-            .unwrap_or_default();
         let runs = contiguous_runs(&unknown_lines);
         for run in runs {
-            let Some(mut recovery) = edge_recovery_for_run(&line_to_author, &run) else {
+            let Some(recovery) = edge_recovery_for_run(&line_to_author, &run) else {
                 continue;
             };
-            remove_lines_already_present_in_parent(
-                &mut recovery.lines,
-                parent_content,
-                commit_content,
-            );
-            if recovery.lines.is_empty() {
-                continue;
-            }
             let trace_id = generate_trace_id();
             let source_session = recovery
                 .source_author
@@ -1599,20 +1571,6 @@ fn recover_adjacent_edges(
             });
         }
     }
-}
-
-fn remove_lines_already_present_in_parent(
-    lines: &mut Vec<u32>,
-    parent_content: &str,
-    commit_content: &str,
-) {
-    let parent_lines = parent_content.lines().collect::<HashSet<_>>();
-    let commit_lines = commit_content.lines().collect::<Vec<_>>();
-    lines.retain(|line| {
-        commit_lines
-            .get(line.saturating_sub(1) as usize)
-            .is_some_and(|content| !parent_lines.contains(content))
-    });
 }
 
 fn repo_worktree_key(repo: &Repository) -> Result<String, GitAiError> {
@@ -2660,16 +2618,5 @@ mod tests {
             None,
             "known-human neighbors must not be used for edge extension"
         );
-    }
-
-    #[test]
-    fn edge_recovery_does_not_claim_content_already_present_in_parent() {
-        let mut lines = vec![1, 2, 3];
-        remove_lines_already_present_in_parent(
-            &mut lines,
-            "base\nshared\n",
-            "base\nai generated\nshared\n",
-        );
-        assert_eq!(lines, vec![2]);
     }
 }

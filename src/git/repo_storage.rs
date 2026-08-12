@@ -306,6 +306,8 @@ pub struct PersistedWorkingLog {
 }
 
 impl PersistedWorkingLog {
+    const EDGE_RECOVERY_BLOCKED_MARKER: &str = ".edge-recovery-blocked";
+
     pub fn new(
         dir: PathBuf,
         base_commit: &str,
@@ -338,6 +340,15 @@ impl PersistedWorkingLog {
         self.dirty_files = normalized_dirty_files;
     }
 
+    pub fn block_edge_recovery(&self) -> Result<(), GitAiError> {
+        fs::write(self.dir.join(Self::EDGE_RECOVERY_BLOCKED_MARKER), b"")?;
+        Ok(())
+    }
+
+    pub fn edge_recovery_blocked(&self) -> bool {
+        self.dir.join(Self::EDGE_RECOVERY_BLOCKED_MARKER).is_file()
+    }
+
     pub fn reset_working_log(&self) -> Result<(), GitAiError> {
         crate::wltrace::wltrace("working_log.reset", &self.dir, String::new);
         // Clear all blobs by removing the blobs directory
@@ -354,6 +365,10 @@ impl PersistedWorkingLog {
         // previous working state do not persist across resets
         if self.initial_file.exists() {
             fs::remove_file(&self.initial_file)?;
+        }
+        let edge_recovery_marker = self.dir.join(Self::EDGE_RECOVERY_BLOCKED_MARKER);
+        if edge_recovery_marker.exists() {
+            fs::remove_file(edge_recovery_marker)?;
         }
 
         Ok(())
