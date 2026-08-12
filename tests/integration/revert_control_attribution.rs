@@ -1,16 +1,12 @@
-use crate::repos::test_file::{ExpectedLine, ExpectedLineExt};
+use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use std::fs;
-
-fn assert_committed(repo: &TestRepo, path: &str, lines: Vec<ExpectedLine>) {
-    repo.filename(path).assert_committed_lines(lines);
-}
 
 fn conflicting_revert_repo() -> (TestRepo, String) {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
-    assert_committed(&repo, "conflict.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("conflict.txt", lines!["base".human()]);
 
     let mut file = repo.filename("conflict.txt");
     file.set_contents_no_stage(lines!["source AI".ai()]);
@@ -18,11 +14,11 @@ fn conflicting_revert_repo() -> (TestRepo, String) {
         .stage_all_and_commit("AI source change")
         .unwrap()
         .commit_sha;
-    assert_committed(&repo, "conflict.txt", lines!["source AI".ai()]);
+    repo.assert_file_committed_lines("conflict.txt", lines!["source AI".ai()]);
 
     fs::write(repo.path().join("conflict.txt"), "later human\n").unwrap();
     repo.stage_all_and_commit("Later human change").unwrap();
-    assert_committed(&repo, "conflict.txt", lines!["later human".human()]);
+    repo.assert_file_committed_lines("conflict.txt", lines!["later human".human()]);
     (repo, source_commit)
 }
 
@@ -31,23 +27,19 @@ fn test_git_revert_no_commit_then_commit_restores_source_ai_attribution() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("revert.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
-    assert_committed(&repo, "revert.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("revert.txt", lines!["base".human()]);
 
     let mut file = repo.filename("revert.txt");
     file.set_contents_no_stage(lines!["base".human(), "restored AI".ai()]);
     repo.stage_all_and_commit("Add AI line").unwrap();
-    assert_committed(
-        &repo,
-        "revert.txt",
-        lines!["base".human(), "restored AI".ai()],
-    );
+    repo.assert_file_committed_lines("revert.txt", lines!["base".human(), "restored AI".ai()]);
 
     fs::write(repo.path().join("revert.txt"), "base\n").unwrap();
     let delete_commit = repo
         .stage_all_and_commit("Delete AI line")
         .unwrap()
         .commit_sha;
-    assert_committed(&repo, "revert.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("revert.txt", lines!["base".human()]);
 
     repo.git(&["revert", "--no-commit", &delete_commit])
         .unwrap();
@@ -63,29 +55,29 @@ fn test_git_revert_no_commit_multiple_sources_merges_restored_provenance() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
-    assert_committed(&repo, "base.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("base.txt", lines!["base".human()]);
 
     let mut first = repo.filename("first.txt");
     first.set_contents_no_stage(lines!["first AI".ai()]);
     repo.stage_all_and_commit("Add first AI file").unwrap();
-    assert_committed(&repo, "first.txt", lines!["first AI".ai()]);
+    repo.assert_file_committed_lines("first.txt", lines!["first AI".ai()]);
     let mut second = repo.filename("second.txt");
     second.set_contents_no_stage(lines!["second AI".ai()]);
     repo.stage_all_and_commit("Add second AI file").unwrap();
-    assert_committed(&repo, "second.txt", lines!["second AI".ai()]);
+    repo.assert_file_committed_lines("second.txt", lines!["second AI".ai()]);
 
     repo.git(&["rm", "--", "first.txt"]).unwrap();
     let delete_first = repo
         .stage_all_and_commit("Delete first AI file")
         .unwrap()
         .commit_sha;
-    assert_committed(&repo, "second.txt", lines!["second AI".ai()]);
+    repo.assert_file_committed_lines("second.txt", lines!["second AI".ai()]);
     repo.git(&["rm", "--", "second.txt"]).unwrap();
     let delete_second = repo
         .stage_all_and_commit("Delete second AI file")
         .unwrap()
         .commit_sha;
-    assert_committed(&repo, "base.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("base.txt", lines!["base".human()]);
 
     repo.git(&["revert", "--no-commit", &delete_first, &delete_second])
         .unwrap();
@@ -182,23 +174,23 @@ fn test_git_revert_mainline_restores_first_parent_ai_attribution() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
-    assert_committed(&repo, "base.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("base.txt", lines!["base".human()]);
 
     let mut restored = repo.filename("restored.txt");
     restored.set_contents_no_stage(lines!["first-parent AI".ai()]);
     repo.stage_all_and_commit("Add AI on main").unwrap();
-    assert_committed(&repo, "restored.txt", lines!["first-parent AI".ai()]);
+    repo.assert_file_committed_lines("restored.txt", lines!["first-parent AI".ai()]);
     let main = repo.current_branch();
     repo.git(&["checkout", "-b", "delete-on-feature"]).unwrap();
     repo.git(&["rm", "--", "restored.txt"]).unwrap();
     repo.git(&["commit", "-m", "Delete AI file on feature"])
         .unwrap();
-    assert_committed(&repo, "base.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("base.txt", lines!["base".human()]);
 
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("main.txt"), "main human\n").unwrap();
     repo.stage_all_and_commit("Diverge main").unwrap();
-    assert_committed(&repo, "main.txt", lines!["main human".human()]);
+    repo.assert_file_committed_lines("main.txt", lines!["main human".human()]);
     repo.git(&[
         "merge",
         "--no-ff",
@@ -207,7 +199,7 @@ fn test_git_revert_mainline_restores_first_parent_ai_attribution() {
         "delete-on-feature",
     ])
     .unwrap();
-    assert_committed(&repo, "main.txt", lines!["main human".human()]);
+    repo.assert_file_committed_lines("main.txt", lines!["main human".human()]);
     let merge_commit = repo.git(&["rev-parse", "HEAD"]).unwrap();
 
     repo.git(&["revert", "-m", "1", "--no-edit", merge_commit.trim()])

@@ -1,16 +1,12 @@
-use crate::repos::test_file::{ExpectedLine, ExpectedLineExt};
+use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use std::fs;
-
-fn assert_committed(repo: &TestRepo, path: &str, lines: Vec<ExpectedLine>) {
-    repo.filename(path).assert_committed_lines(lines);
-}
 
 fn divergent_conflict_repo() -> (TestRepo, String) {
     let repo = TestRepo::new();
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
-    assert_committed(&repo, "conflict.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("conflict.txt", lines!["base".human()]);
     let main = repo.current_branch();
 
     repo.git(&["checkout", "-b", "feature"]).unwrap();
@@ -19,13 +15,13 @@ fn divergent_conflict_repo() -> (TestRepo, String) {
     let mut feature_only = repo.filename("feature-only.txt");
     feature_only.set_contents_no_stage(lines!["feature-only AI".ai()]);
     repo.stage_all_and_commit("Feature changes").unwrap();
-    assert_committed(&repo, "conflict.txt", lines!["feature AI".ai()]);
-    assert_committed(&repo, "feature-only.txt", lines!["feature-only AI".ai()]);
+    repo.assert_file_committed_lines("conflict.txt", lines!["feature AI".ai()]);
+    repo.assert_file_committed_lines("feature-only.txt", lines!["feature-only AI".ai()]);
 
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("conflict.txt"), "main human\n").unwrap();
     repo.stage_all_and_commit("Main changes").unwrap();
-    assert_committed(&repo, "conflict.txt", lines!["main human".human()]);
+    repo.assert_file_committed_lines("conflict.txt", lines!["main human".human()]);
     (repo, main)
 }
 
@@ -34,17 +30,17 @@ fn test_git_merge_no_commit_then_commit_preserves_source_attribution() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
-    assert_committed(&repo, "base.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("base.txt", lines!["base".human()]);
     let main = repo.current_branch();
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     let mut feature = repo.filename("feature.txt");
     feature.set_contents_no_stage(lines!["feature AI".ai()]);
     repo.stage_all_and_commit("Feature AI").unwrap();
-    assert_committed(&repo, "feature.txt", lines!["feature AI".ai()]);
+    repo.assert_file_committed_lines("feature.txt", lines!["feature AI".ai()]);
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("main.txt"), "main human\n").unwrap();
     repo.stage_all_and_commit("Main human").unwrap();
-    assert_committed(&repo, "main.txt", lines!["main human".human()]);
+    repo.assert_file_committed_lines("main.txt", lines!["main human".human()]);
 
     repo.git(&["merge", "--no-commit", "--no-ff", "feature"])
         .unwrap();
@@ -128,13 +124,13 @@ fn test_git_merge_fast_forward_carries_dirty_ai_checkpoint_to_new_head() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
-    assert_committed(&repo, "base.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("base.txt", lines!["base".human()]);
     let main = repo.current_branch();
 
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     fs::write(repo.path().join("feature.txt"), "feature human\n").unwrap();
     repo.stage_all_and_commit("Feature commit").unwrap();
-    assert_committed(&repo, "feature.txt", lines!["feature human".human()]);
+    repo.assert_file_committed_lines("feature.txt", lines!["feature human".human()]);
     repo.git(&["checkout", &main]).unwrap();
 
     let mut dirty = repo.filename("dirty.txt");
@@ -153,18 +149,18 @@ fn test_git_merge_commit_carries_unrelated_dirty_ai_checkpoint() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
-    assert_committed(&repo, "base.txt", lines!["base".human()]);
+    repo.assert_file_committed_lines("base.txt", lines!["base".human()]);
     let main = repo.current_branch();
 
     repo.git(&["checkout", "-b", "feature"]).unwrap();
     let mut feature = repo.filename("feature.txt");
     feature.set_contents_no_stage(lines!["feature AI".ai()]);
     repo.stage_all_and_commit("Feature AI").unwrap();
-    assert_committed(&repo, "feature.txt", lines!["feature AI".ai()]);
+    repo.assert_file_committed_lines("feature.txt", lines!["feature AI".ai()]);
     repo.git(&["checkout", &main]).unwrap();
     fs::write(repo.path().join("main.txt"), "main human\n").unwrap();
     repo.stage_all_and_commit("Main human").unwrap();
-    assert_committed(&repo, "main.txt", lines!["main human".human()]);
+    repo.assert_file_committed_lines("main.txt", lines!["main human".human()]);
 
     let mut dirty = repo.filename("dirty.txt");
     dirty.set_contents_no_stage(lines!["dirty AI before merge commit".ai()]);

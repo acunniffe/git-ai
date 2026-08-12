@@ -1,22 +1,17 @@
-use crate::repos::test_file::{ExpectedLine, ExpectedLineExt};
+use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
 use std::fs;
-
-fn assert_committed(repo: &TestRepo, path: &str, lines: Vec<ExpectedLine>) {
-    repo.filename(path).assert_committed_lines(lines);
-}
 
 #[test]
 fn test_reset_merge_discards_unwound_attribution_with_worktree_content() {
     let target = TestRepo::new();
     fs::write(target.path().join("merge-reset.txt"), "base\n").unwrap();
     let base = target.stage_all_and_commit("Base").unwrap();
-    assert_committed(&target, "merge-reset.txt", lines!["base".human()]);
+    target.assert_file_committed_lines("merge-reset.txt", lines!["base".human()]);
     let mut file = target.filename("merge-reset.txt");
     file.set_contents(lines!["base", "discarded AI line".ai()]);
     target.stage_all_and_commit("AI commit").unwrap();
-    assert_committed(
-        &target,
+    target.assert_file_committed_lines(
         "merge-reset.txt",
         lines!["base".human(), "discarded AI line".ai()],
     );
@@ -49,15 +44,11 @@ fn test_reset_keep_preserves_local_ai_but_discards_unwound_commit_attribution() 
     let target = TestRepo::new();
     fs::write(target.path().join("base.txt"), "base\n").unwrap();
     let base = target.stage_all_and_commit("Base").unwrap();
-    assert_committed(&target, "base.txt", lines!["base".human()]);
+    target.assert_file_committed_lines("base.txt", lines!["base".human()]);
     let mut discarded = target.filename("discarded.txt");
     discarded.set_contents(lines!["discarded committed AI".ai()]);
     target.stage_all_and_commit("AI commit to unwind").unwrap();
-    assert_committed(
-        &target,
-        "discarded.txt",
-        lines!["discarded committed AI".ai()],
-    );
+    target.assert_file_committed_lines("discarded.txt", lines!["discarded committed AI".ai()]);
 
     let mut kept = target.filename("kept-local.txt");
     kept.set_contents_no_stage(lines!["kept local AI".ai()]);
