@@ -72,10 +72,17 @@ impl CommandAnalyzer for HistoryAnalyzer {
                         head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
                     });
                 } else if let Some((old_head, new_head)) = head_change(cmd, state.refs) {
+                    let resulting_head = new_head.clone();
                     events.push(SemanticEvent::CommitCreated {
                         base: sanitize_base(Some(old_head), &new_head),
                         new_head,
                     });
+                    if cmd.exit_code != 0 {
+                        events.push(SemanticEvent::RevertPrepared {
+                            source_commits: cmd.revert_source_oids.clone(),
+                            head: resulting_head,
+                        });
+                    }
                 } else if args.iter().any(|arg| arg == "--skip") {
                     events.push(SemanticEvent::RevertSkip {
                         head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
@@ -94,7 +101,9 @@ impl CommandAnalyzer for HistoryAnalyzer {
                         old_head,
                         new_head,
                     });
-                } else if let Some(head) = current_head_from_ref_data(cmd, state.refs) {
+                } else if !reset_has_pathspec(&args)
+                    && let Some(head) = current_head_from_ref_data(cmd, state.refs)
+                {
                     events.push(SemanticEvent::Reset {
                         kind: infer_reset_kind(&args),
                         old_head: head.clone(),
@@ -501,6 +510,24 @@ fn infer_reset_kind(args: &[String]) -> ResetKind {
     ResetKind::Mixed
 }
 
+fn reset_has_pathspec(args: &[String]) -> bool {
+    if args
+        .iter()
+        .any(|arg| arg == "--pathspec-from-file" || arg.starts_with("--pathspec-from-file="))
+    {
+        return true;
+    }
+    if let Some(separator) = args.iter().position(|arg| arg == "--") {
+        return separator + 1 < args.len();
+    }
+
+    let positionals = args.iter().filter(|arg| !arg.starts_with('-')).count();
+    // The first positional may be the reset target; subsequent positionals
+    // can only be pathspecs. Ambiguous one-positional forms remain whole-tree
+    // resets so revisions such as `HEAD~1` keep their reset semantics.
+    positionals > 1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -763,8 +790,36 @@ mod tests {
             [SemanticEvent::RevertPrepared {
                 source_commits,
                 head,
-            }] if source_commits == &vec![source]
+            }] if source_commits == &vec![source.clone()]
                 && head == "1111111111111111111111111111111111111111"
+        ));
+
+        let mut partial = command(
+            "revert",
+            &["git", "revert", "first-source", "second-source"],
+        );
+        partial.exit_code = 1;
+        partial.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "1111111111111111111111111111111111111111".to_string(),
+            new: "3333333333333333333333333333333333333333".to_string(),
+        }];
+        partial.revert_source_oids = vec![source.clone()];
+        let result = analyzer
+            .analyze(&partial, AnalysisView { refs: &refs })
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [
+                SemanticEvent::CommitCreated { base, new_head },
+                SemanticEvent::RevertPrepared {
+                    source_commits,
+                    head,
+                },
+            ] if base.as_deref() == Some("1111111111111111111111111111111111111111")
+                && new_head == "3333333333333333333333333333333333333333"
+                && source_commits == &vec![source]
+                && head == "3333333333333333333333333333333333333333"
         ));
     }
 
@@ -1104,6 +1159,42 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn same_head_pathspec_reset_does_not_emit_whole_tree_reset() {
+        let analyzer = HistoryAnalyzer;
+        let refs = std::collections::HashMap::from([(
+            "HEAD".to_string(),
+            "1111111111111111111111111111111111111111".to_string(),
+        )]);
+
+        for argv in [
+            vec!["git", "reset", "HEAD", "file.txt"],
+            vec!["git", "reset", "HEAD", "--", "file.txt"],
+        ] {
+            let mut cmd = command("reset", &argv);
+            cmd.ref_changes.clear();
+            let result = analyzer
+                .analyze(&cmd, AnalysisView { refs: &refs })
+                .unwrap();
+            assert_only_opaque(&result);
+        }
+
+        let mut whole_tree = command("reset", &["git", "reset", "--hard", "HEAD"]);
+        whole_tree.ref_changes.clear();
+        let result = analyzer
+            .analyze(&whole_tree, AnalysisView { refs: &refs })
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::Reset {
+                kind: ResetKind::Hard,
+                old_head,
+                new_head,
+            }] if old_head == "1111111111111111111111111111111111111111"
+                && new_head == old_head
+        ));
     }
 
     #[test]

@@ -925,19 +925,7 @@ impl RefCursor {
                     changes.push(entry_to_ref_change(&entry));
                 }
             }
-            for reference in self.discover_common_refs()? {
-                if reference == "HEAD" || reference == "ORIG_HEAD" {
-                    continue;
-                }
-                while let Some(entry) = self.find_common_ref_entry_without_hint(
-                    &reference,
-                    ExpectedTransition::default(),
-                    &[],
-                )? {
-                    self.consume_entry(&entry)?;
-                    changes.push(entry_to_ref_change(&entry));
-                }
-            }
+            self.drain_unstructured_common_ref_entries(&mut changes)?;
             dedup_ref_changes(&mut changes);
             cmd.ref_changes = changes;
             return Ok(());
@@ -1066,6 +1054,16 @@ impl RefCursor {
                 changes.push(entry_to_ref_change(&entry));
             }
         }
+        self.drain_unstructured_common_ref_entries(&mut changes)?;
+        dedup_ref_changes(&mut changes);
+        cmd.ref_changes = changes;
+        Ok(())
+    }
+
+    fn drain_unstructured_common_ref_entries(
+        &mut self,
+        changes: &mut Vec<RefChange>,
+    ) -> Result<(), GitAiError> {
         for reference in self.discover_common_refs()? {
             if reference == "HEAD" || reference == "ORIG_HEAD" {
                 continue;
@@ -1079,8 +1077,6 @@ impl RefCursor {
                 changes.push(entry_to_ref_change(&entry));
             }
         }
-        dedup_ref_changes(&mut changes);
-        cmd.ref_changes = changes;
         Ok(())
     }
 

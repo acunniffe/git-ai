@@ -96,7 +96,18 @@ pub(crate) fn invocation_has_short_flag(command_args: &[String], expected: char)
 
 pub(crate) fn invocation_has_dry_run(command_args: &[String]) -> bool {
     command_args.iter().any(|arg| arg == "--dry-run")
-        || invocation_has_short_flag(command_args, 'n')
+        || command_args
+            .iter()
+            .take_while(|arg| arg.as_str() != "--")
+            .filter(|arg| arg.starts_with('-') && !arg.starts_with("--"))
+            .any(|arg| {
+                // `git clean -e<pattern>` uses the remainder of the token as
+                // an exclude value, not a cluster of boolean flags.
+                arg.chars()
+                    .skip(1)
+                    .take_while(|flag| *flag != 'e')
+                    .any(|flag| flag == 'n')
+            })
 }
 
 fn symbolic_ref_invocation_is_read_only(command_args: &[String]) -> bool {
@@ -243,7 +254,6 @@ fn config_invocation_is_read_only(args: &[String]) -> bool {
                 | "--get-urlmatch"
                 | "--list"
                 | "-l"
-                | "--fixed-value"
                 | "--show-origin"
                 | "--show-scope"
                 | "--name-only"
@@ -645,6 +655,39 @@ mod tests {
                 &args.into_iter().map(str::to_string).collect::<Vec<_>>()
             ));
         }
+
+        for args in [vec!["-enode_modules", "-fd"], vec!["-fd", "build"]] {
+            assert!(!is_definitely_read_only_git_invocation(
+                "clean",
+                &args.into_iter().map(str::to_string).collect::<Vec<_>>()
+            ));
+        }
+        assert!(is_definitely_read_only_git_invocation(
+            "clean",
+            &["-nefoo".to_string(), "-fd".to_string()]
+        ));
+    }
+
+    #[test]
+    fn config_fixed_value_is_only_read_only_with_a_query_action() {
+        assert!(!is_definitely_read_only_git_invocation(
+            "config",
+            &[
+                "--fixed-value".to_string(),
+                "section.key".to_string(),
+                "replacement".to_string(),
+                "old-value".to_string(),
+            ]
+        ));
+        assert!(is_definitely_read_only_git_invocation(
+            "config",
+            &[
+                "--fixed-value".to_string(),
+                "--get".to_string(),
+                "section.key".to_string(),
+                "old-value".to_string(),
+            ]
+        ));
     }
 
     #[test]
