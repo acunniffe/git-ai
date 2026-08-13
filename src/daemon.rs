@@ -612,6 +612,37 @@ fn trace_payload_command_base_dir(
     Some(base)
 }
 
+fn trace_argv_absolute_command_base_dir(argv: &[String]) -> Option<PathBuf> {
+    let parsed = parse_git_cli_args(trace_invocation_args(argv));
+    let mut base = None::<PathBuf>;
+    let mut idx = 0usize;
+
+    while idx < parsed.global_args.len() {
+        let token = &parsed.global_args[idx];
+        let (path_arg, consumed): (&str, usize) = if token == "-C" {
+            (parsed.global_args.get(idx + 1)?.as_str(), 2)
+        } else if let Some(path_arg) = token.strip_prefix("-C") {
+            if path_arg.is_empty() {
+                return None;
+            }
+            (path_arg, 1)
+        } else {
+            idx += 1;
+            continue;
+        };
+
+        let next = PathBuf::from(path_arg);
+        if next.is_absolute() {
+            base = Some(next);
+        } else if let Some(current) = base.take() {
+            base = Some(current.join(next));
+        }
+        idx += consumed;
+    }
+
+    base
+}
+
 fn trace_payload_time_ns(payload: &Value) -> Option<u128> {
     payload
         .get("time")
@@ -5490,10 +5521,16 @@ impl ActorDaemonCoordinator {
 
         if event == "start" && sid == root && !argv.is_empty() {
             ingress.root_argv.insert(root.clone(), argv.clone());
-            if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
-                let cwd = Path::new(cwd);
-                let command_dir = trace_payload_command_base_dir(payload, &argv, cwd)
-                    .unwrap_or_else(|| cwd.into());
+            let command_dir = payload
+                .get("cwd")
+                .and_then(Value::as_str)
+                .map(Path::new)
+                .map(|cwd| {
+                    trace_payload_command_base_dir(payload, &argv, cwd)
+                        .unwrap_or_else(|| cwd.into())
+                })
+                .or_else(|| trace_argv_absolute_command_base_dir(&argv));
+            if let Some(command_dir) = command_dir {
                 ingress.root_command_dirs.insert(root.clone(), command_dir);
             }
             if event_is_read_only {
@@ -12824,6 +12861,43 @@ mod tests {
         assert_eq!(
             def_repo[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
             serde_json::json!(["sub/foo.txt"])
+        );
+    }
+
+    #[tokio::test]
+    async fn rm_pathspecs_use_absolute_dash_c_when_trace2_omits_cwd() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let sid = "20260411T120000.000000-Prmdashc";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": [
+                "git",
+                "-c",
+                "git-ai.testSyncSession=test-rm-dash-c",
+                "-C",
+                repo.to_string_lossy().to_string(),
+                "rm",
+                "removed.txt"
+            ],
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert_eq!(
+            def_repo[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["removed.txt"]),
+            "an absolute -C is sufficient command-directory context without a cwd field"
         );
     }
 
