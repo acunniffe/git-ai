@@ -3290,6 +3290,7 @@ type CommitFileTimestampSnapshotHandle =
 type CommitFileTimestampSnapshotHandles = HashMap<String, CommitFileTimestampSnapshotHandle>;
 
 const COMMIT_FILE_TIMESTAMP_SNAPSHOT_WAIT: Duration = Duration::from_millis(500);
+const CONTROL_ATTEMPT_SNAPSHOT_WAIT: Duration = Duration::from_secs(2);
 const SESSION_EVENT_RECOVERY_PREFLIGHT_WAIT: Duration = Duration::from_secs(2);
 const SESSION_EVENT_RECOVERY_PREFLIGHT_POLL: Duration = Duration::from_millis(100);
 
@@ -3333,7 +3334,11 @@ struct ControlAttemptSnapshot {
     head: String,
     initial: crate::git::repo_storage::InitialAttributions,
     checkpoints: Vec<crate::authorship::working_log::Checkpoint>,
-    captured_at_ns: u128,
+}
+
+struct PendingControlAttemptSnapshot {
+    handle: tokio::task::JoinHandle<Result<Option<ControlAttemptSnapshot>, GitAiError>>,
+    started_at_ns: u128,
 }
 
 #[derive(Debug, Clone)]
@@ -3437,7 +3442,7 @@ pub struct ActorDaemonCoordinator {
     pending_ai_edits_by_family: Mutex<HashMap<String, HashMap<String, u128>>>,
     family_sequencers_by_family: Mutex<HashMap<String, FamilySequencerState>>,
     pending_root_slots_by_root: Mutex<HashMap<String, PendingRootSlot>>,
-    control_attempt_snapshots_by_root: Mutex<HashMap<String, ControlAttemptSnapshot>>,
+    control_attempt_snapshots_by_root: Mutex<HashMap<String, PendingControlAttemptSnapshot>>,
     commit_file_timestamp_snapshots_by_root:
         Mutex<HashMap<String, CommitFileTimestampSnapshotHandles>>,
     recent_replay_prerequisites_by_family:
@@ -3458,6 +3463,7 @@ pub struct ActorDaemonCoordinator {
     // OnceLock: set once at worker start, never cleared. The ingest worker
     // exits via the shutdown select! arm instead of relying on channel closure.
     trace_ingest_tx: std::sync::OnceLock<mpsc::Sender<Value>>,
+    trace_runtime_handle: std::sync::OnceLock<tokio::runtime::Handle>,
     telemetry_worker: Option<crate::daemon::telemetry_worker::DaemonTelemetryWorkerHandle>,
     stream_worker: Option<crate::daemon::stream_worker::StreamWorkerHandle>,
     transcript_shutdown_notify: std::sync::OnceLock<Arc<tokio::sync::Notify>>,
@@ -3568,6 +3574,7 @@ impl ActorDaemonCoordinator {
                 }),
             test_completion_log_lock: Mutex::new(()),
             trace_ingest_tx: std::sync::OnceLock::new(),
+            trace_runtime_handle: std::sync::OnceLock::new(),
             telemetry_worker: None,
             stream_worker: None,
             transcript_shutdown_notify: std::sync::OnceLock::new(),
@@ -3889,8 +3896,12 @@ impl ActorDaemonCoordinator {
         if let Ok(mut map) = self.control_attempt_snapshots_by_root.lock() {
             const SNAPSHOT_TIMEOUT_NS: u128 = 10 * 60 * 1_000_000_000;
             let now_ns = now_unix_nanos();
-            map.retain(|_, snapshot| {
-                now_ns.saturating_sub(snapshot.captured_at_ns) < SNAPSHOT_TIMEOUT_NS
+            map.retain(|_, pending| {
+                let retain = now_ns.saturating_sub(pending.started_at_ns) < SNAPSHOT_TIMEOUT_NS;
+                if !retain {
+                    pending.handle.abort();
+                }
+                retain
             });
         }
         // Clean expired pending AI edit entries (older than 10s).
@@ -4548,6 +4559,14 @@ impl ActorDaemonCoordinator {
     }
 
     fn start_trace_ingest_worker(self: &Arc<Self>) -> Result<(), GitAiError> {
+        if self.trace_runtime_handle.get().is_none() {
+            let runtime_handle = tokio::runtime::Handle::try_current().map_err(|error| {
+                GitAiError::Generic(format!(
+                    "trace ingest worker requires a Tokio runtime: {error}"
+                ))
+            })?;
+            let _ = self.trace_runtime_handle.set(runtime_handle);
+        }
         // Idempotent: if OnceLock is already set, worker is already running.
         if self.trace_ingest_tx.get().is_some() {
             return Ok(());
@@ -5246,32 +5265,19 @@ impl ActorDaemonCoordinator {
             .or_else(|| ingress.root_worktrees.get(&root).cloned());
 
         // Conflict side effects may be processed long after the caller has
-        // already run `--skip`. At the synchronous terminal Trace2 boundary,
-        // conflict state still identifies a real prepared operation and the
-        // family sequencer has not admitted later resolution checkpoints.
-        // Preserve that exact working log for delayed control handling.
-        if terminal
+        // already run `--skip`. Start preserving the working log at the
+        // terminal Trace2 boundary, before the family sequencer admits later
+        // resolution checkpoints. Repository inspection and log reads happen
+        // on the blocking pool after the ingress mutex is released.
+        let control_attempt_snapshot = if terminal
             && trace_invocation_starts_control_attempt(
                 effective_primary.as_deref(),
                 &effective_argv,
-            )
-            && let Some(worktree) = command_worktree.as_deref()
-        {
-            let conflict_state_observed = match effective_primary.as_deref() {
-                Some("cherry-pick") => cherry_pick_state_exists_for_worktree(worktree),
-                Some("revert") => revert_state_exists_for_worktree(worktree),
-                _ => false,
-            };
-            if conflict_state_observed
-                && let Err(error) = self.cache_control_attempt_snapshot(&root, worktree)
-            {
-                tracing::debug!(
-                    %error,
-                    sid = %root,
-                    "failed to capture control-attempt working-log snapshot"
-                );
-            }
-        }
+            ) {
+            command_worktree.clone().zip(effective_primary.clone())
+        } else {
+            None
+        };
         if command_mutates_refs
             && !terminal
             && !ingress.root_reflog_start_offsets.contains_key(&root)
@@ -5305,6 +5311,16 @@ impl ActorDaemonCoordinator {
         }
 
         drop(ingress);
+
+        if let Some((worktree, primary)) = control_attempt_snapshot
+            && let Err(error) = self.start_control_attempt_snapshot(&root, worktree, primary)
+        {
+            tracing::debug!(
+                %error,
+                sid = %root,
+                "failed to start control-attempt working-log snapshot"
+            );
+        }
 
         if let Some(object) = payload.as_object_mut() {
             if object.get("argv").is_none()
@@ -6020,49 +6036,93 @@ impl ActorDaemonCoordinator {
         Ok(map.remove(&Self::worktree_state_key(worktree)))
     }
 
-    fn cache_control_attempt_snapshot(
+    fn start_control_attempt_snapshot(
         &self,
         root_sid: &str,
-        worktree: &Path,
+        worktree: PathBuf,
+        primary: String,
     ) -> Result<(), GitAiError> {
-        if self
+        let mut snapshots = self.control_attempt_snapshots_by_root.lock().map_err(|_| {
+            GitAiError::Generic("control attempt snapshot map lock poisoned".to_string())
+        })?;
+        if snapshots.contains_key(root_sid) {
+            return Ok(());
+        }
+
+        let runtime_handle = self.trace_runtime_handle.get().ok_or_else(|| {
+            GitAiError::Generic("trace runtime handle is not initialized".to_string())
+        })?;
+        let handle = runtime_handle.spawn_blocking(move || {
+            let conflict_state_observed = match primary.as_str() {
+                "cherry-pick" => cherry_pick_state_exists_for_worktree(&worktree),
+                "revert" => revert_state_exists_for_worktree(&worktree),
+                _ => false,
+            };
+            if !conflict_state_observed {
+                return Ok(None);
+            }
+
+            let repo = find_repository_in_path(&worktree.to_string_lossy())?;
+            let head = repo.head()?.target()?;
+            let working_log = repo.storage.working_log_for_base_commit(&head)?;
+            Ok(Some(ControlAttemptSnapshot {
+                head,
+                initial: working_log.read_initial_attributions(),
+                checkpoints: working_log.read_all_checkpoints()?,
+            }))
+        });
+        snapshots.insert(
+            root_sid.to_string(),
+            PendingControlAttemptSnapshot {
+                handle,
+                started_at_ns: now_unix_nanos(),
+            },
+        );
+        Ok(())
+    }
+
+    async fn take_control_attempt_snapshot(
+        &self,
+        root_sid: &str,
+    ) -> Result<Option<ControlAttemptSnapshot>, GitAiError> {
+        let pending = self
             .control_attempt_snapshots_by_root
             .lock()
             .map_err(|_| {
                 GitAiError::Generic("control attempt snapshot map lock poisoned".to_string())
             })?
-            .contains_key(root_sid)
-        {
-            return Ok(());
-        }
-
-        let repo = find_repository_in_path(&worktree.to_string_lossy())?;
-        let head = repo.head()?.target()?;
-        let working_log = repo.storage.working_log_for_base_commit(&head)?;
-        let snapshot = ControlAttemptSnapshot {
-            head,
-            initial: working_log.read_initial_attributions(),
-            checkpoints: working_log.read_all_checkpoints()?,
-            captured_at_ns: now_unix_nanos(),
+            .remove(root_sid);
+        let Some(pending) = pending else {
+            return Ok(None);
         };
-        self.control_attempt_snapshots_by_root
-            .lock()
-            .map_err(|_| {
-                GitAiError::Generic("control attempt snapshot map lock poisoned".to_string())
-            })?
-            .entry(root_sid.to_string())
-            .or_insert(snapshot);
-        Ok(())
-    }
-
-    fn take_control_attempt_snapshot(
-        &self,
-        root_sid: &str,
-    ) -> Result<Option<ControlAttemptSnapshot>, GitAiError> {
-        let mut snapshots = self.control_attempt_snapshots_by_root.lock().map_err(|_| {
-            GitAiError::Generic("control attempt snapshot map lock poisoned".to_string())
-        })?;
-        Ok(snapshots.remove(root_sid))
+        let mut handle = pending.handle;
+        match tokio::time::timeout(CONTROL_ATTEMPT_SNAPSHOT_WAIT, &mut handle).await {
+            Ok(Ok(Ok(snapshot))) => Ok(snapshot),
+            Ok(Ok(Err(error))) => {
+                tracing::debug!(
+                    %error,
+                    sid = %root_sid,
+                    "failed to capture control-attempt working-log snapshot"
+                );
+                Ok(None)
+            }
+            Ok(Err(error)) => {
+                tracing::debug!(
+                    %error,
+                    sid = %root_sid,
+                    "control-attempt working-log snapshot task failed"
+                );
+                Ok(None)
+            }
+            Err(_) => {
+                handle.abort();
+                tracing::debug!(
+                    sid = %root_sid,
+                    "control-attempt working-log snapshot task timed out"
+                );
+                Ok(None)
+            }
+        }
     }
 
     fn set_pending_revert_no_commit_for_worktree(
@@ -6713,7 +6773,8 @@ impl ActorDaemonCoordinator {
 
         let cmd = &applied.command;
         let events = &applied.analysis.events;
-        let mut control_attempt_snapshot = self.take_control_attempt_snapshot(&cmd.root_sid)?;
+        let mut control_attempt_snapshot =
+            self.take_control_attempt_snapshot(&cmd.root_sid).await?;
 
         let primary = cmd.primary_command.as_deref().unwrap_or("unknown");
         let lite_mode = config::Config::get().get_feature_flags().lite_mode;
@@ -7360,7 +7421,6 @@ impl ActorDaemonCoordinator {
                                     head: head.clone(),
                                     initial: working_log.read_initial_attributions(),
                                     checkpoints: working_log.read_all_checkpoints()?,
-                                    captured_at_ns: now_unix_nanos(),
                                 })
                             } else {
                                 None
