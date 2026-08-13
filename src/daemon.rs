@@ -2621,6 +2621,28 @@ fn merge_state_exists_for_worktree(worktree: &Path) -> bool {
     git_dir_for_worktree(worktree).is_some_and(|git_dir| git_dir.join("MERGE_HEAD").exists())
 }
 
+fn control_attempt_snapshot_for_head(
+    repo: &Repository,
+    head: &str,
+) -> Result<ControlAttemptSnapshot, GitAiError> {
+    let had_working_log = repo.storage.has_working_log(head);
+    let (initial, checkpoints) = if had_working_log {
+        let working_log = repo.storage.working_log_for_base_commit(head)?;
+        (
+            working_log.read_initial_attributions(),
+            working_log.read_all_checkpoints()?,
+        )
+    } else {
+        (Default::default(), Vec::new())
+    };
+    Ok(ControlAttemptSnapshot {
+        head: head.to_string(),
+        had_working_log,
+        initial,
+        checkpoints,
+    })
+}
+
 fn revert_destination_changes(
     cmd: &crate::daemon::domain::NormalizedCommand,
 ) -> Vec<&crate::daemon::domain::RefChange> {
@@ -3294,7 +3316,6 @@ type CommitFileTimestampSnapshotHandle =
 type CommitFileTimestampSnapshotHandles = HashMap<String, CommitFileTimestampSnapshotHandle>;
 
 const COMMIT_FILE_TIMESTAMP_SNAPSHOT_WAIT: Duration = Duration::from_millis(500);
-const CONTROL_ATTEMPT_SNAPSHOT_WAIT: Duration = Duration::from_secs(2);
 const SESSION_EVENT_RECOVERY_PREFLIGHT_WAIT: Duration = Duration::from_secs(2);
 const SESSION_EVENT_RECOVERY_PREFLIGHT_POLL: Duration = Duration::from_millis(100);
 
@@ -3341,9 +3362,8 @@ struct ControlAttemptSnapshot {
     checkpoints: Vec<crate::authorship::working_log::Checkpoint>,
 }
 
-struct PendingControlAttemptSnapshot {
-    handle: tokio::task::JoinHandle<Result<Option<ControlAttemptSnapshot>, GitAiError>>,
-    started_at_ns: u128,
+struct PendingControlAttemptBoundary {
+    observed_at_ns: u128,
 }
 
 #[derive(Debug, Clone)]
@@ -3447,7 +3467,7 @@ pub struct ActorDaemonCoordinator {
     pending_ai_edits_by_family: Mutex<HashMap<String, HashMap<String, u128>>>,
     family_sequencers_by_family: Mutex<HashMap<String, FamilySequencerState>>,
     pending_root_slots_by_root: Mutex<HashMap<String, PendingRootSlot>>,
-    control_attempt_snapshots_by_root: Mutex<HashMap<String, PendingControlAttemptSnapshot>>,
+    control_attempt_boundaries_by_root: Mutex<HashMap<String, PendingControlAttemptBoundary>>,
     commit_file_timestamp_snapshots_by_root:
         Mutex<HashMap<String, CommitFileTimestampSnapshotHandles>>,
     recent_replay_prerequisites_by_family:
@@ -3468,7 +3488,6 @@ pub struct ActorDaemonCoordinator {
     // OnceLock: set once at worker start, never cleared. The ingest worker
     // exits via the shutdown select! arm instead of relying on channel closure.
     trace_ingest_tx: std::sync::OnceLock<mpsc::Sender<Value>>,
-    trace_runtime_handle: std::sync::OnceLock<tokio::runtime::Handle>,
     telemetry_worker: Option<crate::daemon::telemetry_worker::DaemonTelemetryWorkerHandle>,
     stream_worker: Option<crate::daemon::stream_worker::StreamWorkerHandle>,
     transcript_shutdown_notify: std::sync::OnceLock<Arc<tokio::sync::Notify>>,
@@ -3550,7 +3569,7 @@ impl ActorDaemonCoordinator {
             pending_ai_edits_by_family: Mutex::new(HashMap::new()),
             family_sequencers_by_family: Mutex::new(HashMap::new()),
             pending_root_slots_by_root: Mutex::new(HashMap::new()),
-            control_attempt_snapshots_by_root: Mutex::new(HashMap::new()),
+            control_attempt_boundaries_by_root: Mutex::new(HashMap::new()),
             commit_file_timestamp_snapshots_by_root: Mutex::new(HashMap::new()),
             recent_replay_prerequisites_by_family: Mutex::new(HashMap::new()),
             side_effect_errors_by_family: Mutex::new(HashMap::new()),
@@ -3579,7 +3598,6 @@ impl ActorDaemonCoordinator {
                 }),
             test_completion_log_lock: Mutex::new(()),
             trace_ingest_tx: std::sync::OnceLock::new(),
-            trace_runtime_handle: std::sync::OnceLock::new(),
             telemetry_worker: None,
             stream_worker: None,
             transcript_shutdown_notify: std::sync::OnceLock::new(),
@@ -3898,15 +3916,11 @@ impl ActorDaemonCoordinator {
         if let Ok(mut map) = self.queued_trace_payloads_by_root.lock() {
             map.retain(|_, count| *count > 0);
         }
-        if let Ok(mut map) = self.control_attempt_snapshots_by_root.lock() {
-            const SNAPSHOT_TIMEOUT_NS: u128 = 10 * 60 * 1_000_000_000;
+        if let Ok(mut map) = self.control_attempt_boundaries_by_root.lock() {
+            const BOUNDARY_TIMEOUT_NS: u128 = 10 * 60 * 1_000_000_000;
             let now_ns = now_unix_nanos();
             map.retain(|_, pending| {
-                let retain = now_ns.saturating_sub(pending.started_at_ns) < SNAPSHOT_TIMEOUT_NS;
-                if !retain {
-                    pending.handle.abort();
-                }
-                retain
+                now_ns.saturating_sub(pending.observed_at_ns) < BOUNDARY_TIMEOUT_NS
             });
         }
         // Clean expired pending AI edit entries (older than 10s).
@@ -4564,14 +4578,6 @@ impl ActorDaemonCoordinator {
     }
 
     fn start_trace_ingest_worker(self: &Arc<Self>) -> Result<(), GitAiError> {
-        if self.trace_runtime_handle.get().is_none() {
-            let runtime_handle = tokio::runtime::Handle::try_current().map_err(|error| {
-                GitAiError::Generic(format!(
-                    "trace ingest worker requires a Tokio runtime: {error}"
-                ))
-            })?;
-            let _ = self.trace_runtime_handle.set(runtime_handle);
-        }
         // Idempotent: if OnceLock is already set, worker is already running.
         if self.trace_ingest_tx.get().is_some() {
             return Ok(());
@@ -5269,12 +5275,11 @@ impl ActorDaemonCoordinator {
             .clone()
             .or_else(|| ingress.root_worktrees.get(&root).cloned());
 
-        // Conflict side effects may be processed long after the caller has
-        // already run `--skip`. Start preserving the working log at the
-        // terminal Trace2 boundary, before the family sequencer admits later
-        // resolution checkpoints. Repository inspection and log reads happen
-        // on the blocking pool after the ingress mutex is released.
-        let control_attempt_snapshot = if terminal
+        // Conflict side effects may be processed after the caller has already
+        // run `--skip`. Remember that control state existed at the terminal
+        // Trace2 boundary. The family sequencer reads the working log later,
+        // after prior checkpoints and before post-command checkpoints.
+        let control_attempt_boundary = if terminal
             && trace_invocation_starts_control_attempt(
                 effective_primary.as_deref(),
                 &effective_argv,
@@ -5317,13 +5322,13 @@ impl ActorDaemonCoordinator {
 
         drop(ingress);
 
-        if let Some((worktree, primary)) = control_attempt_snapshot
-            && let Err(error) = self.start_control_attempt_snapshot(&root, worktree, primary)
+        if let Some((worktree, primary)) = control_attempt_boundary
+            && let Err(error) = self.record_control_attempt_boundary(&root, &worktree, &primary)
         {
             tracing::debug!(
                 %error,
                 sid = %root,
-                "failed to start control-attempt working-log snapshot"
+                "failed to record control-attempt terminal boundary"
             );
         }
 
@@ -6041,104 +6046,46 @@ impl ActorDaemonCoordinator {
         Ok(map.remove(&Self::worktree_state_key(worktree)))
     }
 
-    fn start_control_attempt_snapshot(
+    fn record_control_attempt_boundary(
         &self,
         root_sid: &str,
-        worktree: PathBuf,
-        primary: String,
+        worktree: &Path,
+        primary: &str,
     ) -> Result<(), GitAiError> {
-        let mut snapshots = self.control_attempt_snapshots_by_root.lock().map_err(|_| {
-            GitAiError::Generic("control attempt snapshot map lock poisoned".to_string())
-        })?;
-        if snapshots.contains_key(root_sid) {
+        let conflict_state_observed = match primary {
+            "cherry-pick" => cherry_pick_state_exists_for_worktree(worktree),
+            "merge" => merge_state_exists_for_worktree(worktree),
+            "revert" => revert_state_exists_for_worktree(worktree),
+            _ => false,
+        };
+        if !conflict_state_observed {
             return Ok(());
         }
 
-        let runtime_handle = self.trace_runtime_handle.get().ok_or_else(|| {
-            GitAiError::Generic("trace runtime handle is not initialized".to_string())
-        })?;
-        let handle = runtime_handle.spawn_blocking(move || {
-            let conflict_state_observed = match primary.as_str() {
-                "cherry-pick" => cherry_pick_state_exists_for_worktree(&worktree),
-                "merge" => merge_state_exists_for_worktree(&worktree),
-                "revert" => revert_state_exists_for_worktree(&worktree),
-                _ => false,
-            };
-            if !conflict_state_observed {
-                return Ok(None);
-            }
-
-            let repo = find_repository_in_path(&worktree.to_string_lossy())?;
-            let head = repo.head()?.target()?;
-            let had_working_log = repo.storage.has_working_log(&head);
-            let (initial, checkpoints) = if had_working_log {
-                let working_log = repo.storage.working_log_for_base_commit(&head)?;
-                (
-                    working_log.read_initial_attributions(),
-                    working_log.read_all_checkpoints()?,
-                )
-            } else {
-                (Default::default(), Vec::new())
-            };
-            Ok(Some(ControlAttemptSnapshot {
-                head,
-                had_working_log,
-                initial,
-                checkpoints,
-            }))
-        });
-        snapshots.insert(
-            root_sid.to_string(),
-            PendingControlAttemptSnapshot {
-                handle,
-                started_at_ns: now_unix_nanos(),
-            },
-        );
+        self.control_attempt_boundaries_by_root
+            .lock()
+            .map_err(|_| {
+                GitAiError::Generic("control attempt boundary map lock poisoned".to_string())
+            })?
+            .entry(root_sid.to_string())
+            .or_insert(PendingControlAttemptBoundary {
+                observed_at_ns: now_unix_nanos(),
+            });
         Ok(())
     }
 
-    async fn take_control_attempt_snapshot(
+    fn take_control_attempt_boundary(
         &self,
         root_sid: &str,
-    ) -> Result<Option<ControlAttemptSnapshot>, GitAiError> {
-        let pending = self
-            .control_attempt_snapshots_by_root
+    ) -> Result<Option<PendingControlAttemptBoundary>, GitAiError> {
+        let boundary = self
+            .control_attempt_boundaries_by_root
             .lock()
             .map_err(|_| {
-                GitAiError::Generic("control attempt snapshot map lock poisoned".to_string())
+                GitAiError::Generic("control attempt boundary map lock poisoned".to_string())
             })?
             .remove(root_sid);
-        let Some(pending) = pending else {
-            return Ok(None);
-        };
-        let mut handle = pending.handle;
-        match tokio::time::timeout(CONTROL_ATTEMPT_SNAPSHOT_WAIT, &mut handle).await {
-            Ok(Ok(Ok(snapshot))) => Ok(snapshot),
-            Ok(Ok(Err(error))) => {
-                tracing::debug!(
-                    %error,
-                    sid = %root_sid,
-                    "failed to capture control-attempt working-log snapshot"
-                );
-                Ok(None)
-            }
-            Ok(Err(error)) => {
-                tracing::debug!(
-                    %error,
-                    sid = %root_sid,
-                    "control-attempt working-log snapshot task failed"
-                );
-                Ok(None)
-            }
-            Err(_) => {
-                handle.abort();
-                tracing::debug!(
-                    sid = %root_sid,
-                    "control-attempt working-log snapshot task timed out"
-                );
-                Ok(None)
-            }
-        }
+        Ok(boundary)
     }
 
     fn set_pending_revert_no_commit_for_worktree(
@@ -6789,8 +6736,7 @@ impl ActorDaemonCoordinator {
 
         let cmd = &applied.command;
         let events = &applied.analysis.events;
-        let mut control_attempt_snapshot =
-            self.take_control_attempt_snapshot(&cmd.root_sid).await?;
+        let mut control_attempt_boundary = self.take_control_attempt_boundary(&cmd.root_sid)?;
 
         let primary = cmd.primary_command.as_deref().unwrap_or("unknown");
         let lite_mode = config::Config::get().get_feature_flags().lite_mode;
@@ -7317,27 +7263,19 @@ impl ActorDaemonCoordinator {
                     }
                     crate::daemon::domain::SemanticEvent::CherryPickPrepared { head } => {
                         let worktree_path = Path::new(&worktree);
-                        let captured = control_attempt_snapshot.take();
-                        if let Some(snapshot) = captured {
+                        let observed_boundary = control_attempt_boundary.take().is_some();
+                        if !head.is_empty()
+                            && (observed_boundary
+                                || cherry_pick_state_exists_for_worktree(worktree_path))
+                        {
+                            let repo = find_repository_in_path(&worktree)?;
+                            let snapshot = control_attempt_snapshot_for_head(&repo, head)?;
                             self.set_pending_cherry_pick_attempt_for_worktree(
                                 worktree_path,
                                 PendingCherryPickAttempt {
                                     head: snapshot.head,
                                     initial: snapshot.initial,
                                     checkpoints: snapshot.checkpoints,
-                                },
-                            )?;
-                        } else if !head.is_empty()
-                            && cherry_pick_state_exists_for_worktree(worktree_path)
-                        {
-                            let repo = find_repository_in_path(&worktree)?;
-                            let working_log = repo.storage.working_log_for_base_commit(head)?;
-                            self.set_pending_cherry_pick_attempt_for_worktree(
-                                worktree_path,
-                                PendingCherryPickAttempt {
-                                    head: head.clone(),
-                                    initial: working_log.read_initial_attributions(),
-                                    checkpoints: working_log.read_all_checkpoints()?,
                                 },
                             )?;
                         }
@@ -7417,8 +7355,8 @@ impl ActorDaemonCoordinator {
                         head,
                     } => {
                         let worktree_path = Path::new(&worktree);
-                        let captured = control_attempt_snapshot.take();
-                        if captured.is_some()
+                        let observed_boundary = control_attempt_boundary.take().is_some();
+                        if observed_boundary
                             || (!head.is_empty() && revert_state_exists_for_worktree(worktree_path))
                         {
                             let repo = find_repository_in_path(&worktree)?;
@@ -7431,20 +7369,7 @@ impl ActorDaemonCoordinator {
                                     Some(head),
                                 )?;
                             }
-                            let fallback_snapshot = if captured.is_none() {
-                                let working_log = repo.storage.working_log_for_base_commit(head)?;
-                                Some(ControlAttemptSnapshot {
-                                    head: head.clone(),
-                                    had_working_log: repo.storage.has_working_log(head),
-                                    initial: working_log.read_initial_attributions(),
-                                    checkpoints: working_log.read_all_checkpoints()?,
-                                })
-                            } else {
-                                None
-                            };
-                            let snapshot = captured
-                                .or(fallback_snapshot)
-                                .expect("prepared revert should have a working-log snapshot");
+                            let snapshot = control_attempt_snapshot_for_head(&repo, head)?;
                             self.set_pending_revert_attempt_for_worktree(
                                 worktree_path,
                                 PendingRevertAttempt {
@@ -7485,37 +7410,13 @@ impl ActorDaemonCoordinator {
                     crate::daemon::domain::SemanticEvent::MergePrepared { head } => {
                         if !head.is_empty() {
                             let worktree_path = Path::new(&worktree);
-                            let captured = control_attempt_snapshot.take();
+                            let observed_boundary = control_attempt_boundary.take().is_some();
                             // A rejected merge such as `merge --ff-only` also exits
                             // nonzero, but does not establish merge state. Only take
                             // a rollback snapshot when Git actually left MERGE_HEAD.
-                            if captured.is_some() || merge_state_exists_for_worktree(worktree_path)
-                            {
+                            if observed_boundary || merge_state_exists_for_worktree(worktree_path) {
                                 let repo = find_repository_in_path(&worktree)?;
-                                let fallback_snapshot = if captured.is_none() {
-                                    let had_working_log = repo.storage.has_working_log(head);
-                                    let (initial, checkpoints) = if had_working_log {
-                                        let working_log =
-                                            repo.storage.working_log_for_base_commit(head)?;
-                                        (
-                                            working_log.read_initial_attributions(),
-                                            working_log.read_all_checkpoints()?,
-                                        )
-                                    } else {
-                                        (Default::default(), Vec::new())
-                                    };
-                                    Some(ControlAttemptSnapshot {
-                                        head: head.clone(),
-                                        had_working_log,
-                                        initial,
-                                        checkpoints,
-                                    })
-                                } else {
-                                    None
-                                };
-                                let snapshot = captured
-                                    .or(fallback_snapshot)
-                                    .expect("prepared merge should have a working-log snapshot");
+                                let snapshot = control_attempt_snapshot_for_head(&repo, head)?;
                                 self.set_pending_merge_attempt_for_worktree(
                                     worktree_path,
                                     PendingMergeAttempt {
