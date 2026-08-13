@@ -110,6 +110,7 @@ fn nested_parent_and_sibling_cwds_route_completion_and_attribution_to_target() {
 }
 
 #[test]
+#[cfg(unix)]
 fn env_timeout_command_nohup_and_nested_shell_wrappers_are_traced() {
     let repo = seeded_repo();
     for (path, contents, script) in [
@@ -146,6 +147,7 @@ fn env_timeout_command_nohup_and_nested_shell_wrappers_are_traced() {
 }
 
 #[test]
+#[cfg(unix)]
 fn conditional_pipeline_stdin_and_background_completion_are_traced() {
     let repo = seeded_repo();
 
