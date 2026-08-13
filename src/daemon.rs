@@ -1911,6 +1911,57 @@ fn restore_pathspecs(args: &[String], worktree: Option<&Path>) -> Vec<String> {
     paths
 }
 
+fn workspace_pathspecs_from_command_dir(
+    args: &[String],
+    command_dir: &Path,
+    worktree: &Path,
+) -> Vec<String> {
+    let command_dir = command_dir
+        .canonicalize()
+        .unwrap_or_else(|_| command_dir.to_path_buf());
+    let worktree = worktree
+        .canonicalize()
+        .unwrap_or_else(|_| worktree.to_path_buf());
+
+    restore_pathspecs(args, Some(&command_dir))
+        .into_iter()
+        .filter_map(|pathspec| {
+            // Pathspec magic has its own rooting rules. If it cannot be
+            // reconstructed exactly, let the post-command existence check be
+            // authoritative instead of risking attribution for another path.
+            if pathspec.starts_with(':') {
+                return None;
+            }
+            let selected = PathBuf::from(&pathspec);
+            let selected = if selected.is_absolute() {
+                selected
+            } else {
+                command_dir.join(selected)
+            };
+            let relative = selected.strip_prefix(&worktree).ok()?;
+            let mut normalized = PathBuf::new();
+            for component in relative.components() {
+                match component {
+                    std::path::Component::CurDir => {}
+                    std::path::Component::Normal(part) => normalized.push(part),
+                    std::path::Component::ParentDir => {
+                        if !normalized.pop() {
+                            return None;
+                        }
+                    }
+                    std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                        return None;
+                    }
+                }
+            }
+            Some(crate::utils::normalize_to_posix(
+                &normalized.to_string_lossy(),
+            ))
+        })
+        .filter(|path| !path.is_empty())
+        .collect()
+}
+
 fn restore_source_revision(args: &[String]) -> Option<String> {
     let mut index = 0usize;
     while index < args.len() {
@@ -3582,6 +3633,7 @@ enum RecentReplayPrerequisite {
 #[derive(Debug, Default, Clone)]
 struct TraceIngressState {
     root_worktrees: HashMap<String, PathBuf>,
+    root_command_dirs: HashMap<String, PathBuf>,
     root_families: HashMap<String, String>,
     root_argv: HashMap<String, Vec<String>>,
     root_started_at_ns: HashMap<String, u128>,
@@ -4558,6 +4610,7 @@ impl ActorDaemonCoordinator {
 
     fn clear_trace_ingress_root_locked(ingress: &mut TraceIngressState, root_sid: &str) {
         ingress.root_worktrees.remove(root_sid);
+        ingress.root_command_dirs.remove(root_sid);
         ingress.root_families.remove(root_sid);
         ingress.root_argv.remove(root_sid);
         ingress.root_started_at_ns.remove(root_sid);
@@ -5412,6 +5465,12 @@ impl ActorDaemonCoordinator {
 
         if event == "start" && sid == root && !argv.is_empty() {
             ingress.root_argv.insert(root.clone(), argv.clone());
+            if let Some(cwd) = payload.get("cwd").and_then(Value::as_str) {
+                let cwd = Path::new(cwd);
+                let command_dir = trace_payload_command_base_dir(payload, &argv, cwd)
+                    .unwrap_or_else(|| cwd.into());
+                ingress.root_command_dirs.insert(root.clone(), command_dir);
+            }
             if event_is_read_only {
                 ingress.root_definitely_read_only.insert(root.clone());
             }
@@ -5459,12 +5518,13 @@ impl ActorDaemonCoordinator {
             && effective_primary.as_deref() == Some("rm")
             && !ingress.root_workspace_paths_at_start.contains_key(&root)
             && let Some(worktree) = command_worktree.as_deref()
+            && let Some(command_dir) = ingress.root_command_dirs.get(&root).cloned()
         {
             let command_args =
                 trace_invocation_command_args(effective_primary.as_deref(), &effective_argv);
             ingress.root_workspace_paths_at_start.insert(
                 root.clone(),
-                restore_pathspecs(&command_args, Some(worktree)),
+                workspace_pathspecs_from_command_dir(&command_args, &command_dir, worktree),
             );
         }
         let command_mutates_refs =
@@ -5518,6 +5578,7 @@ impl ActorDaemonCoordinator {
         );
         if terminal {
             ingress.root_worktrees.remove(&root);
+            ingress.root_command_dirs.remove(&root);
             ingress.root_families.remove(&root);
             ingress.root_argv.remove(&root);
             ingress.root_started_at_ns.remove(&root);
@@ -7800,9 +7861,8 @@ impl ActorDaemonCoordinator {
                             .clone()
                             .filter(|head| !head.is_empty())
                             .unwrap_or(repo.head()?.target()?);
-                        let parsed = parsed_invocation_for_normalized_command(cmd);
                         let removal_paths = if cmd.workspace_paths_at_start.is_empty() {
-                            restore_pathspecs(&parsed.command_args, Some(Path::new(&worktree)))
+                            Vec::new()
                         } else {
                             cmd.workspace_paths_at_start.clone()
                         };
@@ -12612,6 +12672,7 @@ mod tests {
             "event": "start",
             "sid": sid,
             "argv": ["git", "rm", "--pathspec-from-file=remove-paths.txt"],
+            "cwd": repo.to_string_lossy().to_string(),
         });
         assert!(coord.prepare_trace_payload_for_ingest(&mut start));
         let mut def_repo = serde_json::json!({
@@ -12633,6 +12694,37 @@ mod tests {
             atexit[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
             serde_json::json!(["removed.txt"]),
             "later file changes must not alter the command's original selection"
+        );
+    }
+
+    #[tokio::test]
+    async fn rm_pathspecs_are_rooted_at_the_invocation_subdirectory() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let subdir = repo.join("sub");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::create_dir_all(&subdir).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let sid = "20260411T120000.000000-Prmsubdir";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "foo.txt"],
+            "cwd": subdir.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert_eq!(
+            def_repo[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["sub/foo.txt"])
         );
     }
 

@@ -159,3 +159,30 @@ fn test_git_rm_dry_run_preserves_ai_attribution() {
     let mut dry = target.filename("dry.txt");
     dry.assert_committed_lines(lines!["AI edit kept by dry run".ai()]);
 }
+
+#[test]
+fn test_git_rm_from_subdirectory_only_prunes_the_selected_same_named_path() {
+    let repo = TestRepo::new();
+    let subdir = repo.path().join("sub");
+    fs::create_dir_all(&subdir).unwrap();
+    fs::write(repo.path().join("foo.txt"), "root base\n").unwrap();
+    fs::write(subdir.join("foo.txt"), "sub base\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "foo.txt"])
+        .unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "sub/foo.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Initial same-named files")
+        .unwrap();
+    repo.assert_file_committed_lines("foo.txt", lines!["root base".human()]);
+    repo.assert_file_committed_lines("sub/foo.txt", lines!["sub base".human()]);
+
+    repo.write_ai_edit("foo.txt", "root AI kept\n");
+    repo.write_ai_edit("sub/foo.txt", "sub AI removed\n");
+    repo.git_from_working_dir(&subdir, &["rm", "-f", "foo.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Remove only subdirectory file")
+        .unwrap();
+
+    repo.assert_file_committed_lines("foo.txt", lines!["root AI kept".ai()]);
+    assert!(!subdir.join("foo.txt").exists());
+}
