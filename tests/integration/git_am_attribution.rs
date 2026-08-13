@@ -5,6 +5,7 @@ use crate::test_utils::{
 };
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::git::find_repository_in_path;
+#[cfg(unix)]
 use serde_json::json;
 use std::fs;
 use std::thread;
