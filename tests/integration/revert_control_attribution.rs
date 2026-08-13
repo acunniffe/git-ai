@@ -3,7 +3,10 @@ use crate::repos::test_repo::TestRepo;
 use std::fs;
 
 fn conflicting_revert_repo() -> (TestRepo, String) {
-    let repo = TestRepo::new();
+    conflicting_revert_repo_from(TestRepo::new())
+}
+
+fn conflicting_revert_repo_from(repo: TestRepo) -> (TestRepo, String) {
     fs::write(repo.path().join("conflict.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
     repo.assert_file_committed_lines("conflict.txt", lines!["base".human()]);
@@ -140,7 +143,10 @@ fn test_git_revert_quit_keeps_ai_resolution_for_ordinary_commit() {
 
 #[test]
 fn test_git_revert_skip_preserves_unrelated_ai_checkpoint() {
-    let (repo, source_commit) = conflicting_revert_repo();
+    let (repo, source_commit) = conflicting_revert_repo_from(TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+        "revert=750",
+    )]));
     let mut unrelated = repo.filename("unrelated.txt");
     unrelated.set_contents_no_stage(lines!["unrelated AI".ai()]);
     assert!(repo.git(&["revert", &source_commit]).is_err());
