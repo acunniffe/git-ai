@@ -206,9 +206,9 @@ pub(crate) struct AttributionRecoveryContext<'a> {
     /// be claimed by a regular commit executed inside the Bash call.
     pub(crate) bash_scope_to_pre_index: bool,
     /// A checkout/switch boundary can transplant AI attribution next to edits
-    /// made later. Disable edge extension for that carried state while keeping
-    /// it available for ordinary same-workspace commit carryover.
-    pub(crate) allow_edge_recovery: bool,
+    /// made later. Disable edge extension only for paths carrying state across
+    /// that boundary, while keeping it available for later unrelated edits.
+    pub(crate) blocked_edge_recovery_paths: Option<&'a HashSet<String>>,
 }
 
 pub(crate) fn recover_attribution(
@@ -294,13 +294,14 @@ pub(crate) fn recover_attribution(
 
     // The pre-index tree is an exact provenance boundary. Extending AI ranges
     // to adjacent unknown lines would cross back into pre-staged human work.
-    if !bash_scope_to_pre_index && context.allow_edge_recovery {
+    if !bash_scope_to_pre_index {
         recover_adjacent_edges(
             repo,
             parent_sha,
             commit_sha,
             authorship_log,
             committed_hunks,
+            context.blocked_edge_recovery_paths,
         );
     }
     let unknown_after_edges = unknown_lines_by_file(authorship_log, committed_hunks);
@@ -1516,9 +1517,13 @@ fn recover_adjacent_edges(
     commit_sha: &str,
     authorship_log: &mut AuthorshipLog,
     committed_hunks: &HashMap<String, Vec<LineRange>>,
+    blocked_paths: Option<&HashSet<String>>,
 ) {
     let unknown = unknown_lines_by_file(authorship_log, committed_hunks);
     for (file_path, unknown_lines) in unknown {
+        if blocked_paths.is_some_and(|paths| paths.contains(&file_path)) {
+            continue;
+        }
         let line_to_author = line_author_map(authorship_log, &file_path);
         let runs = contiguous_runs(&unknown_lines);
         for run in runs {
