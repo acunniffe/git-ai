@@ -799,7 +799,7 @@ fn test_git_am_incompatible_failure_inside_bash_does_not_mutate_attribution() {
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn test_git_am_from_parent_cwd_with_timeout_and_explicit_c_attributes_target_repo() {
     let source = TestRepo::new();
     fs::write(source.path().join("parent-cwd.txt"), "parent cwd am\n")
@@ -881,7 +881,7 @@ fn test_git_am_from_parent_cwd_with_timeout_and_explicit_c_attributes_target_rep
 }
 
 #[test]
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 fn test_git_am_actual_timeout_conditional_wrapper_attributes_target_repo() {
     let source = TestRepo::new();
     fs::write(
