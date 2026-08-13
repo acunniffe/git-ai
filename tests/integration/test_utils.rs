@@ -35,6 +35,14 @@ pub fn codex_bash_hook_input(
 pub fn setup_codex_bash_repo(
     initial_commit_message: &str,
 ) -> (tempfile::TempDir, TestRepo, PathBuf) {
+    let (db_dir, _db_value, repo, transcript) =
+        setup_codex_bash_repo_with_db_path(initial_commit_message);
+    (db_dir, repo, transcript)
+}
+
+pub fn setup_codex_bash_repo_with_db_path(
+    initial_commit_message: &str,
+) -> (tempfile::TempDir, String, TestRepo, PathBuf) {
     let (db_dir, db_value) = isolated_bash_history_db_path();
     let repo = TestRepo::new_with_daemon_env(&[(
         "GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH",
@@ -46,7 +54,7 @@ pub fn setup_codex_bash_repo(
         .assert_committed_lines(lines!["base".unattributed_human()]);
     let transcript = repo.path().join("codex-transcript.jsonl");
     std::fs::copy(fixture_path("codex-session-simple.jsonl"), &transcript).unwrap();
-    (db_dir, repo, transcript)
+    (db_dir, db_value, repo, transcript)
 }
 
 pub fn checkpoint_codex_bash_hook(

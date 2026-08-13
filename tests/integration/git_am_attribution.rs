@@ -1,6 +1,8 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::{checkpoint_codex_bash_hook, setup_codex_bash_repo};
+use crate::test_utils::{
+    checkpoint_codex_bash_hook, setup_codex_bash_repo, setup_codex_bash_repo_with_db_path,
+};
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::git::find_repository_in_path;
 use serde_json::json;
@@ -796,6 +798,7 @@ fn test_git_am_incompatible_failure_inside_bash_does_not_mutate_attribution() {
 }
 
 #[test]
+#[cfg(unix)]
 fn test_git_am_from_parent_cwd_with_timeout_and_explicit_c_attributes_target_repo() {
     let source = TestRepo::new();
     fs::write(source.path().join("parent-cwd.txt"), "parent cwd am\n")
@@ -840,9 +843,13 @@ fn test_git_am_from_parent_cwd_with_timeout_and_explicit_c_attributes_target_rep
         )
         .expect("parent-cwd pre hook should succeed");
     target
-        .git_from_working_dir(
+        .shell_git_from_working_dir(
             &parent_cwd,
-            &["-C", &repo_name, "am", patch_path.to_str().unwrap()],
+            &format!(
+                "timeout 30 {{git}} -C {} am {}",
+                repo_name,
+                patch_path.display()
+            ),
         )
         .expect("explicit -C git am should succeed");
     let post_hook_input = json!({
@@ -898,7 +905,7 @@ fn test_git_am_actual_timeout_conditional_wrapper_attributes_target_repo() {
     checkpoint_git_am_bash_hook(&target, &transcript_path, "PreToolUse", &command);
     target
         .shell_git(&format!(
-            "test -f ready.marker && {{git}} am {}",
+            "test -f ready.marker && timeout 30 {{git}} am {}",
             patch_path.display()
         ))
         .unwrap();
@@ -932,9 +939,8 @@ fn test_git_am_does_not_steal_overlapping_bash_call_from_another_repo() {
     let patch_path = patch_dir.path().join("other-repo.patch");
     fs::write(&patch_path, patch).expect("patch should write");
 
-    let (bash_db_dir, bash_repo, transcript_path) = setup_codex_bash_repo("Bash repo base");
-    let bash_db_path = bash_db_dir.path().join("bash-history.db");
-    let bash_db_value = bash_db_path.to_string_lossy().to_string();
+    let (_bash_db_dir, bash_db_value, bash_repo, transcript_path) =
+        setup_codex_bash_repo_with_db_path("Bash repo base");
     let env = [(
         "GIT_AI_TEST_BASH_CHECKPOINT_DB_PATH",
         bash_db_value.as_str(),
