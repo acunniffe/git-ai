@@ -86,7 +86,12 @@ fn symbolic_ref_head_to_different_tip_carries_pending_ai_to_new_base() {
 
 #[test]
 fn replace_create_graft_and_delete_preserve_pending_ai_and_source_note() {
-    let repo = TestRepo::new();
+    // Keep the earlier commit's attribution work in flight while replacement
+    // refs are active, matching the ordering that matters under CI load.
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+        "commit=750",
+    )]);
     let mut source = repo.filename("source.txt");
     source.set_contents(vec!["source AI".ai()]);
     let first = repo.stage_all_and_commit("source").unwrap().commit_sha;
