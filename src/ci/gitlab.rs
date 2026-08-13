@@ -1,7 +1,6 @@
 use crate::ci::ci_context::{CiContext, CiEvent};
 use crate::error::GitAiError;
-use crate::git::repository::exec_git;
-use crate::git::repository::find_repository_in_path;
+use crate::git::repository::{exec_git, find_repository_in_path, Repository};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -138,6 +137,82 @@ fn fetch_mr_base_sha(
     }
 }
 
+/// Validates a potential squash commit candidate by checking:
+/// 1. The merge commit (M) has exactly 2 parents
+/// 2. One parent (S) has tree(M) == tree(S) — this is the squash candidate
+/// 3. S has exactly 1 parent, and that parent == target base (base_sha)
+/// 4. S != source head (mr.sha)
+/// Returns Some(squash_sha) if valid, None otherwise.
+fn validate_squash_candidate(
+    repo: &Repository,
+    merge_commit_sha: &str,
+    target_base_sha: &str,
+    source_head_sha: &str,
+) -> Option<String> {
+    let merge_commit = match repo.find_commit(merge_commit_sha.to_string()) {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+
+    let parents: Vec<_> = merge_commit.parents().collect();
+    if parents.len() != 2 {
+        return None;
+    }
+
+    let merge_tree = match merge_commit.tree() {
+        Ok(t) => t,
+        Err(_) => return None,
+    };
+    let merge_tree_id = merge_tree.id();
+
+    // Identify squash candidate by tree match (not position).
+    // The squash commit has the same tree as the merge commit.
+    let (squash_candidate_sha, target_base_candidate_sha) = {
+        let mut squash = None;
+        let mut target_base = None;
+        for p in &parents {
+            let tree = match repo.find_commit(p.id()).and_then(|c| c.tree()) {
+                Ok(t) => t,
+                Err(_) => return None,
+            };
+            if tree.id() == merge_tree_id {
+                squash = Some(p.id());
+            } else {
+                target_base = Some(p.id());
+            }
+        }
+        // Must have exactly one tree match (the squash commit) and one non-match (target base)
+        let s = squash?;
+        let t = target_base?;
+        (s, t)
+    };
+
+    // Check: parent(S) == target base
+    let squash_candidate = match repo.find_commit(squash_candidate_sha.clone()) {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+    let squash_parents: Vec<_> = squash_candidate.parents().collect();
+    if squash_parents.len() != 1 {
+        return None;
+    }
+    if squash_parents[0].id() != target_base_candidate_sha {
+        return None;
+    }
+
+    // Check: target base candidate matches expected target base
+    if target_base_candidate_sha != target_base_sha {
+        return None;
+    }
+
+    // Check: S != source head
+    if squash_candidate_sha == source_head_sha {
+        return None;
+    }
+
+    Some(squash_candidate_sha)
+}
+
 /// Query GitLab API for recently merged MRs and find one matching the current commit SHA.
 /// Returns None if no matching MR is found (this is not an error - just means this commit
 /// wasn't from a merged MR).
@@ -261,34 +336,6 @@ pub fn get_gitlab_ci_context() -> Result<Option<CiContext>, GitAiError> {
             return Ok(None);
         }
     };
-
-    // Determine which commit SHA to use as the "merge commit" for rewriting
-    // If this was a squash merge, CI_COMMIT_SHA might be the squash commit
-    // (which is what we want to rewrite authorship TO)
-    let effective_merge_sha = if mr.squash_commit_sha.as_ref() == Some(&commit_sha) {
-        println!("[GitLab CI] CI_COMMIT_SHA matches squash_commit_sha - this is a squash merge");
-        commit_sha.clone()
-    } else {
-        println!(
-            "[GitLab CI] CI_COMMIT_SHA matches merge_commit_sha - checking if this is a squash+merge"
-        );
-        // If squash was used but we matched on merge_commit_sha,
-        // the actual squash commit is in squash_commit_sha
-        if let Some(squash_sha) = &mr.squash_commit_sha {
-            println!(
-                "[GitLab CI] MR has squash_commit_sha={}, will use that for rewriting",
-                squash_sha
-            );
-            squash_sha.clone()
-        } else {
-            commit_sha.clone()
-        }
-    };
-
-    println!(
-        "[GitLab CI] Effective merge/squash SHA for rewriting: {}",
-        effective_merge_sha
-    );
 
     // Detect fork: if source_project_id differs from target_project_id, this is a fork MR
     let fork_clone_url = if mr.source_project_id != mr.target_project_id {
@@ -440,6 +487,66 @@ pub fn get_gitlab_ci_context() -> Result<Option<CiContext>, GitAiError> {
             );
             String::new()
         });
+
+    // Determine which commit SHA to use as the "merge commit" for rewriting
+    // If this was a squash merge, CI_COMMIT_SHA might be the squash commit
+    // (which is what we want to rewrite authorship TO)
+    let effective_merge_sha = if mr.squash_commit_sha.as_ref() == Some(&commit_sha) {
+        println!("[GitLab CI] CI_COMMIT_SHA matches squash_commit_sha - this is a squash merge");
+        commit_sha.clone()
+    } else {
+        println!(
+            "[GitLab CI] CI_COMMIT_SHA matches merge_commit_sha - checking if this is a squash+merge"
+        );
+        // If squash was used but we matched on merge_commit_sha,
+        // the actual squash commit is in squash_commit_sha
+        if let Some(squash_sha) = &mr.squash_commit_sha {
+            println!(
+                "[GitLab CI] MR has squash_commit_sha={}, will use that for rewriting",
+                squash_sha
+            );
+            squash_sha.clone()
+        } else if mr.squash == Some(true) {
+            // GitLab reported squash but didn't provide squash_commit_sha.
+            // Try to infer the squash commit from the merge commit's parents.
+            // This handles older GitLab versions (e.g., 12.4.2) where
+            // squash_commit_sha is null even though squash=true.
+            println!(
+                "[GitLab CI] MR has squash=true but squash_commit_sha=null - attempting to infer squash commit"
+            );
+            if base_sha.is_empty() {
+                println!(
+                    "[GitLab CI] Warning: base_sha unavailable (fetch_mr_base_sha failed); \
+                     cannot validate squash commit inference; falling back to merge commit SHA"
+                );
+                commit_sha.clone()
+            } else if let Some(inferred_squash_sha) = validate_squash_candidate(
+                &repo,
+                &commit_sha,  // merge_commit_sha (M)
+                &base_sha,    // target base (B)
+                &mr.sha,      // source head (C)
+            ) {
+                println!(
+                    "[GitLab CI] Inferred squash commit: {}, will use that for rewriting",
+                    inferred_squash_sha
+                );
+                inferred_squash_sha
+            } else {
+                println!(
+                    "[GitLab CI] Warning: GitLab reported a squash merge without squash_commit_sha. \
+                     Unable to identify the generated squash commit; authorship may not be preserved."
+                );
+                commit_sha.clone()
+            }
+        } else {
+            commit_sha.clone()
+        }
+    };
+
+    println!(
+        "[GitLab CI] Effective merge/squash SHA for rewriting: {}",
+        effective_merge_sha
+    );
 
     println!(
         "[GitLab CI] Created CiContext: merge_commit_sha={}, head_sha={}, head_ref={}, base_ref={}, base_sha={}",
@@ -799,5 +906,489 @@ mod tests {
             result,
             Some("abc1234567890abcdef1234567890abcdef12345".to_string())
         );
+    }
+
+    /// Test validate_squash_candidate with a properly structured squash merge.
+    /// Creates: B (base) -> C (source head) and M (merge) with parents [B, S]
+    /// where S is the squash commit with parent B and tree matching M.
+    #[test]
+    #[serial_test::serial]
+    fn test_validate_squash_candidate_valid() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_path = temp_dir.path();
+
+        // Initialize git repo
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Create base commit B with a file
+        std::fs::write(repo_path.join("file.txt"), "base content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let b_output = std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Base commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(b_output.status.success());
+        let base_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let base_sha = String::from_utf8_lossy(&base_sha.stdout).trim().to_string();
+
+        // Get the default branch name (before creating feature branch)
+        let branch_output = std::process::Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let default_branch = String::from_utf8_lossy(&branch_output.stdout).trim().to_string();
+
+        // Create source branch with commit C
+        std::process::Command::new("git")
+            .args(["checkout", "-q", "-b", "feature"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::fs::write(repo_path.join("file.txt"), "source content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let c_output = std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Source commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(c_output.status.success());
+        let source_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let source_sha = String::from_utf8_lossy(&source_sha.stdout).trim().to_string();
+
+        // Go back to main and create squash commit S (with parent B, same tree as final merge)
+        // Get the default branch name
+        let branch_output = std::process::Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let checkout_output = std::process::Command::new("git")
+            .args(["checkout", &default_branch])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(checkout_output.status.success(), "git checkout {} failed: {}", default_branch, String::from_utf8_lossy(&checkout_output.stderr));
+        // Create the squash commit content (same as what the merge will have)
+        std::fs::write(repo_path.join("file.txt"), "squashed content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let s_output = std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Squash commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(s_output.status.success());
+        let squash_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let squash_sha = String::from_utf8_lossy(&squash_sha.stdout).trim().to_string();
+
+        // Verify squash commit has parent B
+        let s_parent = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD^"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let s_parent = String::from_utf8_lossy(&s_parent.stdout).trim().to_string();
+        assert_eq!(s_parent, base_sha, "Squash commit should have base as parent");
+
+        // Now create merge commit M with parents [B, S] using git commit-tree
+        // First get the tree from the squash commit (which is the tree we want)
+        let squash_tree = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD^{tree}"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let squash_tree = String::from_utf8_lossy(&squash_tree.stdout).trim().to_string();
+
+        // Create merge commit with parents [base, squash] - order doesn't matter for our validator
+        let merge_msg = "Merge branch 'feature'\n\nSquash commit from MR";
+        let merge_commit = std::process::Command::new("git")
+            .args([
+                "commit-tree",
+                &squash_tree,
+                "-p", &base_sha,
+                "-p", &squash_sha,
+                "-m", merge_msg,
+            ])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(merge_commit.status.success());
+        let merge_sha = String::from_utf8_lossy(&merge_commit.stdout).trim().to_string();
+
+        // Reset main to the merge commit
+        std::process::Command::new("git")
+            .args(["reset", "--hard", &merge_sha])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Now test the validator
+        let repo = crate::git::repository::find_repository_in_path(repo_path.to_str().unwrap()).unwrap();
+
+        // Valid case: correct base_sha, correct source_sha
+        let result = super::validate_squash_candidate(&repo, &merge_sha, &base_sha, &source_sha);
+        assert_eq!(result, Some(squash_sha.clone()), "Should identify squash commit");
+
+        // Invalid: wrong base_sha
+        let result = super::validate_squash_candidate(&repo, &merge_sha, "0000000000000000000000000000000000000000", &source_sha);
+        assert!(result.is_none(), "Should reject wrong base_sha");
+
+        // Invalid: squash candidate equals source head
+        let result = super::validate_squash_candidate(&repo, &merge_sha, &base_sha, &squash_sha);
+        assert!(result.is_none(), "Should reject when squash == source head");
+    }
+
+    /// Test validate_squash_candidate with parent order reversed (S first, B second).
+    /// The validator should identify the squash candidate by tree match, not position.
+    #[test]
+    #[serial_test::serial]
+    fn test_validate_squash_candidate_reversed_parents() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_path = temp_dir.path();
+
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Create base commit B
+        std::fs::write(repo_path.join("file.txt"), "base content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Base commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let base_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let base_sha = String::from_utf8_lossy(&base_sha.stdout).trim().to_string();
+
+        // Get the default branch name (before creating feature branch)
+        let branch_output = std::process::Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let default_branch = String::from_utf8_lossy(&branch_output.stdout).trim().to_string();
+
+        // Create source branch with commit C
+        std::process::Command::new("git")
+            .args(["checkout", "-q", "-b", "feature"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::fs::write(repo_path.join("file.txt"), "source content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Source commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let source_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let source_sha = String::from_utf8_lossy(&source_sha.stdout).trim().to_string();
+
+        // Create squash commit S on main (parent B)
+        let checkout_output = std::process::Command::new("git")
+            .args(["checkout", "-q", &default_branch])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(checkout_output.status.success(), "git checkout {} failed: {}", default_branch, String::from_utf8_lossy(&checkout_output.stderr));
+        std::fs::write(repo_path.join("file.txt"), "squashed content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Squash commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let squash_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let squash_sha = String::from_utf8_lossy(&squash_sha.stdout).trim().to_string();
+
+        let squash_tree = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD^{tree}"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let squash_tree = String::from_utf8_lossy(&squash_tree.stdout).trim().to_string();
+
+        // Create merge commit with REVERSED parent order: [S, B] instead of [B, S]
+        let merge_msg = "Merge branch 'feature'";
+        let merge_commit = std::process::Command::new("git")
+            .args([
+                "commit-tree",
+                &squash_tree,
+                "-p", &squash_sha,  // First parent is squash
+                "-p", &base_sha,    // Second parent is base
+                "-m", merge_msg,
+            ])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(merge_commit.status.success());
+        let merge_sha = String::from_utf8_lossy(&merge_commit.stdout).trim().to_string();
+
+        std::process::Command::new("git")
+            .args(["reset", "--hard", &merge_sha])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        let repo = crate::git::repository::find_repository_in_path(repo_path.to_str().unwrap()).unwrap();
+
+        // Should still work - validator identifies squash by tree match, not position
+        let result = super::validate_squash_candidate(&repo, &merge_sha, &base_sha, &source_sha);
+        assert_eq!(result, Some(squash_sha.clone()), "Should identify squash commit regardless of parent order");
+    }
+
+    /// Test validate_squash_candidate rejects merge commit with != 2 parents.
+    #[test]
+    #[serial_test::serial]
+    fn test_validate_squash_candidate_not_merge() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_path = temp_dir.path();
+
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        std::fs::write(repo_path.join("file.txt"), "content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Single parent commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let commit_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let commit_sha = String::from_utf8_lossy(&commit_sha.stdout).trim().to_string();
+
+        let repo = crate::git::repository::find_repository_in_path(repo_path.to_str().unwrap()).unwrap();
+
+        // Single parent commit should be rejected
+        let result = super::validate_squash_candidate(&repo, &commit_sha, &commit_sha, &commit_sha);
+        assert!(result.is_none(), "Should reject non-merge commit");
+    }
+
+    /// Test validate_squash_candidate rejects when tree doesn't match.
+    #[test]
+    #[serial_test::serial]
+    fn test_validate_squash_candidate_tree_mismatch() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let repo_path = temp_dir.path();
+
+        std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@test.com"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test User"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        // Create base commit B
+        std::fs::write(repo_path.join("file.txt"), "base content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Base commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let base_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let base_sha = String::from_utf8_lossy(&base_sha.stdout).trim().to_string();
+
+        // Create source branch with commit C
+        std::process::Command::new("git")
+            .args(["checkout", "-q", "-b", "feature"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::fs::write(repo_path.join("file.txt"), "source content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Source commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let source_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let source_sha = String::from_utf8_lossy(&source_sha.stdout).trim().to_string();
+
+        // Create squash commit S on main (parent B) with different content
+        std::process::Command::new("git")
+            .args(["checkout", "-q", "main"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::fs::write(repo_path.join("file.txt"), "squashed content v1").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-q", "-m", "Squash commit"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let squash_sha = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let squash_sha = String::from_utf8_lossy(&squash_sha.stdout).trim().to_string();
+
+        // Create merge commit with DIFFERENT tree (not matching squash)
+        std::fs::write(repo_path.join("file.txt"), "different content").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "file.txt"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let different_tree = std::process::Command::new("git")
+            .args(["write-tree"])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        let different_tree = String::from_utf8_lossy(&different_tree.stdout).trim().to_string();
+
+        let merge_commit = std::process::Command::new("git")
+            .args([
+                "commit-tree",
+                &different_tree,  // Different tree!
+                "-p", &base_sha,
+                "-p", &squash_sha,
+                "-m", "Merge with different tree",
+            ])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(merge_commit.status.success());
+        let merge_sha = String::from_utf8_lossy(&merge_commit.stdout).trim().to_string();
+
+        std::process::Command::new("git")
+            .args(["reset", "--hard", &merge_sha])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+
+        let repo = crate::git::repository::find_repository_in_path(repo_path.to_str().unwrap()).unwrap();
+
+        // Should reject because tree(M) != tree(S)
+        let result = super::validate_squash_candidate(&repo, &merge_sha, &base_sha, &source_sha);
+        assert!(result.is_none(), "Should reject when merge tree != squash tree");
     }
 }
