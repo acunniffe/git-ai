@@ -1,0 +1,50 @@
+tests/integration/revert_control_attribution.rs
+  s_18b694e06092e7::t_260232d3548ef7 6-9,146-149
+tests/integration/cherry_pick_control_attribution.rs
+  s_18b694e06092e7::t_260232d3548ef7 6-9,65-68
+src/daemon.rs
+  s_18b694e06092e7::t_39fd4b03c56bce 5377,5380
+  s_18b694e06092e7::t_6e0aad4d36a97c 7351,7451
+  s_18b694e06092e7::t_f9e08f07f5bf45 3410-3413,3415-3416,3519,3621
+  s_18b694e06092e7::t_6eec984ee4c6fd 5343-5346,5352-5363,5373
+  s_18b694e06092e7::t_449c7d62c06ede 3409
+  s_18b694e06092e7::t_7cb9f046b8888b 813,818-820,5347-5351,5372,6168-6170
+  s_18b694e06092e7::t_02477f572029cf 814-817,821-822
+  s_18b694e06092e7::t_3e08b23cd726b1 3414,3968-3974,6152,7471
+  s_18b694e06092e7::t_2f263a16006161 6129-6151,6153-6167,6171-6173
+  s_18b694e06092e7::t_a574f873021c09 6822,7352-7362,7452-7454,7465-7470,7472-7478,7482,7484-7485
+  s_18b694e06092e7::t_f662a8cdc7cd02 5364-5371
+  s_18b694e06092e7::t_442d2598383b01 823-831,1607,5273,5275-5277,5279-5280,5313
+  s_18b694e06092e7::t_fc69329b0723ca 14-15,91,832-871,1550-1551,1553,1583-1597,1632,3480,4455-4457,5269-5272,5274,5278,5309-5312,5393,5401,5443-5447,6823-6824,7674-7677,7684-7690,7692-7695,7707-7713,11410
+tests/integration/test_utils.rs
+  s_18b694e06092e7::t_8028163c015b9b 38-45,57
+tests/integration/git_am_attribution.rs
+  s_18b694e06092e7::t_8028163c015b9b 3-5,802,847,849-853,909,943-944
+  s_18b694e06092e7::t_f3ccc2d2fbd90b 8
+tests/integration/git_rm_attribution.rs
+  s_18b694e06092e7::t_ab9ad9b52eb2c3 95-96
+tests/integration/checkout_switch_modes_attribution.rs
+  s_18b694e06092e7::t_6b81949f629a8e 18-78,94-138,140-144,146-149,151-186
+tests/integration/branch_modes_attribution.rs
+  s_18b694e06092e7::t_27e494f0d57523 106
+tests/integration/repos/test_repo.rs
+  s_18b694e06092e7::t_27e494f0d57523 2713,2718
+tests/integration/filter_import_attribution.rs
+  s_18b694e06092e7::t_3a6149c6a4249f 143,170,174,200,204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "18e79f3debfd4336c4fec47af7f3a13f9dde61ac",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
