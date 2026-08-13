@@ -226,7 +226,7 @@ impl RefCursor {
             "stash" => self.enrich_stash(cmd, state),
             "update-ref" => self.enrich_update_ref(cmd, state),
             "fast-import" | "filter-branch" | "filter-repo" | "symbolic-ref" => {
-                self.enrich_unstructured_ref_mutation(cmd)
+                self.enrich_unstructured_ref_mutation(cmd, state)
             }
             _ => Ok(()),
         }?;
@@ -1065,6 +1065,7 @@ impl RefCursor {
     fn enrich_unstructured_ref_mutation(
         &mut self,
         cmd: &mut NormalizedCommand,
+        state: &FamilyState,
     ) -> Result<(), GitAiError> {
         let mut changes = Vec::new();
         if let Some(worktree) = cmd.worktree.as_deref() {
@@ -1077,10 +1078,56 @@ impl RefCursor {
                 changes.push(entry_to_ref_change(&entry));
             }
         }
+        if !changes.iter().any(|change| change.reference == "HEAD")
+            && let Some(entry) = self.find_late_unstructured_head_entry(cmd, state)?
+        {
+            self.consume_entry(&entry)?;
+            changes.push(entry_to_ref_change(&entry));
+        }
         self.drain_unstructured_common_ref_entries(&mut changes)?;
         dedup_ref_changes(&mut changes);
         cmd.ref_changes = changes;
         Ok(())
+    }
+
+    /// Recover a fast unstructured mutation whose asynchronous command-start
+    /// sample landed after Git had already appended the command's HEAD reflog
+    /// row. The normal cursor cannot walk backwards from that late cold seed,
+    /// so match the full log against the sequencer's pre-command HEAD and the
+    /// command's wall-clock window. This state anchor prevents an older,
+    /// unrelated ref mutation from being claimed by the traced command.
+    fn find_late_unstructured_head_entry(
+        &self,
+        cmd: &NormalizedCommand,
+        state: &FamilyState,
+    ) -> Result<Option<CursorEntry>, GitAiError> {
+        let Some(worktree) = cmd.worktree.as_deref() else {
+            return Ok(None);
+        };
+        let Some(git_dir) = git_dir_for_worktree(worktree) else {
+            return Ok(None);
+        };
+        let key = head_key(&git_dir);
+        let Some(sampled_offset) = cmd.reflog_start_offsets.get(&key).copied() else {
+            return Ok(None);
+        };
+        let Some(old_head) = sequenced_head_before_command(worktree, state) else {
+            return Ok(None);
+        };
+        let command_window = reflog_timestamp_window(cmd);
+        let path = git_dir.join("logs").join("HEAD");
+
+        Ok(read_reflog_entries(key, &path, "HEAD", None)?
+            .into_iter()
+            .rfind(|entry| {
+                entry.end_offset <= sampled_offset
+                    && !self.entry_consumed(entry)
+                    && entry.old == old_head
+                    && valid_ref_transition(&entry.old, &entry.new)
+                    && entry
+                        .timestamp_secs
+                        .is_some_and(|timestamp| command_window.contains(timestamp))
+            }))
     }
 
     fn drain_unstructured_common_ref_entries(
@@ -4123,6 +4170,18 @@ fn head_key(git_dir: &Path) -> String {
     format!("worktree:{}:HEAD", normalized)
 }
 
+fn sequenced_head_before_command(worktree: &Path, state: &FamilyState) -> Option<String> {
+    let worktree = worktree
+        .canonicalize()
+        .unwrap_or_else(|_| worktree.to_path_buf());
+    state
+        .worktrees
+        .get(&worktree)
+        .and_then(|worktree| worktree.head.clone())
+        .or_else(|| state.refs.get("HEAD").cloned())
+        .filter(|oid| valid_non_zero_oid(oid))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4401,6 +4460,43 @@ mod tests {
                 .any(|change| change.reference == reference && change.old == B && change.new == C),
             "cold-start late ingress offset on a common branch ref must not skip the commit's branch entry; got {:?}",
             cmd.ref_changes
+        );
+    }
+
+    #[test]
+    fn cold_unstructured_ref_mutation_recovers_head_transition_before_late_sample() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let head_log = git_dir.join("logs/HEAD");
+        fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+
+        let rewrite =
+            format!("{B} {C} Test User <test@example.com> 0 +0000\tfilter-branch: rewrite\n");
+        fs::write(&head_log, &rewrite).unwrap();
+
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut state = family_state(&family);
+        state.refs.insert("HEAD".to_string(), B.to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        let mut cmd = command_with_worktree(
+            &family,
+            Some(worktree),
+            &["filter-branch", "--msg-filter", "cat"],
+        );
+        cmd.reflog_start_offsets
+            .insert(head_key(&git_dir), rewrite.len() as u64);
+
+        cursor.enrich_command(&mut cmd, &state).unwrap();
+
+        assert_eq!(
+            cmd.ref_changes,
+            vec![RefChange {
+                reference: "HEAD".to_string(),
+                old: B.to_string(),
+                new: C.to_string(),
+            }],
+            "the sequenced pre-command HEAD must recover a mutation that finished before sampling"
         );
     }
 
