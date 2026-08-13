@@ -74,6 +74,7 @@ fn test_git_rm_recursive_prunes_only_removed_paths() {
     kept.set_contents_no_stage(lines!["kept AI edit".ai()]);
 
     target.git(&["rm", "-rf", "--", "pkg"]).unwrap();
+    target.sync_daemon();
     fs::create_dir_all(target.path().join("pkg")).unwrap();
     fs::write(
         target.path().join("pkg/deleted.txt"),
