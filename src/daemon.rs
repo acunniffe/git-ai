@@ -5555,14 +5555,14 @@ impl ActorDaemonCoordinator {
         // `start` has argv but a normal Git trace does not report the repository
         // until `def_repo`. Capture at the first non-terminal root event that
         // has both pieces, before the workspace command mutates repository state.
-        // A non-cached rm snapshot also lets its terminal event recover the
-        // exact removed paths without relying on a cwd field that Git does not
-        // include in native Trace2 start events.
-        let workspace_command_needs_index_snapshot = effective_primary.as_deref() == Some("clean")
-            || (effective_primary.as_deref() == Some("rm")
-                && !trace_invocation_command_args(effective_primary.as_deref(), &effective_argv)
-                    .iter()
-                    .any(|arg| arg == "--cached"));
+        // A non-cached rm snapshot lets its terminal event recover the exact
+        // removed paths without relying on a cwd field that Git does not
+        // include in native Trace2 start events. Clean only needs its pathspecs
+        // and never reconstructs content, so it does not consume a snapshot.
+        let workspace_command_needs_index_snapshot = effective_primary.as_deref() == Some("rm")
+            && !trace_invocation_command_args(effective_primary.as_deref(), &effective_argv)
+                .iter()
+                .any(|arg| arg == "--cached");
         if !event_is_read_only
             && !ingress.root_definitely_read_only.contains(&root)
             && !terminal
@@ -12635,7 +12635,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn workspace_boundaries_are_captured_at_realistic_def_repo_event() {
+    async fn workspace_index_snapshots_are_limited_to_rm_boundaries() {
         let coord = ActorDaemonCoordinator::new();
         let temp = tempfile::tempdir().unwrap();
         let repo = temp.path().join("repo");
@@ -12676,14 +12676,13 @@ mod tests {
             "worktree": repo.to_string_lossy().to_string(),
         });
         assert!(coord.prepare_trace_payload_for_ingest(&mut realistic_def_repo));
-        let realistic_snapshot = PathBuf::from(
-            realistic_def_repo[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
-                .as_str()
-                .expect("def_repo should capture the pre-clean index"),
+        assert!(
+            realistic_def_repo
+                .get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD)
+                .is_none(),
+            "clean does not reconstruct content and must not copy the index"
         );
-        assert!(realistic_snapshot.is_file());
         coord.clear_trace_root_tracking(realistic_sid).unwrap();
-        assert!(!realistic_snapshot.exists());
 
         let dry_run_sid = "20260411T120000.000000-Pdryrun-clean";
         let mut dry_run_start = serde_json::json!({
@@ -12717,18 +12716,18 @@ mod tests {
         );
         coord.clear_trace_root_tracking(dry_run_sid).unwrap();
 
-        let sid = "20260411T120000.000000-Pduplicateclean";
+        let sid = "20260411T120000.000000-Pduplicaterm";
         let mut first_start = serde_json::json!({
             "event": "start",
             "sid": sid,
-            "argv": ["git", "clean", "-fd"],
+            "argv": ["git", "rm", "removed.txt"],
             "worktree": repo.to_string_lossy().to_string(),
         });
         assert!(coord.prepare_trace_payload_for_ingest(&mut first_start));
         let first_snapshot = PathBuf::from(
             first_start[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
                 .as_str()
-                .expect("clean start should contain a snapshot"),
+                .expect("rm start should contain a snapshot"),
         );
         assert!(first_snapshot.is_file());
 
@@ -12741,7 +12740,7 @@ mod tests {
         let second_snapshot = PathBuf::from(
             second_start[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
                 .as_str()
-                .expect("duplicate clean start should contain a snapshot"),
+                .expect("duplicate rm start should contain a snapshot"),
         );
         assert_eq!(first_snapshot, second_snapshot);
         assert!(
