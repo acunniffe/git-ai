@@ -64,6 +64,35 @@ fn test_git_restore_staged_preserves_uncommitted_ai_attribution() {
     unstaged.assert_committed_lines(lines!["AI worktree edit".ai()]);
 }
 
+#[test]
+fn test_git_restore_dot_from_subdirectory_preserves_root_attribution() {
+    let target = TestRepo::new();
+    fs::create_dir_all(target.path().join("nested")).unwrap();
+    fs::write(target.path().join("root.txt"), "root base\n").unwrap();
+    fs::write(target.path().join("nested/inside.txt"), "inside base\n").unwrap();
+    target.stage_all_and_commit("base").unwrap();
+    target
+        .filename("root.txt")
+        .assert_committed_lines(lines!["root base".unattributed_human()]);
+    target
+        .filename("nested/inside.txt")
+        .assert_committed_lines(lines!["inside base".unattributed_human()]);
+
+    let mut root = target.filename("root.txt");
+    root.set_contents_no_stage(lines!["root pending AI".ai()]);
+    let mut inside = target.filename("nested/inside.txt");
+    inside.set_contents_no_stage(lines!["discarded nested AI".ai()]);
+
+    target.git(&["-C", "nested", "restore", "."]).unwrap();
+    assert_eq!(
+        target.read_file("nested/inside.txt").as_deref(),
+        Some("inside base\n")
+    );
+    target.git(&["add", "--", "root.txt"]).unwrap();
+    target.git(&["commit", "-m", "commit root only"]).unwrap();
+    root.assert_committed_lines(lines!["root pending AI".ai()]);
+}
+
 /// Restoring from another tree copies existing authored content. A subsequent
 /// commit should preserve the source commit's line provenance rather than
 /// treating the restored bytes as newly authored by the committer.

@@ -856,7 +856,6 @@ fn trace_invocation_starts_control_attempt(primary_command: Option<&str>, argv: 
 
 fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<String> {
     let git_dir = git_dir_for_worktree(worktree)?;
-    sweep_stale_index_snapshots(&git_dir);
     let index = git_dir.join("index");
     if !index.is_file() {
         return None;
@@ -969,7 +968,14 @@ impl Drop for IndexSnapshotCleanup {
         if let Some(path) = self.0.take()
             && is_daemon_index_snapshot_path(&path)
         {
+            let git_dir = path.parent().map(Path::to_path_buf);
             let _ = fs::remove_file(path);
+            if let Some(git_dir) = git_dir {
+                // Directory scans are deliberately deferred until the
+                // asynchronous consumer releases its snapshot. The live
+                // Trace2 ingestion path performs only the O(1) hard link.
+                sweep_stale_index_snapshots(&git_dir);
+            }
         }
     }
 }
@@ -988,11 +994,14 @@ fn cleanup_index_snapshot_from_payload(payload: &Value) {
 
 fn matches_any_pathspec(file: &str, pathspecs: &[String]) -> bool {
     pathspecs.iter().any(|pathspec| {
-        pathspec == "."
-            || file == pathspec
+        file == pathspec
             || (pathspec.ends_with('/') && file.starts_with(pathspec))
             || file.starts_with(&format!("{}/", pathspec))
     })
+}
+
+fn matches_any_rooted_workspace_pathspec(file: &str, pathspecs: &[String]) -> bool {
+    pathspecs.iter().any(|pathspec| pathspec == ".") || matches_any_pathspec(file, pathspecs)
 }
 
 fn resolve_stash_sha(cmd: &crate::daemon::domain::NormalizedCommand) -> Option<&str> {
@@ -1592,7 +1601,15 @@ fn remove_working_log_attributions_for_pathspecs(
     repository: &Repository,
     head: &str,
     pathspecs: &[String],
+    rooted_workspace_pathspecs: bool,
 ) -> Result<(), GitAiError> {
+    let matches = |file: &str| {
+        if rooted_workspace_pathspecs {
+            matches_any_rooted_workspace_pathspec(file, pathspecs)
+        } else {
+            matches_any_pathspec(file, pathspecs)
+        }
+    };
     let working_log = repository.storage.working_log_for_base_commit(head)?;
 
     let initial = working_log.read_initial_attributions();
@@ -1600,10 +1617,10 @@ fn remove_working_log_attributions_for_pathspecs(
         let filtered_files = initial
             .files
             .into_iter()
-            .filter(|(file, _)| !matches_any_pathspec(file, pathspecs))
+            .filter(|(file, _)| !matches(file))
             .collect();
         let mut filtered_blobs = initial.file_blobs;
-        filtered_blobs.retain(|file, _| !matches_any_pathspec(file, pathspecs));
+        filtered_blobs.retain(|file, _| !matches(file));
         working_log.write_initial(crate::git::repo_storage::InitialAttributions {
             files: filtered_files,
             prompts: initial.prompts,
@@ -1617,9 +1634,7 @@ fn remove_working_log_attributions_for_pathspecs(
     let filtered: Vec<_> = checkpoints
         .into_iter()
         .map(|mut checkpoint| {
-            checkpoint
-                .entries
-                .retain(|entry| !matches_any_pathspec(&entry.file, pathspecs));
+            checkpoint.entries.retain(|entry| !matches(&entry.file));
             checkpoint
         })
         .filter(|checkpoint| !checkpoint.entries.is_empty())
@@ -1779,7 +1794,8 @@ fn prune_working_log_paths_after_clean(
             if protect_tracked_paths && tracked.contains(candidate) {
                 continue;
             }
-            if !pathspecs.is_empty() && !matches_any_pathspec(candidate, pathspecs) {
+            if !pathspecs.is_empty() && !matches_any_rooted_workspace_pathspec(candidate, pathspecs)
+            {
                 continue;
             }
             if pathspecs.is_empty() && candidate.contains('/') && !recurse_directories {
@@ -1796,6 +1812,7 @@ fn prune_working_log_paths_after_clean(
             repository,
             head,
             &removed.into_iter().collect::<Vec<_>>(),
+            true,
         )?;
     }
     Ok(())
@@ -1823,7 +1840,7 @@ fn apply_checkout_switch_working_log_side_effect(
                 .filter(|head| !head.is_empty())
                 .map(ToOwned::to_owned)
                 .unwrap_or(repo.head()?.target()?);
-            remove_working_log_attributions_for_pathspecs(&repo, &head, &pathspecs)?;
+            remove_working_log_attributions_for_pathspecs(&repo, &head, &pathspecs, false)?;
         }
         return Ok(());
     }
@@ -1852,7 +1869,7 @@ fn apply_checkout_switch_working_log_side_effect(
         let pathspecs = parsed.pathspecs();
         if !pathspecs.is_empty() {
             if !old_head.is_empty() {
-                remove_working_log_attributions_for_pathspecs(&repo, &old_head, &pathspecs)?;
+                remove_working_log_attributions_for_pathspecs(&repo, &old_head, &pathspecs, false)?;
             }
             return Ok(());
         }
@@ -3766,6 +3783,7 @@ struct TraceIngressState {
     root_started_at_ns: HashMap<String, u128>,
     root_reflog_start_offsets: HashMap<String, HashMap<String, u64>>,
     root_index_snapshot_at_start: HashMap<String, String>,
+    root_index_snapshot_attempted: HashSet<String>,
     root_workspace_paths_at_start: HashMap<String, Vec<String>>,
     root_mutating: HashMap<String, bool>,
     root_target_repo_only: HashMap<String, bool>,
@@ -4745,6 +4763,7 @@ impl ActorDaemonCoordinator {
         if let Some(snapshot) = ingress.root_index_snapshot_at_start.remove(root_sid) {
             let _ = fs::remove_file(snapshot);
         }
+        ingress.root_index_snapshot_attempted.remove(root_sid);
         ingress.root_workspace_paths_at_start.remove(root_sid);
         ingress.root_mutating.remove(root_sid);
         ingress.root_target_repo_only.remove(root_sid);
@@ -5646,6 +5665,11 @@ impl ActorDaemonCoordinator {
             }
         }
 
+        let command_args =
+            trace_invocation_command_args(effective_primary.as_deref(), &effective_argv);
+        let noncached_rm = effective_primary.as_deref() == Some("rm")
+            && !command_args.iter().any(|arg| arg == "--cached");
+
         // Pathspec files can disappear or change before asynchronous side
         // effects run. Resolve workspace operands at the first pre-command
         // event with both an exact invocation directory and a worktree.
@@ -5654,13 +5678,11 @@ impl ActorDaemonCoordinator {
             && !terminal
             && sid == root
             && !effective_argv.is_empty()
-            && matches!(effective_primary.as_deref(), Some("rm" | "clean"))
+            && (noncached_rm || effective_primary.as_deref() == Some("clean"))
             && !ingress.root_workspace_paths_at_start.contains_key(&root)
             && let Some(worktree) = command_worktree.as_deref()
             && let Some(command_dir) = ingress.root_command_dirs.get(&root).cloned()
         {
-            let command_args =
-                trace_invocation_command_args(effective_primary.as_deref(), &effective_argv);
             ingress.root_workspace_paths_at_start.insert(
                 root.clone(),
                 workspace_pathspecs_from_command_dir(
@@ -5676,10 +5698,6 @@ impl ActorDaemonCoordinator {
         // omits cwd. Clean consumes a snapshot only when its path selection is
         // exact, so delayed handling can distinguish a recreated path from one
         // that was tracked (and therefore protected) before the command.
-        let command_args =
-            trace_invocation_command_args(effective_primary.as_deref(), &effective_argv);
-        let noncached_rm = effective_primary.as_deref() == Some("rm")
-            && !command_args.iter().any(|arg| arg == "--cached");
         let reconstructible_clean = effective_primary.as_deref() == Some("clean")
             && ingress
                 .root_workspace_paths_at_start
@@ -5695,13 +5713,15 @@ impl ActorDaemonCoordinator {
             && sid == root
             && !effective_argv.is_empty()
             && (noncached_rm || reconstructible_clean || mutable_mv)
-            && !ingress.root_index_snapshot_at_start.contains_key(&root)
+            && !ingress.root_index_snapshot_attempted.contains(&root)
             && let Some(worktree) = command_worktree.as_deref()
-            && let Some(snapshot) = capture_index_snapshot_for_workspace_command(worktree)
         {
-            ingress
-                .root_index_snapshot_at_start
-                .insert(root.clone(), snapshot);
+            ingress.root_index_snapshot_attempted.insert(root.clone());
+            if let Some(snapshot) = capture_index_snapshot_for_workspace_command(worktree) {
+                ingress
+                    .root_index_snapshot_at_start
+                    .insert(root.clone(), snapshot);
+            }
         }
         let command_mutates_refs =
             trace_invocation_may_mutate_refs(effective_primary.as_deref(), &effective_argv);
@@ -5780,6 +5800,7 @@ impl ActorDaemonCoordinator {
             ingress.root_started_at_ns.remove(&root);
             ingress.root_reflog_start_offsets.remove(&root);
             ingress.root_index_snapshot_at_start.remove(&root);
+            ingress.root_index_snapshot_attempted.remove(&root);
             ingress.root_workspace_paths_at_start.remove(&root);
             ingress.root_mutating.remove(&root);
             ingress.root_target_repo_only.remove(&root);
@@ -12721,7 +12742,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_index_snapshot_sweep_uses_capture_time_from_filename() {
+    fn index_snapshot_cleanup_sweeps_stale_siblings_out_of_band() {
         let temp = tempfile::tempdir().unwrap();
         let git_dir = temp.path();
         std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
@@ -12740,12 +12761,13 @@ mod tests {
         std::fs::hard_link(&index, &stale).unwrap();
         std::fs::hard_link(&index, &recent).unwrap();
 
-        sweep_stale_index_snapshots(git_dir);
+        assert!(stale.exists());
+        drop(IndexSnapshotCleanup(Some(recent.clone())));
 
         assert!(!stale.exists(), "expired snapshots should be reclaimed");
         assert!(
-            recent.exists(),
-            "a live snapshot must not inherit the index inode's age"
+            !recent.exists(),
+            "the consumed snapshot should be removed before the sibling sweep"
         );
     }
 
@@ -12913,6 +12935,40 @@ mod tests {
 
         coord.clear_trace_root_tracking(sid).unwrap();
         assert!(!second_snapshot.exists());
+    }
+
+    #[tokio::test]
+    async fn failed_index_snapshot_capture_is_not_retried_per_trace_event() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let sid = "20260411T120000.000000-Pmissing-index";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "removed.txt"],
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        assert!(start.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none());
+
+        std::fs::write(git_dir.join("index"), "late index contents").unwrap();
+        let mut later = serde_json::json!({
+            "event": "region_enter",
+            "sid": sid,
+            "argv": ["git", "rm", "removed.txt"],
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut later));
+        assert!(
+            later.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none(),
+            "later events must not retry a failed command-boundary capture"
+        );
+        coord.clear_trace_root_tracking(sid).unwrap();
     }
 
     #[tokio::test]
@@ -13099,6 +13155,44 @@ mod tests {
                 .contains_key(sid)
         );
 
+        coord.clear_trace_root_tracking(sid).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cached_rm_does_not_capture_unused_workspace_state() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(git_dir.join("index"), "index contents").unwrap();
+        std::fs::write(repo.join("remove-paths.txt"), "removed.txt\n").unwrap();
+
+        let sid = "20260411T120000.000000-Prm-cached";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "--cached", "--pathspec-from-file=remove-paths.txt"],
+            "cwd": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert!(def_repo.get(TRACE_ROOT_WORKSPACE_PATHS_FIELD).is_none());
+        assert!(def_repo.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none());
+        assert!(std::fs::read_dir(&git_dir).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(INDEX_SNAPSHOT_PREFIX)
+        }));
         coord.clear_trace_root_tracking(sid).unwrap();
     }
 
