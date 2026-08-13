@@ -18,10 +18,11 @@ fn test_git_rm_discards_deleted_path_ai_attribution() {
 
     target.git(&["rm", "-f", "--", "removed.txt"]).unwrap();
     assert!(target.read_file("removed.txt").is_none());
-    target.sync_daemon();
     fs::write(target.path().join("removed.txt"), "discarded AI bytes\n").unwrap();
-    // Stage before the daemon processes `rm`; the post-command index must not
-    // make the removed operand look protected.
+    // Recreate the path before async cleanup. The rm terminal boundary must
+    // still identify it from the command's index transition even though native
+    // Git Trace2 start events do not report the invocation cwd.
+    target.sync_daemon();
     target.git_og(&["add", "removed.txt"]).unwrap();
     target
         .git(&["commit", "-m", "Human recreates removed path"])

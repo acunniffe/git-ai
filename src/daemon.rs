@@ -860,6 +860,40 @@ fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<Strin
     None
 }
 
+fn tracked_paths_for_index(worktree: &Path, index: Option<&Path>) -> Option<HashSet<String>> {
+    let repo = find_repository_in_path(&worktree.to_string_lossy()).ok()?;
+    let mut args = repo.global_args_for_exec();
+    args.extend(["ls-files".to_string(), "-z".to_string()]);
+    let output = match index {
+        Some(index) => {
+            exec_git_allow_nonzero_with_env(&args, &[("GIT_INDEX_FILE", index.as_os_str())]).ok()?
+        }
+        None => crate::git::repository::exec_git(&args).ok()?,
+    };
+    if !output.status.success() {
+        return None;
+    }
+    Some(
+        output
+            .stdout
+            .split(|byte| *byte == 0)
+            .filter(|path| !path.is_empty())
+            .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
+            .collect(),
+    )
+}
+
+fn paths_removed_from_index_since_snapshot(
+    worktree: &Path,
+    index_snapshot: &Path,
+) -> Option<Vec<String>> {
+    let before = tracked_paths_for_index(worktree, Some(index_snapshot))?;
+    let after = tracked_paths_for_index(worktree, None)?;
+    let mut removed = before.difference(&after).cloned().collect::<Vec<_>>();
+    removed.sort();
+    Some(removed)
+}
+
 fn sweep_stale_index_snapshots(git_dir: &Path) {
     let Some(now_ms) = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -5493,12 +5527,20 @@ impl ActorDaemonCoordinator {
         // `start` has argv but a normal Git trace does not report the repository
         // until `def_repo`. Capture at the first non-terminal root event that
         // has both pieces, before the workspace command mutates repository state.
+        // A non-cached rm snapshot also lets its terminal event recover the
+        // exact removed paths without relying on a cwd field that Git does not
+        // include in native Trace2 start events.
+        let workspace_command_needs_index_snapshot = effective_primary.as_deref() == Some("clean")
+            || (effective_primary.as_deref() == Some("rm")
+                && !trace_invocation_command_args(effective_primary.as_deref(), &effective_argv)
+                    .iter()
+                    .any(|arg| arg == "--cached"));
         if !event_is_read_only
             && !ingress.root_definitely_read_only.contains(&root)
             && !terminal
             && sid == root
             && !effective_argv.is_empty()
-            && effective_primary.as_deref() == Some("clean")
+            && workspace_command_needs_index_snapshot
             && !ingress.root_index_snapshot_at_start.contains_key(&root)
             && let Some(worktree) = command_worktree.as_deref()
             && let Some(snapshot) = capture_index_snapshot_for_workspace_command(worktree)
@@ -5564,6 +5606,26 @@ impl ActorDaemonCoordinator {
             ingress
                 .root_reflog_start_offsets
                 .insert(root.clone(), offsets);
+        }
+
+        // Observe the rm index transition at Git's terminal Trace2 boundary,
+        // before the caller can recreate and re-add a path. This is the
+        // production fallback when start omitted cwd, and it is more precise
+        // than interpreting argv relative to the worktree root.
+        if terminal
+            && effective_primary.as_deref() == Some("rm")
+            && ingress
+                .root_workspace_paths_at_start
+                .get(&root)
+                .is_none_or(Vec::is_empty)
+            && let Some(worktree) = command_worktree.as_deref()
+            && let Some(snapshot) = ingress.root_index_snapshot_at_start.get(&root)
+            && let Some(paths) =
+                paths_removed_from_index_since_snapshot(worktree, Path::new(snapshot))
+        {
+            ingress
+                .root_workspace_paths_at_start
+                .insert(root.clone(), paths);
         }
 
         let read_only_root =
@@ -12694,6 +12756,45 @@ mod tests {
             atexit[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
             serde_json::json!(["removed.txt"]),
             "later file changes must not alter the command's original selection"
+        );
+    }
+
+    #[tokio::test]
+    async fn rm_without_trace2_cwd_recovers_removed_paths_from_the_index_transition() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        run_git_for_test(&repo, &["init", "-q"]);
+        run_git_for_test(&repo, &["config", "user.name", "Test User"]);
+        run_git_for_test(&repo, &["config", "user.email", "test@example.com"]);
+        std::fs::write(repo.join("removed.txt"), "removed\n").unwrap();
+        std::fs::write(repo.join("kept.txt"), "kept\n").unwrap();
+        run_git_for_test(&repo, &["add", "."]);
+        run_git_for_test(&repo, &["commit", "-qm", "initial"]);
+
+        let sid = "20260411T120000.000000-Prm-no-cwd";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "removed.txt"],
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+
+        run_git_for_test(&repo, &["rm", "removed.txt"]);
+        let mut atexit = make_atexit_payload(sid);
+        assert!(coord.prepare_trace_payload_for_ingest(&mut atexit));
+        assert_eq!(
+            atexit[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["removed.txt"]),
+            "the terminal index transition must identify only the removed path"
         );
     }
 
