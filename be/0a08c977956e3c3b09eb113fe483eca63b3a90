@@ -1,8 +1,9 @@
 tests/integration/git_rm_attribution.rs
   s_18b694e06092e7::t_15e330fdb6d0b6 20
   s_18b694e06092e7::t_ab9ad9b52eb2c3 78-79
+  s_18b694e06092e7::t_76428c7478e4ec 8,37,62,100
 tests/integration/checkout_switch_modes_attribution.rs
-  s_18b694e06092e7::t_6b81949f629a8e 16-166
+  s_18b694e06092e7::t_6b81949f629a8e 6-10,12,14-166,168,172,175-176
 ---
 {
   "schema_version": "authorship/3.0.0",
