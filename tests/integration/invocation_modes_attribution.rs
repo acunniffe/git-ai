@@ -113,16 +113,11 @@ fn nested_parent_and_sibling_cwds_route_completion_and_attribution_to_target() {
 #[cfg(unix)]
 fn env_timeout_command_nohup_and_nested_shell_wrappers_are_traced() {
     let repo = seeded_repo();
-    for (path, contents, script) in [
+    let mut wrappers = vec![
         (
             "env-axis.txt",
             "env wrapper AI",
             "env {git} commit -m env-wrapper",
-        ),
-        (
-            "timeout-axis.txt",
-            "timeout wrapper AI",
-            "timeout 20 {git} commit -m timeout-wrapper",
         ),
         (
             "command-axis.txt",
@@ -139,7 +134,15 @@ fn env_timeout_command_nohup_and_nested_shell_wrappers_are_traced() {
             "nested shell wrapper AI",
             "sh -c '{git} commit -m nested-shell-wrapper'",
         ),
-    ] {
+    ];
+    if cfg!(target_os = "linux") {
+        wrappers.push((
+            "timeout-axis.txt",
+            "timeout wrapper AI",
+            "timeout 20 {git} commit -m timeout-wrapper",
+        ));
+    }
+    for (path, contents, script) in wrappers {
         stage_ai(&repo, path, contents);
         repo.shell_git(script).unwrap();
         assert_ai(&repo, path, contents);

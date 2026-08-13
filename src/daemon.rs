@@ -988,7 +988,8 @@ fn cleanup_index_snapshot_from_payload(payload: &Value) {
 
 fn matches_any_pathspec(file: &str, pathspecs: &[String]) -> bool {
     pathspecs.iter().any(|pathspec| {
-        file == pathspec
+        pathspec == "."
+            || file == pathspec
             || (pathspec.ends_with('/') && file.starts_with(pathspec))
             || file.starts_with(&format!("{}/", pathspec))
     })
@@ -1666,7 +1667,7 @@ fn prune_working_log_paths_after_clean(
     args: &[String],
     index_snapshot_at_start: Option<&str>,
     protect_tracked_paths: bool,
-    reconstruct_selected_paths: bool,
+    reconstructed_pathspecs: Option<&[String]>,
 ) -> Result<(), GitAiError> {
     let _snapshot_cleanup = IndexSnapshotCleanup(index_snapshot_at_start.map(PathBuf::from));
     let working_log = repository.storage.working_log_for_base_commit(head)?;
@@ -1694,8 +1695,9 @@ fn prune_working_log_paths_after_clean(
     let has_exclusions = args
         .iter()
         .any(|arg| matches!(arg.as_str(), "-e" | "--exclude") || arg.starts_with("--exclude="));
-    if reconstruct_selected_paths && !has_exclusions {
-        let pathspecs = clean_pathspecs(args);
+    if let Some(pathspecs) = reconstructed_pathspecs
+        && !has_exclusions
+    {
         let recurse_directories = clean_has_short_flag(args, 'd');
         let remove_ignored = clean_has_short_flag(args, 'x');
         let only_ignored = clean_has_short_flag(args, 'X');
@@ -1763,7 +1765,7 @@ fn prune_working_log_paths_after_clean(
             if protect_tracked_paths && tracked.contains(candidate) {
                 continue;
             }
-            if !pathspecs.is_empty() && !matches_any_pathspec(candidate, &pathspecs) {
+            if !pathspecs.is_empty() && !matches_any_pathspec(candidate, pathspecs) {
                 continue;
             }
             if pathspecs.is_empty() && candidate.contains('/') && !recurse_directories {
@@ -1968,6 +1970,7 @@ fn restore_pathspecs(args: &[String], worktree: Option<&Path>) -> Vec<String> {
 }
 
 fn workspace_pathspecs_from_command_dir(
+    primary: Option<&str>,
     args: &[String],
     command_dir: &Path,
     worktree: &Path,
@@ -1979,7 +1982,16 @@ fn workspace_pathspecs_from_command_dir(
         .canonicalize()
         .unwrap_or_else(|_| worktree.to_path_buf());
 
-    restore_pathspecs(args, Some(&command_dir))
+    let mut pathspecs = if primary == Some("clean") {
+        clean_pathspecs(args)
+    } else {
+        restore_pathspecs(args, Some(&command_dir))
+    };
+    if primary == Some("clean") && pathspecs.is_empty() {
+        pathspecs.push(".".to_string());
+    }
+
+    pathspecs
         .into_iter()
         .filter_map(|pathspec| {
             // Pathspec magic has its own rooting rules. If it cannot be
@@ -2010,11 +2022,13 @@ fn workspace_pathspecs_from_command_dir(
                     }
                 }
             }
-            Some(crate::utils::normalize_to_posix(
-                &normalized.to_string_lossy(),
-            ))
+            let normalized = crate::utils::normalize_to_posix(&normalized.to_string_lossy());
+            Some(if normalized.is_empty() {
+                ".".to_string()
+            } else {
+                normalized
+            })
         })
-        .filter(|path| !path.is_empty())
         .collect()
 }
 
@@ -5552,40 +5566,15 @@ impl ActorDaemonCoordinator {
             .clone()
             .or_else(|| ingress.root_worktrees.get(&root).cloned());
 
-        // `start` has argv but a normal Git trace does not report the repository
-        // until `def_repo`. Capture at the first non-terminal root event that
-        // has both pieces, before the workspace command mutates repository state.
-        // A non-cached rm snapshot lets its terminal event recover the exact
-        // removed paths without relying on a cwd field that Git does not
-        // include in native Trace2 start events. Clean only needs its pathspecs
-        // and never reconstructs content, so it does not consume a snapshot.
-        let workspace_command_needs_index_snapshot = effective_primary.as_deref() == Some("rm")
-            && !trace_invocation_command_args(effective_primary.as_deref(), &effective_argv)
-                .iter()
-                .any(|arg| arg == "--cached");
-        if !event_is_read_only
-            && !ingress.root_definitely_read_only.contains(&root)
-            && !terminal
-            && sid == root
-            && !effective_argv.is_empty()
-            && workspace_command_needs_index_snapshot
-            && !ingress.root_index_snapshot_at_start.contains_key(&root)
-            && let Some(worktree) = command_worktree.as_deref()
-            && let Some(snapshot) = capture_index_snapshot_for_workspace_command(worktree)
-        {
-            ingress
-                .root_index_snapshot_at_start
-                .insert(root.clone(), snapshot);
-        }
-
         // Pathspec files can disappear or change before asynchronous side
-        // effects run. Resolve rm operands at the same pre-command boundary.
+        // effects run. Resolve workspace operands at the first pre-command
+        // event with both an exact invocation directory and a worktree.
         if !event_is_read_only
             && !ingress.root_definitely_read_only.contains(&root)
             && !terminal
             && sid == root
             && !effective_argv.is_empty()
-            && effective_primary.as_deref() == Some("rm")
+            && matches!(effective_primary.as_deref(), Some("rm" | "clean"))
             && !ingress.root_workspace_paths_at_start.contains_key(&root)
             && let Some(worktree) = command_worktree.as_deref()
             && let Some(command_dir) = ingress.root_command_dirs.get(&root).cloned()
@@ -5594,8 +5583,44 @@ impl ActorDaemonCoordinator {
                 trace_invocation_command_args(effective_primary.as_deref(), &effective_argv);
             ingress.root_workspace_paths_at_start.insert(
                 root.clone(),
-                workspace_pathspecs_from_command_dir(&command_args, &command_dir, worktree),
+                workspace_pathspecs_from_command_dir(
+                    effective_primary.as_deref(),
+                    &command_args,
+                    &command_dir,
+                    worktree,
+                ),
             );
+        }
+
+        // A non-cached rm snapshot recovers index removals when native Trace2
+        // omits cwd. Clean consumes a snapshot only when its path selection is
+        // exact, so delayed handling can distinguish a recreated path from one
+        // that was tracked (and therefore protected) before the command.
+        let command_args =
+            trace_invocation_command_args(effective_primary.as_deref(), &effective_argv);
+        let noncached_rm = effective_primary.as_deref() == Some("rm")
+            && !command_args.iter().any(|arg| arg == "--cached");
+        let reconstructible_clean = effective_primary.as_deref() == Some("clean")
+            && ingress
+                .root_workspace_paths_at_start
+                .get(&root)
+                .is_some_and(|paths| !paths.is_empty())
+            && !command_args.iter().any(|arg| {
+                matches!(arg.as_str(), "-e" | "--exclude") || arg.starts_with("--exclude=")
+            });
+        if !event_is_read_only
+            && !ingress.root_definitely_read_only.contains(&root)
+            && !terminal
+            && sid == root
+            && !effective_argv.is_empty()
+            && (noncached_rm || reconstructible_clean)
+            && !ingress.root_index_snapshot_at_start.contains_key(&root)
+            && let Some(worktree) = command_worktree.as_deref()
+            && let Some(snapshot) = capture_index_snapshot_for_workspace_command(worktree)
+        {
+            ingress
+                .root_index_snapshot_at_start
+                .insert(root.clone(), snapshot);
         }
         let command_mutates_refs =
             trace_invocation_may_mutate_refs(effective_primary.as_deref(), &effective_argv);
@@ -7933,20 +7958,15 @@ impl ActorDaemonCoordinator {
                             .filter(|head| !head.is_empty())
                             .unwrap_or(repo.head()?.target()?);
                         let parsed = parsed_invocation_for_normalized_command(cmd);
+                        let reconstructed_pathspecs = (!cmd.workspace_paths_at_start.is_empty())
+                            .then_some(cmd.workspace_paths_at_start.as_slice());
                         prune_working_log_paths_after_clean(
                             &repo,
                             &head,
                             &parsed.command_args,
                             index_snapshot_at_start.as_deref(),
                             true,
-                            // Native Trace2 start events do not include the
-                            // caller's cwd. Reinterpreting a relative clean
-                            // pathspec from the worktree root can therefore
-                            // prune attribution for a different, same-named
-                            // path. The post-command existence check is exact;
-                            // keep reconstruction disabled until command-dir
-                            // context is available in production traces.
-                            false,
+                            reconstructed_pathspecs,
                         )?;
                     }
                     crate::daemon::domain::SemanticEvent::RemovedWorkspacePaths {
@@ -7963,19 +7983,19 @@ impl ActorDaemonCoordinator {
                         } else {
                             cmd.workspace_paths_at_start.clone()
                         };
-                        let reconstruct_selected_paths = !removal_paths.is_empty();
                         // Reuse the race-safe path selection with ignored-file
                         // removal enabled: a successful non-cached `rm` removes
                         // tracked operands regardless of ignore rules.
-                        let mut removal_args = vec!["-x".to_string(), "--".to_string()];
-                        removal_args.extend(removal_paths);
+                        let removal_args = vec!["-x".to_string()];
+                        let reconstructed_pathspecs =
+                            (!removal_paths.is_empty()).then_some(removal_paths.as_slice());
                         prune_working_log_paths_after_clean(
                             &repo,
                             &head,
                             &removal_args,
                             index_snapshot_at_start.as_deref(),
                             false,
-                            reconstruct_selected_paths,
+                            reconstructed_pathspecs,
                         )?;
                     }
                     crate::daemon::domain::SemanticEvent::MovedWorkspacePaths { head } => {
@@ -12635,7 +12655,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn workspace_index_snapshots_are_limited_to_rm_boundaries() {
+    async fn workspace_index_snapshots_require_a_consumed_boundary() {
         let coord = ActorDaemonCoordinator::new();
         let temp = tempfile::tempdir().unwrap();
         let repo = temp.path().join("repo");
@@ -12683,6 +12703,34 @@ mod tests {
             "clean does not reconstruct content and must not copy the index"
         );
         coord.clear_trace_root_tracking(realistic_sid).unwrap();
+
+        let exact_clean_sid = "20260411T120000.000000-Pexactclean";
+        let mut exact_clean_start = serde_json::json!({
+            "event": "start",
+            "sid": exact_clean_sid,
+            "argv": [
+                "git",
+                "-C",
+                repo.to_string_lossy().to_string(),
+                "clean",
+                "-f",
+                "--",
+                "generated.txt"
+            ],
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut exact_clean_start));
+        assert_eq!(
+            exact_clean_start[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["generated.txt"]),
+        );
+        let exact_clean_snapshot = PathBuf::from(
+            exact_clean_start[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
+                .as_str()
+                .expect("exact clean start should capture the pre-command index"),
+        );
+        assert!(exact_clean_snapshot.is_file());
+        coord.clear_trace_root_tracking(exact_clean_sid).unwrap();
+        assert!(!exact_clean_snapshot.exists());
 
         let dry_run_sid = "20260411T120000.000000-Pdryrun-clean";
         let mut dry_run_start = serde_json::json!({
