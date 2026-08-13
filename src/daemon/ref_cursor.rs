@@ -462,13 +462,6 @@ impl RefCursor {
                     .with_reflog_messages(commit_reflog_messages(&args, amend));
                 Some(ColdSeedMatchSpec::SingleEntry { expected, prefixes })
             }
-            "merge" => Some(ColdSeedMatchSpec::SingleEntry {
-                expected: ExpectedTransition::default(),
-                prefixes: merge_reflog_prefixes(&args)
-                    .iter()
-                    .map(|prefix| (*prefix).to_string())
-                    .collect(),
-            }),
             "pull" => Some(ColdSeedMatchSpec::PullSpan {
                 action: pull_reflog_action(cmd),
                 expected: ExpectedTransition::default(),
@@ -4408,6 +4401,37 @@ mod tests {
                 .any(|change| change.reference == reference && change.old == B && change.new == C),
             "cold-start late ingress offset on a common branch ref must not skip the commit's branch entry; got {:?}",
             cmd.ref_changes
+        );
+    }
+
+    #[test]
+    fn cold_noop_merge_does_not_consume_an_older_merge_at_the_start_boundary() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let head_log = git_dir.join("logs/HEAD");
+        fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+
+        let older_merge =
+            format!("{A} {B} Test User <test@example.com> 0 +0000\tmerge feature: Merge made\n");
+        let later_checkout =
+            format!("{B} {C} Test User <test@example.com> 0 +0000\tcheckout: moving later\n");
+        let command_start = older_merge.len() as u64;
+        fs::write(&head_log, format!("{older_merge}{later_checkout}")).unwrap();
+
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut state = family_state(&family);
+        state.refs.insert("HEAD".to_string(), B.to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        let mut cmd = command_with_worktree(&family, Some(worktree), &["merge", "feature"]);
+        cmd.reflog_start_offsets
+            .insert(head_key(&git_dir), command_start);
+
+        cursor.enrich_command(&mut cmd, &state).unwrap();
+
+        assert!(
+            cmd.ref_changes.is_empty(),
+            "a no-op merge must not claim the older merge before its captured start boundary"
         );
     }
 
