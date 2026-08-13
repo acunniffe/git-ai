@@ -34,8 +34,15 @@ pub fn tracks_primary_command_for_test_sync(
             )
         }
         "clean" | "rm" => !crate::git::command_classification::invocation_has_dry_run(invoked_args),
-        "checkout" | "cherry-pick" | "clone" | "commit" | "fetch" | "init" | "merge" | "pull"
-        | "push" | "rebase" | "reset" | "revert" | "switch" | "tag" | "update-ref" => true,
+        "checkout" | "cherry-pick" | "clone" | "commit" | "fetch" | "fast-import"
+        | "filter-branch" | "filter-repo" | "init" | "merge" | "pull" | "push" | "rebase"
+        | "reset" | "revert" | "switch" | "tag" | "update-ref" => true,
+        "symbolic-ref" => {
+            !crate::git::command_classification::is_definitely_read_only_git_invocation(
+                "symbolic-ref",
+                invoked_args,
+            )
+        }
         // `git worktree list` is classified as readonly by the daemon's fast-path
         // and is discarded before reaching the completion log — exclude it from
         // tracking to avoid test sync timeouts (mirrors the stash list exclusion).
@@ -398,5 +405,23 @@ mod tests {
                 ));
             }
         }
+    }
+
+    #[test]
+    fn unstructured_ref_mutations_are_tracked_but_symbolic_ref_queries_are_not() {
+        for command in ["fast-import", "filter-branch", "filter-repo"] {
+            assert!(tracks_primary_command_for_test_sync(Some(command), &[]));
+        }
+        assert!(tracks_primary_command_for_test_sync(
+            Some("symbolic-ref"),
+            &[
+                "refs/git-ai-test/alias".to_string(),
+                "refs/heads/main".to_string(),
+            ]
+        ));
+        assert!(!tracks_primary_command_for_test_sync(
+            Some("symbolic-ref"),
+            &["HEAD".to_string()]
+        ));
     }
 }
