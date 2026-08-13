@@ -9,6 +9,10 @@ fn test_git_commit_pathspec_from_file_nul_commits_subset_and_carries_residual() 
     fs::write(repo.path().join("residual.txt"), "base residual\n").unwrap();
     repo.stage_all_and_commit("Initial files").unwrap();
     let mut selected = repo.filename("selected.txt");
+    selected.assert_committed_lines(lines!["base selected".unattributed_human()]);
+    let mut residual = repo.filename("residual.txt");
+    residual.assert_committed_lines(lines!["base residual".unattributed_human()]);
+    let mut selected = repo.filename("selected.txt");
     selected.set_contents_no_stage(lines!["selected AI".ai()]);
     let mut residual = repo.filename("residual.txt");
     residual.set_contents_no_stage(lines!["residual AI".ai()]);
@@ -43,6 +47,8 @@ fn test_git_commit_all_commits_tracked_ai_and_preserves_untracked_ai() {
     fs::write(repo.path().join("tracked.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
     let mut tracked = repo.filename("tracked.txt");
+    tracked.assert_committed_lines(lines!["base".unattributed_human()]);
+    let mut tracked = repo.filename("tracked.txt");
     tracked.set_contents_no_stage(lines!["tracked AI".ai()]);
     let mut untracked = repo.filename("untracked.txt");
     untracked.set_contents_no_stage(lines!["untracked AI".ai()]);
@@ -65,6 +71,8 @@ fn test_git_commit_fixup_and_squash_preserve_new_ai_lines() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("fixup.txt"), "base\n").unwrap();
     let base = repo.stage_all_and_commit("Initial commit").unwrap();
+    let mut file = repo.filename("fixup.txt");
+    file.assert_committed_lines(lines!["base".unattributed_human()]);
     let mut file = repo.filename("fixup.txt");
     file.set_contents_no_stage(lines!["first AI".ai()]);
     repo.git(&["add", "--", "fixup.txt"]).unwrap();
@@ -91,11 +99,15 @@ fn test_git_commit_allow_empty_carries_unstaged_ai_to_next_commit() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("base.txt"), "base\n").unwrap();
     repo.stage_all_and_commit("Initial commit").unwrap();
+    let mut base = repo.filename("base.txt");
+    base.assert_committed_lines(lines!["base".unattributed_human()]);
     let mut later = repo.filename("later.txt");
     later.set_contents_no_stage(lines!["AI after empty boundary".ai()]);
 
     repo.git(&["commit", "--allow-empty", "-m", "Empty boundary"])
         .unwrap();
+    let mut base = repo.filename("base.txt");
+    base.assert_committed_lines(lines!["base".unattributed_human()]);
     assert!(repo.read_file("later.txt").is_some());
     repo.git(&["add", "--", "later.txt"]).unwrap();
     repo.git(&["commit", "-m", "Commit carried AI"]).unwrap();
@@ -109,17 +121,23 @@ fn test_git_commit_reuse_and_reedit_message_modes_preserve_ai_content() {
     let repo = TestRepo::new();
     fs::write(repo.path().join("reuse.txt"), "base\n").unwrap();
     let base = repo.stage_all_and_commit("Reusable message").unwrap();
+    let mut file = repo.filename("reuse.txt");
+    file.assert_committed_lines(lines!["base".unattributed_human()]);
 
     let mut file = repo.filename("reuse.txt");
     file.set_contents_no_stage(lines!["AI via -C".ai()]);
     repo.git(&["add", "--", "reuse.txt"]).unwrap();
     repo.git(&["commit", "-C", &base.commit_sha]).unwrap();
+    let mut file = repo.filename("reuse.txt");
+    file.assert_committed_lines(lines!["AI via -C".ai()]);
 
     let mut file = repo.filename("reuse.txt");
     file.set_contents_no_stage(lines!["AI via -C".ai(), "AI via reuse".ai()]);
     repo.git(&["add", "--", "reuse.txt"]).unwrap();
     repo.git(&["commit", &format!("--reuse-message={}", base.commit_sha)])
         .unwrap();
+    let mut file = repo.filename("reuse.txt");
+    file.assert_committed_lines(lines!["AI via -C".ai(), "AI via reuse".ai()]);
 
     let mut file = repo.filename("reuse.txt");
     file.set_contents_no_stage(lines![

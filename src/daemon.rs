@@ -823,15 +823,6 @@ fn trace_invocation_starts_control_attempt(primary_command: Option<&str>, argv: 
         .any(|arg| matches!(arg.as_str(), "--abort" | "--continue" | "--quit" | "--skip"))
 }
 
-fn capture_index_tree_for_workspace_command(worktree: &Path) -> Option<String> {
-    let repo = find_repository_in_path(&worktree.to_string_lossy()).ok()?;
-    let mut args = repo.global_args_for_exec();
-    args.push("write-tree".to_string());
-    let tree = String::from_utf8(crate::git::repository::exec_git(&args).ok()?.stdout).ok()?;
-    let tree = tree.trim();
-    crate::git::repo_state::is_valid_git_oid(tree).then(|| tree.to_string())
-}
-
 fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<String> {
     let git_dir = git_dir_for_worktree(worktree)?;
     sweep_stale_index_snapshots(&git_dir);
@@ -7911,7 +7902,14 @@ impl ActorDaemonCoordinator {
                             &parsed.command_args,
                             index_snapshot_at_start.as_deref(),
                             true,
-                            true,
+                            // Native Trace2 start events do not include the
+                            // caller's cwd. Reinterpreting a relative clean
+                            // pathspec from the worktree root can therefore
+                            // prune attribution for a different, same-named
+                            // path. The post-command existence check is exact;
+                            // keep reconstruction disabled until command-dir
+                            // context is available in production traces.
+                            false,
                         )?;
                     }
                     crate::daemon::domain::SemanticEvent::RemovedWorkspacePaths {
