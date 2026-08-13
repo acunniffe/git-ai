@@ -1577,6 +1577,7 @@ fn prune_working_log_paths_after_clean(
 
 fn apply_checkout_switch_working_log_side_effect(
     cmd: &crate::daemon::domain::NormalizedCommand,
+    restore_head: Option<&str>,
 ) -> Result<(), GitAiError> {
     let Some(worktree) = cmd.worktree.as_ref() else {
         return Ok(());
@@ -1592,7 +1593,10 @@ fn apply_checkout_switch_working_log_side_effect(
         }
         let pathspecs = restore_pathspecs(&parsed.command_args, Some(worktree.as_path()));
         if !pathspecs.is_empty() {
-            let head = repo.head()?.target()?;
+            let head = restore_head
+                .filter(|head| !head.is_empty())
+                .map(ToOwned::to_owned)
+                .unwrap_or(repo.head()?.target()?);
             remove_working_log_attributions_for_pathspecs(&repo, &head, &pathspecs)?;
         }
         return Ok(());
@@ -8012,7 +8016,11 @@ impl ActorDaemonCoordinator {
                     self.record_recent_replay_prerequisite(&family, prerequisite)?;
                 }
             }
-            apply_checkout_switch_working_log_side_effect(cmd)?;
+            let restore_head = events.iter().find_map(|event| match event {
+                crate::daemon::domain::SemanticEvent::RestorePaths { head } => head.as_deref(),
+                _ => None,
+            });
+            apply_checkout_switch_working_log_side_effect(cmd, restore_head)?;
         }
 
         if saw_pull_event && let Some(worktree) = cmd.worktree.as_ref() {

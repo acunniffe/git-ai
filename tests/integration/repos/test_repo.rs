@@ -261,15 +261,23 @@ impl DaemonProcess {
                     let _ = child.kill();
                     let _ = child.wait();
                     attempt += 1;
-                    if matches!(error, DaemonReadyError::LoaderInitFailure(_))
-                        && attempt < DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS
-                    {
+                    let retry_limit = match &error {
+                        DaemonReadyError::LoaderInitFailure(_) => {
+                            DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS
+                        }
+                        DaemonReadyError::WindowsLockReleaseDelay(_) => {
+                            DAEMON_SPAWN_LOCK_RETRY_ATTEMPTS
+                        }
+                        DaemonReadyError::Fatal(_) => 0,
+                    };
+                    if attempt < retry_limit {
                         eprintln!(
-                            "[test-harness] daemon loader init failed (attempt {}/{}), respawning: {}",
+                            "[test-harness] transient daemon spawn failure (attempt {}/{}), respawning: {}",
                             attempt,
-                            DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS,
+                            retry_limit,
                             error.message()
                         );
+                        thread::sleep(Duration::from_millis(50));
                         continue;
                     }
                     panic!("{}", error.message());
@@ -301,6 +309,12 @@ impl DaemonProcess {
                 );
                 if is_windows_loader_init_failure(&status) {
                     return Err(DaemonReadyError::LoaderInitFailure(message));
+                }
+                if cfg!(windows)
+                    && stderr_tail
+                        .contains("git-ai background service is already running (lock held)")
+                {
+                    return Err(DaemonReadyError::WindowsLockReleaseDelay(message));
                 }
                 return Err(DaemonReadyError::Fatal(message));
             }
@@ -683,12 +697,19 @@ pub(crate) fn new_daemon_test_sync_session_id() -> String {
 /// Number of times a daemon spawn is retried when the Windows OS loader fails
 /// to even start the process image (see [`is_windows_loader_init_failure`]).
 pub(crate) const DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS: usize = 5;
+/// A force-terminated Windows daemon can briefly retain its lock while the OS
+/// finishes process teardown. Bound retries so a genuine duplicate daemon
+/// still fails loudly.
+pub(crate) const DAEMON_SPAWN_LOCK_RETRY_ATTEMPTS: usize = 20;
 
 /// Outcome of a failed daemon-readiness wait, distinguishing a transient
 /// Windows loader hiccup (respawn) from a genuine failure (fail loudly).
 enum DaemonReadyError {
     /// The Windows loader aborted process startup; safe to respawn.
     LoaderInitFailure(String),
+    /// The previous dedicated Windows daemon has exited but its lock handle has
+    /// not yet been released by the OS.
+    WindowsLockReleaseDelay(String),
     /// Any other failure — the daemon started and misbehaved, or timed out.
     Fatal(String),
 }
@@ -696,7 +717,9 @@ enum DaemonReadyError {
 impl DaemonReadyError {
     fn message(&self) -> &str {
         match self {
-            DaemonReadyError::LoaderInitFailure(m) | DaemonReadyError::Fatal(m) => m,
+            DaemonReadyError::LoaderInitFailure(m)
+            | DaemonReadyError::WindowsLockReleaseDelay(m)
+            | DaemonReadyError::Fatal(m) => m,
         }
     }
 }
