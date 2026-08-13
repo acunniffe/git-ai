@@ -9,6 +9,8 @@ tests/integration/repos/test_repo.rs
   s_18b694e06092e7::t_27e494f0d57523 2713,2718
 tests/integration/filter_import_attribution.rs
   s_18b694e06092e7::t_3a6149c6a4249f 143,170,174,200,204
+src/daemon.rs
+  s_18b694e06092e7::t_442d2598383b01 821-829,1548,5206-5217,5246-5248
 ---
 {
   "schema_version": "authorship/3.0.0",
