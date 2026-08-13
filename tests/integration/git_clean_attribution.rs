@@ -137,7 +137,11 @@ fn test_git_clean_fdx_preserves_ai_file_staged_before_command() {
 
 #[test]
 fn test_git_clean_from_subdirectory_does_not_prune_same_named_root_path() {
-    let target = TestRepo::new();
+    // Delay pruning until after the removed path is recreated and staged.
+    let target = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+        "clean=750",
+    )]);
     fs::write(target.path().join("base.txt"), "base\n").unwrap();
     target.stage_all_and_commit("Initial commit").unwrap();
     let mut base = target.filename("base.txt");

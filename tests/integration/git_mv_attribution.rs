@@ -86,7 +86,12 @@ fn test_git_mv_force_overwrite_uses_source_not_destination_attribution() {
 
 #[test]
 fn test_chained_git_mv_then_force_overwrite_composes_source_mapping() {
-    let repo = TestRepo::new();
+    // Let both commands finish before the first move side effect inspects the
+    // repository, reproducing the ordering seen under a busy daemon.
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+        "mv=750",
+    )]);
     let mut source = repo.filename("source.txt");
     source.set_contents_no_stage(lines!["chained source AI".ai()]);
     fs::write(repo.path().join("destination.txt"), "destination human\n").unwrap();
