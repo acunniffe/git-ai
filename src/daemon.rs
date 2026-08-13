@@ -809,7 +809,7 @@ fn trace_invocation_command_args(primary_command: Option<&str>, argv: &[String])
 }
 
 fn trace_invocation_starts_control_attempt(primary_command: Option<&str>, argv: &[String]) -> bool {
-    if !matches!(primary_command, Some("cherry-pick" | "revert")) {
+    if !matches!(primary_command, Some("cherry-pick" | "merge" | "revert")) {
         return false;
     }
     let args = trace_invocation_command_args(primary_command, argv);
@@ -2617,6 +2617,10 @@ fn revert_state_exists_for_worktree(worktree: &Path) -> bool {
     })
 }
 
+fn merge_state_exists_for_worktree(worktree: &Path) -> bool {
+    git_dir_for_worktree(worktree).is_some_and(|git_dir| git_dir.join("MERGE_HEAD").exists())
+}
+
 fn revert_destination_changes(
     cmd: &crate::daemon::domain::NormalizedCommand,
 ) -> Vec<&crate::daemon::domain::RefChange> {
@@ -3332,6 +3336,7 @@ struct PendingCherryPickAttempt {
 #[derive(Debug, Clone)]
 struct ControlAttemptSnapshot {
     head: String,
+    had_working_log: bool,
     initial: crate::git::repo_storage::InitialAttributions,
     checkpoints: Vec<crate::authorship::working_log::Checkpoint>,
 }
@@ -6055,6 +6060,7 @@ impl ActorDaemonCoordinator {
         let handle = runtime_handle.spawn_blocking(move || {
             let conflict_state_observed = match primary.as_str() {
                 "cherry-pick" => cherry_pick_state_exists_for_worktree(&worktree),
+                "merge" => merge_state_exists_for_worktree(&worktree),
                 "revert" => revert_state_exists_for_worktree(&worktree),
                 _ => false,
             };
@@ -6064,11 +6070,21 @@ impl ActorDaemonCoordinator {
 
             let repo = find_repository_in_path(&worktree.to_string_lossy())?;
             let head = repo.head()?.target()?;
-            let working_log = repo.storage.working_log_for_base_commit(&head)?;
+            let had_working_log = repo.storage.has_working_log(&head);
+            let (initial, checkpoints) = if had_working_log {
+                let working_log = repo.storage.working_log_for_base_commit(&head)?;
+                (
+                    working_log.read_initial_attributions(),
+                    working_log.read_all_checkpoints()?,
+                )
+            } else {
+                (Default::default(), Vec::new())
+            };
             Ok(Some(ControlAttemptSnapshot {
                 head,
-                initial: working_log.read_initial_attributions(),
-                checkpoints: working_log.read_all_checkpoints()?,
+                had_working_log,
+                initial,
+                checkpoints,
             }))
         });
         snapshots.insert(
@@ -7419,6 +7435,7 @@ impl ActorDaemonCoordinator {
                                 let working_log = repo.storage.working_log_for_base_commit(head)?;
                                 Some(ControlAttemptSnapshot {
                                     head: head.clone(),
+                                    had_working_log: repo.storage.has_working_log(head),
                                     initial: working_log.read_initial_attributions(),
                                     checkpoints: working_log.read_all_checkpoints()?,
                                 })
@@ -7467,36 +7484,45 @@ impl ActorDaemonCoordinator {
                     }
                     crate::daemon::domain::SemanticEvent::MergePrepared { head } => {
                         if !head.is_empty() {
-                            let repo = find_repository_in_path(&worktree)?;
+                            let worktree_path = Path::new(&worktree);
+                            let captured = control_attempt_snapshot.take();
                             // A rejected merge such as `merge --ff-only` also exits
                             // nonzero, but does not establish merge state. Only take
                             // a rollback snapshot when Git actually left MERGE_HEAD.
-                            let mut args = repo.global_args_for_exec();
-                            args.extend([
-                                "rev-parse".to_string(),
-                                "--verify".to_string(),
-                                "--quiet".to_string(),
-                                "MERGE_HEAD".to_string(),
-                            ]);
-                            if crate::git::repository::exec_git(&args).is_ok() {
-                                let had_working_log = repo.storage.has_working_log(head);
-                                let (initial, checkpoints) = if had_working_log {
-                                    let working_log =
-                                        repo.storage.working_log_for_base_commit(head)?;
-                                    (
-                                        working_log.read_initial_attributions(),
-                                        working_log.read_all_checkpoints()?,
-                                    )
-                                } else {
-                                    (Default::default(), Vec::new())
-                                };
-                                self.set_pending_merge_attempt_for_worktree(
-                                    worktree.as_ref(),
-                                    PendingMergeAttempt {
+                            if captured.is_some() || merge_state_exists_for_worktree(worktree_path)
+                            {
+                                let repo = find_repository_in_path(&worktree)?;
+                                let fallback_snapshot = if captured.is_none() {
+                                    let had_working_log = repo.storage.has_working_log(head);
+                                    let (initial, checkpoints) = if had_working_log {
+                                        let working_log =
+                                            repo.storage.working_log_for_base_commit(head)?;
+                                        (
+                                            working_log.read_initial_attributions(),
+                                            working_log.read_all_checkpoints()?,
+                                        )
+                                    } else {
+                                        (Default::default(), Vec::new())
+                                    };
+                                    Some(ControlAttemptSnapshot {
                                         head: head.clone(),
                                         had_working_log,
                                         initial,
                                         checkpoints,
+                                    })
+                                } else {
+                                    None
+                                };
+                                let snapshot = captured
+                                    .or(fallback_snapshot)
+                                    .expect("prepared merge should have a working-log snapshot");
+                                self.set_pending_merge_attempt_for_worktree(
+                                    worktree_path,
+                                    PendingMergeAttempt {
+                                        head: snapshot.head,
+                                        had_working_log: snapshot.had_working_log,
+                                        initial: snapshot.initial,
+                                        checkpoints: snapshot.checkpoints,
                                     },
                                 )?;
                             }
