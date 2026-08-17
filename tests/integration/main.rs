@@ -73,6 +73,7 @@ mod fuzzer;
 mod gemini;
 mod git_add_attribution;
 mod git_alias_resolution;
+mod git_am_attribution;
 mod git_apply_attribution;
 mod git_cli_arg_parsing;
 mod git_plumbing_bash_attribution;
