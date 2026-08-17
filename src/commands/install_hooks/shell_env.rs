@@ -653,7 +653,7 @@ mod windows_tests {
     fn windows_unsupported_registry_path_is_left_unchanged() {
         use winreg::RegKey;
         use winreg::enums::{HKEY_CURRENT_USER, REG_BINARY};
-        use winreg::types::RegValue;
+        use winreg::types::ToRegValue;
 
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let key_path = format!(
@@ -661,10 +661,8 @@ mod windows_tests {
             crate::uuid::generate_v4()
         );
         let (environment, _) = hkcu.create_subkey(&key_path).unwrap();
-        let original = RegValue {
-            bytes: vec![1, 2, 3, 4],
-            vtype: REG_BINARY,
-        };
+        let original = vec![1_u8, 2, 3, 4].to_reg_value();
+        assert_eq!(original.vtype, REG_BINARY);
         environment.set_raw_value("Path", &original).unwrap();
 
         let result = ensure_windows_user_path_in_registry(&environment, r"C:\git-ai\bin");
