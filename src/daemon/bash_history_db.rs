@@ -393,8 +393,12 @@ impl BashHistoryDatabase {
         self.prune_old_calls_if_due()?;
 
         let now = unix_now_secs();
-        let metadata_json =
-            serde_json::to_string(&call.metadata).unwrap_or_else(|_| "{}".to_string());
+        // PostToolUse payloads repeat agent metadata but do not contain the
+        // internal index baseline captured at PreToolUse. Preserve start-only
+        // keys while allowing end metadata to update ordinary agent fields.
+        let mut metadata = self.existing_metadata_for_end(call)?;
+        metadata.extend(call.metadata.clone());
+        let metadata_json = serde_json::to_string(&metadata).unwrap_or_else(|_| "{}".to_string());
         let end_time_ns = ns_to_i64(call.ended_at_ns)?;
 
         let updated = if let Some(start_trace_id) = call.start_trace_id.as_ref() {
@@ -512,6 +516,44 @@ impl BashHistoryDatabase {
         Ok(())
     }
 
+    fn existing_metadata_for_end(
+        &self,
+        call: &BashCallEnd,
+    ) -> Result<HashMap<String, String>, GitAiError> {
+        let metadata_json = if let Some(start_trace_id) = call.start_trace_id.as_ref() {
+            self.conn
+                .query_row(
+                    r#"
+                    SELECT metadata_json
+                    FROM bash_checkpoint_calls
+                    WHERE session_id = ?1 AND tool_use_id = ?2 AND start_trace_id = ?3
+                    LIMIT 1
+                    "#,
+                    params![call.session_id, call.tool_use_id, start_trace_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+        } else {
+            self.conn
+                .query_row(
+                    r#"
+                    SELECT metadata_json
+                    FROM bash_checkpoint_calls
+                    WHERE session_id = ?1 AND tool_use_id = ?2 AND end_time_ns IS NULL
+                    ORDER BY id DESC
+                    LIMIT 1
+                    "#,
+                    params![call.session_id, call.tool_use_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?
+        };
+        Ok(metadata_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok())
+            .unwrap_or_default())
+    }
+
     pub fn candidates_near_timestamps(
         &self,
         timestamps_ns: &[u128],
@@ -563,6 +605,39 @@ impl BashHistoryDatabase {
             }
         }
         Ok(calls)
+    }
+
+    /// Return Bash tool calls whose actual invocation window overlaps a traced
+    /// Git command window. Unlike mtime recovery, an open call has no synthetic
+    /// duration cap: if the Git command began after the Bash pre-hook and before
+    /// its post-hook, it is part of that call even when the command ran for more
+    /// than the normal recovery grace period.
+    pub fn candidates_overlapping_window(
+        &self,
+        started_at_ns: u128,
+        finished_at_ns: u128,
+    ) -> Result<Vec<BashCheckpointCall>, GitAiError> {
+        if !self.enabled || finished_at_ns < started_at_ns {
+            return Ok(Vec::new());
+        }
+
+        let mut stmt = self.conn.prepare(
+            r#"
+            SELECT id, invocation_key, original_cwd, repo_work_dir, repo_discovery_error,
+                   session_id, tool_use_id, agent_tool, agent_external_id, agent_model,
+                   start_trace_id, end_trace_id, start_time_ns, end_time_ns,
+                   command, metadata_json
+            FROM bash_checkpoint_calls
+            WHERE start_time_ns <= ?1
+              AND COALESCE(end_time_ns, ?1) >= ?2
+            ORDER BY id ASC
+            "#,
+        )?;
+        let rows = stmt.query_map(
+            params![ns_to_i64(finished_at_ns)?, ns_to_i64(started_at_ns)?],
+            row_to_call,
+        )?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     pub fn all_calls_for_test(&self) -> Result<Vec<BashCheckpointCall>, GitAiError> {
@@ -719,6 +794,10 @@ mod tests {
         let (mut db, _dir) = test_db();
         let mut metadata = HashMap::new();
         metadata.insert("transcript_path".to_string(), "/tmp/t.jsonl".to_string());
+        metadata.insert(
+            crate::commands::checkpoint_agent::bash_tool::PRE_INDEX_TREE_METADATA_KEY.to_string(),
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
+        );
 
         db.record_start(&BashCallStart {
             original_cwd: "/repo/subdir".to_string(),
@@ -745,7 +824,10 @@ mod tests {
             started_at_ns: Some(1_000),
             ended_at_ns: 2_000,
             command: Some("echo hi".to_string()),
-            metadata,
+            metadata: HashMap::from([(
+                "transcript_path".to_string(),
+                "/tmp/t-updated.jsonl".to_string(),
+            )]),
         })
         .unwrap();
 
@@ -765,7 +847,13 @@ mod tests {
         assert_eq!(call.command.as_deref(), Some("echo hi"));
         assert_eq!(
             call.metadata.get("transcript_path").map(String::as_str),
-            Some("/tmp/t.jsonl")
+            Some("/tmp/t-updated.jsonl")
+        );
+        assert_eq!(
+            call.metadata
+                .get(crate::commands::checkpoint_agent::bash_tool::PRE_INDEX_TREE_METADATA_KEY)
+                .map(String::as_str),
+            Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         );
     }
 
@@ -888,6 +976,33 @@ mod tests {
         let calls = db.candidates_near_timestamps(&[5_000], 3_000).unwrap();
         let ids: Vec<_> = calls.iter().map(|c| c.tool_use_id.as_str()).collect();
         assert_eq!(ids, vec!["near-before", "near-after"]);
+    }
+
+    #[test]
+    fn overlapping_window_keeps_long_running_open_call_without_synthetic_cap() {
+        let (mut db, _dir) = test_db();
+        db.record_start(&BashCallStart {
+            original_cwd: "/repo".to_string(),
+            repo_work_dir: Some("/repo".to_string()),
+            repo_discovery_error: None,
+            session_id: "long-session".to_string(),
+            tool_use_id: "long-tool".to_string(),
+            agent_id: test_agent(),
+            start_trace_id: "t_long".to_string(),
+            started_at_ns: 1_000,
+            command: Some("git am series.patch".to_string()),
+            metadata: HashMap::new(),
+        })
+        .unwrap();
+
+        let calls = db
+            .candidates_overlapping_window(10_000_000_000, 11_000_000_000)
+            .unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].tool_use_id, "long-tool");
+
+        let before = db.candidates_overlapping_window(100, 999).unwrap();
+        assert!(before.is_empty());
     }
 
     #[test]

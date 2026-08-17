@@ -88,6 +88,7 @@ pub fn post_commit_from_working_log(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn post_commit_from_working_log_with_recovery_timestamps(
     repo: &Repository,
     base_commit: Option<String>,
@@ -96,6 +97,59 @@ pub(crate) fn post_commit_from_working_log_with_recovery_timestamps(
     supress_output: bool,
     recovery_file_timestamps: Option<&FileTimestampsByPath>,
     before_external_recovery: Option<&dyn Fn(&UnknownLinesByFile)>,
+    bash_command_window: Option<(u128, u128)>,
+) -> Result<(String, AuthorshipLog), GitAiError> {
+    post_commit_from_working_log_with_recovery_timestamps_and_empty_note_policy(
+        repo,
+        base_commit,
+        commit_sha,
+        human_author,
+        supress_output,
+        recovery_file_timestamps,
+        before_external_recovery,
+        bash_command_window,
+        true,
+    )
+}
+
+/// Finalize a daemon-observed merge commit without creating a schema-only note
+/// when the merge contains no attribution. Attributed and conflict-resolution
+/// merges still write their normal note.
+#[allow(dead_code, clippy::too_many_arguments)]
+pub(crate) fn post_merge_commit_from_working_log_with_recovery_timestamps(
+    repo: &Repository,
+    base_commit: Option<String>,
+    commit_sha: String,
+    human_author: String,
+    supress_output: bool,
+    recovery_file_timestamps: Option<&FileTimestampsByPath>,
+    before_external_recovery: Option<&dyn Fn(&UnknownLinesByFile)>,
+    bash_command_window: Option<(u128, u128)>,
+) -> Result<(String, AuthorshipLog), GitAiError> {
+    post_commit_from_working_log_with_recovery_timestamps_and_empty_note_policy(
+        repo,
+        base_commit,
+        commit_sha,
+        human_author,
+        supress_output,
+        recovery_file_timestamps,
+        before_external_recovery,
+        bash_command_window,
+        false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn post_commit_from_working_log_with_recovery_timestamps_and_empty_note_policy(
+    repo: &Repository,
+    base_commit: Option<String>,
+    commit_sha: String,
+    human_author: String,
+    supress_output: bool,
+    recovery_file_timestamps: Option<&FileTimestampsByPath>,
+    before_external_recovery: Option<&dyn Fn(&UnknownLinesByFile)>,
+    bash_command_window: Option<(u128, u128)>,
+    write_empty_note: bool,
 ) -> Result<(String, AuthorshipLog), GitAiError> {
     post_commit_from_working_log_with_transform_context(
         repo,
@@ -106,11 +160,15 @@ pub(crate) fn post_commit_from_working_log_with_recovery_timestamps(
             supress_output,
             compute_stats: true,
             recover_attribution: true,
+            write_note: true,
         },
         PostCommitContext {
             precomputed_parent_diff: None,
             recovery_file_timestamps,
             before_external_recovery,
+            bash_command_window,
+            bash_scope_to_pre_index: bash_command_window.is_some(),
+            write_empty_note,
         },
         Ok,
     )
@@ -121,6 +179,7 @@ pub(crate) struct PostCommitOptions {
     pub supress_output: bool,
     pub compute_stats: bool,
     pub recover_attribution: bool,
+    pub write_note: bool,
 }
 
 pub(crate) struct PostCommitDetailedResult {
@@ -134,6 +193,9 @@ struct PostCommitContext<'a> {
     precomputed_parent_diff: Option<&'a DiffTreeResult>,
     recovery_file_timestamps: Option<&'a FileTimestampsByPath>,
     before_external_recovery: Option<&'a dyn Fn(&UnknownLinesByFile)>,
+    bash_command_window: Option<(u128, u128)>,
+    bash_scope_to_pre_index: bool,
+    write_empty_note: bool,
 }
 
 pub fn post_commit_from_working_log_with_transform<F>(
@@ -156,6 +218,7 @@ where
             supress_output,
             compute_stats: true,
             recover_attribution: true,
+            write_note: true,
         },
         transform,
     )
@@ -204,6 +267,9 @@ where
             precomputed_parent_diff: None,
             recovery_file_timestamps: None,
             before_external_recovery: None,
+            bash_command_window: None,
+            bash_scope_to_pre_index: false,
+            write_empty_note: true,
         },
         transform,
     )
@@ -237,6 +303,9 @@ where
             precomputed_parent_diff,
             recovery_file_timestamps: None,
             before_external_recovery: None,
+            bash_command_window: None,
+            bash_scope_to_pre_index: false,
+            write_empty_note: true,
         },
         transform,
     )
@@ -406,6 +475,8 @@ where
             AttributionRecoveryContext {
                 file_timestamps: context.recovery_file_timestamps,
                 before_external_recovery: context.before_external_recovery,
+                bash_command_window: context.bash_command_window,
+                bash_scope_to_pre_index: context.bash_scope_to_pre_index,
             },
         )?;
         authorship_log.metadata.base_commit_sha = commit_sha.clone();
@@ -431,7 +502,9 @@ where
         .serialize_to_string()
         .map_err(|_| GitAiError::Generic("Failed to serialize authorship log".to_string()))?;
 
-    write_note(repo, &commit_sha, &authorship_note_str)?;
+    if options.write_note && (context.write_empty_note || !authorship_log.attestations.is_empty()) {
+        write_note(repo, &commit_sha, &authorship_note_str)?;
+    }
 
     // Compute stats once (needed for both metrics and terminal output), unless preflight
     // estimate predicts this would be too expensive for the commit hook path.
@@ -567,6 +640,55 @@ where
         authorship_log,
         authorship_note: authorship_note_str,
     })
+}
+
+/// Finalize every commit created by one command while keeping external Git
+/// process count constant. Parent-to-commit diffs and note writes are batched;
+/// recovery is scoped to the exact command window so an enclosing AI Bash call
+/// can attribute imported lines even when an early patch's file no longer
+/// exists when the mailbox finishes.
+#[allow(dead_code)]
+pub(crate) fn post_commit_sequence_from_working_log_with_bash_command_window(
+    repo: &Repository,
+    transitions: &[(String, String)],
+    human_author: String,
+    bash_command_window: (u128, u128),
+) -> Result<Vec<(String, AuthorshipLog)>, GitAiError> {
+    if transitions.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let diffs = crate::authorship::rewrite::compute_diff_trees_batch(repo, transitions)?;
+    let mut results = Vec::with_capacity(transitions.len());
+    let mut note_writes = Vec::with_capacity(transitions.len());
+    for ((parent_sha, commit_sha), diff) in transitions.iter().zip(diffs.iter()) {
+        let detailed = post_commit_from_working_log_with_transform_context_detailed(
+            repo,
+            Some(parent_sha.clone()),
+            commit_sha.clone(),
+            human_author.clone(),
+            PostCommitOptions {
+                supress_output: true,
+                compute_stats: false,
+                recover_attribution: true,
+                write_note: false,
+            },
+            PostCommitContext {
+                precomputed_parent_diff: Some(diff),
+                recovery_file_timestamps: None,
+                before_external_recovery: None,
+                bash_command_window: Some(bash_command_window),
+                bash_scope_to_pre_index: false,
+                write_empty_note: true,
+            },
+            Ok,
+        )?;
+        debug_assert_eq!(detailed.commit_sha, *commit_sha);
+        note_writes.push((detailed.commit_sha.clone(), detailed.authorship_note));
+        results.push((detailed.commit_sha, detailed.authorship_log));
+    }
+    crate::git::notes_api::write_notes_batch(repo, &note_writes)?;
+    Ok(results)
 }
 
 fn commit_tree_snapshot_for_files(
@@ -784,6 +906,8 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
         AttributionRecoveryContext {
             file_timestamps: recovery_file_timestamps,
             before_external_recovery,
+            bash_command_window: None,
+            bash_scope_to_pre_index: false,
         },
     )?;
     authorship_log.metadata.base_commit_sha = amended_commit.to_string();

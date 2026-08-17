@@ -970,6 +970,7 @@ fn post_conflict_resolution_working_log(
             supress_output: true,
             compute_stats: false,
             recover_attribution: false,
+            write_note: true,
         },
         precomputed_parent_diff,
         move |resolution_log| {
@@ -5331,6 +5332,19 @@ impl ActorDaemonCoordinator {
         pathspecs
     }
 
+    fn stash_keeps_index(cmd: &crate::daemon::domain::NormalizedCommand) -> bool {
+        let parsed = parsed_invocation_for_normalized_command(cmd);
+        let has_no_keep_index = parsed
+            .command_args
+            .iter()
+            .any(|arg| arg == "--no-keep-index");
+        !has_no_keep_index
+            && parsed
+                .command_args
+                .iter()
+                .any(|arg| matches!(arg.as_str(), "-k" | "--keep-index" | "-p" | "--patch"))
+    }
+
     /// Detects non-fast-forward ref moves and fires handle_rewrite_event.
     fn detect_and_handle_non_ff_rewrites(
         &self,
@@ -6138,8 +6152,9 @@ impl ActorDaemonCoordinator {
                                         stash_base_head(&repo, stash_sha).or_else(|| head.clone());
                                     if let Some(head_sha) = push_head.as_deref() {
                                         let pathspecs = Self::stash_pathspecs_from_command(cmd);
+                                        let keep_index = Self::stash_keeps_index(cmd);
                                         crate::authorship::rewrite_stash::handle_stash_create(
-                                            &repo, stash_sha, head_sha, pathspecs,
+                                            &repo, stash_sha, head_sha, pathspecs, keep_index,
                                         )?;
                                     }
                                 }
@@ -6304,6 +6319,7 @@ impl ActorDaemonCoordinator {
                                     true,
                                     recovery_file_timestamps.as_ref(),
                                     Some(&recovery_preflight),
+                                    None,
                                 )
                             })?;
 

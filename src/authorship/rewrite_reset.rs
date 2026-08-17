@@ -18,6 +18,14 @@ pub fn reconstruct_working_log_after_backward_reset(
     old_tip: &str,
     new_tip: &str,
 ) -> Result<(), GitAiError> {
+    // Pending checkpoints are normally keyed by the command's pre-move HEAD.
+    // Move them before reconstructing attribution from the commits being
+    // unwound. The destination can already contain a log (for example after a
+    // branch was previously checked out), and rename_working_log deliberately
+    // merges in that case. Doing this up front also preserves pending edits
+    // when the unwound commits have no usable authorship notes.
+    repo.storage.rename_working_log(old_tip, new_tip)?;
+
     // List all commits being "un-done" (between new_tip exclusive and old_tip inclusive)
     let commits = list_commits_in_range(repo, new_tip, old_tip);
     if commits.is_empty() {
@@ -132,6 +140,7 @@ pub fn reconstruct_working_log_after_backward_reset(
     // written between the time the reset happened and when the daemon processes
     // this event. Clearing checkpoints.jsonl would lose that data.
     let working_log = repo.storage.working_log_for_base_commit(new_tip)?;
+    let mut carried = working_log.read_initial_attributions();
 
     working_log.write_initial_attributions_with_contents(
         file_attributions,
@@ -140,6 +149,27 @@ pub fn reconstruct_working_log_after_backward_reset(
         file_blobs,
         sessions,
     )?;
+
+    // rename_working_log may have carried an existing INITIAL state to the
+    // destination. It describes newer uncommitted work and therefore wins for
+    // overlapping paths; reconstruction only fills paths that were absent.
+    let reconstructed = working_log.read_initial_attributions();
+    for (path, attrs) in reconstructed.files {
+        carried.files.entry(path).or_insert(attrs);
+    }
+    for (path, blob) in reconstructed.file_blobs {
+        carried.file_blobs.entry(path).or_insert(blob);
+    }
+    for (id, prompt) in reconstructed.prompts {
+        carried.prompts.entry(id).or_insert(prompt);
+    }
+    for (id, human) in reconstructed.humans {
+        carried.humans.entry(id).or_insert(human);
+    }
+    for (id, session) in reconstructed.sessions {
+        carried.sessions.entry(id).or_insert(session);
+    }
+    working_log.write_initial(carried)?;
 
     // Delete old working log if it exists
     let _ = repo.storage.delete_working_log_for_base_commit(old_tip);
