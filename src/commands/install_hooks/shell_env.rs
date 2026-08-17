@@ -469,7 +469,7 @@ fn windows_profile_contains(path: &Path, marker: &str) -> bool {
 #[cfg(windows)]
 fn configure_git_bash(install_dir: &Path) -> Result<(), GitAiError> {
     use chrono::Local;
-    use std::fs::{self, OpenOptions};
+    use std::fs::OpenOptions;
     use std::io::Write;
 
     let git_bash_installed = [
