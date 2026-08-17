@@ -1,0 +1,84 @@
+src/commands/activity.rs
+  s_8d2579124116c6::t_013c07475d8e43 2,10-13,15-20,22-31,33-38,71,76-79,88-93,95-102,114-116,117,119-130,132,134-135,140-144,146-150,155,157-158,160-161,164,186,187,190-191,194-195,198,204,231,233,241,259,275,293-294,332-333,364,380,383,385,392,403-404,406-416,418,421-430
+  s_0db412aeb21ffe::t_2ef1519d60bafe 72,94
+  s_8d2579124116c6::t_db261437049fa4 159
+  s_8d2579124116c6::t_0eb1eee25d93c6 166,172,175-179,183-184
+  s_8d2579124116c6::t_67c993cba3b848 85,229,295,334,340,349,365,381,405,417,419-420
+  s_8d2579124116c6::t_d48e77ad90e6bc 335-336,338-339,343,345,350-351,354-358,360,363,389-391,393-402
+  s_0db412aeb21ffe::t_e609464cbae1fc 245,298,337,368
+  s_8d2579124116c6::t_e099179db31883 341,347,362
+  s_8d2579124116c6::t_6c4ed39d09f324 302,342,344,346,348,359,361,366-367,369-379
+  s_8d2579124116c6::t_a80b5a10ec4988 352-353
+  s_8d2579124116c6::t_92bab4562f9ad2 296-297,299,307-309,315,321,323-326,328-331
+  s_8d2579124116c6::t_06062f0672e5e8 87,156,169,171,189,192-193,196-197,199-200,202,230,232,234-235,238-239
+  s_27ed236e4270d9::t_5506e4e39d0b32 170,386
+  s_8d2579124116c6::t_e37c75b4a32551 163
+  s_8d2579124116c6::t_9aee7757149415 208
+  h_5e32efc4aad69a 136,138-139,162
+  s_8d2579124116c6::t_7679a432dd8265 316-320,322,327
+  s_8d2579124116c6::t_52e0eb14a52835 242-244,246-249,254-257,271,276-279,285-286,288-290
+  s_86cae81fcd9c97::t_24ca854e14a83d 40-43,45-49,51-55,57-61,63-67,69,73-75,223-226,251-252,258,274,292,300-301,303-306,310-314
+  s_8d2579124116c6::t_15ce3fa6d84bc4 280,281-284,287,291
+  s_0db412aeb21ffe::t_9c84f698786722 174,180-182,185,222,227,250,253
+  s_8d2579124116c6::t_e95a4e924b05c3 260,270,272-273
+  s_8d2579124116c6::t_9f4f325c1f5e34 209
+  s_8d2579124116c6::t_81d38a6662a2bc 9
+  s_8d2579124116c6::t_ec76250efedf60 205-207,210-216,218-221
+  s_f4253bff8cf478::t_921ab2743b3115 261-269
+  s_86cae81fcd9c97::t_c449e8de48676b 173
+  s_27ed236e4270d9::t_d4eec808c66ab5 4,7
+  s_27ed236e4270d9::t_6feada4695b55e 1,32,131,133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "1c40e307070b4018ac78d5961e86bb136102f4ab",
+  "prompts": {},
+  "humans": {
+    "h_5e32efc4aad69a": {
+      "author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  },
+  "sessions": {
+    "s_0db412aeb21ffe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfef8749-d442-403d-b447-4d2895852996",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_86cae81fcd9c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5160589a-86c2-41a5-bdcd-5daee68d43ef",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_f4253bff8cf478": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50b2-525b-70b0-8f45-874075a6ecce",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

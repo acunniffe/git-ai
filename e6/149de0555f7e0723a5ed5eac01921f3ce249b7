@@ -1,0 +1,21 @@
+src/daemon.rs
+  s_7e05ba92eeba4c::t_614557115fd4e8 6355-6359
+src/daemon/ref_cursor.rs
+  s_7e05ba92eeba4c::t_98a6f886b0df6e 1610-1617,1619-1622,1624-1626,3560-3566,4722-4757
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "e6149de0555f7e0723a5ed5eac01921f3ce249b7",
+  "prompts": {},
+  "sessions": {
+    "s_7e05ba92eeba4c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5da-6f02-7801-8355-ae16942c7ace",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

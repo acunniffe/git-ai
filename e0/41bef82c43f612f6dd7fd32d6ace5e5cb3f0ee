@@ -1,0 +1,23 @@
+src/authorship/virtual_attribution.rs
+  9e2f764b9d116178 871-873,938-940
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "e041bef82c43f612f6dd7fd32d6ace5e5cb3f0ee",
+  "prompts": {
+    "9e2f764b9d116178": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7dffb5b3-812e-45c4-a879-3b2510feeb54",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 2,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}

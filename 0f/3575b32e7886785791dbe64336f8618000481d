@@ -1,0 +1,143 @@
+tests/integration/fuzzer/model.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 269-333
+src/authorship/attribution_recovery.rs
+  s_8a403007dd162d::t_913cfffe645aab 2502
+  s_8a403007dd162d::t_fb2923971fdc16 1981-1994,2000,2006,2013
+  s_8a403007dd162d::t_5f7e023f0171ed 435,545,650,724-737,850-863,1509
+  s_8a403007dd162d::t_61d6ec2e4e8af6 339,451,562,666,750
+  s_8a403007dd162d::t_69a6e8901cad81 1909,1912,1931,1933,1936-1940,1949-1950,1952-1963
+  s_8a403007dd162d::t_856262ef14ff14 1979,2243-2245,2256-2274
+  s_8a403007dd162d::t_592d3a1251e44f 2336-2359
+  s_8a403007dd162d::t_0ffd02545c4d1a 424,534,639,723,738,849,864,1498
+  s_8a403007dd162d::t_6b2f0dee1340cd 1462
+  s_8a403007dd162d::t_d306f476fa80b0 2277-2325
+  s_1eeb4f6def9ecf::t_9c884d532253fa 756,2484,2490,2500
+  s_8a403007dd162d::t_41bdaa60b708bf 773,1915,1951,2516,2520,2543,2579,2595-2597,2600-2602,2606-2608
+  s_8a403007dd162d::t_2fa29d4dfbe56c 236-255,257-279,283-291,293-308,2246,2248-2255
+  s_8a403007dd162d::t_d75b5dded29f3a 2521-2523,2525,2527-2528,2544-2546,2548,2550-2551
+  s_8a403007dd162d::t_4ae0300acf4a02 17,1148,1151-1152,1154,1156,1159-1161,1163-1165,1169-1175
+  s_8a403007dd162d::t_8181bb42050bd0 281-282
+  s_1eeb4f6def9ecf::t_448e46811cd528 1,23,162,232,660-661,663-665,667-690,695-699,701-703,707-716,718-722,739-745,747-748,751,755,836-846,848,865-869,1090-1097,1106-1129,1143-1146,1153,1155,1157-1158,1176-1177,1868-1908,1910-1911,1913-1914,1916-1930,1932,1934-1935,1941-1948,1964-1965,2026-2063,2208-2225,2237,2459-2483,2485-2489,2491-2499
+  s_8a403007dd162d::t_119114a1806fd6 760,763,818-822,824,826-835
+  s_8a403007dd162d::t_c40b375fd17ba4 825
+  s_1eeb4f6def9ecf::t_d788bbca897938 1967-1971
+  s_8a403007dd162d::t_65da9266eeef49 2501,2571-2578,2580-2588,2620-2621
+  s_1eeb4f6def9ecf::t_48ce2dfb09a167 752-754,762,764-765,767,774-775,814-817,823
+  s_8a403007dd162d::t_7c156fc15d0d06 182,188-200,558,569,662,691-694,700,717,746,757-759,761,769-772,875,880-886,892
+  s_8a403007dd162d::t_26314ca72af7e2 1130-1142,1147,1150
+  s_8a403007dd162d::t_ecf184f34162d3 704-706,1098-1105
+  s_8a403007dd162d::t_e3a0df15a42bf5 3,1966
+  s_8a403007dd162d::t_e8d30db24e0b73 1149,1162,1166-1168,2603,2619
+  s_8a403007dd162d::t_6b54abf11e6a30 292,749,766,768,776-813,847
+  s_8a403007dd162d::t_093ea1fae54f13 2503-2515,2517-2519,2524,2529-2542,2547,2552-2570,2589-2594,2598-2599,2604-2605,2609-2618
+  s_8a403007dd162d::t_fdeb74594191fc 2526,2549
+  s_f5625e539bdb2a::t_eb4001bcc57679 1980
+  s_8a403007dd162d::t_6295212ed7b4cf 1972-1978,1995-1999,2001-2005,2007-2012,2014-2025
+tests/integration/gemini.rs
+  s_1eeb4f6def9ecf::t_2f2eee35a610e6 4,17-32,373
+tests/integration/post_commit_unit.rs
+  s_1eeb4f6def9ecf::t_057cbc64924c0f 4-19,79,81
+tests/integration/continue_cli.rs
+  s_1eeb4f6def9ecf::t_86578240b8a7ee 4,16-31,406
+src/daemon/bash_history_db.rs
+  s_b0e77478c0079b::t_6425acffdb2c26 179-180
+  s_8a403007dd162d::t_e8d30db24e0b73 6-9,96,156,177-178
+tests/integration/windsurf.rs
+  s_1eeb4f6def9ecf::t_6a923ebe1e1b82 3,19-34,341
+tests/integration/squash_merge.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 562-563,565
+tests/integration/fuzzer/operations.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 188-189,215-216,262-263,318-319
+tests/integration/simple_additions.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 4,10-23,245-249,1014-1016
+tests/integration/cold_trace2_repo.rs
+  s_1eeb4f6def9ecf::t_0483b8600027a2 135-137
+src/metrics/db.rs
+  s_8a403007dd162d::t_e8d30db24e0b73 15-18,99,184,195-196
+  s_b0e77478c0079b::t_003b20989f0ca7 197-198
+tests/integration/pull_rebase_ff.rs
+  s_93ad1369d7e6f1::t_c6f1660200e309 643-644
+  s_8a403007dd162d::t_fd7501c965810d 3,7-8,567,569-579,587-609,632-636
+  s_8a403007dd162d::t_38f4035f18c221 16-21
+  s_8a403007dd162d::t_beaef526df329a 540-541
+  s_8a403007dd162d::t_368a168c8f4784 1,542,544
+  s_b880de3a5e6407::t_ec42f7cdb12c17 645
+  s_8a403007dd162d::t_41bdaa60b708bf 560-564,638-641
+  s_8a403007dd162d::t_65da9266eeef49 2,4,512-539,543,545-559,565-566,568,580-586,610-631,637,642
+tests/integration/session_event_attribution.rs
+  s_1eeb4f6def9ecf::t_0e1caab9eb48e7 529-530,542-543
+  s_8a403007dd162d::t_27a0cdc5b6f0f9 507,538-541,544
+  s_cd75f4d4983cd8::t_1fe67f88d8562e 546
+  s_1eeb4f6def9ecf::t_1a6971bf90a00d 658-662
+  s_8a403007dd162d::t_fdeb74594191fc 561-562
+  s_8a403007dd162d::t_65da9266eeef49 592-637
+  s_1eeb4f6def9ecf::t_fd41efe5502169 708
+  s_8a403007dd162d::t_0fa022a4360e65 548-560,563-591
+  s_1eeb4f6def9ecf::t_448e46811cd528 142-167,420-506,545,682-707
+  s_1eeb4f6def9ecf::t_c24f67134aece9 508-528,531-537
+  s_1eeb4f6def9ecf::t_2201cffba6fdb7 547,638-657,663-681
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "0f3575b32e7886785791dbe64336f8618000481d",
+  "prompts": {},
+  "sessions": {
+    "s_1eeb4f6def9ecf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24a5-539f-7dd3-9793-1f096a58ff70",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_8a403007dd162d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb56c-a2e6-7223-942f-05519301449c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_93ad1369d7e6f1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1994-05a5-7f83-80be-8f99134d0c9c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b0e77478c0079b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb58f-c784-7353-8bc4-2d4463541970",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b880de3a5e6407": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f19db-47e2-7340-a92b-59658d9d09e5",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_cd75f4d4983cd8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb395-75ee-75c3-ae47-bb8bd3e752e1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f5625e539bdb2a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb611-50e1-7002-b32d-c055ac3eb311",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

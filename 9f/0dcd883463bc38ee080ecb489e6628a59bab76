@@ -1,0 +1,28 @@
+scripts/ci-test-with-retry.sh
+  b0ed497ae5cf9685 1-90
+.github/workflows/test.yml
+  b0ed497ae5cf9685 9,21,112-114,121-127
+scripts/ci-test-with-retry.ps1
+  b0ed497ae5cf9685 1-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "9f0dcd883463bc38ee080ecb489e6628a59bab76",
+  "prompts": {
+    "b0ed497ae5cf9685": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "91ac4ac8-48a4-4648-9d91-4feabd98da29",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 191,
+      "total_deletions": 2,
+      "accepted_lines": 191,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/46bd4e521b34625b5c6b60cdb2fa99cdc92fba7c33fa1cfcb7e37d46a2926763"
+    }
+  }
+}
