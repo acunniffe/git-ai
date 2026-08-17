@@ -342,12 +342,13 @@ pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
 
     // Get absolute path to the current binary
     let binary_path = get_current_binary_path()?;
-    persist_install_config_with_values(&binary_path, options.dry_run, &install_config)?;
     let params = HookInstallerParams { binary_path };
 
     // Keep shell setup independent from hook installation while preserving the
     // hook result. Shell profile failures are best-effort and remain non-fatal.
-    let install_result = crate::tokio_runtime::block_on(async_run_install(&params, &options));
+    let install_result =
+        persist_install_config_with_values(&params.binary_path, options.dry_run, &install_config)
+            .and_then(|_| crate::tokio_runtime::block_on(async_run_install(&params, &options)));
     if let Err(error) = shell_env::configure(&params.binary_path, options.dry_run) {
         eprintln!("Warning: Failed to configure shell environment: {error}");
     }

@@ -63,6 +63,7 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
     use chrono::Local;
     use std::fs::{self, OpenOptions};
     use std::io::Write;
+    use std::os::unix::ffi::OsStrExt;
 
     if is_package_store_install_dir(install_dir) {
         println!(
@@ -73,35 +74,42 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
     }
 
     let home = crate::mdm::utils::home_dir();
-    let install_dir = install_dir.to_string_lossy();
+    let install_dir_bytes = install_dir.as_os_str().as_bytes();
+    let install_dir_display = install_dir.to_string_lossy();
     let mut configured = Vec::new();
     let mut already_configured = Vec::new();
-    let mut created_paths = Vec::new();
+    let mut first_error = None;
     let login_shell = std::env::var_os("SHELL");
 
     for (shell_name, config_file) in detect_unix_shells(&home, login_shell.as_deref()) {
         let path_command = if shell_name == "fish" {
-            let config_dir = config_file.parent().ok_or_else(|| {
-                GitAiError::Generic(format!(
-                    "could not determine parent directory for {}",
-                    config_file.display()
-                ))
-            })?;
-            if !config_dir.is_dir() {
-                fs::create_dir_all(config_dir)?;
-                created_paths.push(config_dir.to_path_buf());
+            let Some(config_dir) = config_file.parent() else {
+                first_error.get_or_insert_with(|| {
+                    GitAiError::Generic(format!(
+                        "could not determine parent directory for {}",
+                        config_file.display()
+                    ))
+                });
+                continue;
+            };
+            if !config_dir.is_dir()
+                && let Err(error) = fs::create_dir_all(config_dir)
+            {
+                first_error.get_or_insert_with(|| error.into());
+                continue;
             }
-            format!("fish_add_path -g \"{install_dir}\"")
+            let mut command = b"fish_add_path -g \"".to_vec();
+            command.extend_from_slice(install_dir_bytes);
+            command.extend_from_slice(b"\"");
+            command
         } else {
-            format!("export PATH=\"{install_dir}:$PATH\"")
+            let mut command = b"export PATH=\"".to_vec();
+            command.extend_from_slice(install_dir_bytes);
+            command.extend_from_slice(b":$PATH\"");
+            command
         };
 
-        if !config_file.is_file() {
-            created_paths.push(config_file.clone());
-        }
-
         let existing = fs::read(&config_file).unwrap_or_default();
-        let install_dir_bytes = install_dir.as_bytes();
         let contains_install_dir = !install_dir_bytes.is_empty()
             && existing
                 .windows(install_dir_bytes.len())
@@ -112,18 +120,27 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
             continue;
         }
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&config_file)?;
-        writeln!(file)?;
-        writeln!(
-            file,
-            "# Added by git-ai installer on {}",
-            Local::now().format("%a %b %e %T %Z %Y")
-        )?;
-        writeln!(file, "{path_command}")?;
-        configured.push((shell_name, config_file));
+        let write_result = (|| -> Result<(), GitAiError> {
+            let mut file = OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&config_file)?;
+            writeln!(file)?;
+            writeln!(
+                file,
+                "# Added by git-ai installer on {}",
+                Local::now().format("%a %b %e %T %Z %Y")
+            )?;
+            file.write_all(&path_command)?;
+            file.write_all(b"\n")?;
+            Ok(())
+        })();
+        match write_result {
+            Ok(()) => configured.push((shell_name, config_file)),
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
     }
 
     if !configured.is_empty() {
@@ -148,152 +165,16 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
     if configured.is_empty() && already_configured.is_empty() {
         println!("\nCould not detect any shell config files.");
         println!("Please add the following line to your shell config and restart:");
-        println!("  export PATH=\"{install_dir}:$PATH\"");
+        println!("  export PATH=\"{install_dir_display}:$PATH\"");
     }
 
-    repair_install_ownership(&home, &created_paths);
-
     println!("\n\x1b[0;33mClose and reopen your terminal and IDE sessions to use git-ai.\x1b[0m");
-    Ok(())
+    first_error.map_or(Ok(()), Err)
 }
 
 #[cfg(not(windows))]
 fn is_package_store_install_dir(install_dir: &Path) -> bool {
     install_dir.starts_with("/nix/store")
-}
-
-#[cfg(not(windows))]
-fn ownership_repair_uid(
-    is_superuser: bool,
-    home_owner_uid: Option<u32>,
-    resolved_user_uid: Option<u32>,
-) -> Option<u32> {
-    if !is_superuser {
-        return None;
-    }
-    home_owner_uid
-        .filter(|uid| *uid != 0)
-        .or(resolved_user_uid.filter(|uid| *uid != 0))
-}
-
-#[cfg(all(not(windows), any(test, target_os = "macos")))]
-fn resolved_user_uid_for_home(
-    home: &Path,
-    resolved_uid: u32,
-    resolved_home: Option<&Path>,
-) -> Option<u32> {
-    (resolved_uid != 0 && resolved_home == Some(home)).then_some(resolved_uid)
-}
-
-#[cfg(not(windows))]
-fn repair_install_ownership(home: &Path, created_shell_paths: &[std::path::PathBuf]) {
-    use std::os::unix::fs::MetadataExt;
-
-    let home_owner_uid = std::fs::metadata(home).ok().map(|metadata| metadata.uid());
-    let resolved_user_uid = resolved_install_user_uid(home);
-    let Some(owner_uid) = ownership_repair_uid(
-        crate::utils::is_running_as_superuser(),
-        home_owner_uid,
-        resolved_user_uid,
-    ) else {
-        return;
-    };
-
-    chown_recursively(&home.join(".git-ai"), owner_uid);
-    for path in created_shell_paths {
-        chown_path(path, owner_uid);
-    }
-}
-
-#[cfg(all(not(windows), not(target_os = "macos")))]
-fn resolved_install_user_uid(_home: &Path) -> Option<u32> {
-    None
-}
-
-#[cfg(target_os = "macos")]
-fn resolved_install_user_uid(home: &Path) -> Option<u32> {
-    use std::os::unix::fs::MetadataExt;
-
-    let console_uid = std::fs::metadata("/dev/console").ok()?.uid();
-    let console_home = user_home_for_uid(console_uid);
-    resolved_user_uid_for_home(home, console_uid, console_home.as_deref())
-}
-
-#[cfg(target_os = "macos")]
-fn user_home_for_uid(uid: u32) -> Option<std::path::PathBuf> {
-    use std::ffi::{CStr, OsStr};
-    use std::os::unix::ffi::OsStrExt;
-
-    // SAFETY: `sysconf` has no pointer arguments or caller-owned invariants.
-    let initial_size = unsafe { libc::sysconf(libc::_SC_GETPW_R_SIZE_MAX) };
-    let mut buffer_size = if initial_size > 0 {
-        initial_size as usize
-    } else {
-        16 * 1024
-    };
-
-    loop {
-        let mut passwd = std::mem::MaybeUninit::<libc::passwd>::uninit();
-        let mut result = std::ptr::null_mut();
-        let mut buffer = vec![0_u8; buffer_size];
-        // SAFETY: `passwd`, `buffer`, and `result` remain valid for the call, and
-        // the supplied buffer length matches the allocation.
-        let status = unsafe {
-            libc::getpwuid_r(
-                uid,
-                passwd.as_mut_ptr(),
-                buffer.as_mut_ptr().cast(),
-                buffer.len(),
-                &mut result,
-            )
-        };
-        if status == libc::ERANGE && buffer_size < 1024 * 1024 {
-            buffer_size *= 2;
-            continue;
-        }
-        if status != 0 || result.is_null() {
-            return None;
-        }
-
-        // SAFETY: a successful `getpwuid_r` call initialized `passwd`.
-        let passwd = unsafe { passwd.assume_init() };
-        if passwd.pw_dir.is_null() {
-            return None;
-        }
-        // SAFETY: `pw_dir` is non-null and points into the live `buffer`.
-        let home = unsafe { CStr::from_ptr(passwd.pw_dir) }.to_bytes();
-        return Some(std::path::PathBuf::from(OsStr::from_bytes(home)));
-    }
-}
-
-#[cfg(not(windows))]
-fn chown_recursively(path: &Path, owner_uid: u32) {
-    let Ok(metadata) = std::fs::symlink_metadata(path) else {
-        return;
-    };
-    if metadata.is_dir()
-        && let Ok(entries) = std::fs::read_dir(path)
-    {
-        for entry in entries.flatten() {
-            chown_recursively(&entry.path(), owner_uid);
-        }
-    }
-    chown_path(path, owner_uid);
-}
-
-#[cfg(not(windows))]
-fn chown_path(path: &Path, owner_uid: u32) {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
-    let Ok(path) = CString::new(path.as_os_str().as_bytes()) else {
-        return;
-    };
-    // SAFETY: `path` is NUL-terminated and remains alive for the duration of the call.
-    // Match `chown USER PATH`: update the owner while preserving the group.
-    unsafe {
-        libc::lchown(path.as_ptr(), owner_uid, libc::gid_t::MAX);
-    }
 }
 
 #[cfg(all(test, not(windows)))]
@@ -338,31 +219,6 @@ mod unix_tests {
                 vec![(expected_name, temp.path().join(expected_path))]
             );
         }
-    }
-
-    #[test]
-    fn unix_ownership_repair_falls_back_to_the_resolved_user_for_superuser_installs() {
-        assert_eq!(ownership_repair_uid(false, Some(501), Some(502)), None);
-        assert_eq!(ownership_repair_uid(true, Some(0), None), None);
-        assert_eq!(ownership_repair_uid(true, Some(501), Some(502)), Some(501));
-        assert_eq!(ownership_repair_uid(true, Some(0), Some(502)), Some(502));
-    }
-
-    #[test]
-    fn unix_resolved_user_must_be_non_root_and_match_the_install_home() {
-        let home = Path::new("/Users/alice");
-        assert_eq!(
-            resolved_user_uid_for_home(home, 501, Some(Path::new("/Users/alice"))),
-            Some(501)
-        );
-        assert_eq!(
-            resolved_user_uid_for_home(home, 0, Some(Path::new("/Users/alice"))),
-            None
-        );
-        assert_eq!(
-            resolved_user_uid_for_home(home, 501, Some(Path::new("/Users/bob"))),
-            None
-        );
     }
 
     #[test]
@@ -555,7 +411,63 @@ fn broadcast_windows_environment_change() {
 }
 
 #[cfg(windows)]
-fn configure_git_bash() -> Result<(), GitAiError> {
+fn windows_home_for_shell_profiles() -> std::path::PathBuf {
+    std::env::var_os("HOME")
+        .filter(|home| !home.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(crate::mdm::utils::home_dir)
+}
+
+#[cfg(windows)]
+fn git_bash_path(install_dir: &Path, home: &Path) -> String {
+    let managed_install_dir = home.join(".git-ai").join("bin");
+    if normalize_windows_path(&install_dir.to_string_lossy())
+        == normalize_windows_path(&managed_install_dir.to_string_lossy())
+    {
+        return "$HOME/.git-ai/bin".to_string();
+    }
+
+    let mut path = install_dir.to_string_lossy().replace('\\', "/");
+    if let Some(without_verbatim_prefix) = path.strip_prefix("//?/") {
+        path = without_verbatim_prefix.to_string();
+    }
+    if path.as_bytes().get(1) == Some(&b':') {
+        let drive = path[..1].to_lowercase();
+        path = format!("/{drive}/{}", &path[3..]);
+    }
+    path.replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('`', "\\`")
+}
+
+#[cfg(windows)]
+fn windows_profile_contains(path: &Path, marker: &str) -> bool {
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    if bytes.starts_with(&[0xff, 0xfe]) {
+        let units: Vec<u16> = bytes[2..]
+            .chunks_exact(2)
+            .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+            .collect();
+        return String::from_utf16_lossy(&units).contains(marker);
+    }
+    if bytes.starts_with(&[0xfe, 0xff]) {
+        let units: Vec<u16> = bytes[2..]
+            .chunks_exact(2)
+            .map(|chunk| u16::from_be_bytes([chunk[0], chunk[1]]))
+            .collect();
+        return String::from_utf16_lossy(&units).contains(marker);
+    }
+    let bytes = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes);
+    bytes
+        .windows(marker.len())
+        .any(|window| window == marker.as_bytes())
+}
+
+#[cfg(windows)]
+fn configure_git_bash(install_dir: &Path) -> Result<(), GitAiError> {
     use chrono::Local;
     use std::fs::{self, OpenOptions};
     use std::io::Write;
@@ -579,7 +491,7 @@ fn configure_git_bash() -> Result<(), GitAiError> {
         return Ok(());
     }
 
-    let home = crate::mdm::utils::home_dir();
+    let home = windows_home_for_shell_profiles();
     let bashrc = home.join(".bashrc");
     let bash_profile = home.join(".bash_profile");
     let target = if bashrc.exists() {
@@ -590,8 +502,8 @@ fn configure_git_bash() -> Result<(), GitAiError> {
         bashrc
     };
 
-    let existing = fs::read_to_string(&target).unwrap_or_default();
-    if existing.contains(".git-ai/bin") {
+    let git_bash_path = git_bash_path(install_dir, &home);
+    if windows_profile_contains(&target, &git_bash_path) {
         println!(
             "\x1b[0;32mGit Bash already configured ({})\x1b[0m",
             target.display()
@@ -602,8 +514,9 @@ fn configure_git_bash() -> Result<(), GitAiError> {
     let mut file = OpenOptions::new().create(true).append(true).open(&target)?;
     write!(
         file,
-        "\n# Added by git-ai installer on {}\nexport PATH=\"$HOME/.git-ai/bin:$PATH\"\n",
-        Local::now().format("%Y-%m-%d %H:%M:%S")
+        "\n# Added by git-ai installer on {}\nexport PATH=\"{}:$PATH\"\n",
+        Local::now().format("%Y-%m-%d %H:%M:%S"),
+        git_bash_path
     )?;
     println!(
         "\x1b[0;32mSuccessfully configured Git Bash ({})\x1b[0m",
@@ -632,7 +545,7 @@ fn configure_windows(install_dir: &Path) {
         UserPathStatus::Skipped => {}
     }
 
-    if let Err(error) = configure_git_bash() {
+    if let Err(error) = configure_git_bash(install_dir) {
         eprintln!("Warning: Failed to configure Git Bash: {error}");
     }
 
@@ -642,6 +555,50 @@ fn configure_windows(install_dir: &Path) {
 #[cfg(all(test, windows))]
 mod windows_tests {
     use super::*;
+
+    #[test]
+    fn git_bash_path_preserves_the_managed_home_expression() {
+        assert_eq!(
+            git_bash_path(
+                Path::new(r"C:\Users\Alice\.git-ai\bin"),
+                Path::new(r"C:\Users\Alice")
+            ),
+            "$HOME/.git-ai/bin"
+        );
+    }
+
+    #[test]
+    fn git_bash_path_converts_custom_drive_and_unc_paths() {
+        let home = Path::new(r"C:\Users\Alice");
+        assert_eq!(
+            git_bash_path(Path::new(r"D:\Tools\git-ai"), home),
+            "/d/Tools/git-ai"
+        );
+        assert_eq!(
+            git_bash_path(Path::new(r"\\server\share\git-ai"), home),
+            "//server/share/git-ai"
+        );
+    }
+
+    #[test]
+    fn windows_profile_marker_detection_handles_bom_encodings() {
+        let temp = tempfile::tempdir().unwrap();
+        let marker = "$HOME/.git-ai/bin";
+
+        let utf8 = temp.path().join("utf8-bom");
+        let mut utf8_contents = vec![0xef, 0xbb, 0xbf];
+        utf8_contents.extend_from_slice(marker.as_bytes());
+        std::fs::write(&utf8, utf8_contents).unwrap();
+        assert!(windows_profile_contains(&utf8, marker));
+
+        let utf16 = temp.path().join("utf16-le");
+        let mut utf16_contents = vec![0xff, 0xfe];
+        for unit in marker.encode_utf16() {
+            utf16_contents.extend_from_slice(&unit.to_le_bytes());
+        }
+        std::fs::write(&utf16, utf16_contents).unwrap();
+        assert!(windows_profile_contains(&utf16, marker));
+    }
 
     #[test]
     fn windows_expandable_registry_path_preserves_raw_value_and_type() {

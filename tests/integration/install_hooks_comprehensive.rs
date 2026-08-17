@@ -438,11 +438,76 @@ fn install_hooks_warns_but_succeeds_when_the_shell_profile_cannot_be_written() {
     );
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn install_hooks_continues_after_one_shell_profile_cannot_be_written() {
+    use std::os::unix::fs::symlink;
+
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let invoking_home = repo.test_home_path();
+    let installed_home = repo.path().join("installed-user");
+    symlink("/proc/version", invoking_home.join(".bashrc")).unwrap();
+    let zshrc = invoking_home.join(".zshrc");
+    fs::write(&zshrc, "# zsh\n").unwrap();
+
+    let (installed_binary, mut command) =
+        copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    command.env("SHELL", "/bin/bash");
+    let output = copied_binary_output(&mut command);
+
+    assert!(output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("Warning: Failed to configure shell environment:")
+    );
+    let install_dir = installed_binary.parent().unwrap().to_string_lossy();
+    assert!(
+        fs::read_to_string(zshrc)
+            .unwrap()
+            .contains(install_dir.as_ref()),
+        "a failed bash profile must not prevent zsh configuration"
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn install_hooks_configures_shell_after_install_config_persistence_fails() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let invoking_home = repo.test_home_path();
+    let installed_home = repo.path().join("installed-user");
+    let bashrc = invoking_home.join(".bashrc");
+    fs::write(&bashrc, "# bash\n").unwrap();
+    let config_path = invoking_home.join(".git-ai/config.json");
+    fs::remove_file(&config_path).unwrap();
+    fs::create_dir(&config_path).unwrap();
+
+    let (installed_binary, mut command) =
+        copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    command
+        .env("SHELL", "/bin/bash")
+        .env("API_KEY", "cannot-be-persisted");
+    let output = copied_binary_output(&mut command);
+
+    assert!(
+        !output.status.success(),
+        "the original install-config failure must be preserved"
+    );
+    let install_dir = installed_binary.parent().unwrap().to_string_lossy();
+    assert!(
+        fs::read_to_string(bashrc)
+            .unwrap()
+            .contains(install_dir.as_ref()),
+        "shell configuration should remain independent from install-config persistence"
+    );
+}
+
 #[test]
 fn installer_scripts_delegate_shell_environment_configuration_to_install_hooks() {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     let install_sh = fs::read_to_string(manifest_dir.join("install.sh")).unwrap();
     let install_ps1 = fs::read_to_string(manifest_dir.join("install.ps1")).unwrap();
+    let shell_env =
+        fs::read_to_string(manifest_dir.join("src/commands/install_hooks/shell_env.rs")).unwrap();
 
     for removed_shell_logic in [
         "detect_legacy_shells",
@@ -481,6 +546,20 @@ fn installer_scripts_delegate_shell_environment_configuration_to_install_hooks()
 
     assert!(install_sh.contains(r#""${INSTALL_DIR}/git-ai" install-hooks"#));
     assert!(install_ps1.contains("& $finalExe install-hooks"));
+
+    for forbidden_ownership_logic in [
+        "repair_install_ownership",
+        "ownership_repair_uid",
+        "resolved_install_user_uid",
+        "chown_recursively",
+        "chown_path",
+        "lchown",
+    ] {
+        assert!(
+            !shell_env.contains(forbidden_ownership_logic),
+            "Rust shell setup should not contain {forbidden_ownership_logic}"
+        );
+    }
 }
 
 #[cfg(windows)]
@@ -498,7 +577,8 @@ fn install_hooks_configures_git_bash_when_user_path_updates_are_skipped() {
     let bash_profile = invoking_home.join(".bash_profile");
     fs::write(&bash_profile, "# existing profile\r\n").unwrap();
 
-    let (_, mut command) = copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    let (installed_binary, mut command) =
+        copied_install_hooks_command(&repo, invoking_home, &installed_home);
     command
         .env("ProgramFiles", &program_files)
         .env_remove("ProgramFiles(x86)");
@@ -517,7 +597,18 @@ fn install_hooks_configures_git_bash_when_user_path_updates_are_skipped() {
     assert!(!contents.starts_with(&[0xef, 0xbb, 0xbf]));
     let contents = String::from_utf8(contents).unwrap();
     assert!(contents.contains("# Added by git-ai installer on "));
-    assert!(contents.ends_with("export PATH=\"$HOME/.git-ai/bin:$PATH\"\n"));
+    let install_dir = installed_binary
+        .parent()
+        .unwrap()
+        .to_string_lossy()
+        .replace('\\', "/");
+    let git_bash_install_dir = if install_dir.as_bytes().get(1) == Some(&b':') {
+        format!("/{}/{}", install_dir[..1].to_lowercase(), &install_dir[3..])
+    } else {
+        install_dir.to_string()
+    };
+    let expected_path_entry = format!("export PATH=\"{git_bash_install_dir}:$PATH\"\n");
+    assert!(contents.ends_with(&expected_path_entry));
 
     let (_, mut second_command) =
         copied_install_hooks_command(&repo, invoking_home, &installed_home);
@@ -533,7 +624,7 @@ fn install_hooks_configures_git_bash_when_user_path_updates_are_skipped() {
     assert_eq!(
         fs::read_to_string(&bash_profile)
             .unwrap()
-            .matches(".git-ai/bin")
+            .matches(&git_bash_install_dir)
             .count(),
         1
     );
