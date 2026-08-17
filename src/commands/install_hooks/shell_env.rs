@@ -661,8 +661,9 @@ mod windows_tests {
             crate::uuid::generate_v4()
         );
         let (environment, _) = hkcu.create_subkey(&key_path).unwrap();
-        let original = vec![1_u8, 2, 3, 4].to_reg_value();
-        assert_eq!(original.vtype, REG_BINARY);
+        let mut original = "invalid".to_reg_value();
+        original.bytes = vec![1, 2, 3, 4];
+        original.vtype = REG_BINARY;
         environment.set_raw_value("Path", &original).unwrap();
 
         let result = ensure_windows_user_path_in_registry(&environment, r"C:\git-ai\bin");
