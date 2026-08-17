@@ -1,6 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
-use crate::test_utils::fixture_path;
+use crate::test_utils::{codex_bash_hook_input, fixture_path, isolated_bash_history_db_path};
 use git_ai::authorship::working_log::AgentId;
 use git_ai::commands::checkpoint_agent::bash_tool::{
     BashCheckpointAction, handle_bash_post_tool_use, handle_bash_pre_tool_use_with_context,
@@ -11,12 +11,6 @@ use serde_json::json;
 use std::fs;
 use std::thread;
 use std::time::Duration;
-
-fn isolated_bash_history_db_path() -> (tempfile::TempDir, String) {
-    let dir = tempfile::tempdir().expect("failed to create isolated bash history db dir");
-    let path = dir.path().join("bash-history.db");
-    (dir, path.to_string_lossy().to_string())
-}
 
 #[test]
 fn test_bash_pre_legacy_checkpoint_recovers_dirty_edge_attribution() {
@@ -134,16 +128,14 @@ fn test_codex_preset_bash_recovery_minimizes_dirty_untracked_attribution() {
     let transcript_path = repo_root.join("codex-transcript.jsonl");
     fs::copy(&simple_fixture, &transcript_path).unwrap();
 
-    let pre_hook_input = json!({
-        "session_id": "attr-pre-sess",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "attr-bash-1",
-        "tool_input": { "command": "echo hello" },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
+    let pre_hook_input = codex_bash_hook_input(
+        &repo,
+        &transcript_path,
+        "attr-pre-sess",
+        "attr-bash-1",
+        "PreToolUse",
+        "echo hello",
+    );
 
     repo.git_ai(&["checkpoint", "codex", "--hook-input", &pre_hook_input])
         .expect("codex pre-hook checkpoint should succeed");
@@ -155,16 +147,14 @@ fn test_codex_preset_bash_recovery_minimizes_dirty_untracked_attribution() {
     )
     .unwrap();
 
-    let post_hook_input = json!({
-        "session_id": "attr-pre-sess",
-        "cwd": repo_root.to_string_lossy().to_string(),
-        "hook_event_name": "PostToolUse",
-        "tool_name": "Bash",
-        "tool_use_id": "attr-bash-1",
-        "tool_input": { "command": "echo hello" },
-        "transcript_path": transcript_path.to_string_lossy().to_string()
-    })
-    .to_string();
+    let post_hook_input = codex_bash_hook_input(
+        &repo,
+        &transcript_path,
+        "attr-pre-sess",
+        "attr-bash-1",
+        "PostToolUse",
+        "echo hello",
+    );
 
     repo.git_ai(&["checkpoint", "codex", "--hook-input", &post_hook_input])
         .expect("codex post-hook checkpoint should succeed");
