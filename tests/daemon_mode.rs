@@ -6047,6 +6047,7 @@ fn await_waits_for_metrics_and_notes_flush() {
             "GIT_AI_TEST_METRICS_DB_PATH",
             metrics_db_path.to_str().unwrap(),
         ),
+        ("GIT_AI_TEST_DELAY_METRIC_PERSIST_MS", "750"),
     ]);
     repo.patch_git_ai_config(|patch| {
         patch.exclude_prompts_in_repositories = Some(vec![]);

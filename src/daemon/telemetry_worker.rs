@@ -23,8 +23,8 @@ use crate::observability::MAX_METRICS_PER_ENVELOPE;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tokio::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use tokio::sync::{Mutex, Notify};
 use tokio::time::{Duration, Instant, sleep_until};
 
 const FLUSH_INTERVAL: Duration = Duration::from_secs(3);
@@ -200,6 +200,20 @@ impl TelemetryBuffer {
 pub struct DaemonTelemetryWorkerHandle {
     buffer: Arc<Mutex<TelemetryBuffer>>,
     flush_tx: tokio::sync::mpsc::UnboundedSender<FlushRequest>,
+    metric_persists_inflight: Arc<AtomicUsize>,
+    metric_persist_notify: Arc<Notify>,
+}
+
+struct MetricPersistGuard {
+    inflight: Arc<AtomicUsize>,
+    notify: Arc<Notify>,
+}
+
+impl Drop for MetricPersistGuard {
+    fn drop(&mut self) {
+        self.inflight.fetch_sub(1, Ordering::AcqRel);
+        self.notify.notify_waiters();
+    }
 }
 
 impl DaemonTelemetryWorkerHandle {
@@ -209,6 +223,8 @@ impl DaemonTelemetryWorkerHandle {
         Self {
             buffer: Arc::new(Mutex::new(TelemetryBuffer::new())),
             flush_tx,
+            metric_persists_inflight: Arc::new(AtomicUsize::new(0)),
+            metric_persist_notify: Arc::new(Notify::new()),
         }
     }
 
@@ -223,7 +239,20 @@ impl DaemonTelemetryWorkerHandle {
         }
 
         if !metric_events.is_empty() {
+            self.metric_persists_inflight.fetch_add(1, Ordering::AcqRel);
+            let persists_inflight = self.metric_persists_inflight.clone();
+            let persist_notify = self.metric_persist_notify.clone();
             std::mem::drop(tokio::task::spawn_blocking(move || {
+                let _persist_guard = MetricPersistGuard {
+                    inflight: persists_inflight,
+                    notify: persist_notify,
+                };
+                #[cfg(feature = "test-support")]
+                if let Some(delay_ms) = std::env::var_os("GIT_AI_TEST_DELAY_METRIC_PERSIST_MS")
+                    .and_then(|value| value.to_string_lossy().parse::<u64>().ok())
+                {
+                    std::thread::sleep(Duration::from_millis(delay_ms));
+                }
                 if let Err(e) = store_metrics_in_db(&metric_events) {
                     tracing::warn!(%e, "telemetry: failed to persist metrics locally");
                 }
@@ -246,6 +275,15 @@ impl DaemonTelemetryWorkerHandle {
 
     /// Request an immediate telemetry flush and wait for the worker to complete.
     pub async fn flush_and_wait(&self) -> Result<FlushStatus, GitAiError> {
+        while self.metric_persists_inflight.load(Ordering::Acquire) > 0 {
+            let persisted = self.metric_persist_notify.notified();
+            tokio::pin!(persisted);
+            persisted.as_mut().enable();
+            if self.metric_persists_inflight.load(Ordering::Acquire) == 0 {
+                break;
+            }
+            persisted.await;
+        }
         let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
         self.flush_tx
             .send(FlushRequest {
@@ -439,6 +477,8 @@ pub fn spawn_telemetry_worker() -> DaemonTelemetryWorkerHandle {
     let handle = DaemonTelemetryWorkerHandle {
         buffer: buffer.clone(),
         flush_tx,
+        metric_persists_inflight: Arc::new(AtomicUsize::new(0)),
+        metric_persist_notify: Arc::new(Notify::new()),
     };
     let daemon_id = daemon_run_id().to_string();
 

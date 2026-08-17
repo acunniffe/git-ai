@@ -25,6 +25,8 @@ pub struct PendingTraceCommand {
     pub exit_code: Option<i32>,
     pub finished_at_ns: Option<u128>,
     pub reflog_start_offsets: HashMap<String, u64>,
+    pub index_snapshot_at_start: Option<String>,
+    pub workspace_paths_at_start: Vec<String>,
     pub saw_def_repo: bool,
 }
 
@@ -96,7 +98,12 @@ impl<B: GitBackend> TraceNormalizer<B> {
 
     pub fn remove_pending_root(&mut self, root_sid: &str) -> Option<PendingTraceCommand> {
         let removed = self.state.pending.remove(root_sid);
-        if removed.is_some() {
+        if let Some(pending) = removed.as_ref() {
+            if let Some(snapshot) = pending.index_snapshot_at_start.as_deref()
+                && crate::daemon::is_daemon_index_snapshot_path(Path::new(snapshot))
+            {
+                let _ = fs::remove_file(snapshot);
+            }
             let _ = self.state.sid_to_worktree.remove(root_sid);
             let _ = self.state.sid_to_family.remove(root_sid);
             let _ = self.state.prestart_root_cmd_names.remove(root_sid);
@@ -308,6 +315,8 @@ impl<B: GitBackend> TraceNormalizer<B> {
             exit_code: None,
             finished_at_ns: None,
             reflog_start_offsets: payload_reflog_start_offsets(payload),
+            index_snapshot_at_start: payload_index_snapshot_at_start(payload),
+            workspace_paths_at_start: payload_workspace_paths_at_start(payload),
             saw_def_repo: false,
         };
         trace_debug_lifecycle(&format!(
@@ -437,6 +446,8 @@ impl<B: GitBackend> TraceNormalizer<B> {
         }
         if let Some(pending) = self.state.pending.get_mut(root_sid) {
             merge_reflog_start_offsets_from_payload(pending, payload);
+            merge_index_snapshot_from_payload(pending, payload);
+            merge_workspace_paths_from_payload(pending, payload);
             pending.saw_def_repo = true;
             pending.worktree = Some(repo);
             if let Some(family) = family.as_ref() {
@@ -466,6 +477,8 @@ impl<B: GitBackend> TraceNormalizer<B> {
         if sid == root_sid {
             if let Some(pending) = self.state.pending.get_mut(root_sid) {
                 merge_reflog_start_offsets_from_payload(pending, payload);
+                merge_index_snapshot_from_payload(pending, payload);
+                merge_workspace_paths_from_payload(pending, payload);
                 pending.root_cmd_name = Some(cmd);
             } else {
                 self.state
@@ -503,6 +516,8 @@ impl<B: GitBackend> TraceNormalizer<B> {
 
         if let Some(pending) = self.state.pending.get_mut(root_sid) {
             merge_reflog_start_offsets_from_payload(pending, payload);
+            merge_index_snapshot_from_payload(pending, payload);
+            merge_workspace_paths_from_payload(pending, payload);
         }
 
         let exit_code = payload
@@ -734,6 +749,8 @@ impl<B: GitBackend> TraceNormalizer<B> {
             started_at_ns: pending.started_at_ns,
             finished_at_ns,
             reflog_start_offsets: pending.reflog_start_offsets,
+            index_snapshot_at_start: pending.index_snapshot_at_start,
+            workspace_paths_at_start: pending.workspace_paths_at_start,
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),
@@ -845,9 +862,43 @@ fn payload_reflog_start_offsets(payload: &Value) -> HashMap<String, u64> {
         .unwrap_or_default()
 }
 
+fn payload_index_snapshot_at_start(payload: &Value) -> Option<String> {
+    payload
+        .get(crate::daemon::TRACE_ROOT_INDEX_SNAPSHOT_FIELD)
+        .and_then(Value::as_str)
+        .filter(|path| crate::daemon::is_daemon_index_snapshot_path(Path::new(path)))
+        .map(ToString::to_string)
+}
+
+fn payload_workspace_paths_at_start(payload: &Value) -> Vec<String> {
+    payload
+        .get(crate::daemon::TRACE_ROOT_WORKSPACE_PATHS_FIELD)
+        .and_then(Value::as_array)
+        .map(|paths| {
+            paths
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToString::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn merge_reflog_start_offsets_from_payload(pending: &mut PendingTraceCommand, payload: &Value) {
     for (key, offset) in payload_reflog_start_offsets(payload) {
         pending.reflog_start_offsets.entry(key).or_insert(offset);
+    }
+}
+
+fn merge_index_snapshot_from_payload(pending: &mut PendingTraceCommand, payload: &Value) {
+    if pending.index_snapshot_at_start.is_none() {
+        pending.index_snapshot_at_start = payload_index_snapshot_at_start(payload);
+    }
+}
+
+fn merge_workspace_paths_from_payload(pending: &mut PendingTraceCommand, payload: &Value) {
+    if pending.workspace_paths_at_start.is_empty() {
+        pending.workspace_paths_at_start = payload_workspace_paths_at_start(payload);
     }
 }
 
@@ -1384,6 +1435,36 @@ mod tests {
         assert_eq!(
             cmd.reflog_start_offsets.get("common:refs/stash"),
             Some(&123)
+        );
+    }
+
+    #[test]
+    fn normalizer_preserves_command_start_index_snapshot() {
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+        let git_dir = tempfile::tempdir().unwrap();
+        fs::write(git_dir.path().join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        let snapshot = tempfile::Builder::new()
+            .prefix("git-ai-index-snapshot-")
+            .tempfile_in(git_dir.path())
+            .unwrap();
+        let snapshot_path = snapshot.path().to_string_lossy().into_owned();
+        let start = serde_json::json!({
+            "event":"start",
+            "sid":"s-index-tree",
+            "ts":1,
+            "argv":["git","clean","-fdx"],
+            "worktree":"/repo",
+            crate::daemon::TRACE_ROOT_INDEX_SNAPSHOT_FIELD: snapshot_path,
+        });
+        let atexit = atexit_payload("s-index-tree", 2);
+
+        assert!(normalizer.ingest_payload(&start).unwrap().is_none());
+        let cmd = normalizer.ingest_payload(&atexit).unwrap().unwrap();
+        assert_eq!(
+            cmd.index_snapshot_at_start.as_deref(),
+            Some(snapshot_path.as_str())
         );
     }
 

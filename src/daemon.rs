@@ -11,7 +11,8 @@ use crate::git::repo_state::{
     common_dir_for_worktree, git_dir_for_worktree, worktree_root_for_path,
 };
 use crate::git::repository::{
-    Repository, discover_repository_in_path_no_git_exec, exec_git, exec_git_stdin,
+    Repository, discover_repository_in_path_no_git_exec, exec_git, exec_git_allow_nonzero_with_env,
+    exec_git_stdin,
 };
 use crate::git::sync_authorship::{fetch_authorship_notes, fetch_remote_from_args};
 use crate::utils::LockFile;
@@ -87,6 +88,8 @@ const TRACE_ROOT_ARGV_FIELD: &str = "git_ai_root_argv";
 const TRACE_ROOT_STARTED_AT_NS_FIELD: &str = "git_ai_root_started_at_ns";
 const TRACE_ROOT_WORKTREE_FIELD: &str = "git_ai_root_worktree";
 pub(crate) const TRACE_ROOT_REFLOG_START_OFFSETS_FIELD: &str = "git_ai_root_reflog_start_offsets";
+pub(crate) const TRACE_ROOT_INDEX_SNAPSHOT_FIELD: &str = "git_ai_root_index_snapshot_at_start";
+pub(crate) const TRACE_ROOT_WORKSPACE_PATHS_FIELD: &str = "git_ai_root_workspace_paths_at_start";
 const TRACE_CONNECTION_CLOSED_EVENT: &str = "git_ai_connection_closed";
 const DAEMON_CONTROL_CONNECT_TIMEOUT: Duration = Duration::from_millis(250);
 const DAEMON_CONTROL_RESPONSE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -94,6 +97,8 @@ const DAEMON_CONTROL_RECEIVE_TIMEOUT: Duration = Duration::from_secs(2);
 const DAEMON_CONTROL_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
 const DAEMON_CHECKPOINT_RESPONSE_TIMEOUT: Duration = Duration::from_secs(300);
 const DAEMON_SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
+const INDEX_SNAPSHOT_PREFIX: &str = "git-ai-index-snapshot-";
+const INDEX_SNAPSHOT_STALE_AFTER: Duration = Duration::from_secs(10 * 60);
 const CHECKPOINT_INGRESS_REQUEST_LIMIT: usize = 1_024;
 const CHECKPOINT_INGRESS_BYTE_LIMIT: usize = 64 * 1024 * 1024;
 const CHECKPOINT_FAMILY_DRAIN_CONCURRENCY: usize = 2;
@@ -607,6 +612,37 @@ fn trace_payload_command_base_dir(
     Some(base)
 }
 
+fn trace_argv_absolute_command_base_dir(argv: &[String]) -> Option<PathBuf> {
+    let parsed = parse_git_cli_args(trace_invocation_args(argv));
+    let mut base = None::<PathBuf>;
+    let mut idx = 0usize;
+
+    while idx < parsed.global_args.len() {
+        let token = &parsed.global_args[idx];
+        let (path_arg, consumed): (&str, usize) = if token == "-C" {
+            (parsed.global_args.get(idx + 1)?.as_str(), 2)
+        } else if let Some(path_arg) = token.strip_prefix("-C") {
+            if path_arg.is_empty() {
+                return None;
+            }
+            (path_arg, 1)
+        } else {
+            idx += 1;
+            continue;
+        };
+
+        let next = PathBuf::from(path_arg);
+        if next.is_absolute() {
+            base = Some(next);
+        } else if let Some(current) = base.take() {
+            base = Some(current.join(next));
+        }
+        idx += consumed;
+    }
+
+    base
+}
+
 fn trace_payload_time_ns(payload: &Value) -> Option<u128> {
     payload
         .get("time")
@@ -818,12 +854,154 @@ fn trace_invocation_starts_control_attempt(primary_command: Option<&str>, argv: 
         .any(|arg| matches!(arg.as_str(), "--abort" | "--continue" | "--quit" | "--skip"))
 }
 
+fn capture_index_snapshot_for_workspace_command(worktree: &Path) -> Option<String> {
+    let git_dir = git_dir_for_worktree(worktree)?;
+    let index = git_dir.join("index");
+    if !index.is_file() {
+        return None;
+    }
+    // Git updates the index by atomically replacing its directory entry. A
+    // hard link retains the pre-command inode in O(1) without reading index
+    // contents, taking an index lock, spawning Git, or writing objects.
+    let created_at_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_millis();
+    for _ in 0..4 {
+        let snapshot_path = git_dir.join(format!(
+            "{INDEX_SNAPSHOT_PREFIX}{created_at_ms}-{}",
+            crate::uuid::generate_v4()
+        ));
+        match fs::hard_link(&index, &snapshot_path) {
+            Ok(()) => return Some(snapshot_path.to_string_lossy().into_owned()),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+fn tracked_paths_for_index(worktree: &Path, index: Option<&Path>) -> Option<HashSet<String>> {
+    let repo = find_repository_in_path(&worktree.to_string_lossy()).ok()?;
+    let mut args = repo.global_args_for_exec();
+    args.extend(["ls-files".to_string(), "-z".to_string()]);
+    let output = match index {
+        Some(index) => {
+            exec_git_allow_nonzero_with_env(&args, &[("GIT_INDEX_FILE", index.as_os_str())]).ok()?
+        }
+        None => crate::git::repository::exec_git(&args).ok()?,
+    };
+    if !output.status.success() {
+        return None;
+    }
+    Some(
+        output
+            .stdout
+            .split(|byte| *byte == 0)
+            .filter(|path| !path.is_empty())
+            .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
+            .collect(),
+    )
+}
+
+fn paths_removed_from_index_since_snapshot(
+    worktree: &Path,
+    index_snapshot: &Path,
+) -> Option<Vec<String>> {
+    let before = tracked_paths_for_index(worktree, Some(index_snapshot))?;
+    let after = tracked_paths_for_index(worktree, None)?;
+    let mut removed = before.difference(&after).cloned().collect::<Vec<_>>();
+    removed.sort();
+    Some(removed)
+}
+
+fn sweep_stale_index_snapshots(git_dir: &Path) {
+    let Some(now_ms) = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|elapsed| elapsed.as_millis())
+    else {
+        return;
+    };
+    let Ok(entries) = fs::read_dir(git_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !is_daemon_index_snapshot_path(&path) {
+            continue;
+        }
+        // A hard link shares the index inode's mtime, so snapshot age must be
+        // derived from the independently owned creation timestamp in its name.
+        let stale = index_snapshot_created_at_ms(&path).is_some_and(|created_at_ms| {
+            now_ms.saturating_sub(created_at_ms) >= INDEX_SNAPSHOT_STALE_AFTER.as_millis()
+        });
+        if stale {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+fn index_snapshot_created_at_ms(path: &Path) -> Option<u128> {
+    path.file_name()?
+        .to_str()?
+        .strip_prefix(INDEX_SNAPSHOT_PREFIX)?
+        .split_once('-')?
+        .0
+        .parse()
+        .ok()
+}
+
+pub(crate) fn is_daemon_index_snapshot_path(path: &Path) -> bool {
+    path.parent()
+        .is_some_and(|parent| parent.join("HEAD").is_file())
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with(INDEX_SNAPSHOT_PREFIX))
+}
+
+struct IndexSnapshotCleanup(Option<PathBuf>);
+
+impl Drop for IndexSnapshotCleanup {
+    fn drop(&mut self) {
+        if let Some(path) = self.0.take()
+            && is_daemon_index_snapshot_path(&path)
+        {
+            let git_dir = path.parent().map(Path::to_path_buf);
+            let _ = fs::remove_file(path);
+            if let Some(git_dir) = git_dir {
+                // Directory scans are deliberately deferred until the
+                // asynchronous consumer releases its snapshot. The live
+                // Trace2 ingestion path performs only the O(1) hard link.
+                sweep_stale_index_snapshots(&git_dir);
+            }
+        }
+    }
+}
+
+fn cleanup_index_snapshot_from_payload(payload: &Value) {
+    let snapshot = payload
+        .get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD)
+        .and_then(Value::as_str)
+        .map(Path::new);
+    if let Some(snapshot) = snapshot
+        && is_daemon_index_snapshot_path(snapshot)
+    {
+        let _ = fs::remove_file(snapshot);
+    }
+}
+
 fn matches_any_pathspec(file: &str, pathspecs: &[String]) -> bool {
     pathspecs.iter().any(|pathspec| {
         file == pathspec
             || (pathspec.ends_with('/') && file.starts_with(pathspec))
             || file.starts_with(&format!("{}/", pathspec))
     })
+}
+
+fn matches_any_rooted_workspace_pathspec(file: &str, pathspecs: &[String]) -> bool {
+    pathspecs.iter().any(|pathspec| pathspec == ".") || matches_any_pathspec(file, pathspecs)
 }
 
 fn resolve_stash_sha(cmd: &crate::daemon::domain::NormalizedCommand) -> Option<&str> {
@@ -1423,7 +1601,15 @@ fn remove_working_log_attributions_for_pathspecs(
     repository: &Repository,
     head: &str,
     pathspecs: &[String],
+    rooted_workspace_pathspecs: bool,
 ) -> Result<(), GitAiError> {
+    let matches = |file: &str| {
+        if rooted_workspace_pathspecs {
+            matches_any_rooted_workspace_pathspec(file, pathspecs)
+        } else {
+            matches_any_pathspec(file, pathspecs)
+        }
+    };
     let working_log = repository.storage.working_log_for_base_commit(head)?;
 
     let initial = working_log.read_initial_attributions();
@@ -1431,10 +1617,10 @@ fn remove_working_log_attributions_for_pathspecs(
         let filtered_files = initial
             .files
             .into_iter()
-            .filter(|(file, _)| !matches_any_pathspec(file, pathspecs))
+            .filter(|(file, _)| !matches(file))
             .collect();
         let mut filtered_blobs = initial.file_blobs;
-        filtered_blobs.retain(|file, _| !matches_any_pathspec(file, pathspecs));
+        filtered_blobs.retain(|file, _| !matches(file));
         working_log.write_initial(crate::git::repo_storage::InitialAttributions {
             files: filtered_files,
             prompts: initial.prompts,
@@ -1448,9 +1634,7 @@ fn remove_working_log_attributions_for_pathspecs(
     let filtered: Vec<_> = checkpoints
         .into_iter()
         .map(|mut checkpoint| {
-            checkpoint
-                .entries
-                .retain(|entry| !matches_any_pathspec(&entry.file, pathspecs));
+            checkpoint.entries.retain(|entry| !matches(&entry.file));
             checkpoint
         })
         .filter(|checkpoint| !checkpoint.entries.is_empty())
@@ -1496,7 +1680,11 @@ fn prune_working_log_paths_after_clean(
     repository: &Repository,
     head: &str,
     args: &[String],
+    index_snapshot_at_start: Option<&str>,
+    protect_tracked_paths: bool,
+    reconstructed_pathspecs: Option<&[String]>,
 ) -> Result<(), GitAiError> {
+    let _snapshot_cleanup = IndexSnapshotCleanup(index_snapshot_at_start.map(PathBuf::from));
     let working_log = repository.storage.working_log_for_base_commit(head)?;
     let initial = working_log.read_initial_attributions();
     let mut candidates = initial.files.keys().cloned().collect::<HashSet<_>>();
@@ -1513,7 +1701,6 @@ fn prune_working_log_paths_after_clean(
         .filter(|path| !workdir.join(path).exists())
         .cloned()
         .collect::<HashSet<_>>();
-
     // Side effects are asynchronous: a path can be recreated after `git clean`
     // exits but before this handler runs. Reconstruct definitely-cleaned paths
     // from the command's selection semantics instead of relying only on current
@@ -1522,48 +1709,93 @@ fn prune_working_log_paths_after_clean(
     let has_exclusions = args
         .iter()
         .any(|arg| matches!(arg.as_str(), "-e" | "--exclude") || arg.starts_with("--exclude="));
-    if !has_exclusions {
-        let mut tracked_args = repository.global_args_for_exec();
-        tracked_args.extend(["ls-files".to_string(), "-z".to_string(), "--".to_string()]);
-        tracked_args.extend(candidates.iter().cloned());
-        let tracked = crate::git::repository::exec_git(&tracked_args)?
-            .stdout
-            .split(|byte| *byte == 0)
-            .filter(|path| !path.is_empty())
-            .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
-            .collect::<HashSet<_>>();
-
-        let mut ignore_args = repository.global_args_for_exec();
-        ignore_args.extend([
-            "check-ignore".to_string(),
-            "-z".to_string(),
-            "--stdin".to_string(),
-        ]);
-        let mut ignore_input = Vec::new();
-        for candidate in &candidates {
-            ignore_input.extend_from_slice(candidate.as_bytes());
-            ignore_input.push(0);
-        }
-        let ignored = exec_git_stdin(&ignore_args, &ignore_input)
-            .map(|output| {
-                output
-                    .stdout
-                    .split(|byte| *byte == 0)
-                    .filter(|path| !path.is_empty())
-                    .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
-                    .collect::<HashSet<_>>()
-            })
-            .unwrap_or_default();
-
-        let pathspecs = clean_pathspecs(args);
+    if let Some(pathspecs) = reconstructed_pathspecs
+        && !has_exclusions
+    {
         let recurse_directories = clean_has_short_flag(args, 'd');
         let remove_ignored = clean_has_short_flag(args, 'x');
         let only_ignored = clean_has_short_flag(args, 'X');
+        let tracked = if protect_tracked_paths {
+            let mut tracked_args = repository.global_args_for_exec();
+            let snapshot_env = index_snapshot_at_start
+                .map(Path::new)
+                // Enqueue failure or crash recovery can leave a later payload
+                // carrying a snapshot path whose file was already reclaimed.
+                // Missing GIT_INDEX_FILE paths look like empty indexes to Git;
+                // fall back to the live index so tracked paths stay protected.
+                .filter(|path| path.is_file())
+                .map(|path| [("GIT_INDEX_FILE", path.as_os_str())]);
+            if snapshot_env.is_some() {
+                tracked_args.extend(["ls-files".to_string(), "-z".to_string(), "--".to_string()]);
+            } else {
+                // A delayed side effect must not consult a later index: the
+                // caller may already have recreated, staged, and committed a
+                // path removed by clean. The command-time HEAD is the safe
+                // fallback when its start-index snapshot was unavailable.
+                tracked_args.extend([
+                    "ls-tree".to_string(),
+                    "-r".to_string(),
+                    "--name-only".to_string(),
+                    "-z".to_string(),
+                    head.to_string(),
+                    "--".to_string(),
+                ]);
+            }
+            tracked_args.extend(candidates.iter().cloned());
+            let tracked_output = match snapshot_env.as_ref() {
+                Some(env) => exec_git_allow_nonzero_with_env(&tracked_args, env)?,
+                None => crate::git::repository::exec_git(&tracked_args)?,
+            };
+            if !tracked_output.status.success() {
+                return Err(GitAiError::GitCliError {
+                    code: tracked_output.status.code(),
+                    stderr: String::from_utf8_lossy(&tracked_output.stderr).to_string(),
+                    args: tracked_args,
+                });
+            }
+            tracked_output
+                .stdout
+                .split(|byte| *byte == 0)
+                .filter(|path| !path.is_empty())
+                .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
+                .collect::<HashSet<_>>()
+        } else {
+            HashSet::new()
+        };
+
+        let ignored = if remove_ignored && !only_ignored {
+            HashSet::new()
+        } else {
+            let mut ignore_args = repository.global_args_for_exec();
+            ignore_args.extend([
+                "check-ignore".to_string(),
+                "--no-index".to_string(),
+                "-z".to_string(),
+                "--stdin".to_string(),
+            ]);
+            let mut ignore_input = Vec::new();
+            for candidate in &candidates {
+                ignore_input.extend_from_slice(candidate.as_bytes());
+                ignore_input.push(0);
+            }
+            exec_git_stdin(&ignore_args, &ignore_input)
+                .map(|output| {
+                    output
+                        .stdout
+                        .split(|byte| *byte == 0)
+                        .filter(|path| !path.is_empty())
+                        .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
+                        .collect::<HashSet<_>>()
+                })
+                .unwrap_or_default()
+        };
+
         for candidate in &candidates {
-            if tracked.contains(candidate) {
+            if protect_tracked_paths && tracked.contains(candidate) {
                 continue;
             }
-            if !pathspecs.is_empty() && !matches_any_pathspec(candidate, &pathspecs) {
+            if !pathspecs.is_empty() && !matches_any_rooted_workspace_pathspec(candidate, pathspecs)
+            {
                 continue;
             }
             if pathspecs.is_empty() && candidate.contains('/') && !recurse_directories {
@@ -1580,6 +1812,7 @@ fn prune_working_log_paths_after_clean(
             repository,
             head,
             &removed.into_iter().collect::<Vec<_>>(),
+            true,
         )?;
     }
     Ok(())
@@ -1607,7 +1840,7 @@ fn apply_checkout_switch_working_log_side_effect(
                 .filter(|head| !head.is_empty())
                 .map(ToOwned::to_owned)
                 .unwrap_or(repo.head()?.target()?);
-            remove_working_log_attributions_for_pathspecs(&repo, &head, &pathspecs)?;
+            remove_working_log_attributions_for_pathspecs(&repo, &head, &pathspecs, false)?;
         }
         return Ok(());
     }
@@ -1636,7 +1869,7 @@ fn apply_checkout_switch_working_log_side_effect(
         let pathspecs = parsed.pathspecs();
         if !pathspecs.is_empty() {
             if !old_head.is_empty() {
-                remove_working_log_attributions_for_pathspecs(&repo, &old_head, &pathspecs)?;
+                remove_working_log_attributions_for_pathspecs(&repo, &old_head, &pathspecs, false)?;
             }
             return Ok(());
         }
@@ -1767,6 +2000,117 @@ fn restore_pathspecs(args: &[String], worktree: Option<&Path>) -> Vec<String> {
     paths
 }
 
+fn workspace_pathspecs_from_command_dir(
+    primary: Option<&str>,
+    args: &[String],
+    command_dir: &Path,
+    worktree: &Path,
+) -> Vec<String> {
+    let command_dir = command_dir
+        .canonicalize()
+        .unwrap_or_else(|_| command_dir.to_path_buf());
+    let worktree = worktree
+        .canonicalize()
+        .unwrap_or_else(|_| worktree.to_path_buf());
+
+    let mut pathspecs = if primary == Some("clean") {
+        clean_pathspecs(args)
+    } else {
+        restore_pathspecs(args, Some(&command_dir))
+    };
+    if primary == Some("clean") && pathspecs.is_empty() {
+        pathspecs.push(".".to_string());
+    }
+
+    pathspecs
+        .into_iter()
+        .filter_map(|pathspec| {
+            // Pathspec magic has its own rooting rules. If it cannot be
+            // reconstructed exactly, let the post-command existence check be
+            // authoritative instead of risking attribution for another path.
+            if pathspec.starts_with(':') {
+                return None;
+            }
+            let selected = PathBuf::from(&pathspec);
+            let selected = if selected.is_absolute() {
+                selected
+            } else {
+                command_dir.join(selected)
+            };
+            let relative = selected.strip_prefix(&worktree).ok()?;
+            let mut normalized = PathBuf::new();
+            for component in relative.components() {
+                match component {
+                    std::path::Component::CurDir => {}
+                    std::path::Component::Normal(part) => normalized.push(part),
+                    std::path::Component::ParentDir => {
+                        if !normalized.pop() {
+                            return None;
+                        }
+                    }
+                    std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                        return None;
+                    }
+                }
+            }
+            let normalized = crate::utils::normalize_to_posix(&normalized.to_string_lossy());
+            Some(if normalized.is_empty() {
+                ".".to_string()
+            } else {
+                normalized
+            })
+        })
+        .collect()
+}
+
+fn clean_pathspecs_from_trace_directory_prefix(args: &[String], prefix: &str) -> Vec<String> {
+    let mut pathspecs = clean_pathspecs(args);
+    if pathspecs.is_empty() {
+        pathspecs.push(".".to_string());
+    }
+
+    let mut prefix_path = PathBuf::new();
+    for component in Path::new(prefix).components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(component) => prefix_path.push(component),
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => return Vec::new(),
+        }
+    }
+
+    pathspecs
+        .into_iter()
+        .filter_map(|pathspec| {
+            if pathspec.starts_with(":(") || Path::new(&pathspec).is_absolute() {
+                return None;
+            }
+            let mut normalized = prefix_path.clone();
+            for component in Path::new(&pathspec).components() {
+                match component {
+                    std::path::Component::CurDir => {}
+                    std::path::Component::ParentDir => {
+                        if !normalized.pop() {
+                            return None;
+                        }
+                    }
+                    std::path::Component::Normal(component) => normalized.push(component),
+                    std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                        return None;
+                    }
+                }
+            }
+            let normalized = crate::utils::normalize_to_posix(&normalized.to_string_lossy());
+            Some(if normalized.is_empty() {
+                ".".to_string()
+            } else {
+                normalized
+            })
+        })
+        .collect()
+}
+
 fn restore_source_revision(args: &[String]) -> Option<String> {
     let mut index = 0usize;
     while index < args.len() {
@@ -1828,18 +2172,36 @@ fn mv_operands(args: &[String]) -> Option<(Vec<String>, String)> {
     Some((operands, destination))
 }
 
-fn mv_destination_files(
+fn mv_index_paths_at_start(
     repo: &Repository,
+    sources: &[String],
     destination: &str,
-) -> Result<HashSet<String>, GitAiError> {
+    head: &str,
+    index_snapshot_at_start: Option<&str>,
+) -> Result<Vec<String>, GitAiError> {
     let mut args = repo.global_args_for_exec();
-    args.extend([
-        "ls-files".to_string(),
-        "-z".to_string(),
-        "--".to_string(),
-        destination.to_string(),
-    ]);
-    let output = crate::git::repository::exec_git(&args)?;
+    let snapshot = index_snapshot_at_start
+        .map(Path::new)
+        .filter(|path| path.is_file());
+    if snapshot.is_some() {
+        args.extend(["ls-files".to_string(), "-z".to_string(), "--".to_string()]);
+    } else {
+        args.extend([
+            "ls-tree".to_string(),
+            "-r".to_string(),
+            "--name-only".to_string(),
+            "-z".to_string(),
+            head.to_string(),
+            "--".to_string(),
+        ]);
+    }
+    args.extend(sources.iter().cloned());
+    args.push(destination.to_string());
+    let output = if let Some(snapshot) = snapshot {
+        exec_git_allow_nonzero_with_env(&args, &[("GIT_INDEX_FILE", snapshot.as_os_str())])?
+    } else {
+        crate::git::repository::exec_git(&args)?
+    };
     Ok(output
         .stdout
         .split(|byte| *byte == 0)
@@ -1848,12 +2210,13 @@ fn mv_destination_files(
         .collect())
 }
 
-fn moved_path_candidates(
+fn moved_path(
     source_file: &str,
     source_operand: &str,
     destination: &str,
     multiple_sources: bool,
-) -> Vec<String> {
+    destination_was_directory: bool,
+) -> String {
     let source_basename = Path::new(source_operand)
         .file_name()
         .and_then(|name| name.to_str())
@@ -1861,86 +2224,63 @@ fn moved_path_candidates(
     let relative = source_file
         .strip_prefix(&format!("{source_operand}/"))
         .unwrap_or_default();
-    if multiple_sources {
+    if multiple_sources || destination_was_directory {
         let suffix = if relative.is_empty() {
             source_basename.to_string()
         } else {
             join_git_path(source_basename, relative)
         };
-        vec![join_git_path(destination, &suffix)]
+        join_git_path(destination, &suffix)
     } else if relative.is_empty() {
-        vec![
-            destination.to_string(),
-            join_git_path(destination, source_basename),
-        ]
+        destination.to_string()
     } else {
-        vec![
-            join_git_path(destination, relative),
-            join_git_path(destination, &join_git_path(source_basename, relative)),
-        ]
+        join_git_path(destination, relative)
     }
 }
 
-/// Resolve explicit `git mv` operands to file-level old→new mappings using one
-/// source-tree listing and one post-command index listing. The process count is
-/// constant with respect to the number of files in a moved directory.
+/// Resolve explicit `git mv` operands to file-level old→new mappings from one
+/// command-boundary index listing. The process count is constant with respect
+/// to the number of files in a moved directory.
 fn mv_path_mappings(
-    repo: &Repository,
-    args: &[String],
-    head: &str,
-) -> Result<Vec<(String, String)>, GitAiError> {
-    let Some((sources, destination)) = mv_operands(args) else {
-        return Ok(Vec::new());
-    };
-    let mut source_args = repo.global_args_for_exec();
-    source_args.extend([
-        "ls-tree".to_string(),
-        "-r".to_string(),
-        "--name-only".to_string(),
-        "-z".to_string(),
-        head.to_string(),
-        "--".to_string(),
-    ]);
-    source_args.extend(sources.iter().cloned());
-    let source_output = crate::git::repository::exec_git(&source_args)?;
-    let source_files = source_output
-        .stdout
-        .split(|byte| *byte == 0)
-        .filter(|path| !path.is_empty())
-        .map(|path| normalized_git_path(&String::from_utf8_lossy(path)))
-        .collect::<Vec<_>>();
-
-    let destination_files = mv_destination_files(repo, &destination)?;
+    sources: &[String],
+    destination: &str,
+    index_paths: &[String],
+) -> Vec<(String, String)> {
+    let destination_prefix = format!("{}/", normalized_git_path(destination));
+    let destination_was_directory = index_paths
+        .iter()
+        .any(|path| path.starts_with(&destination_prefix));
 
     let multiple_sources = sources.len() > 1;
     let mut mappings = Vec::new();
-    for source in &sources {
-        for source_file in source_files
+    for source in sources {
+        for source_file in index_paths
             .iter()
             .filter(|path| *path == source || path.starts_with(&format!("{source}/")))
         {
-            let candidates =
-                moved_path_candidates(source_file, source, &destination, multiple_sources);
-            if let Some(target) = candidates
-                .into_iter()
-                .find(|candidate| destination_files.contains(candidate))
-            {
-                mappings.push((source_file.clone(), target));
-            }
+            let target = moved_path(
+                source_file,
+                source,
+                destination,
+                multiple_sources,
+                destination_was_directory,
+            );
+            mappings.push((source_file.clone(), target));
         }
     }
-    Ok(mappings)
+    mappings
 }
 
 fn retarget_pending_move_mappings(
-    repo: &Repository,
-    args: &[String],
+    sources: &[String],
+    destination: &str,
+    index_paths: &[String],
     mappings: &mut [(String, String)],
-) -> Result<(), GitAiError> {
-    let Some((sources, destination)) = mv_operands(args) else {
-        return Ok(());
-    };
-    let destination_files = mv_destination_files(repo, &destination)?;
+) {
+    let destination_prefix = format!("{}/", normalized_git_path(destination));
+    let destination_was_directory = index_paths
+        .iter()
+        .any(|path| path.starts_with(&destination_prefix));
     let multiple_sources = sources.len() > 1;
     for (_, current_path) in mappings {
         let Some(source) = sources.iter().find(|source| {
@@ -1949,15 +2289,14 @@ fn retarget_pending_move_mappings(
         }) else {
             continue;
         };
-        if let Some(target) =
-            moved_path_candidates(current_path, source, &destination, multiple_sources)
-                .into_iter()
-                .find(|candidate| destination_files.contains(candidate))
-        {
-            *current_path = target;
-        }
+        *current_path = moved_path(
+            current_path,
+            source,
+            destination,
+            multiple_sources,
+            destination_was_directory,
+        );
     }
-    Ok(())
 }
 
 fn recent_checkout_switch_prerequisite_from_command(
@@ -3438,10 +3777,14 @@ enum RecentReplayPrerequisite {
 #[derive(Debug, Default, Clone)]
 struct TraceIngressState {
     root_worktrees: HashMap<String, PathBuf>,
+    root_command_dirs: HashMap<String, PathBuf>,
     root_families: HashMap<String, String>,
     root_argv: HashMap<String, Vec<String>>,
     root_started_at_ns: HashMap<String, u128>,
     root_reflog_start_offsets: HashMap<String, HashMap<String, u64>>,
+    root_index_snapshot_at_start: HashMap<String, String>,
+    root_index_snapshot_attempted: HashSet<String>,
+    root_workspace_paths_at_start: HashMap<String, Vec<String>>,
     root_mutating: HashMap<String, bool>,
     root_target_repo_only: HashMap<String, bool>,
     root_last_activity_ns: HashMap<String, u64>,
@@ -4412,10 +4755,16 @@ impl ActorDaemonCoordinator {
 
     fn clear_trace_ingress_root_locked(ingress: &mut TraceIngressState, root_sid: &str) {
         ingress.root_worktrees.remove(root_sid);
+        ingress.root_command_dirs.remove(root_sid);
         ingress.root_families.remove(root_sid);
         ingress.root_argv.remove(root_sid);
         ingress.root_started_at_ns.remove(root_sid);
         ingress.root_reflog_start_offsets.remove(root_sid);
+        if let Some(snapshot) = ingress.root_index_snapshot_at_start.remove(root_sid) {
+            let _ = fs::remove_file(snapshot);
+        }
+        ingress.root_index_snapshot_attempted.remove(root_sid);
+        ingress.root_workspace_paths_at_start.remove(root_sid);
         ingress.root_mutating.remove(root_sid);
         ingress.root_target_repo_only.remove(root_sid);
         ingress.root_last_activity_ns.remove(root_sid);
@@ -5035,10 +5384,12 @@ impl ActorDaemonCoordinator {
     }
 
     fn enqueue_trace_payload(&self, payload: Value) -> Result<(), GitAiError> {
-        let tx =
-            self.trace_ingest_tx.get().cloned().ok_or_else(|| {
-                GitAiError::Generic("trace ingest worker not started".to_string())
-            })?;
+        let Some(tx) = self.trace_ingest_tx.get().cloned() else {
+            cleanup_index_snapshot_from_payload(&payload);
+            return Err(GitAiError::Generic(
+                "trace ingest worker not started".to_string(),
+            ));
+        };
         let permit = match tx.try_reserve() {
             Ok(permit) => permit,
             Err(tokio::sync::mpsc::error::TrySendError::Closed(())) => {
@@ -5049,6 +5400,7 @@ impl ActorDaemonCoordinator {
                     "trace ingest queue send failed: worker may have crashed"
                 );
                 self.request_shutdown();
+                cleanup_index_snapshot_from_payload(&payload);
                 return Err(GitAiError::Generic(
                     "trace ingest queue send failed: worker may have crashed".to_string(),
                 ));
@@ -5061,12 +5413,16 @@ impl ActorDaemonCoordinator {
                     "trace ingest queue is full"
                 );
                 self.request_shutdown();
+                cleanup_index_snapshot_from_payload(&payload);
                 return Err(GitAiError::Generic(
                     "trace ingest queue is full; daemon shutting down".to_string(),
                 ));
             }
         };
-        self.record_trace_payload_enqueued(&payload)?;
+        if let Err(error) = self.record_trace_payload_enqueued(&payload) {
+            cleanup_index_snapshot_from_payload(&payload);
+            return Err(error);
+        }
         let mut payload = payload;
         if let Some(object) = payload.as_object_mut()
             && object.get(TRACE_INGEST_SEQ_FIELD).is_none()
@@ -5255,6 +5611,18 @@ impl ActorDaemonCoordinator {
 
         if event == "start" && sid == root && !argv.is_empty() {
             ingress.root_argv.insert(root.clone(), argv.clone());
+            let command_dir = payload
+                .get("cwd")
+                .and_then(Value::as_str)
+                .map(Path::new)
+                .map(|cwd| {
+                    trace_payload_command_base_dir(payload, &argv, cwd)
+                        .unwrap_or_else(|| cwd.into())
+                })
+                .or_else(|| trace_argv_absolute_command_base_dir(&argv));
+            if let Some(command_dir) = command_dir {
+                ingress.root_command_dirs.insert(root.clone(), command_dir);
+            }
             if event_is_read_only {
                 ingress.root_definitely_read_only.insert(root.clone());
             }
@@ -5269,6 +5637,92 @@ impl ActorDaemonCoordinator {
             early_primary.or_else(|| trace_argv_primary_command(&effective_argv));
         let command_mutates_repo_state =
             trace_invocation_may_mutate_repo_state(effective_primary.as_deref(), &effective_argv);
+        let terminal = is_terminal_root_trace_event(&event, &sid, &root);
+        let command_worktree = worktree_hint
+            .clone()
+            .or_else(|| ingress.root_worktrees.get(&root).cloned());
+
+        // `git clean` reports its repository-relative invocation prefix in a
+        // Trace2 read_directory data event. Native start events omit cwd, so
+        // this is the portable signal that distinguishes `generated.txt` at
+        // the worktree root from the same operand invoked under `nested/`.
+        if !event_is_read_only
+            && !ingress.root_definitely_read_only.contains(&root)
+            && event == "data"
+            && sid == root
+            && effective_primary.as_deref() == Some("clean")
+            && payload.get("category").and_then(Value::as_str) == Some("read_directory")
+            && payload.get("key").and_then(Value::as_str) == Some("path")
+            && let Some(prefix) = payload.get("value").and_then(Value::as_str)
+        {
+            let command_args =
+                trace_invocation_command_args(effective_primary.as_deref(), &effective_argv);
+            let paths = clean_pathspecs_from_trace_directory_prefix(&command_args, prefix);
+            if !paths.is_empty() {
+                ingress
+                    .root_workspace_paths_at_start
+                    .insert(root.clone(), paths);
+            }
+        }
+
+        let command_args =
+            trace_invocation_command_args(effective_primary.as_deref(), &effective_argv);
+        let noncached_rm = effective_primary.as_deref() == Some("rm")
+            && !command_args.iter().any(|arg| arg == "--cached");
+
+        // Pathspec files can disappear or change before asynchronous side
+        // effects run. Resolve workspace operands at the first pre-command
+        // event with both an exact invocation directory and a worktree.
+        if !event_is_read_only
+            && !ingress.root_definitely_read_only.contains(&root)
+            && !terminal
+            && sid == root
+            && !effective_argv.is_empty()
+            && (noncached_rm || effective_primary.as_deref() == Some("clean"))
+            && !ingress.root_workspace_paths_at_start.contains_key(&root)
+            && let Some(worktree) = command_worktree.as_deref()
+            && let Some(command_dir) = ingress.root_command_dirs.get(&root).cloned()
+        {
+            ingress.root_workspace_paths_at_start.insert(
+                root.clone(),
+                workspace_pathspecs_from_command_dir(
+                    effective_primary.as_deref(),
+                    &command_args,
+                    &command_dir,
+                    worktree,
+                ),
+            );
+        }
+
+        // A non-cached rm snapshot recovers index removals when native Trace2
+        // omits cwd. Clean consumes a snapshot only when its path selection is
+        // exact, so delayed handling can distinguish a recreated path from one
+        // that was tracked (and therefore protected) before the command.
+        let reconstructible_clean = effective_primary.as_deref() == Some("clean")
+            && ingress
+                .root_workspace_paths_at_start
+                .get(&root)
+                .is_some_and(|paths| !paths.is_empty())
+            && !command_args.iter().any(|arg| {
+                matches!(arg.as_str(), "-e" | "--exclude") || arg.starts_with("--exclude=")
+            });
+        let mutable_mv = effective_primary.as_deref() == Some("mv");
+        if !event_is_read_only
+            && !ingress.root_definitely_read_only.contains(&root)
+            && !terminal
+            && sid == root
+            && !effective_argv.is_empty()
+            && (noncached_rm || reconstructible_clean || mutable_mv)
+            && !ingress.root_index_snapshot_attempted.contains(&root)
+            && let Some(worktree) = command_worktree.as_deref()
+        {
+            ingress.root_index_snapshot_attempted.insert(root.clone());
+            if let Some(snapshot) = capture_index_snapshot_for_workspace_command(worktree) {
+                ingress
+                    .root_index_snapshot_at_start
+                    .insert(root.clone(), snapshot);
+            }
+        }
         let command_mutates_refs =
             trace_invocation_may_mutate_refs(effective_primary.as_deref(), &effective_argv);
         if let Some(primary) = effective_primary.as_deref() {
@@ -5282,11 +5736,6 @@ impl ActorDaemonCoordinator {
                 .entry(root.clone())
                 .or_insert(target_repo_only);
         }
-
-        let terminal = is_terminal_root_trace_event(&event, &sid, &root);
-        let command_worktree = worktree_hint
-            .clone()
-            .or_else(|| ingress.root_worktrees.get(&root).cloned());
 
         // Conflict side effects may be processed after the caller has already
         // run `--skip`. Remember that control state existed at the terminal
@@ -5313,6 +5762,26 @@ impl ActorDaemonCoordinator {
                 .insert(root.clone(), offsets);
         }
 
+        // Observe the rm index transition at Git's terminal Trace2 boundary,
+        // before the caller can recreate and re-add a path. This is the
+        // production fallback when start omitted cwd, and it is more precise
+        // than interpreting argv relative to the worktree root.
+        if terminal
+            && effective_primary.as_deref() == Some("rm")
+            && ingress
+                .root_workspace_paths_at_start
+                .get(&root)
+                .is_none_or(Vec::is_empty)
+            && let Some(worktree) = command_worktree.as_deref()
+            && let Some(snapshot) = ingress.root_index_snapshot_at_start.get(&root)
+            && let Some(paths) =
+                paths_removed_from_index_since_snapshot(worktree, Path::new(snapshot))
+        {
+            ingress
+                .root_workspace_paths_at_start
+                .insert(root.clone(), paths);
+        }
+
         let read_only_root =
             event_is_read_only || ingress.root_definitely_read_only.contains(&root);
         let inherited = (
@@ -5320,13 +5789,19 @@ impl ActorDaemonCoordinator {
             ingress.root_started_at_ns.get(&root).copied(),
             ingress.root_reflog_start_offsets.get(&root).cloned(),
             ingress.root_worktrees.get(&root).cloned(),
+            ingress.root_index_snapshot_at_start.get(&root).cloned(),
+            ingress.root_workspace_paths_at_start.get(&root).cloned(),
         );
         if terminal {
             ingress.root_worktrees.remove(&root);
+            ingress.root_command_dirs.remove(&root);
             ingress.root_families.remove(&root);
             ingress.root_argv.remove(&root);
             ingress.root_started_at_ns.remove(&root);
             ingress.root_reflog_start_offsets.remove(&root);
+            ingress.root_index_snapshot_at_start.remove(&root);
+            ingress.root_index_snapshot_attempted.remove(&root);
+            ingress.root_workspace_paths_at_start.remove(&root);
             ingress.root_mutating.remove(&root);
             ingress.root_target_repo_only.remove(&root);
             ingress.root_last_activity_ns.remove(&root);
@@ -5377,6 +5852,16 @@ impl ActorDaemonCoordinator {
                     TRACE_ROOT_WORKTREE_FIELD.to_string(),
                     json!(worktree.to_string_lossy().to_string()),
                 );
+            }
+            if object.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none()
+                && let Some(snapshot) = inherited.4
+            {
+                object.insert(TRACE_ROOT_INDEX_SNAPSHOT_FIELD.to_string(), json!(snapshot));
+            }
+            if object.get(TRACE_ROOT_WORKSPACE_PATHS_FIELD).is_none()
+                && let Some(paths) = inherited.5
+            {
+                object.insert(TRACE_ROOT_WORKSPACE_PATHS_FIELD.to_string(), json!(paths));
             }
         }
 
@@ -6750,6 +7235,8 @@ impl ActorDaemonCoordinator {
         let cmd = &applied.command;
         let events = &applied.analysis.events;
         let mut control_attempt_boundary = self.take_control_attempt_boundary(&cmd.root_sid)?;
+        let _index_snapshot_cleanup =
+            IndexSnapshotCleanup(cmd.index_snapshot_at_start.clone().map(PathBuf::from));
 
         let primary = cmd.primary_command.as_deref().unwrap_or("unknown");
         let lite_mode = config::Config::get().get_feature_flags().lite_mode;
@@ -7563,47 +8050,88 @@ impl ActorDaemonCoordinator {
                             }
                         }
                     }
-                    crate::daemon::domain::SemanticEvent::CleanedWorkspace { head } => {
+                    crate::daemon::domain::SemanticEvent::CleanedWorkspace {
+                        head,
+                        index_snapshot_at_start,
+                    } => {
                         let repo = find_repository_in_path(&worktree)?;
                         let head = head
                             .clone()
                             .filter(|head| !head.is_empty())
                             .unwrap_or(repo.head()?.target()?);
                         let parsed = parsed_invocation_for_normalized_command(cmd);
-                        prune_working_log_paths_after_clean(&repo, &head, &parsed.command_args)?;
+                        let reconstructed_pathspecs = (!cmd.workspace_paths_at_start.is_empty())
+                            .then_some(cmd.workspace_paths_at_start.as_slice());
+                        prune_working_log_paths_after_clean(
+                            &repo,
+                            &head,
+                            &parsed.command_args,
+                            index_snapshot_at_start.as_deref(),
+                            true,
+                            reconstructed_pathspecs,
+                        )?;
                     }
-                    crate::daemon::domain::SemanticEvent::RemovedWorkspacePaths { head } => {
+                    crate::daemon::domain::SemanticEvent::RemovedWorkspacePaths {
+                        head,
+                        index_snapshot_at_start,
+                    } => {
                         let repo = find_repository_in_path(&worktree)?;
                         let head = head
                             .clone()
                             .filter(|head| !head.is_empty())
                             .unwrap_or(repo.head()?.target()?);
-                        let parsed = parsed_invocation_for_normalized_command(cmd);
+                        let removal_paths = if cmd.workspace_paths_at_start.is_empty() {
+                            Vec::new()
+                        } else {
+                            cmd.workspace_paths_at_start.clone()
+                        };
                         // Reuse the race-safe path selection with ignored-file
                         // removal enabled: a successful non-cached `rm` removes
                         // tracked operands regardless of ignore rules.
-                        let mut removal_args = parsed.command_args;
-                        removal_args.push("-x".to_string());
-                        prune_working_log_paths_after_clean(&repo, &head, &removal_args)?;
+                        let removal_args = vec!["-x".to_string()];
+                        let reconstructed_pathspecs =
+                            (!removal_paths.is_empty()).then_some(removal_paths.as_slice());
+                        prune_working_log_paths_after_clean(
+                            &repo,
+                            &head,
+                            &removal_args,
+                            index_snapshot_at_start.as_deref(),
+                            false,
+                            reconstructed_pathspecs,
+                        )?;
                     }
                     crate::daemon::domain::SemanticEvent::MovedWorkspacePaths { head } => {
                         let repo = find_repository_in_path(&worktree)?;
+                        let _snapshot_cleanup = IndexSnapshotCleanup(
+                            cmd.index_snapshot_at_start.as_deref().map(PathBuf::from),
+                        );
                         let head = head
                             .clone()
                             .filter(|head| !head.is_empty())
                             .unwrap_or(repo.head()?.target()?);
                         let parsed = parsed_invocation_for_normalized_command(cmd);
                         let worktree_path = Path::new(&worktree);
-                        let mut mappings = mv_path_mappings(&repo, &parsed.command_args, &head)?;
+                        let Some((sources, destination)) = mv_operands(&parsed.command_args) else {
+                            continue;
+                        };
+                        let index_paths = mv_index_paths_at_start(
+                            &repo,
+                            &sources,
+                            &destination,
+                            &head,
+                            cmd.index_snapshot_at_start.as_deref(),
+                        )?;
+                        let mut mappings = mv_path_mappings(&sources, &destination, &index_paths);
                         if let Some(mut pending) =
                             self.take_pending_move_paths_for_worktree(worktree_path)?
                             && pending.head == head
                         {
                             retarget_pending_move_mappings(
-                                &repo,
-                                &parsed.command_args,
+                                &sources,
+                                &destination,
+                                &index_paths,
                                 &mut pending.mappings,
-                            )?;
+                            );
                             for mapping in mappings.drain(..) {
                                 if !pending
                                     .mappings
@@ -11285,6 +11813,8 @@ mod tests {
             started_at_ns: 1,
             finished_at_ns: 2,
             reflog_start_offsets: HashMap::new(),
+            index_snapshot_at_start: None,
+            workspace_paths_at_start: Vec::new(),
             stash_target_oid: None,
             cherry_pick_source_oids: Vec::new(),
             revert_source_oids: Vec::new(),
@@ -12189,17 +12719,481 @@ mod tests {
     #[tokio::test]
     async fn enqueue_before_worker_start_returns_error() {
         let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        std::fs::write(temp.path().join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        let snapshot = temp.path().join("git-ai-index-snapshot-enqueue-failure");
+        std::fs::write(&snapshot, "index snapshot").unwrap();
         // Worker never started → OnceLock is empty → enqueue must fail
         let payload = serde_json::json!({
             "event": "start",
             "sid": "20260411T120000.000000-Ptest0001",
             "__git_ai_ingest_seq": 1_u64,
             "argv": ["git", "commit", "-m", "test"],
+            TRACE_ROOT_INDEX_SNAPSHOT_FIELD: snapshot.to_string_lossy().to_string(),
         });
         assert!(
             coord.enqueue_trace_payload(payload).is_err(),
             "enqueue before worker start must return an error"
         );
+        assert!(
+            !snapshot.exists(),
+            "failed enqueue must remove its snapshot"
+        );
+    }
+
+    #[test]
+    fn index_snapshot_cleanup_sweeps_stale_siblings_out_of_band() {
+        let temp = tempfile::tempdir().unwrap();
+        let git_dir = temp.path();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        let index = git_dir.join("index");
+        std::fs::write(&index, "shared index contents").unwrap();
+
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        let stale_ms = now_ms.saturating_sub(INDEX_SNAPSHOT_STALE_AFTER.as_millis() + 1);
+        let stale = git_dir.join(format!("{INDEX_SNAPSHOT_PREFIX}{stale_ms}-stale"));
+        let recent = git_dir.join(format!("{INDEX_SNAPSHOT_PREFIX}{now_ms}-recent"));
+        // Both entries share the index inode and therefore the exact same
+        // modification time; only their daemon-owned filename timestamps differ.
+        std::fs::hard_link(&index, &stale).unwrap();
+        std::fs::hard_link(&index, &recent).unwrap();
+
+        assert!(stale.exists());
+        drop(IndexSnapshotCleanup(Some(recent.clone())));
+
+        assert!(!stale.exists(), "expired snapshots should be reclaimed");
+        assert!(
+            !recent.exists(),
+            "the consumed snapshot should be removed before the sibling sweep"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_index_snapshots_require_a_consumed_boundary() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(git_dir.join("index"), "index contents").unwrap();
+
+        let empty_sid = "20260411T120000.000000-Pemptyclean";
+        let mut empty_start = serde_json::json!({
+            "event": "start",
+            "sid": empty_sid,
+            "name": "clean",
+            "argv": [],
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut empty_start));
+        assert!(empty_start.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none());
+        coord.clear_trace_root_tracking(empty_sid).unwrap();
+
+        let realistic_sid = "20260411T120000.000000-Prealisticclean";
+        let mut realistic_start = serde_json::json!({
+            "event": "start",
+            "sid": realistic_sid,
+            "argv": ["git", "clean", "-fd"],
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut realistic_start));
+        assert!(
+            realistic_start
+                .get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD)
+                .is_none(),
+            "real Git start events do not yet identify the worktree"
+        );
+        let mut realistic_def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": realistic_sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut realistic_def_repo));
+        assert!(
+            realistic_def_repo
+                .get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD)
+                .is_none(),
+            "native clean has not reported its directory prefix yet"
+        );
+        let mut realistic_directory = serde_json::json!({
+            "event": "data",
+            "sid": realistic_sid,
+            "category": "read_directory",
+            "key": "path",
+            "value": "nested/",
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut realistic_directory));
+        assert_eq!(
+            realistic_directory[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["nested"]),
+        );
+        let realistic_snapshot = PathBuf::from(
+            realistic_directory[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
+                .as_str()
+                .expect("directory prefix should make clean selection reconstructible"),
+        );
+        assert!(realistic_snapshot.is_file());
+        coord.clear_trace_root_tracking(realistic_sid).unwrap();
+        assert!(!realistic_snapshot.exists());
+
+        let exact_clean_sid = "20260411T120000.000000-Pexactclean";
+        let mut exact_clean_start = serde_json::json!({
+            "event": "start",
+            "sid": exact_clean_sid,
+            "argv": [
+                "git",
+                "-C",
+                repo.to_string_lossy().to_string(),
+                "clean",
+                "-f",
+                "--",
+                "generated.txt"
+            ],
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut exact_clean_start));
+        assert_eq!(
+            exact_clean_start[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["generated.txt"]),
+        );
+        let exact_clean_snapshot = PathBuf::from(
+            exact_clean_start[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
+                .as_str()
+                .expect("exact clean start should capture the pre-command index"),
+        );
+        assert!(exact_clean_snapshot.is_file());
+        coord.clear_trace_root_tracking(exact_clean_sid).unwrap();
+        assert!(!exact_clean_snapshot.exists());
+
+        let dry_run_sid = "20260411T120000.000000-Pdryrun-clean";
+        let mut dry_run_start = serde_json::json!({
+            "event": "start",
+            "sid": dry_run_sid,
+            "argv": ["git", "clean", "-ndx"],
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut dry_run_start));
+        let mut dry_run_def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": dry_run_sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut dry_run_def_repo));
+        assert!(
+            dry_run_def_repo
+                .get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD)
+                .is_none(),
+            "a read-only clean root must not capture an index snapshot at def_repo"
+        );
+        assert!(
+            std::fs::read_dir(&git_dir).unwrap().all(|entry| {
+                !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(INDEX_SNAPSHOT_PREFIX)
+            }),
+            "preview-only clean must not leave a snapshot in the repository"
+        );
+        coord.clear_trace_root_tracking(dry_run_sid).unwrap();
+
+        let sid = "20260411T120000.000000-Pduplicaterm";
+        let mut first_start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "removed.txt"],
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut first_start));
+        let first_snapshot = PathBuf::from(
+            first_start[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
+                .as_str()
+                .expect("rm start should contain a snapshot"),
+        );
+        assert!(first_snapshot.is_file());
+
+        let mut second_start = first_start.clone();
+        second_start
+            .as_object_mut()
+            .unwrap()
+            .remove(TRACE_ROOT_INDEX_SNAPSHOT_FIELD);
+        assert!(coord.prepare_trace_payload_for_ingest(&mut second_start));
+        let second_snapshot = PathBuf::from(
+            second_start[TRACE_ROOT_INDEX_SNAPSHOT_FIELD]
+                .as_str()
+                .expect("duplicate rm start should contain a snapshot"),
+        );
+        assert_eq!(first_snapshot, second_snapshot);
+        assert!(
+            first_snapshot.exists(),
+            "duplicate events must retain the original boundary snapshot"
+        );
+        assert!(second_snapshot.is_file());
+
+        coord.clear_trace_root_tracking(sid).unwrap();
+        assert!(!second_snapshot.exists());
+    }
+
+    #[tokio::test]
+    async fn failed_index_snapshot_capture_is_not_retried_per_trace_event() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let sid = "20260411T120000.000000-Pmissing-index";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "removed.txt"],
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        assert!(start.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none());
+
+        std::fs::write(git_dir.join("index"), "late index contents").unwrap();
+        let mut later = serde_json::json!({
+            "event": "region_enter",
+            "sid": sid,
+            "argv": ["git", "rm", "removed.txt"],
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut later));
+        assert!(
+            later.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none(),
+            "later events must not retry a failed command-boundary capture"
+        );
+        coord.clear_trace_root_tracking(sid).unwrap();
+    }
+
+    #[tokio::test]
+    async fn rm_pathspec_file_is_resolved_before_async_processing() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(repo.join("remove-paths.txt"), "removed.txt\n").unwrap();
+
+        let sid = "20260411T120000.000000-Prmpathspec";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "--pathspec-from-file=remove-paths.txt"],
+            "cwd": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert_eq!(
+            def_repo[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["removed.txt"])
+        );
+
+        std::fs::write(repo.join("remove-paths.txt"), "different.txt\n").unwrap();
+        let mut atexit = make_atexit_payload(sid);
+        assert!(coord.prepare_trace_payload_for_ingest(&mut atexit));
+        assert_eq!(
+            atexit[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["removed.txt"]),
+            "later file changes must not alter the command's original selection"
+        );
+    }
+
+    #[tokio::test]
+    async fn rm_without_trace2_cwd_recovers_removed_paths_from_the_index_transition() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        run_git_for_test(&repo, &["init", "-q"]);
+        run_git_for_test(&repo, &["config", "user.name", "Test User"]);
+        run_git_for_test(&repo, &["config", "user.email", "test@example.com"]);
+        std::fs::write(repo.join("removed.txt"), "removed\n").unwrap();
+        std::fs::write(repo.join("kept.txt"), "kept\n").unwrap();
+        run_git_for_test(&repo, &["add", "."]);
+        run_git_for_test(&repo, &["commit", "-qm", "initial"]);
+
+        let sid = "20260411T120000.000000-Prm-no-cwd";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "removed.txt"],
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+
+        run_git_for_test(&repo, &["rm", "removed.txt"]);
+        let mut atexit = make_atexit_payload(sid);
+        assert!(coord.prepare_trace_payload_for_ingest(&mut atexit));
+        assert_eq!(
+            atexit[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["removed.txt"]),
+            "the terminal index transition must identify only the removed path"
+        );
+    }
+
+    #[tokio::test]
+    async fn rm_pathspecs_are_rooted_at_the_invocation_subdirectory() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let subdir = repo.join("sub");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::create_dir_all(&subdir).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let sid = "20260411T120000.000000-Prmsubdir";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "foo.txt"],
+            "cwd": subdir.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert_eq!(
+            def_repo[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["sub/foo.txt"])
+        );
+    }
+
+    #[tokio::test]
+    async fn rm_pathspecs_use_absolute_dash_c_when_trace2_omits_cwd() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+
+        let sid = "20260411T120000.000000-Prmdashc";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": [
+                "git",
+                "-c",
+                "git-ai.testSyncSession=test-rm-dash-c",
+                "-C",
+                repo.to_string_lossy().to_string(),
+                "rm",
+                "removed.txt"
+            ],
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert_eq!(
+            def_repo[TRACE_ROOT_WORKSPACE_PATHS_FIELD],
+            serde_json::json!(["removed.txt"]),
+            "an absolute -C is sufficient command-directory context without a cwd field"
+        );
+    }
+
+    #[tokio::test]
+    async fn dry_run_rm_does_not_resolve_pathspec_file() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        std::fs::create_dir_all(repo.join(".git")).unwrap();
+        std::fs::write(repo.join(".git/HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(repo.join("remove-paths.txt"), "removed.txt\n").unwrap();
+
+        let sid = "20260411T120000.000000-Pdryrun-rm";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "-n", "--pathspec-from-file=remove-paths.txt"],
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut start));
+
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert!(
+            def_repo.get(TRACE_ROOT_WORKSPACE_PATHS_FIELD).is_none(),
+            "preview-only rm must not resolve or persist pathspec-file entries"
+        );
+        assert!(
+            !coord
+                .trace_ingress_state
+                .lock()
+                .unwrap()
+                .root_workspace_paths_at_start
+                .contains_key(sid)
+        );
+
+        coord.clear_trace_root_tracking(sid).unwrap();
+    }
+
+    #[tokio::test]
+    async fn cached_rm_does_not_capture_unused_workspace_state() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let repo = temp.path().join("repo");
+        let git_dir = repo.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        std::fs::write(git_dir.join("index"), "index contents").unwrap();
+        std::fs::write(repo.join("remove-paths.txt"), "removed.txt\n").unwrap();
+
+        let sid = "20260411T120000.000000-Prm-cached";
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rm", "--cached", "--pathspec-from-file=remove-paths.txt"],
+            "cwd": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": repo.to_string_lossy().to_string(),
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert!(def_repo.get(TRACE_ROOT_WORKSPACE_PATHS_FIELD).is_none());
+        assert!(def_repo.get(TRACE_ROOT_INDEX_SNAPSHOT_FIELD).is_none());
+        assert!(std::fs::read_dir(&git_dir).unwrap().all(|entry| {
+            !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(INDEX_SNAPSHOT_PREFIX)
+        }));
+        coord.clear_trace_root_tracking(sid).unwrap();
     }
 
     #[tokio::test]
