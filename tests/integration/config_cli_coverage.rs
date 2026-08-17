@@ -10,6 +10,48 @@ use git_ai::config::{AuthorConfig, FileConfig, NotesBackendConfig};
 use serde_json::Value;
 use std::collections::HashMap;
 
+fn run_config(repo: &TestRepo, args: &[&str]) -> std::process::Output {
+    repo.git_ai_command_without_pre_sync_for_test(args, &[])
+        .output()
+        .unwrap_or_else(|e| panic!("git-ai {args:?} failed to run: {e}"))
+}
+
+#[test]
+fn test_config_set_and_get_normal_output_uses_stdout() {
+    let repo = TestRepo::new();
+
+    for args in [
+        ["config", "set", "notes_backend.kind", "http"].as_slice(),
+        [
+            "config",
+            "set",
+            "notes_backend.backend_url",
+            "https://example.com",
+        ]
+        .as_slice(),
+        ["config", "notes_backend.kind"].as_slice(),
+        ["config", "notes_backend.backend_url"].as_slice(),
+        ["config", "unset", "notes_backend.kind"].as_slice(),
+        ["config", "unset", "notes_backend.backend_url"].as_slice(),
+    ] {
+        let output = run_config(&repo, args);
+        assert!(
+            output.status.success(),
+            "git-ai {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !output.stdout.is_empty(),
+            "git-ai {args:?} should write normal output to stdout"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "git-ai {args:?} wrote normal output to stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
 /// Parse the JSON emitted by `git-ai config <key>` into a serde value.
 fn get_json(repo: &TestRepo, key: &str) -> Value {
     let out = repo
