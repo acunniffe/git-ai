@@ -1139,3 +1139,18 @@ fn test_hashmap_conversion_stability() {
         assert_eq!(result2.get(key), Some(value));
     }
 }
+
+#[test]
+fn windows_msi_configures_git_ai_after_its_managed_path_is_written() {
+    let manifest = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("packaging/windows/git-ai.wxs"),
+    )
+    .unwrap();
+
+    assert!(
+        manifest.contains(
+            r#"<Custom Action="ConfigureGitAi" After="WriteEnvironmentStrings" Condition="NOT Installed" />"#
+        ),
+        "MSI must write its owned PATH entry before install-hooks checks the user PATH"
+    );
+}

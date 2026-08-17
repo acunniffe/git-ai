@@ -328,7 +328,12 @@ fn read_windows_user_path(environment: &winreg::RegKey) -> std::io::Result<Windo
         }
         Err(error) => return Err(error),
     };
-    let raw = String::from_reg_value(&value).unwrap_or_default();
+    let raw = String::from_reg_value(&value).map_err(|error| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("unsupported user PATH registry value: {error}"),
+        )
+    })?;
     let is_expandable = value.vtype == REG_EXPAND_SZ;
     let expanded = if is_expandable {
         expand_windows_environment_variables(&raw)?
@@ -642,6 +647,34 @@ mod windows_tests {
             String::from_reg_value(&stored).unwrap(),
             r"%USERPROFILE%\bin;C:\git-ai\bin"
         );
+    }
+
+    #[test]
+    fn windows_unsupported_registry_path_is_left_unchanged() {
+        use winreg::RegKey;
+        use winreg::enums::{HKEY_CURRENT_USER, REG_BINARY};
+        use winreg::types::RegValue;
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let key_path = format!(
+            r"Software\git-ai-shell-env-test-{}",
+            crate::uuid::generate_v4()
+        );
+        let (environment, _) = hkcu.create_subkey(&key_path).unwrap();
+        let original = RegValue {
+            bytes: vec![1, 2, 3, 4],
+            vtype: REG_BINARY,
+        };
+        environment.set_raw_value("Path", &original).unwrap();
+
+        let result = ensure_windows_user_path_in_registry(&environment, r"C:\git-ai\bin");
+        let unchanged = environment.get_raw_value("Path").unwrap();
+        drop(environment);
+        hkcu.delete_subkey_all(&key_path).unwrap();
+
+        assert!(result.is_err());
+        assert_eq!(unchanged.vtype, original.vtype);
+        assert_eq!(unchanged.bytes, original.bytes);
     }
 
     #[test]

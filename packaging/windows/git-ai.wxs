@@ -54,7 +54,7 @@
       Return="check"
       HideTarget="yes" />
     <InstallExecuteSequence>
-      <Custom Action="ConfigureGitAi" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="ConfigureGitAi" After="WriteEnvironmentStrings" Condition="NOT Installed" />
     </InstallExecuteSequence>
   </Package>
 </Wix>
