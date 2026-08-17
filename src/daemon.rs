@@ -1577,6 +1577,7 @@ fn prune_working_log_paths_after_clean(
 
 fn apply_checkout_switch_working_log_side_effect(
     cmd: &crate::daemon::domain::NormalizedCommand,
+    restore_head: Option<&str>,
 ) -> Result<(), GitAiError> {
     let Some(worktree) = cmd.worktree.as_ref() else {
         return Ok(());
@@ -1592,7 +1593,10 @@ fn apply_checkout_switch_working_log_side_effect(
         }
         let pathspecs = restore_pathspecs(&parsed.command_args, Some(worktree.as_path()));
         if !pathspecs.is_empty() {
-            let head = repo.head()?.target()?;
+            let head = restore_head
+                .filter(|head| !head.is_empty())
+                .map(ToOwned::to_owned)
+                .unwrap_or(repo.head()?.target()?);
             remove_working_log_attributions_for_pathspecs(&repo, &head, &pathspecs)?;
         }
         return Ok(());
@@ -4282,13 +4286,14 @@ impl ActorDaemonCoordinator {
         result: &Result<(), GitAiError>,
         error_order: u64,
     ) -> Result<(), GitAiError> {
-        let sync_tracked = crate::daemon::test_sync::tracks_primary_command_for_test_sync(
-            applied.command.primary_command.as_deref(),
-            &applied.command.invoked_args,
-        );
         let test_sync_session = crate::daemon::test_sync::test_sync_session_from_invocation(
             &parsed_invocation_for_normalized_command(&applied.command),
         );
+        let sync_tracked = test_sync_session.is_some()
+            || crate::daemon::test_sync::tracks_primary_command_for_test_sync(
+                applied.command.primary_command.as_deref(),
+                &applied.command.invoked_args,
+            );
         let log_entry = TestCompletionLogEntry {
             seq: applied.seq,
             family_key: family.to_string(),
@@ -5135,8 +5140,23 @@ impl ActorDaemonCoordinator {
         let started_at_ns = trace_payload_time_ns(payload);
         let early_primary =
             trace_payload_primary_command(payload).or_else(|| trace_argv_primary_command(&argv));
+        // Shell-wrapper E2Es stamp every literal Git invocation with a unique
+        // synchronization session, including read-only commands. Let those
+        // explicitly marked roots reach the completion log so the helper can
+        // wait for every command without guessing at shell syntax.
         let event_is_read_only =
-            trace_invocation_is_definitely_read_only(early_primary.as_deref(), &argv);
+            trace_invocation_is_definitely_read_only(early_primary.as_deref(), &argv) && {
+                // Only test-only read-only roots need the second parse. Mutating
+                // commands retain the normal single-parse ingestion path.
+                let has_test_sync_session = if argv.is_empty() {
+                    false
+                } else {
+                    let parsed =
+                        crate::git::cli_parser::parse_git_cli_args(trace_invocation_args(&argv));
+                    crate::daemon::test_sync::test_sync_session_from_invocation(&parsed).is_some()
+                };
+                !has_test_sync_session
+            };
         let mut ingress = match self.trace_ingress_state.lock() {
             Ok(guard) => guard,
             Err(_) => return false,
@@ -7996,7 +8016,11 @@ impl ActorDaemonCoordinator {
                     self.record_recent_replay_prerequisite(&family, prerequisite)?;
                 }
             }
-            apply_checkout_switch_working_log_side_effect(cmd)?;
+            let restore_head = events.iter().find_map(|event| match event {
+                crate::daemon::domain::SemanticEvent::RestorePaths { head } => head.as_deref(),
+                _ => None,
+            });
+            apply_checkout_switch_working_log_side_effect(cmd, restore_head)?;
         }
 
         if saw_pull_event && let Some(worktree) = cmd.worktree.as_ref() {
