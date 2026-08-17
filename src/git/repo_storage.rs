@@ -242,6 +242,8 @@ impl RepoStorage {
             canonical,
             None,
         );
+        let mut blocked_edge_recovery_paths = old_log.edge_recovery_blocked_paths();
+        blocked_edge_recovery_paths.extend(new_log.edge_recovery_blocked_paths());
 
         // Preserve OLD-base entries first (per rename_working_log's contract):
         // start from the old INITIAL and only insert a new-base entry when its
@@ -270,6 +272,9 @@ impl RepoStorage {
         let mut checkpoints = old_log.read_all_checkpoints()?;
         checkpoints.extend(new_log.read_all_checkpoints()?);
         new_log.write_all_checkpoints(&checkpoints)?;
+        if !blocked_edge_recovery_paths.is_empty() {
+            new_log.block_edge_recovery_for_paths(blocked_edge_recovery_paths)?;
+        }
         Ok(())
     }
 }
@@ -306,6 +311,8 @@ pub struct PersistedWorkingLog {
 }
 
 impl PersistedWorkingLog {
+    const EDGE_RECOVERY_BLOCKED_MARKER: &str = ".edge-recovery-blocked";
+
     pub fn new(
         dir: PathBuf,
         base_commit: &str,
@@ -338,6 +345,51 @@ impl PersistedWorkingLog {
         self.dirty_files = normalized_dirty_files;
     }
 
+    pub fn block_edge_recovery(&self) -> Result<(), GitAiError> {
+        self.block_edge_recovery_for_paths(self.all_touched_files()?)
+    }
+
+    pub fn block_edge_recovery_for_paths(
+        &self,
+        paths: impl IntoIterator<Item = String>,
+    ) -> Result<(), GitAiError> {
+        let mut paths = paths.into_iter().collect::<Vec<_>>();
+        paths.sort_unstable();
+        paths.dedup();
+        let marker = self.dir.join(Self::EDGE_RECOVERY_BLOCKED_MARKER);
+        if paths.is_empty() {
+            if marker.exists() {
+                crate::wltrace::wltrace("working_log.edge_block.clear", &self.dir, String::new);
+                fs::remove_file(marker)?;
+            }
+            return Ok(());
+        }
+        crate::wltrace::wltrace("working_log.edge_block.write", &self.dir, || {
+            format!("paths={}", paths.join(","))
+        });
+        fs::write(marker, serde_json::to_vec(&paths)?)?;
+        Ok(())
+    }
+
+    pub fn edge_recovery_blocked(&self) -> bool {
+        !self.edge_recovery_blocked_paths().is_empty()
+    }
+
+    pub fn edge_recovery_blocked_paths(&self) -> HashSet<String> {
+        let marker = self.dir.join(Self::EDGE_RECOVERY_BLOCKED_MARKER);
+        let Ok(contents) = fs::read(&marker) else {
+            return HashSet::new();
+        };
+        if contents.is_empty() {
+            // Compatibility with working logs written by versions where the
+            // marker was an empty, working-log-wide sentinel.
+            return self.all_touched_files().unwrap_or_default();
+        }
+        serde_json::from_slice::<Vec<String>>(&contents)
+            .map(|paths| paths.into_iter().collect())
+            .unwrap_or_else(|_| self.all_touched_files().unwrap_or_default())
+    }
+
     pub fn reset_working_log(&self) -> Result<(), GitAiError> {
         crate::wltrace::wltrace("working_log.reset", &self.dir, String::new);
         // Clear all blobs by removing the blobs directory
@@ -354,6 +406,10 @@ impl PersistedWorkingLog {
         // previous working state do not persist across resets
         if self.initial_file.exists() {
             fs::remove_file(&self.initial_file)?;
+        }
+        let edge_recovery_marker = self.dir.join(Self::EDGE_RECOVERY_BLOCKED_MARKER);
+        if edge_recovery_marker.exists() {
+            fs::remove_file(edge_recovery_marker)?;
         }
 
         Ok(())
@@ -719,7 +775,11 @@ impl PersistedWorkingLog {
 
     pub fn all_touched_files(&self) -> Result<HashSet<String>, GitAiError> {
         let checkpoints = self.read_all_checkpoints()?;
-        let mut touched_files = HashSet::new();
+        let mut touched_files = self
+            .read_initial_attributions()
+            .files
+            .into_keys()
+            .collect::<HashSet<_>>();
         for checkpoint in checkpoints {
             for entry in checkpoint.entries {
                 touched_files.insert(entry.file);
@@ -952,6 +1012,7 @@ mod tests {
             .file_blobs
             .insert("shared.txt".into(), "OLD CONTENT".into());
         old_log.write_initial(old_initial).unwrap();
+        old_log.block_edge_recovery().unwrap();
 
         // NEW base: shared.txt -> new author (conflict), plus a unique new-only file.
         let new_log = storage.working_log_for_base_commit(new_sha).unwrap();
@@ -992,6 +1053,21 @@ mod tests {
         // Both sides' unique entries survive.
         assert!(merged.files.contains_key("old_only.txt"));
         assert!(merged.files.contains_key("new_only.txt"));
+        assert!(
+            storage
+                .working_log_for_base_commit(new_sha)
+                .unwrap()
+                .edge_recovery_blocked(),
+            "merged working logs must preserve the source recovery boundary"
+        );
+        assert_eq!(
+            storage
+                .working_log_for_base_commit(new_sha)
+                .unwrap()
+                .edge_recovery_blocked_paths(),
+            HashSet::from(["shared.txt".to_string(), "old_only.txt".to_string()]),
+            "the boundary must remain scoped to paths carried from the blocked source log"
+        );
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::{TestRepo, default_branchname};
+use git_ai::git::repository::find_repository_in_path;
 
 fn repo_with_pending_ai() -> TestRepo {
     let repo = TestRepo::new();
@@ -18,6 +19,20 @@ fn commit_and_assert_pending(repo: &TestRepo, message: &str) {
     repo.stage_all_and_commit(message).unwrap();
     let mut pending = repo.filename("pending.txt");
     pending.assert_lines_and_blame(vec!["generated one".ai(), "generated two".ai()]);
+    repo.sync_daemon();
+    let head = repo.git_og(&["rev-parse", "HEAD"]).unwrap();
+    let repository = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    if repository.storage.has_working_log(head.trim()) {
+        assert!(
+            repository
+                .storage
+                .working_log_for_base_commit(head.trim())
+                .unwrap()
+                .edge_recovery_blocked_paths()
+                .is_empty(),
+            "the recovery boundary must expire after its carried path is committed"
+        );
+    }
 }
 
 #[test]
@@ -73,6 +88,94 @@ fn switch_detach_carries_pending_ai() {
     let repo = repo_with_pending_ai();
     repo.git(&["switch", "--detach", "HEAD"]).unwrap();
     commit_and_assert_pending(&repo, "switch detached commit");
+}
+
+#[test]
+fn switch_without_pending_state_does_not_materialize_a_recovery_boundary() {
+    let repo = TestRepo::new();
+    let mut seed = repo.filename("seed.txt");
+    seed.set_contents(vec!["seed".human()]);
+    repo.stage_all_and_commit("initial").unwrap();
+    seed.assert_lines_and_blame(vec!["seed".human()]);
+
+    repo.git(&["switch", "-c", "clean-switch"]).unwrap();
+    repo.sync_daemon();
+    let head = repo.git_og(&["rev-parse", "HEAD"]).unwrap();
+    let repository = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    assert!(!repository.storage.has_working_log(head.trim()));
+}
+
+#[test]
+fn switch_recovery_boundary_remains_scoped_to_carried_paths() {
+    let repo = repo_with_pending_ai();
+    repo.git_og(&["reset", "HEAD", "pending.txt"]).unwrap();
+    let tree = repo.git_og(&["rev-parse", "HEAD^{tree}"]).unwrap();
+    let target = repo
+        .git_og(&[
+            "commit-tree",
+            tree.trim(),
+            "-p",
+            "HEAD",
+            "-m",
+            "target branch",
+        ])
+        .unwrap();
+    repo.git_og(&["branch", "scoped-boundary", target.trim()])
+        .unwrap();
+    repo.git(&["switch", "scoped-boundary"]).unwrap();
+    repo.sync_daemon();
+
+    let repository = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let switched_head = repo.git_og(&["rev-parse", "HEAD"]).unwrap();
+    assert_eq!(
+        repository
+            .storage
+            .working_log_for_base_commit(switched_head.trim())
+            .unwrap()
+            .edge_recovery_blocked_paths(),
+        std::collections::HashSet::from(["pending.txt".to_string()])
+    );
+
+    let mut later = repo.filename("later.txt");
+    later.set_contents_no_stage(vec!["later generated".ai()]);
+    assert_eq!(
+        repository
+            .storage
+            .working_log_for_base_commit(switched_head.trim())
+            .unwrap()
+            .edge_recovery_blocked_paths(),
+        std::collections::HashSet::from(["pending.txt".to_string()])
+    );
+    repo.git(&["add", "--", "later.txt"]).unwrap();
+    repo.sync_daemon();
+    assert_eq!(
+        repository
+            .storage
+            .working_log_for_base_commit(switched_head.trim())
+            .unwrap()
+            .edge_recovery_blocked_paths(),
+        std::collections::HashSet::from(["pending.txt".to_string()])
+    );
+    assert_eq!(
+        repo.git_og(&["diff", "--cached", "--name-only"])
+            .unwrap()
+            .trim(),
+        "later.txt"
+    );
+    repo.git(&["commit", "-m", "commit later AI only"]).unwrap();
+    later.assert_lines_and_blame(vec!["later generated".ai()]);
+
+    repo.sync_daemon();
+    let new_head = repo.git_og(&["rev-parse", "HEAD"]).unwrap();
+    assert_eq!(
+        repository
+            .storage
+            .working_log_for_base_commit(new_head.trim())
+            .unwrap()
+            .edge_recovery_blocked_paths(),
+        std::collections::HashSet::from(["pending.txt".to_string()]),
+        "committing a later unrelated path must not make the branch boundary global"
+    );
 }
 
 #[test]

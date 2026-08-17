@@ -263,8 +263,16 @@ pub fn args_with_internal_git_profile(args: &[String], profile: InternalGitProfi
         return args;
     }
 
-    let mut out = Vec::with_capacity(args.len() + options.len());
-    out.extend(args[..=command_index].iter().cloned());
+    let mut out = Vec::with_capacity(args.len() + options.len() + 1);
+    out.extend(args[..command_index].iter().cloned());
+    if !args.iter().any(|arg| arg == "--no-replace-objects") {
+        // Attribution diffs describe the physical commit being checkpointed.
+        // A concurrently active `git replace` graft can otherwise make an
+        // ordinary `<commit>^` range disappear or resolve to unrelated
+        // history while the daemon processes an earlier command.
+        out.push("--no-replace-objects".to_string());
+    }
+    out.push(args[command_index].clone());
     for option in options {
         if !args.iter().any(|arg| arg == option) {
             out.push((*option).to_string());
@@ -3472,6 +3480,11 @@ mod tests {
         );
         assert!(rewritten.iter().any(|arg| arg == "--indent-heuristic"));
         assert!(rewritten.iter().any(|arg| arg == "--inter-hunk-context=0"));
+        let command = rewritten
+            .iter()
+            .position(|arg| arg == "diff")
+            .expect("diff subcommand");
+        assert_eq!(rewritten[command - 1], "--no-replace-objects");
     }
 
     #[test]
@@ -3513,6 +3526,23 @@ mod tests {
         let args = vec!["status".to_string(), "--porcelain=v2".to_string()];
         let rewritten = args_with_internal_git_profile(&args, InternalGitProfile::General);
         assert_eq!(rewritten, args);
+    }
+
+    #[test]
+    fn machine_parse_profile_keeps_global_options_before_no_replace_objects() {
+        let args = vec![
+            "-C".to_string(),
+            "/tmp/repo".to_string(),
+            "diff".to_string(),
+            "HEAD^".to_string(),
+            "HEAD".to_string(),
+        ];
+        let rewritten = args_with_internal_git_profile(&args, InternalGitProfile::RawDiffParse);
+
+        assert_eq!(
+            &rewritten[..4],
+            ["-C", "/tmp/repo", "--no-replace-objects", "diff"]
+        );
     }
 
     #[test]

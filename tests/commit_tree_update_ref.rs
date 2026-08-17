@@ -874,7 +874,7 @@ fn delayed_checkout_switch_merge_trace_replay_does_not_attribute_later_uncheckpo
     file.assert_committed_lines(lines![
         "one feature".human(),
         "two ai".ai(),
-        "later untracked".ai(),
+        "later untracked".unattributed_human(),
     ]);
 }
 
@@ -889,6 +889,49 @@ fn test_delayed_switch_merge_trace_replay_does_not_attribute_later_uncheckpointe
 fn test_delayed_checkout_merge_trace_replay_does_not_attribute_later_uncheckpointed_edit() {
     delayed_checkout_switch_merge_trace_replay_does_not_attribute_later_uncheckpointed_edit(&[
         "checkout", "--merge", "feature",
+    ]);
+}
+
+#[test]
+fn switch_recovery_boundary_survives_partial_commit_carryover() {
+    let repo = TestRepo::new();
+    let mut base = repo.filename("base.txt");
+    base.set_contents(lines!["base"]);
+    repo.stage_all_and_commit("base").unwrap();
+    base.assert_committed_lines(lines!["base".human()]);
+    let default_branch = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    let mut feature = repo.filename("feature.txt");
+    feature.set_contents(lines!["feature"]);
+    repo.stage_all_and_commit("feature").unwrap();
+    feature.assert_committed_lines(lines!["feature".human()]);
+    repo.git(&["checkout", &default_branch]).unwrap();
+
+    let mut first = repo.filename("first.txt");
+    first.set_contents_no_stage(lines!["first carried AI".ai()]);
+    let mut second = repo.filename("second.txt");
+    second.set_contents_no_stage(lines!["second carried AI".ai()]);
+    repo.git_ai(&["checkpoint", "mock_ai", "--", "first.txt", "second.txt"])
+        .unwrap();
+
+    repo.git(&["switch", "feature"]).unwrap();
+    repo.git(&["add", "--", "first.txt"]).unwrap();
+    repo.git(&["commit", "-m", "commit part of carried AI"])
+        .unwrap();
+    first.assert_committed_lines(lines!["first carried AI".ai()]);
+
+    fs::write(
+        repo.path().join("second.txt"),
+        "second carried AI\nlater human\n",
+    )
+    .unwrap();
+    repo.git(&["add", "--", "second.txt"]).unwrap();
+    repo.git(&["commit", "-m", "commit remaining carried AI"])
+        .unwrap();
+    second.assert_committed_lines(lines![
+        "second carried AI".ai(),
+        "later human".unattributed_human(),
     ]);
 }
 
@@ -1031,18 +1074,30 @@ fn test_delayed_multi_cherry_pick_trace_replay_starts_at_first_pick_when_interme
 
     file.set_contents(lines!["base"]);
     let base = repo.stage_all_and_commit("base").unwrap();
+    file.assert_committed_lines(lines!["base".human()]);
     let default_branch = repo.current_branch();
 
     repo.git(&["checkout", "-b", "feature"]).unwrap();
-    file.set_contents(lines!["base", "first picked ai".ai()]);
+    // Record an explicit human checkpoint for the adjacent inherited line.
+    // This keeps edge recovery focused on the new AI line below.
+    file.replace_at(0, "temporary human anchor".human());
+    file.replace_at(0, "base".human());
+    // Anchor the adjacent base line as human before replacing a placeholder
+    // with AI content. A direct adjacent AI insertion is a single diff hunk
+    // and would intentionally attribute the whole hunk to the checkpoint.
+    file.insert_at(1, lines!["first picked ai".human()]);
+    file.replace_at(1, "||__AI LINE__ PENDING__||".human());
+    file.replace_at(1, "first picked ai".ai());
     repo.stage_all_and_commit("first picked ai").unwrap();
+    file.assert_committed_lines(lines!["base".human(), "first picked ai".ai()]);
     let source_one = head_sha(&repo);
-    file.set_contents(lines![
-        "base",
+    file.insert_at(2, lines!["second picked ai".ai()]);
+    repo.stage_all_and_commit("second picked ai").unwrap();
+    file.assert_committed_lines(lines![
+        "base".human(),
         "first picked ai".ai(),
         "second picked ai".ai(),
     ]);
-    repo.stage_all_and_commit("second picked ai").unwrap();
     let source_two = head_sha(&repo);
 
     repo.git(&["checkout", &default_branch]).unwrap();
@@ -1079,7 +1134,7 @@ fn test_delayed_multi_cherry_pick_trace_replay_starts_at_first_pick_when_interme
     assert_note_has_ai_for_file(&repo, &picked_commits[0], "multi-picked.txt");
     assert_note_has_ai_for_file(&repo, &picked_commits[1], "multi-picked.txt");
     file.assert_committed_lines(lines![
-        "base".ai(),
+        "base".human(),
         "first picked ai".ai(),
         "second picked ai".ai(),
     ]);
@@ -1149,18 +1204,27 @@ fn test_delayed_pull_rebase_trace_replay_starts_at_start_when_intermediate_ref_k
 
     file.set_contents(lines!["base"]);
     let initial = local.stage_all_and_commit("initial").unwrap();
+    file.assert_committed_lines(lines!["base".human()]);
     local
         .git(&["push", "-u", "origin", "HEAD"])
         .expect("push initial commit should succeed");
 
-    file.set_contents(lines!["base", "first local ai".ai()]);
+    // Record an explicit human checkpoint for the adjacent inherited line.
+    // This keeps edge recovery focused on the new AI line below.
+    file.replace_at(0, "temporary human anchor".human());
+    file.replace_at(0, "base".human());
+    file.insert_at(1, lines!["first local ai".human()]);
+    file.replace_at(1, "||__AI LINE__ PENDING__||".human());
+    file.replace_at(1, "first local ai".ai());
     local.stage_all_and_commit("first local ai").unwrap();
-    file.set_contents(lines![
-        "base",
+    file.assert_committed_lines(lines!["base".human(), "first local ai".ai()]);
+    file.insert_at(2, lines!["second local ai".ai()]);
+    let local_tip = local.stage_all_and_commit("second local ai").unwrap();
+    file.assert_committed_lines(lines![
+        "base".human(),
         "first local ai".ai(),
         "second local ai".ai(),
     ]);
-    let local_tip = local.stage_all_and_commit("second local ai").unwrap();
     let branch = local.current_branch();
 
     local
@@ -1213,7 +1277,7 @@ fn test_delayed_pull_rebase_trace_replay_starts_at_start_when_intermediate_ref_k
     assert_note_has_ai_for_file(&local, &rebased_commits[0], "pull-rebase-picked.txt");
     assert_note_has_ai_for_file(&local, &rebased_commits[1], "pull-rebase-picked.txt");
     file.assert_committed_lines(lines![
-        "base".ai(),
+        "base".human(),
         "first local ai".ai(),
         "second local ai".ai(),
     ]);

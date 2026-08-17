@@ -1623,6 +1623,11 @@ fn apply_checkout_switch_working_log_side_effect(
             // special `initial` working log. Bridge the pending checkpoint log
             // to that slot instead of losing it with the former base commit.
             repo.storage.rename_working_log(&old_head, "initial")?;
+            if repo.storage.has_working_log("initial") {
+                repo.storage
+                    .working_log_for_base_commit("initial")?
+                    .block_edge_recovery()?;
+            }
         }
         return Ok(());
     }
@@ -1674,11 +1679,19 @@ fn apply_checkout_switch_working_log_side_effect(
             final_state,
             Some(author),
         )?;
+        repo.storage
+            .working_log_for_base_commit(&new_head)?
+            .block_edge_recovery()?;
         repo.storage.delete_working_log_for_base_commit(&old_head)?;
         return Ok(());
     }
 
     repo.storage.rename_working_log(&old_head, &new_head)?;
+    if repo.storage.has_working_log(&new_head) {
+        repo.storage
+            .working_log_for_base_commit(&new_head)?
+            .block_edge_recovery()?;
+    }
     Ok(())
 }
 
@@ -7632,7 +7645,7 @@ impl ActorDaemonCoordinator {
                                         let pathspecs = Self::stash_pathspecs_from_command(cmd);
                                         let keep_index = Self::stash_keeps_index(cmd);
                                         crate::authorship::rewrite_stash::handle_stash_create(
-                                            &repo, stash_sha, head_sha, pathspecs, keep_index,
+                                            &repo, stash_sha, head_sha, pathspecs, keep_index, true,
                                         )?;
                                     }
                                 }
@@ -7648,6 +7661,7 @@ impl ActorDaemonCoordinator {
                                         head_sha,
                                         Vec::new(),
                                         true,
+                                        false,
                                     )?;
                                 }
                             }

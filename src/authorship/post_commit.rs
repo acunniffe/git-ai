@@ -354,6 +354,7 @@ where
     // Initialize the new storage system
     let repo_storage = &repo.storage;
     let working_log = repo_storage.working_log_for_base_commit(&parent_sha)?;
+    let blocked_edge_recovery_paths = working_log.edge_recovery_blocked_paths();
 
     let parent_working_log = working_log.read_all_checkpoints()?;
 
@@ -458,6 +459,7 @@ where
         crate::diagnostic_sentinels::path_is_in_debug_self_check_root(&workdir)
     });
     // Synthetic self-check commits already provide explicit attribution for every line.
+    let mut committed_paths = HashSet::new();
     if options.recover_attribution && !is_debug_self_check {
         let recovery_hunks = recovery_committed_hunks(
             repo,
@@ -465,6 +467,7 @@ where
             &commit_sha,
             context.precomputed_parent_diff,
         )?;
+        committed_paths.extend(recovery_hunks.keys().cloned());
         crate::authorship::attribution_recovery::recover_attribution(
             repo,
             &parent_sha,
@@ -477,6 +480,7 @@ where
                 before_external_recovery: context.before_external_recovery,
                 bash_command_window: context.bash_command_window,
                 bash_scope_to_pre_index: context.bash_scope_to_pre_index,
+                blocked_edge_recovery_paths: Some(&blocked_edge_recovery_paths),
             },
         )?;
         authorship_log.metadata.base_commit_sha = commit_sha.clone();
@@ -593,6 +597,13 @@ where
     }
 
     // Write INITIAL file for uncommitted AI attributions (if any)
+    let carried_blocked_paths = blocked_edge_recovery_paths
+        .iter()
+        .filter(|path| {
+            !committed_paths.contains(*path) || initial_attributions.files.contains_key(*path)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
     if !initial_attributions.files.is_empty() {
         let new_working_log = repo_storage.working_log_for_base_commit(&commit_sha)?;
         new_working_log.write_initial_attributions_with_contents(
@@ -602,6 +613,10 @@ where
             initial_file_contents,
             initial_attributions.sessions,
         )?;
+    }
+    if !carried_blocked_paths.is_empty() {
+        let new_working_log = repo_storage.working_log_for_base_commit(&commit_sha)?;
+        new_working_log.block_edge_recovery_for_paths(carried_blocked_paths)?;
     }
 
     // // Clean up old working log
@@ -797,6 +812,7 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
 ) -> Result<PostCommitAmendResult, GitAiError> {
     let repo_storage = &repo.storage;
     let working_log = repo_storage.working_log_for_base_commit(original_commit)?;
+    let blocked_edge_recovery_paths = working_log.edge_recovery_blocked_paths();
 
     // Compute pathspecs: changed files in the amended commit + working log touched files
     let changed_files = repo.list_commit_files(amended_commit, None)?;
@@ -896,6 +912,7 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
     }
 
     let recovery_hunks = recovery_committed_hunks(repo, &parent_sha, amended_commit, None)?;
+    let committed_paths = recovery_hunks.keys().cloned().collect::<HashSet<_>>();
     crate::authorship::attribution_recovery::recover_attribution(
         repo,
         &parent_sha,
@@ -908,6 +925,7 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
             before_external_recovery,
             bash_command_window: None,
             bash_scope_to_pre_index: false,
+            blocked_edge_recovery_paths: Some(&blocked_edge_recovery_paths),
         },
     )?;
     authorship_log.metadata.base_commit_sha = amended_commit.to_string();
@@ -963,6 +981,13 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
     write_note(repo, amended_commit, &authorship_note_str)?;
 
     // Write INITIAL file for uncommitted attributions
+    let carried_blocked_paths = blocked_edge_recovery_paths
+        .iter()
+        .filter(|path| {
+            !committed_paths.contains(*path) || initial_attributions.files.contains_key(*path)
+        })
+        .cloned()
+        .collect::<Vec<_>>();
     if !initial_attributions.files.is_empty() {
         let new_working_log = repo_storage.working_log_for_base_commit(amended_commit)?;
         new_working_log.write_initial_attributions_with_contents(
@@ -972,6 +997,10 @@ pub(crate) fn post_commit_amend_with_recovery_timestamps_detailed(
             initial_file_contents,
             initial_attributions.sessions,
         )?;
+    }
+    if !carried_blocked_paths.is_empty() {
+        let new_working_log = repo_storage.working_log_for_base_commit(amended_commit)?;
+        new_working_log.block_edge_recovery_for_paths(carried_blocked_paths)?;
     }
 
     // Clean up old working log
