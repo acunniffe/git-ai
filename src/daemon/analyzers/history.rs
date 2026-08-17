@@ -20,7 +20,31 @@ impl CommandAnalyzer for HistoryAnalyzer {
 
         let mut events = Vec::new();
         match name {
-            "commit" | "revert" => {
+            "am" => {
+                if args.iter().any(|arg| arg == "--abort") {
+                    if let Some((old_head, new_head)) = head_change(cmd, state.refs) {
+                        events.push(SemanticEvent::Reset {
+                            kind: ResetKind::Hard,
+                            old_head,
+                            new_head,
+                        });
+                    }
+                } else {
+                    let transitions = cmd
+                        .ref_changes
+                        .iter()
+                        .filter(|change| change.reference == "HEAD")
+                        .filter_map(valid_ref_transition)
+                        .collect::<Vec<_>>();
+                    if let Some((original_head, _)) = transitions.first() {
+                        events.push(SemanticEvent::AmApplied {
+                            original_head: original_head.clone(),
+                            new_commits: transitions.into_iter().map(|(_, new)| new).collect(),
+                        });
+                    }
+                }
+            }
+            "commit" => {
                 let amend = args.iter().any(|arg| arg == "--amend");
                 if amend {
                     if let Some((old_head, new_head)) = amend_head_change(cmd) {
@@ -33,12 +57,57 @@ impl CommandAnalyzer for HistoryAnalyzer {
                     });
                 }
             }
+            "revert" => {
+                if args.iter().any(|arg| arg == "--abort") {
+                    events.push(SemanticEvent::RevertAbort {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
+                } else if args.iter().any(|arg| arg == "--quit") {
+                    events.push(SemanticEvent::RevertQuit {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
+                } else if args.iter().any(|arg| arg == "--no-commit" || arg == "-n") {
+                    events.push(SemanticEvent::RevertNoCommit {
+                        source_commits: cmd.revert_source_oids.clone(),
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
+                } else if let Some((old_head, new_head)) = head_change(cmd, state.refs) {
+                    let resulting_head = new_head.clone();
+                    events.push(SemanticEvent::CommitCreated {
+                        base: sanitize_base(Some(old_head), &new_head),
+                        new_head,
+                    });
+                    if cmd.exit_code != 0 {
+                        events.push(SemanticEvent::RevertPrepared {
+                            source_commits: cmd.revert_source_oids.clone(),
+                            head: resulting_head,
+                        });
+                    }
+                } else if args.iter().any(|arg| arg == "--skip") {
+                    events.push(SemanticEvent::RevertSkip {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
+                } else if cmd.exit_code != 0 {
+                    events.push(SemanticEvent::RevertPrepared {
+                        source_commits: cmd.revert_source_oids.clone(),
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
+                }
+            }
             "reset" => {
                 if let Some((old_head, new_head)) = head_change(cmd, state.refs) {
                     events.push(SemanticEvent::Reset {
                         kind: infer_reset_kind(&args),
                         old_head,
                         new_head,
+                    });
+                } else if !reset_has_pathspec(&args)
+                    && let Some(head) = current_head_from_ref_data(cmd, state.refs)
+                {
+                    events.push(SemanticEvent::Reset {
+                        kind: infer_reset_kind(&args),
+                        old_head: head.clone(),
+                        new_head: head,
                     });
                 }
             }
@@ -47,17 +116,39 @@ impl CommandAnalyzer for HistoryAnalyzer {
                     events.push(SemanticEvent::RebaseAbort {
                         head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
                     });
-                } else if let Some((old_head, new_head)) = rebase_change(cmd, state.refs) {
-                    events.push(SemanticEvent::RebaseComplete {
-                        old_head,
-                        new_head,
-                        interactive: args.iter().any(|arg| arg == "-i" || arg == "--interactive"),
+                } else if args.iter().any(|arg| arg == "--quit") {
+                    events.push(SemanticEvent::RebaseQuit {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
                     });
+                } else {
+                    if args.iter().any(|arg| arg == "--skip") {
+                        events.push(SemanticEvent::RebaseSkip {
+                            head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                        });
+                    }
+                    if let Some((old_head, new_head)) = rebase_change(cmd, state.refs) {
+                        events.push(SemanticEvent::RebaseComplete {
+                            old_head,
+                            new_head,
+                            interactive: args
+                                .iter()
+                                .any(|arg| arg == "-i" || arg == "--interactive"),
+                        });
+                    }
+                    if cmd.exit_code != 0 {
+                        events.push(SemanticEvent::RebasePrepared {
+                            head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                        });
+                    }
                 }
             }
             "cherry-pick" => {
                 if args.iter().any(|arg| arg == "--abort") {
                     events.push(SemanticEvent::CherryPickAbort {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
+                } else if args.iter().any(|arg| arg == "--quit") {
+                    events.push(SemanticEvent::CherryPickQuit {
                         head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
                     });
                 } else if args.iter().any(|arg| arg == "--no-commit" || arg == "-n") {
@@ -66,26 +157,51 @@ impl CommandAnalyzer for HistoryAnalyzer {
                         head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
                     });
                 } else if let Some((old_head, new_head)) = head_change(cmd, state.refs) {
+                    let resulting_head = new_head.clone();
                     events.push(SemanticEvent::CherryPickComplete {
                         original_head: old_head,
                         new_head,
                         source_commits: cmd.cherry_pick_source_oids.clone(),
                         new_commits: cherry_pick_new_commits(cmd),
                     });
+                    if cmd.exit_code != 0 {
+                        events.push(SemanticEvent::CherryPickPrepared {
+                            head: resulting_head,
+                        });
+                    }
+                } else if args.iter().any(|arg| arg == "--skip") {
+                    events.push(SemanticEvent::CherryPickSkip {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
+                } else if cmd.exit_code != 0 {
+                    events.push(SemanticEvent::CherryPickPrepared {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
                 }
             }
             "merge" => {
-                if args.iter().any(|arg| arg == "--squash") {
+                if args.iter().any(|arg| arg == "--abort") {
+                    events.push(SemanticEvent::MergeAbort {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
+                } else if args.iter().any(|arg| arg == "--quit") {
+                    events.push(SemanticEvent::MergeQuit {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
+                    });
+                } else if args.iter().any(|arg| arg == "--squash") {
                     if let Some(source_head) = squash_source_head(&args, state.refs)
                         && let Some(onto) = current_head_from_ref_data(cmd, state.refs)
                     {
                         events.push(SemanticEvent::MergeSquash { source_head, onto });
                     }
                 } else if let Some((old_head, new_head)) = head_change(cmd, state.refs) {
-                    events.push(SemanticEvent::RefUpdated {
-                        reference: "HEAD".to_string(),
-                        old: old_head,
-                        new: new_head,
+                    events.push(SemanticEvent::MergeComplete {
+                        original_head: old_head,
+                        new_head,
+                    });
+                } else if args.iter().any(|arg| arg == "--no-commit") || cmd.exit_code != 0 {
+                    events.push(SemanticEvent::MergePrepared {
+                        head: current_head_from_ref_data(cmd, state.refs).unwrap_or_default(),
                     });
                 }
             }
@@ -394,6 +510,24 @@ fn infer_reset_kind(args: &[String]) -> ResetKind {
     ResetKind::Mixed
 }
 
+fn reset_has_pathspec(args: &[String]) -> bool {
+    if args
+        .iter()
+        .any(|arg| arg == "--pathspec-from-file" || arg.starts_with("--pathspec-from-file="))
+    {
+        return true;
+    }
+    if let Some(separator) = args.iter().position(|arg| arg == "--") {
+        return separator + 1 < args.len();
+    }
+
+    let positionals = args.iter().filter(|arg| !arg.starts_with('-')).count();
+    // The first positional may be the reset target; subsequent positionals
+    // can only be pathspecs. Ambiguous one-positional forms remain whole-tree
+    // resets so revisions such as `HEAD~1` keep their reset semantics.
+    positionals > 1
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -546,6 +680,268 @@ mod tests {
     }
 
     #[test]
+    fn merge_conflict_emits_prepared_at_current_head() {
+        let analyzer = HistoryAnalyzer;
+        let mut cmd = command("merge", &["git", "merge", "feature"]);
+        cmd.exit_code = 1;
+        cmd.ref_changes.clear();
+        let refs = std::collections::HashMap::from([(
+            "HEAD".to_string(),
+            "1111111111111111111111111111111111111111".to_string(),
+        )]);
+
+        let result = analyzer
+            .analyze(&cmd, AnalysisView { refs: &refs })
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::MergePrepared { head }]
+                if head == "1111111111111111111111111111111111111111"
+        ));
+    }
+
+    #[test]
+    fn merge_continue_transition_emits_complete() {
+        let analyzer = HistoryAnalyzer;
+        let mut cmd = command("merge", &["git", "merge", "--continue"]);
+        cmd.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "1111111111111111111111111111111111111111".to_string(),
+            new: "2222222222222222222222222222222222222222".to_string(),
+        }];
+
+        let result = analyzer
+            .analyze(
+                &cmd,
+                AnalysisView {
+                    refs: &Default::default(),
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::MergeComplete {
+                original_head,
+                new_head,
+            }] if original_head == "1111111111111111111111111111111111111111"
+                && new_head == "2222222222222222222222222222222222222222"
+        ));
+    }
+
+    #[test]
+    fn merge_abort_and_quit_emit_distinct_controls() {
+        let analyzer = HistoryAnalyzer;
+        let refs = std::collections::HashMap::from([(
+            "HEAD".to_string(),
+            "1111111111111111111111111111111111111111".to_string(),
+        )]);
+
+        for (flag, abort) in [("--abort", true), ("--quit", false)] {
+            let mut cmd = command("merge", &["git", "merge", flag]);
+            cmd.ref_changes.clear();
+            let result = analyzer
+                .analyze(&cmd, AnalysisView { refs: &refs })
+                .unwrap();
+            assert!(result.events.iter().any(|event| match event {
+                SemanticEvent::MergeAbort { head } if abort => {
+                    head == "1111111111111111111111111111111111111111"
+                }
+                SemanticEvent::MergeQuit { head } if !abort => {
+                    head == "1111111111111111111111111111111111111111"
+                }
+                _ => false,
+            }));
+        }
+    }
+
+    #[test]
+    fn revert_no_commit_and_conflict_preserve_source_context() {
+        let analyzer = HistoryAnalyzer;
+        let refs = std::collections::HashMap::from([(
+            "HEAD".to_string(),
+            "1111111111111111111111111111111111111111".to_string(),
+        )]);
+        let source = "2222222222222222222222222222222222222222".to_string();
+
+        let mut no_commit = command("revert", &["git", "revert", "--no-commit", "source"]);
+        no_commit.ref_changes.clear();
+        no_commit.revert_source_oids = vec![source.clone()];
+        let result = analyzer
+            .analyze(&no_commit, AnalysisView { refs: &refs })
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::RevertNoCommit {
+                source_commits,
+                head,
+            }] if source_commits == &vec![source.clone()]
+                && head == "1111111111111111111111111111111111111111"
+        ));
+
+        let mut conflict = command("revert", &["git", "revert", "source"]);
+        conflict.exit_code = 1;
+        conflict.ref_changes.clear();
+        conflict.revert_source_oids = vec![source.clone()];
+        let result = analyzer
+            .analyze(&conflict, AnalysisView { refs: &refs })
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::RevertPrepared {
+                source_commits,
+                head,
+            }] if source_commits == &vec![source.clone()]
+                && head == "1111111111111111111111111111111111111111"
+        ));
+
+        let mut partial = command(
+            "revert",
+            &["git", "revert", "first-source", "second-source"],
+        );
+        partial.exit_code = 1;
+        partial.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "1111111111111111111111111111111111111111".to_string(),
+            new: "3333333333333333333333333333333333333333".to_string(),
+        }];
+        partial.revert_source_oids = vec![source.clone()];
+        let result = analyzer
+            .analyze(&partial, AnalysisView { refs: &refs })
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [
+                SemanticEvent::CommitCreated { base, new_head },
+                SemanticEvent::RevertPrepared {
+                    source_commits,
+                    head,
+                },
+            ] if base.as_deref() == Some("1111111111111111111111111111111111111111")
+                && new_head == "3333333333333333333333333333333333333333"
+                && source_commits == &vec![source]
+                && head == "3333333333333333333333333333333333333333"
+        ));
+    }
+
+    #[test]
+    fn revert_controls_are_distinct() {
+        let analyzer = HistoryAnalyzer;
+        let refs = std::collections::HashMap::from([(
+            "HEAD".to_string(),
+            "1111111111111111111111111111111111111111".to_string(),
+        )]);
+        for flag in ["--abort", "--quit", "--skip"] {
+            let mut cmd = command("revert", &["git", "revert", flag]);
+            cmd.ref_changes.clear();
+            let result = analyzer
+                .analyze(&cmd, AnalysisView { refs: &refs })
+                .unwrap();
+            assert!(result.events.iter().any(|event| matches!(
+                (flag, event),
+                ("--abort", SemanticEvent::RevertAbort { .. })
+                    | ("--quit", SemanticEvent::RevertQuit { .. })
+                    | ("--skip", SemanticEvent::RevertSkip { .. })
+            )));
+        }
+    }
+
+    #[test]
+    fn revert_skip_with_created_commits_emits_commit_transition() {
+        let analyzer = HistoryAnalyzer;
+        let mut cmd = command("revert", &["git", "revert", "--skip"]);
+        cmd.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "1111111111111111111111111111111111111111".to_string(),
+            new: "2222222222222222222222222222222222222222".to_string(),
+        }];
+        let result = analyzer
+            .analyze(
+                &cmd,
+                AnalysisView {
+                    refs: &Default::default(),
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::CommitCreated { base, new_head }]
+                if base.as_deref() == Some("1111111111111111111111111111111111111111")
+                    && new_head == "2222222222222222222222222222222222222222"
+        ));
+    }
+
+    #[test]
+    fn cherry_pick_conflict_and_terminal_controls_are_distinct() {
+        let analyzer = HistoryAnalyzer;
+        let refs = std::collections::HashMap::from([(
+            "HEAD".to_string(),
+            "1111111111111111111111111111111111111111".to_string(),
+        )]);
+        let mut conflict = command("cherry-pick", &["git", "cherry-pick", "source"]);
+        conflict.exit_code = 1;
+        conflict.ref_changes.clear();
+        let result = analyzer
+            .analyze(&conflict, AnalysisView { refs: &refs })
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::CherryPickPrepared { head }]
+                if head == "1111111111111111111111111111111111111111"
+        ));
+
+        for flag in ["--abort", "--quit", "--skip"] {
+            let mut cmd = command("cherry-pick", &["git", "cherry-pick", flag]);
+            cmd.ref_changes.clear();
+            let result = analyzer
+                .analyze(&cmd, AnalysisView { refs: &refs })
+                .unwrap();
+            assert!(result.events.iter().any(|event| matches!(
+                (flag, event),
+                ("--abort", SemanticEvent::CherryPickAbort { .. })
+                    | ("--quit", SemanticEvent::CherryPickQuit { .. })
+                    | ("--skip", SemanticEvent::CherryPickSkip { .. })
+            )));
+        }
+    }
+
+    #[test]
+    fn rebase_prepared_quit_and_skip_events_are_explicit() {
+        let analyzer = HistoryAnalyzer;
+        let refs = std::collections::HashMap::from([(
+            "HEAD".to_string(),
+            "2222222222222222222222222222222222222222".to_string(),
+        )]);
+        let mut conflict = command("rebase", &["git", "rebase", "main"]);
+        conflict.exit_code = 1;
+        conflict.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "1111111111111111111111111111111111111111".to_string(),
+            new: "2222222222222222222222222222222222222222".to_string(),
+        }];
+        let result = analyzer
+            .analyze(&conflict, AnalysisView { refs: &refs })
+            .unwrap();
+        assert!(result.events.iter().any(|event| matches!(
+            event,
+            SemanticEvent::RebasePrepared { head }
+                if head == "2222222222222222222222222222222222222222"
+        )));
+
+        for (flag, expected_quit) in [("--quit", true), ("--skip", false)] {
+            let mut cmd = command("rebase", &["git", "rebase", flag]);
+            cmd.ref_changes.clear();
+            let result = analyzer
+                .analyze(&cmd, AnalysisView { refs: &refs })
+                .unwrap();
+            assert!(result.events.iter().any(|event| match event {
+                SemanticEvent::RebaseQuit { .. } if expected_quit => true,
+                SemanticEvent::RebaseSkip { .. } if !expected_quit => true,
+                _ => false,
+            }));
+        }
+    }
+
+    #[test]
     fn commit_without_amend_emits_commit_created() {
         let analyzer = HistoryAnalyzer;
         let result = analyzer
@@ -562,6 +958,75 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, SemanticEvent::CommitCreated { .. }))
         );
+    }
+
+    #[test]
+    fn am_emits_one_batch_event_with_every_head_destination() {
+        let analyzer = HistoryAnalyzer;
+        let mut cmd = command("am", &["git", "am", "series.patch"]);
+        cmd.ref_changes = vec![
+            RefChange {
+                reference: "HEAD".to_string(),
+                old: "1111111111111111111111111111111111111111".to_string(),
+                new: "2222222222222222222222222222222222222222".to_string(),
+            },
+            RefChange {
+                reference: "HEAD".to_string(),
+                old: "2222222222222222222222222222222222222222".to_string(),
+                new: "3333333333333333333333333333333333333333".to_string(),
+            },
+        ];
+
+        let result = analyzer
+            .analyze(
+                &cmd,
+                AnalysisView {
+                    refs: &Default::default(),
+                },
+            )
+            .unwrap();
+        assert_eq!(result.events.len(), 1);
+        assert!(matches!(
+            &result.events[0],
+            SemanticEvent::AmApplied {
+                original_head,
+                new_commits,
+            } if original_head == "1111111111111111111111111111111111111111"
+                && new_commits == &vec![
+                    "2222222222222222222222222222222222222222".to_string(),
+                    "3333333333333333333333333333333333333333".to_string(),
+                ]
+        ));
+    }
+
+    #[test]
+    fn am_abort_is_a_hard_reset_not_an_applied_patch() {
+        let analyzer = HistoryAnalyzer;
+        let mut cmd = command("am", &["git", "am", "--abort"]);
+        cmd.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "2222222222222222222222222222222222222222".to_string(),
+            new: "1111111111111111111111111111111111111111".to_string(),
+        }];
+
+        let result = analyzer
+            .analyze(
+                &cmd,
+                AnalysisView {
+                    refs: &Default::default(),
+                },
+            )
+            .unwrap();
+        assert_eq!(result.events.len(), 1);
+        assert!(matches!(
+            &result.events[0],
+            SemanticEvent::Reset {
+                kind: ResetKind::Hard,
+                old_head,
+                new_head,
+            } if old_head == "2222222222222222222222222222222222222222"
+                && new_head == "1111111111111111111111111111111111111111"
+        ));
     }
 
     #[test]
@@ -694,6 +1159,42 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn same_head_pathspec_reset_does_not_emit_whole_tree_reset() {
+        let analyzer = HistoryAnalyzer;
+        let refs = std::collections::HashMap::from([(
+            "HEAD".to_string(),
+            "1111111111111111111111111111111111111111".to_string(),
+        )]);
+
+        for argv in [
+            vec!["git", "reset", "HEAD", "file.txt"],
+            vec!["git", "reset", "HEAD", "--", "file.txt"],
+        ] {
+            let mut cmd = command("reset", &argv);
+            cmd.ref_changes.clear();
+            let result = analyzer
+                .analyze(&cmd, AnalysisView { refs: &refs })
+                .unwrap();
+            assert_only_opaque(&result);
+        }
+
+        let mut whole_tree = command("reset", &["git", "reset", "--hard", "HEAD"]);
+        whole_tree.ref_changes.clear();
+        let result = analyzer
+            .analyze(&whole_tree, AnalysisView { refs: &refs })
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [SemanticEvent::Reset {
+                kind: ResetKind::Hard,
+                old_head,
+                new_head,
+            }] if old_head == "1111111111111111111111111111111111111111"
+                && new_head == old_head
+        ));
     }
 
     #[test]

@@ -86,6 +86,7 @@ fn is_repo_admin_command(command: &str) -> bool {
             | "fsck"
             | "prune"
             | "pack-refs"
+            | "repack"
             | "reflog"
     )
 }

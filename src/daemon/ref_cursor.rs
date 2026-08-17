@@ -27,6 +27,7 @@ pub struct RefCursor {
     command_start_hints: HashMap<String, u64>,
     stash_stack: Vec<String>,
     pending_cherry_pick_source_oids: Vec<String>,
+    pending_revert_source_oids: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +100,7 @@ struct ReflogAnchor {
 }
 
 const CHERRY_PICK_REFLOG_PREFIXES: &[&str] = &["cherry-pick:", "commit (cherry-pick):"];
+const AM_REFLOG_PREFIXES: &[&str] = &["am:"];
 
 enum ColdSeedMatchSpec {
     SingleEntry {
@@ -130,6 +132,7 @@ impl RefCursor {
             command_start_hints: HashMap::new(),
             stash_stack: Vec::new(),
             pending_cherry_pick_source_oids: Vec::new(),
+            pending_revert_source_oids: Vec::new(),
         }
     }
 
@@ -150,11 +153,17 @@ impl RefCursor {
         let Some(primary) = cmd.primary_command.as_deref() else {
             return Ok(command_start_refs);
         };
-        if !command_uses_ref_cursor(primary) {
+        if !command_uses_ref_cursor(primary)
+            || crate::git::command_classification::is_definitely_read_only_git_invocation(
+                primary,
+                &command_args(cmd),
+            )
+        {
             return Ok(command_start_refs);
         }
 
         match primary {
+            "am" => self.enrich_am(cmd, state),
             "commit" => self.enrich_commit(cmd, state),
             "revert" => self.enrich_revert(cmd, state),
             "reset" => {
@@ -171,6 +180,11 @@ impl RefCursor {
             "checkout" => {
                 if checkout_is_path_checkout(cmd) {
                     Ok(())
+                } else if checkout_or_switch_is_orphan(cmd) {
+                    if cmd.exit_code == 0 {
+                        enrich_orphan_head_transition(cmd, state, &command_start_refs);
+                    }
+                    Ok(())
                 } else {
                     self.consume_head_transition_for_command(
                         cmd,
@@ -180,24 +194,40 @@ impl RefCursor {
                     )
                 }
             }
-            "switch" => self.consume_head_transition_for_command(
-                cmd,
-                state,
-                &["checkout:", "switch:"],
-                self.head_expected_transition(cmd, state),
-            ),
-            "merge" => self.consume_head_transition_for_command(
-                cmd,
-                state,
-                &["merge"],
-                self.head_expected_transition(cmd, state),
-            ),
+            "switch" => {
+                if checkout_or_switch_is_orphan(cmd) {
+                    if cmd.exit_code == 0 {
+                        enrich_orphan_head_transition(cmd, state, &command_start_refs);
+                    }
+                    Ok(())
+                } else {
+                    self.consume_head_transition_for_command(
+                        cmd,
+                        state,
+                        &["checkout:", "switch:"],
+                        self.head_expected_transition(cmd, state),
+                    )
+                }
+            }
+            "merge" => {
+                let args = command_args(cmd);
+                let prefixes = merge_reflog_prefixes(&args);
+                self.consume_head_transition_for_command(
+                    cmd,
+                    state,
+                    prefixes,
+                    self.head_expected_transition(cmd, state),
+                )
+            }
             "cherry-pick" => self.enrich_cherry_pick(cmd, state),
             "rebase" => self.consume_rebase_transition(cmd, state),
             "pull" => self.consume_pull_transition(cmd, state),
             "branch" => self.enrich_branch(cmd, state),
             "stash" => self.enrich_stash(cmd, state),
             "update-ref" => self.enrich_update_ref(cmd, state),
+            "fast-import" | "filter-branch" | "filter-repo" | "symbolic-ref" => {
+                self.enrich_unstructured_ref_mutation(cmd, state)
+            }
             _ => Ok(()),
         }?;
 
@@ -399,6 +429,28 @@ impl RefCursor {
         // their start/pick/finish span shape.
         let args = command_args(cmd);
         match cmd.primary_command.as_deref()? {
+            "am" => {
+                if args.iter().any(|arg| {
+                    matches!(arg.as_str(), "--quit" | "--show-current-patch")
+                        || arg.starts_with("--show-current-patch=")
+                }) {
+                    return None;
+                }
+                if args.iter().any(|arg| arg == "--abort") {
+                    return Some(ColdSeedMatchSpec::SingleEntry {
+                        expected: ExpectedTransition::default(),
+                        prefixes: vec!["am".to_string(), "reset:".to_string()],
+                    });
+                }
+                Some(ColdSeedMatchSpec::HeadSpan {
+                    expected: ExpectedTransition::default(),
+                    prefixes: AM_REFLOG_PREFIXES
+                        .iter()
+                        .map(|prefix| (*prefix).to_string())
+                        .collect(),
+                    limit: usize::MAX,
+                })
+            }
             "commit" => {
                 let amend = args.iter().any(|arg| arg == "--amend");
                 let prefixes: Vec<String> = if amend {
@@ -426,9 +478,10 @@ impl RefCursor {
                     return None;
                 }
                 let source_args = cherry_pick_source_args(&args);
-                let limit = if source_args
-                    .iter()
-                    .any(|source| cherry_pick_source_is_range(source))
+                let limit = if args.iter().any(|arg| arg == "--stdin")
+                    || source_args
+                        .iter()
+                        .any(|source| cherry_pick_source_is_range(source))
                 {
                     usize::MAX
                 } else if source_args.is_empty() {
@@ -439,6 +492,28 @@ impl RefCursor {
                 Some(ColdSeedMatchSpec::HeadSpan {
                     expected: ExpectedTransition::default(),
                     prefixes: CHERRY_PICK_REFLOG_PREFIXES
+                        .iter()
+                        .map(|prefix| (*prefix).to_string())
+                        .collect(),
+                    limit,
+                })
+            }
+            "revert" => {
+                if args.iter().any(|arg| {
+                    matches!(arg.as_str(), "--abort" | "--quit" | "--skip")
+                        || arg == "--no-commit"
+                        || arg == "-n"
+                }) {
+                    return None;
+                }
+                let limit = if args.iter().any(|arg| arg == "--continue") {
+                    self.pending_revert_source_oids.len().max(1)
+                } else {
+                    revert_source_args(&args).len().max(1)
+                };
+                Some(ColdSeedMatchSpec::HeadSpan {
+                    expected: ExpectedTransition::default(),
+                    prefixes: revert_reflog_prefixes(&args)
                         .iter()
                         .map(|prefix| (*prefix).to_string())
                         .collect(),
@@ -541,6 +616,36 @@ impl RefCursor {
         )
     }
 
+    fn enrich_am(
+        &mut self,
+        cmd: &mut NormalizedCommand,
+        state: &FamilyState,
+    ) -> Result<(), GitAiError> {
+        let args = command_args(cmd);
+        if args.iter().any(|arg| {
+            matches!(arg.as_str(), "--quit" | "--show-current-patch")
+                || arg.starts_with("--show-current-patch=")
+        }) {
+            return Ok(());
+        }
+        if args.iter().any(|arg| arg == "--abort") {
+            return self.consume_head_transition_for_command(
+                cmd,
+                state,
+                &["am", "reset:"],
+                self.head_expected_transition(cmd, state),
+            );
+        }
+
+        self.consume_head_span_for_command_limited(
+            cmd,
+            state,
+            AM_REFLOG_PREFIXES,
+            self.head_expected_transition(cmd, state),
+            usize::MAX,
+        )
+    }
+
     fn enrich_cherry_pick(
         &mut self,
         cmd: &mut NormalizedCommand,
@@ -590,7 +695,8 @@ impl RefCursor {
             return Ok(());
         }
 
-        let source_limit = if unresolved_explicit_sources {
+        let source_limit = if unresolved_explicit_sources || args.iter().any(|arg| arg == "--stdin")
+        {
             usize::MAX
         } else {
             cmd.cherry_pick_source_oids.len().max(1)
@@ -636,20 +742,19 @@ impl RefCursor {
             .iter()
             .any(|arg| matches!(arg.as_str(), "--abort" | "--quit"))
         {
+            self.pending_revert_source_oids.clear();
             return Ok(());
         }
 
         let is_no_commit = args.iter().any(|arg| arg == "--no-commit" || arg == "-n");
         let is_continue = args.iter().any(|arg| arg == "--continue");
         let is_skip = args.iter().any(|arg| arg == "--skip");
-        // DEFERRED (code-review #13): on `revert --continue` (resuming after a
-        // conflict) the original source OIDs are not on the command line and we
-        // carry no `pending_revert_source_oids` from the interrupted revert, so
-        // revert_source_oids ends up empty. handle_revert_commit then falls back
-        // to first-parent, which is only exact for `git revert HEAD`; a
-        // multi-commit `revert A B` resumed via --continue can reconstruct the
-        // wrong source base. A precise fix needs the daemon to persist the
-        // pending source OIDs across the conflict pause and replay them here.
+        if is_skip && !self.pending_revert_source_oids.is_empty() {
+            self.pending_revert_source_oids.remove(0);
+        }
+        // Continue/skip do not repeat source OIDs on argv. The daemon persists
+        // the resolved list with the attempt snapshot and reuses it when the
+        // sequencer later creates destination commits.
         let source_args = if is_continue || is_skip {
             Vec::new()
         } else {
@@ -661,7 +766,12 @@ impl RefCursor {
             resolve_cherry_pick_source_oids_from_sources(cmd, state, &source_args)?
         };
         let unresolved_explicit_sources = !source_args.is_empty() && explicit_sources.is_none();
-        cmd.revert_source_oids = explicit_sources.unwrap_or_default();
+        let explicit_sources = explicit_sources.unwrap_or_default();
+        cmd.revert_source_oids = if explicit_sources.is_empty() && !unresolved_explicit_sources {
+            self.pending_revert_source_oids.clone()
+        } else {
+            explicit_sources
+        };
 
         if is_no_commit {
             return Ok(());
@@ -675,10 +785,29 @@ impl RefCursor {
         self.consume_head_span_for_command_limited(
             cmd,
             state,
-            &["revert:"],
+            revert_reflog_prefixes(&args),
             self.head_expected_transition(cmd, state),
             source_limit,
-        )
+        )?;
+
+        let applied_count = cmd
+            .ref_changes
+            .iter()
+            .filter(|change| change.reference == "HEAD")
+            .count();
+        if cmd.exit_code != 0 {
+            self.pending_revert_source_oids = cmd
+                .revert_source_oids
+                .iter()
+                .skip(applied_count.min(cmd.revert_source_oids.len()))
+                .cloned()
+                .collect();
+        } else if is_continue || is_skip || !cmd.revert_source_oids.is_empty() || applied_count > 0
+        {
+            self.pending_revert_source_oids.clear();
+        }
+
+        Ok(())
     }
 
     fn enrich_branch(
@@ -819,19 +948,7 @@ impl RefCursor {
                     changes.push(entry_to_ref_change(&entry));
                 }
             }
-            for reference in self.discover_common_refs()? {
-                if reference == "HEAD" || reference == "ORIG_HEAD" {
-                    continue;
-                }
-                while let Some(entry) = self.find_common_ref_entry_without_hint(
-                    &reference,
-                    ExpectedTransition::default(),
-                    &[],
-                )? {
-                    self.consume_entry(&entry)?;
-                    changes.push(entry_to_ref_change(&entry));
-                }
-            }
+            self.drain_unstructured_common_ref_entries(&mut changes)?;
             dedup_ref_changes(&mut changes);
             cmd.ref_changes = changes;
             return Ok(());
@@ -945,6 +1062,94 @@ impl RefCursor {
         Ok(())
     }
 
+    fn enrich_unstructured_ref_mutation(
+        &mut self,
+        cmd: &mut NormalizedCommand,
+        state: &FamilyState,
+    ) -> Result<(), GitAiError> {
+        let mut changes = Vec::new();
+        if let Some(worktree) = cmd.worktree.as_deref() {
+            while let Some(entry) = self.find_head_entry_without_hint(
+                Some(worktree),
+                &[],
+                ExpectedTransition::default(),
+            )? {
+                self.consume_entry(&entry)?;
+                changes.push(entry_to_ref_change(&entry));
+            }
+        }
+        if !changes.iter().any(|change| change.reference == "HEAD")
+            && let Some(entry) = self.find_late_unstructured_head_entry(cmd, state)?
+        {
+            self.consume_entry(&entry)?;
+            changes.push(entry_to_ref_change(&entry));
+        }
+        self.drain_unstructured_common_ref_entries(&mut changes)?;
+        dedup_ref_changes(&mut changes);
+        cmd.ref_changes = changes;
+        Ok(())
+    }
+
+    /// Recover a fast unstructured mutation whose asynchronous command-start
+    /// sample landed after Git had already appended the command's HEAD reflog
+    /// row. The normal cursor cannot walk backwards from that late cold seed,
+    /// so match the full log against the sequencer's pre-command HEAD and the
+    /// command's wall-clock window. This state anchor prevents an older,
+    /// unrelated ref mutation from being claimed by the traced command.
+    fn find_late_unstructured_head_entry(
+        &self,
+        cmd: &NormalizedCommand,
+        state: &FamilyState,
+    ) -> Result<Option<CursorEntry>, GitAiError> {
+        let Some(worktree) = cmd.worktree.as_deref() else {
+            return Ok(None);
+        };
+        let Some(git_dir) = git_dir_for_worktree(worktree) else {
+            return Ok(None);
+        };
+        let key = head_key(&git_dir);
+        let Some(sampled_offset) = cmd.reflog_start_offsets.get(&key).copied() else {
+            return Ok(None);
+        };
+        let Some(old_head) = sequenced_head_before_command(worktree, state) else {
+            return Ok(None);
+        };
+        let command_window = reflog_timestamp_window(cmd);
+        let path = git_dir.join("logs").join("HEAD");
+
+        Ok(read_reflog_entries(key, &path, "HEAD", None)?
+            .into_iter()
+            .rfind(|entry| {
+                entry.end_offset <= sampled_offset
+                    && !self.entry_consumed(entry)
+                    && entry.old == old_head
+                    && valid_ref_transition(&entry.old, &entry.new)
+                    && entry
+                        .timestamp_secs
+                        .is_some_and(|timestamp| command_window.contains(timestamp))
+            }))
+    }
+
+    fn drain_unstructured_common_ref_entries(
+        &mut self,
+        changes: &mut Vec<RefChange>,
+    ) -> Result<(), GitAiError> {
+        for reference in self.discover_common_refs()? {
+            if reference == "HEAD" || reference == "ORIG_HEAD" {
+                continue;
+            }
+            while let Some(entry) = self.find_common_ref_entry_without_hint(
+                &reference,
+                ExpectedTransition::default(),
+                &[],
+            )? {
+                self.consume_entry(&entry)?;
+                changes.push(entry_to_ref_change(&entry));
+            }
+        }
+        Ok(())
+    }
+
     fn enrich_stash(
         &mut self,
         cmd: &mut NormalizedCommand,
@@ -955,22 +1160,23 @@ impl RefCursor {
         let kind = stash_args.first().map(String::as_str).unwrap_or("push");
 
         if matches!(kind, "apply" | "pop" | "drop" | "branch") {
-            let target = if kind == "branch" {
-                stash_args.get(2)
-            } else {
-                stash_args.get(1)
-            };
+            let target = stash_target_arg(stash_args, kind);
             cmd.stash_target_oid = self.resolve_stash_target_at_cursor(target)?;
+        } else if kind == "store" {
+            cmd.stash_target_oid = stash_store_target_arg(stash_args).cloned();
         }
 
-        if matches!(kind, "push" | "save") {
+        if matches!(kind, "push" | "save" | "store") {
             if let Some(entry) = self.find_stash_push_entry(stash_args, kind)? {
                 self.consume_entry(&entry)?;
                 self.apply_stash_ref_entry(kind, &entry);
                 cmd.ref_changes.push(entry_to_ref_change(&entry));
             }
         } else if matches!(kind, "pop" | "drop") {
-            self.consume_destructive_stash_operation(stash_args.get(1), cmd)?;
+            self.consume_destructive_stash_operation(stash_target_arg(stash_args, kind), cmd)?;
+        } else if kind == "clear" {
+            self.stash_stack.clear();
+            self.sync_common_ref_cursor_to_log_end_after_rewrite("refs/stash")?;
         }
 
         if matches!(kind, "apply" | "pop" | "branch")
@@ -1970,7 +2176,7 @@ impl RefCursor {
 
     fn apply_stash_ref_entry(&mut self, kind: &str, entry: &CursorEntry) {
         match kind {
-            "push" | "save" => {
+            "push" | "save" | "store" => {
                 if valid_non_zero_oid(&entry.new)
                     && !self.stash_stack.iter().any(|oid| oid == &entry.new)
                 {
@@ -2314,6 +2520,24 @@ impl RefCursor {
     }
 }
 
+fn merge_reflog_prefixes(args: &[String]) -> &'static [&'static str] {
+    if args.iter().any(|arg| arg == "--continue") {
+        &["commit (merge):"]
+    } else {
+        &["merge"]
+    }
+}
+
+fn revert_reflog_prefixes(args: &[String]) -> &'static [&'static str] {
+    if args.iter().any(|arg| arg == "--continue") {
+        // Git commonly records sequencer continuation as a plain `commit:`
+        // entry; some versions/modes use the more specific parenthesized form.
+        &["commit:", "commit (revert):"]
+    } else {
+        &["revert:"]
+    }
+}
+
 pub(crate) fn capture_reflog_start_offsets_for_worktree(worktree: &Path) -> HashMap<String, u64> {
     let mut offsets = HashMap::new();
 
@@ -2507,6 +2731,17 @@ impl ExpectedTransition {
 }
 
 fn commit_reflog_messages(args: &[String], amend: bool) -> HashSet<String> {
+    // Git synthesizes `fixup! <target subject>` / `squash! <target subject>`
+    // regardless of a later `-m` body. The target subject is not present in
+    // argv, so constraining the reflog to the literal `-m` value would reject
+    // the command's real transition. Prefix + OID/offset matching remains.
+    if args.iter().any(|arg| {
+        matches!(arg.as_str(), "--fixup" | "--squash")
+            || arg.starts_with("--fixup=")
+            || arg.starts_with("--squash=")
+    }) {
+        return HashSet::new();
+    }
     let Some(subject) = commit_subject_from_args(args) else {
         return HashSet::new();
     };
@@ -3627,12 +3862,77 @@ fn checkout_is_path_checkout(cmd: &NormalizedCommand) -> bool {
             .any(|arg| arg.starts_with("--pathspec") || arg == "--ours" || arg == "--theirs")
 }
 
+fn checkout_or_switch_is_orphan(cmd: &NormalizedCommand) -> bool {
+    matches!(cmd.primary_command.as_deref(), Some("checkout" | "switch"))
+        && command_args(cmd).iter().any(|arg| arg == "--orphan")
+}
+
+fn enrich_orphan_head_transition(
+    cmd: &mut NormalizedCommand,
+    state: &FamilyState,
+    command_start_refs: &HashMap<String, String>,
+) {
+    let worktree_head = cmd.worktree.as_ref().and_then(|worktree| {
+        let canonical = worktree.canonicalize().unwrap_or_else(|_| worktree.clone());
+        state
+            .worktrees
+            .get(&canonical)
+            .or_else(|| state.worktrees.get(worktree))
+            .and_then(|worktree| worktree.head.clone())
+    });
+    let old = command_start_refs
+        .get("HEAD")
+        .or_else(|| state.refs.get("HEAD"))
+        .cloned()
+        .or(worktree_head)
+        .or_else(|| {
+            let bases = cmd
+                .worktree
+                .as_deref()
+                .map(working_log_base_oids)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|oid| valid_non_zero_oid(oid))
+                .collect::<Vec<_>>();
+            (bases.len() == 1).then(|| bases[0].clone())
+        });
+    if let Some(old) = old.filter(|oid| valid_non_zero_oid(oid)) {
+        cmd.ref_changes.push(RefChange {
+            reference: "HEAD".to_string(),
+            old,
+            new: zero_oid(),
+        });
+    }
+}
+
 fn stash_command_args(args: &[String]) -> &[String] {
     if args.first().is_some_and(|arg| arg == "stash") {
         &args[1..]
     } else {
         args
     }
+}
+
+fn stash_target_arg<'a>(args: &'a [String], kind: &str) -> Option<&'a String> {
+    let skip = if kind == "branch" { 2 } else { 1 };
+    args.iter().skip(skip).find(|arg| !arg.starts_with('-'))
+}
+
+fn stash_store_target_arg(args: &[String]) -> Option<&String> {
+    let mut index = 1;
+    let mut target = None;
+    while index < args.len() {
+        match args[index].as_str() {
+            "-m" | "--message" => index += 2,
+            value if value.starts_with("--message=") => index += 1,
+            value if value.starts_with('-') => index += 1,
+            _ => {
+                target = args.get(index);
+                index += 1;
+            }
+        }
+    }
+    target
 }
 
 fn stash_push_message_from_args(args: &[String], kind: &str) -> Option<String> {
@@ -3683,6 +3983,46 @@ fn stash_target_index(target: Option<&String>) -> Option<usize> {
         .and_then(|value| value.parse::<usize>().ok())
 }
 
+#[cfg(test)]
+mod stash_arg_tests {
+    use super::{stash_store_target_arg, stash_target_arg};
+
+    #[test]
+    fn target_skips_restore_options() {
+        let apply = ["apply", "--index", "--quiet", "stash@{2}"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            stash_target_arg(&apply, "apply").map(String::as_str),
+            Some("stash@{2}")
+        );
+
+        let branch = ["branch", "recovered", "stash@{1}"]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            stash_target_arg(&branch, "branch").map(String::as_str),
+            Some("stash@{1}")
+        );
+
+        let store = [
+            "store",
+            "-m",
+            "message",
+            "0123456789012345678901234567890123456789",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+        assert_eq!(
+            stash_store_target_arg(&store).map(String::as_str),
+            Some("0123456789012345678901234567890123456789")
+        );
+    }
+}
+
 fn rebase_command_args(cmd: &NormalizedCommand) -> Vec<String> {
     let args = command_args(cmd);
     if args.first().is_some_and(|arg| arg == "rebase") {
@@ -3695,7 +4035,7 @@ fn rebase_command_args(cmd: &NormalizedCommand) -> Vec<String> {
 fn command_uses_ref_cursor(primary: &str) -> bool {
     matches!(
         primary,
-        "commit"
+        "am" | "commit"
             | "revert"
             | "reset"
             | "checkout"
@@ -3707,18 +4047,34 @@ fn command_uses_ref_cursor(primary: &str) -> bool {
             | "branch"
             | "stash"
             | "update-ref"
+            | "fast-import"
+            | "filter-branch"
+            | "filter-repo"
+            | "symbolic-ref"
     )
 }
 
 fn command_can_move_refs_on_nonzero(primary: Option<&str>) -> bool {
     matches!(
         primary,
-        Some("checkout" | "switch" | "stash" | "rebase" | "pull" | "branch" | "cherry-pick")
+        Some(
+            "am" | "checkout"
+                | "switch"
+                | "stash"
+                | "rebase"
+                | "pull"
+                | "branch"
+                | "cherry-pick"
+                | "revert"
+                | "fast-import"
+                | "filter-branch"
+                | "filter-repo"
+        )
     )
 }
 
 fn command_can_clamp_non_authoritative_cold_seed(cmd: &NormalizedCommand) -> bool {
-    matches!(cmd.primary_command.as_deref(), Some("cherry-pick"))
+    matches!(cmd.primary_command.as_deref(), Some("am" | "cherry-pick"))
 }
 
 fn message_matches(message: &str, prefixes: &[&str]) -> bool {
@@ -3814,6 +4170,18 @@ fn head_key(git_dir: &Path) -> String {
     format!("worktree:{}:HEAD", normalized)
 }
 
+fn sequenced_head_before_command(worktree: &Path, state: &FamilyState) -> Option<String> {
+    let worktree = worktree
+        .canonicalize()
+        .unwrap_or_else(|_| worktree.to_path_buf());
+    state
+        .worktrees
+        .get(&worktree)
+        .and_then(|worktree| worktree.head.clone())
+        .or_else(|| state.refs.get("HEAD").cloned())
+        .filter(|oid| valid_non_zero_oid(oid))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3858,6 +4226,17 @@ mod tests {
         ];
         assert!(commit_reflog_messages(&args, false).contains("commit: subject"));
         assert!(commit_reflog_messages(&args, true).contains("commit (amend): subject"));
+    }
+
+    #[test]
+    fn fixup_and_squash_do_not_constrain_reflog_to_message_body() {
+        for args in [
+            vec!["commit", "--fixup=HEAD~1", "-m", "ignored body"],
+            vec!["commit", "--squash", "HEAD~1", "-m", "ignored body"],
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(commit_reflog_messages(&args, false).is_empty());
+        }
     }
 
     #[test]
@@ -3934,6 +4313,41 @@ mod tests {
             ref_changes: Vec::new(),
             confidence: Confidence::Low,
         }
+    }
+
+    #[test]
+    fn orphan_checkout_and_switch_emit_head_to_unborn_transition_only_on_success() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let family = FamilyKey::new(worktree.join(".git").to_string_lossy().to_string());
+        let mut state = family_state(&family);
+        state.refs.insert("HEAD".to_string(), A.to_string());
+        let mut cursor = RefCursor::new(family.clone());
+
+        for args in [
+            &["checkout", "--orphan", "new-root"][..],
+            &["switch", "--orphan", "new-root"][..],
+        ] {
+            let mut command = command_with_worktree(&family, Some(worktree.clone()), args);
+            cursor.enrich_command(&mut command, &state).unwrap();
+            assert_eq!(
+                command.ref_changes,
+                vec![RefChange {
+                    reference: "HEAD".to_string(),
+                    old: A.to_string(),
+                    new: zero_oid(),
+                }]
+            );
+        }
+
+        let mut failed = command_with_worktree(
+            &family,
+            Some(worktree),
+            &["checkout", "--orphan", "new-root"],
+        );
+        failed.exit_code = 128;
+        cursor.enrich_command(&mut failed, &state).unwrap();
+        assert!(failed.ref_changes.is_empty());
     }
 
     #[test]
@@ -4046,6 +4460,74 @@ mod tests {
                 .any(|change| change.reference == reference && change.old == B && change.new == C),
             "cold-start late ingress offset on a common branch ref must not skip the commit's branch entry; got {:?}",
             cmd.ref_changes
+        );
+    }
+
+    #[test]
+    fn cold_unstructured_ref_mutation_recovers_head_transition_before_late_sample() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let head_log = git_dir.join("logs/HEAD");
+        fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+
+        let rewrite =
+            format!("{B} {C} Test User <test@example.com> 0 +0000\tfilter-branch: rewrite\n");
+        fs::write(&head_log, &rewrite).unwrap();
+
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut state = family_state(&family);
+        state.refs.insert("HEAD".to_string(), B.to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        let mut cmd = command_with_worktree(
+            &family,
+            Some(worktree),
+            &["filter-branch", "--msg-filter", "cat"],
+        );
+        cmd.reflog_start_offsets
+            .insert(head_key(&git_dir), rewrite.len() as u64);
+
+        cursor.enrich_command(&mut cmd, &state).unwrap();
+
+        assert_eq!(
+            cmd.ref_changes,
+            vec![RefChange {
+                reference: "HEAD".to_string(),
+                old: B.to_string(),
+                new: C.to_string(),
+            }],
+            "the sequenced pre-command HEAD must recover a mutation that finished before sampling"
+        );
+    }
+
+    #[test]
+    fn cold_noop_merge_does_not_consume_an_older_merge_at_the_start_boundary() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let head_log = git_dir.join("logs/HEAD");
+        fs::create_dir_all(head_log.parent().unwrap()).unwrap();
+
+        let older_merge =
+            format!("{A} {B} Test User <test@example.com> 0 +0000\tmerge feature: Merge made\n");
+        let later_checkout =
+            format!("{B} {C} Test User <test@example.com> 0 +0000\tcheckout: moving later\n");
+        let command_start = older_merge.len() as u64;
+        fs::write(&head_log, format!("{older_merge}{later_checkout}")).unwrap();
+
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut state = family_state(&family);
+        state.refs.insert("HEAD".to_string(), B.to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        let mut cmd = command_with_worktree(&family, Some(worktree), &["merge", "feature"]);
+        cmd.reflog_start_offsets
+            .insert(head_key(&git_dir), command_start);
+
+        cursor.enrich_command(&mut cmd, &state).unwrap();
+
+        assert!(
+            cmd.ref_changes.is_empty(),
+            "a no-op merge must not claim the older merge before its captured start boundary"
         );
     }
 
@@ -5809,6 +6291,54 @@ mod tests {
                     new: D.to_string(),
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn revert_continue_does_not_consume_following_plain_commit() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        fs::create_dir_all(git_dir.join("logs")).unwrap();
+        append_reflog(
+            &git_dir,
+            "HEAD",
+            &[
+                (B, C, "commit: Revert one"),
+                (C, D, "commit: Unrelated follow-up"),
+            ],
+        );
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        cursor.pending_revert_source_oids = vec![A.to_string()];
+        let mut continued =
+            command_with_worktree(&family, Some(worktree.clone()), &["revert", "--continue"]);
+
+        cursor.enrich_command(&mut continued, &state).unwrap();
+
+        assert_eq!(
+            continued.ref_changes,
+            vec![RefChange {
+                reference: "HEAD".to_string(),
+                old: B.to_string(),
+                new: C.to_string(),
+            }]
+        );
+
+        let mut ordinary = command_with_worktree(
+            &family,
+            Some(worktree),
+            &["commit", "-m", "Unrelated follow-up"],
+        );
+        cursor.enrich_command(&mut ordinary, &state).unwrap();
+        assert_eq!(
+            ordinary.ref_changes,
+            vec![RefChange {
+                reference: "HEAD".to_string(),
+                old: C.to_string(),
+                new: D.to_string(),
+            }]
         );
     }
 

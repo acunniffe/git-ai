@@ -265,6 +265,8 @@ fn is_builtin_primary_command(command: &str) -> bool {
     matches!(
         command,
         "add"
+            | "am"
+            | "apply"
             | "blame"
             | "branch"
             | "cat-file"
@@ -286,6 +288,7 @@ fn is_builtin_primary_command(command: &str) -> bool {
             | "fetch"
             | "for-each-ref"
             | "grep"
+            | "gc"
             | "hash-object"
             | "help"
             | "init"
@@ -294,14 +297,18 @@ fn is_builtin_primary_command(command: &str) -> bool {
             | "ls-tree"
             | "merge"
             | "merge-base"
+            | "maintenance"
             | "mktree"
             | "mv"
             | "name-rev"
             | "notes"
             | "pull"
             | "push"
+            | "pack-refs"
             | "rebase"
             | "remote"
+            | "reflog"
+            | "repack"
             | "reset"
             | "restore"
             | "rev-list"
@@ -312,6 +319,7 @@ fn is_builtin_primary_command(command: &str) -> bool {
             | "show"
             | "stash"
             | "status"
+            | "submodule"
             | "switch"
             | "symbolic-ref"
             | "tag"
@@ -725,6 +733,49 @@ mod tests {
             .expect("builtin commands should not require repository discovery");
 
         assert_eq!(resolved.as_deref(), Some("commit"));
+    }
+
+    #[test]
+    fn submodule_is_a_builtin_primary_command() {
+        let backend = SystemGitBackend::new();
+        let missing_worktree = PathBuf::from("/definitely/missing/git-ai-backend-test");
+        let argv = vec![
+            "git".to_string(),
+            "submodule".to_string(),
+            "status".to_string(),
+        ];
+
+        let resolved = backend
+            .resolve_primary_command(&missing_worktree, &argv)
+            .expect("builtin commands should not require repository discovery");
+
+        assert_eq!(resolved.as_deref(), Some("submodule"));
+    }
+
+    #[test]
+    fn repository_admin_commands_are_builtin() {
+        let backend = SystemGitBackend::new();
+        let missing_worktree = PathBuf::from("/definitely/missing/git-ai-backend-test");
+        for command in ["gc", "maintenance", "pack-refs", "reflog", "repack"] {
+            let argv = vec!["git".to_string(), command.to_string()];
+            let resolved = backend
+                .resolve_primary_command(&missing_worktree, &argv)
+                .expect("builtin commands should not require repository discovery");
+            assert_eq!(resolved.as_deref(), Some(command));
+        }
+    }
+
+    #[test]
+    fn patch_application_commands_are_builtin() {
+        let backend = SystemGitBackend::new();
+        let missing_worktree = PathBuf::from("/definitely/missing/git-ai-backend-test");
+        for command in ["am", "apply"] {
+            let argv = vec!["git".to_string(), command.to_string()];
+            let resolved = backend
+                .resolve_primary_command(&missing_worktree, &argv)
+                .expect("builtin commands should not require repository discovery");
+            assert_eq!(resolved.as_deref(), Some(command));
+        }
     }
 
     #[test]

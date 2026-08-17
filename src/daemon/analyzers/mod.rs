@@ -43,6 +43,7 @@ impl AnalyzerRegistry {
 
         let history: Arc<dyn CommandAnalyzer> = Arc::new(history::HistoryAnalyzer);
         for command in [
+            "am",
             "commit",
             "reset",
             "rebase",
@@ -55,7 +56,9 @@ impl AnalyzerRegistry {
         }
 
         let workspace: Arc<dyn CommandAnalyzer> = Arc::new(workspace::WorkspaceAnalyzer);
-        for command in ["stash", "checkout", "switch"] {
+        for command in [
+            "apply", "clean", "mv", "restore", "rm", "stash", "checkout", "switch",
+        ] {
             registry.register_command(command, workspace.clone());
         }
 

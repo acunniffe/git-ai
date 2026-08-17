@@ -18,6 +18,48 @@ impl CommandAnalyzer for WorkspaceAnalyzer {
 
         let mut events = Vec::new();
         match name {
+            "apply" => events.push(
+                if crate::git::command_classification::is_definitely_read_only_git_invocation(
+                    "apply", &args,
+                ) {
+                    SemanticEvent::ReadOnlyCommand
+                } else {
+                    SemanticEvent::ApplyPaths
+                },
+            ),
+            "restore" => events.push(SemanticEvent::RestorePaths {
+                head: current_head_for_workspace_command(cmd, state.refs),
+            }),
+            "clean" => events.push(
+                if crate::git::command_classification::invocation_has_dry_run(&args) {
+                    SemanticEvent::ReadOnlyCommand
+                } else {
+                    SemanticEvent::CleanedWorkspace {
+                        head: current_head_for_workspace_command(cmd, state.refs),
+                    }
+                },
+            ),
+            "rm" => events.push(
+                if crate::git::command_classification::invocation_has_dry_run(&args) {
+                    SemanticEvent::ReadOnlyCommand
+                } else if args.iter().any(|arg| arg == "--cached") {
+                    // Index-only removal leaves the attributed worktree bytes intact.
+                    SemanticEvent::OpaqueCommand
+                } else {
+                    SemanticEvent::RemovedWorkspacePaths {
+                        head: current_head_for_workspace_command(cmd, state.refs),
+                    }
+                },
+            ),
+            "mv" => events.push(
+                if crate::git::command_classification::invocation_has_dry_run(&args) {
+                    SemanticEvent::ReadOnlyCommand
+                } else {
+                    SemanticEvent::MovedWorkspacePaths {
+                        head: current_head_for_workspace_command(cmd, state.refs),
+                    }
+                },
+            ),
             "stash" => {
                 let stash_args = stash_command_args(cmd);
                 events.push(SemanticEvent::StashOperation {
@@ -77,9 +119,12 @@ fn stash_command_args(cmd: &NormalizedCommand) -> Vec<String> {
 fn infer_stash_kind(args: &[String]) -> StashOpKind {
     match args.first().map(String::as_str).unwrap_or("push") {
         "push" | "save" => StashOpKind::Push,
+        "create" => StashOpKind::Create,
+        "store" => StashOpKind::Store,
         "apply" => StashOpKind::Apply,
         "pop" => StashOpKind::Pop,
         "drop" => StashOpKind::Drop,
+        "clear" => StashOpKind::Clear,
         "list" => StashOpKind::List,
         "branch" => StashOpKind::Branch,
         "show" => StashOpKind::Show,
@@ -159,5 +204,150 @@ mod tests {
                 ..
             } if head == "abc123"
         )));
+    }
+
+    #[test]
+    fn stash_lifecycle_kinds_are_explicit() {
+        let analyzer = WorkspaceAnalyzer;
+        let refs = std::collections::HashMap::new();
+        for (subcommand, expected) in [
+            ("create", StashOpKind::Create),
+            ("store", StashOpKind::Store),
+            ("clear", StashOpKind::Clear),
+        ] {
+            let cmd = command("stash", &["git", "stash", subcommand]);
+            let result = analyzer
+                .analyze(&cmd, AnalysisView { refs: &refs })
+                .unwrap();
+            assert!(result.events.iter().any(|event| matches!(
+                event,
+                SemanticEvent::StashOperation { kind, .. } if *kind == expected
+            )));
+        }
+    }
+
+    #[test]
+    fn apply_distinguishes_mutation_from_check_mode() {
+        let analyzer = WorkspaceAnalyzer;
+        let refs = std::collections::HashMap::new();
+        let applied = analyzer
+            .analyze(
+                &command("apply", &["git", "apply", "--cached", "change.patch"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(applied.events, vec![SemanticEvent::ApplyPaths]);
+
+        let checked = analyzer
+            .analyze(
+                &command("apply", &["git", "apply", "--check", "change.patch"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(checked.events, vec![SemanticEvent::ReadOnlyCommand]);
+    }
+
+    #[test]
+    fn restore_and_clean_emit_workspace_semantics() {
+        let analyzer = WorkspaceAnalyzer;
+        let refs = std::collections::HashMap::new();
+        let restored = analyzer
+            .analyze(
+                &command("restore", &["git", "restore", "--", "file.txt"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(
+            restored.events,
+            vec![SemanticEvent::RestorePaths { head: None }]
+        );
+        let cleaned = analyzer
+            .analyze(
+                &command("clean", &["git", "clean", "-fd"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(
+            cleaned.events,
+            vec![SemanticEvent::CleanedWorkspace { head: None }]
+        );
+    }
+
+    #[test]
+    fn rm_distinguishes_worktree_cached_and_dry_run_modes() {
+        let analyzer = WorkspaceAnalyzer;
+        let refs = std::collections::HashMap::new();
+        let removed = analyzer
+            .analyze(
+                &command("rm", &["git", "rm", "-rf", "--", "pkg"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(
+            removed.events,
+            vec![SemanticEvent::RemovedWorkspacePaths { head: None }]
+        );
+
+        let cached = analyzer
+            .analyze(
+                &command("rm", &["git", "rm", "--cached", "file.txt"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(cached.events, vec![SemanticEvent::OpaqueCommand]);
+
+        let dry_run = analyzer
+            .analyze(
+                &command("rm", &["git", "rm", "-n", "file.txt"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(dry_run.events, vec![SemanticEvent::ReadOnlyCommand]);
+
+        let bundled_dry_run = analyzer
+            .analyze(
+                &command("rm", &["git", "rm", "-nr", "file.txt"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(bundled_dry_run.events, vec![SemanticEvent::ReadOnlyCommand]);
+
+        let clean_bundled_dry_run = analyzer
+            .analyze(
+                &command("clean", &["git", "clean", "-ndx", "build"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(
+            clean_bundled_dry_run.events,
+            vec![SemanticEvent::ReadOnlyCommand]
+        );
+    }
+
+    #[test]
+    fn mv_emits_path_move_semantics() {
+        let analyzer = WorkspaceAnalyzer;
+        let refs = std::collections::HashMap::new();
+        let moved = analyzer
+            .analyze(
+                &command("mv", &["git", "mv", "--force", "source.txt", "target.txt"]),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(
+            moved.events,
+            vec![SemanticEvent::MovedWorkspacePaths { head: None }]
+        );
+
+        let preview = analyzer
+            .analyze(
+                &command(
+                    "mv",
+                    &["git", "mv", "--dry-run", "source.txt", "target.txt"],
+                ),
+                AnalysisView { refs: &refs },
+            )
+            .unwrap();
+        assert_eq!(preview.events, vec![SemanticEvent::ReadOnlyCommand]);
     }
 }

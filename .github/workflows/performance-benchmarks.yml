@@ -56,6 +56,8 @@ jobs:
 
       - name: Run reduced nasty benchmark gate
         run: |
+          # An odd sample count keeps one cold runner outlier from being
+          # averaged into Python's even-sample median gate.
           python3 scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py \
             --work-root .benchmarks/pr-smoke \
             --feature-commits 24 \
@@ -64,7 +66,7 @@ jobs:
             --files 4 \
             --lines-per-file 1000 \
             --burst-every 6 \
-            --repetitions 2 \
+            --repetitions 3 \
             --margin-pct 55 \
             --margin-baseline main_daemon \
             --enforce-margin
@@ -122,6 +124,7 @@ jobs:
 
       - name: Run full nasty benchmark gate
         run: |
+          # Keep the nightly median robust to one cold-start sample.
           python3 scripts/benchmarks/git/benchmark_nasty_modes_vs_main.py \
             --work-root .benchmarks/nightly-nasty \
             --feature-commits 90 \
@@ -130,7 +133,7 @@ jobs:
             --files 6 \
             --lines-per-file 1500 \
             --burst-every 15 \
-            --repetitions 2 \
+            --repetitions 3 \
             --margin-pct 25 \
             --margin-baseline main_daemon \
             --enforce-margin

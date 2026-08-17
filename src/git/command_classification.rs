@@ -55,17 +55,92 @@ pub fn is_definitely_read_only_git_invocation(command: &str, command_args: &[Str
     }
 
     match command {
+        "add" => add_invocation_is_read_only(command_args),
+        "am" => am_invocation_is_read_only(command_args),
+        "apply" => apply_invocation_is_read_only(command_args),
         "branch" => branch_invocation_is_read_only(command_args),
+        "clean" => invocation_has_dry_run(command_args),
+        "config" => config_invocation_is_read_only(command_args),
         "notes" => matches!(
             command_args.first().map(String::as_str),
             Some("show" | "list" | "get-ref")
         ),
         "remote" => remote_invocation_is_read_only(command_args),
+        "reflog" => reflog_invocation_is_read_only(command_args),
+        "restore" => command_args
+            .iter()
+            .any(|arg| arg == "-h" || arg == "--help"),
+        "mv" => {
+            invocation_has_dry_run(command_args)
+                || command_args
+                    .iter()
+                    .any(|arg| arg == "-h" || arg == "--help")
+        }
+        "rm" => invocation_has_dry_run(command_args),
         "stash" => stash_invocation_is_read_only(command_args),
+        "submodule" => submodule_invocation_is_read_only(command_args),
+        "symbolic-ref" => symbolic_ref_invocation_is_read_only(command_args),
         "tag" => tag_invocation_is_read_only(command_args),
         "worktree" => worktree_invocation_is_read_only(command_args),
         _ => false,
     }
+}
+
+pub(crate) fn invocation_has_short_flag(command_args: &[String], expected: char) -> bool {
+    command_args
+        .iter()
+        .take_while(|arg| arg.as_str() != "--")
+        .any(|arg| {
+            arg.starts_with('-')
+                && !arg.starts_with("--")
+                // `git clean -e<pattern>` uses the remainder of the token as
+                // an exclude value, not a cluster of boolean flags.
+                && arg
+                    .chars()
+                    .skip(1)
+                    .take_while(|flag| *flag != 'e')
+                    .any(|flag| flag == expected)
+        })
+}
+
+pub(crate) fn invocation_has_dry_run(command_args: &[String]) -> bool {
+    command_args.iter().any(|arg| arg == "--dry-run")
+        || command_args
+            .iter()
+            .take_while(|arg| arg.as_str() != "--")
+            .filter(|arg| arg.starts_with('-') && !arg.starts_with("--"))
+            .any(|arg| {
+                // `git clean -e<pattern>` uses the remainder of the token as
+                // an exclude value, not a cluster of boolean flags.
+                arg.chars()
+                    .skip(1)
+                    .take_while(|flag| *flag != 'e')
+                    .any(|flag| flag == 'n')
+            })
+}
+
+fn symbolic_ref_invocation_is_read_only(command_args: &[String]) -> bool {
+    if command_args
+        .iter()
+        .any(|arg| matches!(arg.as_str(), "--delete" | "-d"))
+    {
+        return false;
+    }
+
+    let mut positionals = 0usize;
+    let mut skip_value = false;
+    for arg in command_args {
+        if skip_value {
+            skip_value = false;
+            continue;
+        }
+        if arg == "-m" {
+            skip_value = true;
+        } else if !arg.starts_with('-') {
+            positionals += 1;
+        }
+    }
+    positionals < 2
 }
 
 /// Returns true when a Git command may mutate repository state and therefore
@@ -73,22 +148,40 @@ pub fn is_definitely_read_only_git_invocation(command: &str, command_args: &[Str
 pub fn may_mutate_repo_state_command(command: &str) -> bool {
     matches!(
         command,
-        "branch"
+        "add"
+            | "am"
+            | "apply"
+            | "branch"
+            | "clean"
             | "checkout"
             | "cherry-pick"
             | "clone"
             | "commit"
+            | "config"
             | "fetch"
+            | "fast-import"
+            | "filter-branch"
+            | "filter-repo"
+            | "gc"
             | "init"
             | "merge"
+            | "maintenance"
+            | "mv"
             | "pull"
             | "push"
+            | "pack-refs"
             | "rebase"
             | "remote"
+            | "reflog"
+            | "repack"
             | "reset"
+            | "restore"
             | "revert"
+            | "rm"
             | "stash"
+            | "submodule"
             | "switch"
+            | "symbolic-ref"
             | "tag"
             | "update-ref"
             | "worktree"
@@ -102,6 +195,41 @@ pub fn git_invocation_may_mutate_repo_state(command: &str, command_args: &[Strin
         && !is_definitely_read_only_git_invocation(command, command_args)
 }
 
+/// Returns true when a Git command may move refs in the repository where the
+/// invocation runs. This is narrower than repository-state mutation: index,
+/// worktree, config, object maintenance, and remote-only operations do not
+/// require a pre-command reflog scan.
+pub fn may_move_refs_command(command: &str) -> bool {
+    matches!(
+        command,
+        "am" | "branch"
+            | "checkout"
+            | "cherry-pick"
+            | "commit"
+            | "fetch"
+            | "fast-import"
+            | "filter-branch"
+            | "filter-repo"
+            | "merge"
+            | "pull"
+            | "rebase"
+            | "remote"
+            | "reset"
+            | "revert"
+            | "stash"
+            | "switch"
+            | "symbolic-ref"
+            | "tag"
+            | "update-ref"
+            | "worktree"
+    )
+}
+
+/// Returns true when a full Git invocation may move refs in its repository.
+pub fn git_invocation_may_move_refs(command: &str, command_args: &[String]) -> bool {
+    may_move_refs_command(command) && !is_definitely_read_only_git_invocation(command, command_args)
+}
+
 /// Returns true when a Git command must be ordered inside an existing repo
 /// family. Commands like clone/init may mutate state, but they establish or
 /// target a different repository context and must not be sequenced under the
@@ -109,24 +237,148 @@ pub fn git_invocation_may_mutate_repo_state(command: &str, command_args: &[Strin
 pub fn participates_in_family_sequencer_command(command: &str) -> bool {
     matches!(
         command,
-        "branch"
+        "add"
+            | "am"
+            | "apply"
+            | "branch"
+            | "clean"
             | "checkout"
             | "cherry-pick"
             | "commit"
+            | "config"
             | "fetch"
+            | "fast-import"
+            | "filter-branch"
+            | "filter-repo"
+            | "gc"
             | "merge"
+            | "maintenance"
+            | "mv"
             | "pull"
             | "push"
+            | "pack-refs"
             | "rebase"
             | "remote"
+            | "reflog"
+            | "repack"
             | "reset"
+            | "restore"
             | "revert"
+            | "rm"
             | "stash"
+            | "submodule"
             | "switch"
+            | "symbolic-ref"
             | "tag"
             | "update-ref"
             | "worktree"
     )
+}
+
+fn submodule_invocation_is_read_only(args: &[String]) -> bool {
+    args.is_empty()
+        || matches!(
+            args.first().map(String::as_str),
+            Some("status" | "summary" | "help")
+        )
+        || args.iter().any(|arg| arg == "-h" || arg == "--help")
+}
+
+fn config_invocation_is_read_only(args: &[String]) -> bool {
+    if args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "--add"
+                | "--replace-all"
+                | "--unset"
+                | "--unset-all"
+                | "--rename-section"
+                | "--remove-section"
+                | "--edit"
+                | "-e"
+        )
+    }) {
+        return false;
+    }
+    if args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "--get"
+                | "--get-all"
+                | "--get-regexp"
+                | "--get-urlmatch"
+                | "--list"
+                | "-l"
+                | "--show-origin"
+                | "--show-scope"
+                | "--name-only"
+        )
+    }) {
+        return true;
+    }
+
+    let mut positionals = 0usize;
+    let mut skip_next = false;
+    for arg in args {
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if matches!(arg.as_str(), "--file" | "-f" | "--blob" | "--type") {
+            skip_next = true;
+        } else if arg.starts_with("--file=")
+            || arg.starts_with("--blob=")
+            || arg.starts_with("--type=")
+            || arg.starts_with('-')
+        {
+            continue;
+        } else {
+            positionals += 1;
+        }
+    }
+    positionals <= 1
+}
+
+fn reflog_invocation_is_read_only(args: &[String]) -> bool {
+    let subcommand = args.iter().find(|arg| !arg.starts_with('-'));
+    subcommand.is_none_or(|arg| matches!(arg.as_str(), "show" | "exists"))
+        || args.iter().any(|arg| arg == "-h" || arg == "--help")
+}
+
+fn am_invocation_is_read_only(args: &[String]) -> bool {
+    args.iter().any(|arg| {
+        arg == "--help"
+            || arg == "-h"
+            || arg == "--show-current-patch"
+            || arg.starts_with("--show-current-patch=")
+    })
+}
+
+fn add_invocation_is_read_only(args: &[String]) -> bool {
+    for arg in args {
+        if arg == "--" {
+            break;
+        }
+        if matches!(arg.as_str(), "--dry-run" | "--help" | "-h") {
+            return true;
+        }
+        if arg.starts_with('-')
+            && !arg.starts_with("--")
+            && arg.chars().skip(1).any(|flag| flag == 'n')
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn apply_invocation_is_read_only(args: &[String]) -> bool {
+    args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "--check" | "--stat" | "--numstat" | "--summary"
+        )
+    })
 }
 
 /// Returns true when a full Git invocation must be ordered inside an existing
@@ -447,6 +699,78 @@ mod tests {
     }
 
     #[test]
+    fn bundled_dry_run_flags_are_read_only_for_clean_and_rm() {
+        for (command, args) in [
+            ("clean", vec!["-ndx", "build"]),
+            ("clean", vec!["-fdn", "build"]),
+            ("rm", vec!["-nr", "file.txt"]),
+        ] {
+            assert!(is_definitely_read_only_git_invocation(
+                command,
+                &args.into_iter().map(str::to_string).collect::<Vec<_>>()
+            ));
+        }
+
+        for args in [vec!["-enode_modules", "-fd"], vec!["-fd", "build"]] {
+            assert!(!is_definitely_read_only_git_invocation(
+                "clean",
+                &args.into_iter().map(str::to_string).collect::<Vec<_>>()
+            ));
+        }
+        assert!(is_definitely_read_only_git_invocation(
+            "clean",
+            &["-nefoo".to_string(), "-fd".to_string()]
+        ));
+
+        let exclude = ["-fd".to_string(), "-e*.xls".to_string()];
+        assert!(!invocation_has_short_flag(&exclude, 'x'));
+        assert!(!invocation_has_short_flag(&exclude, 'X'));
+    }
+
+    #[test]
+    fn config_fixed_value_is_only_read_only_with_a_query_action() {
+        assert!(!is_definitely_read_only_git_invocation(
+            "config",
+            &[
+                "--fixed-value".to_string(),
+                "section.key".to_string(),
+                "replacement".to_string(),
+                "old-value".to_string(),
+            ]
+        ));
+        assert!(is_definitely_read_only_git_invocation(
+            "config",
+            &[
+                "--fixed-value".to_string(),
+                "--get".to_string(),
+                "section.key".to_string(),
+                "old-value".to_string(),
+            ]
+        ));
+    }
+
+    #[test]
+    fn symbolic_ref_queries_are_read_only_but_updates_are_not() {
+        for args in [vec!["HEAD"], vec!["--short", "HEAD"], vec!["-q", "HEAD"]] {
+            assert!(is_definitely_read_only_git_invocation(
+                "symbolic-ref",
+                &args.into_iter().map(str::to_string).collect::<Vec<_>>()
+            ));
+        }
+        for args in [
+            vec!["HEAD", "refs/heads/main"],
+            vec!["-m", "switch", "HEAD", "refs/heads/main"],
+            vec!["--delete", "refs/heads/alias"],
+            vec!["-d", "refs/heads/alias"],
+        ] {
+            assert!(!is_definitely_read_only_git_invocation(
+                "symbolic-ref",
+                &args.into_iter().map(str::to_string).collect::<Vec<_>>()
+            ));
+        }
+    }
+
+    #[test]
     fn worktree_list_is_read_only_invocation() {
         assert!(is_definitely_read_only_git_invocation(
             "worktree",
@@ -530,13 +854,18 @@ mod tests {
             "clone",
             "commit",
             "fetch",
+            "fast-import",
+            "filter-branch",
+            "filter-repo",
             "init",
             "merge",
+            "mv",
             "pull",
             "push",
             "rebase",
             "reset",
             "revert",
+            "rm",
             "switch",
             "update-ref",
         ] {
@@ -564,6 +893,8 @@ mod tests {
     #[test]
     fn mutating_trace_commands_are_centrally_classified() {
         for cmd in &[
+            "add",
+            "am",
             "branch",
             "checkout",
             "cherry-pick",
@@ -572,14 +903,18 @@ mod tests {
             "fetch",
             "init",
             "merge",
+            "mv",
             "pull",
             "push",
             "rebase",
             "remote",
             "reset",
             "revert",
+            "rm",
             "stash",
+            "submodule",
             "switch",
+            "symbolic-ref",
             "tag",
             "update-ref",
             "worktree",
@@ -594,6 +929,230 @@ mod tests {
             assert!(
                 !may_mutate_repo_state_command(cmd),
                 "{cmd} should not be treated as mutating"
+            );
+        }
+    }
+
+    #[test]
+    fn reflog_scans_are_limited_to_commands_that_may_move_refs() {
+        for command in [
+            "am",
+            "branch",
+            "checkout",
+            "cherry-pick",
+            "commit",
+            "fetch",
+            "fast-import",
+            "filter-branch",
+            "filter-repo",
+            "merge",
+            "pull",
+            "rebase",
+            "remote",
+            "reset",
+            "revert",
+            "stash",
+            "switch",
+            "symbolic-ref",
+            "tag",
+            "update-ref",
+            "worktree",
+        ] {
+            assert!(may_move_refs_command(command), "git {command}");
+        }
+
+        for command in [
+            "add",
+            "apply",
+            "clean",
+            "config",
+            "gc",
+            "maintenance",
+            "mv",
+            "pack-refs",
+            "push",
+            "reflog",
+            "repack",
+            "restore",
+            "rm",
+            "submodule",
+        ] {
+            assert!(!may_move_refs_command(command), "git {command}");
+        }
+    }
+
+    #[test]
+    fn mv_preview_is_read_only() {
+        for args in [["-n", "old", "new"], ["--dry-run", "old", "new"]] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(is_definitely_read_only_git_invocation("mv", &args));
+            assert!(!git_invocation_may_mutate_repo_state("mv", &args));
+            assert!(!git_invocation_participates_in_family_sequencer(
+                "mv", &args
+            ));
+        }
+    }
+
+    #[test]
+    fn submodule_queries_are_read_only_but_lifecycle_commands_are_ordered() {
+        for args in [vec![], vec!["status"], vec!["summary"]] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(is_definitely_read_only_git_invocation("submodule", &args));
+            assert!(!git_invocation_participates_in_family_sequencer(
+                "submodule",
+                &args
+            ));
+        }
+
+        for args in [
+            vec!["add", "/tmp/source", "dep"],
+            vec!["update", "--init"],
+            vec!["deinit", "-f", "dep"],
+            vec!["absorbgitdirs"],
+            vec!["sync"],
+            vec!["foreach", "git", "reset", "--hard"],
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(git_invocation_may_mutate_repo_state("submodule", &args));
+            assert!(git_invocation_participates_in_family_sequencer(
+                "submodule",
+                &args
+            ));
+        }
+    }
+
+    #[test]
+    fn admin_queries_are_read_only_but_mutations_are_ordered() {
+        for (command, args) in [
+            ("config", vec!["--get", "remote.origin.url"]),
+            ("config", vec!["--list"]),
+            ("reflog", vec!["show", "HEAD"]),
+            ("reflog", vec!["exists", "refs/heads/main"]),
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(is_definitely_read_only_git_invocation(command, &args));
+            assert!(!git_invocation_participates_in_family_sequencer(
+                command, &args
+            ));
+        }
+
+        for (command, args) in [
+            ("config", vec!["test.key", "value"]),
+            ("gc", vec!["--prune=now"]),
+            ("repack", vec!["-Ad"]),
+            ("maintenance", vec!["run", "--task=gc"]),
+            ("pack-refs", vec!["--all"]),
+            ("reflog", vec!["expire", "--all"]),
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(git_invocation_may_mutate_repo_state(command, &args));
+            assert!(git_invocation_participates_in_family_sequencer(
+                command, &args
+            ));
+        }
+    }
+
+    #[test]
+    fn am_inspection_modes_are_read_only_but_application_and_control_modes_are_ordered() {
+        for args in [
+            vec!["--help"],
+            vec!["--show-current-patch"],
+            vec!["--show-current-patch=diff"],
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(is_definitely_read_only_git_invocation("am", &args));
+            assert!(!git_invocation_may_mutate_repo_state("am", &args));
+            assert!(!git_invocation_participates_in_family_sequencer(
+                "am", &args
+            ));
+        }
+
+        for args in [
+            vec!["series.patch"],
+            vec!["--3way", "series.patch"],
+            vec!["--continue"],
+            vec!["--skip"],
+            vec!["--abort"],
+            vec!["--quit"],
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(git_invocation_may_mutate_repo_state("am", &args));
+            assert!(git_invocation_participates_in_family_sequencer("am", &args));
+        }
+    }
+
+    #[test]
+    fn apply_report_modes_are_read_only_but_patch_modes_are_ordered() {
+        for flag in ["--check", "--stat", "--numstat", "--summary"] {
+            let args = vec![flag.to_string(), "change.patch".to_string()];
+            assert!(is_definitely_read_only_git_invocation("apply", &args));
+            assert!(!git_invocation_may_mutate_repo_state("apply", &args));
+            assert!(!git_invocation_participates_in_family_sequencer(
+                "apply", &args
+            ));
+        }
+
+        for args in [
+            vec!["change.patch"],
+            vec!["--cached", "change.patch"],
+            vec!["--index", "change.patch"],
+            vec!["--3way", "--index", "change.patch"],
+            vec!["--reverse", "change.patch"],
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(git_invocation_may_mutate_repo_state("apply", &args));
+            assert!(git_invocation_participates_in_family_sequencer(
+                "apply", &args
+            ));
+        }
+    }
+
+    #[test]
+    fn add_dry_run_modes_are_read_only_but_index_updates_are_ordered() {
+        for args in [
+            vec!["--dry-run", "file.txt"],
+            vec!["-n", "file.txt"],
+            vec!["-An", "file.txt"],
+            vec!["--help"],
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(is_definitely_read_only_git_invocation("add", &args));
+            assert!(!git_invocation_participates_in_family_sequencer(
+                "add", &args
+            ));
+        }
+
+        for args in [
+            vec!["-A"],
+            vec!["-u"],
+            vec!["-N", "file.txt"],
+            vec!["--pathspec-from-file=paths"],
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert!(git_invocation_may_mutate_repo_state("add", &args));
+            assert!(git_invocation_participates_in_family_sequencer(
+                "add", &args
+            ));
+        }
+    }
+
+    #[test]
+    fn restore_and_clean_modes_have_correct_ordering() {
+        for (command, args, expected_mutating) in [
+            ("restore", vec!["--staged", "file.txt"], true),
+            ("restore", vec!["--help"], false),
+            ("clean", vec!["-fd"], true),
+            ("clean", vec!["--dry-run"], false),
+            ("clean", vec!["-n"], false),
+        ] {
+            let args = args.into_iter().map(str::to_string).collect::<Vec<_>>();
+            assert_eq!(
+                git_invocation_may_mutate_repo_state(command, &args),
+                expected_mutating
+            );
+            assert_eq!(
+                git_invocation_participates_in_family_sequencer(command, &args),
+                expected_mutating
             );
         }
     }
