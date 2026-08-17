@@ -565,6 +565,39 @@ fn test_prepare_working_log_squash_multiple_sessions_standard_human() {
     assert_eq!(stats.unknown_additions, 0, "no unattested lines remain");
 }
 
+/// Abandoning a squash must clear daemon-side pending source metadata. A later
+/// unrelated commit on the same base must not inherit the feature session.
+#[test]
+fn test_abandoned_squash_reset_does_not_leak_session_into_later_commit() {
+    let repo = TestRepo::new();
+    let mut base = repo.filename("base.txt");
+    base.set_contents(crate::lines!["base"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    let default_branch = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "abandoned-feature"]).unwrap();
+    let mut feature = repo.filename("feature.txt");
+    feature.set_contents(crate::lines!["feature AI".ai()]);
+    repo.stage_all_and_commit("AI feature").unwrap();
+    repo.git(&["checkout", &default_branch]).unwrap();
+    repo.git(&["merge", "--squash", "abandoned-feature"])
+        .unwrap();
+    repo.git(&["reset", "--hard", "HEAD"]).unwrap();
+
+    std::fs::write(repo.path().join("unrelated.txt"), "later human\n").unwrap();
+    let commit = repo
+        .stage_all_and_commit("Unrelated commit after abandoned squash")
+        .unwrap();
+    assert!(
+        commit.authorship_log.metadata.prompts.is_empty()
+            && commit.authorship_log.metadata.sessions.is_empty(),
+        "abandoned feature agent metadata must not leak into unrelated commit: {:?}",
+        commit.authorship_log.metadata
+    );
+    let mut unrelated = repo.filename("unrelated.txt");
+    unrelated.assert_committed_lines(crate::lines!["later human".unattributed_human()]);
+}
+
 crate::reuse_tests_in_worktree!(
     test_prepare_working_log_simple_squash,
     test_prepare_working_log_squash_with_main_changes,
@@ -572,4 +605,5 @@ crate::reuse_tests_in_worktree!(
     test_prepare_working_log_squash_with_mixed_additions,
     test_prepare_working_log_squash_with_main_changes_standard_human,
     test_prepare_working_log_squash_multiple_sessions_standard_human,
+    test_abandoned_squash_reset_does_not_leak_session_into_later_commit,
 );

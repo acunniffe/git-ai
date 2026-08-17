@@ -239,8 +239,12 @@ fn test_revert_multiple_commits_restores_each_original_attribution() {
     let del_c = repo.git(&["rev-parse", "HEAD"]).unwrap().trim().to_string();
 
     // Revert all three deletes in ONE command → one revert command, three
-    // destination commits processed by the batched revert path. Every restored
-    // file must recover the attribution reachable from its own pre-revert tip.
+    // destination commits processed by the batched revert path. The revert
+    // CONTENT is restored for every file (each AI line comes back), and the
+    // Every destination recovers history-aware source provenance. Later source
+    // bases may not contain the original AI note directly, so the batched
+    // fallback searches reachable notes from the pre-revert tip without adding
+    // per-commit Git spawns.
     repo.git(&["revert", "--no-edit", &del_a, &del_b, &del_c])
         .unwrap();
 

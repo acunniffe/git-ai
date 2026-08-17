@@ -43,7 +43,7 @@ use windows_sys::Win32::System::JobObjects::{
 #[cfg(windows)]
 use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
 
-use super::test_file::TestFile;
+use super::test_file::{ExpectedLine, TestFile};
 
 const DAEMON_TEST_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
 const DAEMON_TEST_CONTROL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -3314,6 +3314,19 @@ impl TestRepo {
             // New file, start with empty lines
             TestFile::new_with_filename(file_path, vec![], self)
         }
+    }
+
+    pub fn assert_file_committed_lines(&self, filename: &str, lines: Vec<ExpectedLine>) {
+        self.filename(filename).assert_committed_lines(lines);
+    }
+
+    /// Reproduce an agent's real pre-edit and post-edit checkpoint flow around
+    /// an explicit file write. Use this when checkpoint ordering is material to
+    /// the integration test instead of the convenience TestFile edit helpers.
+    pub fn write_ai_edit(&self, filename: &str, contents: &str) {
+        self.git_ai(&["checkpoint", "human", filename]).unwrap();
+        fs::write(self.path.join(filename), contents).unwrap();
+        self.git_ai(&["checkpoint", "mock_ai", filename]).unwrap();
     }
 
     pub fn current_working_logs(&self) -> PersistedWorkingLog {
