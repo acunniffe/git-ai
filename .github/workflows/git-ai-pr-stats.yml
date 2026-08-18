@@ -1,0 +1,294 @@
+name: Git AI PR Stats
+
+# Report AI-vs-human authorship KPIs from `git ai stats` on every PR update
+# and after merges to `main`. Results are written to the job summary and
+# uploaded as artifacts (raw JSON + rendered Markdown). No PR comments or
+# external services — job summary + artifacts only.
+
+permissions:
+  contents: read
+  pull-requests: read
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main]
+
+concurrency:
+  # For PRs, coalesce runs per PR; for push, coalesce per branch.
+  group: git-ai-stats-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stats:
+    name: Compute git-ai stats
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history is required so `git ai stats <base>..<head>` can
+          # walk every commit in the range. For PRs from forks, checkout
+          # the PR head commit explicitly.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install git-ai
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::group::Install git-ai"
+          curl -sSL https://usegitai.com/install.sh | bash
+          # The installer drops the binary into ~/.local/bin or ~/.gitai/bin.
+          # Make sure both are on PATH for later steps.
+          for d in "$HOME/.local/bin" "$HOME/.gitai/bin" "$HOME/.cargo/bin"; do
+            if [ -d "$d" ]; then
+              echo "$d" >> "$GITHUB_PATH"
+            fi
+          done
+          echo "::endgroup::"
+
+      - name: Verify git-ai is available
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v git-ai >/dev/null 2>&1 && ! git ai --version >/dev/null 2>&1; then
+            echo "::error::git-ai was not installed correctly and is not on PATH."
+            exit 1
+          fi
+          git ai --version || true
+
+      - name: Compute commit range
+        id: range
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          BASE=""
+          HEAD=""
+
+          case "$EVENT_NAME" in
+            pull_request)
+              BASE="$PR_BASE_SHA"
+              HEAD="$PR_HEAD_SHA"
+              # Ensure both endpoints are present locally.
+              git fetch --no-tags --prune origin "$BASE" || true
+              git fetch --no-tags --prune origin "$HEAD" || true
+              ;;
+            push)
+              BASE="$PUSH_BEFORE"
+              HEAD="$PUSH_AFTER"
+              ;;
+            *)
+              echo "::error::Unsupported event: $EVENT_NAME"
+              exit 1
+              ;;
+          esac
+
+          # Treat all-zero SHAs (first push to a branch, force-push edge cases)
+          # as unusable and fall back to the parent of HEAD when possible.
+          ZERO="0000000000000000000000000000000000000000"
+          if [ -z "$BASE" ] || [ "$BASE" = "$ZERO" ]; then
+            if git rev-parse --verify --quiet "${HEAD}^" >/dev/null; then
+              BASE="$(git rev-parse "${HEAD}^")"
+              echo "::warning::Base SHA was empty/zero; falling back to HEAD^ ($BASE)."
+            else
+              echo "::error::Unable to determine a usable base SHA for range."
+              exit 1
+            fi
+          fi
+
+          if [ -z "$HEAD" ] || [ "$HEAD" = "$ZERO" ]; then
+            echo "::error::Head SHA is missing; cannot compute range."
+            exit 1
+          fi
+
+          RANGE="${BASE}..${HEAD}"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "head=$HEAD" >> "$GITHUB_OUTPUT"
+          echo "range=$RANGE" >> "$GITHUB_OUTPUT"
+          echo "Computed range: $RANGE"
+
+      - name: Run git ai stats
+        id: stats
+        shell: bash
+        env:
+          RANGE: ${{ steps.range.outputs.range }}
+        run: |
+          set -euo pipefail
+          echo "Running: git ai stats $RANGE --json"
+          # Capture stdout to file; don't fail the job on non-zero yet so we
+          # can print a clear error below.
+          set +e
+          git ai stats "$RANGE" --json > git-ai-stats.json 2> git-ai-stats.err
+          RC=$?
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            echo "::error::git ai stats failed (exit $RC) for range $RANGE"
+            echo "--- stderr ---"
+            cat git-ai-stats.err || true
+            exit "$RC"
+          fi
+          if [ ! -s git-ai-stats.json ]; then
+            echo "::error::git ai stats produced empty output for range $RANGE"
+            exit 1
+          fi
+          echo "Raw stats:"
+          cat git-ai-stats.json
+
+      - name: Build Markdown summary
+        id: summary
+        shell: bash
+        env:
+          RANGE: ${{ steps.range.outputs.range }}
+          BASE_SHA: ${{ steps.range.outputs.base }}
+          HEAD_SHA: ${{ steps.range.outputs.head }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          raw = Path("git-ai-stats.json").read_text().strip()
+          try:
+              data = json.loads(raw)
+          except json.JSONDecodeError as e:
+              print(f"::error::Could not parse git-ai-stats.json: {e}")
+              raise SystemExit(1)
+
+          def num(key, default=0):
+              v = data.get(key, default)
+              try:
+                  return int(v) if v is not None else default
+              except (TypeError, ValueError):
+                  return default
+
+          added        = num("git_diff_added_lines")
+          deleted      = num("git_diff_deleted_lines")
+          ai_add       = num("ai_additions")
+          human_add    = num("human_additions")
+          ai_accepted  = num("ai_accepted")
+
+          # Prefer an explicit unknown_additions field if present; otherwise
+          # derive it. Never let it go negative.
+          if "unknown_additions" in data and data["unknown_additions"] is not None:
+              unknown_add = num("unknown_additions")
+          else:
+              unknown_add = max(0, added - ai_add - human_add)
+
+          def pct(part, whole):
+              if whole <= 0:
+                  return 0.0
+              return (part / whole) * 100.0
+
+          ai_pct       = pct(ai_add, added)
+          human_pct    = pct(human_add, added)
+          unknown_pct  = pct(unknown_add, added)
+          # AI acceptance rate = ai_accepted / ai_additions
+          accept_rate  = pct(ai_accepted, ai_add) if ai_add > 0 else 0.0
+
+          range_str = os.environ.get("RANGE", "")
+          base_sha  = os.environ.get("BASE_SHA", "")[:12]
+          head_sha  = os.environ.get("HEAD_SHA", "")[:12]
+          event     = os.environ.get("EVENT_NAME", "")
+          pr_num    = os.environ.get("PR_NUMBER", "")
+
+          title = "Git AI Stats"
+          if event == "pull_request" and pr_num:
+              title += f" — PR #{pr_num}"
+          elif event == "push":
+              title += " — push to main"
+
+          lines = []
+          lines.append(f"## {title}")
+          lines.append("")
+          lines.append(f"**Range:** `{range_str}`  ")
+          lines.append(f"**Base:** `{base_sha}` → **Head:** `{head_sha}`")
+          lines.append("")
+          lines.append("### Line counts")
+          lines.append("")
+          lines.append("| Metric | Value |")
+          lines.append("| --- | ---: |")
+          lines.append(f"| Total added lines | {added} |")
+          lines.append(f"| Total deleted lines | {deleted} |")
+          lines.append(f"| AI additions | {ai_add} |")
+          lines.append(f"| Human additions | {human_add} |")
+          lines.append(f"| Unknown additions | {unknown_add} |")
+          lines.append(f"| AI accepted | {ai_accepted} |")
+          lines.append("")
+          lines.append("### Attribution mix")
+          lines.append("")
+          lines.append("| Bucket | Share |")
+          lines.append("| --- | ---: |")
+          lines.append(f"| AI %      | {ai_pct:.1f}% |")
+          lines.append(f"| Human %   | {human_pct:.1f}% |")
+          lines.append(f"| Unknown % | {unknown_pct:.1f}% |")
+          lines.append("")
+          lines.append(f"**AI acceptance rate:** {accept_rate:.1f}%  ")
+          lines.append("_(ai_accepted / ai_additions)_")
+          lines.append("")
+
+          breakdown = data.get("tool_model_breakdown") or {}
+          if isinstance(breakdown, dict) and breakdown:
+              lines.append("### Tool / Model breakdown")
+              lines.append("")
+              lines.append("| Tool / Model | AI additions | AI accepted | Acceptance % |")
+              lines.append("| --- | ---: | ---: | ---: |")
+              for key, v in sorted(breakdown.items()):
+                  v = v or {}
+                  a = 0
+                  acc = 0
+                  try:
+                      a = int(v.get("ai_additions", 0) or 0)
+                      acc = int(v.get("ai_accepted", 0) or 0)
+                  except (TypeError, ValueError):
+                      pass
+                  rate = (acc / a * 100.0) if a > 0 else 0.0
+                  lines.append(f"| `{key}` | {a} | {acc} | {rate:.1f}% |")
+              lines.append("")
+
+          lines.append("<details><summary>Raw JSON</summary>")
+          lines.append("")
+          lines.append("```json")
+          lines.append(json.dumps(data, indent=2, sort_keys=True))
+          lines.append("```")
+          lines.append("")
+          lines.append("</details>")
+          lines.append("")
+
+          md = "\n".join(lines)
+          Path("git-ai-summary.md").write_text(md)
+
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a", encoding="utf-8") as f:
+                  f.write(md)
+          print("Wrote git-ai-summary.md and appended to $GITHUB_STEP_SUMMARY")
+          PY
+
+      - name: Upload stats artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: git-ai-stats-${{ github.event.pull_request.number || github.run_id }}
+          path: |
+            git-ai-stats.json
+            git-ai-summary.md
+          if-no-files-found: warn
+          retention-days: 30
+
