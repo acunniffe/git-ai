@@ -73,10 +73,10 @@ fn extract_model_from_zcode_rollout_line(line: &str) -> Option<String> {
 }
 
 /// Read the complete lines of `path` inside a window of `max_bytes` measured
-/// from the end of the file, oldest first. Bytes before the first newline of
-/// the window belong to a truncated prior line and are discarded; a window
-/// with no newline at all sits inside a single (likely truncated) line and
-/// yields nothing.
+/// from the end of the file, oldest first. When the window starts mid-file,
+/// the bytes before its first newline belong to a truncated prior line and are
+/// discarded; a window covering the whole file starts on a line boundary, so
+/// its first line is complete and kept.
 fn read_last_complete_lines_bounded(path: &Path, max_bytes: u64) -> Vec<String> {
     use std::io::Read as _;
 
@@ -90,7 +90,8 @@ fn read_last_complete_lines_bounded(path: &Path, max_bytes: u64) -> Vec<String> 
         return Vec::new();
     }
     let cap = max_bytes.min(size);
-    if file.seek(SeekFrom::Start(size - cap)).is_err() {
+    let window_start = size - cap;
+    if file.seek(SeekFrom::Start(window_start)).is_err() {
         return Vec::new();
     }
     let mut buf = vec![0u8; cap as usize];
@@ -99,13 +100,15 @@ fn read_last_complete_lines_bounded(path: &Path, max_bytes: u64) -> Vec<String> 
     }
     let window = String::from_utf8_lossy(&buf);
     let window = window.trim_end();
-    let Some(first_newline) = window.find('\n') else {
-        return Vec::new();
+    let complete = if window_start > 0 {
+        let Some(first_newline) = window.find('\n') else {
+            return Vec::new();
+        };
+        &window[first_newline + 1..]
+    } else {
+        window
     };
-    window[first_newline + 1..]
-        .lines()
-        .map(str::to_string)
-        .collect()
+    complete.lines().map(str::to_string).collect()
 }
 
 /// Extract the model from a ZCode rollout transcript
@@ -1325,6 +1328,19 @@ mod tests {
         std::io::Write::write_all(&mut file, switched.as_bytes()).unwrap();
         let result = extract_model_from_zcode_rollout(file.path()).unwrap();
         assert_eq!(result, Some("model-b".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_single_large_record() {
+        // A log holding one record larger than the first-line fallback cap
+        // must still yield its model: the whole file fits the wide window, so
+        // its only line is complete rather than truncated prior-line garbage.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let padding = "x".repeat(1536 * 1024);
+        let record = format!("{{\"model\":{{\"modelId\":\"GLM-5.3\"}},\"pad\":\"{padding}\"}}\n");
+        std::io::Write::write_all(&mut file, record.as_bytes()).unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("GLM-5.3".to_string()));
     }
 
     #[test]

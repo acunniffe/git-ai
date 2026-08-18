@@ -45,6 +45,57 @@ impl ZcodePreset {
             .map(|p| p.replace('\\', "/").contains("/.claude/"))
             .unwrap_or(false)
     }
+
+    /// File paths for a tool event. Write/Edit carry `tool_input.file_path`,
+    /// but patch-style ApplyPatch payloads embed the edited paths in the patch
+    /// text, and PostToolUse responses may carry the canonical path instead —
+    /// without those fallbacks the checkpoint would carry no files and the
+    /// edit would lose AI attribution.
+    fn file_paths_for_event(
+        data: &serde_json::Value,
+        cwd: &str,
+        tool_name: Option<&str>,
+        is_post: bool,
+    ) -> Vec<PathBuf> {
+        let mut paths = parse::file_paths_from_tool_input(data, cwd);
+        if !paths.is_empty() || tool_name != Some("ApplyPatch") {
+            return paths;
+        }
+
+        let tool_input = data.get("tool_input").or_else(|| data.get("toolInput"));
+        if let Some(ti) = tool_input
+            && let Some(text) = ti
+                .as_str()
+                .or_else(|| ti.get("patch").and_then(|v| v.as_str()))
+        {
+            let mut raw = Vec::new();
+            parse::collect_apply_patch_paths_from_text(text, &mut raw);
+            paths.extend(raw.iter().map(|p| parse::resolve_absolute(p, cwd)));
+        }
+
+        if paths.is_empty()
+            && is_post
+            && let Some(tool_response) = data
+                .get("tool_response")
+                .or_else(|| data.get("toolResponse"))
+        {
+            let response_obj = if let Some(s) = tool_response.as_str() {
+                serde_json::from_str::<serde_json::Value>(s).ok()
+            } else {
+                Some(tool_response.clone())
+            };
+            if let Some(obj) = response_obj
+                && let Some(path) = obj
+                    .get("file_path")
+                    .or_else(|| obj.get("filePath"))
+                    .and_then(|v| v.as_str())
+            {
+                paths.push(parse::resolve_absolute(path, cwd));
+            }
+        }
+
+        paths
+    }
 }
 
 impl AgentPreset for ZcodePreset {
@@ -58,7 +109,8 @@ impl AgentPreset for ZcodePreset {
             ));
         }
 
-        let tool_class = parse::optional_str_multi(&data, &["tool_name", "toolName"])
+        let tool_name = parse::optional_str_multi(&data, &["tool_name", "toolName"]);
+        let tool_class = tool_name
             .map(|name| bash_tool::classify_tool(Agent::Zcode, name))
             .unwrap_or(ToolClass::FileEdit);
         if tool_class == ToolClass::Skip {
@@ -110,6 +162,7 @@ impl AgentPreset for ZcodePreset {
         let tool_use_id =
             parse::str_or_default_multi(&data, &["tool_use_id", "toolUseId"], "bash").to_string();
         let bash_command = parse::bash_command_from_hook_input(&data);
+        let file_paths = Self::file_paths_for_event(&data, cwd, tool_name, is_post);
 
         let event = if tool_class == ToolClass::Bash {
             if is_pre {
@@ -129,14 +182,14 @@ impl AgentPreset for ZcodePreset {
         } else if is_pre {
             ParsedHookEvent::PreFileEdit(PreFileEdit {
                 context,
-                file_paths: parse::file_paths_from_tool_input(&data, cwd),
+                file_paths,
                 dirty_files: None,
                 tool_use_id: Some(tool_use_id),
             })
         } else {
             ParsedHookEvent::PostFileEdit(PostFileEdit {
                 context,
-                file_paths: parse::file_paths_from_tool_input(&data, cwd),
+                file_paths,
                 dirty_files: None,
                 stream_source: None,
                 tool_use_id: Some(tool_use_id),
@@ -305,6 +358,91 @@ mod tests {
             ZcodePreset.parse(&post, "t_test123456789a").unwrap()[..],
             [ParsedHookEvent::PostFileEdit(_)]
         ));
+    }
+
+    #[test]
+    fn test_zcode_apply_patch_extracts_paths_from_patch_text() {
+        // Patch-style payloads carry the edited paths inside the patch body
+        // instead of a file_path key; without this extraction the checkpoint
+        // would carry no files and the edit would lose AI attribution.
+        let input = json!({
+            "transcript_path": "/tmp/zcode-claude-hook-abcd/transcript.jsonl",
+            "cwd": "/home/user/project",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "ApplyPatch",
+            "session_id": "sess-1",
+            "tool_use_id": "tu-1",
+            "tool_input": {
+                "patch": "*** Update File: src/main.rs\n@@\n-old\n+new\n*** Add File: src/new.rs\n@@\n+content"
+            }
+        })
+        .to_string();
+        let events = ZcodePreset.parse(&input, "t_test123456789a").unwrap();
+        match &events[0] {
+            ParsedHookEvent::PostFileEdit(e) => {
+                assert_eq!(
+                    e.file_paths,
+                    vec![
+                        PathBuf::from("/home/user/project/src/main.rs"),
+                        PathBuf::from("/home/user/project/src/new.rs")
+                    ]
+                );
+            }
+            _ => panic!("Expected PostFileEdit"),
+        }
+    }
+
+    #[test]
+    fn test_zcode_apply_patch_pre_extracts_paths_from_patch_text() {
+        // The pre-edit snapshot needs the paths too, or the before-state of a
+        // patch-style edit is never captured.
+        let input = json!({
+            "transcript_path": "/tmp/zcode-claude-hook-abcd/transcript.jsonl",
+            "cwd": "/home/user/project",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "ApplyPatch",
+            "session_id": "sess-1",
+            "tool_use_id": "tu-1",
+            "tool_input": {
+                "patch": "*** Update File: src/main.rs\n@@\n-old\n+new"
+            }
+        })
+        .to_string();
+        let events = ZcodePreset.parse(&input, "t_test123456789a").unwrap();
+        match &events[0] {
+            ParsedHookEvent::PreFileEdit(e) => {
+                assert_eq!(
+                    e.file_paths,
+                    vec![PathBuf::from("/home/user/project/src/main.rs")]
+                );
+            }
+            _ => panic!("Expected PreFileEdit"),
+        }
+    }
+
+    #[test]
+    fn test_zcode_apply_patch_post_falls_back_to_tool_response_path() {
+        let input = json!({
+            "transcript_path": "/tmp/zcode-claude-hook-abcd/transcript.jsonl",
+            "cwd": "/home/user/project",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "ApplyPatch",
+            "session_id": "sess-1",
+            "tool_use_id": "tu-1",
+            "tool_input": {"patch": "no parsable path markers here"},
+            "tool_response": {"file_path": "src/from-response.rs"}
+        })
+        .to_string();
+        let events = ZcodePreset.parse(&input, "t_test123456789a").unwrap();
+        match &events[0] {
+            ParsedHookEvent::PostFileEdit(e) => {
+                assert_eq!(
+                    e.file_paths,
+                    vec![PathBuf::from("/home/user/project/src/from-response.rs")]
+                );
+            }
+            _ => panic!("Expected PostFileEdit"),
+        }
     }
 
     #[test]
