@@ -135,21 +135,23 @@ impl ZcodeInstaller {
             // Migrate git-ai hooks out of matcher-carrying blocks: a matcher
             // restricted block may never match (e.g. "*" copied from a Claude
             // Code config is an invalid zcode regex), which would silently
-            // disable attribution. Blocks emptied by the removal are dropped.
-            for block in blocks.iter_mut() {
+            // disable attribution. Only blocks emptied by this removal are
+            // dropped; pre-existing empty blocks belong to the user and stay.
+            let mut emptied_by_migration: Vec<usize> = Vec::new();
+            for (idx, block) in blocks.iter_mut().enumerate() {
                 if block.get("matcher").is_some()
                     && let Some(hooks_arr) = block.get_mut("hooks").and_then(|h| h.as_array_mut())
                 {
+                    let before = hooks_arr.len();
                     hooks_arr.retain(|h| !Self::is_git_ai_hook(h));
+                    if before > 0 && hooks_arr.is_empty() {
+                        emptied_by_migration.push(idx);
+                    }
                 }
             }
-            blocks.retain(|block| {
-                block
-                    .get("hooks")
-                    .and_then(|h| h.as_array())
-                    .map(|hooks| !hooks.is_empty())
-                    .unwrap_or(true)
-            });
+            for idx in emptied_by_migration.into_iter().rev() {
+                blocks.remove(idx);
+            }
 
             // Refresh any remaining git-ai entry in place (keeping its
             // position) and drop duplicate git-ai hooks.
@@ -239,27 +241,24 @@ impl ZcodeInstaller {
                 continue;
             };
 
-            for block in blocks.iter_mut() {
+            // Remove git-ai hooks, tracking which blocks this empties so only
+            // those are dropped — pre-existing empty blocks belong to the
+            // user and stay.
+            let mut emptied_by_removal: Vec<usize> = Vec::new();
+            for (idx, block) in blocks.iter_mut().enumerate() {
                 if let Some(hooks_arr) = block.get_mut("hooks").and_then(|h| h.as_array_mut()) {
                     let original_len = hooks_arr.len();
                     hooks_arr.retain(|h| !Self::is_git_ai_hook(h));
                     if hooks_arr.len() != original_len {
                         changed = true;
+                        if hooks_arr.is_empty() {
+                            emptied_by_removal.push(idx);
+                        }
                     }
                 }
             }
-
-            // Drop blocks left empty by the removal.
-            let original_len = blocks.len();
-            blocks.retain(|block| {
-                block
-                    .get("hooks")
-                    .and_then(|h| h.as_array())
-                    .map(|hooks| !hooks.is_empty())
-                    .unwrap_or(true)
-            });
-            if blocks.len() != original_len {
-                changed = true;
+            for idx in emptied_by_removal.into_iter().rev() {
+                blocks.remove(idx);
             }
 
             // Drop the event key entirely when nothing remains.
@@ -578,6 +577,84 @@ mod tests {
             }}
         });
         assert_eq!(ZcodeInstaller::hook_status(&matcher_locked), (false, false));
+    }
+
+    #[test]
+    fn s8_install_and_uninstall_preserve_pre_existing_empty_blocks() {
+        // Empty hook blocks the user wrote themselves (placeholders, work in
+        // progress) must survive both install and uninstall; only blocks
+        // emptied by our own migration/removal may be dropped.
+        let (_dir, path) = temp_config();
+
+        let existing = json!({
+            "hooks": {
+                "events": {
+                    "PreToolUse": [
+                        {"matcher": "Read", "hooks": []},
+                        {"hooks": []}
+                    ],
+                    "PostToolUse": [
+                        {"matcher": "Read", "hooks": []}
+                    ]
+                }
+            }
+        });
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, serde_json::to_string_pretty(&existing).unwrap()).unwrap();
+
+        ZcodeInstaller::install_hooks_at(&path, &desired_cmd(), false)
+            .unwrap()
+            .expect("install should produce a diff");
+
+        let config = read_config(&path);
+        for event in HOOK_EVENTS {
+            let blocks = config["hooks"]["events"][event].as_array().unwrap();
+            let preserved = blocks
+                .iter()
+                .filter(|b| {
+                    b["hooks"]
+                        .as_array()
+                        .map(|hooks| hooks.is_empty())
+                        .unwrap_or(false)
+                })
+                .count();
+            let expected = if *event == "PreToolUse" { 2 } else { 1 };
+            assert_eq!(
+                preserved, expected,
+                "{event}: pre-existing empty blocks must survive install"
+            );
+            assert!(
+                blocks.iter().any(|b| b.get("matcher").is_none()
+                    && b["hooks"]
+                        .as_array()
+                        .map(|hooks| !hooks.is_empty())
+                        .unwrap_or(false)),
+                "{event}: git-ai block should be installed"
+            );
+        }
+
+        ZcodeInstaller::uninstall_hooks_at(&path, false)
+            .unwrap()
+            .expect("uninstall should produce a diff");
+
+        let config = read_config(&path);
+        for event in HOOK_EVENTS {
+            let blocks = config["hooks"]["events"][event].as_array().unwrap();
+            let preserved = blocks
+                .iter()
+                .filter(|b| {
+                    b["hooks"]
+                        .as_array()
+                        .map(|hooks| hooks.is_empty())
+                        .unwrap_or(false)
+                })
+                .count();
+            let expected = if *event == "PreToolUse" { 2 } else { 1 };
+            assert_eq!(
+                preserved, expected,
+                "{event}: pre-existing empty blocks must survive uninstall"
+            );
+        }
     }
 
     #[test]
