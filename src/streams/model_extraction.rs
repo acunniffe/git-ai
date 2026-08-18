@@ -54,15 +54,17 @@ pub fn extract_model_from_droid_settings(
     Ok(json.get("model").and_then(|v| v.as_str()).map(String::from))
 }
 
-/// Maximum bytes read from the last line of a ZCode rollout transcript. Each
-/// model-io record embeds the whole conversation, so the last line is the
-/// largest; if it exceeds this cap it is left truncated (fails to parse) and
-/// extraction falls back to the first line.
-const MAX_ZCODE_ROLLOUT_LAST_LINE_BYTES: u64 = 4 * 1024 * 1024;
+/// Backward-scan granularity and total budget used to locate the start of the
+/// newest rollout record. zcode model-io records embed the whole conversation
+/// and grow monotonically, so the newest record's start can sit many
+/// megabytes from EOF; past the budget it is unreachable and extraction falls
+/// back to the session's opening records.
+const ZCODE_BACKWARD_SCAN_CHUNK_BYTES: u64 = 256 * 1024;
+const MAX_ZCODE_BACKWARD_SCAN_BYTES: u64 = 16 * 1024 * 1024;
 
-/// Maximum bytes read from the first line when falling back to the session's
-/// opening record.
-const MAX_ZCODE_ROLLOUT_FIRST_LINE_BYTES: u64 = 1024 * 1024;
+/// Bytes read from the head of a rollout record when pulling the model. The
+/// `model` object sits near the record start, before the large request body.
+const ZCODE_RECORD_HEAD_BYTES: u64 = 64 * 1024;
 
 fn extract_model_from_zcode_rollout_line(line: &str) -> Option<String> {
     let json: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
@@ -72,43 +74,58 @@ fn extract_model_from_zcode_rollout_line(line: &str) -> Option<String> {
         .map(String::from)
 }
 
-/// Read the complete lines of `path` inside a window of `max_bytes` measured
-/// from the end of the file, oldest first. When the window starts mid-file,
-/// the bytes before its first newline belong to a truncated prior line and are
-/// discarded; a window covering the whole file starts on a line boundary, so
-/// its first line is complete and kept.
-fn read_last_complete_lines_bounded(path: &Path, max_bytes: u64) -> Vec<String> {
+/// Find the byte offset where the newest complete record starts, scanning
+/// backwards from EOF in bounded chunks. A trailing newline is skipped so the
+/// last record's terminator is not mistaken for a separator. Returns
+/// `Some(0)` when the whole file is a single line within the budget.
+fn find_start_of_last_record(file: &mut File, size: u64) -> Option<u64> {
     use std::io::Read as _;
 
-    let Ok(mut file) = File::open(path) else {
-        return Vec::new();
-    };
-    let Ok(size) = file.metadata().map(|m| m.len()) else {
-        return Vec::new();
-    };
     if size == 0 {
-        return Vec::new();
+        return None;
     }
-    let cap = max_bytes.min(size);
-    let window_start = size - cap;
-    if file.seek(SeekFrom::Start(window_start)).is_err() {
-        return Vec::new();
+    let scan_len = MAX_ZCODE_BACKWARD_SCAN_BYTES.min(size);
+    let mut scanned: u64 = 0;
+    while scanned < scan_len {
+        let chunk_len = ZCODE_BACKWARD_SCAN_CHUNK_BYTES.min(scan_len - scanned);
+        let chunk_start = size - scanned - chunk_len;
+        let mut buf = vec![0u8; chunk_len as usize];
+        file.seek(SeekFrom::Start(chunk_start)).ok()?;
+        file.read_exact(&mut buf).ok()?;
+        let mut from = buf.len();
+        if scanned == 0 && buf.last() == Some(&b'\n') {
+            from -= 1;
+        }
+        if let Some(pos) = buf[..from].iter().rposition(|&b| b == b'\n') {
+            return Some(chunk_start + pos as u64 + 1);
+        }
+        scanned += chunk_len;
     }
-    let mut buf = vec![0u8; cap as usize];
-    if file.read_exact(&mut buf).is_err() {
-        return Vec::new();
+    if scan_len == size { Some(0) } else { None }
+}
+
+/// Pull `model.modelId` from the head of the record starting at `start`.
+/// Full-line JSON parses cost megabytes for records that embed the whole
+/// conversation, while the model object sits within the first bytes — and
+/// JSON string contents escape their quotes, so a raw `"modelId":"` match
+/// only occurs at a real key position.
+fn scan_model_id_in_record_head(file: &mut File, start: u64, size: u64) -> Option<String> {
+    use std::io::Read as _;
+
+    let len = ZCODE_RECORD_HEAD_BYTES.min(size.saturating_sub(start));
+    if len == 0 {
+        return None;
     }
-    let window = String::from_utf8_lossy(&buf);
-    let window = window.trim_end();
-    let complete = if window_start > 0 {
-        let Some(first_newline) = window.find('\n') else {
-            return Vec::new();
-        };
-        &window[first_newline + 1..]
-    } else {
-        window
-    };
-    complete.lines().map(str::to_string).collect()
+    let mut buf = vec![0u8; len as usize];
+    file.seek(SeekFrom::Start(start)).ok()?;
+    file.read_exact(&mut buf).ok()?;
+    let head = String::from_utf8_lossy(&buf);
+    let key = "\"modelId\":\"";
+    let value_start = head.find(key)? + key.len();
+    let rest = &head[value_start..];
+    let end = rest.find('"')?;
+    let value = &rest[..end];
+    (!value.is_empty()).then(|| value.to_string())
 }
 
 /// Extract the model from a ZCode rollout transcript
@@ -116,12 +133,14 @@ fn read_last_complete_lines_bounded(path: &Path, max_bytes: u64) -> Vec<String> 
 ///
 /// Each line is one model-io record shaped like
 /// `{"model":{"modelId":"GLM-5.3",...},"request":{...}}`. Newest-record
-/// probes come first so mid-session model switches are attributed
-/// correctly: the shared bounded tail scanner, then a wider window over the
-/// last complete records (model-io records embed the whole conversation and
-/// routinely exceed the shared windows). Only once no recent record parses
-/// do the oldest-record fallbacks run (shared head scanner, then the
-/// bounded first line). Missing or unreadable files yield `Ok(None)`.
+/// probes come first so mid-session model switches are attributed correctly:
+/// the shared bounded tail scanner for records that fit its window, then a
+/// bounded backward scan that locates the newest record's start and reads
+/// only its head (records embed the whole conversation, so their lines are
+/// routinely far larger than any full-parse window). Only once no recent
+/// record yields a model do the oldest-record fallbacks run (shared head
+/// scanner, then the opening record's head). Missing or unreadable files
+/// yield `Ok(None)`.
 pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, StreamError> {
     let (model, _) =
         extract_model_from_jsonl_tail_with(path, extract_model_from_zcode_rollout_line)?;
@@ -129,13 +148,13 @@ pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, S
         return Ok(model);
     }
 
-    for line in read_last_complete_lines_bounded(path, MAX_ZCODE_ROLLOUT_LAST_LINE_BYTES)
-        .iter()
-        .rev()
+    if let Ok(mut file) = File::open(path)
+        && let Ok(size) = file.metadata().map(|m| m.len())
+        && size > 0
+        && let Some(start) = find_start_of_last_record(&mut file, size)
+        && let Some(model) = scan_model_id_in_record_head(&mut file, start, size)
     {
-        if let Some(model) = extract_model_from_zcode_rollout_line(line) {
-            return Ok(Some(model));
-        }
+        return Ok(Some(model));
     }
 
     if let Some(model) =
@@ -144,18 +163,17 @@ pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, S
         return Ok(Some(model));
     }
 
-    let file = match File::open(path) {
-        Ok(f) => f,
-        Err(_) => return Ok(None),
-    };
-
-    let mut reader = BufReader::new(file.take(MAX_ZCODE_ROLLOUT_FIRST_LINE_BYTES));
-    let mut first_line = String::new();
-    if reader.read_line(&mut first_line).is_err() {
-        return Ok(None);
+    // Opening records larger than the head scanner's per-line cap (a single
+    // huge first record) are still covered by scanning that record's head.
+    if let Ok(mut file) = File::open(path)
+        && let Ok(size) = file.metadata().map(|m| m.len())
+        && size > 0
+        && let Some(model) = scan_model_id_in_record_head(&mut file, 0, size)
+    {
+        return Ok(Some(model));
     }
 
-    Ok(extract_model_from_zcode_rollout_line(&first_line))
+    Ok(None)
 }
 
 fn extract_model_from_jsonl_tail(path: &Path) -> Result<Option<String>, StreamError> {
@@ -1344,12 +1362,27 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_model_zcode_rollout_oversized_last_line_falls_back_to_first() {
+    fn test_extract_model_zcode_rollout_oversized_last_record_resolved_from_record_head() {
         // The last record embeds the whole conversation and can exceed the
-        // read cap; extraction then falls back to the opening record's model.
+        // shared scan windows; the backward scan must still reach its start so
+        // the model is read from the newest record's head, not the opening one.
         let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
         let first = b"{\"model\":{\"modelId\":\"model-a\"}}\n";
         let padding = "x".repeat(5 * 1024 * 1024);
+        let last = format!("{{\"model\":{{\"modelId\":\"model-b\"}},\"pad\":\"{padding}\"}}\n");
+        std::io::Write::write_all(&mut file, first).unwrap();
+        std::io::Write::write_all(&mut file, last.as_bytes()).unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("model-b".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_beyond_backward_budget_falls_back_to_first() {
+        // A last record larger than the whole backward-scan budget cannot be
+        // reached at all; extraction then falls back to the opening record.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let first = b"{\"model\":{\"modelId\":\"model-a\"}}\n";
+        let padding = "x".repeat(17 * 1024 * 1024);
         let last = format!("{{\"model\":{{\"modelId\":\"model-b\"}},\"pad\":\"{padding}\"}}\n");
         std::io::Write::write_all(&mut file, first).unwrap();
         std::io::Write::write_all(&mut file, last.as_bytes()).unwrap();
