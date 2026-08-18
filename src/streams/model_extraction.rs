@@ -54,6 +54,47 @@ pub fn extract_model_from_droid_settings(
     Ok(json.get("model").and_then(|v| v.as_str()).map(String::from))
 }
 
+/// Maximum bytes read from the first line of a ZCode rollout transcript.
+/// The first line holds the first model-io record of the session; the `model`
+/// object sits before the large request body, so a truncated line simply fails
+/// to parse and yields no model.
+const MAX_ZCODE_ROLLOUT_FIRST_LINE_BYTES: u64 = 1024 * 1024;
+
+/// Extract the model from a ZCode rollout transcript
+/// (`~/.zcode/cli/rollout/model-io-sess_<session_id>.jsonl`).
+///
+/// Each line is one model-io record shaped like
+/// `{"model":{"modelId":"GLM-5.3",...},"request":{...}}`; only the first line
+/// is read. Missing or unreadable files yield `Ok(None)`.
+pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, StreamError> {
+    let file = match File::open(path) {
+        Ok(f) => f,
+        Err(_) => return Ok(None),
+    };
+
+    let mut reader = BufReader::new(file.take(MAX_ZCODE_ROLLOUT_FIRST_LINE_BYTES));
+    let mut first_line = String::new();
+    if reader.read_line(&mut first_line).is_err() {
+        return Ok(None);
+    }
+
+    let trimmed = first_line.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let json: serde_json::Value = match serde_json::from_str(trimmed) {
+        Ok(v) => v,
+        Err(_) => return Ok(None),
+    };
+
+    Ok(json
+        .get("model")
+        .and_then(|m| m.get("modelId"))
+        .and_then(|v| v.as_str())
+        .map(String::from))
+}
+
 fn extract_model_from_jsonl_tail(path: &Path) -> Result<Option<String>, StreamError> {
     let (model, tail_was_truncated) =
         extract_model_from_jsonl_tail_with(path, extract_model_from_jsonl_line)?;
@@ -1164,6 +1205,47 @@ mod tests {
         let path = fixture_path("gemini-session-simple.jsonl");
         let result = extract_model(&path, StreamFormat::GeminiJsonl, None).unwrap();
         assert_eq!(result, Some("gemini-2.5-flash".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_from_fixture() {
+        let path = fixture_path("zcode-rollout-simple.jsonl");
+        let result = extract_model_from_zcode_rollout(&path).unwrap();
+        assert_eq!(result, Some("GLM-5.3".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_missing_file() {
+        let result = extract_model_from_zcode_rollout(Path::new("/nonexistent/zcode.jsonl"));
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_invalid_first_line() {
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(
+            &mut file,
+            b"not json at all\n{\"model\":{\"modelId\":\"GLM-5.3\"}}\n",
+        )
+        .unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_empty_file() {
+        let file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_model_id_missing() {
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(&mut file, br#"{"request":{"body":{"model":"GLM-5.3"}}}"#)
+            .unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, None);
     }
 
     #[test]

@@ -387,6 +387,12 @@ pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
                 _ => ToolClass::Skip,
             }
         }
+        Agent::Zcode => match tool_name {
+            // zcode's hook matchers alias ApplyPatch to Write/Edit.
+            "Write" | "Edit" | "MultiEdit" | "NotebookEdit" | "ApplyPatch" => ToolClass::FileEdit,
+            "Bash" => ToolClass::Bash,
+            _ => ToolClass::Skip,
+        },
     }
 }
 
@@ -405,6 +411,7 @@ pub enum Agent {
     Windsurf,
     Cursor,
     Cline,
+    Zcode,
 }
 
 // ---------------------------------------------------------------------------
