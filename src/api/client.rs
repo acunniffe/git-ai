@@ -319,6 +319,7 @@ impl ApiContext {
         body: &T,
     ) -> Result<http::Response, GitAiError> {
         let url = self.build_url(endpoint)?;
+        crate::http::reject_git_ai_cloud(&url).map_err(GitAiError::Generic)?;
         let body_json = serde_json::to_string(body).map_err(GitAiError::JsonError)?;
 
         let (_agent, mut request) = Self::http_post(&url, self.timeout_secs);
@@ -341,6 +342,7 @@ impl ApiContext {
     /// Make a GET request
     pub fn get(&self, endpoint: &str) -> Result<http::Response, GitAiError> {
         let url = self.build_url(endpoint)?;
+        crate::http::reject_git_ai_cloud(&url).map_err(GitAiError::Generic)?;
 
         let (_agent, mut request) = Self::http_get(&url, self.timeout_secs);
 
@@ -575,6 +577,20 @@ mod tests {
                 .all(|b| b == b' ' || b == b'\t' || (0x21..=0x7E).contains(&b)),
             "encoded value contains invalid header bytes: {:?}",
             encoded
+        );
+    }
+
+    #[test]
+    fn post_json_rejects_usegitai_cloud() {
+        let ctx = ApiContext::without_auth(Some("https://usegitai.com".to_string()));
+        let result = ctx.post_json("/worker/metrics/upload", &serde_json::json!({}));
+        let err = match result {
+            Err(e) => e,
+            Ok(_) => panic!("expected cloud reject"),
+        };
+        assert!(
+            err.to_string().contains("telemetry"),
+            "expected cloud reject, got {err}"
         );
     }
 }

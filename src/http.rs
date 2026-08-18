@@ -3,6 +3,30 @@ use ureq::config::Config;
 use ureq::tls::{RootCerts, TlsConfig, TlsProvider};
 use ureq::typestate::{WithBody, WithoutBody};
 
+/// Hosted Git AI Cloud ([usegitai.com](https://usegitai.com)).
+/// Outbound notes, metrics, CAS, logs, OAuth, and cube queries to this host are blocked.
+pub fn is_git_ai_cloud_url(url: &str) -> bool {
+    url.contains("usegitai.com")
+}
+
+/// PostHog, Sentry, and Git AI Cloud — crash/usage telemetry destinations.
+pub fn is_blocked_telemetry_url(url: &str) -> bool {
+    is_git_ai_cloud_url(url) || url.contains("posthog.com") || url.contains("sentry.io")
+}
+
+/// Refuse outbound HTTP to Git AI Cloud. Callers treat this as a transport error.
+pub fn reject_git_ai_cloud(url: &str) -> Result<(), String> {
+    reject_blocked_telemetry(url)
+}
+
+/// Refuse outbound HTTP to Git AI Cloud, PostHog, and Sentry.
+pub fn reject_blocked_telemetry(url: &str) -> Result<(), String> {
+    if is_blocked_telemetry_url(url) {
+        return Err("external telemetry upload disabled".to_string());
+    }
+    Ok(())
+}
+
 /// Build a ureq Agent that uses standard proxy environment variables and the
 /// platform's native TLS library.
 ///
@@ -78,4 +102,32 @@ pub fn send_with_body(
         .send(body)
         .map_err(|err| err.to_string())
         .and_then(read_ureq_response)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_usegitai_dot_com_and_subdomains() {
+        assert!(is_git_ai_cloud_url(
+            "https://usegitai.com/worker/metrics/upload"
+        ));
+        assert!(is_git_ai_cloud_url("https://api.usegitai.com/"));
+        assert!(reject_git_ai_cloud("https://usegitai.com").is_err());
+        assert!(reject_git_ai_cloud("https://example.com").is_ok());
+        assert!(!is_git_ai_cloud_url("https://example.com"));
+    }
+
+    #[test]
+    fn rejects_posthog_and_sentry() {
+        assert!(is_blocked_telemetry_url(
+            "https://us.i.posthog.com/capture/"
+        ));
+        assert!(is_blocked_telemetry_url(
+            "https://o123.ingest.sentry.io/api/1/store/"
+        ));
+        assert!(reject_blocked_telemetry("https://us.i.posthog.com").is_err());
+        assert!(reject_blocked_telemetry("https://example.com").is_ok());
+    }
 }

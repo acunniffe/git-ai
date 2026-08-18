@@ -20,7 +20,7 @@ use crate::metrics::pos_encoded::sparse_get_string;
 use crate::metrics::types::MetricEventId;
 use crate::metrics::{MetricEvent, MetricsBatch};
 use crate::observability::MAX_METRICS_PER_ENVELOPE;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -67,12 +67,14 @@ struct TelemetryBuffer {
     daemon_logs: Vec<DaemonLogEvent>,
 }
 
+#[allow(dead_code)]
 struct ErrorEvent {
     timestamp: String,
     message: String,
     context: Option<Value>,
 }
 
+#[allow(dead_code)]
 struct PerformanceEvent {
     timestamp: String,
     operation: String,
@@ -81,6 +83,7 @@ struct PerformanceEvent {
     tags: Option<std::collections::HashMap<String, String>>,
 }
 
+#[allow(dead_code)]
 struct MessageEvent {
     timestamp: String,
     message: String,
@@ -586,7 +589,6 @@ fn next_telemetry_flush_at(completed_at: Instant) -> Instant {
 }
 
 fn flush_telemetry_batch(batch: TelemetryBuffer, daemon_id: &str) -> Vec<DaemonLogEvent> {
-    let config = Config::get();
     let distinct_id = get_or_create_distinct_id();
 
     // Flush metrics (always processed — uploaded or stored in SQLite)
@@ -594,19 +596,7 @@ fn flush_telemetry_batch(batch: TelemetryBuffer, daemon_id: &str) -> Vec<DaemonL
         flush_metrics(&batch.metrics);
     }
 
-    // Flush Sentry events (errors, performance, messages)
-    let has_sentry_or_posthog =
-        !batch.errors.is_empty() || !batch.performances.is_empty() || !batch.messages.is_empty();
-
-    if has_sentry_or_posthog {
-        flush_sentry_and_posthog(
-            config,
-            &distinct_id,
-            &batch.errors,
-            &batch.performances,
-            &batch.messages,
-        );
-    }
+    // Sentry and PostHog upload removed: error/perf/message envelopes stay local.
 
     // Flush CAS records
     if !batch.cas_records.is_empty() {
@@ -1147,192 +1137,6 @@ where
     failed_events
 }
 
-fn flush_sentry_and_posthog(
-    config: &Config,
-    distinct_id: &str,
-    errors: &[ErrorEvent],
-    performances: &[PerformanceEvent],
-    messages: &[MessageEvent],
-) {
-    // Check for Enterprise DSN
-    let enterprise_dsn = config
-        .telemetry_enterprise_dsn()
-        .map(|s| s.to_string())
-        .or_else(|| {
-            std::env::var("SENTRY_ENTERPRISE")
-                .ok()
-                .or_else(|| option_env!("SENTRY_ENTERPRISE").map(|s| s.to_string()))
-                .filter(|s| !s.is_empty())
-        });
-
-    // Check for OSS DSN
-    let oss_dsn = if config.is_telemetry_oss_disabled() {
-        None
-    } else {
-        std::env::var("SENTRY_OSS")
-            .ok()
-            .or_else(|| option_env!("SENTRY_OSS").map(|s| s.to_string()))
-            .filter(|s| !s.is_empty())
-    };
-
-    // Check for PostHog configuration
-    let posthog_api_key = if config.is_telemetry_oss_disabled() {
-        None
-    } else {
-        std::env::var("POSTHOG_API_KEY")
-            .ok()
-            .or_else(|| option_env!("POSTHOG_API_KEY").map(|s| s.to_string()))
-            .filter(|s| !s.is_empty())
-    };
-
-    let posthog_host = std::env::var("POSTHOG_HOST")
-        .ok()
-        .or_else(|| option_env!("POSTHOG_HOST").map(|s| s.to_string()))
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "https://us.i.posthog.com".to_string());
-
-    // Build Sentry clients
-    let oss_client = oss_dsn.and_then(|dsn| SentryClient::from_dsn(&dsn));
-    let enterprise_client = enterprise_dsn.and_then(|dsn| SentryClient::from_dsn(&dsn));
-
-    // Build base tags
-    let mut base_tags = BTreeMap::new();
-    base_tags.insert("os".to_string(), json!(std::env::consts::OS));
-    base_tags.insert("arch".to_string(), json!(std::env::consts::ARCH));
-    base_tags.insert("distinct_id".to_string(), json!(distinct_id));
-
-    // Send errors
-    for error in errors {
-        let mut extra = BTreeMap::new();
-        if let Some(ctx) = &error.context
-            && let Some(obj) = ctx.as_object()
-        {
-            for (key, value) in obj {
-                extra.insert(key.clone(), value.clone());
-            }
-        }
-
-        let event = json!({
-            "message": error.message,
-            "level": "error",
-            "timestamp": error.timestamp,
-            "platform": "other",
-            "tags": base_tags,
-            "extra": extra,
-            "release": format!("git-ai@{}", env!("CARGO_PKG_VERSION")),
-        });
-
-        if let Some(client) = &oss_client {
-            let _ = client.send_event(event.clone());
-        }
-        if let Some(client) = &enterprise_client {
-            let _ = client.send_event(event);
-        }
-    }
-
-    // Send performance events
-    for perf in performances {
-        let mut extra = BTreeMap::new();
-        extra.insert("operation".to_string(), json!(perf.operation));
-        extra.insert("duration_ms".to_string(), json!(perf.duration_ms));
-        if let Some(ctx) = &perf.context
-            && let Some(obj) = ctx.as_object()
-        {
-            for (key, value) in obj {
-                extra.insert(key.clone(), value.clone());
-            }
-        }
-
-        let mut perf_tags = base_tags.clone();
-        if let Some(tags) = &perf.tags {
-            for (key, value) in tags {
-                perf_tags.insert(key.clone(), json!(value));
-            }
-        }
-
-        let event = json!({
-            "message": format!("Performance: {} ({}ms)", perf.operation, perf.duration_ms),
-            "level": "info",
-            "timestamp": perf.timestamp,
-            "platform": "other",
-            "tags": perf_tags,
-            "extra": extra,
-            "release": format!("git-ai@{}", env!("CARGO_PKG_VERSION")),
-        });
-
-        if let Some(client) = &oss_client {
-            let _ = client.send_event(event.clone());
-        }
-        if let Some(client) = &enterprise_client {
-            let _ = client.send_event(event);
-        }
-    }
-
-    // Send messages (to Sentry + PostHog)
-    for msg in messages {
-        let mut extra = BTreeMap::new();
-        if let Some(ctx) = &msg.context
-            && let Some(obj) = ctx.as_object()
-        {
-            for (key, value) in obj {
-                extra.insert(key.clone(), value.clone());
-            }
-        }
-
-        let sentry_event = json!({
-            "message": msg.message,
-            "level": msg.level,
-            "timestamp": msg.timestamp,
-            "platform": "other",
-            "tags": base_tags,
-            "extra": extra,
-            "release": format!("git-ai@{}", env!("CARGO_PKG_VERSION")),
-        });
-
-        if let Some(client) = &oss_client {
-            let _ = client.send_event(sentry_event.clone());
-        }
-        if let Some(client) = &enterprise_client {
-            let _ = client.send_event(sentry_event);
-        }
-
-        // PostHog only gets messages
-        if let Some(api_key) = &posthog_api_key {
-            let mut properties = BTreeMap::new();
-            properties.insert("os".to_string(), json!(std::env::consts::OS));
-            properties.insert("arch".to_string(), json!(std::env::consts::ARCH));
-            properties.insert("version".to_string(), json!(env!("CARGO_PKG_VERSION")));
-            properties.insert("message".to_string(), json!(msg.message));
-            properties.insert("level".to_string(), json!(msg.level));
-            if let Some(ctx) = &msg.context
-                && let Some(obj) = ctx.as_object()
-            {
-                for (key, value) in obj {
-                    properties.insert(key.clone(), value.clone());
-                }
-            }
-
-            let endpoint = format!("{}/capture/", posthog_host.trim_end_matches('/'));
-            let mut ph_event = json!({
-                "api_key": api_key,
-                "event": msg.message,
-                "properties": properties,
-                "distinct_id": distinct_id,
-            });
-            ph_event["timestamp"] = json!(msg.timestamp);
-
-            let agent = crate::http::build_agent(Some(30));
-            let request = agent
-                .post(&endpoint)
-                .header("Content-Type", "application/json");
-            let _ = crate::http::send_with_body(
-                request,
-                &serde_json::to_string(&ph_event).unwrap_or_default(),
-            );
-        }
-    }
-}
-
 /// Flush pending notes from `notes-db` to the remote HTTP backend.
 ///
 /// Skips silently when:
@@ -1355,6 +1159,10 @@ pub fn flush_notes() {
             return;
         }
     };
+    if crate::http::is_git_ai_cloud_url(&backend_url) {
+        tracing::debug!("notes: skipping flush, usegitai.com upload disabled");
+        return;
+    }
     let context = ApiContext::new(Some(backend_url));
     let client = ApiClient::new(context);
 
@@ -1457,6 +1265,12 @@ fn flush_notes_for_await() -> usize {
     if cfg.notes_backend_kind() != NotesBackendKind::Http || cfg.notes_backend_url().is_none() {
         return 0;
     }
+    if cfg
+        .notes_backend_url()
+        .is_some_and(|url| crate::http::is_git_ai_cloud_url(url))
+    {
+        return 0;
+    }
 
     let client = ApiClient::new(ApiContext::new(cfg.notes_backend_url().map(str::to_string)));
     if !client.is_logged_in() && !client.has_api_key() {
@@ -1489,9 +1303,10 @@ fn flush_cas(records: Vec<CasSyncPayload>) {
     let api_base_url = context.base_url.clone();
     let client = ApiClient::new(context);
 
-    let using_default_api = api_base_url == crate::config::DEFAULT_API_BASE_URL;
-    if using_default_api && !client.is_logged_in() && !client.has_api_key() {
-        tracing::debug!("telemetry: skipping CAS flush, not logged in");
+    let using_default_api = api_base_url == crate::config::DEFAULT_API_BASE_URL
+        || crate::http::is_git_ai_cloud_url(&api_base_url);
+    if using_default_api {
+        tracing::debug!("telemetry: skipping CAS flush, usegitai.com upload disabled");
         return;
     }
 
@@ -1541,50 +1356,6 @@ fn flush_cas(records: Vec<CasSyncPayload>) {
             Err(e) => {
                 tracing::warn!(%e, "telemetry: CAS upload error");
             }
-        }
-    }
-}
-
-/// Minimal Sentry client (mirrors flush.rs SentryClient)
-struct SentryClient {
-    endpoint: String,
-    public_key: String,
-}
-
-impl SentryClient {
-    fn from_dsn(dsn: &str) -> Option<Self> {
-        let url = url::Url::parse(dsn).ok()?;
-        let public_key = url.username().to_string();
-        let host = url.host_str()?;
-        let project_id = url.path().trim_start_matches('/');
-        let scheme = url.scheme();
-        let endpoint = format!("{}://{}/api/{}/store/", scheme, host, project_id);
-        Some(SentryClient {
-            endpoint,
-            public_key,
-        })
-    }
-
-    fn send_event(&self, event: Value) -> Result<(), Box<dyn std::error::Error>> {
-        let auth_header = format!(
-            "Sentry sentry_version=7, sentry_key={}, sentry_client=git-ai/{}",
-            self.public_key,
-            env!("CARGO_PKG_VERSION")
-        );
-
-        let body = serde_json::to_string(&event)?;
-        let agent = crate::http::build_agent(Some(30));
-        let request = agent
-            .post(&self.endpoint)
-            .header("X-Sentry-Auth", &auth_header)
-            .header("Content-Type", "application/json");
-        let response = crate::http::send_with_body(request, &body)?;
-
-        let status = response.status_code;
-        if (200..300).contains(&status) {
-            Ok(())
-        } else {
-            Err(format!("Sentry returned status {}", status).into())
         }
     }
 }

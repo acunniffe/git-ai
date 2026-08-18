@@ -58,6 +58,7 @@ impl OAuthClient {
     /// Common token exchange logic - POST to /worker/oauth/token with given body
     fn exchange_token(&self, body: serde_json::Value) -> Result<StoredCredentials, String> {
         let url = format!("{}/worker/oauth/token", self.base_url);
+        http::reject_git_ai_cloud(&url)?;
 
         let (_agent, request) = ApiContext::http_post(&url, Some(30));
         let request = request.header("Content-Type", "application/json");
@@ -96,6 +97,7 @@ impl OAuthClient {
     /// Returns (device_code, user_code, verification_url, expires_in, interval)
     pub fn start_device_flow(&self) -> Result<DeviceAuthResponse, String> {
         let url = format!("{}/worker/oauth/device/code", self.base_url);
+        http::reject_git_ai_cloud(&url)?;
 
         let (_agent, request) = ApiContext::http_post(&url, Some(30));
         let request = request.header("Content-Type", "application/json");
@@ -127,6 +129,7 @@ impl OAuthClient {
         expires_in: u32,
     ) -> Result<StoredCredentials, String> {
         let url = format!("{}/worker/oauth/token", self.base_url);
+        http::reject_git_ai_cloud(&url)?;
         let mut elapsed = 0u32;
         let mut current_interval = interval;
 

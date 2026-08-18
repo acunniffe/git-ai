@@ -522,9 +522,10 @@ impl Config {
         }
     }
 
-    /// Returns true if OSS telemetry is disabled.
+    /// OSS crash/usage telemetry (PostHog / Sentry) is always off in this tree.
     pub fn is_telemetry_oss_disabled(&self) -> bool {
-        self.telemetry_oss_disabled
+        let _ = self;
+        true
     }
 
     /// Returns the telemetry_enterprise_dsn if set.
@@ -1026,11 +1027,7 @@ fn build_config() -> Config {
                 .ok()
         })
         .collect();
-    let telemetry_oss_disabled = file_cfg
-        .as_ref()
-        .and_then(|c| c.telemetry_oss.clone())
-        .filter(|s| s == "off")
-        .is_some();
+    let telemetry_oss_disabled = true;
     let telemetry_enterprise_dsn = file_cfg
         .as_ref()
         .and_then(|c| c.telemetry_enterprise_dsn.clone())

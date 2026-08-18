@@ -1,8 +1,4 @@
 import * as vscode from "vscode";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import { PostHog } from "posthog-node";
 import { AIEditManager } from "./ai-edit-manager";
 import { detectIDEHost, IDEHostKindVSCode } from "./utils/host-kind";
 import { AITabEditManager } from "./ai-tab-edit-manager";
@@ -11,50 +7,12 @@ import { BlameLensManager, registerBlameLensCommands } from "./blame-lens-manage
 import { initBinaryResolver } from "./utils/binary-path";
 import { KnownHumanCheckpointManager } from "./known-human-checkpoint-manager";
 
-function getDistinctId(): string {
-  try {
-    const idPath = path.join(os.homedir(), ".git-ai", "internal", "distinct_id");
-    return fs.readFileSync(idPath, "utf-8").trim() || "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-
-function isTelemetryOssDisabled(): boolean {
-  try {
-    const configPath = path.join(os.homedir(), ".git-ai", "config.json");
-    const raw = fs.readFileSync(configPath, "utf-8");
-    const config = JSON.parse(raw);
-    return config.telemetry_oss === "off";
-  } catch {
-    return false;
-  }
-}
-
 export function activate(context: vscode.ExtensionContext) {
 
   // In dev mode, resolve git-ai binary via login shell (debug host has stripped PATH)
   initBinaryResolver(context.extensionMode);
 
   const ideHostCfg = detectIDEHost();
-
-  // Initialize PostHog and emit startup event (respects telemetry_oss config)
-  if (!isTelemetryOssDisabled()) {
-    const posthog = new PostHog("phc_XANaHNpDXBERPosyM8Bp0INVoGsgW8Gk92HsB090r6A", { host: "https://us.i.posthog.com" });
-    posthog.capture({
-      distinctId: getDistinctId(),
-      event: "vscode_extension_startup",
-      properties: {
-        ide_host: ideHostCfg.kind,
-        app_name: ideHostCfg.appName,
-        uri_scheme: ideHostCfg.uriScheme,
-        extension_version: context.extension.packageJSON.version,
-      },
-    });
-    context.subscriptions.push({
-      dispose: () => posthog.shutdown(),
-    });
-  }
 
   const aiEditManager = new AIEditManager(context);
 

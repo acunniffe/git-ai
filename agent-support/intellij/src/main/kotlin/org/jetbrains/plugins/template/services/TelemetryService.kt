@@ -17,7 +17,6 @@ import io.sentry.SentryEvent
 import io.sentry.SentryLevel
 import io.sentry.SentryOptions
 import io.sentry.protocol.Message
-import com.google.gson.JsonParser
 import java.io.File
 
 /**
@@ -213,16 +212,7 @@ class TelemetryService : Disposable {
     }
 
     private fun isOssTelemetryDisabled(): Boolean {
-        return try {
-            val homeDir = System.getProperty("user.home")
-            val configFile = File(homeDir, ".git-ai/config.json")
-            if (!configFile.exists()) return false
-            val content = configFile.readText()
-            val json = JsonParser.parseString(content).asJsonObject
-            json.get("telemetry_oss")?.asString == "off"
-        } catch (_: Exception) {
-            false
-        }
+        return true
     }
 
     private fun readDistinctId(): String? {

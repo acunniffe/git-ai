@@ -84,9 +84,11 @@ impl CubeClient {
 
     /// POST a JSON body to a cube path and parse the response.
     fn post(&self, path: &str, body: &Value) -> Result<Value, CubeError> {
+        let url = self.url(path);
+        http::reject_git_ai_cloud(&url).map_err(CubeError::Transport)?;
         let request = self
             .agent
-            .post(&self.url(path))
+            .post(&url)
             .header("x-api-key", &self.api_key)
             .header("Content-Type", "application/json");
         let body_str = serde_json::to_string(body).map_err(|e| CubeError::Json(e.to_string()))?;
@@ -96,9 +98,11 @@ impl CubeClient {
 
     /// GET a cube path and parse the response.
     fn get(&self, path: &str) -> Result<Value, CubeError> {
+        let url = self.url(path);
+        http::reject_git_ai_cloud(&url).map_err(CubeError::Transport)?;
         let request = self
             .agent
-            .get(&self.url(path))
+            .get(&url)
             .header("x-api-key", &self.api_key);
         let response = http::send(request).map_err(CubeError::Transport)?;
         Self::parse(response)

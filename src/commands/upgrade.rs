@@ -365,9 +365,10 @@ fn fetch_and_verify_checksums(
     expected_checksum: &str,
 ) -> Result<HashMap<String, String>, String> {
     let endpoint = format!("/worker/releases/{}/download/SHA256SUMS", channel);
+    let url = format!("{}{}", api_base_url, endpoint);
+    crate::http::reject_git_ai_cloud(&url)?;
 
-    let (_agent, request) =
-        ApiContext::http_get(&format!("{}{}", api_base_url, endpoint), Some(30));
+    let (_agent, request) = ApiContext::http_get(&url, Some(30));
     let response =
         crate::http::send(request).map_err(|e| format!("Failed to fetch SHA256SUMS: {}", e))?;
 
@@ -405,9 +406,10 @@ fn fetch_and_verify_install_script(
         .ok_or_else(|| format!("Checksum for {} not found in SHA256SUMS", script_name))?;
 
     let endpoint = format!("/worker/releases/{}/download/{}", channel, script_name);
+    let url = format!("{}{}", api_base_url, endpoint);
+    crate::http::reject_git_ai_cloud(&url)?;
 
-    let (_agent, request) =
-        ApiContext::http_get(&format!("{}{}", api_base_url, endpoint), Some(30));
+    let (_agent, request) = ApiContext::http_get(&url, Some(30));
     let response = crate::http::send(request)
         .map_err(|e| format!("Failed to fetch {}: {}", script_name, e))?;
 

@@ -218,6 +218,9 @@ fn login_status(auth: &AuthStatus, api_client: &ApiClient) -> String {
 }
 
 fn metrics_delivery_status(api_base_url: &str, api_client: &ApiClient) -> String {
+    if crate::http::is_git_ai_cloud_url(api_base_url) {
+        return "off (usegitai.com upload disabled)".to_string();
+    }
     if !metrics_upload_allowed(api_base_url, api_client) {
         return "off (requires an API key or login)".to_string();
     }
@@ -345,7 +348,7 @@ mod tests {
         assert!(!output.contains("Login identity"));
         assert!(output.contains("Telemetry status"));
         assert!(!output.contains("Telemetry and metrics"));
-        assert!(output.contains("Metrics delivery: on (API key configured)"));
+        assert!(output.contains("Metrics delivery: off (usegitai.com upload disabled)"));
     }
 
     #[test]
@@ -431,6 +434,6 @@ mod tests {
             "API access: not connected (login credentials found, but no usable access token)"
         ));
         assert!(output.contains("Login: logged in"));
-        assert!(output.contains("Metrics delivery: off (requires an API key or login)"));
+        assert!(output.contains("Metrics delivery: off (usegitai.com upload disabled)"));
     }
 }

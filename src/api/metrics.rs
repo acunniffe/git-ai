@@ -16,10 +16,12 @@ static LAST_METRICS_UPLOAD_STARTED_AT: OnceLock<Mutex<Option<Instant>>> = OnceLo
 
 /// Returns whether metrics are allowed to upload for the current API context.
 ///
-/// The server always requires authentication (API key or OAuth login).
-/// Without credentials the request will be rejected with 401, so we skip
-/// the upload entirely to avoid wasteful retries and memory pressure.
-pub fn metrics_upload_allowed(_api_base_url: &str, client: &ApiClient) -> bool {
+/// Hosted Git AI Cloud (`usegitai.com`) is always blocked. Custom API URLs still
+/// require authentication (API key or OAuth login).
+pub fn metrics_upload_allowed(api_base_url: &str, client: &ApiClient) -> bool {
+    if crate::http::is_git_ai_cloud_url(api_base_url) {
+        return false;
+    }
     client.is_logged_in() || client.has_api_key()
 }
 
