@@ -124,11 +124,14 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
         let write_result = (|| -> Result<(), GitAiError> {
             let config_was_created = !config_file.exists();
             use std::os::unix::fs::OpenOptionsExt;
-            let mut file = OpenOptions::new()
+            let mut options = OpenOptions::new();
+            options
                 .create(true)
                 .append(true)
-                .custom_flags(libc::O_NOFOLLOW)
-                .open(&config_file)?;
+                .custom_flags(shell_profile_open_flags(
+                    crate::utils::is_running_as_superuser(),
+                ));
+            let mut file = options.open(&config_file)?;
             if config_was_created {
                 created_paths.push(config_file.clone());
             }
@@ -199,6 +202,11 @@ fn escape_double_quoted_shell_bytes(value: &[u8]) -> Vec<u8> {
         escaped.push(*byte);
     }
     escaped
+}
+
+#[cfg(not(windows))]
+fn shell_profile_open_flags(is_superuser: bool) -> i32 {
+    if is_superuser { libc::O_NOFOLLOW } else { 0 }
 }
 
 #[cfg(not(windows))]
@@ -383,6 +391,12 @@ mod unix_tests {
             escape_double_quoted_shell_bytes(b"/tmp/a\\b\"$c`d\ne"),
             b"/tmp/a\\\\b\\\"\\$c\\`d\ne"
         );
+    }
+
+    #[test]
+    fn unix_shell_profiles_only_refuse_symlinks_for_superuser_installs() {
+        assert_eq!(shell_profile_open_flags(false), 0);
+        assert_eq!(shell_profile_open_flags(true), libc::O_NOFOLLOW);
     }
 
     #[test]
