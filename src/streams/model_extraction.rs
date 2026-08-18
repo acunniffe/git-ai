@@ -112,24 +112,18 @@ fn read_last_complete_lines_bounded(path: &Path, max_bytes: u64) -> Vec<String> 
 /// (`~/.zcode/cli/rollout/model-io-sess_<session_id>.jsonl`).
 ///
 /// Each line is one model-io record shaped like
-/// `{"model":{"modelId":"GLM-5.3",...},"request":{...}}`. The most recent
-/// record wins so mid-session model switches are attributed correctly. The
-/// shared bounded tail/head scanners handle records that fit their windows;
-/// zcode records embed the whole conversation and routinely exceed both (the
-/// tail window and the head per-line cap), so a wider window over the last
-/// complete records — then the opening line — backs them up. Missing or
-/// unreadable files yield `Ok(None)`.
+/// `{"model":{"modelId":"GLM-5.3",...},"request":{...}}`. Newest-record
+/// probes come first so mid-session model switches are attributed
+/// correctly: the shared bounded tail scanner, then a wider window over the
+/// last complete records (model-io records embed the whole conversation and
+/// routinely exceed the shared windows). Only once no recent record parses
+/// do the oldest-record fallbacks run (shared head scanner, then the
+/// bounded first line). Missing or unreadable files yield `Ok(None)`.
 pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, StreamError> {
     let (model, _) =
         extract_model_from_jsonl_tail_with(path, extract_model_from_zcode_rollout_line)?;
     if model.is_some() {
         return Ok(model);
-    }
-
-    if let Some(model) =
-        extract_model_from_jsonl_head_with(path, extract_model_from_zcode_rollout_line)
-    {
-        return Ok(Some(model));
     }
 
     for line in read_last_complete_lines_bounded(path, MAX_ZCODE_ROLLOUT_LAST_LINE_BYTES)
@@ -139,6 +133,12 @@ pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, S
         if let Some(model) = extract_model_from_zcode_rollout_line(line) {
             return Ok(Some(model));
         }
+    }
+
+    if let Some(model) =
+        extract_model_from_jsonl_head_with(path, extract_model_from_zcode_rollout_line)
+    {
+        return Ok(Some(model));
     }
 
     let file = match File::open(path) {
@@ -1311,6 +1311,20 @@ mod tests {
         std::io::Write::write_all(&mut file, b"not json\nalso not json\n").unwrap();
         let result = extract_model_from_zcode_rollout(file.path()).unwrap();
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_switch_after_growth_prefers_latest() {
+        // Sessions start with small records (parsable by the shared head
+        // scanner) and grow past its per-line cap. A model switch in the grown
+        // records must still win over the small opening record.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(&mut file, b"{\"model\":{\"modelId\":\"model-a\"}}\n").unwrap();
+        let padding = "x".repeat(100 * 1024);
+        let switched = format!("{{\"model\":{{\"modelId\":\"model-b\"}},\"pad\":\"{padding}\"}}\n");
+        std::io::Write::write_all(&mut file, switched.as_bytes()).unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("model-b".to_string()));
     }
 
     #[test]
