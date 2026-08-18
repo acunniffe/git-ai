@@ -1,5 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+use crate::test_utils::isolated_metrics_db_path;
 use git_ai::authorship::authorship_log::LineRange;
 use git_ai::authorship::authorship_log_serialization::{AuthorshipLog, generate_session_id};
 use git_ai::authorship::working_log::AgentId;
@@ -11,12 +12,6 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
-
-fn isolated_metrics_db_path() -> (tempfile::TempDir, String) {
-    let dir = tempfile::tempdir().expect("failed to create isolated metrics db dir");
-    let path = dir.path().join("metrics.db");
-    (dir, path.to_string_lossy().to_string())
-}
 
 fn file_mtime_secs(path: &Path) -> u32 {
     fs::metadata(path)

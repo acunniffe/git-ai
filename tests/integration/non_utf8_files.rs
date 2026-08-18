@@ -1,13 +1,8 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+use crate::test_utils::extract_json_object;
 use git_ai::authorship::stats::CommitStats;
 use std::fs;
-
-fn extract_json_object(output: &str) -> String {
-    let start = output.find('{').unwrap_or(0);
-    let end = output.rfind('}').unwrap_or(output.len().saturating_sub(1));
-    output[start..=end].to_string()
-}
 
 fn gbk_hello_world() -> Vec<u8> {
     // "你好世界" in GBK encoding (4 characters, 8 bytes)

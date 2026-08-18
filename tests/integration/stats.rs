@@ -1,5 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+use crate::test_utils::extract_json_object;
 use git_ai::authorship::stats::CommitStats;
 use insta::assert_debug_snapshot;
 use std::fs;
@@ -11,12 +12,6 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// Extract the first complete JSON object from mixed stdout/stderr output.
-fn extract_json_object(output: &str) -> String {
-    let start = output.find('{').unwrap_or(0);
-    let end = output.rfind('}').unwrap_or(output.len().saturating_sub(1));
-    output[start..=end].to_string()
-}
-
 fn stats_from_args(repo: &TestRepo, args: &[&str]) -> CommitStats {
     let raw = repo.git_ai(args).expect("git-ai stats should succeed");
     let json = extract_json_object(&raw);

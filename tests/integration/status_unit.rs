@@ -1,4 +1,5 @@
 use crate::repos::test_repo::{DaemonTestScope, TestRepo};
+use crate::test_utils::extract_json_object;
 use git_ai::authorship::stats::CommitStats;
 use serde::Deserialize;
 use std::fs;
@@ -8,12 +9,6 @@ use std::fs;
 struct StatusOutput {
     stats: CommitStats,
     checkpoints: Vec<serde_json::Value>,
-}
-
-fn extract_json_object(output: &str) -> String {
-    let start = output.find('{').unwrap_or(0);
-    let end = output.rfind('}').unwrap_or(output.len().saturating_sub(1));
-    output[start..=end].to_string()
 }
 
 fn status_json(repo: &TestRepo) -> StatusOutput {
