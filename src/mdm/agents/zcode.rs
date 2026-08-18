@@ -1,6 +1,9 @@
 use crate::error::GitAiError;
 use crate::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
-use crate::mdm::utils::{generate_diff, is_git_ai_checkpoint_command, write_atomic, zcode_cli_dir};
+use crate::mdm::utils::{
+    generate_diff, is_git_ai_checkpoint_command, normalize_windows_path_for_shell, write_atomic,
+    zcode_cli_dir,
+};
 
 use serde_json::{Value, json};
 use std::fs;
@@ -22,9 +25,11 @@ impl ZcodeInstaller {
     }
 
     /// Returns `(hooks_installed, hooks_up_to_date)` from a parsed config.
-    /// A git-ai checkpoint command must live in a matcher-less block to count:
-    /// a matcher restricted block may never match (an omitted matcher matches
-    /// everything in zcode).
+    /// `hooks_installed` = a git-ai command exists in a matcher-less block of
+    /// ANY event we install (partial installs must still be detected so
+    /// uninstall cleans them up); `hooks_up_to_date` = EVERY event has one. A
+    /// matcher-carrying block never counts: its matcher may never match (an
+    /// omitted matcher matches everything in zcode).
     fn hook_status(config: &Value) -> (bool, bool) {
         let events = config
             .get("hooks")
@@ -35,9 +40,9 @@ impl ZcodeInstaller {
             return (false, false);
         };
 
-        let all_installed = HOOK_EVENTS.iter().all(|event| {
+        let event_has_git_ai = |event: &str| {
             events
-                .get(*event)
+                .get(event)
                 .and_then(|v| v.as_array())
                 .map(|blocks| {
                     blocks.iter().any(|block| {
@@ -57,9 +62,19 @@ impl ZcodeInstaller {
                     })
                 })
                 .unwrap_or(false)
-        });
+        };
 
-        (all_installed, all_installed)
+        let mut any_installed = false;
+        let mut all_installed = true;
+        for event in HOOK_EVENTS {
+            if event_has_git_ai(event) {
+                any_installed = true;
+            } else {
+                all_installed = false;
+            }
+        }
+
+        (any_installed, all_installed)
     }
 
     /// Is this hook entry one of ours?
@@ -313,7 +328,10 @@ impl HookInstaller for ZcodeInstaller {
         params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        let desired_cmd = format!("{} {}", params.binary_path.display(), ZCODE_CHECKPOINT_CMD);
+        // The command runs through a shell, so Windows backslashes must be
+        // normalized to forward slashes like the other command-hook installers.
+        let binary_path_str = normalize_windows_path_for_shell(&params.binary_path);
+        let desired_cmd = format!("{} {}", binary_path_str, ZCODE_CHECKPOINT_CMD);
         Self::install_hooks_at(&Self::config_path(), &desired_cmd, dry_run)
     }
 
@@ -526,11 +544,12 @@ mod tests {
         // Empty config: nothing installed.
         assert_eq!(ZcodeInstaller::hook_status(&json!({})), (false, false));
 
-        // Only one event installed: partial.
+        // Only one event installed: partial installs report as installed (so
+        // uninstall cleans them up) but not up to date.
         let partial = json!({
             "hooks": {"events": {"PreToolUse": [{"hooks": [{"command": "git-ai checkpoint zcode --hook-input stdin"}]}]}}
         });
-        assert_eq!(ZcodeInstaller::hook_status(&partial), (false, false));
+        assert_eq!(ZcodeInstaller::hook_status(&partial), (true, false));
 
         // Both events: installed.
         let full = json!({
