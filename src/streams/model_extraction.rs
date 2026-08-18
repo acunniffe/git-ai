@@ -54,19 +54,79 @@ pub fn extract_model_from_droid_settings(
     Ok(json.get("model").and_then(|v| v.as_str()).map(String::from))
 }
 
-/// Maximum bytes read from the first line of a ZCode rollout transcript.
-/// The first line holds the first model-io record of the session; the `model`
-/// object sits before the large request body, so a truncated line simply fails
-/// to parse and yields no model.
+/// Maximum bytes read from the last line of a ZCode rollout transcript. Each
+/// model-io record embeds the whole conversation, so the last line is the
+/// largest; if it exceeds this cap it is left truncated (fails to parse) and
+/// extraction falls back to the first line.
+const MAX_ZCODE_ROLLOUT_LAST_LINE_BYTES: u64 = 4 * 1024 * 1024;
+
+/// Maximum bytes read from the first line when falling back to the session's
+/// opening record.
 const MAX_ZCODE_ROLLOUT_FIRST_LINE_BYTES: u64 = 1024 * 1024;
+
+fn extract_model_from_zcode_rollout_line(line: &str) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+    json.get("model")?
+        .get("modelId")?
+        .as_str()
+        .map(String::from)
+}
+
+/// Read the complete lines of `path` inside a window of `max_bytes` measured
+/// from the end of the file, oldest first. Bytes before the first newline of
+/// the window belong to a truncated prior line and are discarded; a window
+/// with no newline at all sits inside a single (likely truncated) line and
+/// yields nothing.
+fn read_last_complete_lines_bounded(path: &Path, max_bytes: u64) -> Vec<String> {
+    use std::io::Read as _;
+
+    let Ok(mut file) = File::open(path) else {
+        return Vec::new();
+    };
+    let Ok(size) = file.metadata().map(|m| m.len()) else {
+        return Vec::new();
+    };
+    if size == 0 {
+        return Vec::new();
+    }
+    let cap = max_bytes.min(size);
+    if file.seek(SeekFrom::Start(size - cap)).is_err() {
+        return Vec::new();
+    }
+    let mut buf = vec![0u8; cap as usize];
+    if file.read_exact(&mut buf).is_err() {
+        return Vec::new();
+    }
+    let window = String::from_utf8_lossy(&buf);
+    let window = window.trim_end();
+    let Some(first_newline) = window.find('\n') else {
+        return Vec::new();
+    };
+    window[first_newline + 1..]
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
 
 /// Extract the model from a ZCode rollout transcript
 /// (`~/.zcode/cli/rollout/model-io-sess_<session_id>.jsonl`).
 ///
 /// Each line is one model-io record shaped like
-/// `{"model":{"modelId":"GLM-5.3",...},"request":{...}}`; only the first line
-/// is read. Missing or unreadable files yield `Ok(None)`.
+/// `{"model":{"modelId":"GLM-5.3",...},"request":{...}}`. The most recent
+/// record wins so mid-session model switches are attributed correctly; when no
+/// parsable record fits the tail window (records embed the whole conversation
+/// and can exceed the cap), the session's opening record is used instead.
+/// Missing or unreadable files yield `Ok(None)`.
 pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, StreamError> {
+    for line in read_last_complete_lines_bounded(path, MAX_ZCODE_ROLLOUT_LAST_LINE_BYTES)
+        .iter()
+        .rev()
+    {
+        if let Some(model) = extract_model_from_zcode_rollout_line(line) {
+            return Ok(Some(model));
+        }
+    }
+
     let file = match File::open(path) {
         Ok(f) => f,
         Err(_) => return Ok(None),
@@ -78,21 +138,7 @@ pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, S
         return Ok(None);
     }
 
-    let trimmed = first_line.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-
-    let json: serde_json::Value = match serde_json::from_str(trimmed) {
-        Ok(v) => v,
-        Err(_) => return Ok(None),
-    };
-
-    Ok(json
-        .get("model")
-        .and_then(|m| m.get("modelId"))
-        .and_then(|v| v.as_str())
-        .map(String::from))
+    Ok(extract_model_from_zcode_rollout_line(&first_line))
 }
 
 fn extract_model_from_jsonl_tail(path: &Path) -> Result<Option<String>, StreamError> {
@@ -1221,15 +1267,50 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_model_zcode_rollout_invalid_first_line() {
+    fn test_extract_model_zcode_rollout_prefers_latest_record() {
+        // Mid-session model switches must be attributed to the newest model.
         let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
         std::io::Write::write_all(
             &mut file,
-            b"not json at all\n{\"model\":{\"modelId\":\"GLM-5.3\"}}\n",
+            b"{\"model\":{\"modelId\":\"model-a\"}}\n{\"model\":{\"modelId\":\"model-b\"}}\n{\"model\":{\"modelId\":\"model-c\"}}\n",
         )
         .unwrap();
         let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("model-c".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_skips_invalid_last_line() {
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(
+            &mut file,
+            b"not json at all\n{\"model\":{\"modelId\":\"GLM-5.3\"}}\nalso not json\n",
+        )
+        .unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("GLM-5.3".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_all_lines_invalid() {
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(&mut file, b"not json\nalso not json\n").unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_oversized_last_line_falls_back_to_first() {
+        // The last record embeds the whole conversation and can exceed the
+        // read cap; extraction then falls back to the opening record's model.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let first = b"{\"model\":{\"modelId\":\"model-a\"}}\n";
+        let padding = "x".repeat(5 * 1024 * 1024);
+        let last = format!("{{\"model\":{{\"modelId\":\"model-b\"}},\"pad\":\"{padding}\"}}\n");
+        std::io::Write::write_all(&mut file, first).unwrap();
+        std::io::Write::write_all(&mut file, last.as_bytes()).unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("model-a".to_string()));
     }
 
     #[test]
