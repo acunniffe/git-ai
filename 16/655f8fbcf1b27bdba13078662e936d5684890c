@@ -1,0 +1,22 @@
+tests/integration/config_cli_coverage.rs
+  s_d378022e1db473::t_a07546febf016e 13-33,36-54
+  s_d378022e1db473::t_838cd77717b749 34-35
+src/commands/config.rs
+  s_d378022e1db473::t_24d11b0c87adae 1020,1026,1380,1390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "16655f8fbcf1b27bdba13078662e936d5684890c",
+  "prompts": {},
+  "sessions": {
+    "s_d378022e1db473": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0101c-a1ce-7811-aaa0-cccb2547bf28",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
