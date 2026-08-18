@@ -602,6 +602,7 @@ fn install_hooks_configures_git_bash_when_user_path_updates_are_skipped() {
         .unwrap()
         .to_string_lossy()
         .replace('\\', "/");
+    let install_dir = install_dir.strip_prefix("//?/").unwrap_or(&install_dir);
     let git_bash_install_dir = if install_dir.as_bytes().get(1) == Some(&b':') {
         format!("/{}/{}", install_dir[..1].to_lowercase(), &install_dir[3..])
     } else {
