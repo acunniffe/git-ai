@@ -113,11 +113,25 @@ fn read_last_complete_lines_bounded(path: &Path, max_bytes: u64) -> Vec<String> 
 ///
 /// Each line is one model-io record shaped like
 /// `{"model":{"modelId":"GLM-5.3",...},"request":{...}}`. The most recent
-/// record wins so mid-session model switches are attributed correctly; when no
-/// parsable record fits the tail window (records embed the whole conversation
-/// and can exceed the cap), the session's opening record is used instead.
-/// Missing or unreadable files yield `Ok(None)`.
+/// record wins so mid-session model switches are attributed correctly. The
+/// shared bounded tail/head scanners handle records that fit their windows;
+/// zcode records embed the whole conversation and routinely exceed both (the
+/// tail window and the head per-line cap), so a wider window over the last
+/// complete records — then the opening line — backs them up. Missing or
+/// unreadable files yield `Ok(None)`.
 pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, StreamError> {
+    let (model, _) =
+        extract_model_from_jsonl_tail_with(path, extract_model_from_zcode_rollout_line)?;
+    if model.is_some() {
+        return Ok(model);
+    }
+
+    if let Some(model) =
+        extract_model_from_jsonl_head_with(path, extract_model_from_zcode_rollout_line)
+    {
+        return Ok(Some(model));
+    }
+
     for line in read_last_complete_lines_bounded(path, MAX_ZCODE_ROLLOUT_LAST_LINE_BYTES)
         .iter()
         .rev()
