@@ -379,3 +379,47 @@ crate::reuse_tests_in_worktree!(
     test_claude_preset_ignores_unsupported_tool_when_transcript_path_is_claude,
     test_claude_e2e_prefers_latest_checkpoint_for_prompts,
 );
+
+/// Regression: a short Claude session may fire its only PostToolUse hook before
+/// Claude Code flushes the first assistant line (which carries `message.model`)
+/// to the transcript. The checkpoint records `model: unknown`, and with no later
+/// checkpoint to overwrite it the note used to keep `unknown` forever. At commit
+/// time the transcript is complete, so we re-resolve the model from it.
+#[test]
+fn test_claude_single_checkpoint_resolves_model_at_commit() {
+    use crate::repos::test_repo::TestRepo;
+
+    let repo = TestRepo::new();
+    let repo_root = repo.canonical_path();
+
+    let file_path = repo_root.join("main.rs");
+    fs::write(&file_path, "fn main() {}\n").unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+
+    // Transcript is empty when the only checkpoint fires.
+    let transcript_path = repo_root.join("claude-session.jsonl");
+    fs::write(&transcript_path, "").unwrap();
+    let hook_input = json!({
+        "cwd": repo_root.to_string_lossy().to_string(),
+        "hook_event_name": "PostToolUse",
+        "transcript_path": transcript_path.to_string_lossy().to_string(),
+        "tool_input": { "file_path": file_path.to_string_lossy().to_string() }
+    })
+    .to_string();
+    fs::write(&file_path, "fn main() {}\n// ai line one\n").unwrap();
+    repo.git_ai(&["checkpoint", "claude", "--hook-input", &hook_input])
+        .unwrap();
+
+    // Claude Code flushes the assistant turn afterwards; no further checkpoints.
+    fs::copy(fixture_path("example-claude-code.jsonl"), &transcript_path).unwrap();
+
+    let commit = repo.stage_all_and_commit("Add AI line").unwrap();
+    let session_record = commit
+        .authorship_log
+        .metadata
+        .sessions
+        .values()
+        .next()
+        .expect("Session record should exist");
+    assert_eq!(session_record.agent_id.model, "claude-sonnet-4-20250514");
+}

@@ -464,13 +464,13 @@ impl VirtualAttributions {
                             &agent_id.tool,
                         );
 
-                    let session_record = SessionRecord {
-                        agent_id: agent_id.clone(),
-                        human_author: human_author.clone(),
-                        custom_attributes: None,
-                    };
-
-                    sessions.insert(session_id.clone(), session_record);
+                    upsert_session_record(
+                        &mut sessions,
+                        session_id.clone(),
+                        checkpoint,
+                        agent_id,
+                        &human_author,
+                    );
 
                     // Track additions/deletions keyed by session_id
                     *session_additions.entry(session_id.clone()).or_insert(0) +=
@@ -661,13 +661,13 @@ impl VirtualAttributions {
                             &agent_id.tool,
                         );
 
-                    let session_record = SessionRecord {
-                        agent_id: agent_id.clone(),
-                        human_author: human_author.clone(),
-                        custom_attributes: None,
-                    };
-
-                    sessions.insert(session_id.clone(), session_record);
+                    upsert_session_record(
+                        &mut sessions,
+                        session_id.clone(),
+                        checkpoint,
+                        agent_id,
+                        &human_author,
+                    );
 
                     // Track additions/deletions keyed by session_id
                     *session_additions.entry(session_id.clone()).or_insert(0) +=
@@ -847,13 +847,13 @@ impl VirtualAttributions {
                             &agent_id.tool,
                         );
 
-                    let session_record = SessionRecord {
-                        agent_id: agent_id.clone(),
-                        human_author: human_author.clone(),
-                        custom_attributes: None,
-                    };
-
-                    sessions.insert(session_id.clone(), session_record);
+                    upsert_session_record(
+                        &mut sessions,
+                        session_id.clone(),
+                        checkpoint,
+                        agent_id,
+                        &human_author,
+                    );
 
                     // Track additions/deletions keyed by session_id
                     *session_additions.entry(session_id.clone()).or_insert(0) +=
@@ -3585,6 +3585,52 @@ pub fn restore_virtual_attribution_carryover(
     )?;
     Ok(())
 }
+
+/// Records a session from a checkpoint, keeping later checkpoints' `agent_id`
+/// but never letting a placeholder `unknown` model clobber a resolved one. If
+/// the model is still unknown, re-resolve it from the transcript path: short
+/// Claude sessions can fire their only hook before Claude Code flushes the
+/// first assistant line (which carries the model), but by commit time the
+/// transcript is complete.
+fn upsert_session_record(
+    sessions: &mut BTreeMap<String, SessionRecord>,
+    session_id: String,
+    checkpoint: &crate::authorship::working_log::Checkpoint,
+    agent_id: &crate::authorship::working_log::AgentId,
+    human_author: &Option<String>,
+) {
+    let mut agent_id = agent_id.clone();
+    if agent_id.model == UNKNOWN_MODEL
+        && let Some(existing) = sessions.get(&session_id)
+        && existing.agent_id.model != UNKNOWN_MODEL
+    {
+        agent_id.model = existing.agent_id.model.clone();
+    }
+    if agent_id.model == UNKNOWN_MODEL
+        && agent_id.tool == "claude"
+        && let Some(transcript_path) = checkpoint
+            .agent_metadata
+            .as_ref()
+            .and_then(|m| m.get("transcript_path"))
+        && let Ok(Some(model)) = crate::streams::model_extraction::extract_model(
+            std::path::Path::new(transcript_path),
+            crate::streams::sweep::StreamFormat::ClaudeJsonl,
+            None,
+        )
+    {
+        agent_id.model = model;
+    }
+    sessions.insert(
+        session_id,
+        SessionRecord {
+            agent_id,
+            human_author: human_author.clone(),
+            custom_attributes: None,
+        },
+    );
+}
+
+const UNKNOWN_MODEL: &str = "unknown";
 
 #[cfg(test)]
 mod tests {
