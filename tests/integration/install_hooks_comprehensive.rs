@@ -377,6 +377,48 @@ fn install_hooks_configures_all_existing_unix_shell_profiles_idempotently() {
 
 #[cfg(not(windows))]
 #[test]
+fn install_hooks_escapes_shell_expansions_in_the_install_path_idempotently() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let invoking_home = repo.test_home_path();
+    let installed_home = repo.path().join("installed-$user-`cmd`-\"quoted\"-\\slash");
+    let bashrc = invoking_home.join(".bashrc");
+    fs::write(&bashrc, "# bashrc\n").unwrap();
+
+    let (installed_binary, mut first_command) =
+        copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    first_command.env("SHELL", "/bin/bash");
+    let first = copied_binary_output(&mut first_command);
+    assert!(
+        first.status.success(),
+        "install-hooks failed: {}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let install_dir = installed_binary.parent().unwrap().to_string_lossy();
+    let escaped = install_dir
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('`', "\\`");
+    let expected = format!("export PATH=\"{escaped}:$PATH\"");
+    assert!(fs::read_to_string(&bashrc).unwrap().contains(&expected));
+
+    let (_, mut second_command) =
+        copied_install_hooks_command(&repo, invoking_home, &installed_home);
+    second_command.env("SHELL", "/bin/bash");
+    let second = copied_binary_output(&mut second_command);
+    assert!(second.status.success());
+    assert_eq!(
+        fs::read_to_string(&bashrc)
+            .unwrap()
+            .matches(&expected)
+            .count(),
+        1
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
 fn install_hooks_falls_back_to_the_login_shell_and_dry_run_does_not_mutate() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
     let invoking_home = repo.test_home_path();
@@ -547,19 +589,8 @@ fn installer_scripts_delegate_shell_environment_configuration_to_install_hooks()
     assert!(install_sh.contains(r#""${INSTALL_DIR}/git-ai" install-hooks"#));
     assert!(install_ps1.contains("& $finalExe install-hooks"));
 
-    for forbidden_ownership_logic in [
-        "repair_install_ownership",
-        "ownership_repair_uid",
-        "resolved_install_user_uid",
-        "chown_recursively",
-        "chown_path",
-        "lchown",
-    ] {
-        assert!(
-            !shell_env.contains(forbidden_ownership_logic),
-            "Rust shell setup should not contain {forbidden_ownership_logic}"
-        );
-    }
+    assert!(shell_env.contains("repair_install_ownership"));
+    assert!(shell_env.contains("lchown"));
 }
 
 #[cfg(windows)]

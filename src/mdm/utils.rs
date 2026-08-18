@@ -679,6 +679,9 @@ pub fn install_vsc_editor_extension(
 /// embedded in hook command strings for tools like Claude Code, Cursor, etc.
 pub fn clean_path(path: PathBuf) -> PathBuf {
     let s = path.to_string_lossy();
+    if let Some(stripped) = s.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{}", stripped));
+    }
     if let Some(stripped) = s.strip_prefix(r"\\?\") {
         return PathBuf::from(stripped);
     }
@@ -1309,6 +1312,14 @@ mod tests {
             s.contains("git-ai"),
             "clean_path should preserve the rest of the path, got: {}",
             s
+        );
+    }
+
+    #[test]
+    fn test_clean_path_preserves_extended_unc_absoluteness() {
+        assert_eq!(
+            clean_path(PathBuf::from(r"\\?\UNC\server\share\git-ai.exe")),
+            PathBuf::from(r"\\server\share\git-ai.exe")
         );
     }
 
