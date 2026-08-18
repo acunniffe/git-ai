@@ -1,0 +1,24 @@
+src/mdm/agents/visual_studio.rs
+  73a492d33da4b1eb 9-17,72-75,110-111,114-116,121-126,137-145,152-155,160-163,168-169,193-196,208-209,216-219,227-231,234-238,246-254,277-282,291-293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "98550d66862b4a3024e2e4cd0b60c52c66c05ebf",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 81,
+      "total_deletions": 26,
+      "accepted_lines": 81,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/1339cc8875cc4cbef231bd24dd64f7fabaf37a1c6c212120754bc574cc31c389"
+    }
+  }
+}

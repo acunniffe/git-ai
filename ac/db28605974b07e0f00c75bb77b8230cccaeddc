@@ -1,0 +1,24 @@
+src/daemon.rs
+  s_fda43523464d26::t_1d493af7ab31a4 10091-10157,10159,10161-10162
+  s_fda43523464d26::t_de9a2708954fcb 10158
+  s_fda43523464d26::t_be948ed15453d0 109,2783-2784,2887-2888,6519,6526,6529-6531,6533,6543-6544,6547,6549-6551,6560-6571,6576,6582,6594-6595
+  s_fda43523464d26::t_b74481a854163a 10160
+tests/daemon_mode.rs
+  s_fda43523464d26::t_1d493af7ab31a4 830,869-875,877-878
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "acdb28605974b07e0f00c75bb77b8230cccaeddc",
+  "prompts": {},
+  "sessions": {
+    "s_fda43523464d26": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc4a6-2184-7652-87b8-de70eff8cc2e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

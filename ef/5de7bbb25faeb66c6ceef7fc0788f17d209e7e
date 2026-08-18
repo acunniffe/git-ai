@@ -1,0 +1,31 @@
+tests/integration/session_event_attribution.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 142-167,420-532
+  s_1eeb4f6def9ecf::t_fd41efe5502169 533
+tests/integration/fuzzer/model.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 269-333
+tests/integration/squash_merge.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 562-563,565
+src/authorship/attribution_recovery.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 1,3-4,23,162,218,241-243,247-269,277,417,531,640,650-794,1008-1073,1410,1769-1926,2071-2088,2103,2122,2137,2139-2144,2275-2318
+  s_1eeb4f6def9ecf::t_e0a987a8201232 2319
+tests/integration/fuzzer/operations.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 188-189,215-216,262-263,318-319
+tests/integration/simple_additions.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 4,10-23,245-249,1014-1016
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "ef5de7bbb25faeb66c6ceef7fc0788f17d209e7e",
+  "prompts": {},
+  "sessions": {
+    "s_1eeb4f6def9ecf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24a5-539f-7dd3-9793-1f096a58ff70",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Test User <test@example.com>"
+    }
+  }
+}

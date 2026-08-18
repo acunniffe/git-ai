@@ -1,0 +1,25 @@
+bench/generated/file_2.txt
+  s_216e9a7c552fd9::t_e7e7331f6bea2a 1-1000
+bench/generated/file_1.txt
+  s_216e9a7c552fd9::t_e7e7331f6bea2a 1-1000
+bench/generated/file_3.txt
+  s_216e9a7c552fd9::t_e7e7331f6bea2a 1-1000
+bench/generated/file_4.txt
+  s_216e9a7c552fd9::t_e7e7331f6bea2a 1-1000
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.5",
+  "base_commit_sha": "63565eaa6a8fedc6106f300f3ac9116cb4edbd2f",
+  "prompts": {},
+  "sessions": {
+    "s_216e9a7c552fd9": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1778422868513771786",
+        "model": "unknown"
+      },
+      "human_author": "git-ai bench <bench@git-ai.local>"
+    }
+  }
+}

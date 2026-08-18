@@ -1,0 +1,38 @@
+tests/daemon_mode.rs
+  s_dba2635fc71214::t_285bda2df00bd2 1971-2017
+  s_7e719d19471fd9::t_6dfd6a39eae49d 1970
+src/daemon.rs
+  s_3205a46db22f88::t_26a809e38b4d28 3513-3520,7011-7079,7099-7100,7131-7141,7149,7159,8979-9037
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.11",
+  "base_commit_sha": "8afd7c665ffac2b3312b4ac997e93ccafdac666f",
+  "prompts": {},
+  "sessions": {
+    "s_3205a46db22f88": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-19b54c17c50b48829b361a5e73fb1a71",
+        "model": "unknown"
+      },
+      "human_author": "Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>"
+    },
+    "s_7e719d19471fd9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f38e7-aa09-72c3-b383-9aa431d64253",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_dba2635fc71214": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f3911-b064-7f93-80fc-85349a3905c2",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+tests/integration/checkout_switch_modes_attribution.rs
+  s_18b694e06092e7::t_8cc26ffbf3a919 3,88-91
+  s_18b694e06092e7::t_4f174c62d0fbd2 80-87,92-93
+  s_18b694e06092e7::t_6b81949f629a8e 79
+src/daemon.rs
+  s_18b694e06092e7::t_f9c5634e888b52 1603-1607,1667-1671
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "2b6bd2e3522eff771d0ad0e60b3cc3bb4c2a2fcb",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

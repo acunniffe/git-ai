@@ -1,0 +1,22 @@
+tests/integration/e2e_user_scenarios.rs
+  s_b3918a71142a3e::t_bc9989d99fec47 1287-1289,1291-1294,1296-1297
+src/ci/ci_context.rs
+  s_b3918a71142a3e::t_8f45eb85c3e34e 366-377
+  s_b3918a71142a3e::t_4ed829df1f312a 260-262,274-357,359-360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "2a6ccdd9c958106b2d7cc61d46a9f1ecdee1032a",
+  "prompts": {},
+  "sessions": {
+    "s_b3918a71142a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de268d2e-4705-4c20-86ca-d1dc04eda164",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

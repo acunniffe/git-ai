@@ -1,0 +1,19 @@
+src/commands/flush_metrics_db.rs
+  s_9f07184cc60a68::t_bcf7be0dc1b8e5 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "f51143aed6939d894bf04ab4fab27f5b1fe7bc48",
+  "prompts": {},
+  "sessions": {
+    "s_9f07184cc60a68": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-607d47aff9aa4e22ae2ce4346cfa8dfb",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

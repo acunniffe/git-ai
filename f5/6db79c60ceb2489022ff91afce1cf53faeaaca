@@ -1,0 +1,19 @@
+src/daemon.rs
+  s_3205a46db22f88::t_26a809e38b4d28 3513-3520,7011-7079,7099-7100,7131-7141,7149,7159,8979-9037
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.11",
+  "base_commit_sha": "f56db79c60ceb2489022ff91afce1cf53faeaaca",
+  "prompts": {},
+  "sessions": {
+    "s_3205a46db22f88": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-19b54c17c50b48829b361a5e73fb1a71",
+        "model": "unknown"
+      },
+      "human_author": "Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>"
+    }
+  }
+}

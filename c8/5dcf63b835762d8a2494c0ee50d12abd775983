@@ -1,0 +1,28 @@
+tests/integration/status_unit.rs
+  s_0f5afcece6b40d::t_3225d99e755774 27-36,38-41
+  s_0f5afcece6b40d::t_f5391831be4667 37
+  s_0f5afcece6b40d::t_8178b7d67e1c48 261-318,327-328
+src/commands/git_ai_handlers.rs
+  s_0f5afcece6b40d::t_cd727c2d876175 342-344
+src/commands/status.rs
+  s_0f5afcece6b40d::t_de10c6c1f9be8e 76
+  s_0f5afcece6b40d::t_004f3a240a3055 97-98,100-105,107-121
+  s_0f5afcece6b40d::t_fafa065a49d4b5 28-32,37,41-44,49,55
+  s_0f5afcece6b40d::t_8d854e6db24a5f 170-174,183-185
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "c85dcf63b835762d8a2494c0ee50d12abd775983",
+  "prompts": {},
+  "sessions": {
+    "s_0f5afcece6b40d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9de248a2-5a01-4bd6-835d-4edb6c46bbe8",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ubuntu <ubuntu@ip-172-31-38-209.ap-south-1.compute.internal>"
+    }
+  }
+}
