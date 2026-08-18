@@ -22,8 +22,9 @@ impl ZcodeInstaller {
     }
 
     /// Returns `(hooks_installed, hooks_up_to_date)` from a parsed config.
-    /// `hooks_installed` = a git-ai checkpoint command exists in every event we
-    /// install; `hooks_up_to_date` is the same contract here.
+    /// A git-ai checkpoint command must live in a matcher-less block to count:
+    /// a matcher restricted block may never match (an omitted matcher matches
+    /// everything in zcode).
     fn hook_status(config: &Value) -> (bool, bool) {
         let events = config
             .get("hooks")
@@ -40,18 +41,19 @@ impl ZcodeInstaller {
                 .and_then(|v| v.as_array())
                 .map(|blocks| {
                     blocks.iter().any(|block| {
-                        block
-                            .get("hooks")
-                            .and_then(|h| h.as_array())
-                            .map(|hooks| {
-                                hooks.iter().any(|hook| {
-                                    hook.get("command")
-                                        .and_then(|c| c.as_str())
-                                        .map(is_git_ai_checkpoint_command)
-                                        .unwrap_or(false)
+                        block.get("matcher").is_none()
+                            && block
+                                .get("hooks")
+                                .and_then(|h| h.as_array())
+                                .map(|hooks| {
+                                    hooks.iter().any(|hook| {
+                                        hook.get("command")
+                                            .and_then(|c| c.as_str())
+                                            .map(is_git_ai_checkpoint_command)
+                                            .unwrap_or(false)
+                                    })
                                 })
-                            })
-                            .unwrap_or(false)
+                                .unwrap_or(false)
                     })
                 })
                 .unwrap_or(false)
@@ -115,8 +117,27 @@ impl ZcodeInstaller {
                 .cloned()
                 .unwrap_or_default();
 
-            // Refresh any existing git-ai entry in place (keeping its position)
-            // and drop duplicate git-ai hooks.
+            // Migrate git-ai hooks out of matcher-carrying blocks: a matcher
+            // restricted block may never match (e.g. "*" copied from a Claude
+            // Code config is an invalid zcode regex), which would silently
+            // disable attribution. Blocks emptied by the removal are dropped.
+            for block in blocks.iter_mut() {
+                if block.get("matcher").is_some()
+                    && let Some(hooks_arr) = block.get_mut("hooks").and_then(|h| h.as_array_mut())
+                {
+                    hooks_arr.retain(|h| !Self::is_git_ai_hook(h));
+                }
+            }
+            blocks.retain(|block| {
+                block
+                    .get("hooks")
+                    .and_then(|h| h.as_array())
+                    .map(|hooks| !hooks.is_empty())
+                    .unwrap_or(true)
+            });
+
+            // Refresh any remaining git-ai entry in place (keeping its
+            // position) and drop duplicate git-ai hooks.
             let mut found_git_ai = false;
             for block in blocks.iter_mut() {
                 let Some(hooks_arr) = block.get_mut("hooks").and_then(|h| h.as_array_mut()) else {
@@ -528,5 +549,82 @@ mod tests {
             }}
         });
         assert_eq!(ZcodeInstaller::hook_status(&foreign), (false, false));
+
+        // git-ai hooks locked inside matcher-carrying blocks never fire in
+        // zcode, so they must not count as installed.
+        let matcher_locked = json!({
+            "hooks": {"events": {
+                "PreToolUse": [{"matcher": "*", "hooks": [{"command": "git-ai checkpoint zcode --hook-input stdin"}]}],
+                "PostToolUse": [{"matcher": "*", "hooks": [{"command": "git-ai checkpoint zcode --hook-input stdin"}]}]
+            }}
+        });
+        assert_eq!(ZcodeInstaller::hook_status(&matcher_locked), (false, false));
+    }
+
+    #[test]
+    fn s7_install_migrates_git_ai_out_of_matcher_blocks() {
+        // A git-ai hook copied from a Claude Code config carries a "*" matcher,
+        // which is an invalid zcode regex that silently never matches. Install
+        // must move it into a matcher-less block instead of refreshing it in
+        // place.
+        let (_dir, path) = temp_config();
+
+        let stale = json!({
+            "hooks": {
+                "events": {
+                    "PreToolUse": [
+                        {"matcher": "*", "hooks": [{"type": "command", "command": "/old/git-ai checkpoint zcode --hook-input stdin"}]}
+                    ],
+                    "PostToolUse": [
+                        {"matcher": "Edit", "hooks": [
+                            {"type": "command", "command": "/old/git-ai checkpoint zcode --hook-input stdin"},
+                            {"type": "process", "command": "node foreign.mjs"}
+                        ]}
+                    ]
+                }
+            }
+        });
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, serde_json::to_string_pretty(&stale).unwrap()).unwrap();
+
+        ZcodeInstaller::install_hooks_at(&path, &desired_cmd(), false)
+            .unwrap()
+            .expect("migrating a matcher-locked hook should produce a diff");
+
+        let config = read_config(&path);
+
+        // PreToolUse: the emptied matcher block is dropped, replaced by the
+        // canonical matcher-less block.
+        let pre_blocks = config["hooks"]["events"]["PreToolUse"].as_array().unwrap();
+        assert_eq!(pre_blocks.len(), 1);
+        assert!(pre_blocks[0].get("matcher").is_none());
+        assert_eq!(pre_blocks[0]["hooks"][0]["command"], json!(desired_cmd()));
+
+        // PostToolUse: the matcher block survives (it keeps its foreign hook)
+        // but no longer carries a git-ai entry; the canonical block is added.
+        let post_blocks = config["hooks"]["events"]["PostToolUse"].as_array().unwrap();
+        assert_eq!(post_blocks.len(), 2);
+        let matcher_block = post_blocks
+            .iter()
+            .find(|b| b.get("matcher").is_some())
+            .expect("matcher block with foreign hook should survive");
+        let matcher_hooks = matcher_block["hooks"].as_array().unwrap();
+        assert_eq!(matcher_hooks.len(), 1);
+        assert_eq!(matcher_block["matcher"], json!("Edit"));
+        assert_eq!(matcher_hooks[0]["command"], json!("node foreign.mjs"));
+        let git_ai_block = post_blocks
+            .iter()
+            .find(|b| b.get("matcher").is_none())
+            .expect("canonical matcher-less block should be added");
+        assert_eq!(git_ai_block["hooks"][0]["command"], json!(desired_cmd()));
+
+        // The migrated state is now reported as installed and re-running is a
+        // no-op.
+        assert_eq!(ZcodeInstaller::hook_status(&config), (true, true));
+        assert!(
+            ZcodeInstaller::install_hooks_at(&path, &desired_cmd(), false)
+                .unwrap()
+                .is_none()
+        );
     }
 }
