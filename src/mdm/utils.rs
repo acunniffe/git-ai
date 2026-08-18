@@ -447,6 +447,12 @@ pub fn codex_home_dir() -> PathBuf {
     home_dir().join(".codex")
 }
 
+/// ZCode CLI directory (`~/.zcode/cli`), which holds `config.json` with the
+/// `hooks` section hook installers merge into.
+pub fn zcode_cli_dir() -> PathBuf {
+    home_dir().join(".zcode").join("cli")
+}
+
 /// Gemini CLI config directory, respecting the GEMINI_CLI_HOME env var.
 /// GEMINI_CLI_HOME points to the user home root, and Gemini stores config under .gemini.
 pub fn gemini_config_dir() -> PathBuf {
