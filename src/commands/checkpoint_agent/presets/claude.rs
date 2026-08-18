@@ -31,106 +31,119 @@ impl ClaudePreset {
     }
 }
 
-impl AgentPreset for ClaudePreset {
-    fn parse(&self, hook_input: &str, trace_id: &str) -> Result<Vec<ParsedHookEvent>, GitAiError> {
-        let data: serde_json::Value = serde_json::from_str(hook_input)
-            .map_err(|e| GitAiError::PresetError(format!("Invalid JSON in hook_input: {}", e)))?;
+/// Shared parser for agents whose hook protocol is identical to Claude Code's
+/// (e.g., ZCode). `tool` is the attribution identity (lowercase agent id);
+/// `display_name` is used in error messages.
+pub(crate) fn parse_claude_like(
+    hook_input: &str,
+    trace_id: &str,
+    tool: &str,
+    display_name: &str,
+) -> Result<Vec<ParsedHookEvent>, GitAiError> {
+    let data: serde_json::Value = serde_json::from_str(hook_input)
+        .map_err(|e| GitAiError::PresetError(format!("Invalid JSON in hook_input: {}", e)))?;
 
-        if Self::is_vscode_copilot_hook_payload(&data) {
-            return Err(GitAiError::PresetError(
-                "Skipping VS Code hook payload in Claude preset; use github-copilot hooks."
-                    .to_string(),
-            ));
-        }
-        if Self::is_cursor_hook_payload(&data) {
-            return Err(GitAiError::PresetError(
-                "Skipping Cursor hook payload in Claude preset; use cursor hooks.".to_string(),
-            ));
-        }
+    if ClaudePreset::is_vscode_copilot_hook_payload(&data) {
+        return Err(GitAiError::PresetError(format!(
+            "Skipping VS Code hook payload in {} preset; use github-copilot hooks.",
+            display_name
+        )));
+    }
+    if ClaudePreset::is_cursor_hook_payload(&data) {
+        return Err(GitAiError::PresetError(format!(
+            "Skipping Cursor hook payload in {} preset; use cursor hooks.",
+            display_name
+        )));
+    }
 
-        let tool_class = parse::optional_str_multi(&data, &["tool_name", "toolName"])
-            .map(|name| bash_tool::classify_tool(Agent::Claude, name))
-            // Preserve legacy Claude payloads that predate tool_name.
-            .unwrap_or(ToolClass::FileEdit);
-        if tool_class == ToolClass::Skip {
-            return Ok(Vec::new());
-        }
+    // These agents use the same capitalized tool names as Claude Code, so
+    // reuse Claude's tool classification.
+    let tool_class = parse::optional_str_multi(&data, &["tool_name", "toolName"])
+        .map(|name| bash_tool::classify_tool(Agent::Claude, name))
+        // Preserve legacy Claude payloads that predate tool_name.
+        .unwrap_or(ToolClass::FileEdit);
+    if tool_class == ToolClass::Skip {
+        return Ok(Vec::new());
+    }
 
-        let cwd = parse::required_str(&data, "cwd")?;
-        let transcript_path = parse::required_str(&data, "transcript_path")?;
-        let session_id = parse::optional_str(&data, "session_id")
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| {
-                parse::required_file_stem(&data, "transcript_path")
-                    .unwrap_or_else(|_| "unknown".to_string())
-            });
-
-        let hook_event = parse::optional_str_multi(&data, &["hook_event_name", "hookEventName"]);
-        let tool_use_id = parse::str_or_default_multi(&data, &["tool_use_id", "toolUseId"], "bash");
-
-        let is_bash = tool_class == ToolClass::Bash;
-
-        let context = PresetContext {
-            agent_id: AgentId {
-                tool: "claude".to_string(),
-                id: session_id.clone(),
-                model: crate::streams::model_extraction::extract_model(
-                    Path::new(transcript_path),
-                    crate::streams::sweep::StreamFormat::ClaudeJsonl,
-                    None,
-                )
-                .ok()
-                .flatten()
-                .unwrap_or_else(|| "unknown".to_string()),
-            },
-            external_session_id: session_id.clone(),
-            trace_id: trace_id.to_string(),
-            cwd: PathBuf::from(cwd),
-            metadata: HashMap::from([("transcript_path".to_string(), transcript_path.to_string())]),
-        };
-
-        let transcript_path_buf = PathBuf::from(transcript_path);
-        let external_parent_session_id =
-            crate::streams::agents::claude::ClaudeAgent::detect_subagent_parent(
-                &transcript_path_buf,
-            );
-        let stream_source = Some(StreamSource {
-            path: transcript_path_buf,
-            format: StreamFormat::ClaudeJsonl,
-            session_id: generate_session_id(&session_id, "claude"),
-            external_session_id: session_id.clone(),
-            external_parent_session_id,
+    let cwd = parse::required_str(&data, "cwd")?;
+    let transcript_path = parse::required_str(&data, "transcript_path")?;
+    let session_id = parse::optional_str(&data, "session_id")
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| {
+            parse::required_file_stem(&data, "transcript_path")
+                .unwrap_or_else(|_| "unknown".to_string())
         });
 
-        let bash_command = parse::bash_command_from_hook_input(&data);
-        let event = match (hook_event, is_bash) {
-            (Some("PreToolUse"), true) => ParsedHookEvent::PreBashCall(PreBashCall {
-                context,
-                tool_use_id: tool_use_id.to_string(),
-                command: bash_command,
-            }),
-            (Some("PreToolUse"), false) => ParsedHookEvent::PreFileEdit(PreFileEdit {
-                context,
-                file_paths: parse::file_paths_from_tool_input(&data, cwd),
-                dirty_files: None,
-                tool_use_id: Some(tool_use_id.to_string()),
-            }),
-            (_, true) => ParsedHookEvent::PostBashCall(PostBashCall {
-                context,
-                tool_use_id: tool_use_id.to_string(),
-                command: bash_command,
-                stream_source,
-            }),
-            (_, false) => ParsedHookEvent::PostFileEdit(PostFileEdit {
-                context,
-                file_paths: parse::file_paths_from_tool_input(&data, cwd),
-                dirty_files: None,
-                stream_source,
-                tool_use_id: Some(tool_use_id.to_string()),
-            }),
-        };
+    let hook_event = parse::optional_str_multi(&data, &["hook_event_name", "hookEventName"]);
+    let tool_use_id = parse::str_or_default_multi(&data, &["tool_use_id", "toolUseId"], "bash");
 
-        Ok(vec![event])
+    let is_bash = tool_class == ToolClass::Bash;
+
+    let context = PresetContext {
+        agent_id: AgentId {
+            tool: tool.to_string(),
+            id: session_id.clone(),
+            model: crate::streams::model_extraction::extract_model(
+                Path::new(transcript_path),
+                crate::streams::sweep::StreamFormat::ClaudeJsonl,
+                None,
+            )
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "unknown".to_string()),
+        },
+        external_session_id: session_id.clone(),
+        trace_id: trace_id.to_string(),
+        cwd: PathBuf::from(cwd),
+        metadata: HashMap::from([("transcript_path".to_string(), transcript_path.to_string())]),
+    };
+
+    let transcript_path_buf = PathBuf::from(transcript_path);
+    let external_parent_session_id =
+        crate::streams::agents::claude::ClaudeAgent::detect_subagent_parent(&transcript_path_buf);
+    let stream_source = Some(StreamSource {
+        path: transcript_path_buf,
+        format: StreamFormat::ClaudeJsonl,
+        session_id: generate_session_id(&session_id, tool),
+        external_session_id: session_id.clone(),
+        external_parent_session_id,
+    });
+
+    let bash_command = parse::bash_command_from_hook_input(&data);
+    let event = match (hook_event, is_bash) {
+        (Some("PreToolUse"), true) => ParsedHookEvent::PreBashCall(PreBashCall {
+            context,
+            tool_use_id: tool_use_id.to_string(),
+            command: bash_command,
+        }),
+        (Some("PreToolUse"), false) => ParsedHookEvent::PreFileEdit(PreFileEdit {
+            context,
+            file_paths: parse::file_paths_from_tool_input(&data, cwd),
+            dirty_files: None,
+            tool_use_id: Some(tool_use_id.to_string()),
+        }),
+        (_, true) => ParsedHookEvent::PostBashCall(PostBashCall {
+            context,
+            tool_use_id: tool_use_id.to_string(),
+            command: bash_command,
+            stream_source,
+        }),
+        (_, false) => ParsedHookEvent::PostFileEdit(PostFileEdit {
+            context,
+            file_paths: parse::file_paths_from_tool_input(&data, cwd),
+            dirty_files: None,
+            stream_source,
+            tool_use_id: Some(tool_use_id.to_string()),
+        }),
+    };
+
+    Ok(vec![event])
+}
+
+impl AgentPreset for ClaudePreset {
+    fn parse(&self, hook_input: &str, trace_id: &str) -> Result<Vec<ParsedHookEvent>, GitAiError> {
+        parse_claude_like(hook_input, trace_id, "claude", "Claude")
     }
 }
 

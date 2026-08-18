@@ -19,6 +19,7 @@ mod mock_known_human;
 mod opencode;
 mod pi;
 mod windsurf;
+mod zcode;
 
 use crate::authorship::working_log::AgentId;
 use crate::error::GitAiError;
@@ -168,6 +169,7 @@ pub fn resolve_preset(name: &str) -> Result<Box<dyn AgentPreset>, GitAiError> {
         "droid" => Ok(Box::new(droid::DroidPreset)),
         "opencode" => Ok(Box::new(opencode::OpenCodePreset)),
         "pi" => Ok(Box::new(pi::PiPreset)),
+        "zcode" => Ok(Box::new(zcode::ZcodePreset)),
         "human" => Ok(Box::new(human::HumanPreset)),
         "mock_ai" => Ok(Box::new(mock_ai::MockAiPreset)),
         "known_human" => Ok(Box::new(known_human::KnownHumanPreset)),
