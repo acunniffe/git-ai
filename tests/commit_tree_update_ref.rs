@@ -731,6 +731,34 @@ fn test_trace_listener_bootstrap_captures_commit_ref_transition_before_worker_sp
     assert_note_has_ai_for_file(&repo, &committed.commit_sha, "bootstrap-race.txt");
 }
 
+#[cfg(not(windows))]
+#[test]
+fn test_late_async_ref_snapshot_does_not_move_squash_merge_onto_past_command() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_TRACE_LISTENER_WORKER_SPAWN_DELAY_MS",
+        "500",
+    )]);
+    let mut file = repo.filename("squash.txt");
+    fs::write(repo.path().join("squash.txt"), "base\n").unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+    file.assert_committed_lines(lines!["base".unattributed_human()]);
+    let default_branch = repo.current_branch();
+
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    repo.git_ai(&["checkpoint", "human", "squash.txt"]).unwrap();
+    fs::write(repo.path().join("squash.txt"), "base\nfeature ai\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "squash.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("feature ai").unwrap();
+    file.assert_committed_lines(lines!["base".unattributed_human(), "feature ai".ai()]);
+
+    repo.git(&["checkout", &default_branch]).unwrap();
+    repo.git(&["merge", "--squash", "feature"]).unwrap();
+    repo.commit("squash feature").unwrap();
+
+    file.assert_committed_lines(lines!["base".unattributed_human(), "feature ai".ai()]);
+}
+
 #[test]
 #[ignore = "stock trace2 does not record merge --squash source oid after SQUASH_MSG is gone"]
 fn test_delayed_squash_merge_trace_replay_preserves_source_attribution() {

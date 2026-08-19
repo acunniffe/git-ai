@@ -1,5 +1,6 @@
 use crate::daemon::domain::{AnalysisResult, NormalizedCommand};
 use crate::error::GitAiError;
+use crate::git::cli_parser::parse_git_cli_args;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -108,4 +109,33 @@ pub(crate) fn normalized_args(argv: &[String]) -> Vec<String> {
     } else {
         argv.to_vec()
     }
+}
+
+pub(crate) fn checkout_is_path_checkout(cmd: &NormalizedCommand) -> bool {
+    let args = if cmd.invoked_args.is_empty() {
+        parse_git_cli_args(&normalized_args(&cmd.raw_argv)).command_args
+    } else {
+        cmd.invoked_args.clone()
+    };
+    let mut positionals = 0usize;
+    let mut skip_option_value = false;
+    for arg in &args {
+        if skip_option_value {
+            skip_option_value = false;
+            continue;
+        }
+        match arg.as_str() {
+            "--" | "-p" | "--patch" | "--ours" | "--theirs" => return true,
+            "-b" | "-B" | "--orphan" | "--conflict" => skip_option_value = true,
+            value if value.starts_with("--pathspec") => return true,
+            value if value.starts_with('-') => {}
+            _ => {
+                positionals += 1;
+                if positionals > 1 {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }

@@ -586,7 +586,7 @@ fn test_cold_repo_first_traced_squash_merge_is_processed() {
 }
 
 #[test]
-fn test_cold_daemon_first_traced_squash_merge_preserves_source_ai_authorship() {
+fn test_cold_daemon_first_traced_symbolic_squash_merge_fails_closed() {
     let mut repo = TestRepo::new_dedicated_daemon();
     let mut file = repo.filename("document.txt");
 
@@ -612,6 +612,10 @@ fn test_cold_daemon_first_traced_squash_merge_preserves_source_ai_authorship() {
         .unwrap();
 
     repo.restart_dedicated_daemon_for_test();
+    // A restarted daemon has no ordered ref state, and stock trace2 does not
+    // record either the symbolic squash source's OID or the pre-command HEAD.
+    // An asynchronously sampled ref snapshot may already include later commands,
+    // so it is not valid evidence. Fail closed instead of guessing attribution.
     repo.git(&["merge", "--squash", "feature"]).unwrap();
     repo.stage_all_and_commit("squashed feature").unwrap();
 
@@ -620,8 +624,8 @@ fn test_cold_daemon_first_traced_squash_merge_preserves_source_ai_authorship() {
         "// Master update at top".human(),
         "section 1".human(),
         "section 2".human(),
-        "section 3".ai(),
-        "// AI feature addition at end".ai()
+        "section 3".human(),
+        "// AI feature addition at end".human()
     ]);
 }
 
@@ -709,7 +713,7 @@ crate::reuse_tests_in_worktree!(
     test_cold_repo_mid_merge_commit_preserves_ai_conflict_resolution,
     test_cold_repo_first_traced_cherry_pick_is_processed,
     test_cold_repo_first_traced_squash_merge_is_processed,
-    test_cold_daemon_first_traced_squash_merge_preserves_source_ai_authorship,
+    test_cold_daemon_first_traced_symbolic_squash_merge_fails_closed,
     test_cold_repo_first_traced_merge_is_processed,
     test_cold_repo_first_traced_stash_pop_is_processed,
     test_cold_repo_traced_stash_after_raw_stash_history_preserves_current_ai_attribution,

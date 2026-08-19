@@ -1,4 +1,4 @@
-use crate::daemon::analyzers::{command_args, normalized_args};
+use crate::daemon::analyzers::{checkout_is_path_checkout, command_args, normalized_args};
 use crate::daemon::domain::{Confidence, FamilyKey, FamilyState, NormalizedCommand, RefChange};
 use crate::error::GitAiError;
 use crate::git::cli_parser::{
@@ -117,6 +117,9 @@ enum ColdSeedMatchSpec {
     RebaseSpan {
         expected: ExpectedTransition,
     },
+    UniqueStashPush {
+        expected_message: Option<String>,
+    },
 }
 
 impl RefCursor {
@@ -137,21 +140,25 @@ impl RefCursor {
         &mut self,
         cmd: &mut NormalizedCommand,
         state: &FamilyState,
-    ) -> Result<HashMap<String, String>, GitAiError> {
+    ) -> Result<(), GitAiError> {
         cmd.ref_changes.clear();
         self.initialize_from_command_reflog_start_offsets(cmd)?;
-        let command_start_refs =
-            refs_at_reflog_start_offsets(&self.family, &cmd.reflog_start_offsets)?;
-
+        // Reflog offsets are sampled asynchronously and may describe repository
+        // state after this command -- or even after later commands. They are safe
+        // only as cursor-selection hints. Analyzer ref state comes from the
+        // serialized family actor, while ref-moving commands contribute exact
+        // old/new transitions recovered by this cursor. A cold ref-neutral command
+        // without enough in-order evidence therefore fails closed instead of
+        // guessing from mutable repository state.
         if cmd.exit_code != 0 && !command_can_move_refs_on_nonzero(cmd.primary_command.as_deref()) {
-            return Ok(command_start_refs);
+            return Ok(());
         }
 
         let Some(primary) = cmd.primary_command.as_deref() else {
-            return Ok(command_start_refs);
+            return Ok(());
         };
         if !command_uses_ref_cursor(primary) {
-            return Ok(command_start_refs);
+            return Ok(());
         }
 
         match primary {
@@ -204,7 +211,7 @@ impl RefCursor {
         if !cmd.ref_changes.is_empty() {
             cmd.confidence = Confidence::High;
         }
-        Ok(command_start_refs)
+        Ok(())
     }
 
     fn initialize_from_command_reflog_start_offsets(
@@ -335,6 +342,35 @@ impl RefCursor {
             ColdSeedMatchSpec::RebaseSpan { expected } => {
                 self.clamp_seed_to_rebase_span_entry(key, &path, offset, expected)
             }
+            ColdSeedMatchSpec::UniqueStashPush { expected_message } => {
+                let Some(reference) = key
+                    .strip_prefix("common:")
+                    .filter(|reference| *reference == "refs/stash")
+                else {
+                    return Ok(offset);
+                };
+                let entries = read_reflog_entries(key.to_string(), &path, reference, None)?;
+                let log_end = entries
+                    .last()
+                    .map(|entry| entry.end_offset)
+                    .unwrap_or(offset);
+                let mut candidates = entries.iter().filter(|entry| {
+                    expected_message
+                        .as_deref()
+                        .is_none_or(|message| stash_reflog_message_matches(&entry.message, message))
+                });
+                let Some(candidate) = candidates.next() else {
+                    return Ok(offset);
+                };
+                if candidates.next().is_some() {
+                    // A late asynchronous hint cannot distinguish this push from
+                    // prior or later same-shaped stash history. Baseline all
+                    // currently ambiguous history so this command fails closed.
+                    Ok(log_end.max(offset))
+                } else {
+                    Ok(candidate.start_offset.min(offset))
+                }
+            }
         }
     }
 
@@ -445,6 +481,13 @@ impl RefCursor {
                     limit,
                 })
             }
+            "stash" => {
+                let stash_args = stash_command_args(&args);
+                let kind = stash_args.first().map(String::as_str).unwrap_or("push");
+                matches!(kind, "push" | "save").then(|| ColdSeedMatchSpec::UniqueStashPush {
+                    expected_message: stash_push_message_from_args(stash_args, kind),
+                })
+            }
             _ => None,
         }
     }
@@ -510,7 +553,7 @@ impl RefCursor {
             return Ok(());
         };
 
-        self.consume_head_entry_for_command(cmd, entry)
+        self.consume_head_entry_for_command(cmd, state, entry)
     }
 
     fn find_commit_head_entry(
@@ -1262,6 +1305,7 @@ impl RefCursor {
     fn consume_head_entry_for_command(
         &mut self,
         cmd: &mut NormalizedCommand,
+        state: &FamilyState,
         entry: CursorEntry,
     ) -> Result<(), GitAiError> {
         crate::wltrace::wltrace(
@@ -1284,6 +1328,7 @@ impl RefCursor {
         let new = entry.new.clone();
         let mut changes = vec![entry_to_ref_change(&entry)];
         self.consume_common_refs_matching_transition(&old, &new, &mut changes)?;
+        append_checked_out_branch_change(cmd, state, &old, &new, &mut changes);
         dedup_ref_changes(&mut changes);
         cmd.ref_changes = changes;
         Ok(())
@@ -1292,7 +1337,7 @@ impl RefCursor {
     fn consume_head_transition_for_command(
         &mut self,
         cmd: &mut NormalizedCommand,
-        _state: &FamilyState,
+        state: &FamilyState,
         message_prefixes: &[&str],
         expected: ExpectedTransition,
     ) -> Result<(), GitAiError> {
@@ -1302,7 +1347,7 @@ impl RefCursor {
             return Ok(());
         };
 
-        self.consume_head_entry_for_command(cmd, entry)
+        self.consume_head_entry_for_command(cmd, state, entry)
     }
 
     fn consume_head_span_for_command_limited(
@@ -2343,47 +2388,6 @@ pub(crate) fn capture_reflog_start_offsets_for_worktree(worktree: &Path) -> Hash
     offsets
 }
 
-pub(crate) fn refs_at_reflog_start_offsets(
-    family: &FamilyKey,
-    offsets: &HashMap<String, u64>,
-) -> Result<HashMap<String, String>, GitAiError> {
-    let common_dir = PathBuf::from(&family.0);
-    let mut refs = HashMap::new();
-
-    for (key, offset) in offsets {
-        if *offset == 0 {
-            continue;
-        }
-        let Some((reference, path)) = reflog_reference_and_path_for_key(&common_dir, key) else {
-            continue;
-        };
-        let Some(record) = read_reflog_record_ending_at(&path, *offset)? else {
-            continue;
-        };
-        if valid_non_zero_oid(&record.new) {
-            refs.insert(reference, record.new);
-        }
-    }
-
-    Ok(refs)
-}
-
-fn reflog_reference_and_path_for_key(common_dir: &Path, key: &str) -> Option<(String, PathBuf)> {
-    if let Some(reference) = key.strip_prefix("common:") {
-        return Some((
-            reference.to_string(),
-            common_dir.join("logs").join(reference),
-        ));
-    }
-    let git_dir = key
-        .strip_prefix("worktree:")
-        .and_then(|value| value.strip_suffix(":HEAD"))?;
-    Some((
-        "HEAD".to_string(),
-        PathBuf::from(git_dir).join("logs").join("HEAD"),
-    ))
-}
-
 impl From<&CursorEntry> for ReflogAnchor {
     fn from(entry: &CursorEntry) -> Self {
         Self {
@@ -2424,6 +2428,41 @@ fn current_worktree_branch_ref<'a>(
         .get(&canonical)
         .or_else(|| state.worktrees.get(worktree))
         .and_then(|worktree| worktree.branch.as_deref())
+}
+
+fn append_checked_out_branch_change(
+    cmd: &NormalizedCommand,
+    state: &FamilyState,
+    old: &str,
+    new: &str,
+    changes: &mut Vec<RefChange>,
+) {
+    if !command_updates_checked_out_branch(cmd.primary_command.as_deref()) {
+        return;
+    }
+    let Some(reference) = current_worktree_branch_ref(cmd, state) else {
+        return;
+    };
+    if changes.iter().any(|change| {
+        change.reference == reference
+            || (change.reference.starts_with("refs/heads/")
+                && change.old == old
+                && change.new == new)
+    }) {
+        return;
+    }
+    changes.push(RefChange {
+        reference: reference.to_string(),
+        old: old.to_string(),
+        new: new.to_string(),
+    });
+}
+
+fn command_updates_checked_out_branch(primary: Option<&str>) -> bool {
+    matches!(
+        primary,
+        Some("commit" | "revert" | "reset" | "merge" | "cherry-pick" | "rebase" | "pull")
+    )
 }
 
 impl ExpectedTransition {
@@ -3619,14 +3658,6 @@ fn working_log_base_oids(worktree: &Path) -> HashSet<String> {
     out
 }
 
-fn checkout_is_path_checkout(cmd: &NormalizedCommand) -> bool {
-    let args = command_args(cmd);
-    args.iter().any(|arg| arg == "--")
-        || args
-            .iter()
-            .any(|arg| arg.starts_with("--pathspec") || arg == "--ours" || arg == "--theirs")
-}
-
 fn stash_command_args(args: &[String]) -> &[String] {
     if args.first().is_some_and(|arg| arg == "stash") {
         &args[1..]
@@ -4806,6 +4837,48 @@ mod tests {
                 old: A.to_string(),
                 new: B.to_string(),
             }]
+        );
+    }
+
+    #[test]
+    fn recovered_branch_transition_overrides_stale_worktree_branch_state() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        fs::create_dir_all(&worktree).unwrap();
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let stale_branch = "refs/heads/main";
+        let actual_branch = "refs/heads/feature";
+        let mut state = family_state(&family);
+        state.worktrees.insert(
+            worktree.canonicalize().unwrap(),
+            WorktreeState {
+                head: Some(A.to_string()),
+                branch: Some(stale_branch.to_string()),
+                detached: false,
+                last_updated_ns: 0,
+            },
+        );
+        let cmd = command_with_worktree(&family, Some(worktree), &["commit", "-m", "next"]);
+        let mut changes = vec![
+            RefChange {
+                reference: "HEAD".to_string(),
+                old: A.to_string(),
+                new: B.to_string(),
+            },
+            RefChange {
+                reference: actual_branch.to_string(),
+                old: A.to_string(),
+                new: B.to_string(),
+            },
+        ];
+
+        append_checked_out_branch_change(&cmd, &state, A, B, &mut changes);
+
+        assert_eq!(changes.len(), 2);
+        assert!(
+            changes
+                .iter()
+                .all(|change| change.reference != stale_branch)
         );
     }
 
@@ -6074,7 +6147,7 @@ mod tests {
     }
 
     #[test]
-    fn cold_stash_push_uses_command_reflog_boundary_without_message() {
+    fn cold_stash_push_without_message_fails_closed_when_async_boundary_is_ambiguous() {
         let temp = tempfile::tempdir().unwrap();
         let old_line = format!("{A} {B} Test User <test@example.com> 0 +0000\tWIP on main\n");
         let old_history_len = old_line.len() as u64;
@@ -6091,6 +6164,26 @@ mod tests {
 
         cursor.enrich_command(&mut cmd, &state).unwrap();
 
+        assert!(cmd.ref_changes.is_empty());
+        assert!(cursor.stash_stack.is_empty());
+    }
+
+    #[test]
+    fn cold_stash_push_clamps_a_late_async_boundary_to_unique_entry() {
+        let temp = tempfile::tempdir().unwrap();
+        let current_line = format!("{B} {C} Test User <test@example.com> 0 +0000\tWIP on main\n");
+        let path = temp.path().join("logs/refs/stash");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, &current_line).unwrap();
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        let mut cmd = command(&family, &["stash", "push", "--", "a.txt"]);
+        cmd.reflog_start_offsets
+            .insert(common_key("refs/stash"), current_line.len() as u64);
+
+        cursor.enrich_command(&mut cmd, &state).unwrap();
+
         assert_eq!(
             cmd.ref_changes,
             vec![RefChange {
@@ -6100,6 +6193,59 @@ mod tests {
             }]
         );
         assert_eq!(cursor.stash_stack, vec![C.to_string()]);
+    }
+
+    #[test]
+    fn cold_stash_push_fails_closed_when_late_boundary_has_ambiguous_entries() {
+        let temp = tempfile::tempdir().unwrap();
+        let old_line = format!("{A} {B} Test User <test@example.com> 0 +0000\tWIP on main\n");
+        let current_line = format!("{B} {C} Test User <test@example.com> 0 +0000\tWIP on main\n");
+        let path = temp.path().join("logs/refs/stash");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, format!("{old_line}{current_line}")).unwrap();
+        let family = FamilyKey::new(temp.path().to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        let mut cmd = command(&family, &["stash", "push"]);
+        cmd.reflog_start_offsets.insert(
+            common_key("refs/stash"),
+            (old_line.len() + current_line.len()) as u64,
+        );
+
+        cursor.enrich_command(&mut cmd, &state).unwrap();
+
+        assert!(cmd.ref_changes.is_empty());
+        assert!(cursor.stash_stack.is_empty());
+    }
+
+    #[test]
+    fn cold_stash_push_does_not_move_unrelated_ref_boundaries() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let old_line = format!("{A} {B} Test User <test@example.com> 0 +0000\tcommit: old\n");
+        let later_line = format!("{B} {C} Test User <test@example.com> 0 +0000\tcommit: later\n");
+        let true_boundary = old_line.len() as u64;
+        for path in [
+            git_dir.join("logs/HEAD"),
+            git_dir.join("logs/refs/heads/main"),
+        ] {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, format!("{old_line}{later_line}")).unwrap();
+        }
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let cursor = RefCursor::new(family.clone());
+        let cmd = command_with_worktree(&family, Some(worktree), &["stash", "push"]);
+
+        for key in [head_key(&git_dir), common_key("refs/heads/main")] {
+            assert_eq!(
+                cursor
+                    .clamp_seed_to_own_entry(&key, true_boundary, &cmd)
+                    .unwrap(),
+                true_boundary,
+                "stash matching must not advance or rewind unrelated ref {key}"
+            );
+        }
     }
 
     #[test]

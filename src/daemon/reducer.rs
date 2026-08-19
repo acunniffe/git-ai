@@ -1,4 +1,4 @@
-use crate::daemon::analyzers::{AnalysisView, AnalyzerRegistry};
+use crate::daemon::analyzers::{AnalysisView, AnalyzerRegistry, checkout_is_path_checkout};
 use crate::daemon::domain::{
     AnalysisResult, AppliedCommand, FamilyState, GlobalState, NormalizedCommand, WorktreeState,
 };
@@ -10,43 +10,8 @@ pub fn reduce_family_command(
     cmd: NormalizedCommand,
     analyzers: &AnalyzerRegistry,
 ) -> Result<(AppliedCommand, AnalysisResult), GitAiError> {
-    reduce_family_command_with_ref_snapshot(
-        state,
-        cmd,
-        analyzers,
-        &std::collections::HashMap::new(),
-    )
-}
-
-pub fn reduce_family_command_with_ref_snapshot(
-    state: &mut FamilyState,
-    cmd: NormalizedCommand,
-    analyzers: &AnalyzerRegistry,
-    command_start_refs: &std::collections::HashMap<String, String>,
-) -> Result<(AppliedCommand, AnalysisResult), GitAiError> {
     // Analyze against pre-command state so history/ref analyzers can infer old->new correctly.
-    let refs_for_analysis;
-    let analysis_refs = if command_start_refs.is_empty() {
-        &state.refs
-    } else {
-        refs_for_analysis = state
-            .refs
-            .iter()
-            .map(|(reference, oid)| (reference.clone(), oid.clone()))
-            .chain(
-                command_start_refs
-                    .iter()
-                    .map(|(reference, oid)| (reference.clone(), oid.clone())),
-            )
-            .collect();
-        &refs_for_analysis
-    };
-    let analysis = analyzers.analyze(
-        &cmd,
-        AnalysisView {
-            refs: analysis_refs,
-        },
-    )?;
+    let analysis = analyzers.analyze(&cmd, AnalysisView { refs: &state.refs })?;
     apply_ref_changes(state, &cmd);
     apply_worktree_state(state, &cmd);
 
@@ -105,24 +70,21 @@ fn apply_worktree_state(state: &mut FamilyState, cmd: &NormalizedCommand) {
         .ref_changes
         .iter()
         .rfind(|change| change.reference == "HEAD");
+    let orphan_branch = (cmd.exit_code == 0)
+        .then(|| checkout_orphan_branch_target(cmd))
+        .flatten();
+    let command_branch = checkout_or_switch_branch_target(cmd, state);
 
-    let (head, branch, detached) = if let Some(head_change) = head_change {
-        // DEFERRED (code-review #12): `detached` is inferred as "no unique
-        // branch ref moved with HEAD". When a checkout/switch to an EXISTING
-        // branch produces an ambiguous ref-change pairing (e.g. multiple
-        // refs/heads/* share the same old->new as HEAD, so
-        // unique_branch_for_head_change returns None), the worktree is
-        // misclassified as detached. Harmless for attribution today (the head
-        // OID is still correct); a precise fix would consult the actual
-        // post-command symbolic-ref/branch name rather than inferring from
-        // ref-change pairing.
-        let branch = unique_branch_for_head_change(cmd, head_change);
+    let (head, branch, detached) = if let Some(branch) = orphan_branch {
+        (None, Some(branch), false)
+    } else if let Some(head_change) = head_change {
+        let branch = command_branch.or_else(|| unique_branch_for_head_change(cmd, head_change));
         (
             Some(head_change.new.clone()),
             branch.clone(),
             branch.is_none(),
         )
-    } else if let Some(branch) = checkout_or_switch_branch_target(cmd) {
+    } else if let Some(branch) = command_branch {
         (
             previous.and_then(|worktree| worktree.head.clone()),
             Some(branch),
@@ -135,6 +97,13 @@ fn apply_worktree_state(state: &mut FamilyState, cmd: &NormalizedCommand) {
             previous.is_some_and(|worktree| worktree.detached),
         )
     };
+
+    if cmd.exit_code == 0
+        && let Some(created_branch) = checkout_or_switch_created_branch_target(cmd)
+        && let Some(head) = head.as_ref()
+    {
+        state.refs.insert(created_branch, head.clone());
+    }
 
     state.worktrees.insert(
         key,
@@ -167,21 +136,52 @@ fn unique_branch_for_head_change(
     Some(first)
 }
 
-fn checkout_or_switch_branch_target(cmd: &NormalizedCommand) -> Option<String> {
+fn checkout_or_switch_branch_target(
+    cmd: &NormalizedCommand,
+    state: &FamilyState,
+) -> Option<String> {
+    if cmd.exit_code != 0
+        && !cmd
+            .ref_changes
+            .iter()
+            .any(|change| change.reference == "HEAD")
+    {
+        return None;
+    }
     let command = cmd.primary_command.as_deref()?;
     let args = command_args(cmd);
     match command {
-        "checkout" => checkout_created_branch_target(&args),
+        "checkout" if !checkout_is_path_checkout(cmd) => checkout_branch_target(&args, state),
         "switch" => switch_branch_target(&args),
         _ => None,
     }
-    .map(|branch| {
-        if branch.starts_with("refs/") {
-            branch
-        } else {
-            format!("refs/heads/{branch}")
-        }
-    })
+    .map(qualify_branch_ref)
+}
+
+fn checkout_or_switch_created_branch_target(cmd: &NormalizedCommand) -> Option<String> {
+    let command = cmd.primary_command.as_deref()?;
+    let args = command_args(cmd);
+    let branch = match command {
+        "checkout" => checkout_created_branch_target(&args),
+        "switch" => switch_created_branch_target(&args),
+        _ => None,
+    }?;
+    Some(qualify_branch_ref(branch))
+}
+
+fn checkout_orphan_branch_target(cmd: &NormalizedCommand) -> Option<String> {
+    if cmd.primary_command.as_deref() != Some("checkout") {
+        return None;
+    }
+    checkout_orphan_target(&command_args(cmd)).map(qualify_branch_ref)
+}
+
+fn qualify_branch_ref(branch: String) -> String {
+    if branch.starts_with("refs/") {
+        branch
+    } else {
+        format!("refs/heads/{branch}")
+    }
 }
 
 fn command_args(cmd: &NormalizedCommand) -> Vec<String> {
@@ -202,6 +202,33 @@ fn command_args(cmd: &NormalizedCommand) -> Vec<String> {
         .collect()
 }
 
+fn checkout_branch_target(args: &[String], state: &FamilyState) -> Option<String> {
+    if let Some(created) = checkout_created_branch_target(args) {
+        return Some(created);
+    }
+    let mut idx = usize::from(args.first().is_some_and(|arg| arg == "checkout"));
+    let mut candidate = None;
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--detach" | "-d" | "--" => return None,
+            "--conflict" => idx += 2,
+            value if value.starts_with("--conflict=") => idx += 1,
+            value if value.starts_with('-') => idx += 1,
+            value => {
+                candidate = Some(value.to_string());
+                break;
+            }
+        }
+    }
+    let candidate = candidate?;
+    let reference = if candidate.starts_with("refs/heads/") {
+        candidate
+    } else {
+        format!("refs/heads/{candidate}")
+    };
+    state.refs.contains_key(&reference).then_some(reference)
+}
+
 fn checkout_created_branch_target(args: &[String]) -> Option<String> {
     let mut idx = usize::from(args.first().is_some_and(|arg| arg == "checkout"));
     while idx < args.len() {
@@ -220,7 +247,37 @@ fn checkout_created_branch_target(args: &[String]) -> Option<String> {
     None
 }
 
+fn checkout_orphan_target(args: &[String]) -> Option<String> {
+    let mut idx = usize::from(args.first().is_some_and(|arg| arg == "checkout"));
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--orphan" => return args.get(idx + 1).cloned(),
+            value if value.starts_with("--orphan=") => {
+                return Some(value["--orphan=".len()..].to_string());
+            }
+            "--" => return None,
+            _ => idx += 1,
+        }
+    }
+    None
+}
+
 fn switch_branch_target(args: &[String]) -> Option<String> {
+    if let Some(created) = switch_created_branch_target(args) {
+        return Some(created);
+    }
+    let mut idx = usize::from(args.first().is_some_and(|arg| arg == "switch"));
+    while idx < args.len() {
+        match args[idx].as_str() {
+            "--detach" | "-d" | "--" => return None,
+            value if !value.starts_with('-') => return Some(value.to_string()),
+            _ => idx += 1,
+        }
+    }
+    None
+}
+
+fn switch_created_branch_target(args: &[String]) -> Option<String> {
     let mut idx = usize::from(args.first().is_some_and(|arg| arg == "switch"));
     while idx < args.len() {
         match args[idx].as_str() {
@@ -237,8 +294,7 @@ fn switch_branch_target(args: &[String]) -> Option<String> {
             value if value.starts_with("-C") && value.len() > 2 => {
                 return Some(value[2..].to_string());
             }
-            "--detach" | "-d" | "--" => return None,
-            value if !value.starts_with('-') => return Some(value.to_string()),
+            "--" => return None,
             _ => idx += 1,
         }
     }
@@ -456,6 +512,212 @@ mod tests {
         assert_eq!(worktree.head.as_deref(), Some("aaa"));
         assert_eq!(worktree.branch.as_deref(), Some("refs/heads/feature"));
         assert!(!worktree.detached);
+        assert_eq!(
+            state.refs.get("refs/heads/feature").map(String::as_str),
+            Some("aaa")
+        );
+    }
+
+    #[test]
+    fn reducer_updates_branch_for_checkout_existing_branch_with_head_move() {
+        let mut state = family_state();
+        state
+            .refs
+            .insert("refs/heads/main".to_string(), "bbb".to_string());
+        state.worktrees.insert(
+            PathBuf::from("/tmp/repo"),
+            WorktreeState {
+                head: Some("aaa".to_string()),
+                branch: Some("refs/heads/feature".to_string()),
+                detached: false,
+                last_updated_ns: 1,
+            },
+        );
+        let registry = AnalyzerRegistry::new();
+        let mut cmd = normalized();
+        cmd.raw_argv = vec![
+            "git".to_string(),
+            "checkout".to_string(),
+            "main".to_string(),
+        ];
+        cmd.primary_command = Some("checkout".to_string());
+        cmd.invoked_command = Some("checkout".to_string());
+        cmd.invoked_args = vec!["main".to_string()];
+        cmd.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "aaa".to_string(),
+            new: "bbb".to_string(),
+        }];
+
+        let (_applied, _analysis) = reduce_family_command(&mut state, cmd, &registry).unwrap();
+        let worktree = state.worktrees.get(&PathBuf::from("/tmp/repo")).unwrap();
+
+        assert_eq!(worktree.head.as_deref(), Some("bbb"));
+        assert_eq!(worktree.branch.as_deref(), Some("refs/heads/main"));
+        assert!(!worktree.detached);
+    }
+
+    #[test]
+    fn reducer_tracks_nonzero_merge_checkout_when_head_move_was_observed() {
+        let mut state = family_state();
+        state
+            .refs
+            .insert("refs/heads/main".to_string(), "bbb".to_string());
+        state.worktrees.insert(
+            PathBuf::from("/tmp/repo"),
+            WorktreeState {
+                head: Some("aaa".to_string()),
+                branch: Some("refs/heads/feature".to_string()),
+                detached: false,
+                last_updated_ns: 1,
+            },
+        );
+        let registry = AnalyzerRegistry::new();
+        let mut cmd = normalized();
+        cmd.raw_argv = vec![
+            "git".to_string(),
+            "checkout".to_string(),
+            "--merge".to_string(),
+            "main".to_string(),
+        ];
+        cmd.primary_command = Some("checkout".to_string());
+        cmd.invoked_command = Some("checkout".to_string());
+        cmd.invoked_args = vec!["--merge".to_string(), "main".to_string()];
+        cmd.exit_code = 1;
+        cmd.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "aaa".to_string(),
+            new: "bbb".to_string(),
+        }];
+
+        let (_applied, _analysis) = reduce_family_command(&mut state, cmd, &registry).unwrap();
+        let worktree = state.worktrees.get(&PathBuf::from("/tmp/repo")).unwrap();
+
+        assert_eq!(worktree.head.as_deref(), Some("bbb"));
+        assert_eq!(worktree.branch.as_deref(), Some("refs/heads/main"));
+        assert!(!worktree.detached);
+    }
+
+    #[test]
+    fn reducer_finds_checkout_after_raw_git_global_options() {
+        let mut state = family_state();
+        state
+            .refs
+            .insert("refs/heads/main".to_string(), "bbb".to_string());
+        state.worktrees.insert(
+            PathBuf::from("/tmp/repo"),
+            WorktreeState {
+                head: Some("aaa".to_string()),
+                branch: Some("refs/heads/feature".to_string()),
+                detached: false,
+                last_updated_ns: 1,
+            },
+        );
+        let registry = AnalyzerRegistry::new();
+        let mut cmd = normalized();
+        cmd.raw_argv = vec![
+            "git".to_string(),
+            "-C".to_string(),
+            "/tmp/repo".to_string(),
+            "checkout".to_string(),
+            "main".to_string(),
+        ];
+        cmd.primary_command = Some("checkout".to_string());
+        cmd.invoked_command = Some("checkout".to_string());
+        cmd.invoked_args.clear();
+        cmd.ref_changes = vec![RefChange {
+            reference: "HEAD".to_string(),
+            old: "aaa".to_string(),
+            new: "bbb".to_string(),
+        }];
+
+        let (_applied, _analysis) = reduce_family_command(&mut state, cmd, &registry).unwrap();
+        let worktree = state.worktrees.get(&PathBuf::from("/tmp/repo")).unwrap();
+
+        assert_eq!(worktree.branch.as_deref(), Some("refs/heads/main"));
+        assert!(!worktree.detached);
+    }
+
+    #[test]
+    fn reducer_preserves_branch_for_checkout_path_forms_and_failed_checkout() {
+        for (args, exit_code) in [
+            (vec!["main", "--", "src/lib.rs"], 0),
+            (vec!["main", "--", "checkout"], 0),
+            (vec!["main", "src/lib.rs"], 0),
+            (vec!["-p", "main"], 0),
+            (vec!["main"], 1),
+        ] {
+            let mut state = family_state();
+            state
+                .refs
+                .insert("refs/heads/main".to_string(), "bbb".to_string());
+            state.worktrees.insert(
+                PathBuf::from("/tmp/repo"),
+                WorktreeState {
+                    head: Some("aaa".to_string()),
+                    branch: Some("refs/heads/feature".to_string()),
+                    detached: false,
+                    last_updated_ns: 1,
+                },
+            );
+            let registry = AnalyzerRegistry::new();
+            let mut cmd = normalized();
+            cmd.raw_argv = std::iter::once("git")
+                .chain(std::iter::once("checkout"))
+                .chain(args.iter().copied())
+                .map(str::to_string)
+                .collect();
+            cmd.primary_command = Some("checkout".to_string());
+            cmd.invoked_command = Some("checkout".to_string());
+            cmd.invoked_args = args.iter().map(|arg| arg.to_string()).collect();
+            cmd.exit_code = exit_code;
+            cmd.ref_changes.clear();
+
+            let (_applied, _analysis) = reduce_family_command(&mut state, cmd, &registry).unwrap();
+            let worktree = state.worktrees.get(&PathBuf::from("/tmp/repo")).unwrap();
+
+            assert_eq!(
+                worktree.branch.as_deref(),
+                Some("refs/heads/feature"),
+                "checkout args {args:?} exit_code={exit_code} changed the tracked branch"
+            );
+            assert_eq!(worktree.head.as_deref(), Some("aaa"));
+            assert!(!worktree.detached);
+        }
+    }
+
+    #[test]
+    fn reducer_tracks_checkout_orphan_as_unborn_without_inventing_a_tip() {
+        let mut state = family_state();
+        state.worktrees.insert(
+            PathBuf::from("/tmp/repo"),
+            WorktreeState {
+                head: Some("aaa".to_string()),
+                branch: Some("refs/heads/main".to_string()),
+                detached: false,
+                last_updated_ns: 1,
+            },
+        );
+        let registry = AnalyzerRegistry::new();
+        let mut cmd = normalized();
+        cmd.raw_argv = vec![
+            "git".to_string(),
+            "checkout".to_string(),
+            "--orphan".to_string(),
+            "empty".to_string(),
+        ];
+        cmd.primary_command = Some("checkout".to_string());
+        cmd.invoked_command = Some("checkout".to_string());
+        cmd.invoked_args = vec!["--orphan".to_string(), "empty".to_string()];
+        cmd.ref_changes.clear();
+
+        let (_applied, _analysis) = reduce_family_command(&mut state, cmd, &registry).unwrap();
+        let worktree = state.worktrees.get(&PathBuf::from("/tmp/repo")).unwrap();
+
+        assert_eq!(worktree.head, None);
+        assert_eq!(worktree.branch.as_deref(), Some("refs/heads/empty"));
+        assert!(!worktree.detached);
+        assert!(!state.refs.contains_key("refs/heads/empty"));
     }
 
     #[test]
