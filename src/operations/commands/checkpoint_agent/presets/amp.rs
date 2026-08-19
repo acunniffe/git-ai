@@ -79,11 +79,12 @@ impl AgentPreset for AmpPreset {
 
         let is_pre = hook_input.hook_event_name == "PreToolUse";
 
-        let is_bash = hook_input
-            .tool_name
-            .as_deref()
-            .map(|name| bash_tool::classify_tool(Agent::Amp, name) == ToolClass::Bash)
-            .unwrap_or(false);
+        let tool_class =
+            bash_tool::classify_optional_tool(Agent::Amp, hook_input.tool_name.as_deref());
+        if tool_class == ToolClass::Skip {
+            return Ok(Vec::new());
+        }
+        let is_bash = tool_class == ToolClass::Bash;
 
         let cwd = hook_input.cwd.as_deref().unwrap_or(".");
 
@@ -428,5 +429,34 @@ mod tests {
             event.context.metadata.get("transcript_path"),
             Some(&transcript_path.to_string_lossy().into_owned())
         );
+    }
+
+    #[test]
+    fn test_amp_ignores_read_only_and_unsupported_tools() {
+        for hook_event in ["PreToolUse", "PostToolUse"] {
+            for tool_name in ["Read", "Grep", "glob", "UnknownTool"] {
+                let input = make_amp_input(hook_event, tool_name);
+                let events = AmpPreset.parse(&input, "t_test").unwrap();
+                assert!(
+                    events.is_empty(),
+                    "{hook_event} {tool_name} unexpectedly produced events"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_amp_legacy_payload_without_tool_name_still_checkpoints() {
+        let input = json!({
+            "hook_event_name": "PostToolUse",
+            "thread_id": "T-thread-123",
+            "tool_use_id": "tu-abc",
+            "cwd": "/home/user/project",
+            "tool_input": {"path": "src/main.rs"}
+        })
+        .to_string();
+        let events = AmpPreset.parse(&input, "t_test").unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], ParsedHookEvent::PostFileEdit(_)));
     }
 }

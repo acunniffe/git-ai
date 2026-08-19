@@ -33,17 +33,23 @@ fn normalize_tool_name(tool_name: &str) -> &str {
     tool_name.strip_prefix("functions.").unwrap_or(tool_name)
 }
 
+/// Classify an optional hook tool name for a given agent. Payloads that
+/// predate `tool_name` classify as file edits to preserve legacy behavior.
+pub fn classify_optional_tool(agent: Agent, tool_name: Option<&str>) -> ToolClass {
+    tool_name.map_or(ToolClass::FileEdit, |name| classify_tool(agent, name))
+}
+
 /// Classify a tool name for a given agent.
 pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
     match agent {
         Agent::Claude => match tool_name {
-            "Write" | "Edit" | "MultiEdit" => ToolClass::FileEdit,
+            "Write" | "Edit" | "MultiEdit" | "NotebookEdit" => ToolClass::FileEdit,
             "Bash" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::Gemini => match tool_name {
-            "write_file" | "replace" => ToolClass::FileEdit,
-            "shell" => ToolClass::Bash,
+            "write_file" | "replace" | "WriteFile" => ToolClass::FileEdit,
+            "shell" | "run_shell_command" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::ContinueCli => match tool_name {
@@ -53,12 +59,14 @@ pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
         },
         Agent::Droid => match tool_name {
             "ApplyPatch" | "Edit" | "Write" | "Create" => ToolClass::FileEdit,
-            "Bash" => ToolClass::Bash,
+            "Bash" | "Execute" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::Amp => match tool_name {
-            "Write" | "Edit" => ToolClass::FileEdit,
-            "Bash" => ToolClass::Bash,
+            "Write" | "Edit" | "create_file" | "edit_file" | "apply_patch" | "undo_edit" => {
+                ToolClass::FileEdit
+            }
+            "Bash" | "shell_command" => ToolClass::Bash,
             _ => ToolClass::Skip,
         },
         Agent::OpenCode => match tool_name {

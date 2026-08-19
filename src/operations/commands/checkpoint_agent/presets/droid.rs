@@ -36,6 +36,10 @@ impl AgentPreset for DroidPreset {
 
         // Extract tool_name and classify it
         let tool_name = parse::optional_str_multi(&data, &["tool_name", "toolName"]);
+        let tool_class = bash_tool::classify_optional_tool(Agent::Droid, tool_name);
+        if tool_class == ToolClass::Skip {
+            return Ok(Vec::new());
+        }
 
         // Extract file paths from tool_input
         let tool_input = data.get("tool_input").or_else(|| data.get("toolInput"));
@@ -108,9 +112,7 @@ impl AgentPreset for DroidPreset {
         };
 
         // Determine if this is a bash tool invocation
-        let is_bash = tool_name
-            .map(|name| bash_tool::classify_tool(Agent::Droid, name) == ToolClass::Bash)
-            .unwrap_or(false);
+        let is_bash = tool_class == ToolClass::Bash;
 
         let tool_use_id = parse::optional_str_multi(&data, &["tool_use_id", "toolUseId"])
             .unwrap_or("bash")
@@ -520,5 +522,34 @@ mod tests {
             panic!("Expected PostFileEdit");
         };
         assert_eq!(event.context.agent_id.model, "model-from-disk");
+    }
+
+    #[test]
+    fn test_droid_ignores_read_only_and_unsupported_tools() {
+        for hook_event in ["PreToolUse", "PostToolUse"] {
+            for tool_name in ["Read", "Grep", "Glob", "Task", "UnknownTool"] {
+                let input = make_droid_hook_input(hook_event, tool_name);
+                let events = DroidPreset.parse(&input, "t_test123456789a").unwrap();
+                assert!(
+                    events.is_empty(),
+                    "{hook_event} {tool_name} unexpectedly produced events"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_droid_legacy_payload_without_tool_name_still_checkpoints() {
+        let input = json!({
+            "cwd": "/home/user/project",
+            "hookEventName": "PostToolUse",
+            "session_id": "droid-sess-1",
+            "transcript_path": "/home/user/.factory/sessions/test.jsonl",
+            "tool_input": {"file_path": "src/main.rs"}
+        })
+        .to_string();
+        let events = DroidPreset.parse(&input, "t_test123456789a").unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], ParsedHookEvent::PostFileEdit(_)));
     }
 }
