@@ -43,6 +43,8 @@
 
 pub mod agent;
 pub mod agents;
+pub(crate) mod codex_model;
+pub(crate) mod jsonl_scan;
 pub mod model_extraction;
 pub(crate) mod reader;
 pub mod sweep;
