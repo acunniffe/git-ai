@@ -323,7 +323,7 @@ pub fn search_notes(repo: &Repository, pattern: &str) -> Result<Vec<String>, Git
 /// Returns the number of notes that were written into `refs/notes/ai-display`.
 pub fn materialize_notes_for_display(repo: &Repository, limit: usize) -> Result<usize, GitAiError> {
     use crate::clients::git_cli::exec_git;
-    use crate::clients::git_cli::exec_git_stdin;
+    use crate::clients::git_cli::exec_git_with_stdin_writer;
 
     // 1. Get recent commits via rev-list.
     let rev_list_args: Vec<String> = repo
@@ -354,50 +354,42 @@ pub fn materialize_notes_for_display(repo: &Repository, limit: usize) -> Result<
         return Ok(0);
     }
 
-    // 3. Build a git fast-import stream.
+    // 3. Stream a git fast-import script directly to the child's stdin.
     //    Structure:
     //      - One `blob` stanza per note (each gets a mark ID).
     //      - One `commit` stanza with `from 0000...` (empty tree) that attaches all blobs.
-    let mut stream = String::new();
-    let mut marks: Vec<(usize, String)> = Vec::new(); // (mark_id, commit_sha)
-
-    for (idx, (commit_sha, content)) in cached_map.iter().enumerate() {
-        let mark_id = idx + 1;
-        // Blob stanza: `data <exact-byte-count>\n<content-bytes>\n`
-        // The trailing \n after content is a fast-import stream separator, not part of the data.
-        stream.push_str(&format!(
-            "blob\nmark :{}\ndata {}\n{}\n",
-            mark_id,
-            content.len(),
-            content
-        ));
-        marks.push((mark_id, commit_sha.clone()));
-    }
-
-    // Commit stanza — mirrors the pattern used in refs.rs notes_add_batch().
-    // Use `from` with an all-zeros SHA to start from an empty tree, ensuring
-    // stale notes from prior materializations are removed.
-    stream.push_str("commit refs/notes/ai-display\n");
-    stream.push_str("committer git-ai <git-ai@localhost> 1000000000 +0000\n");
-    stream.push_str("data 0\n");
-    stream.push_str("from 0000000000000000000000000000000000000000\n");
-
-    let count = marks.len();
-    for (mark_id, commit_sha) in &marks {
-        stream.push_str(&format!("M 100644 :{} {}\n", mark_id, commit_sha));
-    }
-    stream.push('\n');
-
-    // 4. Feed to git fast-import.
     let fast_import_args: Vec<String> = repo
         .global_args_for_exec()
         .into_iter()
         .chain(["fast-import".to_string(), "--quiet".to_string()])
         .collect();
 
-    exec_git_stdin(&fast_import_args, stream.as_bytes())?;
+    exec_git_with_stdin_writer(&fast_import_args, |writer| {
+        for (idx, (_commit_sha, content)) in cached_map.iter().enumerate() {
+            // Blob stanza: `data <exact-byte-count>\n<content-bytes>\n`
+            // The trailing \n after content is a fast-import stream separator, not part of the data.
+            writer.write_all(b"blob\n")?;
+            writeln!(writer, "mark :{}", idx + 1)?;
+            writeln!(writer, "data {}", content.len())?;
+            writer.write_all(content.as_bytes())?;
+            writer.write_all(b"\n")?;
+        }
 
-    Ok(count)
+        // Commit stanza — mirrors the pattern used in refs.rs notes_add_batch().
+        // Use `from` with an all-zeros SHA to start from an empty tree, ensuring
+        // stale notes from prior materializations are removed.
+        writer.write_all(b"commit refs/notes/ai-display\n")?;
+        writer.write_all(b"committer git-ai <git-ai@localhost> 1000000000 +0000\n")?;
+        writer.write_all(b"data 0\n")?;
+        writer.write_all(b"from 0000000000000000000000000000000000000000\n")?;
+
+        for (idx, (commit_sha, _content)) in cached_map.iter().enumerate() {
+            writeln!(writer, "M 100644 :{} {}", idx + 1, commit_sha)?;
+        }
+        writer.write_all(b"\n")
+    })?;
+
+    Ok(cached_map.len())
 }
 
 // --- Cache warming ---

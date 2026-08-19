@@ -219,10 +219,7 @@ pub fn exec_git_stdin(args: &[String], stdin_data: &[u8]) -> Result<Output, GitA
 /// prevents it from consuming more stdin, which would block our write_all.
 type StdinWriterHandle = std::thread::JoinHandle<std::io::Result<()>>;
 
-fn spawn_git_stdin_piped(
-    effective_args: &[String],
-    stdin_data: &[u8],
-) -> Result<(Child, Option<StdinWriterHandle>), GitAiError> {
+fn spawn_git_piped(effective_args: &[String]) -> Result<Child, GitAiError> {
     spawn_probe_log(effective_args);
     let mut cmd = Command::new(config::Config::get().git_cmd());
     cmd.args(effective_args)
@@ -238,8 +235,14 @@ fn spawn_git_stdin_piped(
         }
     }
 
-    let mut child = cmd.spawn().map_err(GitAiError::IoError)?;
+    cmd.spawn().map_err(GitAiError::IoError)
+}
 
+fn spawn_git_stdin_piped(
+    effective_args: &[String],
+    stdin_data: &[u8],
+) -> Result<(Child, Option<StdinWriterHandle>), GitAiError> {
+    let mut child = spawn_git_piped(effective_args)?;
     let stdin_handle = child.stdin.take().map(|mut stdin| {
         let data = stdin_data.to_vec();
         std::thread::spawn(move || {
@@ -249,6 +252,54 @@ fn spawn_git_stdin_piped(
     });
 
     Ok((child, stdin_handle))
+}
+
+/// Execute a git command while producing its stdin incrementally.
+///
+/// Unlike [`exec_git_stdin`], the payload is never materialized as one
+/// buffer: the producer runs on a scoped thread (so it may borrow
+/// caller-owned data) and writes through a bounded `BufWriter` while stdout
+/// and stderr are drained concurrently by `wait_with_output`.
+pub fn exec_git_with_stdin_writer(
+    args: &[String],
+    write_stdin: impl FnOnce(&mut dyn std::io::Write) -> std::io::Result<()> + Send,
+) -> Result<Output, GitAiError> {
+    let effective_args = args_with_internal_git_profile(
+        &args_with_disabled_hooks_if_needed(args),
+        InternalGitProfile::General,
+    );
+    let mut child = spawn_git_piped(&effective_args)?;
+    let stdin = child.stdin.take().expect("git child stdin is piped");
+
+    let (output, stdin_result) = std::thread::scope(|scope| {
+        let stdin_handle = scope.spawn(move || {
+            use std::io::Write;
+
+            let mut stdin = std::io::BufWriter::new(stdin);
+            write_stdin(&mut stdin)?;
+            stdin.flush()
+        });
+        let output = child.wait_with_output();
+        let stdin_result = stdin_handle.join().expect("stdin writer thread panicked");
+        (output, stdin_result)
+    });
+    let output = output.map_err(GitAiError::IoError)?;
+
+    if let Err(e) = stdin_result
+        && e.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        return Err(GitAiError::IoError(e));
+    }
+
+    if !output.status.success() {
+        return Err(git_cli_error(
+            output.status.code(),
+            &output.stderr,
+            effective_args,
+        ));
+    }
+
+    Ok(output)
 }
 
 /// Like `exec_git_stdin`, but streams the child's stdout to `on_line` one line

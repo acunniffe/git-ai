@@ -163,6 +163,58 @@ fn test_notes_add_batch_writes_multiple_notes() {
 }
 
 #[test]
+fn test_notes_add_batch_keeps_last_duplicate_entry() {
+    let (repo, gitai_repo) = repo_with_handle();
+
+    fs::write(repo.path().join("duplicate.txt"), "duplicate\n").unwrap();
+    repo.stage_all_and_commit("Duplicate note target")
+        .expect("commit duplicate note target");
+    let commit_sha = head_sha(&repo);
+
+    let entries = vec![
+        (commit_sha.clone(), "first".to_string()),
+        (commit_sha.clone(), "last".to_string()),
+    ];
+    notes_add_batch(&gitai_repo, &entries).expect("write duplicate batch");
+
+    assert_eq!(read_note(&gitai_repo, &commit_sha).as_deref(), Some("last"));
+}
+
+#[test]
+fn test_notes_add_batch_streams_large_note_contents() {
+    let (repo, gitai_repo) = repo_with_handle();
+
+    fs::write(repo.path().join("large-a.txt"), "a\n").unwrap();
+    repo.stage_all_and_commit("Large note target A")
+        .expect("commit A");
+    let commit_a = head_sha(&repo);
+
+    fs::write(repo.path().join("large-b.txt"), "b\n").unwrap();
+    repo.stage_all_and_commit("Large note target B")
+        .expect("commit B");
+    let commit_b = head_sha(&repo);
+
+    // Contents larger than any internal write buffer, so a single batch
+    // exercises chunked stdin writes end-to-end through one fast-import.
+    let large_a = format!("{{\"padding\":\"{}\"}}", "a".repeat(512 * 1024));
+    let large_b = format!("{{\"padding\":\"{}\"}}", "b".repeat(512 * 1024));
+    let entries = vec![
+        (commit_a.clone(), large_a.clone()),
+        (commit_b.clone(), large_b.clone()),
+    ];
+    notes_add_batch(&gitai_repo, &entries).expect("write large batch");
+
+    assert_eq!(
+        read_note(&gitai_repo, &commit_a).as_deref(),
+        Some(&*large_a)
+    );
+    assert_eq!(
+        read_note(&gitai_repo, &commit_b).as_deref(),
+        Some(&*large_b)
+    );
+}
+
+#[test]
 fn test_eng_214_notes_add_batch_replaces_notes_at_every_legacy_fanout_depth() {
     let (repo, gitai_repo) = repo_with_handle();
     let commit_sha =
