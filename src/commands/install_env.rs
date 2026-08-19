@@ -9,6 +9,9 @@
 pub fn configure_shell_env() {
     #[cfg(unix)]
     unix::configure_shell_env();
+
+    #[cfg(windows)]
+    windows::configure_shell_env();
 }
 
 #[cfg(unix)]
@@ -600,6 +603,375 @@ mod unix {
                      \x20 export PATH=\"{install_dir}:$PATH\"\n"
                 )
             );
+        }
+    }
+}
+
+#[cfg(windows)]
+mod windows {
+    use crate::mdm::utils::home_dir;
+    use std::fs;
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+
+    const GREEN: &str = "\x1b[0;32m";
+    const YELLOW: &str = "\x1b[0;33m";
+    const RED: &str = "\x1b[0;31m";
+    const NC: &str = "\x1b[0m";
+
+    /// Marker used by install.ps1 to detect an existing Git Bash PATH entry.
+    const GIT_BASH_MARKER: &str = ".git-ai/bin";
+
+    pub(super) fn configure_shell_env() {
+        let home = home_dir();
+
+        // Persistent user PATH (skippable, like install.ps1's skip gate; the
+        // Git Bash config below runs regardless).
+        if std::env::var("GIT_AI_SKIP_PATH_UPDATE").as_deref() == Ok("1") {
+            println!("{YELLOW}Skipping PATH updates because GIT_AI_SKIP_PATH_UPDATE=1{NC}");
+        } else {
+            let install_dir = home.join(".git-ai").join("bin");
+            match ensure_user_path_contains(&install_dir) {
+                UserPathStatus::Updated => {
+                    println!("{GREEN}Successfully added git-ai to the user PATH.{NC}")
+                }
+                UserPathStatus::AlreadyPresent => {
+                    println!("{GREEN}git-ai already present in the user PATH.{NC}")
+                }
+                UserPathStatus::Error => println!("{RED}Failed to update the user PATH.{NC}"),
+            }
+        }
+
+        // Configure Git Bash shell profiles so git-ai takes precedence over
+        // /mingw64/bin/git: Git Bash prepends its own directories to PATH,
+        // which shadows the Windows user PATH entry set above.
+        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+        match configure_git_bash(&home, &timestamp) {
+            GitBashStatus::NotInstalled => {}
+            GitBashStatus::Configured(file) => {
+                println!(
+                    "{GREEN}Successfully configured Git Bash ({}){NC}",
+                    file.display()
+                )
+            }
+            GitBashStatus::AlreadyConfigured(file) => {
+                println!(
+                    "{GREEN}Git Bash already configured ({}){NC}",
+                    file.display()
+                )
+            }
+            GitBashStatus::Failed(message) => {
+                println!("{YELLOW}Warning: Failed to configure Git Bash: {message}{NC}")
+            }
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum UserPathStatus {
+        Updated,
+        AlreadyPresent,
+        Error,
+    }
+
+    /// Ensure the install dir is on the User PATH (appended if absent),
+    /// mirroring install.ps1's Set-PathEnsureContains: user scope only, no
+    /// admin required, no positioning logic. All errors are non-fatal.
+    fn ensure_user_path_contains(install_dir: &Path) -> UserPathStatus {
+        match try_update_user_path(&install_dir.to_string_lossy()) {
+            Ok(true) => UserPathStatus::Updated,
+            Ok(false) => UserPathStatus::AlreadyPresent,
+            Err(_) => UserPathStatus::Error,
+        }
+    }
+
+    fn try_update_user_path(install_dir: &str) -> std::io::Result<bool> {
+        use winreg::RegKey;
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let env_key = hkcu.open_subkey_with_flags("Environment", KEY_READ | KEY_SET_VALUE)?;
+        // .NET's GetEnvironmentVariable('Path', 'User') — which install.ps1
+        // used — expands %VAR% references in REG_EXPAND_SZ values on read and
+        // writes the merged result back as REG_SZ. Replicate that exactly.
+        // Only a missing value counts as an empty PATH; any other read
+        // failure must fail closed rather than overwrite an existing PATH
+        // we could not read.
+        let current: Option<String> = match env_key.get_value("Path") {
+            Ok(value) => Some(value),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e),
+        };
+        let expanded = current.as_deref().map(expand_env_strings);
+        match user_path_merge(expanded.as_deref(), install_dir) {
+            Some(new_path) => {
+                env_key.set_value("Path", &new_path)?;
+                broadcast_environment_change();
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    /// Merge the install dir into a `;`-separated PATH value. Returns the new
+    /// value to write, or None if the dir is already present.
+    fn user_path_merge(current: Option<&str>, to_add: &str) -> Option<String> {
+        let normalized_add = normalize_path_for_compare(to_add);
+        let current = current.unwrap_or("");
+        let already_present = current
+            .split(';')
+            .filter(|entry| !entry.trim().is_empty())
+            .any(|entry| normalize_path_for_compare(entry) == normalized_add);
+        if already_present {
+            None
+        } else if current.is_empty() {
+            Some(to_add.to_string())
+        } else {
+            Some(format!("{current};{to_add}"))
+        }
+    }
+
+    /// Full-path-normalized, case-insensitive comparison key, mirroring
+    /// install.ps1's `[IO.Path]::GetFullPath($p.Trim()).TrimEnd('\')
+    /// .ToLowerInvariant()` (falling back to the trimmed input on error).
+    fn normalize_path_for_compare(path: &str) -> String {
+        let trimmed = path.trim();
+        let full = std::path::absolute(trimmed)
+            .map(|abs| abs.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| trimmed.to_string());
+        full.trim_end_matches('\\').to_lowercase()
+    }
+
+    /// Expand `%VAR%` references like `ExpandEnvironmentStringsW` (which is
+    /// what .NET registry reads do for REG_EXPAND_SZ values).
+    fn expand_env_strings(value: &str) -> String {
+        use windows_sys::Win32::System::Environment::ExpandEnvironmentStringsW;
+
+        let wide: Vec<u16> = value.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            let needed = ExpandEnvironmentStringsW(wide.as_ptr(), std::ptr::null_mut(), 0);
+            if needed == 0 {
+                return value.to_string();
+            }
+            let mut buffer = vec![0u16; needed as usize];
+            let written = ExpandEnvironmentStringsW(wide.as_ptr(), buffer.as_mut_ptr(), needed);
+            if written == 0 || written > needed {
+                return value.to_string();
+            }
+            String::from_utf16_lossy(&buffer[..written as usize - 1])
+        }
+    }
+
+    /// Notify running applications that the environment changed, matching
+    /// .NET's SetEnvironmentVariable behavior so new shells pick up the PATH.
+    fn broadcast_environment_change() {
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            HWND_BROADCAST, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_SETTINGCHANGE,
+        };
+
+        let param: Vec<u16> = "Environment"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe {
+            SendMessageTimeoutW(
+                HWND_BROADCAST,
+                WM_SETTINGCHANGE,
+                0,
+                param.as_ptr() as isize,
+                SMTO_ABORTIFHUNG,
+                5000,
+                std::ptr::null_mut(),
+            );
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    enum GitBashStatus {
+        NotInstalled,
+        Configured(PathBuf),
+        AlreadyConfigured(PathBuf),
+        Failed(String),
+    }
+
+    fn git_bash_installed() -> bool {
+        let candidates = [
+            ("ProgramFiles", r"Git\bin\bash.exe"),
+            ("ProgramFiles(x86)", r"Git\bin\bash.exe"),
+            ("LOCALAPPDATA", r"Programs\Git\bin\bash.exe"),
+        ];
+        candidates.iter().any(|(var, relative)| {
+            std::env::var(var)
+                .ok()
+                .filter(|value| !value.is_empty())
+                .is_some_and(|base| Path::new(&base).join(relative).exists())
+        })
+    }
+
+    /// Prefer ~/.bashrc, fall back to an existing ~/.bash_profile, otherwise
+    /// create ~/.bashrc.
+    fn select_bash_config(home: &Path) -> PathBuf {
+        let bashrc = home.join(".bashrc");
+        if bashrc.exists() {
+            return bashrc;
+        }
+        let bash_profile = home.join(".bash_profile");
+        if bash_profile.exists() {
+            return bash_profile;
+        }
+        bashrc
+    }
+
+    fn configure_git_bash(home: &Path, timestamp: &str) -> GitBashStatus {
+        if !git_bash_installed() {
+            return GitBashStatus::NotInstalled;
+        }
+        let target = select_bash_config(home);
+        match append_git_bash_path(&target, timestamp) {
+            Ok(true) => GitBashStatus::Configured(target),
+            Ok(false) => GitBashStatus::AlreadyConfigured(target),
+            Err(e) => GitBashStatus::Failed(e.to_string()),
+        }
+    }
+
+    fn append_git_bash_path(target: &Path, timestamp: &str) -> std::io::Result<bool> {
+        let marker = GIT_BASH_MARKER.as_bytes();
+        let already_present = fs::read(target)
+            .map(|bytes| bytes.windows(marker.len()).any(|window| window == marker))
+            .unwrap_or(false);
+        if already_present {
+            return Ok(false);
+        }
+
+        // UTF-8 without BOM and LF line endings, matching install.ps1's
+        // AppendAllText with UTF8Encoding($false) and `n.
+        let content = format!(
+            "\n# Added by git-ai installer on {timestamp}\nexport PATH=\"$HOME/.git-ai/bin:$PATH\"\n"
+        );
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(target)?;
+        file.write_all(content.as_bytes())?;
+        Ok(true)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use tempfile::tempdir;
+
+        const TS: &str = "2025-08-19 10:00:00";
+
+        #[test]
+        fn normalize_path_for_compare_is_case_and_trailing_slash_insensitive() {
+            assert_eq!(
+                normalize_path_for_compare(r"C:\Users\Test\.git-ai\bin\"),
+                normalize_path_for_compare(r"c:\users\test\.git-ai\bin")
+            );
+            assert_eq!(
+                normalize_path_for_compare(r"  C:\Users\Test\.git-ai\bin  "),
+                normalize_path_for_compare(r"C:\Users\Test\.git-ai\bin")
+            );
+        }
+
+        #[test]
+        fn user_path_merge_appends_when_missing() {
+            assert_eq!(
+                user_path_merge(Some(r"C:\Windows;C:\Tools"), r"C:\Users\t\.git-ai\bin"),
+                Some(r"C:\Windows;C:\Tools;C:\Users\t\.git-ai\bin".to_string())
+            );
+        }
+
+        #[test]
+        fn user_path_merge_uses_dir_alone_when_path_is_empty_or_missing() {
+            assert_eq!(
+                user_path_merge(None, r"C:\Users\t\.git-ai\bin"),
+                Some(r"C:\Users\t\.git-ai\bin".to_string())
+            );
+            assert_eq!(
+                user_path_merge(Some(""), r"C:\Users\t\.git-ai\bin"),
+                Some(r"C:\Users\t\.git-ai\bin".to_string())
+            );
+        }
+
+        #[test]
+        fn user_path_merge_detects_existing_entry_with_different_casing() {
+            assert_eq!(
+                user_path_merge(
+                    Some(r"C:\Windows;c:\users\T\.GIT-AI\BIN\"),
+                    r"C:\Users\t\.git-ai\bin"
+                ),
+                None
+            );
+        }
+
+        #[test]
+        fn expand_env_strings_resolves_userprofile_references() {
+            let userprofile = std::env::var("USERPROFILE").unwrap();
+            assert_eq!(
+                expand_env_strings(r"%USERPROFILE%\.git-ai\bin"),
+                format!(r"{userprofile}\.git-ai\bin")
+            );
+        }
+
+        #[test]
+        fn select_bash_config_prefers_bashrc_then_bash_profile_then_creates_bashrc() {
+            let home = tempdir().unwrap();
+            assert_eq!(select_bash_config(home.path()), home.path().join(".bashrc"));
+
+            fs::write(home.path().join(".bash_profile"), "# profile\n").unwrap();
+            assert_eq!(
+                select_bash_config(home.path()),
+                home.path().join(".bash_profile")
+            );
+
+            fs::write(home.path().join(".bashrc"), "# bashrc\n").unwrap();
+            assert_eq!(select_bash_config(home.path()), home.path().join(".bashrc"));
+        }
+
+        #[test]
+        fn append_git_bash_path_writes_utf8_lf_without_bom() {
+            let home = tempdir().unwrap();
+            let target = home.path().join(".bashrc");
+
+            assert!(append_git_bash_path(&target, TS).unwrap());
+
+            let bytes = fs::read(&target).unwrap();
+            assert!(
+                !bytes.starts_with(&[0xEF, 0xBB, 0xBF]),
+                "must not write a BOM"
+            );
+            assert!(!bytes.contains(&b'\r'), "must use LF line endings");
+            assert_eq!(
+                String::from_utf8(bytes).unwrap(),
+                format!(
+                    "\n# Added by git-ai installer on {TS}\nexport PATH=\"$HOME/.git-ai/bin:$PATH\"\n"
+                )
+            );
+        }
+
+        #[test]
+        fn append_git_bash_path_is_idempotent_via_marker() {
+            let home = tempdir().unwrap();
+            let target = home.path().join(".bashrc");
+
+            assert!(append_git_bash_path(&target, TS).unwrap());
+            let after_first = fs::read(&target).unwrap();
+            assert!(!append_git_bash_path(&target, TS).unwrap());
+            assert_eq!(fs::read(&target).unwrap(), after_first);
+        }
+
+        #[test]
+        fn append_git_bash_path_skips_files_with_preexisting_marker() {
+            let home = tempdir().unwrap();
+            let target = home.path().join(".bashrc");
+            fs::write(
+                &target,
+                "export PATH=\"$HOME/.git-ai/bin:$PATH\" # custom\n",
+            )
+            .unwrap();
+
+            assert!(!append_git_bash_path(&target, TS).unwrap());
         }
     }
 }
