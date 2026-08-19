@@ -476,3 +476,47 @@ fn test_every_file_config_field_has_cli_unset_coverage() {
          in is_nested_only_for_mutation): {unknown_to_unset:?}"
     );
 }
+
+fn run_config(repo: &TestRepo, args: &[&str]) -> std::process::Output {
+    // CI=true suppresses the root-superuser stderr warning so the
+    // stderr-is-empty assertion holds in containerized runs too.
+    repo.git_ai_command_without_pre_sync_for_test(args, &[("CI", "true")])
+        .output()
+        .unwrap_or_else(|e| panic!("git-ai {args:?} failed to run: {e}"))
+}
+
+#[test]
+fn test_config_notes_backend_normal_output_uses_stdout() {
+    let repo = TestRepo::new();
+
+    for args in [
+        ["config", "set", "notes_backend.kind", "http"].as_slice(),
+        [
+            "config",
+            "set",
+            "notes_backend.backend_url",
+            "https://example.com",
+        ]
+        .as_slice(),
+        ["config", "notes_backend.kind"].as_slice(),
+        ["config", "notes_backend.backend_url"].as_slice(),
+        ["config", "unset", "notes_backend.kind"].as_slice(),
+        ["config", "unset", "notes_backend.backend_url"].as_slice(),
+    ] {
+        let output = run_config(&repo, args);
+        assert!(
+            output.status.success(),
+            "git-ai {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            !output.stdout.is_empty(),
+            "git-ai {args:?} should write normal output to stdout"
+        );
+        assert!(
+            output.stderr.is_empty(),
+            "git-ai {args:?} wrote normal output to stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
