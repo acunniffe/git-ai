@@ -455,14 +455,14 @@ fn resolve_parent(repo: &Repository, commit: &str) -> Result<String, GitAiError>
 
             if sha.is_empty() {
                 // No parent, this is initial commit - use empty tree
-                Ok("4b825dc642cb6eb9a060e54bf8d69288fbee4904".to_string())
+                Ok(crate::authorship::diff_base::empty_tree_for_oid(commit).to_string())
             } else {
                 Ok(sha)
             }
         }
         Err(_) => {
             // No parent, this is initial commit - use empty tree hash
-            Ok("4b825dc642cb6eb9a060e54bf8d69288fbee4904".to_string())
+            Ok(crate::authorship::diff_base::empty_tree_for_oid(commit).to_string())
         }
     }
 }

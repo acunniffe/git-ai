@@ -1307,6 +1307,30 @@ impl TestRepo {
         Self::new_with_daemon_scope(DaemonTestScope::Shared)
     }
 
+    pub fn new_reftable() -> Self {
+        Self::new_reftable_with_object_format("sha1")
+    }
+
+    pub fn new_reftable_with_daemon_env(daemon_env: &[(&str, &str)]) -> Self {
+        Self::new_with_daemon_env_and_template(daemon_env, |path| {
+            clone_reftable_template_to(path, "sha1");
+        })
+    }
+
+    pub fn new_reftable_sha256() -> Self {
+        Self::new_reftable_with_object_format("sha256")
+    }
+
+    pub fn new_reftable_worktree() -> Self {
+        Self::new_orphan_worktree_from(Self::new_reftable())
+    }
+
+    fn new_reftable_with_object_format(object_format: &str) -> Self {
+        Self::new_with_daemon_scope_and_template(DaemonTestScope::Shared, |path| {
+            clone_reftable_template_to(path, object_format);
+        })
+    }
+
     /// Create a worktree-backed TestRepo.
     /// This creates a normal base repo and then adds an orphan linked worktree
     /// so tests keep empty-repo semantics (the first real commit is still a root commit).
@@ -1315,8 +1339,10 @@ impl TestRepo {
     }
 
     fn new_worktree_variant_with_daemon_scope(daemon_scope: DaemonTestScope) -> Self {
-        let mut base = Self::new_with_daemon_scope_inner(daemon_scope);
+        Self::new_orphan_worktree_from(Self::new_with_daemon_scope_inner(daemon_scope))
+    }
 
+    fn new_orphan_worktree_from(mut base: Self) -> Self {
         let default_branch = default_branchname();
         let base_branch = base.current_branch();
         if base_branch == default_branch {
@@ -1443,6 +1469,13 @@ impl TestRepo {
     }
 
     fn new_with_daemon_scope_inner(daemon_scope: DaemonTestScope) -> Self {
+        Self::new_with_daemon_scope_and_template(daemon_scope, clone_template_to)
+    }
+
+    fn new_with_daemon_scope_and_template(
+        daemon_scope: DaemonTestScope,
+        clone_template: impl FnOnce(&Path),
+    ) -> Self {
         // Isolate this test binary's HOME before any git or git-ai subprocess is spawned.
         ensure_isolated_process_home();
 
@@ -1453,8 +1486,8 @@ impl TestRepo {
         let test_home = base.join(format!("{}-home", n));
         let test_db_path = resolve_test_db_path(&base, n, &test_home);
 
-        // Clone from cached template (git init + config + symbolic-ref already done)
-        clone_template_to(&path);
+        // Clone from a cached template (git init + config + symbolic-ref already done).
+        clone_template(&path);
 
         let mut repo = Self {
             path,
@@ -1476,6 +1509,13 @@ impl TestRepo {
     }
 
     pub fn new_with_daemon_env(daemon_env: &[(&str, &str)]) -> Self {
+        Self::new_with_daemon_env_and_template(daemon_env, clone_template_to)
+    }
+
+    fn new_with_daemon_env_and_template(
+        daemon_env: &[(&str, &str)],
+        clone_template: impl FnOnce(&Path),
+    ) -> Self {
         ensure_isolated_process_home();
 
         let mut rng = rand::rng();
@@ -1485,7 +1525,7 @@ impl TestRepo {
         let test_home = base.join(format!("{}-home", n));
         let test_db_path = resolve_test_db_path(&base, n, &test_home);
 
-        clone_template_to(&path);
+        clone_template(&path);
 
         let mut repo = Self {
             path,
@@ -1642,7 +1682,21 @@ impl TestRepo {
         Self::new_with_remote_with_daemon_scope(DaemonTestScope::Shared)
     }
 
+    pub fn new_reftable_with_remote() -> (Self, Self) {
+        Self::new_with_remote_with_daemon_scope_and_ref_format(
+            DaemonTestScope::Shared,
+            Some("reftable"),
+        )
+    }
+
     pub fn new_with_remote_with_daemon_scope(daemon_scope: DaemonTestScope) -> (Self, Self) {
+        Self::new_with_remote_with_daemon_scope_and_ref_format(daemon_scope, None)
+    }
+
+    fn new_with_remote_with_daemon_scope_and_ref_format(
+        daemon_scope: DaemonTestScope,
+        ref_format: Option<&str>,
+    ) -> (Self, Self) {
         let mut rng = rand::rng();
         let base = std::env::temp_dir();
 
@@ -1676,11 +1730,13 @@ impl TestRepo {
         let mirror_test_db_path = resolve_test_db_path(&base, mirror_n, &mirror_test_home);
 
         let mut command = Command::new(real_git_executable());
-        command.args([
-            "clone",
-            upstream_path.to_str().unwrap(),
-            mirror_path.to_str().unwrap(),
-        ]);
+        command.arg("clone");
+        if let Some(ref_format) = ref_format {
+            command.arg(format!("--ref-format={ref_format}"));
+        }
+        command
+            .arg(upstream_path.to_str().unwrap())
+            .arg(mirror_path.to_str().unwrap());
         let clone_output = run_command_output(&mut command, "clone upstream repository")
             .expect("failed to clone upstream repository");
 
@@ -2582,6 +2638,10 @@ impl TestRepo {
         self.git_with_env(args, &[], None)
     }
 
+    pub fn git_with_stdin(&self, args: &[&str], stdin_data: &[u8]) -> Result<String, String> {
+        self.git_with_env_and_stdin(args, &[], None, Some(stdin_data))
+    }
+
     pub fn git_without_test_sync_for_test(
         &self,
         args: &[&str],
@@ -2769,6 +2829,16 @@ impl TestRepo {
         envs: &[(&str, &str)],
         working_dir: Option<&std::path::Path>,
     ) -> Result<String, String> {
+        self.git_with_env_and_stdin(args, envs, working_dir, None)
+    }
+
+    fn git_with_env_and_stdin(
+        &self,
+        args: &[&str],
+        envs: &[(&str, &str)],
+        working_dir: Option<&std::path::Path>,
+        stdin_data: Option<&[u8]>,
+    ) -> Result<String, String> {
         let canonical_working_dir = if let Some(working_dir_path) = working_dir {
             Some(working_dir_path.canonicalize().map_err(|e| {
                 format!(
@@ -2839,7 +2909,13 @@ impl TestRepo {
                 command.env(key, value);
             }
 
-            let output = run_command_output(&mut command, &format!("git {:?}", args))?;
+            let label = format!("git {:?}", args);
+            let output = match stdin_data {
+                Some(stdin_data) => {
+                    run_command_output_with_stdin(&mut command, &label, stdin_data)?
+                }
+                None => run_command_output(&mut command, &label)?,
+            };
 
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -3443,6 +3519,8 @@ impl NewCommit {
 static DEFAULT_BRANCH_NAME: OnceLock<String> = OnceLock::new();
 static TEMPLATE_REPO: OnceLock<PathBuf> = OnceLock::new();
 static TEMPLATE_BARE_REPO: OnceLock<PathBuf> = OnceLock::new();
+static TEMPLATE_REFTABLE_SHA1_REPO: OnceLock<PathBuf> = OnceLock::new();
+static TEMPLATE_REFTABLE_SHA256_REPO: OnceLock<PathBuf> = OnceLock::new();
 static COMPILED_BINARY: OnceLock<PathBuf> = OnceLock::new();
 
 /// Find the real git binary by directly probing candidate paths — without reading
@@ -3616,6 +3694,36 @@ fn init_template_repo() -> PathBuf {
     path
 }
 
+fn init_reftable_template_repo(object_format: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(format!(
+        "git-ai-test-template-reftable-{}-{}",
+        object_format,
+        std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&path);
+
+    let p = path.to_str().unwrap();
+    let git = real_git_executable();
+    let mut command = Command::new(git);
+    command.args([
+        "init",
+        "--ref-format=reftable",
+        &format!("--object-format={object_format}"),
+        "-b",
+        "main",
+        p,
+    ]);
+    let output = run_command_output(&mut command, "init reftable template repo")
+        .expect("failed to init reftable template repo");
+    assert!(
+        output.status.success(),
+        "reftable template git init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    set_repo_user_config(&path);
+    path
+}
+
 fn init_bare_template_repo() -> PathBuf {
     let path =
         std::env::temp_dir().join(format!("git-ai-test-template-bare-{}", std::process::id()));
@@ -3658,6 +3766,17 @@ fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::
 fn clone_template_to(dest: &std::path::Path) {
     let template = TEMPLATE_REPO.get_or_init(init_template_repo);
     copy_dir_recursive(template, dest).expect("failed to copy template repo");
+}
+
+fn clone_reftable_template_to(dest: &Path, object_format: &str) {
+    let template = match object_format {
+        "sha1" => TEMPLATE_REFTABLE_SHA1_REPO.get_or_init(|| init_reftable_template_repo("sha1")),
+        "sha256" => {
+            TEMPLATE_REFTABLE_SHA256_REPO.get_or_init(|| init_reftable_template_repo("sha256"))
+        }
+        other => panic!("unsupported test object format: {other}"),
+    };
+    copy_dir_recursive(template, dest).expect("failed to copy reftable template repo");
 }
 
 /// Clone the cached bare template repo to a new destination path.
