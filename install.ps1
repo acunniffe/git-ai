@@ -445,20 +445,24 @@ if ($env:INSTALL_NONCE -and $env:API_BASE) {
     }
 }
 
+Write-Success "Successfully installed git-ai into $installDir"
+Write-Success "You can now run 'git-ai' from your terminal"
+
 # Install hooks
 Write-Host 'Setting up IDE/agent hooks...'
 try {
     & $finalExe install-hooks | Out-Host
-    Write-Success 'Successfully set up IDE/agent hooks'
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success 'Successfully set up IDE/agent hooks'
+    } else {
+        Write-Warning "Warning: Failed to set up IDE/agent hooks. Please try running 'git-ai install-hooks' manually."
+    }
 } catch {
     Write-Warning "Warning: Failed to set up IDE/agent hooks. Please try running 'git-ai install-hooks' manually."
 }
 
 # Best-effort restart only for daemon-initiated self-updates.
 Start-DaemonIfRequested
-
-Write-Success "Successfully installed git-ai into $installDir"
-Write-Success "You can now run 'git-ai' from your terminal"
 
 # If nonce exchange failed, run interactive login
 if ($needLogin) {

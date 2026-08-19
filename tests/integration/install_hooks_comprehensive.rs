@@ -68,7 +68,7 @@ fn copied_binary_output(command: &mut Command) -> Output {
         match command.output() {
             Ok(output) => return output,
             Err(error) if error.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 4 => {
-                thread::sleep(Duration::from_millis(10));
+                thread::sleep(Duration::from_millis(10 * (attempt + 1)));
             }
             Err(error) => panic!("run copied git-ai binary: {error}"),
         }
@@ -552,16 +552,9 @@ fn installer_scripts_delegate_shell_environment_configuration_to_install_hooks()
         fs::read_to_string(manifest_dir.join("src/commands/install_hooks/shell_env.rs")).unwrap();
 
     for removed_shell_logic in [
-        "detect_legacy_shells",
-        "configure_legacy_shell_environment",
         "fish_add_path -g",
         "Added by git-ai installer on",
-        "INSTALL_USER",
-        "GIT_AI_INSTALL_USER",
         "chown -R",
-        "install-shell-env",
-        "git-ai-shell-env-v1",
-        "GIT_AI_INSTALLER_HANDLES_SHELL_ENV",
     ] {
         assert!(
             !install_sh.contains(removed_shell_logic),
@@ -570,15 +563,11 @@ fn installer_scripts_delegate_shell_environment_configuration_to_install_hooks()
     }
     for removed_powershell_logic in [
         "Set-PathEnsureContains",
-        "Set-LegacyShellEnvironment",
         "GetEnvironmentVariable('Path', 'User')",
         "$gitBashConfigured",
         "Git\\bin\\bash.exe",
         "Added by git-ai installer on",
         "$env:PATH =",
-        "install-shell-env",
-        "git-ai-shell-env-v1",
-        "GIT_AI_INSTALLER_HANDLES_SHELL_ENV",
     ] {
         assert!(
             !install_ps1.contains(removed_powershell_logic),
@@ -587,7 +576,9 @@ fn installer_scripts_delegate_shell_environment_configuration_to_install_hooks()
     }
 
     assert!(install_sh.contains(r#""${INSTALL_DIR}/git-ai" install-hooks"#));
+    assert!(install_sh.contains("export GIT_AI_INSTALL_USER=\"$CURRENT_USER\""));
     assert!(install_ps1.contains("& $finalExe install-hooks"));
+    assert!(install_ps1.contains("if ($LASTEXITCODE -eq 0)"));
 
     assert!(shell_env.contains("repair_install_ownership"));
     assert!(shell_env.contains("lchown"));

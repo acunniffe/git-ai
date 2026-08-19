@@ -349,16 +349,18 @@ pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
     let install_result =
         persist_install_config_with_values(&params.binary_path, options.dry_run, &install_config)
             .and_then(|_| crate::tokio_runtime::block_on(async_run_install(&params, &options)));
+    // Clean up legacy envelope logs directory and related artifacts.
+    // These are no longer used — all telemetry now routes through the daemon.
+    if install_result.is_ok() && !options.dry_run {
+        cleanup_legacy_envelope_logs();
+    }
+
+    // Keep shell setup last so cross-user ownership repair also covers files
+    // created by the rest of the install-hooks workflow.
     if let Err(error) = shell_env::configure(&params.binary_path, options.dry_run) {
         eprintln!("Warning: Failed to configure shell environment: {error}");
     }
     let statuses = install_result?;
-
-    // Clean up legacy envelope logs directory and related artifacts.
-    // These are no longer used — all telemetry now routes through the daemon.
-    if !options.dry_run {
-        cleanup_legacy_envelope_logs();
-    }
 
     Ok(to_hashmap(statuses))
 }

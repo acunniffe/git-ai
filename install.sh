@@ -13,6 +13,7 @@ if [ -z "${HOME:-}" ]; then
         CURRENT_USER=$( /usr/sbin/scutil <<< "show State:/Users/ConsoleUser" | awk '/Name :/ { print $3 }' || true )
         if [ -n "${CURRENT_USER:-}" ] && [ "$CURRENT_USER" != "loginwindow" ] && [ "$CURRENT_USER" != "_mbsetupuser" ]; then
             export HOME=$( /usr/bin/dscl . -read "/Users/$CURRENT_USER" NFSHomeDirectory | awk '{print $2}' )
+            export GIT_AI_INSTALL_USER="$CURRENT_USER"
             HOME_RESOLVED_FOR_USER=true
         else
             echo "Error: No console user logged in. Deferring installation." >&2
@@ -21,6 +22,7 @@ if [ -z "${HOME:-}" ]; then
     elif id -un >/dev/null 2>&1; then
         CURRENT_USER="$(id -un)"
         export HOME=$(getent passwd "$CURRENT_USER" | cut -d: -f6)
+        export GIT_AI_INSTALL_USER="$CURRENT_USER"
         HOME_RESOLVED_FOR_USER=true
         if [ -z "$HOME" ]; then
             export HOME="/root"
