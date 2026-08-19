@@ -7324,6 +7324,290 @@ fn await_reflects_triggered_notes_flush() {
     );
 }
 
+/// A control client that connects and vanishes (times out, dies mid-request)
+/// is routine under load — it must not produce ERROR-level noise or affect
+/// the daemon's health.
+#[test]
+#[serial]
+#[cfg(unix)]
+fn control_peer_disconnect_not_logged_as_error() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let mut daemon = DaemonGuard::start_with_env(&repo, &[]);
+    let control_socket_path = daemon_control_socket_path(&repo);
+
+    // Deterministic peer-gone: announce a checkpoint body and vanish before
+    // sending it. The daemon's body read hits EOF mid-request, which must be
+    // classified as a routine peer disconnect, not a daemon error.
+    {
+        let mut stream =
+            open_local_socket_stream_with_timeout(&control_socket_path, DAEMON_TEST_PROBE_TIMEOUT)
+                .expect("failed to open control connection");
+        stream
+            .write_all(b"{\"method\":\"checkpoint.run\",\"params\":{\"body_bytes\":1000}}\n")
+            .expect("failed to write checkpoint header");
+        stream.flush().expect("failed to flush checkpoint header");
+        // Wait for the ready ack so the daemon is definitely inside the body
+        // read when the connection drops.
+        let mut ready = [0u8; 1];
+        use std::io::Read as _;
+        let _ = stream.read(&mut ready);
+    }
+
+    // Also hammer it with valid pings that never read their responses.
+    for _ in 0..20 {
+        if let Ok(mut stream) =
+            open_local_socket_stream_with_timeout(&control_socket_path, DAEMON_TEST_PROBE_TIMEOUT)
+        {
+            let _ = stream.write_all(b"{\"method\":\"ping\"}\n");
+            let _ = stream.flush();
+        }
+    }
+
+    let started = std::time::Instant::now();
+    loop {
+        if daemon
+            .stderr_contents()
+            .contains("daemon control connection dropped by peer")
+        {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "peer-gone classification never ran:\n{}",
+            daemon.stderr_contents()
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+
+    let response = send_control_request(&control_socket_path, &ControlRequest::Ping)
+        .expect("daemon should still serve control requests after abandoned peers");
+    assert!(
+        response.ok,
+        "ping after abandoned peers failed: {response:?}"
+    );
+
+    let logs = daemon.stderr_contents();
+    assert!(
+        !logs.contains("daemon control connection failed"),
+        "abandoned control peers must not be logged as connection failures:\n{logs}"
+    );
+    daemon.shutdown();
+}
+
+/// Every ingest loss must reach fleet telemetry: the teardown report persists
+/// a DaemonIngestAnomaly event with delta values straight to the metrics DB,
+/// even when the daemon never survived until a periodic health report.
+#[test]
+#[serial]
+#[cfg(not(windows))]
+fn daemon_ingest_losses_reported_to_metrics_db_on_shutdown() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+    let trace_socket_path = daemon_trace_socket_path(&repo);
+    let metrics_db_dir = tempfile::tempdir().expect("failed to create metrics db dir");
+    let metrics_db_path = metrics_db_dir.path().join("metrics.db");
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_TRACE_CONNECTION_SPAWN_FAILURES", "3"),
+            (
+                "GIT_AI_TEST_METRICS_DB_PATH",
+                metrics_db_path.to_str().unwrap(),
+            ),
+        ],
+    );
+
+    // Readiness consumed one injected failure; drop two more connections.
+    for _ in 0..2 {
+        let mut stream =
+            open_local_socket_stream_with_timeout(&trace_socket_path, DAEMON_TEST_PROBE_TIMEOUT)
+                .expect("failed to open trace connection");
+        let started = std::time::Instant::now();
+        while started.elapsed() < Duration::from_secs(2) {
+            if stream
+                .write_all(b"\n")
+                .and_then(|_| stream.flush())
+                .is_err()
+            {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    let _ = send_control_request(&control_socket_path, &ControlRequest::Shutdown);
+    daemon.shutdown();
+
+    let db = MetricsDatabase::open_at_path(&metrics_db_path)
+        .expect("metrics db should open at isolated path");
+    let records = db
+        .get_metric_history(0, None, &[8u16])
+        .expect("metric history should load");
+    assert_eq!(
+        records.len(),
+        1,
+        "exactly one DaemonIngestAnomaly report expected, got {}",
+        records.len()
+    );
+    let values = &records[0].event.values;
+    let connections_dropped = values.get("1").and_then(Value::as_u64);
+    assert_eq!(
+        connections_dropped,
+        Some(3),
+        "the report must carry delta values: {values:?}"
+    );
+    drop(db);
+
+    // Control scenario: a daemon with no losses must not emit the event.
+    let clean_repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let clean_metrics_db_path = metrics_db_dir.path().join("clean-metrics.db");
+    let mut clean_daemon = DaemonGuard::start_with_env(
+        &clean_repo,
+        &[(
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            clean_metrics_db_path.to_str().unwrap(),
+        )],
+    );
+    let _ = send_control_request(
+        &daemon_control_socket_path(&clean_repo),
+        &ControlRequest::Shutdown,
+    );
+    clean_daemon.shutdown();
+
+    let clean_db = MetricsDatabase::open_at_path(&clean_metrics_db_path)
+        .expect("clean metrics db should open");
+    let clean_records = clean_db
+        .get_metric_history(0, None, &[8u16])
+        .expect("metric history should load");
+    assert!(
+        clean_records.is_empty(),
+        "a daemon with no losses must not emit DaemonIngestAnomaly: {} records",
+        clean_records.len()
+    );
+}
+
+/// Dropped trace connections are counted and reported through stats.ingest,
+/// so attribution loss is observable instead of silent.
+#[test]
+#[serial]
+#[cfg(not(windows))]
+fn trace_connection_drops_reported_via_stats_ingest() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    // Readiness consumes one injected failure; the two test connections
+    // below consume the rest.
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[("GIT_AI_TEST_TRACE_CONNECTION_SPAWN_FAILURES", "3")],
+    );
+    let trace_socket_path = daemon_trace_socket_path(&repo);
+    let control_socket_path = daemon_control_socket_path(&repo);
+
+    for _ in 0..2 {
+        let mut stream =
+            open_local_socket_stream_with_timeout(&trace_socket_path, DAEMON_TEST_PROBE_TIMEOUT)
+                .expect("failed to open trace connection");
+        let started = std::time::Instant::now();
+        while started.elapsed() < Duration::from_secs(2) {
+            if stream
+                .write_all(b"\n")
+                .and_then(|_| stream.flush())
+                .is_err()
+            {
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    let response = send_control_request(&control_socket_path, &ControlRequest::StatsIngest)
+        .expect("stats.ingest request failed");
+    assert!(response.ok, "stats.ingest returned error: {response:?}");
+    let data = response.data.expect("stats.ingest should return data");
+    let connections_dropped = data
+        .get("trace_connections_dropped")
+        .and_then(Value::as_u64)
+        .expect("stats.ingest data should include trace_connections_dropped");
+    assert!(
+        connections_dropped >= 2,
+        "expected at least 2 dropped trace connections, got {connections_dropped}: {data}"
+    );
+    assert_eq!(
+        data.get("trace_payloads_dropped_queue_full")
+            .and_then(Value::as_u64),
+        Some(0),
+        "no queue-full drops expected in this scenario: {data}"
+    );
+    daemon.shutdown();
+}
+
+/// A queue-full drop must name the root whose attribution was lost.
+#[test]
+#[serial]
+#[cfg(not(windows))]
+fn trace_queue_full_drop_logs_the_dropped_root() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_TRACE_INGEST_QUEUE_CAPACITY", "1"),
+            ("GIT_AI_TEST_TRACE_INGEST_WORKER_START_DELAY_MS", "5000"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    let mut stream =
+        open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+            .expect("failed to connect trace socket");
+    write_trace_frames_to_stream(
+        &mut stream,
+        &[
+            json!({
+                "event": "start",
+                "sid": "queue-full-loss-root",
+                "argv": ["git", "commit", "-m", "synthetic"],
+                "time_ns": 40_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "queue-full-loss-root",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 40_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "queue-full-loss-root",
+                "code": 0,
+                "time_ns": 40_100u64,
+            }),
+            trace_atexit_frame("queue-full-loss-root", 0, 40_101u64),
+        ],
+    );
+
+    let started = std::time::Instant::now();
+    loop {
+        let logs = daemon.stderr_contents();
+        if logs.contains("ingest_worker_queue_full") {
+            assert!(
+                logs.contains("queue-full-loss-root"),
+                "queue-full log should name the dropped root:\n{logs}"
+            );
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "daemon never reported the queue-full drop:\n{logs}"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+    daemon.shutdown();
+}
+
 #[test]
 fn await_waits_for_metrics_and_notes_flush() {
     let mut mock_api = MockApiServer::start();

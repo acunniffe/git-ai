@@ -2619,16 +2619,20 @@ fn read_checkpoint_body<R: BufRead>(
     reader: &mut R,
     body_bytes: usize,
 ) -> Result<Vec<u8>, GitAiError> {
+    // Preserve the io::ErrorKind: a peer that vanished mid-body (EOF, reset)
+    // must classify as a routine disconnect, not a daemon error.
     let mut body = vec![0; body_bytes];
     reader.read_exact(&mut body).map_err(|error| {
-        GitAiError::Generic(format!(
-            "failed receiving {body_bytes}-byte checkpoint body: {error}"
+        GitAiError::IoError(std::io::Error::new(
+            error.kind(),
+            format!("failed receiving {body_bytes}-byte checkpoint body: {error}"),
         ))
     })?;
     let mut delimiter = [0u8; 1];
     reader.read_exact(&mut delimiter).map_err(|error| {
-        GitAiError::Generic(format!(
-            "failed receiving checkpoint body delimiter: {error}"
+        GitAiError::IoError(std::io::Error::new(
+            error.kind(),
+            format!("failed receiving checkpoint body delimiter: {error}"),
         ))
     })?;
     if delimiter != [b'\n'] {
@@ -2792,6 +2796,21 @@ pub struct ActorDaemonCoordinator {
     // trip proves accept → reader spawn → read → parse is still draining.
     next_trace_drain_probe_id: AtomicU64,
     observed_trace_drain_probe_id: AtomicU64,
+    // Loss accounting: attribution loss must be loud, never silent. Trace
+    // payloads dropped on a full ingest queue and trace connections dropped
+    // before a reader could serve them both mean lost attribution for the
+    // affected commands.
+    trace_payloads_dropped_queue_full: AtomicU64,
+    trace_connections_dropped: AtomicU64,
+    checkpoints_dropped: AtomicU64,
+    // Retained checkpoints are abandoned at most once per daemon lifetime
+    // (whichever of teardown or the shutdown enforcer gets there first);
+    // this guard keeps the loss from being double-counted.
+    checkpoints_loss_counted: AtomicBool,
+    // Snapshot of the loss counters at the last successful DaemonIngestAnomaly
+    // report, shared by the health loop, teardown, and the shutdown enforcer
+    // so deltas are reported exactly once.
+    last_reported_ingest_losses: Mutex<IngestLossSnapshot>,
     // Duplicated fds of accepted trace connections, so shutdown can actively
     // close them: a blocked git writer is released the instant its socket is
     // shut down instead of waiting for process exit.
@@ -2904,6 +2923,11 @@ impl ActorDaemonCoordinator {
             trace_ingress_state: Mutex::new(TraceIngressState::default()),
             next_trace_drain_probe_id: AtomicU64::new(0),
             observed_trace_drain_probe_id: AtomicU64::new(0),
+            trace_payloads_dropped_queue_full: AtomicU64::new(0),
+            trace_connections_dropped: AtomicU64::new(0),
+            checkpoints_dropped: AtomicU64::new(0),
+            checkpoints_loss_counted: AtomicBool::new(false),
+            last_reported_ingest_losses: Mutex::new(IngestLossSnapshot::default()),
             #[cfg(not(windows))]
             trace_connection_registry: Mutex::new(HashMap::new()),
             #[cfg(not(windows))]
@@ -3171,6 +3195,22 @@ impl ActorDaemonCoordinator {
             unsafe {
                 libc::shutdown(fd.as_raw_fd(), libc::SHUT_RDWR);
             }
+        }
+    }
+
+    /// Count checkpoints that are still retained at the moment the process
+    /// actually gives up on them — exactly once, whichever of graceful
+    /// teardown or the shutdown enforcer reaches that point first. Counting
+    /// earlier (e.g. when a restart is decided) would report checkpoints that
+    /// teardown still manages to drain.
+    fn count_abandoned_checkpoints_once(&self) {
+        if self.checkpoints_loss_counted.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        let (outstanding_checkpoints, _) = self.outstanding_checkpoint_state();
+        if outstanding_checkpoints > 0 {
+            self.checkpoints_dropped
+                .fetch_add(outstanding_checkpoints as u64, Ordering::Relaxed);
         }
     }
 
@@ -4415,11 +4455,18 @@ impl ActorDaemonCoordinator {
                 ));
             }
             Err(tokio::sync::mpsc::error::TrySendError::Full(())) => {
+                self.trace_payloads_dropped_queue_full
+                    .fetch_add(1, Ordering::Relaxed);
+                let dropped_root =
+                    Self::trace_payload_root_sid(&payload).unwrap_or_else(|| "unknown".to_string());
                 tracing::error!(
                     component = "daemon",
                     phase = "enqueue_trace_payload",
                     reason = "ingest_worker_queue_full",
-                    "trace ingest queue is full"
+                    dropped_root = %dropped_root,
+                    queue_capacity = Self::trace_ingest_queue_capacity(),
+                    queued_payloads = self.queued_trace_payloads.load(Ordering::Relaxed),
+                    "trace ingest queue is full; dropping payload and shutting down (attribution for this root is lost)"
                 );
                 self.request_shutdown();
                 return Err(GitAiError::Generic(
@@ -7155,6 +7202,20 @@ impl ActorDaemonCoordinator {
                 }
                 Ok(ControlResponse::ok(None, None))
             }
+            ControlRequest::StatsIngest => Ok(ControlResponse::ok(
+                None,
+                Some(json!({
+                    "trace_payloads_dropped_queue_full": self
+                        .trace_payloads_dropped_queue_full
+                        .load(Ordering::Relaxed),
+                    "trace_connections_dropped": self
+                        .trace_connections_dropped
+                        .load(Ordering::Relaxed),
+                    "telemetry_metric_batches_dropped":
+                        crate::daemon::telemetry_worker::metric_batches_dropped(),
+                    "checkpoints_dropped": self.checkpoints_dropped.load(Ordering::Relaxed),
+                })),
+            )),
             ControlRequest::Await { timeout_secs } => {
                 let result = self.await_completion(timeout_secs).await;
                 serde_json::to_value(result)
@@ -7451,13 +7512,7 @@ fn control_listener_loop_actor(
             if std::thread::Builder::new()
                 .spawn(move || {
                     if let Err(e) = handle_control_connection_actor(stream, coord, handle) {
-                        tracing::error!(
-                            component = "daemon",
-                            phase = "control_receive",
-                            reason = "connection_error",
-                            error = %e,
-                            "daemon control connection failed"
-                        );
+                        log_control_connection_failure(&e);
                     }
                 })
                 .is_err()
@@ -7622,13 +7677,7 @@ fn handle_windows_control_pipe_connection(
     let mut reader = BufReader::new(server);
     if let Err(e) = handle_control_connection_actor_reader(&mut reader, coordinator, runtime_handle)
     {
-        tracing::error!(
-            component = "daemon",
-            phase = "control_receive",
-            reason = "connection_error",
-            error = %e,
-            "daemon control connection failed"
-        );
+        log_control_connection_failure(&e);
     }
 }
 
@@ -7647,11 +7696,10 @@ impl ControlConnection for WindowsPipeServer {
 #[cfg(not(windows))]
 impl ControlConnection for LocalSocketStream {
     fn set_receive_timeout(&mut self, timeout: Option<Duration>) -> Result<(), GitAiError> {
-        self.set_recv_timeout(timeout).map_err(|error| {
-            GitAiError::Generic(format!(
-                "failed setting daemon control receive timeout: {error}"
-            ))
-        })
+        // Preserve the io::ErrorKind: callers classify peer-gone failures
+        // (e.g. macOS EINVAL on a peer-closed socket) apart from systemic
+        // ones, which a stringified Generic error would erase.
+        self.set_recv_timeout(timeout).map_err(GitAiError::IoError)
     }
 }
 
@@ -7666,6 +7714,49 @@ fn control_receive_timed_out(error: &GitAiError) -> bool {
     )
 }
 
+/// A control connection failing because the peer went away (client timed out
+/// and closed, process died mid-request) is routine under load — the
+/// connection is simply dropped. Only unexpected failures deserve ERROR.
+fn connection_error_is_peer_disconnect(error: &GitAiError) -> bool {
+    // Composes with the read-timeout classifier: TimedOut/WouldBlock are the
+    // same "peer stopped participating" family. InvalidInput covers macOS
+    // EINVAL from setsockopt on a socket whose peer already shut down.
+    control_receive_timed_out(error)
+        || matches!(
+            error,
+            GitAiError::IoError(io_error)
+                if matches!(
+                    io_error.kind(),
+                    std::io::ErrorKind::BrokenPipe
+                        | std::io::ErrorKind::ConnectionReset
+                        | std::io::ErrorKind::ConnectionAborted
+                        | std::io::ErrorKind::UnexpectedEof
+                        | std::io::ErrorKind::InvalidInput
+                )
+        )
+}
+
+/// Log a failed control connection at a severity matching its cause.
+fn log_control_connection_failure(error: &GitAiError) {
+    if connection_error_is_peer_disconnect(error) {
+        tracing::warn!(
+            component = "daemon",
+            phase = "control_receive",
+            reason = "peer_gone",
+            error = %error,
+            "daemon control connection dropped by peer"
+        );
+    } else {
+        tracing::error!(
+            component = "daemon",
+            phase = "control_receive",
+            reason = "connection_error",
+            error = %error,
+            "daemon control connection failed"
+        );
+    }
+}
+
 #[cfg(not(windows))]
 fn handle_control_connection_actor(
     stream: LocalSocketStream,
@@ -7676,14 +7767,49 @@ fn handle_control_connection_actor(
     handle_control_connection_actor_reader(&mut reader, coordinator, runtime_handle)
 }
 
+/// Apply a receive timeout to a control connection, treating failure as a
+/// routine peer-gone drop rather than a daemon error: macOS `setsockopt`
+/// returns EINVAL once the peer has already shut the socket down, which
+/// happens whenever a client times out and abandons its connection under
+/// load. Returns false when the connection should simply be dropped.
+fn apply_control_receive_timeout<R: ControlConnection>(
+    reader: &mut BufReader<R>,
+    timeout: Duration,
+) -> bool {
+    if let Err(error) = reader.get_mut().set_receive_timeout(Some(timeout)) {
+        // The connection is dropped either way; only the severity differs. A
+        // peer that vanished (or macOS EINVAL on its dead socket) is routine,
+        // while a systemic setsockopt failure deserves attention.
+        if connection_error_is_peer_disconnect(&error) {
+            tracing::warn!(
+                component = "daemon",
+                phase = "control_receive",
+                reason = "receive_timeout_setup_failed",
+                %error,
+                "dropping control connection; peer likely already disconnected"
+            );
+        } else {
+            tracing::error!(
+                component = "daemon",
+                phase = "control_receive",
+                reason = "receive_timeout_setup_failed",
+                %error,
+                "dropping control connection; receive timeout could not be applied"
+            );
+        }
+        return false;
+    }
+    true
+}
+
 fn handle_control_connection_actor_reader<R: ControlConnection>(
     reader: &mut BufReader<R>,
     coordinator: Arc<ActorDaemonCoordinator>,
     runtime_handle: tokio::runtime::Handle,
 ) -> Result<(), GitAiError> {
-    reader
-        .get_mut()
-        .set_receive_timeout(Some(DAEMON_CONTROL_RECEIVE_TIMEOUT))?;
+    if !apply_control_receive_timeout(reader, DAEMON_CONTROL_RECEIVE_TIMEOUT) {
+        return Ok(());
+    }
     let mut uses_idle_timeout = false;
     loop {
         let line = match read_json_line(reader) {
@@ -7703,9 +7829,9 @@ fn handle_control_connection_actor_reader<R: ControlConnection>(
                 Ok(request) if !matches!(request, ControlRequest::CheckpointRun { .. })
             )
         {
-            reader
-                .get_mut()
-                .set_receive_timeout(Some(DAEMON_CONTROL_IDLE_TIMEOUT))?;
+            if !apply_control_receive_timeout(reader, DAEMON_CONTROL_IDLE_TIMEOUT) {
+                return Ok(());
+            }
             uses_idle_timeout = true;
         }
         let mut shutdown_after_response = false;
@@ -7790,29 +7916,40 @@ fn handle_control_connection_actor_reader<R: ControlConnection>(
                     return Err(error);
                 }
 
-                if uses_idle_timeout {
-                    reader
-                        .get_mut()
-                        .set_receive_timeout(Some(DAEMON_CONTROL_RECEIVE_TIMEOUT))?;
+                if uses_idle_timeout
+                    && !apply_control_receive_timeout(reader, DAEMON_CONTROL_RECEIVE_TIMEOUT)
+                {
+                    return Ok(());
                 }
                 let body = match read_checkpoint_body(reader, reservation.body_bytes()) {
                     Ok(body) => body,
                     Err(error) => {
-                        tracing::error!(
-                            component = "daemon",
-                            phase = "checkpoint_receive",
-                            reason = "body_receive_failed",
-                            body_bytes,
-                            %error,
-                            "failed receiving checkpoint body"
-                        );
+                        if connection_error_is_peer_disconnect(&error) {
+                            tracing::warn!(
+                                component = "daemon",
+                                phase = "checkpoint_receive",
+                                reason = "body_receive_failed",
+                                body_bytes,
+                                %error,
+                                "checkpoint sender disconnected mid-body"
+                            );
+                        } else {
+                            tracing::error!(
+                                component = "daemon",
+                                phase = "checkpoint_receive",
+                                reason = "body_receive_failed",
+                                body_bytes,
+                                %error,
+                                "failed receiving checkpoint body"
+                            );
+                        }
                         return Err(error);
                     }
                 };
-                if uses_idle_timeout {
-                    reader
-                        .get_mut()
-                        .set_receive_timeout(Some(DAEMON_CONTROL_IDLE_TIMEOUT))?;
+                if uses_idle_timeout
+                    && !apply_control_receive_timeout(reader, DAEMON_CONTROL_IDLE_TIMEOUT)
+                {
+                    return Ok(());
                 }
                 let Some(checkpoint_tx) = coordinator.checkpoint_ingress_tx.get().cloned() else {
                     tracing::error!(
@@ -7997,7 +8134,10 @@ fn trace_listener_loop_actor(
                     // The stream is dropped with the failed spawn, closing the
                     // fd: the writing git process sees EPIPE, disables its
                     // trace2 target, and completes instead of blocking.
-                    tracing::error!(%error, "trace listener: failed to spawn handler thread");
+                    coordinator
+                        .trace_connections_dropped
+                        .fetch_add(1, Ordering::Relaxed);
+                    tracing::error!(%error, "trace listener: failed to spawn handler thread; dropping connection (attribution for its roots is lost)");
                     consecutive_spawn_failures += 1;
                     if consecutive_spawn_failures >= TRACE_SPAWN_FAILURE_SHUTDOWN_THRESHOLD {
                         if let Err(error) = spawn_self_restart(&restart_history_path) {
@@ -8104,7 +8244,10 @@ fn handle_windows_trace_pipe_connection(
     coordinator: Arc<ActorDaemonCoordinator>,
 ) {
     if let Err(e) = coordinator.trace_unidentified_connection_opened() {
-        tracing::debug!(%e, "trace connection open bookkeeping error");
+        coordinator
+            .trace_connections_dropped
+            .fetch_add(1, Ordering::Relaxed);
+        tracing::debug!(%e, "trace connection open bookkeeping error; dropping connection");
         return;
     }
     let reader = BufReader::new(&mut server);
@@ -8216,7 +8359,10 @@ fn run_trace_connection_reader(
         tracing::debug!(%error, "trace connection recv buffer setup failed");
     }
     if let Err(error) = coordinator.trace_unidentified_connection_opened() {
-        tracing::debug!(%error, "trace connection open bookkeeping error");
+        coordinator
+            .trace_connections_dropped
+            .fetch_add(1, Ordering::Relaxed);
+        tracing::debug!(%error, "trace connection open bookkeeping error; dropping connection");
         return;
     }
     // A shutdown requested before registration completed has already swept
@@ -8661,6 +8807,8 @@ fn daemon_socket_health_check_loop(
         last_processed_seq = processed_seq;
         let processing_stalled = stalled_intervals >= SOCKET_HEALTH_MAX_PROCESSING_STALL_INTERVALS;
 
+        report_ingest_losses(&coordinator);
+
         if control_ok.is_err() || trace_ok.is_err() || processing_stalled {
             // A probe failure caused by a shutdown that started mid-check
             // (readers severed, teardown underway) must not consume budget
@@ -8695,6 +8843,7 @@ fn daemon_socket_health_check_loop(
                         processing_stalled,
                         queued_payloads,
                         stalled_intervals,
+                        outstanding_checkpoints,
                         "daemon health check failed, spawning restart and shutting down"
                     );
                 }
@@ -8729,6 +8878,80 @@ fn should_defer_restart_for_checkpoints(
     consecutive_deferrals: usize,
 ) -> bool {
     outstanding_checkpoints > 0 && consecutive_deferrals < SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS
+}
+
+/// Snapshot of the ingest-loss counters for delta reporting.
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+struct IngestLossSnapshot {
+    payloads_dropped_queue_full: u64,
+    connections_dropped: u64,
+    metric_batches_dropped: u64,
+    checkpoints_dropped: u64,
+}
+
+impl IngestLossSnapshot {
+    fn capture(coordinator: &ActorDaemonCoordinator) -> Self {
+        Self {
+            payloads_dropped_queue_full: coordinator
+                .trace_payloads_dropped_queue_full
+                .load(Ordering::Relaxed),
+            connections_dropped: coordinator
+                .trace_connections_dropped
+                .load(Ordering::Relaxed),
+            metric_batches_dropped: crate::daemon::telemetry_worker::metric_batches_dropped(),
+            checkpoints_dropped: coordinator.checkpoints_dropped.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// Persist a DaemonIngestAnomaly metric with the loss deltas since the
+/// previous report, so silent attribution loss becomes visible in fleet
+/// telemetry. Called from the health loop, from graceful teardown (so a
+/// queue-full shutdown still reports its loss), and from the shutdown
+/// enforcer.
+///
+/// Unlike sibling emitters this stores straight to the metrics DB instead of
+/// going through `crate::metrics::record`: the persistence queue is exactly
+/// the lossy component whose drops are being reported, and the snapshot must
+/// only advance when the write was actually accepted (otherwise a dropped
+/// emission permanently unreports its window).
+fn report_ingest_losses(coordinator: &Arc<ActorDaemonCoordinator>) {
+    use crate::metrics::pos_encoded::PosEncoded as _;
+
+    // try_lock: the shutdown enforcer calls this right before a forced exit
+    // and must never block; a contended lock just means another reporter is
+    // already delivering the same deltas.
+    let mut last_reported = match coordinator.last_reported_ingest_losses.try_lock() {
+        Ok(guard) => guard,
+        Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+        Err(std::sync::TryLockError::WouldBlock) => return,
+    };
+    let current = IngestLossSnapshot::capture(coordinator);
+    if current == *last_reported {
+        return;
+    }
+    let values = crate::metrics::events::DaemonIngestAnomalyValues::new(
+        current
+            .payloads_dropped_queue_full
+            .saturating_sub(last_reported.payloads_dropped_queue_full),
+        current
+            .connections_dropped
+            .saturating_sub(last_reported.connections_dropped),
+        current
+            .metric_batches_dropped
+            .saturating_sub(last_reported.metric_batches_dropped),
+        current
+            .checkpoints_dropped
+            .saturating_sub(last_reported.checkpoints_dropped),
+    );
+    let attrs = crate::metrics::EventAttributes::with_version(env!("CARGO_PKG_VERSION"));
+    let event = crate::metrics::MetricEvent::from_values(values, attrs.to_sparse());
+    match crate::daemon::telemetry_worker::persist_metrics_now(&[event]) {
+        Ok(()) => *last_reported = current,
+        Err(error) => {
+            tracing::warn!(%error, "failed persisting ingest-loss metric; will retry next report");
+        }
+    }
 }
 
 const TRACE_DRAIN_PROBE_DEADLINE: Duration = Duration::from_secs(5);
@@ -9061,6 +9284,13 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
         tracing::warn!("telemetry metrics persist queue was not fully drained at shutdown");
     }
 
+    // Final loss report: a shutdown caused by a full ingest queue is the
+    // severest attribution-loss event; persisting the deltas here lets the
+    // next daemon generation upload them. Checkpoints still retained at this
+    // point will never be processed — count them (once) before reporting.
+    coordinator.count_abandoned_checkpoints_once();
+    report_ingest_losses(&coordinator);
+
     // Best-effort wake listeners to allow clean process exit.
     // Connect to each socket to unblock `accept()`.  If the socket files
     // were deleted (which is exactly what the health-check detects), the
@@ -9154,11 +9384,25 @@ fn spawn_shutdown_deadline_enforcer(
             if coordinator.teardown_complete.load(Ordering::Acquire) {
                 return;
             }
+            let (outstanding_checkpoints, retained_checkpoint_bytes) =
+                coordinator.outstanding_checkpoint_state();
+            coordinator.count_abandoned_checkpoints_once();
             tracing::error!(
                 component = "daemon",
                 phase = "shutdown",
-                "daemon teardown exceeded its deadline; forcing process exit"
+                outstanding_checkpoints,
+                retained_checkpoint_bytes,
+                "daemon teardown exceeded its deadline; forcing process exit (retained checkpoints are lost)"
             );
+            // Best-effort, bounded: the loss report does a synchronous SQLite
+            // write that must not postpone the forced exit this thread exists
+            // to guarantee (the DB's busy_timeout alone is 5s).
+            let report_coordinator = coordinator.clone();
+            let report = std::thread::spawn(move || report_ingest_losses(&report_coordinator));
+            let report_deadline = std::time::Instant::now() + Duration::from_millis(500);
+            while !report.is_finished() && std::time::Instant::now() < report_deadline {
+                std::thread::sleep(Duration::from_millis(10));
+            }
             if matches!(
                 coordinator.shutdown_action(),
                 DaemonExitAction::Restart | DaemonExitAction::RestartAfterUpdate
@@ -10759,6 +11003,113 @@ mod tests {
             "rewritten history must not retain future timestamps: {rewritten:?}"
         );
         assert_eq!(rewritten.len(), 1, "only the new entry should remain");
+    }
+
+    #[tokio::test]
+    async fn abandoned_checkpoints_are_counted_exactly_once() {
+        let coord = ActorDaemonCoordinator::new();
+        let _reservation = coord
+            .checkpoint_ingress_quota
+            .reserve(128)
+            .expect("reservation should be granted");
+
+        // Teardown and the shutdown enforcer can both reach the abandonment
+        // point; only the first may count the retained checkpoints.
+        coord.count_abandoned_checkpoints_once();
+        coord.count_abandoned_checkpoints_once();
+        assert_eq!(
+            coord.checkpoints_dropped.load(Ordering::Relaxed),
+            1,
+            "retained checkpoints must be counted exactly once"
+        );
+    }
+
+    #[test]
+    fn connection_error_classifier_separates_peer_gone_from_systemic() {
+        use std::io::ErrorKind;
+
+        let peer_kinds = [
+            ErrorKind::BrokenPipe,
+            ErrorKind::ConnectionReset,
+            ErrorKind::ConnectionAborted,
+            ErrorKind::UnexpectedEof,
+            ErrorKind::TimedOut,
+            ErrorKind::WouldBlock,
+            // macOS setsockopt EINVAL on a peer-closed socket.
+            ErrorKind::InvalidInput,
+        ];
+        for kind in peer_kinds {
+            assert!(
+                connection_error_is_peer_disconnect(&GitAiError::IoError(std::io::Error::new(
+                    kind, "peer"
+                ))),
+                "{kind:?} should classify as peer-gone"
+            );
+        }
+
+        let systemic = [
+            GitAiError::IoError(std::io::Error::other("EBADF-ish")),
+            GitAiError::IoError(std::io::Error::new(ErrorKind::PermissionDenied, "denied")),
+            GitAiError::Generic("stringified".to_string()),
+        ];
+        for error in systemic {
+            assert!(
+                !connection_error_is_peer_disconnect(&error),
+                "{error} should not classify as peer-gone"
+            );
+        }
+    }
+
+    struct MockControlConnection {
+        timeout_error: Option<std::io::ErrorKind>,
+    }
+
+    impl std::io::Read for MockControlConnection {
+        fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+            Ok(0)
+        }
+    }
+
+    impl std::io::Write for MockControlConnection {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl ControlConnection for MockControlConnection {
+        fn set_receive_timeout(&mut self, _timeout: Option<Duration>) -> Result<(), GitAiError> {
+            match self.timeout_error {
+                Some(kind) => Err(GitAiError::IoError(std::io::Error::new(kind, "mock"))),
+                None => Ok(()),
+            }
+        }
+    }
+
+    #[test]
+    fn receive_timeout_failure_drops_the_connection() {
+        let mut healthy = BufReader::new(MockControlConnection {
+            timeout_error: None,
+        });
+        assert!(apply_control_receive_timeout(
+            &mut healthy,
+            Duration::from_secs(2)
+        ));
+
+        for kind in [
+            std::io::ErrorKind::InvalidInput,
+            std::io::ErrorKind::PermissionDenied,
+        ] {
+            let mut failing = BufReader::new(MockControlConnection {
+                timeout_error: Some(kind),
+            });
+            assert!(
+                !apply_control_receive_timeout(&mut failing, Duration::from_secs(2)),
+                "a {kind:?} setsockopt failure must drop the connection"
+            );
+        }
     }
 
     #[test]

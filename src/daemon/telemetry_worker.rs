@@ -208,6 +208,21 @@ pub fn metric_batches_dropped() -> u64 {
     METRIC_BATCHES_DROPPED.load(Ordering::Relaxed)
 }
 
+/// Persist metric events straight to SQLite, bypassing the persistence
+/// queue. For reporters that must know the write was accepted and must not
+/// depend on the queue whose loss they report (DaemonIngestAnomaly). Mirrors
+/// the test gating of `observability::log_metrics`.
+pub(crate) fn persist_metrics_now(events: &[MetricEvent]) -> Result<(), GitAiError> {
+    #[cfg(any(test, feature = "test-support"))]
+    {
+        if std::env::var_os("GIT_AI_TEST_METRICS_DB_PATH").is_none() {
+            return Ok(());
+        }
+    }
+
+    store_metrics_in_db(events).map(|_| ())
+}
+
 /// Budget for waiting on the persist worker to catch up when an `await` or
 /// teardown needs the queue's contents to be visible in SQLite.
 const METRICS_PERSIST_DRAIN_DEADLINE: Duration = Duration::from_secs(10);

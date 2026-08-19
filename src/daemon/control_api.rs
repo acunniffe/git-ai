@@ -23,6 +23,9 @@ pub enum ControlRequest {
     /// Signal the daemon that new notes are pending in notes-db and should be flushed.
     #[serde(rename = "notes.flush")]
     FlushNotes,
+    /// Report ingest loss counters (dropped trace payloads/connections).
+    #[serde(rename = "stats.ingest")]
+    StatsIngest,
     #[serde(rename = "snapshot.watermarks")]
     SnapshotWatermarks { repo_working_dir: String },
     #[serde(rename = "bash_session.start")]
