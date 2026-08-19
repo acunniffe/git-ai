@@ -7130,6 +7130,200 @@ fn daemon_drain_probes_do_not_disturb_attribution() {
     prober.join().unwrap();
 }
 
+/// Telemetry runs on its own runtime: an upload backend that stalls for the
+/// whole test must not delay checkpoint/commit processing or attribution.
+#[test]
+#[cfg(not(windows))]
+fn commit_attribution_unaffected_by_stalled_telemetry_uploads() {
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_TELEMETRY_UPLOAD_STALL_MS", "60000")]);
+
+    // Deterministic: the stall hook logs when the flush loop enters the
+    // stalled upload; only then does the commit work begin.
+    let started = std::time::Instant::now();
+    loop {
+        if repo
+            .daemon_stderr_contents()
+            .contains("test telemetry upload stall engaged")
+        {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "telemetry upload stall never engaged:\n{}",
+            repo.daemon_stderr_contents()
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+
+    let mut file = repo.filename("stalled-telemetry.txt");
+    file.set_contents(lines!["human line", "ai line".ai()]);
+    repo.stage_all_and_commit("commit under stalled telemetry")
+        .unwrap();
+    file.assert_lines_and_blame(lines!["human line".human(), "ai line".ai()]);
+}
+
+/// An awaited flush must not certify completion while metric batches still
+/// sit in the persistence queue: they have to reach SQLite (and thus the
+/// upload path and the pending count) before `await` reports finished.
+/// Root cause of the macOS CI failure "expected at least one metrics upload,
+/// got 0" on this stack.
+#[test]
+#[cfg(not(windows))]
+fn await_blocks_until_queued_metrics_are_persisted() {
+    let mut mock_api = MockApiServer::start();
+    // tempdir: cleans up the DB and its WAL/SHM sidecars on all exits,
+    // including assertion failures.
+    let metrics_db_dir = tempfile::tempdir().expect("failed to create metrics db dir");
+    let metrics_db_path = metrics_db_dir.path().join("metrics.db");
+    let mut repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+        (
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            metrics_db_path.to_str().unwrap(),
+        ),
+        // Every queued metric batch takes 1s to persist: an await issued
+        // right after a commit races still-queued batches (kept below the
+        // 10s drain deadline even with several batches on a slow runner).
+        ("GIT_AI_TEST_METRICS_PERSIST_DELAY_MS", "1000"),
+    ]);
+    repo.patch_git_ai_config(|patch| {
+        patch.exclude_prompts_in_repositories = Some(vec![]);
+        patch.prompt_storage = Some("default".to_string());
+        patch.telemetry_oss_disabled = Some(true);
+    });
+
+    let repo_root = repo.canonical_path();
+    let file_path = repo_root.join("test.ts");
+    fs::write(&file_path, "const x = 1;\n").expect("failed to write initial file");
+    repo.git_ai(&["checkpoint", "mock_known_human", "test.ts"])
+        .expect("known-human checkpoint should succeed");
+    fs::write(&file_path, "const x = 2;\n").expect("failed to write update");
+    repo.git_ai(&["checkpoint", "mock_ai", "test.ts"])
+        .expect("ai checkpoint should succeed");
+    repo.git(&["add", "-A"]).expect("add should succeed");
+    repo.git(&["commit", "-m", "Commit with delayed metric persistence"])
+        .expect("commit should succeed");
+
+    let output = repo
+        .git_ai(&["await", "--timeout", "60"])
+        .expect("await should succeed");
+    assert!(
+        output.contains("finished"),
+        "await should report finished: {}",
+        output
+    );
+
+    let requests = mock_api.collect_requests();
+    let metrics_requests = requests
+        .iter()
+        .filter(|r| r["path"].as_str() == Some("/worker/metrics/upload"))
+        .count();
+    assert!(
+        metrics_requests > 0,
+        "await certified the flush while metric batches were still queued: got {} metrics uploads\nawait output:\n{}\ndaemon log:\n{}",
+        metrics_requests,
+        output,
+        repo.daemon_stderr_contents()
+    );
+}
+
+/// The `notes.flush` control trigger must route through the serialized flush
+/// loop. A bare concurrent `flush_notes` dequeue-locks the note rows
+/// (`processing_started_at`) out from under an awaited flush, whose pending
+/// count excludes locked rows — so `await` certifies "0 notes remaining"
+/// while the triggered upload has not reached the backend yet. This test
+/// sends the trigger the way production does (an external control client,
+/// since the daemon's own in-process `submit_notes` is a deliberate no-op)
+/// and awaits during the stalled upload. Timing caveat: the 3s periodic
+/// cycle can occasionally win the dequeue instead of the trigger, in which
+/// case the run does not exercise the race — it still asserts the invariant.
+#[test]
+#[cfg(not(windows))]
+fn await_reflects_triggered_notes_flush() {
+    let mut mock_api = MockApiServer::start();
+    let metrics_db_dir = tempfile::tempdir().expect("failed to create metrics db dir");
+    let metrics_db_path = metrics_db_dir.path().join("metrics.db");
+    let mut repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+        ("GIT_AI_NOTES_BACKEND_KIND", "http"),
+        ("GIT_AI_NOTES_BACKEND_URL", mock_api.base_url()),
+        (
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            metrics_db_path.to_str().unwrap(),
+        ),
+        // The triggered flush holds the dequeued note rows locked for 8s
+        // before uploading — the window `await` must not certify across.
+        ("GIT_AI_TEST_NOTES_UPLOAD_STALL_MS", "8000"),
+    ]);
+    repo.patch_git_ai_config(|patch| {
+        patch.exclude_prompts_in_repositories = Some(vec![]);
+        patch.prompt_storage = Some("default".to_string());
+        patch.telemetry_oss_disabled = Some(true);
+        patch.notes_backend = Some(NotesBackendConfig {
+            kind: NotesBackendKind::Http,
+            backend_url: Some(mock_api.base_url().to_string()),
+        });
+    });
+
+    let repo_root = repo.canonical_path();
+    let file_path = repo_root.join("test.ts");
+    fs::write(&file_path, "const x = 1;\n").expect("failed to write initial file");
+    repo.git_ai(&["checkpoint", "mock_known_human", "test.ts"])
+        .expect("known-human checkpoint should succeed");
+    fs::write(&file_path, "const x = 2;\n").expect("failed to write update");
+    repo.git_ai(&["checkpoint", "mock_ai", "test.ts"])
+        .expect("ai checkpoint should succeed");
+    repo.git(&["add", "-A"]).expect("add should succeed");
+    repo.git(&["commit", "-m", "Commit whose note flush is in flight"])
+        .expect("commit should succeed");
+
+    // Fire the notes.flush trigger from outside the daemon (as production
+    // clients do) until the note row exists and a flush enters its stalled
+    // upload; triggers before the row lands are cheap no-ops (the stall hook
+    // only engages with rows dequeued).
+    let control_socket_path = daemon_control_socket_path(&repo);
+    let started = std::time::Instant::now();
+    loop {
+        let _ = send_control_request(&control_socket_path, &ControlRequest::FlushNotes);
+        if repo
+            .daemon_stderr_contents()
+            .contains("test notes upload stall engaged")
+        {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(15),
+            "notes upload stall never engaged:\n{}",
+            repo.daemon_stderr_contents()
+        );
+        thread::sleep(Duration::from_millis(100));
+    }
+
+    // Await while the triggered upload is stalled with the note rows locked.
+    let output = repo
+        .git_ai(&["await", "--timeout", "60"])
+        .expect("await should succeed");
+    assert!(
+        output.contains("finished"),
+        "await should report finished: {}",
+        output
+    );
+
+    let requests = mock_api.collect_requests();
+    let notes_requests = requests
+        .iter()
+        .filter(|r| r["path"].as_str() == Some("/worker/notes/upload"))
+        .count();
+    assert!(
+        notes_requests > 0,
+        "await certified while the triggered notes upload was still in flight: got {} notes uploads\ndaemon log:\n{}",
+        notes_requests,
+        repo.daemon_stderr_contents()
+    );
+}
+
 #[test]
 fn await_waits_for_metrics_and_notes_flush() {
     let mut mock_api = MockApiServer::start();
@@ -7205,13 +7399,15 @@ fn await_waits_for_metrics_and_notes_flush() {
         .count();
     assert!(
         metrics_requests > 0,
-        "expected at least one metrics upload, got {}",
-        metrics_requests
+        "expected at least one metrics upload, got {}\ndaemon log:\n{}",
+        metrics_requests,
+        repo.daemon_stderr_contents()
     );
     assert!(
         notes_requests > 0,
-        "expected at least one notes upload, got {}",
-        notes_requests
+        "expected at least one notes upload, got {}\ndaemon log:\n{}",
+        notes_requests,
+        repo.daemon_stderr_contents()
     );
 }
 

@@ -3018,18 +3018,22 @@ impl ActorDaemonCoordinator {
             return;
         };
 
-        let has_candidate = || {
+        let candidate_check = || {
             crate::authorship::attribution_recovery::matching_session_event_candidate_exists(
                 &timestamps,
                 &target_repo_url,
             )
-            .unwrap_or_else(|error| {
-                tracing::debug!(%error, "failed checking session-event recovery candidates");
-                false
-            })
         };
-        if has_candidate() {
-            return;
+        // Only a definitive "no candidate" justifies the sweep-and-wait below.
+        // An unknown answer (metrics DB busy under telemetry load) must not
+        // add sweep work and preflight latency to the commit path.
+        match candidate_check() {
+            Some(false) => {}
+            Some(true) => return,
+            None => {
+                tracing::debug!("session-event recovery preflight skipped; metrics DB busy");
+                return;
+            }
         }
 
         let deadline = std::time::Instant::now() + SESSION_EVENT_RECOVERY_PREFLIGHT_WAIT;
@@ -3083,7 +3087,9 @@ impl ActorDaemonCoordinator {
                 return;
             }
             std::thread::sleep(remaining.min(SESSION_EVENT_RECOVERY_PREFLIGHT_POLL));
-            if has_candidate() {
+            // A definitive hit or an unknown (busy DB) both end the wait: the
+            // preflight must never hold the commit path hostage to telemetry.
+            if !matches!(candidate_check(), Some(false)) {
                 tracing::debug!(
                     "session-event recovery candidate became visible before post-commit"
                 );
@@ -7140,11 +7146,13 @@ impl ActorDaemonCoordinator {
                 Ok(ControlResponse::ok(None, None))
             }
             ControlRequest::FlushNotes => {
-                // Trigger an immediate notes flush in a blocking task.
-                // Fire-and-forget: the periodic flush loop is the safety net.
-                tokio::task::spawn_blocking(|| {
-                    crate::daemon::telemetry_worker::flush_notes();
-                });
+                // Fire-and-forget trigger routed through the serialized flush
+                // loop (the periodic loop is the safety net); see
+                // `request_flush` for why a bare concurrent `flush_notes`
+                // here would let `await` certify mid-upload.
+                if let Some(worker) = &self.telemetry_worker {
+                    worker.request_flush();
+                }
                 Ok(ControlResponse::ok(None, None))
             }
             ControlRequest::Await { timeout_secs } => {
@@ -9041,6 +9049,16 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
         && hang_secs > 0
     {
         std::thread::sleep(std::time::Duration::from_secs(hang_secs));
+    }
+
+    // Metric batches still sitting in the persistence queue must reach SQLite
+    // before this process exits, or a restart silently loses them.
+    if let Some(worker) = &coordinator.telemetry_worker
+        && !worker
+            .drain_metrics_persist_queue(std::time::Duration::from_secs(2))
+            .await
+    {
+        tracing::warn!("telemetry metrics persist queue was not fully drained at shutdown");
     }
 
     // Best-effort wake listeners to allow clean process exit.

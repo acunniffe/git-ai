@@ -13,6 +13,11 @@ const HELPER_RUNTIME_MAX_BLOCKING_THREADS: usize = 4;
 // runtime small prevents CPU-count-sized worker and allocator arena growth.
 const DAEMON_RUNTIME_WORKER_THREADS: usize = 4;
 const DAEMON_RUNTIME_MAX_BLOCKING_THREADS: usize = 16;
+// Telemetry (SQLite persistence and synchronous HTTP uploads) runs on its own
+// tiny runtime so a slow upload backend can never occupy the daemon runtime's
+// workers or blocking threads that command/checkpoint processing depends on.
+const TELEMETRY_RUNTIME_WORKER_THREADS: usize = 1;
+const TELEMETRY_RUNTIME_MAX_BLOCKING_THREADS: usize = 2;
 const BLOCKING_THREAD_KEEP_ALIVE: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// Constrain glibc's per-thread allocation arenas before the daemon creates
@@ -94,6 +99,19 @@ fn runtime() -> &'static tokio::runtime::Runtime {
             HELPER_RUNTIME_MAX_BLOCKING_THREADS,
         )
         .expect("failed to create Tokio runtime")
+    })
+}
+
+/// Dedicated runtime for the daemon's telemetry worker (flush loop, metrics
+/// persistence, upload jobs). Lazily built on first use inside the daemon.
+pub(crate) fn telemetry_runtime() -> &'static tokio::runtime::Runtime {
+    static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+    RUNTIME.get_or_init(|| {
+        build_bounded_runtime(
+            TELEMETRY_RUNTIME_WORKER_THREADS,
+            TELEMETRY_RUNTIME_MAX_BLOCKING_THREADS,
+        )
+        .expect("failed to create telemetry Tokio runtime")
     })
 }
 
@@ -193,6 +211,23 @@ mod tests {
             peak_blocking_concurrency(runtime(), 8, 4),
             4,
             "helper runtime must activate exactly four blocking threads under load"
+        );
+    }
+
+    #[test]
+    fn telemetry_runtime_is_small_and_bounded() {
+        assert_eq!(
+            telemetry_runtime().metrics().num_workers(),
+            TELEMETRY_RUNTIME_WORKER_THREADS
+        );
+        assert_eq!(
+            peak_blocking_concurrency(
+                telemetry_runtime(),
+                6,
+                TELEMETRY_RUNTIME_MAX_BLOCKING_THREADS
+            ),
+            TELEMETRY_RUNTIME_MAX_BLOCKING_THREADS,
+            "telemetry runtime must cap its blocking pool"
         );
     }
 
