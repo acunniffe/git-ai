@@ -122,3 +122,16 @@ fn revision_names_that_merely_begin_with_head_are_not_rewritten() {
         "the branch named `header` must remain intact"
     );
 }
+
+#[test]
+fn non_ascii_revision_names_are_not_rewritten_or_sliced_mid_character() {
+    let fixture = diverged_worktree_with_lowercase_head();
+    let repo = &fixture.repo;
+    repo.git(&["branch", "中文分支", &fixture.primary_commit])
+        .unwrap();
+
+    assert_eq!(
+        repo.git_ai(&["show", "中文分支"]).unwrap(),
+        repo.git_ai(&["show", &fixture.primary_commit]).unwrap()
+    );
+}
