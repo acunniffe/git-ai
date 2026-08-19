@@ -1,3 +1,4 @@
+use crate::commands::revision::normalize_head_rev;
 use crate::error::GitAiError;
 use crate::git::find_repository;
 use crate::git::notes_api::{CommitAuthorship, filter_commits_with_notes};
@@ -79,18 +80,20 @@ fn resolve_commits(repo: &Repository, spec: &str) -> Result<Vec<String>, GitAiEr
             ));
         }
 
-        let range = CommitRange::new_infer_refname(repo, start.to_string(), end.to_string(), None)?;
+        let start = normalize_head_rev(start);
+        let end = normalize_head_rev(end);
+        let range = CommitRange::new_infer_refname(repo, start, end.clone(), None)?;
 
         let mut commits: Vec<String> = range.into_iter().map(|commit| commit.id()).collect();
 
         if commits.is_empty() {
-            let end_commit = repo.revparse_single(end)?;
+            let end_commit = repo.revparse_single(&end)?;
             commits.push(end_commit.id());
         }
 
         Ok(commits)
     } else {
-        let commit = repo.revparse_single(spec)?;
+        let commit = repo.revparse_single(&normalize_head_rev(spec))?;
         Ok(vec![commit.id()])
     }
 }
