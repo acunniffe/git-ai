@@ -25,7 +25,22 @@ struct RepoHookContext {
 /// Commands are started in parallel, and we wait up to 3 seconds for completion before
 /// detaching and continuing so git-ai does not block.
 pub fn post_notes_updated(repo: &Repository, notes: &[(String, String)]) {
-    if notes.is_empty() {
+    post_notes_updated_refs(
+        repo,
+        notes
+            .iter()
+            .map(|(commit_sha, note_content)| (commit_sha.as_str(), note_content.as_str())),
+    );
+}
+
+/// Like [`post_notes_updated`], but borrows the note entries so callers with
+/// large batches never have to clone contents into owned pairs.
+pub(crate) fn post_notes_updated_refs<'a>(
+    repo: &Repository,
+    notes: impl IntoIterator<Item = (&'a str, &'a str)>,
+) {
+    let mut notes = notes.into_iter().peekable();
+    if notes.peek().is_none() {
         return;
     }
 
@@ -43,7 +58,6 @@ pub fn post_notes_updated(repo: &Repository, notes: &[(String, String)]) {
     let branch = context.branch;
     let is_default_branch = context.is_default_branch;
     let payload = notes
-        .iter()
         .map(|(commit_sha, note_content)| {
             serde_json::json!({
                 "commit_sha": commit_sha,

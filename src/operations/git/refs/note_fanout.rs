@@ -41,20 +41,44 @@ pub(super) fn normalize_note_path(path: &mut String) -> Option<usize> {
     (valid && component_len > 0).then_some(fanout_depth)
 }
 
-pub(super) fn append_note_deletions(script: &mut Vec<u8>, oid: &str) {
+pub(super) fn write_note_deletions(
+    writer: &mut (impl std::io::Write + ?Sized),
+    oid: &str,
+) -> std::io::Result<()> {
+    // Emit each path directly into fast-import's bounded stdin buffer.
+    // Building one script would retain 20 paths per SHA-1 note and 32 per
+    // SHA-256 note.
     let oid = oid.as_bytes();
-    script.extend_from_slice(b"D ");
-    script.extend_from_slice(oid);
-    script.push(b'\n');
+    writer.write_all(b"D ")?;
+    writer.write_all(oid)?;
+    writer.write_all(b"\n")?;
 
     for prefix_end in (2..oid.len()).step_by(2) {
-        script.extend_from_slice(b"D ");
+        writer.write_all(b"D ")?;
         for component_start in (0..prefix_end).step_by(2) {
-            script.extend_from_slice(&oid[component_start..component_start + 2]);
-            script.push(b'/');
+            writer.write_all(&oid[component_start..component_start + 2])?;
+            writer.write_all(b"/")?;
         }
-        script.extend_from_slice(&oid[prefix_end..]);
-        script.push(b'\n');
+        writer.write_all(&oid[prefix_end..])?;
+        writer.write_all(b"\n")?;
+    }
+
+    Ok(())
+}
+
+/// Writes the standard single-level fanout note path for `oid` (the same
+/// shape [`notes_path_for_object`] returns) without allocating a `String`.
+pub(super) fn write_note_path(
+    writer: &mut (impl std::io::Write + ?Sized),
+    oid: &str,
+) -> std::io::Result<()> {
+    if oid.len() <= 2 {
+        writer.write_all(oid.as_bytes())
+    } else {
+        let oid = oid.as_bytes();
+        writer.write_all(&oid[..2])?;
+        writer.write_all(b"/")?;
+        writer.write_all(&oid[2..])
     }
 }
 
@@ -63,18 +87,35 @@ mod tests {
     use super::*;
 
     #[test]
-    fn append_note_deletions_includes_every_fanout_depth() {
+    fn write_note_deletions_includes_every_fanout_depth() {
         let mut short_script = Vec::new();
-        append_note_deletions(&mut short_script, "a");
-        append_note_deletions(&mut short_script, "ab");
+        write_note_deletions(&mut short_script, "a").unwrap();
+        write_note_deletions(&mut short_script, "ab").unwrap();
         assert_eq!(String::from_utf8(short_script).unwrap(), "D a\nD ab\n");
 
         let mut script = Vec::new();
-        append_note_deletions(&mut script, "abcdef");
+        write_note_deletions(&mut script, "abcdef").unwrap();
         assert_eq!(
             String::from_utf8(script).unwrap(),
             "D abcdef\nD ab/cdef\nD ab/cd/ef\n"
         );
+    }
+
+    #[test]
+    fn write_note_path_matches_notes_path_for_object() {
+        for oid in [
+            "a",
+            "ab",
+            "abcdef",
+            "abcdef1234567890abcdef1234567890abcdef12",
+        ] {
+            let mut written = Vec::new();
+            write_note_path(&mut written, oid).unwrap();
+            assert_eq!(
+                String::from_utf8(written).unwrap(),
+                notes_path_for_object(oid)
+            );
+        }
     }
 
     #[test]
