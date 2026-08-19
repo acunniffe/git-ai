@@ -3,6 +3,7 @@ pub mod editor_cli;
 pub(crate) mod editor_extension;
 #[cfg(test)]
 mod editor_extension_tests;
+pub(crate) mod extension_manifests;
 pub mod file_ops;
 pub mod hook_installer;
 pub mod hooks_merge;

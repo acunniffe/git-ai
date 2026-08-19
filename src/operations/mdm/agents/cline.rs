@@ -1,4 +1,5 @@
 use crate::error::GitAiError;
+use crate::operations::mdm::extension_manifests;
 use crate::operations::mdm::file_ops::{generate_diff, write_atomic};
 use crate::operations::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
 use crate::operations::mdm::paths::{home_dir, normalize_windows_path_for_shell};
@@ -27,58 +28,34 @@ impl ClineInstaller {
             return vec![PathBuf::from(test_path)];
         }
 
-        let products = ["Code", "Code - Insiders", "Cursor"];
-
         #[cfg(target_os = "macos")]
-        {
-            let base = home_dir().join("Library").join("Application Support");
-            products
-                .iter()
-                .map(|p| {
-                    base.join(p)
-                        .join("User")
-                        .join("globalStorage")
-                        .join(CLINE_PUBLISHER_ID)
-                })
-                .collect()
-        }
+        let base = Some(home_dir().join("Library").join("Application Support"));
 
         #[cfg(target_os = "linux")]
-        {
-            let base = home_dir().join(".config");
-            products
-                .iter()
-                .map(|p| {
-                    base.join(p)
-                        .join("User")
-                        .join("globalStorage")
-                        .join(CLINE_PUBLISHER_ID)
-                })
-                .collect()
-        }
+        let base = Some(home_dir().join(".config"));
 
         #[cfg(target_os = "windows")]
-        {
-            let base = if let Ok(app_data) = std::env::var("APPDATA") {
-                PathBuf::from(app_data)
-            } else {
-                home_dir().join("AppData").join("Roaming")
-            };
-            products
-                .iter()
-                .map(|p| {
-                    base.join(p)
-                        .join("User")
-                        .join("globalStorage")
-                        .join(CLINE_PUBLISHER_ID)
-                })
-                .collect()
-        }
+        let base = Some(match std::env::var("APPDATA") {
+            Ok(app_data) => PathBuf::from(app_data),
+            Err(_) => home_dir().join("AppData").join("Roaming"),
+        });
 
         #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
-        {
-            vec![]
-        }
+        let base: Option<PathBuf> = None;
+
+        let Some(base) = base else {
+            return vec![];
+        };
+
+        ["Code", "Code - Insiders", "Cursor"]
+            .iter()
+            .map(|p| {
+                base.join(p)
+                    .join("User")
+                    .join("globalStorage")
+                    .join(CLINE_PUBLISHER_ID)
+            })
+            .collect()
     }
 
     fn hooks_dir() -> PathBuf {
@@ -255,7 +232,8 @@ impl HookInstaller for ClineInstaller {
     }
 
     fn check_hooks(&self, params: &HookInstallerParams) -> Result<HookCheckResult, GitAiError> {
-        let tool_installed = Self::storage_paths().iter().any(|p| p.exists());
+        let tool_installed = Self::storage_paths().iter().any(|p| p.exists())
+            || extension_manifests::any_manifest_lists_extension(CLINE_PUBLISHER_ID);
 
         if !tool_installed || Self::is_windows() {
             // Cline hooks are not supported on Windows today; report the tool if it
