@@ -415,10 +415,9 @@ fn test_stats_cli_empty_tree_range() {
     assert_eq!(stats.authorship_stats.total_commits, 2);
     assert_eq!(stats.range_stats.git_diff_added_lines, 2);
     assert_eq!(stats.range_stats.ai_additions, 1);
-    // Range stats use legacy Human checkpoints and pass known_human_accepted=0,
-    // so human lines appear as unknown_additions (not human_additions).
-    assert_eq!(stats.range_stats.human_additions, 0);
-    assert_eq!(stats.range_stats.unknown_additions, 1);
+    // Known-human lines in the range count as human additions, not unknown.
+    assert_eq!(stats.range_stats.human_additions, 1);
+    assert_eq!(stats.range_stats.unknown_additions, 0);
 }
 
 #[test]
