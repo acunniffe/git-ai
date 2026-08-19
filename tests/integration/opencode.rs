@@ -483,6 +483,59 @@ fn test_opencode_e2e_checkpoint_and_commit() {
     );
 }
 
+/// Markdown files created through OpenCode's write tool must get AI attribution
+/// and count toward AI stats like any other file
+/// (https://github.com/git-ai-project/git-ai/issues/2162).
+#[test]
+fn test_opencode_new_markdown_file_gets_ai_attribution() {
+    use crate::repos::test_file::ExpectedLineExt;
+    use crate::repos::test_repo::TestRepo;
+
+    let repo = TestRepo::new();
+    let repo_root = repo.canonical_path();
+
+    fs::write(repo_root.join("README.md"), "# Project\n").unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+
+    let skill_path = repo_root.join("skill.md");
+    let pre_hook_input = json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "md-session-1",
+        "tool_use_id": "call-md-1",
+        "cwd": repo_root.to_string_lossy().to_string(),
+        "tool_name": "write",
+        "tool_input": {
+            "filePath": skill_path.to_string_lossy().to_string()
+        }
+    })
+    .to_string();
+    repo.git_ai(&["checkpoint", "opencode", "--hook-input", &pre_hook_input])
+        .unwrap();
+
+    fs::write(&skill_path, "# Skill\nAI generated instructions\n").unwrap();
+
+    let post_hook_input = json!({
+        "hook_event_name": "PostToolUse",
+        "session_id": "md-session-1",
+        "tool_use_id": "call-md-1",
+        "cwd": repo_root.to_string_lossy().to_string(),
+        "tool_name": "write",
+        "tool_input": {
+            "filePath": skill_path.to_string_lossy().to_string()
+        }
+    })
+    .to_string();
+    repo.git_ai(&["checkpoint", "opencode", "--hook-input", &post_hook_input])
+        .unwrap();
+
+    repo.stage_all_and_commit("Add skill.md").unwrap();
+    let mut file = repo.filename("skill.md");
+    file.assert_committed_lines(crate::lines![
+        "# Skill".ai(),
+        "AI generated instructions".ai(),
+    ]);
+}
+
 #[test]
 fn test_opencode_transcript_ids_extracted_from_fixture() {
     use chrono::{DateTime, Utc};

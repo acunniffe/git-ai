@@ -299,10 +299,10 @@ mod tests {
     fn test_opencode_plugin_content_is_valid_typescript() {
         let content = OPENCODE_PLUGIN_CONTENT;
 
-        assert!(content.contains("import type { Plugin }"));
+        assert!(content.contains("import type { Plugin, PluginModule }"));
         assert!(content.contains("@opencode-ai/plugin"));
         assert!(content.contains("export const GitAiPlugin: Plugin"));
-        assert!(content.contains("export default GitAiPlugin"));
+        assert!(content.contains("export default GitAiPluginModule"));
         assert!(content.contains("child_process"));
         assert!(content.contains("\"tool.execute.before\""));
         assert!(content.contains("\"tool.execute.after\""));
@@ -315,6 +315,22 @@ mod tests {
         assert!(content.contains("session_id"));
         assert!(content.contains("PreToolUse"));
         assert!(content.contains("PostToolUse"));
+    }
+
+    #[test]
+    fn test_opencode_plugin_default_export_is_module_with_id() {
+        // OpenCode resolves a file-based plugin's display name from the `id` of a
+        // default-exported plugin module; without it the UI falls back to the
+        // plugin's file:// path (https://github.com/git-ai-project/git-ai/issues/2153).
+        let content = OPENCODE_PLUGIN_CONTENT;
+
+        assert!(content.contains(r#"id: "git-ai""#));
+        assert!(content.contains("server: GitAiPlugin"));
+        assert!(content.contains("const GitAiPluginModule: PluginModule"));
+        assert!(content.contains("export default GitAiPluginModule"));
+        // Older OpenCode loaders call every export as a function, so the named
+        // plugin function export must remain for backwards compatibility.
+        assert!(content.contains("export const GitAiPlugin: Plugin"));
     }
 
     #[test]
