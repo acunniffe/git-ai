@@ -312,6 +312,9 @@ fn ensure_daemon(dry_run: bool) {
 /// Main entry point for install-hooks command
 pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
     let options = parse_install_options(args)?;
+    let whitelist_agent_sandboxes = config::Config::fresh()
+        .get_feature_flags()
+        .whitelist_agent_sandboxes;
     let install_config = InstallConfig {
         api_base: options.api_base.clone().or_else(|| {
             std::env::var("API_BASE")
@@ -344,7 +347,11 @@ pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
     let params = HookInstallerParams { binary_path };
 
     // Run async operations and convert result.
-    let statuses = crate::tokio_runtime::block_on(async_run_install(&params, &options))?;
+    let statuses = crate::tokio_runtime::block_on(async_run_install(
+        &params,
+        &options,
+        whitelist_agent_sandboxes,
+    ))?;
 
     // Clean up legacy envelope logs directory and related artifacts.
     // These are no longer used — all telemetry now routes through the daemon.
@@ -527,6 +534,7 @@ pub fn run_uninstall(args: &[String]) -> Result<HashMap<String, String>, GitAiEr
 async fn async_run_install(
     params: &HookInstallerParams,
     options: &InstallOptions,
+    whitelist_agent_sandboxes: bool,
 ) -> Result<HashMap<String, InstallStatus>, GitAiError> {
     let mut any_checked = false;
     let mut has_changes = false;
@@ -537,7 +545,7 @@ async fn async_run_install(
     // === Coding Agents ===
     println!("\n\x1b[1mCoding Agents\x1b[0m");
 
-    let installers = get_all_installers();
+    let installers = get_all_installers(whitelist_agent_sandboxes);
     let mut installed_tools: HashSet<String> = HashSet::new();
     // Track agents whose hooks were updated (name, process_names) for restart warnings
     let mut updated_agents: Vec<(String, Vec<String>)> = Vec::new();
@@ -880,7 +888,7 @@ async fn async_run_uninstall(
     // === Coding Agents ===
     println!("\n\x1b[1mCoding Agents\x1b[0m");
 
-    let installers = get_all_installers();
+    let installers = get_all_installers(false);
 
     for installer in installers {
         let name = installer.name();

@@ -84,6 +84,7 @@ define_feature_flags!(
     transcript_sweep: transcript_sweep, debug = true, release = true,
     checkpoint_debug_log: checkpoint_debug_log, debug = false, release = false,
     bash_checkpoints_v2: bash_checkpoints_v2, debug = false, release = false,
+    whitelist_agent_sandboxes: whitelist_agent_sandboxes, debug = false, release = false,
     daemon_log_upload: daemon_log_upload, debug = true, release = true,
     rewrite_metrics_events: rewrite_metrics_events, debug = true, release = false,
 );
@@ -141,6 +142,7 @@ mod tests {
             assert!(flags.transcript_sweep);
             assert!(!flags.checkpoint_debug_log);
             assert!(!flags.bash_checkpoints_v2);
+            assert!(!flags.whitelist_agent_sandboxes);
             assert!(flags.daemon_log_upload);
             assert!(flags.rewrite_metrics_events);
         }
@@ -152,6 +154,7 @@ mod tests {
             assert!(flags.transcript_sweep);
             assert!(!flags.checkpoint_debug_log);
             assert!(!flags.bash_checkpoints_v2);
+            assert!(!flags.whitelist_agent_sandboxes);
             assert!(flags.daemon_log_upload);
             assert!(!flags.rewrite_metrics_events);
         }
@@ -273,6 +276,7 @@ mod tests {
             transcript_sweep: true,
             checkpoint_debug_log: false,
             bash_checkpoints_v2: true,
+            whitelist_agent_sandboxes: true,
             daemon_log_upload: true,
             rewrite_metrics_events: true,
         };
@@ -284,6 +288,7 @@ mod tests {
         assert!(serialized.contains("transcript_sweep"));
         assert!(serialized.contains("checkpoint_debug_log"));
         assert!(serialized.contains("bash_checkpoints_v2"));
+        assert!(serialized.contains("whitelist_agent_sandboxes"));
         assert!(serialized.contains("daemon_log_upload"));
         assert!(serialized.contains("rewrite_metrics_events"));
     }
@@ -297,6 +302,7 @@ mod tests {
             transcript_sweep: true,
             checkpoint_debug_log: true,
             bash_checkpoints_v2: true,
+            whitelist_agent_sandboxes: true,
             daemon_log_upload: true,
             rewrite_metrics_events: true,
         };
@@ -307,6 +313,10 @@ mod tests {
         assert_eq!(cloned.transcript_sweep, flags.transcript_sweep);
         assert_eq!(cloned.checkpoint_debug_log, flags.checkpoint_debug_log);
         assert_eq!(cloned.bash_checkpoints_v2, flags.bash_checkpoints_v2);
+        assert_eq!(
+            cloned.whitelist_agent_sandboxes,
+            flags.whitelist_agent_sandboxes
+        );
         assert_eq!(cloned.daemon_log_upload, flags.daemon_log_upload);
         assert_eq!(cloned.rewrite_metrics_events, flags.rewrite_metrics_events);
     }

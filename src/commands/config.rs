@@ -152,7 +152,7 @@ fn print_config_help() {
     println!("  git-ai config set exclude_repositories .         # Uses current repo's remotes");
     println!("  git-ai config --add exclude_repositories \"temp/*\"");
     println!("  git-ai config --add allow_repositories ~/projects/my-repo");
-    println!("  git-ai config --add feature_flags.my_flag true");
+    println!("  git-ai config set feature_flags.whitelist_agent_sandboxes true");
     println!("  git-ai config --add git_ai_hooks.post_notes_updated \"./my-hook.sh\"");
     println!("  git-ai config set codex_hooks_format hooks_json");
     println!("  git-ai config set allow_superuser true");
@@ -942,6 +942,11 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
         if key_path.len() == 2 {
             // Simple nested key: feature_flags.key
             let parsed_value = parse_value(value)?;
+            if key_path[1] == "whitelist_agent_sandboxes" && !parsed_value.is_boolean() {
+                return Err(
+                    "feature_flags.whitelist_agent_sandboxes must be true or false".to_string(),
+                );
+            }
             if add_mode {
                 // For add mode on objects, this is an upsert
                 flags_obj.insert(key_path[1].clone(), parsed_value);

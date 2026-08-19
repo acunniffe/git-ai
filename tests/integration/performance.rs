@@ -21,6 +21,7 @@ fn setup() {
         transcript_sweep: true,
         checkpoint_debug_log: false,
         bash_checkpoints_v2: false,
+        whitelist_agent_sandboxes: false,
         daemon_log_upload: true,
         rewrite_metrics_events: false,
     };

@@ -274,6 +274,140 @@ fn plain_install_hooks_preserves_the_invoking_user_home() {
 }
 
 #[test]
+#[cfg(unix)]
+fn install_hooks_only_allows_git_ai_trace_socket_in_codex_sandboxes_when_configured() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let codex_dir = repo.test_home_path().join(".codex");
+    let config_path = codex_dir.join("config.toml");
+    fs::create_dir_all(&codex_dir).unwrap();
+    fs::write(
+        &config_path,
+        r#"model = "gpt-5"
+
+[features.network_proxy.unix_sockets]
+"/tmp/existing-agent.sock" = "allow"
+"#,
+    )
+    .unwrap();
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(&["install-hooks"], &[]);
+    command.env_remove("CODEX_HOME");
+    let output = command.output().expect("run git-ai install-hooks");
+    assert!(
+        output.status.success(),
+        "install-hooks failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(&config_path).expect("read default Codex config"))
+            .expect("parse default Codex config");
+    let network_proxy = config
+        .get("features")
+        .and_then(|features| features.get("network_proxy"))
+        .expect("existing Codex network proxy config should remain");
+    assert!(
+        network_proxy.get("enabled").is_none(),
+        "plain install-hooks must not enable the Codex network proxy"
+    );
+    let trace_socket_path = repo.daemon_trace_socket_path();
+    let trace_socket = trace_socket_path.to_string_lossy();
+    assert!(
+        network_proxy
+            .get("unix_sockets")
+            .and_then(toml::Value::as_table)
+            .and_then(|allowed_sockets| allowed_sockets.get(trace_socket.as_ref()))
+            .is_none(),
+        "plain install-hooks must not allow the git-ai trace2 socket"
+    );
+
+    repo.git_ai(&[
+        "config",
+        "set",
+        "feature_flags.whitelist_agent_sandboxes",
+        "true",
+    ])
+    .expect("enable agent sandbox whitelisting");
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(&["install-hooks"], &[]);
+    command.env_remove("CODEX_HOME");
+    let output = command
+        .output()
+        .expect("run configured git-ai install-hooks");
+    assert!(
+        output.status.success(),
+        "configured install-hooks failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(&config_path).expect("read installed Codex config"))
+            .expect("parse installed Codex config");
+    let allowed_sockets = config
+        .get("features")
+        .and_then(|features| features.get("network_proxy"))
+        .and_then(|network_proxy| network_proxy.get("unix_sockets"))
+        .and_then(toml::Value::as_table)
+        .expect("Codex network proxy Unix socket allowlist");
+    assert_eq!(
+        config
+            .get("features")
+            .and_then(|features| features.get("network_proxy"))
+            .and_then(|network_proxy| network_proxy.get("enabled"))
+            .and_then(toml::Value::as_bool),
+        Some(true),
+        "the Codex network proxy must be enabled for its socket allowlist to apply"
+    );
+    assert_eq!(
+        allowed_sockets
+            .get(trace_socket.as_ref())
+            .and_then(toml::Value::as_str),
+        Some("allow"),
+        "git-ai install-hooks must allow the trace2 socket in Codex sandboxes"
+    );
+    assert_eq!(
+        allowed_sockets
+            .get("/tmp/existing-agent.sock")
+            .and_then(toml::Value::as_str),
+        Some("allow"),
+        "existing Codex Unix socket rules must be preserved"
+    );
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(&["uninstall-hooks"], &[]);
+    command.env_remove("CODEX_HOME");
+    let output = command.output().expect("run git-ai uninstall-hooks");
+    assert!(output.status.success(), "uninstall-hooks failed");
+
+    let config: toml::Value =
+        toml::from_str(&fs::read_to_string(&config_path).expect("read uninstalled Codex config"))
+            .expect("parse uninstalled Codex config");
+    let network_proxy = config
+        .get("features")
+        .and_then(|features| features.get("network_proxy"))
+        .expect("existing network proxy config should remain");
+    assert!(
+        network_proxy.get("enabled").is_none(),
+        "uninstall must remove the network proxy setting added by git-ai"
+    );
+    let allowed_sockets = network_proxy
+        .get("unix_sockets")
+        .and_then(toml::Value::as_table)
+        .expect("existing socket rules should remain");
+    assert!(
+        allowed_sockets.get(trace_socket.as_ref()).is_none(),
+        "uninstall must remove the git-ai trace socket rule"
+    );
+    assert_eq!(
+        allowed_sockets
+            .get("/tmp/existing-agent.sock")
+            .and_then(toml::Value::as_str),
+        Some("allow")
+    );
+}
+
+#[test]
 #[cfg(not(windows))]
 fn install_hooks_detects_cline_from_vscode_server_extension_manifest() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);

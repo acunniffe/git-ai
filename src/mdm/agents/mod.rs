@@ -35,11 +35,11 @@ pub use windsurf::WindsurfInstaller;
 use super::hook_installer::HookInstaller;
 
 /// Get all available hook installers
-pub fn get_all_installers() -> Vec<Box<dyn HookInstaller>> {
+pub fn get_all_installers(whitelist_agent_sandboxes: bool) -> Vec<Box<dyn HookInstaller>> {
     let mut installers: Vec<Box<dyn HookInstaller>> = vec![
         Box::new(ClaudeCodeInstaller),
         Box::new(ClineInstaller),
-        Box::new(CodexInstaller),
+        Box::new(CodexInstaller::new(whitelist_agent_sandboxes)),
         Box::new(CursorInstaller),
         Box::new(VSCodeInstaller),
         Box::new(GitHubCopilotInstaller),
