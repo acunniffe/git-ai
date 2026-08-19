@@ -1335,6 +1335,10 @@ impl Repository {
             .get_or_init(|| self.resolve_git_var_identity("GIT_COMMITTER_IDENT"))
     }
 
+    pub(crate) fn cached_git_author_identity(&self) -> Option<&GitAuthorIdentity> {
+        self.cached_author_identity.get()
+    }
+
     pub fn git_author_identity_resolution(&self) -> GitIdentityResolution {
         self.resolve_git_var_identity_resolution("GIT_COMMITTER_IDENT")
     }
