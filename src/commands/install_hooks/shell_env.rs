@@ -65,15 +65,16 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
     use std::io::Write;
     use std::os::unix::ffi::OsStrExt;
 
+    let home = crate::mdm::utils::home_dir();
     if is_package_store_install_dir(install_dir) {
         println!(
             "\nSkipping shell PATH updates for package-managed install at {}.",
             install_dir.display()
         );
+        repair_install_ownership(&home, &[]);
         return Ok(());
     }
 
-    let home = crate::mdm::utils::home_dir();
     let persisted_install_dir = persisted_unix_install_dir(install_dir, &home);
     let install_dir_bytes = persisted_install_dir.as_os_str().as_bytes();
     let install_dir_display = persisted_install_dir.to_string_lossy();
@@ -143,7 +144,12 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
         match write_result {
             Ok(()) => configured.push((shell_name, config_file)),
             Err(error) => {
-                first_error.get_or_insert(error);
+                first_error.get_or_insert_with(|| {
+                    GitAiError::Generic(format!(
+                        "failed to update shell profile {}: {error}",
+                        config_file.display()
+                    ))
+                });
             }
         }
     }
@@ -168,7 +174,11 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
     }
 
     if configured.is_empty() && already_configured.is_empty() {
-        println!("\nCould not detect any shell config files.");
+        if first_error.is_some() {
+            println!("\nDetected shell config files, but could not update any of them.");
+        } else {
+            println!("\nCould not detect any shell config files.");
+        }
         println!("Please add the following line to your shell config and restart:");
         println!("  export PATH=\"{install_dir_display}:$PATH\"");
     }

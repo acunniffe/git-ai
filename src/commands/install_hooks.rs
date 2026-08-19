@@ -355,8 +355,8 @@ pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
         cleanup_legacy_envelope_logs();
     }
 
-    // Keep shell setup last so cross-user ownership repair also covers files
-    // created by the rest of the install-hooks workflow.
+    // Keep shell setup last so cross-user ownership repair covers existing
+    // ~/.git-ai files created by the install-hooks workflow before this point.
     if let Err(error) = shell_env::configure(&params.binary_path, options.dry_run) {
         eprintln!("Warning: Failed to configure shell environment: {error}");
     }

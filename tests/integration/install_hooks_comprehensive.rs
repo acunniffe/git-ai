@@ -478,6 +478,22 @@ fn install_hooks_warns_but_succeeds_when_the_shell_profile_cannot_be_written() {
         "shell profile failures should remain visible: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains(&invoking_home.join(".bashrc").display().to_string()),
+        "the warning should identify the profile that could not be written: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("Detected shell config files, but could not update any of them."),
+        "the guidance should distinguish a write failure from failed detection: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        !String::from_utf8_lossy(&output.stdout)
+            .contains("Could not detect any shell config files.")
+    );
 }
 
 #[cfg(target_os = "linux")]
