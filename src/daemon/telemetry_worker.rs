@@ -696,6 +696,21 @@ fn flush_metrics(events: &[MetricEvent]) {
 }
 
 fn flush_pending_metrics() {
+    let retryable_metrics_ready = MetricsDatabase::global()
+        .and_then(|db| {
+            db.lock()
+                .map_err(|_| GitAiError::Generic("metrics DB lock poisoned".to_string()))
+        })
+        .and_then(|mut db| db.has_retryable_for_upload());
+    match retryable_metrics_ready {
+        Ok(true) => {}
+        Ok(false) => return,
+        Err(e) => {
+            tracing::warn!(%e, "telemetry: failed to inspect pending metrics");
+            return;
+        }
+    }
+
     let context = ApiContext::new(None);
     let api_base_url = context.base_url.clone();
     let client = ApiClient::new(context);

@@ -760,6 +760,24 @@ impl MetricsDatabase {
         Ok(count as usize)
     }
 
+    /// Return whether at least one metric is currently eligible for upload.
+    ///
+    /// Stale processing locks must be released here, before callers decide
+    /// whether to enter the upload path, so a crashed upload can still recover.
+    pub(crate) fn has_retryable_for_upload(&mut self) -> Result<bool, GitAiError> {
+        let now = current_unix_ts();
+        self.release_stale_processing_locks(now)?;
+        self.conn
+            .query_row(
+                RETRYABLE_METRIC_IDS_SQL,
+                params![now as i64, 1_i64],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map(|id| id.is_some())
+            .map_err(GitAiError::SqliteError)
+    }
+
     /// Summarize local metrics delivery state for user-facing diagnostics.
     pub fn status(&self) -> Result<MetricsStatus, GitAiError> {
         let now = current_unix_ts();
@@ -2681,6 +2699,48 @@ mod tests {
         let second_batch = db.dequeue_pending_batch(1).unwrap();
         assert_eq!(second_batch.len(), 1);
         assert_eq!(second_batch[0].id, first_batch[0].id);
+    }
+
+    #[test]
+    fn test_retryable_upload_readiness_releases_stale_processing_locks() {
+        let (mut db, _temp_dir) = create_test_db();
+        assert!(!db.has_retryable_for_upload().unwrap());
+
+        let ids = db.insert_events(&[event_json(days_ago(1))]).unwrap();
+        assert!(db.has_retryable_for_upload().unwrap());
+
+        db.conn
+            .execute(
+                "UPDATE metrics SET processing_started_at = ?1 WHERE id = ?2",
+                params![unix_now() as i64, ids[0]],
+            )
+            .unwrap();
+        assert!(!db.has_retryable_for_upload().unwrap());
+
+        let stale_started_at = unix_now().saturating_sub(METRIC_PROCESSING_LOCK_TIMEOUT_SECS + 1);
+        db.conn
+            .execute(
+                "UPDATE metrics SET processing_started_at = ?1 WHERE id = ?2",
+                params![stale_started_at as i64, ids[0]],
+            )
+            .unwrap();
+        assert!(db.has_retryable_for_upload().unwrap());
+
+        db.conn
+            .execute(
+                "UPDATE metrics SET next_retry_at = ?1 WHERE id = ?2",
+                params![(unix_now() + 60) as i64, ids[0]],
+            )
+            .unwrap();
+        assert!(!db.has_retryable_for_upload().unwrap());
+
+        db.conn
+            .execute(
+                "UPDATE metrics SET attempts = ?1, next_retry_at = 0 WHERE id = ?2",
+                params![MAX_METRIC_UPLOAD_ATTEMPTS as i64, ids[0]],
+            )
+            .unwrap();
+        assert!(!db.has_retryable_for_upload().unwrap());
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+use git_ai::metrics::db::MetricsDatabase;
 use git_ai::sqlite::open_with_memory_limits;
 use std::fs;
 use std::path::Path;
@@ -90,6 +91,39 @@ fn wait_for_schema_migration(path: &Path) {
         );
         std::thread::sleep(Duration::from_millis(25));
     }
+}
+
+#[test]
+fn idle_metrics_flush_skips_git_identity_lookup() {
+    let spawn_log_dir = tempfile::tempdir().unwrap();
+    let spawn_log_path = spawn_log_dir.path().join("git-spawns.log");
+    let spawn_log = spawn_log_path.to_string_lossy().to_string();
+    let metrics_path = spawn_log_dir.path().join("metrics.db");
+    let metrics_db = metrics_path.to_string_lossy().to_string();
+    MetricsDatabase::open_at_path(&metrics_path).unwrap();
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_KEY", "test-api-key"),
+        ("GIT_AI_API_BASE_URL", "http://127.0.0.1:1"),
+        ("GIT_AI_DAEMON_LOG_UPLOAD", "false"),
+        ("GIT_AI_SPAWN_LOG", spawn_log.as_str()),
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db.as_str()),
+        ("GIT_AI_TRANSCRIPT_STREAMING", "false"),
+    ]);
+
+    // Drain startup work before observing two complete idle flush intervals.
+    repo.sync_daemon();
+    open_with_memory_limits(&metrics_path)
+        .unwrap()
+        .execute("DELETE FROM metrics", [])
+        .unwrap();
+    fs::write(&spawn_log_path, "").unwrap();
+    std::thread::sleep(Duration::from_secs(7));
+
+    let git_spawns = fs::read_to_string(&spawn_log_path).unwrap_or_default();
+    assert!(
+        !git_spawns.lines().any(|command| command == "var"),
+        "idle metrics flush unexpectedly resolved Git identity:\n{git_spawns}"
+    );
 }
 
 #[test]
