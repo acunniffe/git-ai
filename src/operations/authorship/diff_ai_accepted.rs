@@ -13,6 +13,9 @@ pub struct DiffAiAcceptedStats {
     pub total_ai_accepted: u32,
     pub per_tool_model: BTreeMap<String, u32>,
     pub per_prompt: BTreeMap<String, u32>,
+    /// Non-ignored added lines per file, kept so callers can resolve
+    /// known-human acceptance against the same diff without re-running it.
+    pub added_lines_by_file: HashMap<String, Vec<u32>>,
 }
 
 pub fn diff_ai_accepted_stats(
@@ -22,23 +25,21 @@ pub fn diff_ai_accepted_stats(
     oldest_commit: Option<&str>,
     ignore_patterns: &[String],
 ) -> Result<DiffAiAcceptedStats, GitAiError> {
-    let added_lines_by_file = repo.diff_added_lines(from_ref, to_ref, None)?;
+    let mut added_lines_by_file = repo.diff_added_lines(from_ref, to_ref, None)?;
     let ignore_matcher = build_ignore_matcher(ignore_patterns);
+    added_lines_by_file
+        .retain(|file_path, _| !should_ignore_file_with_matcher(file_path, &ignore_matcher));
 
     let mut stats = DiffAiAcceptedStats::default();
 
-    for (file_path, mut lines) in added_lines_by_file {
-        if should_ignore_file_with_matcher(&file_path, &ignore_matcher) {
-            continue;
-        }
-
+    for (file_path, lines) in &mut added_lines_by_file {
         if lines.is_empty() {
             continue;
         }
 
         lines.sort_unstable();
         lines.dedup();
-        let line_ranges = LineRange::compress_bounds(&lines);
+        let line_ranges = LineRange::compress_bounds(lines);
 
         if line_ranges.is_empty() {
             continue;
@@ -54,7 +55,7 @@ pub fn diff_ai_accepted_stats(
             options.use_prompt_hashes_as_names = true;
         }
 
-        let blame_result = repo.blame(&file_path, &options);
+        let blame_result = repo.blame(file_path, &options);
         let (line_authors, prompt_records) = match blame_result {
             Ok(result) => result,
             Err(_) => continue,
@@ -66,7 +67,7 @@ pub fn diff_ai_accepted_stats(
             author_tool_map.insert(hash.clone(), tool_model);
         }
 
-        for line in &lines {
+        for line in lines.iter() {
             if let Some(author_hash) = line_authors.get(line)
                 && prompt_records.contains_key(author_hash)
             {
@@ -79,6 +80,7 @@ pub fn diff_ai_accepted_stats(
         }
     }
 
+    stats.added_lines_by_file = added_lines_by_file;
     Ok(stats)
 }
 
@@ -100,6 +102,7 @@ mod tests {
             total_ai_accepted: 10,
             per_tool_model: BTreeMap::new(),
             per_prompt: BTreeMap::new(),
+            added_lines_by_file: HashMap::new(),
         };
         let debug_str = format!("{:?}", stats);
         assert!(debug_str.contains("DiffAiAcceptedStats"));

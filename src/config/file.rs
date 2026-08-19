@@ -156,6 +156,8 @@ pub struct FileConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConfigPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exclude_prompts_in_repositories: Option<Vec<String>>,
     #[serde(
         default,
@@ -816,6 +818,23 @@ pub fn is_real_git_candidate(p: &Path) -> bool {
     is_executable(p) && !path_is_git_ai_binary(p)
 }
 
+#[cfg(any(test, feature = "test-support"))]
+fn parse_test_patterns(field: &str, patterns: Vec<String>) -> Vec<Pattern> {
+    patterns
+        .into_iter()
+        .filter_map(|pattern_str| {
+            Pattern::new(&pattern_str)
+                .map_err(|e| {
+                    eprintln!(
+                        "Warning: Invalid test pattern in {} '{}': {}",
+                        field, pattern_str, e
+                    );
+                })
+                .ok()
+        })
+        .collect()
+}
+
 /// Apply test config patch from environment variable (test-only)
 /// Reads GIT_AI_TEST_CONFIG_PATCH env var containing JSON and applies patches to config
 #[cfg(any(test, feature = "test-support"))]
@@ -823,35 +842,15 @@ pub(crate) fn apply_test_config_patch(config: &mut Config) {
     if let Ok(patch_json) = env::var("GIT_AI_TEST_CONFIG_PATCH")
         && let Ok(patch) = serde_json::from_str::<ConfigPatch>(&patch_json)
     {
+        if let Some(git_path) = patch.git_path {
+            config.git_path = git_path;
+        }
         if let Some(patterns) = patch.allowed_repositories {
-            config.allowed_repositories = patterns
-                .into_iter()
-                .filter_map(|pattern_str| {
-                    Pattern::new(&pattern_str)
-                        .map_err(|e| {
-                            eprintln!(
-                                "Warning: Invalid test pattern in allowed_repositories '{}': {}",
-                                pattern_str, e
-                            );
-                        })
-                        .ok()
-                })
-                .collect();
+            config.allowed_repositories = parse_test_patterns("allowed_repositories", patterns);
         }
         if let Some(patterns) = patch.exclude_prompts_in_repositories {
-            config.exclude_prompts_in_repositories = patterns
-                    .into_iter()
-                    .filter_map(|pattern_str| {
-                        Pattern::new(&pattern_str)
-                            .map_err(|e| {
-                                eprintln!(
-                                    "Warning: Invalid test pattern in exclude_prompts_in_repositories '{}': {}",
-                                    pattern_str, e
-                                );
-                            })
-                            .ok()
-                    })
-                    .collect();
+            config.exclude_prompts_in_repositories =
+                parse_test_patterns("exclude_prompts_in_repositories", patterns);
         }
         if let Some(telemetry_oss_disabled) = patch.telemetry_oss_disabled {
             config.telemetry_oss_disabled = telemetry_oss_disabled;

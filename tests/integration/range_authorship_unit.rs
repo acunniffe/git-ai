@@ -225,9 +225,9 @@ fn test_range_authorship_mixed_commits() {
     // Range authorship merges attributions from start to end, filtering to commits in range
     // The exact AI/human split depends on the merge attribution logic
     assert_eq!(stats.range_stats.ai_additions, 2);
-    // range_authorship passes known_human_accepted=0, so human lines appear as unknown_additions
-    assert_eq!(stats.range_stats.human_additions, 0);
-    assert_eq!(stats.range_stats.unknown_additions, 1);
+    // Known-human lines in the range count as human additions, not unknown.
+    assert_eq!(stats.range_stats.human_additions, 1);
+    assert_eq!(stats.range_stats.unknown_additions, 0);
     assert_eq!(stats.range_stats.git_diff_added_lines, 3);
 }
 
@@ -451,10 +451,10 @@ fn test_range_authorship_mixed_lockfile_and_source() {
     assert_eq!(stats.range_stats.git_diff_added_lines, 3); // Only lib.rs, package-lock.json excluded
     // Verify the total is much less than 3003 (if lockfile was included)
     assert!(stats.range_stats.git_diff_added_lines < 100);
-    // Verify that some AI work is detected and unattested lines exist
+    // Verify that some AI work is detected and human lines are correctly
+    // counted as human additions rather than unknown.
     assert!(stats.range_stats.ai_additions > 0);
-    // range_authorship passes known_human_accepted=0, so human lines show as unknown_additions
-    assert!(stats.range_stats.unknown_additions > 0);
+    assert!(stats.range_stats.human_additions > 0);
 }
 
 #[test]
@@ -1034,4 +1034,89 @@ fn test_range_authorship_with_glob_patterns() {
     // Should only count the 1 line in main.rs, ignoring 1700 lines in lockfiles and generated files
     assert_eq!(stats.range_stats.git_diff_added_lines, 1);
     assert_eq!(stats.range_stats.ai_additions, 1);
+}
+
+#[test]
+fn test_range_authorship_counts_known_human_additions() {
+    // Range stats hardcoded human additions to zero, so known-human lines in
+    // a range surfaced as unknown additions instead of human additions.
+    use crate::repos::test_file::ExpectedLineExt;
+
+    let repo = TestRepo::new();
+
+    std::fs::write(repo.path().join("test.txt"), "Human Line 1\n").unwrap();
+    repo.git(&["add", "test.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "test.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Initial human commit").unwrap();
+    let mut file = repo.filename("test.txt");
+    file.assert_committed_lines(crate::lines!["Human Line 1".human()]);
+    let first_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+
+    std::fs::write(
+        repo.path().join("test.txt"),
+        "Human Line 1\nAI Line 2\nAI Line 3\n",
+    )
+    .unwrap();
+    repo.git(&["add", "test.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "test.txt"]).unwrap();
+    repo.stage_all_and_commit("AI adds 2 lines").unwrap();
+    file.assert_committed_lines(crate::lines![
+        "Human Line 1".human(),
+        "AI Line 2".ai(),
+        "AI Line 3".ai(),
+    ]);
+
+    std::fs::write(
+        repo.path().join("test.txt"),
+        "Human Line 1\nAI Line 2\nAI Line 3\nHuman Line 4\nHuman Line 5\n",
+    )
+    .unwrap();
+    repo.git(&["add", "test.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "test.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Human adds 2 more lines")
+        .unwrap();
+    file.assert_committed_lines(crate::lines![
+        "Human Line 1".human(),
+        "AI Line 2".ai(),
+        "AI Line 3".ai(),
+        "Human Line 4".human(),
+        "Human Line 5".human(),
+    ]);
+    let second_sha = repo
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+
+    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let commit_range = CommitRange::new_infer_refname(
+        &gitai_repo,
+        first_sha.clone(),
+        second_sha.clone(),
+        Some("HEAD".to_string()),
+    )
+    .unwrap();
+
+    let stats = range_authorship(commit_range, false, &[], None).unwrap();
+
+    // The two known-human lines added inside the range count as human
+    // additions, not unknown additions.
+    assert!(
+        stats.range_stats.human_additions > 0,
+        "known-human lines in the range should be counted as human additions, got {:?}",
+        stats.range_stats
+    );
+    assert!(
+        stats.range_stats.unknown_additions < stats.range_stats.human_additions,
+        "unknown_additions should not absorb the known-human lines, got {:?}",
+        stats.range_stats
+    );
+    assert_eq!(stats.authorship_stats.total_commits, 2);
+    assert_eq!(stats.authorship_stats.commits_with_authorship, 2);
 }

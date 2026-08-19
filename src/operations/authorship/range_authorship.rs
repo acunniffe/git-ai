@@ -11,7 +11,8 @@ use crate::operations::authorship::ignore::{
     build_ignore_matcher, should_ignore_file_with_matcher,
 };
 use crate::operations::authorship::stats::{
-    CommitStats, stats_for_commit_stats, stats_from_authorship_log,
+    CommitStats, accepted_lines_from_attestations, stats_for_commit_stats,
+    stats_from_authorship_log,
 };
 use crate::operations::git::notes_api::{CommitAuthorship, filter_commits_with_notes};
 use crate::operations::git::repository::{CommitRange, Repository, parse_numstat_line};
@@ -405,13 +406,21 @@ fn calculate_range_stats_direct(
     let authorship_log =
         create_authorship_log_for_range(repo, &start_sha, &end_sha, commit_shas, ignore_patterns)?;
 
-    // Step 3: Calculate stats from the authorship log
+    // Step 3: Resolve known-human acceptance from the range's attestations so
+    // human additions are not misreported as unknown.
+    let (_ai_from_log, known_human_accepted, _ai_by_tool) = accepted_lines_from_attestations(
+        Some(&authorship_log),
+        &diff_ai_stats.added_lines_by_file,
+        false,
+    );
+
+    // Step 4: Calculate stats from the authorship log
     let stats = stats_from_authorship_log(
         Some(&authorship_log),
         git_diff_added_lines,
         git_diff_deleted_lines,
         diff_ai_stats.total_ai_accepted,
-        0,
+        known_human_accepted,
         &diff_ai_stats.per_tool_model,
     );
 
