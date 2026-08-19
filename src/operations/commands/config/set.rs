@@ -355,13 +355,13 @@ pub(super) fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result
                 backend.kind = kind;
                 file_config.notes_backend = Some(backend);
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[notes_backend.kind]: {}", kind.as_str());
+                println!("[notes_backend.kind]: {}", kind.as_str());
             }
             "backend_url" => {
                 backend.backend_url = Some(value.to_string());
                 file_config.notes_backend = Some(backend);
                 crate::config::save_file_config(&file_config)?;
-                eprintln!("[notes_backend.backend_url]: {}", value);
+                println!("[notes_backend.backend_url]: {}", value);
             }
             other => return Err(format!("Unknown notes_backend field: {}", other)),
         }
