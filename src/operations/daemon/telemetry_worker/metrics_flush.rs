@@ -40,7 +40,7 @@ fn backfill_metrics_event_metadata(db: MetricsDbHandle) -> Result<(), GitAiError
             let mut db_lock = db
                 .lock()
                 .map_err(|_| PersistenceError::LockPoisoned { what: "metrics DB" })?;
-            db_lock.backfill_event_metadata_batch_after(after_id, METADATA_BACKFILL_BATCH_SIZE)?
+            db_lock.backfill_event_metadata_batch_once(after_id, METADATA_BACKFILL_BATCH_SIZE)?
         };
 
         let Some(id) = last_id else {

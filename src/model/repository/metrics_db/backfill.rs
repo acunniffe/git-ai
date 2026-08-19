@@ -1,11 +1,48 @@
 use crate::error::GitAiError;
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 
 use super::MetricsDatabase;
 use super::event_writes::{METADATA_BACKFILL_BATCH_SIZE, extract_metric_event_metadata};
 use super::types::MetricMetadataBackfillSummary;
 
+const EVENT_METADATA_BACKFILL_COMPLETED_KEY: &str = "event_metadata_backfill_completed";
+
 impl MetricsDatabase {
+    /// Whether the one-time event-metadata backfill has already run to completion.
+    pub(crate) fn event_metadata_backfill_completed(&self) -> Result<bool, GitAiError> {
+        let completed: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM schema_metadata WHERE key = ?1",
+                params![EVENT_METADATA_BACKFILL_COMPLETED_KEY],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(completed.as_deref() == Some("1"))
+    }
+
+    /// Backfill one bounded batch, permanently marking the one-time migration
+    /// complete once a scan reaches the end of the table. Completed databases
+    /// skip all further scanning.
+    pub(crate) fn backfill_event_metadata_batch_once(
+        &mut self,
+        after_id: i64,
+        limit: usize,
+    ) -> Result<(MetricMetadataBackfillSummary, Option<i64>), GitAiError> {
+        if limit == 0 || self.event_metadata_backfill_completed()? {
+            return Ok((MetricMetadataBackfillSummary::default(), None));
+        }
+
+        let result = self.backfill_event_metadata_batch_after(after_id, limit)?;
+        if result.0.scanned < limit {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO schema_metadata (key, value) VALUES (?1, '1')",
+                params![EVENT_METADATA_BACKFILL_COMPLETED_KEY],
+            )?;
+        }
+        Ok(result)
+    }
+
     /// Backfill cached event metadata for one bounded batch of legacy rows.
     pub fn backfill_event_metadata_batch(
         &mut self,

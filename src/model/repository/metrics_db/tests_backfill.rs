@@ -131,3 +131,44 @@ fn test_backfill_event_metadata_batch_after_advances_cursor() {
     assert_eq!(empty_summary, MetricMetadataBackfillSummary::default());
     assert_eq!(empty_last_id, None);
 }
+
+#[test]
+fn test_backfill_event_metadata_batch_once_marks_completion() {
+    let (mut db, temp_dir) = create_test_db();
+    db.conn
+        .execute(
+            "INSERT INTO metrics (event_json) VALUES (?1), (?2)",
+            params![event_json(days_ago(2)), event_json(days_ago(1))],
+        )
+        .unwrap();
+
+    // A full batch leaves the migration incomplete; the short batch that
+    // reaches the end of the table marks it complete.
+    let (first_summary, last_id) = db.backfill_event_metadata_batch_once(0, 1).unwrap();
+    assert_eq!(first_summary.scanned, 1);
+    assert!(!db.event_metadata_backfill_completed().unwrap());
+
+    let (second_summary, _) = db
+        .backfill_event_metadata_batch_once(last_id.unwrap(), 2)
+        .unwrap();
+    assert_eq!(second_summary.scanned, 1);
+    assert!(db.event_metadata_backfill_completed().unwrap());
+
+    // Completion survives reopening the database.
+    drop(db);
+    let mut db = MetricsDatabase::open_at_path(&temp_dir.path().join("test-metrics.db")).unwrap();
+    assert!(db.event_metadata_backfill_completed().unwrap());
+
+    // Rows inserted after completion are never re-scanned by the one-time
+    // backfill; live writes populate their own metadata.
+    db.conn
+        .execute(
+            "INSERT INTO metrics (event_json) VALUES (?1)",
+            params![event_json(days_ago(0))],
+        )
+        .unwrap();
+
+    let skipped = db.backfill_event_metadata_batch_once(0, 100).unwrap();
+    assert_eq!(skipped.0.scanned, 0);
+    assert_eq!(skipped.1, None);
+}
