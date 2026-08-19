@@ -1,7 +1,7 @@
 use crate::model::stream_types::StreamError;
+use crate::operations::streams::codex_model::extract_model_from_codex_jsonl;
+use crate::operations::streams::jsonl_scan::{scan_jsonl_head, scan_jsonl_tail};
 use crate::operations::streams::sweep::StreamFormat;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 pub fn extract_model(
@@ -13,6 +13,7 @@ pub fn extract_model(
         StreamFormat::ClaudeJsonl
         | StreamFormat::CopilotEventStreamJsonl
         | StreamFormat::GeminiJsonl => extract_model_from_jsonl_tail(path),
+        StreamFormat::CodexJsonl => extract_model_from_codex_jsonl(path),
         StreamFormat::CopilotSessionJson => extract_model_from_copilot_session_json(path),
         StreamFormat::AmpThreadJson => extract_model_from_amp_thread_json(path),
         StreamFormat::OpenCodeSqlite => extract_model_from_opencode_sqlite(path, session_id),
@@ -41,42 +42,14 @@ pub fn extract_model_from_droid_settings(
 }
 
 fn extract_model_from_jsonl_tail(path: &Path) -> Result<Option<String>, StreamError> {
-    let mut file = match File::open(path) {
-        Ok(f) => f,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => return Ok(None),
-        Err(_) => return Ok(None),
-    };
-
-    let file_size = match file.metadata() {
-        Ok(m) => m.len(),
-        Err(_) => return Ok(None),
-    };
-
-    if file_size == 0 {
-        return Ok(None);
-    }
-
-    let read_size = std::cmp::min(51200, file_size);
-    let seek_pos = file_size - read_size;
-
-    if file.seek(SeekFrom::Start(seek_pos)).is_err() {
-        return Ok(None);
-    }
-
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
-
-    for line in lines.iter().rev() {
-        if let Some(model) = extract_model_from_jsonl_line(line) {
-            return Ok(Some(model));
-        }
+    let (model, tail_was_truncated) = scan_jsonl_tail(path, extract_model_from_jsonl_line)?;
+    if model.is_some() {
+        return Ok(model);
     }
 
     // Tail didn't contain the model — check the head (Copilot CLI emits
     // session.model_change only at session start, which may fall outside the tail window).
-    if seek_pos > 0
-        && let Some(model) = extract_model_from_jsonl_head(path)
+    if tail_was_truncated && let Some(model) = scan_jsonl_head(path, extract_model_from_jsonl_line)
     {
         return Ok(Some(model));
     }
@@ -106,24 +79,15 @@ fn extract_model_from_jsonl_line(line: &str) -> Option<String> {
         .and_then(|v| v.as_str())
         .or_else(|| json.get("model").and_then(|v| v.as_str()));
 
-    if let Some(model) = candidate
-        && model != "<synthetic>"
-    {
-        return Some(model.to_string());
-    }
-
-    None
+    candidate.and_then(normalize_model)
 }
 
-fn extract_model_from_jsonl_head(path: &Path) -> Option<String> {
-    let file = File::open(path).ok()?;
-    let reader = BufReader::new(file);
-    for line in reader.lines().map_while(Result::ok).take(20) {
-        if let Some(model) = extract_model_from_jsonl_line(&line) {
-            return Some(model);
-        }
+pub(crate) fn normalize_model(model: &str) -> Option<String> {
+    let model = model.trim();
+    if model.is_empty() || model == "<synthetic>" {
+        return None;
     }
-    None
+    Some(model.to_string())
 }
 
 /// Extracts the model from VS Code Copilot's `models.json` debug log.
