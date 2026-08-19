@@ -38,7 +38,10 @@ fn diverged_worktree_with_lowercase_head() -> DivergedWorktree {
     // is reproduced on every test platform.
     let common_dir = repo.git(&["rev-parse", "--git-common-dir"]).unwrap();
     let common_dir = repo.path().join(common_dir.trim());
-    fs::copy(common_dir.join("HEAD"), common_dir.join("head")).unwrap();
+    let lowercase_head = common_dir.join("head");
+    if !lowercase_head.exists() {
+        fs::copy(common_dir.join("HEAD"), lowercase_head).unwrap();
+    }
 
     DivergedWorktree {
         repo,
