@@ -71,13 +71,7 @@ fn test_claude_preset_no_filepath_when_tool_input_missing() {
         .parse(hook_input, "t_test")
         .expect("Failed to run ClaudePreset");
 
-    assert_eq!(events.len(), 1);
-    match &events[0] {
-        ParsedHookEvent::PostFileEdit(e) => {
-            assert!(e.file_paths.is_empty());
-        }
-        _ => panic!("Expected PostFileEdit"),
-    }
+    assert!(events.is_empty());
 }
 
 #[test]
@@ -136,7 +130,7 @@ fn test_claude_preset_ignores_cursor_payload() {
 }
 
 #[test]
-fn test_claude_preset_does_not_ignore_when_transcript_path_is_claude() {
+fn test_claude_preset_ignores_unsupported_tool_when_transcript_path_is_claude() {
     let temp = tempfile::tempdir().unwrap();
     let claude_dir = temp.path().join(".claude").join("projects");
     fs::create_dir_all(&claude_dir).unwrap();
@@ -164,12 +158,7 @@ fn test_claude_preset_does_not_ignore_when_transcript_path_is_claude() {
         .parse(&hook_input, "t_test")
         .expect("Expected native Claude preset handling");
 
-    match &events[0] {
-        ParsedHookEvent::PostFileEdit(e) => {
-            assert_eq!(e.context.agent_id.tool, "claude");
-        }
-        _ => panic!("Expected PostFileEdit"),
-    }
+    assert!(events.is_empty());
 }
 
 #[test]
@@ -372,6 +361,6 @@ crate::reuse_tests_in_worktree!(
     test_claude_preset_no_filepath_when_tool_input_missing,
     test_claude_preset_ignores_vscode_copilot_payload,
     test_claude_preset_ignores_cursor_payload,
-    test_claude_preset_does_not_ignore_when_transcript_path_is_claude,
+    test_claude_preset_ignores_unsupported_tool_when_transcript_path_is_claude,
     test_claude_e2e_prefers_latest_checkpoint_for_prompts,
 );

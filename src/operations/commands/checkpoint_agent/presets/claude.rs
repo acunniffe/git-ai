@@ -55,12 +55,15 @@ impl AgentPreset for ClaudePreset {
             });
 
         let tool_name = parse::optional_str_multi(&data, &["tool_name", "toolName"]);
+        let tool_class = bash_tool::classify_optional_tool(Agent::Claude, tool_name);
+        if tool_class == ToolClass::Skip {
+            return Ok(Vec::new());
+        }
+
         let hook_event = parse::optional_str_multi(&data, &["hook_event_name", "hookEventName"]);
         let tool_use_id = parse::str_or_default_multi(&data, &["tool_use_id", "toolUseId"], "bash");
 
-        let is_bash = tool_name
-            .map(|n| bash_tool::classify_tool(Agent::Claude, n) == ToolClass::Bash)
-            .unwrap_or(false);
+        let is_bash = tool_class == ToolClass::Bash;
 
         let context = PresetContext {
             agent_id: AgentId {
@@ -266,6 +269,35 @@ mod tests {
         })
         .to_string();
         assert!(ClaudePreset.parse(&input, "t_test123456789a").is_err());
+    }
+
+    #[test]
+    fn test_claude_ignores_read_only_and_unsupported_tools() {
+        for hook_event in ["PreToolUse", "PostToolUse"] {
+            for tool_name in ["Read", "Glob", "Grep", "Task", "UnknownTool"] {
+                let input = make_claude_hook_input(hook_event, tool_name);
+                let events = ClaudePreset.parse(&input, "t_test123456789a").unwrap();
+                assert!(
+                    events.is_empty(),
+                    "{hook_event} {tool_name} unexpectedly produced events"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_claude_legacy_payload_without_tool_name_still_checkpoints() {
+        let input = json!({
+            "transcript_path": "/home/user/.claude/projects/abc123.jsonl",
+            "cwd": "/home/user/project",
+            "hook_event_name": "PostToolUse",
+            "session_id": "sess-1",
+            "tool_input": {"file_path": "src/main.rs"}
+        })
+        .to_string();
+        let events = ClaudePreset.parse(&input, "t_test123456789a").unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], ParsedHookEvent::PostFileEdit(_)));
     }
 
     #[test]

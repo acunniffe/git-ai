@@ -199,6 +199,10 @@ fn test_tool_classification_claude() {
         super::types::ToolClass::FileEdit
     );
     assert_eq!(
+        classify_tool(Agent::Claude, "NotebookEdit"),
+        super::types::ToolClass::FileEdit
+    );
+    assert_eq!(
         classify_tool(Agent::Claude, "Bash"),
         super::types::ToolClass::Bash
     );
@@ -222,6 +226,14 @@ fn test_tool_classification_all_agents() {
         ToolClass::FileEdit
     );
     assert_eq!(classify_tool(Agent::Gemini, "shell"), ToolClass::Bash);
+    assert_eq!(
+        classify_tool(Agent::Gemini, "WriteFile"),
+        ToolClass::FileEdit
+    );
+    assert_eq!(
+        classify_tool(Agent::Gemini, "run_shell_command"),
+        ToolClass::Bash
+    );
 
     // Continue CLI
     assert_eq!(
@@ -243,10 +255,22 @@ fn test_tool_classification_all_agents() {
         ToolClass::FileEdit
     );
     assert_eq!(classify_tool(Agent::Droid, "Bash"), ToolClass::Bash);
+    assert_eq!(classify_tool(Agent::Droid, "Execute"), ToolClass::Bash);
 
     // Amp
     assert_eq!(classify_tool(Agent::Amp, "Write"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Amp, "Bash"), ToolClass::Bash);
+    assert_eq!(
+        classify_tool(Agent::Amp, "create_file"),
+        ToolClass::FileEdit
+    );
+    assert_eq!(classify_tool(Agent::Amp, "edit_file"), ToolClass::FileEdit);
+    assert_eq!(
+        classify_tool(Agent::Amp, "apply_patch"),
+        ToolClass::FileEdit
+    );
+    assert_eq!(classify_tool(Agent::Amp, "undo_edit"), ToolClass::FileEdit);
+    assert_eq!(classify_tool(Agent::Amp, "shell_command"), ToolClass::Bash);
 
     // OpenCode
     assert_eq!(classify_tool(Agent::OpenCode, "edit"), ToolClass::FileEdit);
@@ -266,6 +290,25 @@ fn test_tool_classification_all_agents() {
     );
     assert_eq!(classify_tool(Agent::Cursor, "Shell"), ToolClass::Bash);
     assert_eq!(classify_tool(Agent::Cursor, "Read"), ToolClass::Skip);
+}
+
+#[test]
+fn test_classify_optional_tool_preserves_legacy_payloads() {
+    use super::tool_class::classify_optional_tool;
+    use super::types::ToolClass;
+
+    assert_eq!(
+        classify_optional_tool(Agent::Claude, None),
+        ToolClass::FileEdit
+    );
+    assert_eq!(
+        classify_optional_tool(Agent::Claude, Some("Read")),
+        ToolClass::Skip
+    );
+    assert_eq!(
+        classify_optional_tool(Agent::Gemini, Some("run_shell_command")),
+        ToolClass::Bash
+    );
 }
 
 #[test]

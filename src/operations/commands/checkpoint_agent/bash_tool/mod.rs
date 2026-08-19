@@ -118,7 +118,7 @@ pub use path_filter::{
     build_gitignore, git_index_mtime_ns, normalize_path, should_include_new_file,
 };
 pub use snapshot::{diff, git_status_fallback, snapshot};
-pub use tool_class::{Agent, classify_tool};
+pub use tool_class::{Agent, classify_optional_tool, classify_tool};
 pub use types::{
     BashCheckpointAction, BashPostHookResult, BashPreHookResult, StatDiffResult, StatEntry,
     StatFileType, StatSnapshot, ToolClass,

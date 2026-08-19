@@ -19,12 +19,15 @@ impl AgentPreset for GeminiPreset {
         let session_id = parse::required_str(&data, "session_id")?.to_string();
         let transcript_path = parse::required_str(&data, "transcript_path")?;
         let tool_name = parse::optional_str_multi(&data, &["tool_name", "toolName"]);
+        let tool_class = bash_tool::classify_optional_tool(Agent::Gemini, tool_name);
+        if tool_class == ToolClass::Skip {
+            return Ok(Vec::new());
+        }
+
         let hook_event = parse::optional_str_multi(&data, &["hook_event_name", "hookEventName"]);
         let tool_use_id = parse::str_or_default_multi(&data, &["tool_use_id", "toolUseId"], "bash");
 
-        let is_bash = tool_name
-            .map(|n| bash_tool::classify_tool(Agent::Gemini, n) == ToolClass::Bash)
-            .unwrap_or(false);
+        let is_bash = tool_class == ToolClass::Bash;
         let mut file_paths = parse::file_paths_from_tool_input(&data, cwd);
         let internal_tmp_dir = normalize_for_comparison(&gemini_config_dir().join("tmp"));
         file_paths.retain(|path| !normalize_for_comparison(path).starts_with(&internal_tmp_dir));
@@ -218,5 +221,39 @@ mod tests {
             panic!("Expected PostFileEdit");
         };
         assert_eq!(event.context.agent_id.model, "model-from-disk");
+    }
+
+    #[test]
+    fn test_gemini_ignores_read_only_and_unsupported_tools() {
+        for hook_event in ["BeforeTool", "PostToolUse"] {
+            for tool_name in [
+                "read_file",
+                "list_directory",
+                "google_web_search",
+                "UnknownTool",
+            ] {
+                let input = make_gemini_hook_input(hook_event, tool_name);
+                let events = GeminiPreset.parse(&input, "t_test123456789a").unwrap();
+                assert!(
+                    events.is_empty(),
+                    "{hook_event} {tool_name} unexpectedly produced events"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_gemini_legacy_payload_without_tool_name_still_checkpoints() {
+        let input = json!({
+            "transcript_path": "/home/user/.gemini/sessions/test.json",
+            "cwd": "/home/user/project",
+            "hook_event_name": "PostToolUse",
+            "session_id": "gemini-sess-1",
+            "tool_input": {"file_path": "src/main.rs"}
+        })
+        .to_string();
+        let events = GeminiPreset.parse(&input, "t_test123456789a").unwrap();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], ParsedHookEvent::PostFileEdit(_)));
     }
 }
