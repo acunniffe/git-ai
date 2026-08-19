@@ -61,7 +61,7 @@ fn detect_unix_shells(
 #[cfg(not(windows))]
 fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
     use chrono::Local;
-    use std::fs::{self, OpenOptions};
+    use std::fs;
     use std::io::Write;
     use std::os::unix::ffi::OsStrExt;
 
@@ -96,7 +96,7 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
                 });
                 continue;
             };
-            if !config_dir.is_dir() {
+            if !crate::utils::is_running_as_superuser() && !config_dir.is_dir() {
                 if let Err(error) = fs::create_dir_all(config_dir) {
                     first_error.get_or_insert_with(|| error.into());
                     continue;
@@ -124,19 +124,12 @@ fn configure_unix(install_dir: &Path) -> Result<(), GitAiError> {
         }
 
         let write_result = (|| -> Result<(), GitAiError> {
-            let config_was_created = !config_file.exists();
-            use std::os::unix::fs::OpenOptionsExt;
-            let mut options = OpenOptions::new();
-            options
-                .create(true)
-                .append(true)
-                .custom_flags(shell_profile_open_flags(
-                    crate::utils::is_running_as_superuser(),
-                ));
-            let mut file = options.open(&config_file)?;
-            if config_was_created {
-                created_paths.push(config_file.clone());
-            }
+            let mut file = open_unix_shell_profile(
+                &home,
+                &config_file,
+                crate::utils::is_running_as_superuser(),
+                &mut created_paths,
+            )?;
             writeln!(file)?;
             writeln!(
                 file,
@@ -219,8 +212,144 @@ fn escape_fish_double_quoted_shell_bytes(value: &[u8]) -> Vec<u8> {
 }
 
 #[cfg(not(windows))]
-fn shell_profile_open_flags(is_superuser: bool) -> i32 {
-    if is_superuser { libc::O_NOFOLLOW } else { 0 }
+fn open_unix_shell_profile(
+    home: &Path,
+    config_file: &Path,
+    is_superuser: bool,
+    created_paths: &mut Vec<std::path::PathBuf>,
+) -> Result<std::fs::File, GitAiError> {
+    use std::fs::OpenOptions;
+    if !is_superuser {
+        let config_was_created = !config_file.exists();
+        let file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(config_file)?;
+        if config_was_created {
+            created_paths.push(config_file.to_path_buf());
+        }
+        return Ok(file);
+    }
+
+    open_unix_shell_profile_beneath_home(home, config_file, created_paths)
+}
+
+#[cfg(not(windows))]
+fn open_unix_shell_profile_beneath_home(
+    home: &Path,
+    config_file: &Path,
+    created_paths: &mut Vec<std::path::PathBuf>,
+) -> Result<std::fs::File, GitAiError> {
+    use std::ffi::CString;
+    use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+    use std::os::unix::ffi::OsStrExt;
+
+    let relative = config_file.strip_prefix(home).map_err(|_| {
+        GitAiError::Generic(format!(
+            "shell profile {} is outside home {}",
+            config_file.display(),
+            home.display()
+        ))
+    })?;
+    let canonical_home = home.canonicalize()?;
+    let mut lexical_parent = canonical_home.clone();
+    let home = CString::new(canonical_home.as_os_str().as_bytes())
+        .map_err(|_| GitAiError::Generic(format!("home path contains NUL: {}", home.display())))?;
+    // SAFETY: `home` is a live, NUL-terminated path. O_NOFOLLOW prevents the
+    // canonical home itself from being replaced with a symlink before open.
+    let home_fd = unsafe {
+        libc::open(
+            home.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if home_fd < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    // SAFETY: `open` returned a new owned file descriptor.
+    let mut directory = unsafe { OwnedFd::from_raw_fd(home_fd) };
+    let components: Vec<_> = relative.components().collect();
+    let (file_name, parents) = components.split_last().ok_or_else(|| {
+        GitAiError::Generic(format!("invalid shell profile: {}", config_file.display()))
+    })?;
+    for component in parents {
+        let name = CString::new(component.as_os_str().as_bytes()).map_err(|_| {
+            GitAiError::Generic(format!(
+                "shell profile contains NUL: {}",
+                config_file.display()
+            ))
+        })?;
+        lexical_parent.push(component.as_os_str());
+        // SAFETY: the directory fd and component name are valid for the call.
+        let mut next = unsafe {
+            libc::openat(
+                directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            )
+        };
+        if next < 0 && std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
+            // SAFETY: the directory fd and component name are valid for the call.
+            if unsafe { libc::mkdirat(directory.as_raw_fd(), name.as_ptr(), 0o777) } < 0 {
+                return Err(std::io::Error::last_os_error().into());
+            }
+            created_paths.push(lexical_parent.clone());
+            // SAFETY: the just-created entry is opened without following links.
+            next = unsafe {
+                libc::openat(
+                    directory.as_raw_fd(),
+                    name.as_ptr(),
+                    libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                )
+            };
+        }
+        if next < 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        // SAFETY: `openat` returned a new owned file descriptor.
+        directory = unsafe { OwnedFd::from_raw_fd(next) };
+    }
+
+    let name = CString::new(file_name.as_os_str().as_bytes()).map_err(|_| {
+        GitAiError::Generic(format!(
+            "shell profile contains NUL: {}",
+            config_file.display()
+        ))
+    })?;
+    let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: the directory fd, component name, and output pointer are valid.
+    let metadata_status = unsafe {
+        libc::fstatat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            metadata.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    let config_was_created = if metadata_status == 0 {
+        false
+    } else if std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
+        true
+    } else {
+        return Err(std::io::Error::last_os_error().into());
+    };
+    // SAFETY: the directory fd and component name are valid for the call.
+    let file_fd = unsafe {
+        libc::openat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_WRONLY | libc::O_APPEND | libc::O_CREAT | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o666,
+        )
+    };
+    if file_fd < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if config_was_created {
+        created_paths.push(config_file.to_path_buf());
+    }
+    // SAFETY: `openat` returned a new owned file descriptor.
+    Ok(unsafe { std::fs::File::from_raw_fd(file_fd) })
 }
 
 #[cfg(not(windows))]
@@ -412,9 +541,36 @@ mod unix_tests {
     }
 
     #[test]
-    fn unix_shell_profiles_only_refuse_symlinks_for_superuser_installs() {
-        assert_eq!(shell_profile_open_flags(false), 0);
-        assert_eq!(shell_profile_open_flags(true), libc::O_NOFOLLOW);
+    fn unix_superuser_profile_open_refuses_symlinked_parent_directories() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempdir().unwrap();
+        let home = temp.path().join("home");
+        let outside = temp.path().join("outside");
+        fs::create_dir(&home).unwrap();
+        fs::create_dir(&outside).unwrap();
+        symlink(&outside, home.join(".config")).unwrap();
+        let profile = home.join(".config/fish/config.fish");
+
+        assert!(open_unix_shell_profile_beneath_home(&home, &profile, &mut Vec::new()).is_err());
+        assert!(!outside.join("fish/config.fish").exists());
+    }
+
+    #[test]
+    fn unix_superuser_profile_open_creates_missing_components_beneath_home() {
+        let temp = tempdir().unwrap();
+        let home = temp.path().join("home");
+        fs::create_dir(&home).unwrap();
+        let profile = home.join(".config/fish/config.fish");
+        let mut created = Vec::new();
+
+        drop(open_unix_shell_profile_beneath_home(&home, &profile, &mut created).unwrap());
+
+        assert!(profile.is_file());
+        assert_eq!(
+            created,
+            vec![home.join(".config"), home.join(".config/fish"), profile]
+        );
     }
 
     #[test]
