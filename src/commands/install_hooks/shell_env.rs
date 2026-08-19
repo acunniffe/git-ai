@@ -346,7 +346,7 @@ fn open_unix_shell_profile_beneath_home(
         return Err(std::io::Error::last_os_error().into());
     }
     if config_was_created {
-        created_paths.push(config_file.to_path_buf());
+        created_paths.push(canonical_home.join(relative));
     }
     // SAFETY: `openat` returned a new owned file descriptor.
     Ok(unsafe { std::fs::File::from_raw_fd(file_fd) })
@@ -567,9 +567,14 @@ mod unix_tests {
         drop(open_unix_shell_profile_beneath_home(&home, &profile, &mut created).unwrap());
 
         assert!(profile.is_file());
+        let canonical_home = home.canonicalize().unwrap();
         assert_eq!(
             created,
-            vec![home.join(".config"), home.join(".config/fish"), profile]
+            vec![
+                canonical_home.join(".config"),
+                canonical_home.join(".config/fish"),
+                canonical_home.join(".config/fish/config.fish")
+            ]
         );
     }
 
