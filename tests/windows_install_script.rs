@@ -467,6 +467,37 @@ fn windows_install_script_skips_wrapper_for_new_users() {
         !bin_dir.join("git-og.cmd").exists(),
         "fresh install should NOT create git-og.cmd"
     );
+
+    // install-hooks --env must honor the GIT_AI_SKIP_PATH_UPDATE=1 gate the
+    // test environment sets, skipping the persistent user PATH update. The
+    // notice goes to stderr, but PowerShell stream redirection can reroute
+    // it, so search both captured streams.
+    let combined_output = format!("{}{}", install.stdout, install.stderr);
+    assert!(
+        combined_output.contains("Skipping PATH updates because GIT_AI_SKIP_PATH_UPDATE=1"),
+        "install-hooks --env should report the skipped PATH update\noutput:\n{combined_output}"
+    );
+
+    // The Git Bash config runs regardless of the PATH skip gate. Only assert
+    // when Git Bash is actually present on the runner.
+    let git_bash_present = [
+        std::env::var("ProgramFiles").ok(),
+        std::env::var("ProgramFiles(x86)").ok(),
+        std::env::var("LOCALAPPDATA")
+            .ok()
+            .map(|p| format!("{p}\\Programs")),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|base| PathBuf::from(base).join("Git\\bin\\bash.exe").exists());
+    if git_bash_present {
+        let bashrc = fs::read_to_string(repo.test_home_path().join(".bashrc"))
+            .expect("install-hooks --env should create ~/.bashrc for Git Bash");
+        assert!(
+            bashrc.contains("export PATH=\"$HOME/.git-ai/bin:$PATH\""),
+            "Git Bash config should contain the PATH export:\n{bashrc}"
+        );
+    }
 }
 
 #[test]
