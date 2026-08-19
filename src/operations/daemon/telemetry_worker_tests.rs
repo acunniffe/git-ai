@@ -41,6 +41,7 @@ fn flush_with_error(upload_err: GitAiError) -> (usize, usize) {
             let b = Rc::clone(&batch);
             move |_| Ok(b.borrow_mut().take().unwrap_or_default())
         },
+        |_| true,
         |_| Ok(()),
         {
             let f = Rc::clone(&failed);
