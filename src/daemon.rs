@@ -107,6 +107,7 @@ const CHECKPOINT_FAMILY_DRAIN_CONCURRENCY: usize = 2;
 #[cfg(not(windows))]
 const TRACE_SOCKET_RECV_BUFFER_BYTES: usize = 512 * 1024;
 const TRACE_INGEST_QUEUE_CAPACITY: usize = 16_384;
+const TEMP_REPO_FILTER_ALLOW_CACHE_CAPACITY: usize = 1_024;
 #[cfg(not(windows))]
 const TRACE_CONNECTION_BOOTSTRAP_READ_TIMEOUT: Duration = Duration::from_millis(100);
 #[cfg(windows)]
@@ -477,6 +478,15 @@ fn trace_root_sid(sid: &str) -> &str {
 
 fn is_terminal_root_trace_event(event: &str, sid: &str, root: &str) -> bool {
     sid == root && event == "atexit"
+}
+
+fn trace_payload_explicit_worktree(payload: &Value) -> Option<PathBuf> {
+    payload
+        .get(TRACE_ROOT_WORKTREE_FIELD)
+        .or_else(|| payload.get("worktree"))
+        .or_else(|| payload.get("repo_working_dir"))
+        .and_then(Value::as_str)
+        .map(PathBuf::from)
 }
 
 fn daemon_worktree_from_repo_path(repo_path: &Path) -> Option<PathBuf> {
@@ -2728,6 +2738,9 @@ struct TraceIngressState {
     /// Roots whose start event was identified as definitely read-only. All
     /// subsequent events for these roots (including exit) take the fast path.
     root_definitely_read_only: HashSet<String>,
+    /// Roots suppressed by the temporary-repository filter. Keeping this with the other ingress
+    /// state lets connection-close handling synthesize a terminal marker before clearing it.
+    root_ignored_temp_repositories: HashSet<String>,
     root_open_connections: HashMap<String, usize>,
     unidentified_open_connections: usize,
     root_close_markers_enqueued: HashSet<String>,
@@ -2783,6 +2796,7 @@ pub struct ActorDaemonCoordinator {
     processed_trace_ingest_seq: AtomicUsize,
     trace_ingest_progress_notify: Notify,
     trace_ingress_state: Mutex<TraceIngressState>,
+    temp_repo_filter_allow_cache: Mutex<HashSet<PathBuf>>,
     shutting_down: AtomicBool,
     shutdown_action: AtomicU8,
     shutdown_notify: Notify,
@@ -2885,6 +2899,7 @@ impl ActorDaemonCoordinator {
             processed_trace_ingest_seq: AtomicUsize::new(0),
             trace_ingest_progress_notify: Notify::new(),
             trace_ingress_state: Mutex::new(TraceIngressState::default()),
+            temp_repo_filter_allow_cache: Mutex::new(HashSet::new()),
             shutting_down: AtomicBool::new(false),
             shutdown_action: AtomicU8::new(DaemonExitAction::Stop.as_u8()),
             shutdown_notify: Notify::new(),
@@ -3655,6 +3670,9 @@ impl ActorDaemonCoordinator {
     }
 
     fn trace_root_needs_close_marker(ingress: &TraceIngressState, root_sid: &str) -> bool {
+        if ingress.root_ignored_temp_repositories.contains(root_sid) {
+            return true;
+        }
         if ingress.root_definitely_read_only.contains(root_sid) {
             return false;
         }
@@ -3676,6 +3694,7 @@ impl ActorDaemonCoordinator {
         ingress.root_target_repo_only.remove(root_sid);
         ingress.root_last_activity_ns.remove(root_sid);
         ingress.root_definitely_read_only.remove(root_sid);
+        ingress.root_ignored_temp_repositories.remove(root_sid);
         ingress.root_open_connections.remove(root_sid);
         ingress.root_close_markers_enqueued.remove(root_sid);
     }
@@ -6632,8 +6651,117 @@ impl ActorDaemonCoordinator {
         Ok(outcome)
     }
 
+    async fn should_ignore_trace_payload(&self, payload: &Value) -> Result<bool, GitAiError> {
+        if !crate::git::repository::temporary_repo_filter_enabled() {
+            return Ok(false);
+        }
+        #[cfg(feature = "test-support")]
+        if trace_payload_effective_argv(payload)
+            .iter()
+            .any(|arg| arg == "git-ai.test-readiness-probe")
+        {
+            return Ok(false);
+        }
+
+        let Some(root_sid) = Self::trace_payload_root_sid(payload) else {
+            return Ok(false);
+        };
+        let event = payload
+            .get("event")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let terminal = event == TRACE_CONNECTION_CLOSED_EVENT
+            || is_terminal_root_trace_event(
+                event,
+                payload
+                    .get("sid")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                &root_sid,
+            );
+
+        let ignored_root = {
+            let ingress = self.trace_ingress_state.lock().map_err(|_| {
+                GitAiError::Generic("trace ingress state lock poisoned".to_string())
+            })?;
+            ingress.root_ignored_temp_repositories.contains(&root_sid)
+        };
+        if ignored_root {
+            if terminal {
+                self.clear_trace_root_tracking(&root_sid)?;
+            }
+            return Ok(true);
+        }
+
+        if event != "def_repo" || crate::daemon::trace_normalizer::def_repo_is_secondary(payload) {
+            return Ok(false);
+        }
+        let Some(repo_path) = trace_payload_explicit_worktree(payload) else {
+            return Ok(false);
+        };
+
+        let cached_allow = self
+            .temp_repo_filter_allow_cache
+            .lock()
+            .map_err(|_| {
+                GitAiError::Generic("temporary repository allow cache lock poisoned".to_string())
+            })?
+            .contains(&repo_path);
+        let ignored = if cached_allow {
+            false
+        } else {
+            let repo_path_for_check = repo_path.clone();
+            let checked = crate::tokio_runtime::spawn_blocking_result(move || {
+                let repo = discover_repository_in_path_no_git_exec(&repo_path_for_check)?;
+                repo.is_temporary_without_remote_url()
+            })
+            .await;
+            let ignored = checked.as_ref().copied().unwrap_or(false);
+            if matches!(checked, Ok(false)) {
+                let mut cache = self.temp_repo_filter_allow_cache.lock().map_err(|_| {
+                    GitAiError::Generic(
+                        "temporary repository allow cache lock poisoned".to_string(),
+                    )
+                })?;
+                if cache.len() >= TEMP_REPO_FILTER_ALLOW_CACHE_CAPACITY
+                    && let Some(evicted) = cache.iter().next().cloned()
+                {
+                    cache.remove(&evicted);
+                }
+                cache.insert(repo_path.clone());
+            }
+            ignored
+        };
+
+        if ignored {
+            self.trace_ingress_state
+                .lock()
+                .map_err(|_| GitAiError::Generic("trace ingress state lock poisoned".to_string()))?
+                .root_ignored_temp_repositories
+                .insert(root_sid.clone());
+            {
+                let mut normalizer = self.normalizer.lock().await;
+                let _ = normalizer.sweep_orphans_for_roots(std::slice::from_ref(&root_sid));
+            }
+            if let Some(family) = self
+                .replace_pending_root_entry(&root_sid, FamilySequencerEntry::Canceled)
+                .await?
+            {
+                self.drain_ready_family_sequencers_after_root_cleared(Some(family))
+                    .await?;
+            }
+            // Keep ingress connection state until atexit or the synthesized connection-close
+            // marker arrives. The terminal payload then clears all per-root bookkeeping above.
+        }
+
+        Ok(ignored)
+    }
+
     async fn ingest_trace_payload_fast(self: Arc<Self>, payload: Value) -> Result<(), GitAiError> {
         if !is_trace_payload(&payload) {
+            return Ok(());
+        }
+        if self.should_ignore_trace_payload(&payload).await? {
             return Ok(());
         }
         match self.apply_trace_payload_to_state(payload).await? {
@@ -10191,6 +10319,104 @@ mod tests {
             "closing the trace stream without root atexit must not leave the family sequencer wedged"
         );
         coord.request_shutdown();
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn ignored_temp_repo_connection_close_clears_trace_tracking() {
+        let _filter = EnvVarGuard::set("GIT_AI_TEST_ENABLE_TEMP_REPO_FILTER", "1");
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let init = std::process::Command::new("git")
+            .arg("-C")
+            .arg(temp.path())
+            .args(["init", "repo"])
+            .output()
+            .expect("git init should run");
+        assert!(
+            init.status.success(),
+            "git init failed: {}",
+            String::from_utf8_lossy(&init.stderr)
+        );
+
+        let sid = "20260411T120000.000000-Psid-ignored-temp";
+        coord.trace_root_connection_opened(sid).unwrap();
+        {
+            let mut ingress = coord.trace_ingress_state.lock().unwrap();
+            ingress.root_argv.insert(
+                sid.to_string(),
+                vec!["git".to_string(), "unknown".to_string()],
+            );
+            ingress.root_mutating.insert(sid.to_string(), false);
+        }
+        coord.record_trace_payload_enqueued_root(Some(sid)).unwrap();
+
+        let def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "repo": 1,
+            "worktree": worktree,
+            "time_ns": 2u64,
+        });
+        assert!(coord.should_ignore_trace_payload(&def_repo).await.unwrap());
+
+        let close_marker_roots = coord
+            .record_trace_connection_close(&[sid.to_string()])
+            .unwrap();
+        assert_eq!(close_marker_roots, [sid.to_string()]);
+        coord.record_trace_payload_enqueued_root(Some(sid)).unwrap();
+        let close_marker = serde_json::json!({
+            "event": TRACE_CONNECTION_CLOSED_EVENT,
+            "sid": sid,
+            "time_ns": 3u64,
+        });
+        assert!(
+            coord
+                .should_ignore_trace_payload(&close_marker)
+                .await
+                .unwrap()
+        );
+
+        let ingress = coord.trace_ingress_state.lock().unwrap();
+        assert!(!ingress.root_argv.contains_key(sid));
+        assert!(!ingress.root_open_connections.contains_key(sid));
+        assert!(!ingress.root_close_markers_enqueued.contains(sid));
+        assert!(!ingress.root_ignored_temp_repositories.contains(sid));
+        drop(ingress);
+        assert!(
+            !coord
+                .queued_trace_payloads_by_root
+                .lock()
+                .unwrap()
+                .contains_key(sid)
+        );
+    }
+
+    #[serial]
+    #[tokio::test]
+    async fn temporary_repo_inspection_error_is_not_cached_as_allowed() {
+        let _filter = EnvVarGuard::set("GIT_AI_TEST_ENABLE_TEMP_REPO_FILTER", "1");
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let missing_worktree = temp.path().join("missing-repo");
+        let payload = serde_json::json!({
+            "event": "def_repo",
+            "sid": "20260411T120000.000000-Psid-missing-temp",
+            "repo": 1,
+            "worktree": missing_worktree,
+            "time_ns": 1u64,
+        });
+
+        assert!(!coord.should_ignore_trace_payload(&payload).await.unwrap());
+        assert!(
+            !coord
+                .temp_repo_filter_allow_cache
+                .lock()
+                .unwrap()
+                .contains(&missing_worktree),
+            "a failed inspection must fail open for this payload without caching the decision"
+        );
     }
 
     #[tokio::test]

@@ -498,13 +498,14 @@ fn handle_checkpoint(args: &[String]) {
         }
     }
 
-    // Check repository allowlist before sending to daemon.
-    // Skip entirely when no allow/exclude filters are configured (common case)
-    // to avoid spawning a `git remote -v` subprocess.
+    // Skip disposable temporary repositories and enforce the repository allowlist before sending
+    // anything to the daemon. Repository discovery and config reads stay in the checkpoint process,
+    // outside the trace2 ingestion path.
     let t_allowlist = std::time::Instant::now();
     {
         let config = config::Config::get();
-        if config.has_repository_filters() {
+        let filter_temporary_repos = crate::git::repository::temporary_repo_filter_enabled();
+        if filter_temporary_repos || config.has_repository_filters() {
             let mut checked_repos = std::collections::HashSet::new();
             for request in &requests {
                 for file in &request.files {
@@ -513,12 +514,23 @@ fn handle_checkpoint(args: &[String]) {
                             crate::git::repository::discover_repository_in_path_no_git_exec(
                                 &file.repo_work_dir,
                             )
-                        && !config.is_allowed_repository(&Some(repo))
                     {
-                        eprintln!(
-                            "Skipping checkpoint because repository is excluded or not in allow_repositories list"
-                        );
-                        std::process::exit(0);
+                        if filter_temporary_repos
+                            && repo.is_temporary_without_remote_url().unwrap_or(false)
+                        {
+                            eprintln!(
+                                "Skipping checkpoint for temporary repository without a remote URL"
+                            );
+                            std::process::exit(0);
+                        }
+                        if config.has_repository_filters()
+                            && !config.is_allowed_repository(&Some(repo))
+                        {
+                            eprintln!(
+                                "Skipping checkpoint because repository is excluded or not in allow_repositories list"
+                            );
+                            std::process::exit(0);
+                        }
                     }
                 }
             }

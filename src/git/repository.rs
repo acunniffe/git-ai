@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output};
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(windows)]
@@ -30,6 +31,18 @@ thread_local! {
     static INTERNAL_GIT_HOOKS_DISABLED_DEPTH: Cell<usize> = const { Cell::new(0) };
 }
 static INTERNAL_GIT_HOOKS_DISABLED_DEPTH_GLOBAL: AtomicUsize = AtomicUsize::new(0);
+
+pub(crate) fn temporary_repo_filter_enabled() -> bool {
+    #[cfg(any(test, feature = "test-support"))]
+    {
+        std::env::var("GIT_AI_TEST_ENABLE_TEMP_REPO_FILTER").as_deref() == Ok("1")
+    }
+
+    #[cfg(not(any(test, feature = "test-support")))]
+    {
+        true
+    }
+}
 
 pub struct InternalGitHooksGuard;
 
@@ -1295,6 +1308,23 @@ impl Repository {
         }
 
         Ok(remotes)
+    }
+
+    /// Returns whether this repository lives under the system temporary directory and has no
+    /// configured remote URL. Reading remote configuration is deferred until after the cheap path
+    /// check so normal repositories do not incur any additional config I/O.
+    pub fn is_temporary_without_remote_url(&self) -> Result<bool, GitAiError> {
+        static TEMP_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+        let temp_dir = TEMP_DIR.get_or_init(|| {
+            let path = std::env::temp_dir();
+            path.canonicalize().unwrap_or(path)
+        });
+        if !self.canonical_workdir.starts_with(temp_dir) {
+            return Ok(false);
+        }
+
+        Ok(self.remotes_with_urls()?.is_empty())
     }
 
     fn load_optional_config_file(
