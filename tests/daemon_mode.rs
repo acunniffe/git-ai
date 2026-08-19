@@ -457,6 +457,32 @@ fn configure_test_daemon_env(
     command.env("GIT_AI_DAEMON_TRACE_SOCKET", trace_socket_path);
 }
 
+/// Cleanup for self-restarted replacement daemons that no `DaemonGuard`
+/// owns: sends a best-effort Shutdown on drop so an assertion failure in the
+/// test body cannot strand a daemon (max uptime is 24h) on the machine.
+/// Gated like its users (the self-restart tests are unix-only): an unused
+/// struct fails the Windows dead-code lint.
+#[cfg(not(windows))]
+struct StrayDaemonGuard {
+    control_socket_path: PathBuf,
+}
+
+#[cfg(not(windows))]
+impl StrayDaemonGuard {
+    fn for_repo(repo: &TestRepo) -> Self {
+        Self {
+            control_socket_path: daemon_control_socket_path(repo),
+        }
+    }
+}
+
+#[cfg(not(windows))]
+impl Drop for StrayDaemonGuard {
+    fn drop(&mut self) {
+        let _ = send_control_request(&self.control_socket_path, &ControlRequest::Shutdown);
+    }
+}
+
 struct DaemonGuard {
     child: Child,
     control_socket_path: PathBuf,
@@ -6250,7 +6276,6 @@ fn daemon_self_heals_after_socket_deletion() {
             ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "1"),
             ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
             ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
-            ("GIT_AI_DAEMON_MIN_UPTIME_FOR_RESTART_SECS", "0"),
         ],
     );
 
@@ -6320,6 +6345,789 @@ fn daemon_self_heals_after_socket_deletion() {
         }
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+/// A wedged trace accept loop leaves the listening socket connectable (the
+/// backlog keeps queueing connects) while nothing drains trace2 input, so a
+/// connect-only health probe cannot see it. The drain probe must detect the
+/// wedge end-to-end and self-restart the daemon.
+#[test]
+#[serial]
+#[cfg(unix)]
+fn daemon_self_restarts_when_trace_accept_loop_wedges() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+    let trace_socket_path = daemon_trace_socket_path(&repo);
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            // The readiness wait's trace connect is the first accepted
+            // connection: the stall hook wedges the accept loop right there.
+            ("GIT_AI_TEST_TRACE_ACCEPT_STALL_SECS", "60"),
+            ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "1"),
+            ("GIT_AI_DAEMON_TRACE_DRAIN_PROBE_DEADLINE_MS", "500"),
+            // One restart only: the replacement inherits the wedge hook, and
+            // without this cap it would churn through more generations past
+            // the end of the test.
+            ("GIT_AI_DAEMON_SELF_RESTART_BUDGET_MAX", "1"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+    // The budgeted restart spawns a replacement daemon DaemonGuard does not
+    // own; make sure it is shut down even when an assertion fails.
+    let _stray_daemon = StrayDaemonGuard::for_repo(&repo);
+
+    // The listening socket still accepts connects while the accept loop is
+    // wedged, so a connect-only probe would pass here.
+    assert!(
+        local_socket_connects_with_timeout(&trace_socket_path, DAEMON_TEST_PROBE_TIMEOUT).is_ok(),
+        "trace socket should still be connectable while the accept loop is wedged"
+    );
+
+    let mut original_exited = false;
+    for _ in 0..100 {
+        if daemon
+            .child
+            .try_wait()
+            .expect("failed to poll daemon")
+            .is_some()
+        {
+            original_exited = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        original_exited,
+        "daemon should detect the wedged trace drain and shut down"
+    );
+
+    let mut new_daemon_reachable = false;
+    for _ in 0..200 {
+        if control_socket_path.exists()
+            && send_control_request(
+                &control_socket_path,
+                &ControlRequest::StatusFamily {
+                    repo_working_dir: repo_workdir_string(&repo),
+                },
+            )
+            .is_ok()
+        {
+            new_daemon_reachable = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        new_daemon_reachable,
+        "a new daemon should be reachable after the wedged one self-restarted"
+    );
+
+    let _ = send_control_request(&control_socket_path, &ControlRequest::Shutdown);
+    for _ in 0..100 {
+        if !control_socket_path.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// A git process blocked writing trace2 into an undrained socket must be
+/// released as soon as the wedged daemon gives up: closing the socket fds
+/// turns the blocked write into an error, which git treats as "disable the
+/// trace2 target and continue".
+#[test]
+#[serial]
+#[cfg(unix)]
+fn daemon_drain_probe_wedge_releases_blocked_trace_writer() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let trace_socket_path = daemon_trace_socket_path(&repo);
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_TRACE_ACCEPT_STALL_SECS", "60"),
+            ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "1"),
+            ("GIT_AI_DAEMON_TRACE_DRAIN_PROBE_DEADLINE_MS", "500"),
+            // No restart: this test only verifies that giving up releases the
+            // blocked writer.
+            ("GIT_AI_DAEMON_SELF_RESTART_BUDGET_MAX", "0"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+
+    // The accept loop is already wedged (the readiness wait's trace connect
+    // was the first accepted connection). This writer's connection sits in
+    // the listen backlog; once the kernel buffers fill, writes block, exactly
+    // like git inside tr2_dst_write_line.
+    let writer_socket = trace_socket_path.clone();
+    let writer = thread::spawn(move || {
+        let mut stream =
+            open_local_socket_stream_with_timeout(&writer_socket, DAEMON_TEST_PROBE_TIMEOUT)
+                .expect("failed to open writer trace connection");
+        let line = format!(
+            "{}\n",
+            json!({
+                "event": "data",
+                "sid": "blocked-writer",
+                "payload": "x".repeat(8192),
+            })
+        );
+        loop {
+            if stream
+                .write_all(line.as_bytes())
+                .and_then(|_| stream.flush())
+                .is_err()
+            {
+                return;
+            }
+        }
+    });
+
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(20) {
+        if writer.is_finished() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        writer.is_finished(),
+        "blocked trace writer should be released when the wedged daemon shuts down"
+    );
+    writer.join().unwrap();
+    daemon.shutdown();
+}
+
+/// Reader-thread spawn failure past the threshold takes the same budgeted
+/// restart path as every other failure-driven restart: under systemic
+/// thread-spawn failure (pids.max, RLIMIT_NPROC) the daemon must not
+/// crash-loop through unlimited generations.
+#[test]
+#[serial]
+#[cfg(not(windows))]
+fn daemon_spawn_failure_restart_consumes_budget() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+    let trace_socket_path = daemon_trace_socket_path(&repo);
+    let restart_history_path = daemon_lock_path(&repo)
+        .parent()
+        .expect("daemon lock path should have a parent")
+        .join("self_restart_history.json");
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_TRACE_CONNECTION_SPAWN_FAILURES", "40"),
+            ("GIT_AI_DAEMON_SELF_RESTART_BUDGET_MAX", "1"),
+            ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "3600"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+    // The budgeted restart spawns a replacement daemon DaemonGuard does not
+    // own; make sure it is shut down even when an assertion fails.
+    let _stray_daemon = StrayDaemonGuard::for_repo(&repo);
+
+    // Readiness consumed one injected failure; enough further connections
+    // reach the consecutive-failure threshold.
+    for _ in 0..17 {
+        let _ =
+            open_local_socket_stream_with_timeout(&trace_socket_path, DAEMON_TEST_PROBE_TIMEOUT);
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    let mut original_exited = false;
+    for _ in 0..100 {
+        if daemon
+            .child
+            .try_wait()
+            .expect("failed to poll daemon")
+            .is_some()
+        {
+            original_exited = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        original_exited,
+        "daemon should shut down after persistent reader-spawn failures"
+    );
+
+    // Exactly one budgeted restart: a replacement daemon appears...
+    let mut replacement_reachable = false;
+    for _ in 0..200 {
+        if control_socket_path.exists()
+            && send_control_request(&control_socket_path, &ControlRequest::Ping).is_ok()
+        {
+            replacement_reachable = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(replacement_reachable, "one budgeted restart should occur");
+
+    // ...and when driven over the threshold again, the exhausted budget must
+    // stop the chain instead of spawning a third generation.
+    for _ in 0..20 {
+        let _ =
+            open_local_socket_stream_with_timeout(&trace_socket_path, DAEMON_TEST_PROBE_TIMEOUT);
+        thread::sleep(Duration::from_millis(10));
+    }
+    for _ in 0..150 {
+        if !control_socket_path.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        !control_socket_path.exists(),
+        "the replacement daemon should shut down once the restart budget is exhausted"
+    );
+    thread::sleep(Duration::from_secs(2));
+    assert!(
+        !control_socket_path.exists(),
+        "no third daemon may start after the restart budget is exhausted"
+    );
+
+    let history: Vec<u64> = serde_json::from_str(
+        &fs::read_to_string(&restart_history_path).expect("restart history should exist"),
+    )
+    .expect("restart history should be valid JSON");
+    assert_eq!(
+        history.len(),
+        1,
+        "exactly one spawn-failure self-restart should have consumed budget"
+    );
+}
+
+/// A `bg shutdown` racing an in-flight drain probe must not consume restart
+/// budget or resurrect the daemon the user just stopped.
+#[test]
+#[serial]
+#[cfg(unix)]
+fn daemon_shutdown_mid_probe_does_not_restart() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+    let restart_history_path = daemon_lock_path(&repo)
+        .parent()
+        .expect("daemon lock path should have a parent")
+        .join("self_restart_history.json");
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            // Wedge the accept loop so every drain probe hangs in its poll
+            // window, then keep teardown (and thus the health thread) alive
+            // long enough for the probe to resolve after shutdown.
+            ("GIT_AI_TEST_TRACE_ACCEPT_STALL_SECS", "60"),
+            ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "1"),
+            ("GIT_AI_DAEMON_TRACE_DRAIN_PROBE_DEADLINE_MS", "5000"),
+            ("GIT_AI_TEST_SHUTDOWN_HANG_SECS", "8"),
+            ("GIT_AI_DAEMON_SHUTDOWN_DEADLINE_SECS", "10"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+
+    // Let a health tick begin its (doomed) probe, then shut down mid-probe.
+    thread::sleep(Duration::from_millis(2000));
+    let _ = send_control_request(&control_socket_path, &ControlRequest::Shutdown);
+
+    let started = std::time::Instant::now();
+    let mut exited = false;
+    while started.elapsed() < Duration::from_secs(15) {
+        if daemon
+            .child
+            .try_wait()
+            .expect("failed to poll daemon")
+            .is_some()
+        {
+            exited = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(exited, "daemon should exit after the requested shutdown");
+
+    thread::sleep(Duration::from_secs(3));
+    assert!(
+        !control_socket_path.exists(),
+        "a shutdown racing a drain probe must not resurrect the daemon"
+    );
+    assert!(
+        !restart_history_path.exists(),
+        "a shutdown racing a drain probe must not consume restart budget"
+    );
+}
+
+/// The drain probe only proves the socket legs; a wedged ingest pipeline
+/// (payloads queued, processed watermark frozen) must also trigger the same
+/// budgeted self-restart, or attribution silently stops while health stays
+/// green.
+#[test]
+#[serial]
+#[cfg(not(windows))]
+fn daemon_processing_stall_triggers_budgeted_restart() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+    let trace_socket_path = daemon_trace_socket_path(&repo);
+    let restart_history_path = daemon_lock_path(&repo)
+        .parent()
+        .expect("daemon lock path should have a parent")
+        .join("self_restart_history.json");
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_TRACE_INGEST_WORKER_START_DELAY_MS", "120000"),
+            ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "1"),
+            ("GIT_AI_DAEMON_SELF_RESTART_BUDGET_MAX", "1"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+    // The budgeted restart spawns a replacement daemon DaemonGuard does not
+    // own; make sure it is shut down even when an assertion fails.
+    let _stray_daemon = StrayDaemonGuard::for_repo(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    // Queue mutating payloads that the (wedged) ingest worker never processes.
+    send_trace_frames(
+        &trace_socket_path,
+        &[
+            json!({
+                "event": "start",
+                "sid": "processing-stall-root",
+                "argv": ["git", "commit", "-m", "stalled pipeline"],
+                "time_ns": 70_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "processing-stall-root",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 70_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "processing-stall-root",
+                "code": 0,
+                "time_ns": 70_100u64,
+            }),
+            trace_atexit_frame("processing-stall-root", 0, 70_101u64),
+        ],
+    );
+
+    // The stall window is 12 health intervals (12s at the 1s test cadence);
+    // the wide 90s deadline absorbs heavily loaded CI runners.
+    let mut original_exited = false;
+    for _ in 0..900 {
+        if daemon
+            .child
+            .try_wait()
+            .expect("failed to poll daemon")
+            .is_some()
+        {
+            original_exited = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        original_exited,
+        "daemon should self-restart when the ingest pipeline stops making progress"
+    );
+
+    let mut replacement_reachable = false;
+    for _ in 0..200 {
+        if control_socket_path.exists()
+            && send_control_request(&control_socket_path, &ControlRequest::Ping).is_ok()
+        {
+            replacement_reachable = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        replacement_reachable,
+        "a replacement daemon should serve after the processing stall"
+    );
+    let history: Vec<u64> = serde_json::from_str(
+        &fs::read_to_string(&restart_history_path).expect("restart history should exist"),
+    )
+    .expect("restart history should be valid JSON");
+    assert_eq!(history.len(), 1, "the restart must consume budget");
+
+    let _ = send_control_request(&control_socket_path, &ControlRequest::Shutdown);
+    for _ in 0..100 {
+        if !control_socket_path.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+/// Shutdown must sever accepted trace connections immediately (releasing any
+/// blocked writer), not merely rely on the socket fds closing at process
+/// exit.
+#[test]
+#[serial]
+#[cfg(unix)]
+fn daemon_shutdown_severs_trace_connections_before_process_exit() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+    let trace_socket_path = daemon_trace_socket_path(&repo);
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            // Readers register, then sleep: writes pile into kernel buffers
+            // until the writer blocks, like git inside tr2_dst_write_line.
+            ("GIT_AI_TEST_TRACE_READER_START_DELAY_MS", "30000"),
+            // Keep the process alive well past the shutdown request so the
+            // writer's release can only come from the registry sever.
+            ("GIT_AI_TEST_SHUTDOWN_HANG_SECS", "8"),
+            ("GIT_AI_DAEMON_SHUTDOWN_DEADLINE_SECS", "10"),
+            ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "3600"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+
+    let writer_socket = trace_socket_path.clone();
+    let writer = thread::spawn(move || {
+        let mut stream =
+            open_local_socket_stream_with_timeout(&writer_socket, DAEMON_TEST_PROBE_TIMEOUT)
+                .expect("failed to open writer trace connection");
+        let line = format!(
+            "{}\n",
+            json!({
+                "event": "data",
+                "sid": "sever-blocked-writer",
+                "payload": "x".repeat(8192),
+            })
+        );
+        loop {
+            if stream
+                .write_all(line.as_bytes())
+                .and_then(|_| stream.flush())
+                .is_err()
+            {
+                return;
+            }
+        }
+    });
+    thread::sleep(Duration::from_millis(500));
+
+    let _ = send_control_request(&control_socket_path, &ControlRequest::Shutdown);
+
+    // Linux wakes a blocked peer writer as soon as the daemon's end is shut
+    // down, so release must precede process exit. On macOS a blocked writer
+    // is only released once the reader's fd closes — the sever wakes a reader
+    // parked in read, but this test's reader is deliberately asleep, so the
+    // release is bounded by the shutdown deadline enforcer instead.
+    #[cfg(target_os = "linux")]
+    {
+        let started = std::time::Instant::now();
+        while started.elapsed() < Duration::from_secs(3) {
+            if writer.is_finished() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            writer.is_finished(),
+            "the blocked writer must be released by the registry sever, not by process exit"
+        );
+        assert!(
+            daemon
+                .child
+                .try_wait()
+                .expect("failed to poll daemon")
+                .is_none(),
+            "the daemon process should still be alive when the writer is released"
+        );
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let started = std::time::Instant::now();
+        while started.elapsed() < Duration::from_secs(15) {
+            if writer.is_finished() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            writer.is_finished(),
+            "the blocked writer must be released within the shutdown deadline"
+        );
+    }
+    writer.join().unwrap();
+    daemon.shutdown();
+}
+
+/// Outstanding checkpoints defer a failing health check — but only up to the
+/// cap, after which the daemon restarts anyway. Drives the health loop's
+/// deferral increment and cap wiring end to end: a checkpoint body dribbled
+/// over the control socket holds a quota reservation while the wedged accept
+/// loop keeps every drain probe failing.
+#[test]
+#[serial]
+#[cfg(unix)]
+fn daemon_health_restart_deferred_for_checkpoints_until_cap() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_TRACE_ACCEPT_STALL_SECS", "60"),
+            ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "1"),
+            ("GIT_AI_DAEMON_TRACE_DRAIN_PROBE_DEADLINE_MS", "500"),
+            ("GIT_AI_DAEMON_SELF_RESTART_BUDGET_MAX", "1"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+    let _stray_daemon = StrayDaemonGuard::for_repo(&repo);
+
+    // Hold a checkpoint ingress reservation: announce a large body, read the
+    // ready ack, then dribble bytes so the body read never times out.
+    let dribble_socket = control_socket_path.clone();
+    let dribbler = thread::spawn(move || {
+        let mut stream =
+            open_local_socket_stream_with_timeout(&dribble_socket, DAEMON_TEST_PROBE_TIMEOUT)
+                .expect("failed to open checkpoint control connection");
+        stream
+            .write_all(b"{\"method\":\"checkpoint.run\",\"params\":{\"body_bytes\":100000}}\n")
+            .expect("failed to write checkpoint header");
+        stream.flush().expect("failed to flush checkpoint header");
+        // Read the ready ack line.
+        use std::io::Read as _;
+        let mut byte = [0u8; 1];
+        loop {
+            match stream.read(&mut byte) {
+                Ok(0) | Err(_) => return,
+                Ok(_) if byte[0] == b'\n' => break,
+                Ok(_) => {}
+            }
+        }
+        // Dribble the body: one byte per 200ms keeps the reservation alive.
+        let started = std::time::Instant::now();
+        while started.elapsed() < Duration::from_secs(20) {
+            if stream.write_all(b"x").and_then(|_| stream.flush()).is_err() {
+                return;
+            }
+            thread::sleep(Duration::from_millis(200));
+        }
+    });
+
+    // The health loop must defer while the reservation is outstanding, hit
+    // the cap, and then restart anyway.
+    let started = std::time::Instant::now();
+    loop {
+        let logs = daemon.stderr_contents();
+        if logs.contains("consecutive_deferrals=4") {
+            assert!(
+                logs.contains("restart_deferred_for_checkpoints"),
+                "deferral log should carry its reason:\n{logs}"
+            );
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(30),
+            "health loop never reached the deferral cap:\n{logs}"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
+
+    let mut original_exited = false;
+    for _ in 0..300 {
+        if daemon
+            .child
+            .try_wait()
+            .expect("failed to poll daemon")
+            .is_some()
+        {
+            original_exited = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        original_exited,
+        "the daemon must restart once the deferral cap is exhausted"
+    );
+    dribbler.join().unwrap();
+}
+
+/// A persistent wedge (e.g. systemic filesystem breakage) must not produce an
+/// endless restart loop: the sliding-window budget lets the daemon self-heal
+/// a bounded number of times and then stay down.
+#[test]
+#[serial]
+#[cfg(unix)]
+fn daemon_restart_budget_prevents_crash_loop() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+    let restart_history_path = daemon_lock_path(&repo)
+        .parent()
+        .expect("daemon lock path should have a parent")
+        .join("self_restart_history.json");
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_TRACE_ACCEPT_STALL_SECS", "60"),
+            ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "1"),
+            ("GIT_AI_DAEMON_TRACE_DRAIN_PROBE_DEADLINE_MS", "500"),
+            ("GIT_AI_DAEMON_SELF_RESTART_BUDGET_MAX", "1"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+
+    // First daemon wedges (readiness trace connect) and restarts once.
+    let mut original_exited = false;
+    for _ in 0..100 {
+        if daemon
+            .child
+            .try_wait()
+            .expect("failed to poll daemon")
+            .is_some()
+        {
+            original_exited = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(original_exited, "wedged daemon should shut down");
+
+    // The replacement daemon wedges on its own first health probe and, with
+    // the budget exhausted, must shut down without spawning a third daemon.
+    let started = std::time::Instant::now();
+    let mut saw_replacement = false;
+    while started.elapsed() < Duration::from_secs(30) {
+        if control_socket_path.exists() {
+            saw_replacement = true;
+        } else if saw_replacement {
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        saw_replacement,
+        "one replacement daemon should have started"
+    );
+    for _ in 0..100 {
+        if !control_socket_path.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    assert!(
+        !control_socket_path.exists(),
+        "the replacement daemon should shut down once the restart budget is exhausted"
+    );
+    thread::sleep(Duration::from_secs(2));
+    assert!(
+        !control_socket_path.exists(),
+        "no third daemon may start after the restart budget is exhausted"
+    );
+
+    let history: Vec<u64> = serde_json::from_str(
+        &fs::read_to_string(&restart_history_path).expect("restart history should exist"),
+    )
+    .expect("restart history should be valid JSON");
+    assert_eq!(
+        history.len(),
+        1,
+        "exactly one self-restart should have been recorded"
+    );
+}
+
+/// Once shutdown is requested, the process must exit within the deadline even
+/// if graceful teardown wedges: process exit is what closes the socket fds
+/// and releases any git still blocked on trace2 writes.
+#[test]
+#[serial]
+#[cfg(unix)]
+fn daemon_shutdown_deadline_forces_exit() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_SHUTDOWN_HANG_SECS", "30"),
+            ("GIT_AI_DAEMON_SHUTDOWN_DEADLINE_SECS", "1"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+
+    let _ = send_control_request(&control_socket_path, &ControlRequest::Shutdown);
+
+    let started = std::time::Instant::now();
+    let mut exit_status = None;
+    while started.elapsed() < Duration::from_secs(5) {
+        if let Some(status) = daemon.child.try_wait().expect("failed to poll daemon") {
+            exit_status = Some(status);
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    let exit_status = exit_status
+        .expect("daemon should be force-exited by the shutdown deadline enforcer within 5s");
+    assert_eq!(
+        exit_status.code(),
+        Some(70),
+        "forced exit should use the enforcer's exit code"
+    );
+}
+
+/// Drain probes must be invisible to ingest ordering and attribution.
+#[test]
+#[cfg(not(windows))]
+fn daemon_drain_probes_do_not_disturb_attribution() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let trace_socket_path = daemon_trace_socket_path(&repo);
+
+    let stop_probes = Arc::new(AtomicBool::new(false));
+    let probe_stop = Arc::clone(&stop_probes);
+    let probe_socket = trace_socket_path.clone();
+    let prober = thread::spawn(move || {
+        let mut probe_id = 0u64;
+        while !probe_stop.load(Ordering::SeqCst) {
+            probe_id += 1;
+            if let Ok(mut stream) =
+                open_local_socket_stream_with_timeout(&probe_socket, DAEMON_TEST_PROBE_TIMEOUT)
+            {
+                let line = format!(
+                    "{}\n",
+                    json!({ "event": "git_ai_drain_probe", "git_ai_probe_id": probe_id })
+                );
+                let _ = stream.write_all(line.as_bytes());
+                let _ = stream.flush();
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    });
+
+    let mut file = repo.filename("probe-noise.txt");
+    file.set_contents(lines!["human line", "ai line".ai()]);
+    repo.stage_all_and_commit("commit under probe noise")
+        .unwrap();
+    file.assert_lines_and_blame(lines!["human line".human(), "ai line".ai()]);
+
+    stop_probes.store(true, Ordering::SeqCst);
+    prober.join().unwrap();
 }
 
 #[test]
