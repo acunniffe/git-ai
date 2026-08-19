@@ -141,6 +141,8 @@ pub struct FamilyStatus {
     pub family_key: String,
     pub latest_seq: u64,
     pub last_error: Option<String>,
+    #[serde(default)]
+    pub pending_checkpoints: usize,
 }
 
 /// A telemetry envelope sent from client to daemon.

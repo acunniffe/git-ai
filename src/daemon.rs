@@ -6704,6 +6704,7 @@ impl ActorDaemonCoordinator {
             last_error: status
                 .last_error
                 .or_else(|| self.latest_side_effect_error(&family_key).ok().flatten()),
+            pending_checkpoints: self.outstanding_checkpoint_state().0,
         })
     }
 

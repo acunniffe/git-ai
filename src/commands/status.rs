@@ -4,6 +4,7 @@ use crate::authorship::ignore::{
 use crate::authorship::stats::{CommitStats, stats_from_authorship_log, write_stats_to_terminal};
 use crate::authorship::virtual_attribution::VirtualAttributions;
 use crate::authorship::working_log::CheckpointKind;
+use crate::daemon::control_api::ControlRequest;
 use crate::error::GitAiError;
 use crate::git::find_repository;
 use crate::git::repo_storage::InitialAttributions;
@@ -11,7 +12,9 @@ use crate::git::repository::{InternalGitProfile, Repository, exec_git_with_profi
 use crate::git::status::MAX_PATHSPEC_ARGS;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashSet};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+const DAEMON_STATUS_TIMEOUT: Duration = Duration::from_millis(250);
 
 #[derive(Serialize)]
 struct CheckpointInfo {
@@ -25,6 +28,7 @@ struct CheckpointInfo {
 #[derive(Serialize)]
 struct StatusOutput {
     stats: CommitStats,
+    checkpoint_processing_pending: bool,
     /// Per-checkpoint session breakdown. Omitted entirely when `--diff-only`
     /// is requested, so consumers that only care about the current diff scope
     /// get just the diff-scoped `stats`.
@@ -54,6 +58,7 @@ pub fn handle_status(args: &[String]) {
 
 fn run_status(json: bool, diff_only: bool) -> Result<(), GitAiError> {
     let repo = find_repository(&[])?;
+    let checkpoint_processing_pending = checkpoint_processing_pending(&repo);
     let ignore_patterns = effective_ignore_patterns(&repo, &[], &[]);
     let ignore_matcher = build_ignore_matcher(&ignore_patterns);
 
@@ -73,10 +78,13 @@ fn run_status(json: bool, diff_only: bool) -> Result<(), GitAiError> {
         if json {
             let output = StatusOutput {
                 stats: CommitStats::default(),
+                checkpoint_processing_pending,
                 checkpoints: if diff_only { None } else { Some(vec![]) },
             };
             let json_str = serde_json::to_string(&output)?;
             println!("{}", json_str);
+        } else if checkpoint_processing_pending {
+            print_checkpoint_processing_pending();
         } else {
             eprintln!(
                 "No checkpoints recorded since last commit ({})",
@@ -167,6 +175,7 @@ fn run_status(json: bool, diff_only: bool) -> Result<(), GitAiError> {
     if json {
         let output = StatusOutput {
             stats,
+            checkpoint_processing_pending,
             checkpoints: if diff_only {
                 None
             } else {
@@ -178,6 +187,9 @@ fn run_status(json: bool, diff_only: bool) -> Result<(), GitAiError> {
         return Ok(());
     }
 
+    if checkpoint_processing_pending {
+        print_checkpoint_processing_pending();
+    }
     write_stats_to_terminal(&stats, true);
 
     if diff_only {
@@ -210,6 +222,35 @@ fn run_status(json: bool, diff_only: bool) -> Result<(), GitAiError> {
     }
 
     Ok(())
+}
+
+fn checkpoint_processing_pending(repo: &Repository) -> bool {
+    let Ok(config) = crate::daemon::DaemonConfig::from_env_or_default_paths() else {
+        return false;
+    };
+    let request = ControlRequest::StatusFamily {
+        repo_working_dir: repo.path().to_string_lossy().to_string(),
+    };
+    let Ok(response) = crate::daemon::send_control_request_with_timeout(
+        &config.control_socket_path,
+        &request,
+        DAEMON_STATUS_TIMEOUT,
+    ) else {
+        return false;
+    };
+
+    response.ok
+        && response
+            .data
+            .as_ref()
+            .and_then(|data| data.get("pending_checkpoints"))
+            .and_then(serde_json::Value::as_u64)
+            .is_some_and(|count| count > 0)
+}
+
+fn print_checkpoint_processing_pending() {
+    eprintln!("Checkpoint processing is still in progress. Status may be incomplete.");
+    eprintln!();
 }
 
 fn format_time_ago(timestamp: u64) -> String {
