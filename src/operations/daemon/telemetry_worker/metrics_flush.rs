@@ -3,7 +3,11 @@
 use super::{MetricsDbHandle, TelemetryStores};
 use crate::clients::api::metrics::{MetricsUploadResponse, metrics_upload_allowed};
 use crate::clients::api::{ApiClient, ApiContext};
+use crate::config::{Config, remote_matches_patterns};
 use crate::error::GitAiError;
+use crate::metrics::attrs::attr_pos;
+use crate::metrics::pos_encoded::sparse_get_string;
+use crate::metrics::types::MetricEventId;
 use crate::metrics::{MetricEvent, MetricsBatch};
 use crate::model::repository::error::PersistenceError;
 use crate::model::repository::metrics_db::{METADATA_BACKFILL_BATCH_SIZE, MetricRecord};
@@ -143,6 +147,32 @@ pub(in crate::operations::daemon) struct PendingMetricsFlushResult {
     uploaded_events: usize,
     uploaded_batches: usize,
     invalid_records: usize,
+    skipped_records: usize,
+}
+
+/// Delivery-time eligibility recheck for queued telemetry.
+///
+/// Collection is opt-in per repository, so session events queued while a
+/// repository was eligible must not leak after eligibility is revoked. A
+/// session event carries at most the normalized remote URL, so only
+/// remote-based rules can be re-checked here: an emptied allowlist (opt-in
+/// fully revoked) or a now-excluded remote skips the event, while path-based
+/// eligibility — unverifiable from the event alone — keeps its
+/// ingestion-time decision.
+fn should_deliver_metric_event(
+    event: &MetricEvent,
+    has_allowed_repositories: bool,
+    exclude_repositories: &[glob::Pattern],
+) -> bool {
+    if event.event_id != MetricEventId::SessionEvent as u16 {
+        return true;
+    }
+    if !has_allowed_repositories {
+        return false;
+    }
+    sparse_get_string(&event.attrs, attr_pos::REPO_URL)
+        .flatten()
+        .is_none_or(|url| !remote_matches_patterns(exclude_repositories, &url))
 }
 
 fn flush_pending_metrics_from_db(
@@ -155,8 +185,18 @@ fn flush_pending_metrics_from_db(
         db.lock()
             .map_err(|_| GitAiError::from(PersistenceError::LockPoisoned { what: "metrics DB" }))
     };
+    // Fresh config so allowlist/exclusion edits made after events were queued
+    // are honored at delivery time.
+    let config = Config::fresh();
     flush_pending_metric_records_with(
         |limit| lock_db().and_then(|mut l| l.dequeue_pending_batch(limit)),
+        |event| {
+            should_deliver_metric_event(
+                event,
+                config.has_allowed_repositories(),
+                &config.exclude_repositories,
+            )
+        },
         |ids| lock_db().and_then(|mut l| l.mark_records_delivered(ids, current_unix_ts())),
         |ids, error| {
             let now = current_unix_ts();
@@ -171,14 +211,19 @@ fn flush_pending_metrics_from_db(
     )
 }
 
+// Deliberately a bag of injected closures: this is the test seam for the
+// flush loop, and grouping them into a struct would only obscure call sites.
+#[allow(clippy::too_many_arguments)]
 pub fn flush_pending_metric_records_with<
     DequeueBatch,
+    ShouldDeliver,
     MarkDelivered,
     MarkFailed,
     MarkUndeliverable,
     UploadBatch,
 >(
     mut dequeue_batch: DequeueBatch,
+    should_deliver: ShouldDeliver,
     mut mark_delivered: MarkDelivered,
     mut mark_failed: MarkFailed,
     mut mark_undeliverable: MarkUndeliverable,
@@ -188,6 +233,7 @@ pub fn flush_pending_metric_records_with<
 ) -> Result<PendingMetricsFlushResult, GitAiError>
 where
     DequeueBatch: FnMut(usize) -> Result<Vec<MetricRecord>, GitAiError>,
+    ShouldDeliver: Fn(&MetricEvent) -> bool,
     MarkDelivered: FnMut(&[i64]) -> Result<(), GitAiError>,
     MarkFailed: FnMut(&[i64], &GitAiError) -> Result<(), GitAiError>,
     MarkUndeliverable: FnMut(&[(i64, String)]) -> Result<(), GitAiError>,
@@ -204,13 +250,15 @@ where
         let mut events = Vec::new();
         let mut record_ids = Vec::new();
         let mut invalid_ids = Vec::new();
+        let mut skipped_ids = Vec::new();
 
         for record in &batch {
             match serde_json::from_str::<MetricEvent>(&record.event_json) {
-                Ok(event) => {
+                Ok(event) if should_deliver(&event) => {
                     events.push(event);
                     record_ids.push(record.id);
                 }
+                Ok(_) => skipped_ids.push(record.id),
                 Err(_) => {
                     invalid_ids.push(record.id);
                 }
@@ -223,6 +271,14 @@ where
         if !invalid_ids.is_empty() {
             result.invalid_records += invalid_ids.len();
             mark_delivered(&invalid_ids)?;
+        }
+        if !skipped_ids.is_empty() {
+            result.skipped_records += skipped_ids.len();
+            tracing::info!(
+                skipped = skipped_ids.len(),
+                "metrics: skipped queued session events for repositories no longer eligible"
+            );
+            mark_delivered(&skipped_ids)?;
         }
 
         if events.is_empty() {
