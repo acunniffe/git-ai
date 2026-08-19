@@ -21,6 +21,39 @@ struct StartedGitInvocationLogEntry {
     test_sync_session: Option<String>,
 }
 
+/// Simulate legacy Git versions that ignore `--no-abbrev` for range-diff
+/// summaries unless `core.abbrev=no` is passed. Enabled via
+/// `GIT_AI_TEST_GIT_SHIM_ABBREVIATE_RANGE_DIFF=1`.
+fn argv_with_simulated_legacy_range_diff_abbreviation(argv: &[String]) -> Vec<String> {
+    if env::var("GIT_AI_TEST_GIT_SHIM_ABBREVIATE_RANGE_DIFF").as_deref() != Ok("1") {
+        return argv.to_vec();
+    }
+
+    let Some(range_diff_index) = argv.iter().position(|arg| arg == "range-diff") else {
+        return argv.to_vec();
+    };
+    let has_core_abbrev_override = argv[..range_diff_index]
+        .windows(2)
+        .any(|args| args[0] == "-c" && args[1] == "core.abbrev=no")
+        || argv[..range_diff_index]
+            .iter()
+            .any(|arg| arg == "-ccore.abbrev=no");
+
+    if has_core_abbrev_override {
+        return argv.to_vec();
+    }
+
+    argv.iter()
+        .map(|arg| {
+            if arg == "--no-abbrev" {
+                "--abbrev=8".to_string()
+            } else {
+                arg.clone()
+            }
+        })
+        .collect()
+}
+
 fn select_target(argv: &[String]) -> Result<String, String> {
     let tracked_target = env::var("GIT_AI_TEST_GIT_SHIM_TARGET")
         .map_err(|_| "GIT_AI_TEST_GIT_SHIM_TARGET is required".to_string())?;
@@ -133,6 +166,7 @@ fn main() {
             panic!("git-ai-test-git-shim failed: {error}");
         }
     }
+    effective_argv = argv_with_simulated_legacy_range_diff_abbreviation(&effective_argv);
     exec_target(&target, &effective_argv);
 }
 
@@ -157,5 +191,6 @@ fn main() {
             panic!("git-ai-test-git-shim failed: {error}");
         }
     }
+    effective_argv = argv_with_simulated_legacy_range_diff_abbreviation(&effective_argv);
     exec_target(&target, &effective_argv)
 }

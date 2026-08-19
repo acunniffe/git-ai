@@ -3,7 +3,7 @@ use git_ai::model::repository::bash_history_db::{BashCallEnd, BashCallStart, Bas
 use git_ai::model::working_log::AgentId;
 
 use crate::repos::test_file::ExpectedLineExt;
-use crate::repos::test_repo::{DaemonTestScope, TestRepo};
+use crate::repos::test_repo::{DaemonTestScope, TestRepo, real_git_executable};
 use crate::test_utils::isolated_bash_history_db_path;
 use serde_json::json;
 use std::collections::{BTreeSet, HashMap};
@@ -102,7 +102,13 @@ struct DivergentPullTestSetup {
 /// - local has diverged from upstream (initial + ai_commit)
 /// - `git pull --rebase` will rebase the AI commit onto the upstream commit
 fn setup_divergent_pull_test() -> DivergentPullTestSetup {
-    let (local, upstream) = TestRepo::new_with_remote();
+    setup_divergent_pull_test_with_daemon_scope(DaemonTestScope::Shared)
+}
+
+fn setup_divergent_pull_test_with_daemon_scope(
+    daemon_scope: DaemonTestScope,
+) -> DivergentPullTestSetup {
+    let (local, upstream) = TestRepo::new_with_remote_with_daemon_scope(daemon_scope);
 
     // Make initial commit and push
     let mut readme = local.filename("README.md");
@@ -1949,6 +1955,59 @@ fn test_regular_rebase_with_conflict_abort_preserves_original_notes() {
         post_abort_note.is_some(),
         "Feature AI commit should still have authorship notes after abort"
     );
+}
+
+#[test]
+fn test_pull_rebase_preserves_authorship_when_range_diff_ignores_no_abbrev() {
+    let setup = setup_divergent_pull_test_with_daemon_scope(DaemonTestScope::Dedicated);
+    let mut local = setup.local;
+
+    assert!(
+        local
+            .read_authorship_note(&setup.local_ai_commit_sha)
+            .is_some(),
+        "precondition: original local AI commit should have an authorship note"
+    );
+
+    // Route the daemon's git through a shim that simulates legacy Git
+    // versions abbreviating range-diff output despite --no-abbrev.
+    let shim_binary = env!("CARGO_BIN_EXE_git-ai-test-git-shim");
+    let shim_path = local.test_home_path().join(if cfg!(windows) {
+        "legacy-git-shim.exe"
+    } else {
+        "legacy-git-shim"
+    });
+    std::fs::copy(shim_binary, &shim_path).expect("legacy Git shim should be copied");
+    let shim_path = shim_path.to_str().expect("shim path should be utf-8");
+    let real_git = real_git_executable();
+    local.patch_git_ai_config(|patch| patch.git_path = Some(shim_path.to_string()));
+    local.restart_dedicated_daemon_with_env_for_test(&[
+        ("GIT_AI_TEST_GIT_SHIM_TARGET", real_git),
+        ("GIT_AI_TEST_GIT_SHIM_FALLBACK_TARGET", real_git),
+        ("GIT_AI_TEST_GIT_SHIM_ABBREVIATE_RANGE_DIFF", "1"),
+    ]);
+
+    local
+        .git(&["pull", "--rebase"])
+        .expect("pull --rebase should succeed");
+
+    let rebased_head = local
+        .git(&["rev-parse", "HEAD"])
+        .expect("rev-parse should succeed")
+        .trim()
+        .to_string();
+    assert_ne!(rebased_head, setup.local_ai_commit_sha);
+    assert!(
+        local.read_authorship_note(&rebased_head).is_some(),
+        "rebased local AI commit should retain its authorship note even when Git ignores --no-abbrev"
+    );
+
+    local.patch_git_ai_config(|patch| patch.git_path = Some(real_git.to_string()));
+    let mut ai_file = local.filename("ai_feature.txt");
+    ai_file.assert_committed_lines(crate::lines![
+        "AI generated feature line 1".ai(),
+        "AI generated feature line 2".ai(),
+    ]);
 }
 
 crate::reuse_tests_in_worktree!(

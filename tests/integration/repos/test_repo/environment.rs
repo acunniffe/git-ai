@@ -113,6 +113,15 @@ impl TestRepo {
     }
 
     pub(crate) fn restart_dedicated_daemon_for_test(&mut self) {
+        self.restart_dedicated_daemon_with_env_for_test(&[]);
+    }
+
+    /// Restart the dedicated daemon with extra env vars (e.g. git-shim
+    /// behavior toggles) so config or environment changes take effect.
+    pub(crate) fn restart_dedicated_daemon_with_env_for_test(
+        &mut self,
+        daemon_env: &[(&str, &str)],
+    ) {
         assert_eq!(
             self.daemon_scope,
             DaemonTestScope::Dedicated,
@@ -136,7 +145,19 @@ impl TestRepo {
             #[cfg(windows)]
             daemon.wait_until_stopped();
         }
-        self.setup_daemon_mode();
+        if daemon_env.is_empty() {
+            self.setup_daemon_mode();
+            return;
+        }
+        let daemon = Arc::new(DaemonProcess::start_with_env(
+            &self.path,
+            &self.test_home,
+            &self.test_db_path,
+            daemon_env,
+        ));
+        self.test_db_path = daemon.test_db_path.clone();
+        self.daemon_process = Some(daemon);
+        self.sync_test_home_config();
     }
 
     pub(super) fn configure_command_env(&self, command: &mut Command) {

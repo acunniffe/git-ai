@@ -156,6 +156,8 @@ pub struct FileConfig {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConfigPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub git_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exclude_prompts_in_repositories: Option<Vec<String>>,
     #[serde(
         default,
@@ -823,6 +825,9 @@ pub(crate) fn apply_test_config_patch(config: &mut Config) {
     if let Ok(patch_json) = env::var("GIT_AI_TEST_CONFIG_PATCH")
         && let Ok(patch) = serde_json::from_str::<ConfigPatch>(&patch_json)
     {
+        if let Some(git_path) = patch.git_path {
+            config.git_path = git_path;
+        }
         if let Some(patterns) = patch.allowed_repositories {
             config.allowed_repositories = patterns
                 .into_iter()
