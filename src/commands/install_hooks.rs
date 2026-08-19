@@ -22,6 +22,7 @@ struct InstallOptions {
     verbose: bool,
     install_skills: bool,
     include_visual_studio_extension: bool,
+    configure_env: bool,
     api_base: Option<String>,
     api_key: Option<String>,
 }
@@ -312,6 +313,22 @@ fn ensure_daemon(dry_run: bool) {
 /// Main entry point for install-hooks command
 pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
     let options = parse_install_options(args)?;
+    let result = run_hooks_install(&options);
+
+    // The install scripts previously applied shell/PATH config even when
+    // install-hooks failed, so --env must run regardless of the hooks result.
+    if options.configure_env {
+        if options.dry_run {
+            println!("Dry-run: skipping shell environment configuration.");
+        } else {
+            crate::commands::install_env::configure_shell_env();
+        }
+    }
+
+    result
+}
+
+fn run_hooks_install(options: &InstallOptions) -> Result<HashMap<String, String>, GitAiError> {
     let install_config = InstallConfig {
         api_base: options.api_base.clone().or_else(|| {
             std::env::var("API_BASE")
@@ -344,7 +361,7 @@ pub fn run(args: &[String]) -> Result<HashMap<String, String>, GitAiError> {
     let params = HookInstallerParams { binary_path };
 
     // Run async operations and convert result.
-    let statuses = crate::tokio_runtime::block_on(async_run_install(&params, &options))?;
+    let statuses = crate::tokio_runtime::block_on(async_run_install(&params, options))?;
 
     // Clean up legacy envelope logs directory and related artifacts.
     // These are no longer used — all telemetry now routes through the daemon.
@@ -365,6 +382,7 @@ fn parse_install_options(args: &[String]) -> Result<InstallOptions, GitAiError> 
             "--verbose" | "-v" => options.verbose = true,
             "--skills" => options.install_skills = true,
             "--visual-studio-extension" => options.include_visual_studio_extension = true,
+            "--env" => options.configure_env = true,
             value if value.starts_with("--api-base=") => {
                 options.api_base = non_empty_value(&value[11..]);
             }
@@ -1103,6 +1121,38 @@ mod tests {
             VISUAL_STUDIO_INSTALLER_ID,
             &options
         ));
+    }
+
+    #[test]
+    fn parse_install_options_defaults_env_to_disabled() {
+        let options = parse_install_options(&[]).unwrap();
+
+        assert!(!options.configure_env);
+    }
+
+    #[test]
+    fn parse_install_options_enables_env_flag() {
+        let args = vec!["--dry-run".to_string(), "--env".to_string()];
+        let options = parse_install_options(&args).unwrap();
+
+        assert!(options.dry_run);
+        assert!(options.configure_env);
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    #[serial]
+    fn install_with_env_and_dry_run_touches_nothing() {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join(".zshrc"), "# zshrc\n").unwrap();
+        let _home = EnvVarGuard::set("HOME", temp.path().to_str().unwrap());
+
+        let _ = run(&["--env".to_string(), "--dry-run".to_string()]);
+
+        assert_eq!(
+            fs::read_to_string(temp.path().join(".zshrc")).unwrap(),
+            "# zshrc\n"
+        );
     }
 
     #[test]

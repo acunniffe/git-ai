@@ -275,6 +275,86 @@ fn plain_install_hooks_preserves_the_invoking_user_home() {
 
 #[test]
 #[cfg(not(windows))]
+fn install_hooks_env_flag_adds_path_to_detected_shell_configs() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let home = repo.test_home_path();
+    fs::write(home.join(".bashrc"), "# bashrc\n").unwrap();
+    fs::write(home.join(".zshrc"), "# zshrc\n").unwrap();
+
+    let output = repo
+        .git_ai_command_without_pre_sync_for_test(&["install-hooks", "--env"], &[])
+        .output()
+        .expect("run git-ai install-hooks --env");
+    assert!(
+        output.status.success(),
+        "install-hooks --env failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let expected_line = format!("export PATH=\"{}/.git-ai/bin:$PATH\"", home.display());
+    let bashrc = fs::read_to_string(home.join(".bashrc")).unwrap();
+    let zshrc = fs::read_to_string(home.join(".zshrc")).unwrap();
+    assert!(
+        bashrc.contains(&expected_line),
+        "missing PATH line:\n{bashrc}"
+    );
+    assert!(
+        zshrc.contains(&expected_line),
+        "missing PATH line:\n{zshrc}"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Updated shell configurations:"),
+        "missing shell config report:\n{stdout}"
+    );
+
+    // A second run must be idempotent and report the configs as already set up.
+    let second = repo
+        .git_ai_command_without_pre_sync_for_test(&["install-hooks", "--env"], &[])
+        .output()
+        .expect("re-run git-ai install-hooks --env");
+    assert!(second.status.success());
+    assert_eq!(
+        fs::read_to_string(home.join(".zshrc")).unwrap(),
+        zshrc,
+        "second --env run must not modify shell configs again"
+    );
+    let second_stdout = String::from_utf8_lossy(&second.stdout);
+    assert!(
+        second_stdout.contains("Already configured (no changes needed):"),
+        "missing already-configured report:\n{second_stdout}"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn install_hooks_without_env_flag_leaves_shell_configs_untouched() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let home = repo.test_home_path();
+    fs::write(home.join(".zshrc"), "# zshrc\n").unwrap();
+
+    let output = repo
+        .git_ai_command_without_pre_sync_for_test(&["install-hooks"], &[])
+        .output()
+        .expect("run git-ai install-hooks");
+    assert!(
+        output.status.success(),
+        "install-hooks failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_eq!(
+        fs::read_to_string(home.join(".zshrc")).unwrap(),
+        "# zshrc\n",
+        "plain install-hooks must never touch shell configs"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
 fn install_hooks_detects_cline_from_vscode_server_extension_manifest() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
     let home = repo.test_home_path();
