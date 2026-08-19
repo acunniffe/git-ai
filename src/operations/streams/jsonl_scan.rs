@@ -7,7 +7,7 @@
 
 use crate::model::stream_types::StreamError;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
 
 pub(crate) const MAX_JSONL_SCAN_BYTES: u64 = 50 * 1024;
@@ -43,10 +43,27 @@ pub(crate) fn scan_jsonl_tail(
         return Ok((None, false));
     }
 
-    let reader = BufReader::new(file);
-    let lines: Vec<String> = reader.lines().map_while(Result::ok).collect();
+    let mut window = Vec::with_capacity(read_size as usize);
+    if file.take(read_size).read_to_end(&mut window).is_err() {
+        return Ok((None, false));
+    }
 
-    for line in lines.iter().rev() {
+    // A truncated window usually starts mid-line — possibly mid-way through a
+    // multi-byte character — so drop everything up to the first newline
+    // instead of letting an invalid first line abort the whole scan.
+    let window = if seek_pos > 0 {
+        match window.iter().position(|byte| *byte == b'\n') {
+            Some(first_newline) => &window[first_newline + 1..],
+            None => return Ok((None, true)),
+        }
+    } else {
+        &window[..]
+    };
+
+    for line in window.rsplit(|byte| *byte == b'\n') {
+        let Ok(line) = std::str::from_utf8(line) else {
+            continue;
+        };
         if let Some(value) = extract_from_line(line) {
             return Ok((Some(value), seek_pos > 0));
         }
@@ -181,6 +198,29 @@ mod tests {
             truncated,
             "a file larger than the window must report truncation"
         );
+    }
+
+    #[test]
+    fn test_scan_jsonl_tail_handles_utf8_at_window_boundary() {
+        // The window start lands mid-way through a multi-byte character: the
+        // partial first line must be skipped without aborting the scan, so
+        // the model on the last line is still found.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        writeln!(file, "{}", "€".repeat(20_000)).unwrap();
+        writeln!(file, r#"{{"model":"tail-model"}}"#).unwrap();
+        file.flush().unwrap();
+
+        let file_size = std::fs::metadata(file.path()).unwrap().len();
+        let window_start = file_size - MAX_JSONL_SCAN_BYTES;
+        assert_ne!(
+            window_start % 3,
+            0,
+            "window must start mid-character for this fixture"
+        );
+
+        let (model, truncated) = scan_jsonl_tail(file.path(), take_model).unwrap();
+        assert_eq!(model, Some("tail-model".to_string()));
+        assert!(truncated);
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use crate::model::stream_types::StreamError;
 use crate::operations::streams::codex_model::extract_model_from_codex_jsonl;
+use crate::operations::streams::copilot_model::extract_model_from_copilot_session_json;
 use crate::operations::streams::jsonl_scan::{scan_jsonl_head, scan_jsonl_tail};
 use crate::operations::streams::sweep::StreamFormat;
 use std::path::{Path, PathBuf};
@@ -226,31 +227,6 @@ fn extract_model_from_copilot_otel_sqlite(
         .ok();
 
     Ok(newest_response_model)
-}
-
-fn extract_model_from_copilot_session_json(path: &Path) -> Result<Option<String>, StreamError> {
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => return Ok(None),
-    };
-
-    let json: serde_json::Value = match serde_json::from_str(&content) {
-        Ok(v) => v,
-        Err(_) => return Ok(None),
-    };
-
-    let model = json
-        .get("requests")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| {
-            arr.iter().find_map(|req| {
-                req.get("modelId")
-                    .and_then(|v| v.as_str())
-                    .map(String::from)
-            })
-        });
-
-    Ok(model)
 }
 
 fn extract_model_from_amp_thread_json(path: &Path) -> Result<Option<String>, StreamError> {
