@@ -224,6 +224,35 @@ fn raw_traced_git_with_session(repo: &TestRepo, args: &[&str], session: &str) ->
     combined_output(stdout, stderr)
 }
 
+#[cfg(not(windows))]
+fn raw_traced_git_in_dir(dir: &Path, test_home: &Path, trace_socket: &Path, args: &[&str]) {
+    let mut command = Command::new(real_git_executable());
+    command.arg("-C").arg(dir).args(args);
+    command.env("HOME", test_home);
+    command.env("GIT_CONFIG_GLOBAL", test_home.join(".gitconfig"));
+    command.env("XDG_CONFIG_HOME", test_home.join(".config"));
+    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    command.env(
+        "GIT_TRACE2_EVENT",
+        git_ai::daemon::DaemonConfig::trace2_event_target_for_path(trace_socket),
+    );
+    command.env(
+        "GIT_TRACE2_EVENT_NESTING",
+        std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string()),
+    );
+
+    let output = command
+        .output()
+        .unwrap_or_else(|error| panic!("failed to run raw traced git {:?}: {}", args, error));
+    assert!(
+        output.status.success(),
+        "raw traced git {:?} failed\nstdout: {}\nstderr: {}",
+        args,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
 fn raw_untraced_git(repo: &TestRepo, args: &[&str]) -> String {
     repo.git_og_with_env(args, &[("GIT_TRACE2_EVENT", "0")])
         .unwrap_or_else(|error| panic!("raw untraced git {:?} failed: {}", args, error))
@@ -709,26 +738,138 @@ fn test_delayed_commit_trace_replay_attributes_matching_commit_not_later_commit(
 
 #[cfg(not(windows))]
 #[test]
-fn test_trace_listener_bootstrap_captures_commit_ref_transition_before_worker_spawn_delay() {
-    let repo = TestRepo::new_with_daemon_env(&[(
-        "GIT_AI_TEST_TRACE_LISTENER_WORKER_SPAWN_DELAY_MS",
-        "200",
-    )]);
+fn test_delayed_trace_reader_start_fails_closed_and_never_misattributes() {
+    // A trace reader thread that starts late captures reflog start offsets
+    // late. Per the ingestion spec (§Seeding), late capture is conservative:
+    // the delayed command may lose attribution but must never steal a later
+    // commit's reflog entries.
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_TRACE_READER_START_DELAY_MS", "200")]);
     fs::write(repo.path().join("README.md"), "base\n").unwrap();
     repo.git_og(&["add", "README.md"]).unwrap();
     repo.git_og(&["commit", "-m", "base"]).unwrap();
 
-    fs::write(
-        repo.path().join("bootstrap-race.txt"),
-        "bootstrap race ai\n",
-    )
-    .unwrap();
-    repo.git_ai(&["checkpoint", "mock_ai", "bootstrap-race.txt"])
+    fs::write(repo.path().join("reader-race.txt"), "reader race ai\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "reader-race.txt"])
         .unwrap();
-    repo.git(&["add", "bootstrap-race.txt"]).unwrap();
-    let committed = repo.commit("bootstrap race").unwrap();
+    repo.git(&["add", "reader-race.txt"]).unwrap();
+    let committed = repo.commit("reader race").unwrap();
 
-    assert_note_has_ai_for_file(&repo, &committed.commit_sha, "bootstrap-race.txt");
+    if repo.read_authorship_note(&committed.commit_sha).is_some() {
+        assert_note_has_ai_for_file(&repo, &committed.commit_sha, "reader-race.txt");
+    }
+
+    fs::write(repo.path().join("later-untracked.txt"), "later untracked\n").unwrap();
+    raw_untraced_git(&repo, &["add", "later-untracked.txt"]);
+    raw_untraced_git(&repo, &["commit", "-m", "later untracked commit"]);
+    let later_commit = head_sha(&repo);
+    assert!(
+        repo.read_authorship_note(&later_commit).is_none(),
+        "a delayed trace reader must never attach attribution to a later commit"
+    );
+}
+
+#[cfg(not(windows))]
+#[test]
+fn test_concurrent_worktree_commits_attribute_exactly() {
+    // Two linked worktrees of one family committing near-simultaneously
+    // exercise concurrent trace reader threads capturing reflog start
+    // offsets (the capture runs outside the shared ingress lock).
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+
+    // Random per-run path (mirrors the test framework's worktree naming) with
+    // cleanup on all exits, including assertion failures.
+    struct WorktreeDirGuard(std::path::PathBuf);
+    impl Drop for WorktreeDirGuard {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+    use rand::RngExt;
+    let worktree_path = std::env::temp_dir().join(format!(
+        "{}-wt",
+        rand::rng().random_range(0..10_000_000_000u64)
+    ));
+    let _worktree_cleanup = WorktreeDirGuard(worktree_path.clone());
+    raw_untraced_git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "concurrent-wt",
+            worktree_path.to_str().unwrap(),
+        ],
+    );
+
+    fs::write(repo.path().join("main-ai.txt"), "main ai line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "main-ai.txt"])
+        .unwrap();
+    raw_untraced_git(&repo, &["add", "main-ai.txt"]);
+    fs::write(worktree_path.join("wt-file.txt"), "worktree line\n").unwrap();
+    raw_traced_git_in_dir(
+        &worktree_path,
+        repo.test_home_path(),
+        &repo.daemon_trace_socket_path(),
+        &["add", "wt-file.txt"],
+    );
+    repo.sync_daemon();
+    let baseline = repo.daemon_total_completion_count();
+
+    let repo_dir = repo.path().to_path_buf();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+    let main_barrier = barrier.clone();
+    let wt_barrier = barrier.clone();
+    let main_repo_dir = repo_dir.clone();
+    let (test_home, trace_socket) = (
+        repo.test_home_path().to_path_buf(),
+        repo.daemon_trace_socket_path(),
+    );
+    let (wt_test_home, wt_trace_socket) = (test_home.clone(), trace_socket.clone());
+    let wt_dir = worktree_path.clone();
+
+    let main_thread = std::thread::spawn(move || {
+        main_barrier.wait();
+        raw_traced_git_in_dir(
+            &main_repo_dir,
+            &test_home,
+            &trace_socket,
+            &["commit", "-m", "concurrent main commit"],
+        );
+    });
+    let wt_thread = std::thread::spawn(move || {
+        wt_barrier.wait();
+        raw_traced_git_in_dir(
+            &wt_dir,
+            &wt_test_home,
+            &wt_trace_socket,
+            &["commit", "-m", "concurrent worktree commit"],
+        );
+    });
+    main_thread.join().unwrap();
+    wt_thread.join().unwrap();
+
+    repo.wait_for_daemon_total_completion_count(baseline, baseline + 2);
+
+    let main_commit = head_sha(&repo);
+    assert_note_has_ai_for_file(&repo, &main_commit, "main-ai.txt");
+    let mut file = repo.filename("main-ai.txt");
+    file.assert_committed_lines(lines!["main ai line".ai()]);
+
+    // The worktree commit carried no AI checkpoint; it must never receive
+    // the main commit's attribution.
+    let wt_commit = raw_untraced_git(&repo, &["rev-parse", "concurrent-wt"])
+        .trim()
+        .to_string();
+    if let Some(note) = repo.read_authorship_note(&wt_commit) {
+        let log = AuthorshipLog::deserialize_from_string(&note).expect("parse worktree note");
+        assert!(
+            !log.attestations
+                .iter()
+                .any(|attestation| attestation.file_path == "main-ai.txt"),
+            "worktree commit must not steal the main worktree's attribution"
+        );
+    }
 }
 
 #[test]

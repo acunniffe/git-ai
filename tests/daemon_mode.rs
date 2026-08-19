@@ -2618,6 +2618,298 @@ fn daemon_trace_listener_partial_line_does_not_block_later_trace_connections() {
 
 #[test]
 #[cfg(not(windows))]
+fn daemon_trace_read_error_does_not_leave_root_open_forever() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let control_socket = daemon_control_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    let mut stream =
+        open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+            .expect("failed to connect to trace socket");
+    write_trace_frames_to_stream(
+        &mut stream,
+        &[
+            json!({
+                "event": "start",
+                "sid": "read-error-open-root",
+                "argv": ["git", "commit", "-m", "interrupted by bad bytes"],
+                "time_ns": 50_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "read-error-open-root",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 50_001u64,
+            }),
+        ],
+    );
+    // Invalid UTF-8 makes the reader's read_line fail. The connection's roots
+    // must still be finalized, or this family's fences block forever.
+    stream
+        .write_all(&[0xFF, 0xFE, 0xFD, b'\n'])
+        .expect("failed to write invalid bytes");
+    stream.flush().expect("failed to flush invalid bytes");
+    thread::sleep(Duration::from_millis(200));
+
+    let response = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(3),
+    )
+    .expect("sync.family must not hang after a trace connection read error");
+    assert!(response.ok, "sync.family failed: {response:?}");
+    drop(stream);
+}
+
+/// Family resolution reads `.git` and canonicalizes paths — filesystem I/O.
+/// One repo on a hung/slow filesystem must not stall trace draining for
+/// every other repository (the I/O must run outside the shared ingress lock).
+#[test]
+#[serial]
+#[cfg(not(windows))]
+fn daemon_trace_family_resolution_io_does_not_block_other_readers() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let mut daemon =
+        DaemonGuard::start_with_env(&repo, &[("GIT_AI_TEST_FAMILY_RESOLVE_DELAY_MS", "3000")]);
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    // Connection A: a def_repo whose worktree path carries the stall marker;
+    // its family resolution sleeps 3s, simulating a hung filesystem. The root
+    // is read-only so the only thing that could delay other repos is the
+    // ingress lock the reader holds while resolving.
+    let mut slow_repo_stream =
+        open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+            .expect("failed to connect slow-repo trace socket");
+    write_trace_frames_to_stream(
+        &mut slow_repo_stream,
+        &[
+            json!({
+                "event": "start",
+                "sid": "family-resolve-slow-root",
+                "argv": ["git", "status", "--short"],
+                "time_ns": 60_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "family-resolve-slow-root",
+                "worktree": "/tmp/git-ai-family-resolve-stall/repo",
+                "time_ns": 60_001u64,
+            }),
+        ],
+    );
+    thread::sleep(Duration::from_millis(200));
+
+    // Connection B: a healthy repo must still be processed promptly.
+    let session = repos::test_repo::new_daemon_test_sync_session_id();
+    let session_arg = format!("git-ai.testSyncSession={session}");
+    send_trace_frames(
+        &trace_socket,
+        &[
+            json!({
+                "event": "start",
+                "sid": "family-resolve-healthy-root",
+                "argv": ["git", "-c", session_arg, "commit", "-m", "synthetic"],
+                "time_ns": 61_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "family-resolve-healthy-root",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 61_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "family-resolve-healthy-root",
+                "code": 0,
+                "time_ns": 61_100u64,
+            }),
+            trace_atexit_frame("family-resolve-healthy-root", 0, 61_101u64),
+        ],
+    );
+
+    let start = std::time::Instant::now();
+    let mut healthy_completed = false;
+    while start.elapsed() < Duration::from_millis(1500) {
+        if repo
+            .daemon_completion_entries()
+            .iter()
+            .any(|entry| entry.test_sync_session.as_deref() == Some(session.as_str()))
+        {
+            healthy_completed = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    daemon.shutdown();
+    assert!(
+        healthy_completed,
+        "a healthy repository's trace traffic must not wait behind another repo's family-resolution I/O"
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_trace_accept_loop_not_serialized_by_silent_connections() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    // Connections that never send a byte must not hold the accept loop
+    // hostage: a later connection's frames have to be read promptly.
+    let mut silent_streams = Vec::new();
+    for _ in 0..20 {
+        silent_streams.push(
+            open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+                .expect("failed to open silent trace connection"),
+        );
+    }
+
+    let session = repos::test_repo::new_daemon_test_sync_session_id();
+    let session_arg = format!("git-ai.testSyncSession={session}");
+    send_trace_frames(
+        &trace_socket,
+        &[
+            json!({
+                "event": "start",
+                "sid": "silent-conn-followup",
+                "argv": ["git", "-c", session_arg, "commit", "-m", "synthetic"],
+                "time_ns": 20_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "silent-conn-followup",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 20_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "silent-conn-followup",
+                "code": 0,
+                "time_ns": 20_100u64,
+            }),
+            trace_atexit_frame("silent-conn-followup", 0, 20_101u64),
+        ],
+    );
+
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_secs(1) {
+        if repo
+            .daemon_completion_entries()
+            .iter()
+            .any(|entry| entry.test_sync_session.as_deref() == Some(session.as_str()))
+        {
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    panic!(
+        "daemon did not process a trace connection within 1s while 20 silent connections were open; \
+         the accept loop must hand connections to reader threads without doing per-connection reads"
+    );
+}
+
+#[test]
+#[serial]
+#[cfg(not(windows))]
+fn daemon_trace_reader_spawn_failure_drops_connection_and_keeps_accepting() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    // The readiness wait makes exactly one successful trace-socket connect,
+    // consuming one injected failure; the two test connections below consume
+    // the rest.
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[("GIT_AI_TEST_TRACE_CONNECTION_SPAWN_FAILURES", "3")],
+    );
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    // The first two connections hit the injected reader-spawn failure. The
+    // daemon must close them promptly (a blocked git writer would otherwise
+    // hang forever) instead of wedging or exiting.
+    for connection in 0..2 {
+        let mut stream =
+            open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+                .expect("failed to open trace connection");
+        let started = std::time::Instant::now();
+        let mut dropped = false;
+        while started.elapsed() < Duration::from_secs(2) {
+            if stream
+                .write_all(b"\n")
+                .and_then(|_| stream.flush())
+                .is_err()
+            {
+                dropped = true;
+                break;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            dropped,
+            "connection {connection} should be dropped promptly when the reader thread cannot be spawned"
+        );
+    }
+
+    // With the injected failures exhausted, the daemon must still be alive
+    // and process new trace connections normally.
+    let session = repos::test_repo::new_daemon_test_sync_session_id();
+    let session_arg = format!("git-ai.testSyncSession={session}");
+    send_trace_frames(
+        &trace_socket,
+        &[
+            json!({
+                "event": "start",
+                "sid": "post-spawn-failure",
+                "argv": ["git", "-c", session_arg, "commit", "-m", "synthetic"],
+                "time_ns": 30_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "post-spawn-failure",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 30_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "post-spawn-failure",
+                "code": 0,
+                "time_ns": 30_100u64,
+            }),
+            trace_atexit_frame("post-spawn-failure", 0, 30_101u64),
+        ],
+    );
+
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_secs(2) {
+        if repo
+            .daemon_completion_entries()
+            .iter()
+            .any(|entry| entry.test_sync_session.as_deref() == Some(session.as_str()))
+        {
+            daemon.shutdown();
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    daemon.shutdown();
+    panic!("daemon did not process a trace connection after injected reader-spawn failures");
+}
+
+#[test]
+#[cfg(not(windows))]
 fn daemon_trace_connection_close_without_atexit_does_not_block_later_trace() {
     let repo = TestRepo::new_dedicated_daemon();
     let trace_socket = daemon_trace_socket_path(&repo);
