@@ -8439,6 +8439,29 @@ fn handle_trace_connection_actor_reader<R: Read>(
     read_result.and(finalize_result)
 }
 
+/// Whether the trace readers keep a frame of this event type. Only the
+/// normalizer's consumed events (plus the daemon's own drain probe) ever
+/// leave the reader thread; everything else — the large majority of what a
+/// git process emits — is dropped here, before bookkeeping, sequence
+/// allocation, or an ingest-queue slot. Internally synthesized payloads
+/// (close markers) bypass the readers entirely and are unaffected.
+fn reader_should_ingest_trace_event(event: &str) -> bool {
+    event == TRACE_DRAIN_PROBE_EVENT
+        || crate::daemon::trace_normalizer::INGESTED_TRACE_EVENTS.contains(&event)
+}
+
+/// Extract the event type without a full JSON parse. Only trusted when the
+/// event key is the line's first field — git's trace2 writer always emits it
+/// first, and requiring the prefix means user-controlled content (e.g. a
+/// commit message containing `"event":"…"`) can never be mistaken for the
+/// event key. Any other shape returns None and falls through to the parsed
+/// check.
+fn raw_trace_event_type(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix("{\"event\":\"")?;
+    let end = rest.find('"')?;
+    Some(&rest[..end])
+}
+
 fn process_trace_connection_line(
     line: &str,
     coordinator: Arc<ActorDaemonCoordinator>,
@@ -8448,11 +8471,21 @@ fn process_trace_connection_line(
     if trimmed.is_empty() {
         return Ok(None);
     }
+    // Fast path: reject unconsumed frames before paying for the JSON parse.
+    if let Some(event) = raw_trace_event_type(trimmed)
+        && !reader_should_ingest_trace_event(event)
+    {
+        return Ok(None);
+    }
     let mut parsed: Value = match serde_json::from_str(trimmed) {
         Ok(v) => v,
         Err(_) => return Ok(None),
     };
-    if parsed.get("event").and_then(Value::as_str) == Some(TRACE_DRAIN_PROBE_EVENT) {
+    let event = parsed
+        .get("event")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if event == TRACE_DRAIN_PROBE_EVENT {
         if let Some(probe_id) = parsed
             .get(TRACE_DRAIN_PROBE_ID_FIELD)
             .and_then(Value::as_u64)
@@ -8462,6 +8495,11 @@ fn process_trace_connection_line(
         return Ok(Some(TraceLineOutcome {
             continue_reading: true,
         }));
+    }
+    // Covers frames the raw prefix couldn't classify (unusual key order or
+    // whitespace).
+    if !reader_should_ingest_trace_event(event) {
+        return Ok(None);
     }
     if let Some(sid) = parsed.get("sid").and_then(Value::as_str) {
         let was_unidentified = observed_roots.is_empty();
@@ -10916,6 +10954,94 @@ mod tests {
         assert!(!ingress.root_argv.contains_key(sid));
         assert!(!ingress.root_definitely_read_only.contains(sid));
         assert!(!ingress.root_open_connections.contains_key(sid));
+    }
+
+    #[test]
+    fn raw_trace_event_type_only_trusts_the_prefix_position() {
+        assert_eq!(
+            raw_trace_event_type(r#"{"event":"start","sid":"s1"}"#),
+            Some("start")
+        );
+        // User-controlled content can embed the pattern; only the prefix is
+        // the real event key.
+        assert_eq!(
+            raw_trace_event_type(
+                r#"{"event":"start","argv":["git","commit","-m","\"event\":\"data\""]}"#
+            ),
+            Some("start")
+        );
+        // Non-prefix shapes are not classified here (fall through to the
+        // parsed check).
+        assert_eq!(raw_trace_event_type(r#"{"sid":"s1","event":"data"}"#), None);
+        assert_eq!(raw_trace_event_type(r#"{ "event":"data"}"#), None);
+        assert_eq!(raw_trace_event_type("not json"), None);
+    }
+
+    #[test]
+    fn reader_ingests_only_consumed_events_and_probes() {
+        for event in [
+            "start",
+            "def_repo",
+            "cmd_name",
+            "def_param",
+            "exit",
+            "atexit",
+        ] {
+            assert!(
+                reader_should_ingest_trace_event(event),
+                "{event} is consumed by the normalizer and must be ingested"
+            );
+        }
+        assert!(reader_should_ingest_trace_event(TRACE_DRAIN_PROBE_EVENT));
+        for event in [
+            "version",
+            "cmd_path",
+            "cmd_ancestry",
+            "cmd_mode",
+            "child_start",
+            "child_exit",
+            "region_enter",
+            "region_leave",
+            "data",
+            "data_json",
+            "thread_start",
+            "error",
+            "signal",
+            "exec",
+            "",
+            // Close markers are synthesized internally and bypass the
+            // readers; one arriving over the socket is not ours.
+            TRACE_CONNECTION_CLOSED_EVENT,
+        ] {
+            assert!(
+                !reader_should_ingest_trace_event(event),
+                "{event:?} is not consumed and must be dropped at ingestion"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn noise_frame_is_dropped_before_any_bookkeeping() {
+        let coord = Arc::new(ActorDaemonCoordinator::new());
+        let mut observed_roots = std::collections::BTreeSet::new();
+
+        let outcome = process_trace_connection_line(
+            r#"{"event":"data","sid":"noise-root","category":"index","label":"x"}"#,
+            coord.clone(),
+            &mut observed_roots,
+        )
+        .unwrap();
+
+        assert!(outcome.is_none(), "noise frames are skipped lines");
+        assert!(
+            observed_roots.is_empty(),
+            "noise frames must not register roots"
+        );
+        let ingress = coord.trace_ingress_state.lock().unwrap();
+        assert!(
+            ingress.root_last_activity_ns.is_empty(),
+            "noise frames must not touch ingress bookkeeping"
+        );
     }
 
     #[tokio::test]

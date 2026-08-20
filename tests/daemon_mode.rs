@@ -2781,6 +2781,96 @@ fn daemon_trace_family_resolution_io_does_not_block_other_readers() {
     );
 }
 
+/// Only ~6 of the ~25-35 frames a mutating git command emits are ever
+/// consumed downstream; the rest must be dropped at ingestion instead of
+/// occupying ingest-queue slots. A queue sized to hold just the consumed
+/// frames must survive a root padded with realistic trace2 noise.
+#[test]
+#[serial]
+#[cfg(not(windows))]
+fn daemon_noise_frames_do_not_consume_ingest_capacity() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket_path = daemon_control_socket_path(&repo);
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            // Room for the consumed frames (start, def_repo, cmd_name, exit,
+            // atexit, close marker) but not for the noise.
+            ("GIT_AI_TEST_TRACE_INGEST_QUEUE_CAPACITY", "8"),
+            // Nothing drains while the frames arrive.
+            ("GIT_AI_TEST_TRACE_INGEST_WORKER_START_DELAY_MS", "4000"),
+            ("GIT_AI_DAEMON_SOCKET_HEALTH_CHECK_SECS", "3600"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    let session = repos::test_repo::new_daemon_test_sync_session_id();
+    let session_arg = format!("git-ai.testSyncSession={session}");
+    let sid = "noise-heavy-root";
+    let mut frames = vec![
+        json!({"event": "version", "sid": sid, "evt": "3", "exe": "2.49.0"}),
+        json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "-c", session_arg, "commit", "-m", "synthetic"],
+            "time_ns": 80_000u64,
+        }),
+        json!({"event": "cmd_path", "sid": sid, "path": "/usr/bin/git"}),
+        json!({"event": "cmd_ancestry", "sid": sid, "ancestry": ["zsh", "login"]}),
+        json!({
+            "event": "def_repo",
+            "sid": sid,
+            "worktree": worktree,
+            "repo": git_dir,
+            "time_ns": 80_001u64,
+        }),
+        json!({"event": "cmd_name", "sid": sid, "name": "commit", "hierarchy": "commit"}),
+    ];
+    for i in 0..10u64 {
+        frames.push(json!({
+            "event": if i % 2 == 0 { "region_enter" } else { "data" },
+            "sid": sid,
+            "time_ns": 80_010 + i,
+            "category": "index",
+            "label": "noise",
+        }));
+    }
+    frames.push(json!({"event": "child_start", "sid": sid, "child_id": 0, "argv": ["hook"]}));
+    frames.push(json!({"event": "child_exit", "sid": sid, "child_id": 0, "code": 0}));
+    frames.push(json!({"event": "exit", "sid": sid, "code": 0, "time_ns": 80_100u64}));
+    frames.push(trace_atexit_frame(sid, 0, 80_101));
+    send_trace_frames(&trace_socket, &frames);
+
+    // Once the worker wakes, the root must complete: noise frames must not
+    // have overflowed the queue (which would fail closed and kill the daemon).
+    let start = std::time::Instant::now();
+    let mut completed = false;
+    while start.elapsed() < Duration::from_secs(15) {
+        if repo
+            .daemon_completion_entries()
+            .iter()
+            .any(|entry| entry.test_sync_session.as_deref() == Some(session.as_str()))
+        {
+            completed = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        completed,
+        "noise frames must be filtered at ingestion, not fill the queue:\n{}",
+        daemon.stderr_contents()
+    );
+    let response = send_control_request(&control_socket_path, &ControlRequest::Ping)
+        .expect("daemon should still be serving after the noise-heavy root");
+    assert!(response.ok, "ping failed: {response:?}");
+    daemon.shutdown();
+}
+
 #[test]
 #[cfg(not(windows))]
 fn daemon_trace_accept_loop_not_serialized_by_silent_connections() {
