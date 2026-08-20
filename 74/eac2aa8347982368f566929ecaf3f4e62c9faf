@@ -1,0 +1,25 @@
+tests/integration/install_hooks_comprehensive.rs
+  s_11a225d6fd6dae::t_28cfbae3b7dcb3 1142-1156
+src/commands/install_hooks/shell_env.rs
+  s_11a225d6fd6dae::t_29d0cbd84f830f 331-336
+  s_11a225d6fd6dae::t_7804ecaf18b7cd 653-679
+  s_11a225d6fd6dae::t_209e6dd44ee034 652
+packaging/windows/git-ai.wxs
+  s_11a225d6fd6dae::t_29d0cbd84f830f 57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "74eac2aa8347982368f566929ecaf3f4e62c9faf",
+  "prompts": {},
+  "sessions": {
+    "s_11a225d6fd6dae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01137-c2dd-76c1-9b00-b804175d9803",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

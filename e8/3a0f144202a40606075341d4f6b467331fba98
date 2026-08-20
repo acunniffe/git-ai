@@ -1,0 +1,28 @@
+tests/integration/github_copilot_create_file.rs
+  acaacb0abd2332ed 25,29
+src/commands/checkpoint.rs
+  acaacb0abd2332ed 1025-1072,1079-1095,1097-1104,1107-1113,1121,1132
+tests/integration/repos/test_repo.rs
+  acaacb0abd2332ed 2377-2383,2414-2422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "e83a0f144202a40606075341d4f6b467331fba98",
+  "prompts": {
+    "acaacb0abd2332ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e8803e77-45ab-4067-a145-5b3f347826a4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 368,
+      "total_deletions": 313,
+      "accepted_lines": 122,
+      "overriden_lines": 2,
+      "messages_url": "https://vallecular-bodhi-triadically.ngrok-free.dev/cas/587abeb2e4e06397d94b6a54f0327dbfef82a6bbe160be94f33182159ad1da80"
+    }
+  }
+}

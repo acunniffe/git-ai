@@ -1,0 +1,51 @@
+src/metrics/events.rs
+  db8138584d170a5c 671,675-682,697-704,711-718,768-855,878-885,887-891,893-913,924-931
+src/commands/prompt_event.rs
+  db8138584d170a5c 22-63,85,87-94,185-188,193,205-208,220-223,231-232,234-235,237-240,346-362,433-447,546-553
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "7df513f589b013fc6718aa953b6963ff873693ee",
+  "prompts": {
+    "7d7adfb21681f739": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89e61881-c88f-4e37-984c-2de8d9b4ea30",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 52,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "db8138584d170a5c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0723be77-9434-4490-a03c-af5dca5f84ec",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 272,
+      "total_deletions": 25,
+      "accepted_lines": 267,
+      "overriden_lines": 2
+    },
+    "e11244fa1cf1c02c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fb6620f-4749-421c-be4a-daab64099a4c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Divya",
+      "messages": [],
+      "total_additions": 137,
+      "total_deletions": 51,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}

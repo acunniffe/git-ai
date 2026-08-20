@@ -1,0 +1,28 @@
+README.md
+  s_bf0fecb29192b8::t_38626eb35b7b88 114
+  s_1d18abf921acf6::t_c8dba6e9f49c7e 92-94,103-106,108-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "dfcbc82adea1a4bb78e0e4245a83791d94bc2bfc",
+  "prompts": {},
+  "sessions": {
+    "s_1d18abf921acf6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4c7efa72-ba25-43ac-be1a-5a43473abcf1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_bf0fecb29192b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e0ad58a0-aaf7-4bbc-bae8-41960b225915",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

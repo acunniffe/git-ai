@@ -1,0 +1,40 @@
+src/transcripts/agents/codex.rs
+  s_4c4fb58498aecd::t_ee1ff5ed9803e9 520-527,533-560,566-587
+  s_36e4b30d0b68c4::t_46dfc6477d1ff6 528-532,561-565
+  s_4c4fb58498aecd::t_e22f237c2871e5 180,190
+  s_4c4fb58498aecd::t_d32af4e2a033fe 117-147
+src/transcripts/agents/cursor.rs
+  s_54f075626dacb5::t_1ab1a314163e74 31-37,43,49-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.8",
+  "base_commit_sha": "600b6e9579df74d276bb43485bd8da39029c7f44",
+  "prompts": {},
+  "sessions": {
+    "s_36e4b30d0b68c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "18288edc-a740-4bbc-98d3-db70db720809",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_4c4fb58498aecd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8c363b1c-b716-4ae0-8884-a408f63124ae",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_54f075626dacb5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "29d164a2-8195-42e9-8d85-35c35908346d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,65 @@
+src/daemon/telemetry_worker.rs
+  s_11c3e1cdda522c::t_c4b8bc62499b79 211-225
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_b4e26643191288 7087-7105,7110,7112-7121,7123-7128,7142-7167,7169-7188,7190-7236
+  s_11c3e1cdda522c::t_e74e2ce767d488 7076-7086,7106-7109,7111,7122,7129-7141,7168,7189,7237-7359
+src/daemon/control_api.rs
+  s_11c3e1cdda522c::t_dd7b49eeeafcb1 26-28
+src/metrics/events.rs
+  s_11c3e1cdda522c::t_c4b8bc62499b79 1055,1070,1076,1084,1090,1114-1118,1168,1175
+  s_11c3e1cdda522c::t_26a883cbf2e38b 1136-1140
+  s_11c3e1cdda522c::t_2d86862a403f51 1165-1167,1169-1174,1176-1178
+  s_11c3e1cdda522c::t_46d9d08a83186e 1050-1054,1056-1069,1071-1075,1077-1083,1085-1089,1091-1113,1119-1135,1141-1158
+  s_9af36d4c7591fb::t_dcdd2f928aaf55 1164
+src/metrics/types.rs
+  s_11c3e1cdda522c::t_ec7e4d566a2bea 26
+src/daemon.rs
+  s_11c3e1cdda522c::t_5c096786881855 8129-8132
+  s_11c3e1cdda522c::t_dd7e55f8d8d523 4454-4455
+  s_11c3e1cdda522c::t_cead47897e25e0 11097-11098
+  s_11c3e1cdda522c::t_ecbf1ab8e0f3c8 7762-7771,7792-7796,7802-7804
+  s_11c3e1cdda522c::t_93441b36066313 9285
+  s_11c3e1cdda522c::t_c4b8bc62499b79 2622-2623,2626-2628,2633-2635,2805,2810-2813,2928,2930,7208,7691-7694,7713-7728,7772-7791,7919-7937,8239-8242,8354-8357,8802,8838,8875-8889,8893-8912,8921,8926-8937,8939-8946,9279-9280,9284,9379-9380,9385-9387,9389,11011-11096
+  s_11c3e1cdda522c::t_debe4c80a0a9cc 4452-4453,4460-4463
+  s_11c3e1cdda522c::t_59cb8e9621aa6d 7941-7944
+  s_11c3e1cdda522c::t_44138639f1e632 3195-3210
+  s_11c3e1cdda522c::t_7f84271dad6006 2806-2809,2929,9381
+  s_11c3e1cdda522c::t_4308ad0e47f9ec 8803
+  s_11c3e1cdda522c::t_cc81f28f8659ab 2926-2927
+  s_11c3e1cdda522c::t_45572394b9a1b1 7197-7207,7209-7210
+  s_11c3e1cdda522c::t_2050c9b94fd198 7824-7826
+  s_11c3e1cdda522c::t_7e621e0cec3e67 7911-7914
+  s_11c3e1cdda522c::t_70abb7b92f6922 8913-8920
+  s_11c3e1cdda522c::t_4cb005f1d06239 8922-8925,8938,8947-8948
+  s_11c3e1cdda522c::t_6e3de766d1ae51 7672
+  s_11c3e1cdda522c::t_7ea6a694149613 9281-9283
+  s_11c3e1cdda522c::t_cf2858b5c15eff 2799-2804
+  s_11c3e1cdda522c::t_26a883cbf2e38b 8890-8892
+  s_11c3e1cdda522c::t_726a47cced1f59 10992-11010
+  s_11c3e1cdda522c::t_e0b3404d489ba7 7709-7712,7729-7751
+  s_11c3e1cdda522c::t_fa4b7cd222f43a 7507
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "9a32c2d23470083e1581eed99346e6a6d56a14cb",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_9af36d4c7591fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01bbf-395c-7a60-85f6-2b33f43556d6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

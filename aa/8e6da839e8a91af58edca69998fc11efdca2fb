@@ -1,0 +1,13 @@
+src/git/refs.rs
+  ai_agent 59,113
+src/git/authorship_traversal.rs
+  ai_agent 111
+src/authorship/rebase_authorship.rs
+  ai_agent 15-17,1232,1234-1253,1285,2229-2230
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "aa8e6da839e8a91af58edca69998fc11efdca2fb",
+  "prompts": {}
+}

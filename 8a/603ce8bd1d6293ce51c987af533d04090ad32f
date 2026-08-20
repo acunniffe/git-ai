@@ -1,0 +1,34 @@
+tests/integration/ci_handlers_comprehensive.rs
+  s_1073b58daf9856::t_613142e0352808 33,60-64,97
+tests/integration/ci_squash_rebase.rs
+  s_1073b58daf9856::t_c90c8f643486d3 1014-1159
+src/ci/workflow_templates/github.yaml
+  s_1073b58daf9856::t_6df2aef4b3f175 5,9
+src/commands/ci_handlers.rs
+  s_1073b58daf9856::t_ed0a9c11d10db2 12-14,283-348,377-380,394-397
+src/ci/github.rs
+  s_1073b58daf9856::t_159085d01cbbe0 218-263
+  s_1073b58daf9856::t_8ddbc8338b489e 84-86,113
+  s_1073b58daf9856::t_8b3aa9cda2b999 14-18,63-66,87-112,114-145,163-164,189-190,192-193
+  s_1073b58daf9856::t_01f0e3106520c6 185,191
+  s_1073b58daf9856::t_d585efd8ee0817 162,165-182
+src/ci/ci_context.rs
+  s_1073b58daf9856::t_b04ef53cbcc82c 23-28,39-43,298-320,328-389,446-456,458-474
+  s_1073b58daf9856::t_963e8bf791ddb6 321-327,475-484
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "8a603ce8bd1d6293ce51c987af533d04090ad32f",
+  "prompts": {},
+  "sessions": {
+    "s_1073b58daf9856": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e985f-ce37-7b40-8aac-d1d7f1e07e71",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

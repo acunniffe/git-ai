@@ -1,0 +1,21 @@
+docs/superpowers/specs/2026-04-22-drop-session-messages-property-design.md
+  s_61409b3dfefc93::t_93271b0df27038 49,51-58
+  s_61409b3dfefc93::t_eda5a516a69e4b 1-48,50,59-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "c478a094d224fed7072886cc724d85f10f2b1018",
+  "prompts": {},
+  "sessions": {
+    "s_61409b3dfefc93": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e473df30-9d2b-438b-bed4-812a844465c6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": []
+    }
+  }
+}

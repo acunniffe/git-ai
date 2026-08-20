@@ -1,0 +1,23 @@
+tests/integration/claude_code.rs
+  s_d603e5c67f4fd9::t_e55fb01d573cbc 382-425
+src/authorship/virtual_attribution.rs
+  s_d603e5c67f4fd9::t_5066e79125ecfe 467-473,664-670,850-856,3589-3595,3597-3633
+  s_d603e5c67f4fd9::t_67237652c93bad 3596
+  s_d603e5c67f4fd9::t_027504cdd48d5d 3634
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "3e79494165e54044560e595ff7ed489aac3b4243",
+  "prompts": {},
+  "sessions": {
+    "s_d603e5c67f4fd9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d0be8ae-792f-453b-b71e-f03bef0a5c47",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,72 @@
+src/daemon.rs
+  s_12e965d1da53af::t_4e40d2a3c6669e 7452-7458
+  s_12e965d1da53af::t_8e3f24a7d66724 7449-7450,7468
+  s_12e965d1da53af::t_629eae2894bfdb 7667
+  s_12e965d1da53af::t_cca0bbcabdc84a 7616
+tests/integration/main.rs
+  s_12e965d1da53af::t_4e40d2a3c6669e 109
+src/transcripts/agent.rs
+  s_12e965d1da53af::t_9be7897b30ef06 53-60
+src/daemon/sweep_coordinator.rs
+  s_12e965d1da53af::t_c07c6ea2f3efcc 100-105,121
+tests/integration/transcripts_e2e.rs
+  s_12e965d1da53af::t_4e40d2a3c6669e 160,205
+  s_12e965d1da53af::t_e9177c227ee4cc 55,242,284,373,455
+src/transcripts/db.rs
+  s_12e965d1da53af::t_bc3a9ba8313977 81-86
+  s_12e965d1da53af::t_5d9bb0b398adfe 106
+  s_12e965d1da53af::t_6b467e14eb2096 352-373
+  s_12e965d1da53af::t_f7264788383999 650
+  s_12e965d1da53af::t_fc8e225d18ed71 625,634
+  s_12e965d1da53af::t_73025f4b920a9b 280
+  s_12e965d1da53af::t_8243987825f248 493
+  s_12e965d1da53af::t_2dcce26f573901 440
+  s_12e965d1da53af::t_e63ddb894b3982 219-220,237
+  s_12e965d1da53af::t_b0eb49c047cdba 264
+src/transcripts/agents/claude.rs
+  s_12e965d1da53af::t_b7f09e9a456ec8 274-296
+src/transcripts/agents/codex.rs
+  s_12e965d1da53af::t_30944427949b91 265-292
+src/daemon/checkpoint.rs
+  s_12e965d1da53af::t_0629edc4a5addf 107-108
+  s_12e965d1da53af::t_831aaae06157a3 150-151
+tests/integration/session_event_repo_url.rs
+  s_12e965d1da53af::t_8d65329ed3dfe1 31
+  s_12e965d1da53af::t_0177957897f382 16
+  s_12e965d1da53af::t_4e40d2a3c6669e 7,124,131,203,239,335,576
+  s_12e965d1da53af::t_1ae71094a588d0 46
+  s_12e965d1da53af::t_711ae2051c4d65 796-799
+  s_12e965d1da53af::t_1bd9d9ad12a32e 769
+  s_12e965d1da53af::t_0177636b88b6e6 1-6,8-15,17-30,32-45,47-123,125-130,132-202,204-238,240-334,336-575,577-768,770-795,800-809
+src/daemon/transcript_worker_tests.rs
+  s_12e965d1da53af::t_2a8b4d49a66013 17,27,60,70,80,110,153
+tests/integration/sweep_e2e.rs
+  s_12e965d1da53af::t_4e40d2a3c6669e 284,326,405
+src/repo_url.rs
+  s_12e965d1da53af::t_669cf7ddcea1ff 92-98,101-102
+  s_12e965d1da53af::t_c28113c4ebf282 81-91,100
+  s_12e965d1da53af::t_4e40d2a3c6669e 99
+src/daemon/transcript_worker.rs
+  s_12e965d1da53af::t_6b2700e4bf3f7a 41
+  s_12e965d1da53af::t_d0164e0d35466b 78,85,97
+  s_12e965d1da53af::t_5e950f02b46416 200
+  s_12e965d1da53af::t_d46fe940aede1d 328-339,341-343,350-354
+  s_12e965d1da53af::t_4e40d2a3c6669e 340
+  s_12e965d1da53af::t_ad1b970c468b3e 225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.5",
+  "base_commit_sha": "aabec2a2f62b680d44777b0ad27fe3057b328aae",
+  "prompts": {},
+  "sessions": {
+    "s_12e965d1da53af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6b761d17-9c3e-4ab8-9597-c00f2545d4e3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,38 @@
+src/daemon.rs
+  s_af2d349a5e032c::t_5e15cbec6b72d9 5807,5810-5818
+  s_af2d349a5e032c::t_8c3f1751ef9960 5809
+  s_af2d349a5e032c::t_39ef88dde71440 5808
+tests/commit_tree_update_ref.rs
+  s_af2d349a5e032c::t_a16f36e49cdd51 517-536,538,547-554
+  s_af2d349a5e032c::t_39ef88dde71440 537,539-546
+src/daemon/analyzers/history.rs
+  s_af2d349a5e032c::t_25c339333c2a5c 511-512,514-516,518-521
+  s_af2d349a5e032c::t_365ac239d8133a 44-45,48-49
+  s_af2d349a5e032c::t_8a4145d9ea275d 513,517
+  s_af2d349a5e032c::t_b502c10a0875bb 46-47
+src/authorship/virtual_attribution.rs
+  s_af2d349a5e032c::t_348b41ad219143 1349-1380
+  s_af2d349a5e032c::t_bd1d2a6337e7ba 1712-1715
+  s_af2d349a5e032c::t_41e3849225dbcf 1629
+  s_af2d349a5e032c::t_fe49073c037851 1601-1623,1625-1626
+  s_af2d349a5e032c::t_6ae8eaeb7a084f 1871-1874
+  s_af2d349a5e032c::t_ed5c51797d8193 1947-1948
+  s_af2d349a5e032c::t_db2808c04be171 1631
+  s_af2d349a5e032c::t_72533b61ce6086 1695-1698
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "af75ab268d0c94efb8037980972e4c4cb7adac5b",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

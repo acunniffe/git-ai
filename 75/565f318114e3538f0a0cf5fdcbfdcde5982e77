@@ -1,0 +1,71 @@
+tests/daemon_mode.rs
+  s_7d470640a960b2::t_bdb356bbfe76b7 6,22
+  s_7d470640a960b2::t_e9074f46ef3139 5,1638,1727-1729,1772-1774,1775-1785,1789-1815,1816-1817,1819-1820,1908
+  s_7d470640a960b2::t_fdebdd7f62ffde 1787-1788
+  s_7d470640a960b2::t_88be3d5e775fe7 1842-1843
+  s_7d470640a960b2::t_41d38a19ed2153 1786,1818,1821,1830-1839
+  s_7d470640a960b2::t_b4ec661c2a7600 23,1822-1829,1840-1841
+  s_7d470640a960b2::t_16ce411a74c0ef 15,1639-1640,1909-1910
+  s_1a2f15cbe36c46::t_d8a1ed923c9a11 1686-1688
+  dacf127c97d5a34b 16
+  s_7d470640a960b2::t_4ac0404c066d77 35-36,1726-1747,1749-1758,1760-1771
+  s_7d470640a960b2::t_d23ef4d2d39284 1710-1711
+  s_7d470640a960b2::t_07a298d60c746b 1710-1726,1712-1725,1712-1729,1759
+  s_7d470640a960b2::t_ae60d7add2371c 1748
+  s_7d470640a960b2::t_9f0d834eb9c997 1638-1640,1686-1688,1816-1818,1908-1910
+src/daemon/checkpoint.rs
+  s_7d470640a960b2::t_ada1ec1767a7cd 863-871
+src/commands/git_ai_handlers.rs
+  s_7d470640a960b2::t_a65cfd815a54a8 558,565-581
+src/daemon.rs
+  s_7d470640a960b2::t_929b444c9b320f 91,6788,6802-6808
+  s_7d470640a960b2::t_9f0d834eb9c997 8200
+  s_7d470640a960b2::t_fe8a0276e9b795 208,6946,6948
+  s_7d470640a960b2::t_c85ba186781e8b 6947,8159-8199,8201-8230
+  s_7d470640a960b2::t_3c59176a108b2e 8304
+  s_7d470640a960b2::t_4a8c534de1ffb6 2512-2535
+  s_7d470640a960b2::t_bf8b25da3356e9 2653,2738-2741
+  s_7d470640a960b2::t_61b5061c323da3 6826-6914,6919-6928,6930,6938-6945
+  s_7d470640a960b2::t_b56231644d5f46 6265-6296,6300-6302
+  s_7d470640a960b2::t_47649553f37b45 8456-8489
+  s_7d470640a960b2::t_1779fb5f4f4b3f 94-95,118-207
+src/daemon/control_api.rs
+  s_7d470640a960b2::t_3f4fe2559d6b0d 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "75565f318114e3538f0a0cf5fdcbfdcde5982e77",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 176,
+      "total_deletions": 84,
+      "accepted_lines": 393,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_1a2f15cbe36c46": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4321-34b7-78d1-964c-05919a68e527",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_7d470640a960b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa51d-4cb8-7471-ad38-ead1f195155b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

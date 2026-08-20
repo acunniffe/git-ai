@@ -1,0 +1,21 @@
+tests/integration/repos/test_repo.rs
+  s_acbbcc77bb9da5::t_f5cd898057494b 3248-3259
+  s_acbbcc77bb9da5::t_d1221faf3673b3 3245-3247,3260-3277
+  s_acbbcc77bb9da5::t_7804c83bc95e20 3242-3244,3278-3279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "b4ccc0569ab46aa530198dd2d0068a50ef421be4",
+  "prompts": {},
+  "sessions": {
+    "s_acbbcc77bb9da5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebbc887-2ebd-47b6-8edf-b19158eee095",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}

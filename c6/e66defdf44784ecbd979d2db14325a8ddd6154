@@ -1,0 +1,16 @@
+src/authorship/range_authorship.rs
+  h_9440633a297247 9,422-435,442
+tests/integration/range_authorship_unit.rs
+  h_9440633a297247 226-228,452,454-455,968-1235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "c6e66defdf44784ecbd979d2db14325a8ddd6154",
+  "prompts": {},
+  "humans": {
+    "h_9440633a297247": {
+      "author": "Sachin Lubana <sachin.lubana@deliveryhero.com>"
+    }
+  }
+}

@@ -1,0 +1,45 @@
+tests/integration/git_commit_modes_attribution.rs
+  s_18b694e06092e7::t_a6117e37065c96 106-144
+  s_18b694e06092e7::t_8aa1d141dbd4a2 30-35,101
+  s_18b694e06092e7::t_4748a7b8a3bb65 1-29,36-100,102-105
+tests/integration/admin_modes_attribution.rs
+  s_18b694e06092e7::t_adc47282b93e98 1-87
+tests/integration/transport_modes_attribution.rs
+  s_18b694e06092e7::t_4e57cbb41dfd8d 47,80
+  s_18b694e06092e7::t_7f56725d46dc36 15,23,49-50,54-64,69,71-72,82-83,86-89,91,93-94,109-113,118-121,132-134,136-140,152-155,178-181,200-202,211-214,229-232,236-238,240-242,291-293,320-328,348-350
+  s_18b694e06092e7::t_8d057b7133f079 1-14,17-22,24-46,51-53,65-68,73-79,84-85,90,95-99,103-108,114-117,122-131,135,141-151,156-177,182-199,203-210,215-228,233-235,239,243-290,294-319,329-347,351-357
+  s_18b694e06092e7::t_2b11a2131ce057 100-102
+  s_18b694e06092e7::t_486aa61c58076e 16,48,70,81,92
+tests/integration/main.rs
+  s_18b694e06092e7::t_fdb83dec8dab8f 82
+  s_18b694e06092e7::t_2e3ce0670b96d0 81
+  s_18b694e06092e7::t_8d057b7133f079 172
+  s_18b694e06092e7::t_69f0e87a69a76d 79
+  s_18b694e06092e7::t_166bd8d3267231 8,101
+tests/integration/git_clean_attribution.rs
+  s_18b694e06092e7::t_0337a94d5c2a94 20-22,35-44,65-99
+  s_18b694e06092e7::t_0b6e6fd9a54a19 100-123
+  s_18b694e06092e7::t_e86779a0f66ba0 1-19,23-34,45-64,124
+tests/integration/invocation_modes_attribution.rs
+  s_18b694e06092e7::t_a5937eea94d2ad 166-170
+  s_18b694e06092e7::t_166bd8d3267231 1-165
+tests/integration/git_mv_attribution.rs
+  s_18b694e06092e7::t_296e78366a6af7 1-62,64-84,110-128
+  s_18b694e06092e7::t_baa7bd7538f950 63,85-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "38339a52c80bfe0921305a460fe885d3fcde111d",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

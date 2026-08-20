@@ -1,0 +1,25 @@
+src/commands/checkpoint.rs
+  52e0337472fe7d8f 30,151-154,156-157,199-202,204-210,212-215,221,299,336,339-344,364,366-367,369-376,378-380,388-390,399,414,760,769,844-845
+src/daemon.rs
+  52e0337472fe7d8f 1353-1360,1362-1364,1373,2527,3619,5453,5611-5625,5628,5632,5694,5708-5709,7126,7128-7132,7134-7137,7139,7143-7147,7149-7160,7162-7163,7201,7204,7209,7215,7224,8329,8331,8637,8639-8640,8643-8656,8663,8669,8671
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "5e1e8f7b5aaa124d350e5d7e2b54caedafb9820e",
+  "prompts": {
+    "52e0337472fe7d8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f9931c2-b988-437f-8537-64a1ed799b25",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 73,
+      "total_deletions": 708,
+      "accepted_lines": 54,
+      "overriden_lines": 0
+    }
+  }
+}
