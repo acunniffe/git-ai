@@ -35,6 +35,10 @@ pub fn handle_usage(args: &[String]) {
         i += 1;
     }
 
+    // Best-effort refresh of the models.dev pricing cache (at most daily)
+    // before stats — and therefore cost estimates — are computed.
+    crate::metrics::model_pricing::refresh_cache_if_stale();
+
     // Fixed 30-day window.
     let since_ts = days_ago(30);
     let period_label = "last 30 days".to_string();
