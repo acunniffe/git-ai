@@ -401,7 +401,11 @@ impl ActorDaemonCoordinator {
             map.retain(|_, state| !state.entries.is_empty());
         }
         if let Ok(mut map) = self.side_effect_exec_locks.lock() {
-            map.retain(|_, lock| Arc::strong_count(lock) <= 1);
+            // Prune only locks nobody holds (the map's own Arc is the single
+            // strong count). Removing a HELD lock would hand the next
+            // acquirer a fresh mutex while a drain still runs under the old
+            // one, silently breaking per-family side-effect serialization.
+            map.retain(|_, lock| Arc::strong_count(lock) > 1);
         }
         if let Ok(mut map) = self.pending_rebase_original_head_by_worktree.lock() {
             map.shrink_to_fit();

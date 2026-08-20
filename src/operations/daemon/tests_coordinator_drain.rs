@@ -89,3 +89,33 @@ async fn registered_coordinator_schedules_drains_and_completes_blocked_checkpoin
         tokio::task::yield_now().await;
     }
 }
+
+/// The transient-state GC must never remove a family's exec lock while a
+/// drain holds it: handing the next acquirer a fresh mutex would let two
+/// drains of the same family run concurrently, breaking the per-family
+/// serialization every side effect relies on. Idle locks (held by nobody)
+/// are the ones the GC exists to prune.
+#[tokio::test]
+async fn gc_keeps_held_exec_locks_and_prunes_idle_ones() {
+    let coord = ActorDaemonCoordinator::new();
+
+    let held = coord.side_effect_exec_lock("family-held").unwrap();
+    let _guard = held.lock().await;
+    let idle = coord.side_effect_exec_lock("family-idle").unwrap();
+    drop(idle);
+
+    coord.gc_stale_family_state();
+
+    let held_after = coord.side_effect_exec_lock("family-held").unwrap();
+    assert!(
+        Arc::ptr_eq(&held, &held_after),
+        "GC replaced a held exec lock; a concurrent acquirer would no longer \
+         be excluded by the drain still holding the old lock"
+    );
+    let idle_after = coord.side_effect_exec_lock("family-idle").unwrap();
+    assert_eq!(
+        Arc::strong_count(&idle_after),
+        2,
+        "idle exec locks should have been pruned and recreated fresh"
+    );
+}
