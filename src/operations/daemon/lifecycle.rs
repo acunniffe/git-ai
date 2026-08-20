@@ -441,6 +441,8 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
     {
         super::memory_watchdog::start(Arc::clone(&coordinator), limit_bytes)?;
     }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    super::checkpoint_outbox_worker::start(Arc::clone(&coordinator), &config);
     let rt_handle = tokio::runtime::Handle::current();
     let control_socket_path = config.control_socket_path.clone();
     let trace_socket_path = config.trace_socket_path.clone();

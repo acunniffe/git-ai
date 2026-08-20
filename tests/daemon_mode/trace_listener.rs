@@ -341,6 +341,7 @@ fn daemon_stalled_unidentified_trace_connection_does_not_block_checkpoint_contro
         path_role: PreparedPathRole::Edited,
         stream_source: None,
         metadata: Default::default(),
+        delivery_id: None,
     };
 
     let response = send_control_request_with_timeout(
@@ -394,6 +395,7 @@ fn daemon_checkpoint_resolution_applies_total_content_budget() {
         path_role: PreparedPathRole::Edited,
         stream_source: None,
         metadata: Default::default(),
+        delivery_id: None,
     };
 
     let response = send_control_request_with_timeout(
@@ -487,6 +489,7 @@ fn daemon_partial_trace_line_does_not_block_checkpoint_control_request() {
         path_role: PreparedPathRole::Edited,
         stream_source: None,
         metadata: Default::default(),
+        delivery_id: None,
     };
 
     let response = send_control_request_with_timeout(

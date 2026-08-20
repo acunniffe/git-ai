@@ -361,6 +361,7 @@ mod tests {
                 path_role: PreparedPathRole::Edited,
                 stream_source: None,
                 metadata: HashMap::new(),
+                delivery_id: None,
             }],
             captured_at_unix_ms,
         )

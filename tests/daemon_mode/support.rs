@@ -27,6 +27,9 @@ mod load;
 #[path = "memory_watchdog.rs"]
 mod memory_watchdog;
 
+#[path = "outbox_replay.rs"]
+mod outbox_replay;
+
 use git_ai::config::{NotesBackendConfig, NotesBackendKind};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use git_ai::model::checkpoint_delivery::CHECKPOINT_DELIVERY_SCHEMA_VERSION;

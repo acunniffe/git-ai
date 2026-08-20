@@ -97,4 +97,9 @@ pub struct CheckpointRequest {
     pub path_role: PreparedPathRole,
     pub stream_source: Option<StreamSource>,
     pub metadata: HashMap<String, String>,
+    /// Identity of the checkpoint-delivery envelope this request arrived in,
+    /// stamped daemon-side at ingestion. Persisted into the applied
+    /// `Checkpoint` so at-least-once outbox replay can deduplicate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_id: Option<String>,
 }

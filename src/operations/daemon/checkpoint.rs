@@ -187,6 +187,18 @@ fn execute_resolved_checkpoint(
         read_checkpoints_start.elapsed()
     );
 
+    // At-least-once outbox replay: a delivery whose id is already recorded in
+    // the working log was fully applied before — drop the duplicate before
+    // doing any file-state work.
+    if let Some(delivery_id) = checkpoint_request.delivery_id.as_deref()
+        && checkpoints
+            .iter()
+            .any(|cp| cp.delivery_id.as_deref() == Some(delivery_id))
+    {
+        tracing::debug!(delivery_id, "skipping already-applied checkpoint delivery");
+        return Ok((0, resolved.files.len(), checkpoints.len()));
+    }
+
     // Reject KnownHuman checkpoints that arrive within KNOWN_HUMAN_MIN_SECS_AFTER_AI
     // seconds of an AI checkpoint on any of the same files. These are likely spurious
     // IDE save events triggered by the AI completing its edit, not genuine human keystrokes.
@@ -261,6 +273,7 @@ fn execute_resolved_checkpoint(
         checkpoint.timestamp = (resolved.ts / 1000) as u64;
         checkpoint.line_stats = compute_line_stats(&file_stats)?;
         checkpoint.trace_id = Some(trace_id.clone());
+        checkpoint.delivery_id = checkpoint_request.delivery_id.clone();
 
         if kind.is_ai() {
             checkpoint.agent_id = checkpoint_request.agent_id.clone();

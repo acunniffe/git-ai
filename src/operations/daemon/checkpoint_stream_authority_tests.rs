@@ -165,6 +165,7 @@ fn checkpoint_stream_request_for(
             external_parent_session_id: None,
         }),
         metadata: HashMap::new(),
+        delivery_id: None,
     }
 }
 

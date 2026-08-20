@@ -11,6 +11,11 @@ pub use diagnostics::{
     OutboxFailureClass, OutboxRootState, OutboxRootStatus, RedactedOutboxFailure,
     inspect_outbox_root, record_publication_failure,
 };
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub use publication::unix_consume::{
+    ReadyScan, prune_quarantined_records, quarantine_ready_record, read_ready_record,
+    remove_ready_record, scan_ready_records,
+};
 pub use publication::{
     DEFAULT_MAX_ENCODED_RECORD_BYTES, DEFAULT_MAX_READY_BYTES, DEFAULT_MAX_READY_RECORDS,
     OutboxLimits, PublishedRecord, publish_delivery, ready_filename,
@@ -269,6 +274,7 @@ mod tests {
             path_role: PreparedPathRole::Edited,
             stream_source: None,
             metadata: HashMap::new(),
+            delivery_id: None,
         };
         CheckpointDelivery::from_requests_at(vec![request], 42).remove(0)
     }

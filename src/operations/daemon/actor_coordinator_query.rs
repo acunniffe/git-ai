@@ -179,7 +179,12 @@ impl ActorDaemonCoordinator {
         delivery
             .validate()
             .map_err(|error| GitAiError::PresetError(error.to_string()))?;
-        self.ingest_validated_checkpoint_control_payload(delivery.request)
+        // Stamp the envelope identity onto the request so the applied
+        // checkpoint records it; at-least-once outbox replay of the same
+        // delivery then deduplicates instead of applying twice.
+        let mut request = delivery.request;
+        request.delivery_id = Some(delivery.delivery_id);
+        self.ingest_validated_checkpoint_control_payload(request)
             .await
     }
 

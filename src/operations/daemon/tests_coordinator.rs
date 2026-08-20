@@ -121,6 +121,7 @@ async fn checkpoint_control_request_waits_while_blocked_behind_pending_root() {
         path_role: PreparedPathRole::Edited,
         stream_source: None,
         metadata: HashMap::new(),
+        delivery_id: None,
     };
 
     let mut checkpoint = {

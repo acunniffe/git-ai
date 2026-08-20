@@ -86,6 +86,7 @@ fn sample_checkpoint_request() -> ControlRequest {
             path_role: PreparedPathRole::WillEdit,
             stream_source: None,
             metadata: std::collections::HashMap::new(),
+            delivery_id: None,
         }),
     }
 }
@@ -107,6 +108,7 @@ async fn checkpoint_ingress_methods_apply_the_same_request_bounds() {
         path_role: PreparedPathRole::Edited,
         stream_source: None,
         metadata: HashMap::new(),
+        delivery_id: None,
     };
     let delivery = crate::model::checkpoint_delivery::CheckpointDelivery::from_requests_at(
         vec![request.clone()],

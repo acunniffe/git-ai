@@ -112,6 +112,7 @@ mod tests {
                 path_role: PreparedPathRole::Edited,
                 stream_source: None,
                 metadata: HashMap::new(),
+                delivery_id: None,
             })
             .collect();
         let mut deliveries = CheckpointDelivery::from_requests_at(requests, 42);
