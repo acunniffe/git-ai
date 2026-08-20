@@ -354,6 +354,28 @@ fn install_hooks_without_env_flag_leaves_shell_configs_untouched() {
 }
 
 #[test]
+fn install_hooks_wsl_dry_run_does_not_invoke_wsl() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let output = repo
+        .git_ai_command_without_pre_sync_for_test(&["install-hooks", "--wsl", "--dry-run"], &[])
+        .output()
+        .expect("run git-ai install-hooks --wsl --dry-run");
+
+    assert!(
+        output.status.success(),
+        "install-hooks --wsl --dry-run failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("Dry-run: skipping WSL installation."),
+        "missing WSL dry-run message:\n{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+}
+
+#[test]
 #[cfg(not(windows))]
 fn install_hooks_detects_cline_from_vscode_server_extension_manifest() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);

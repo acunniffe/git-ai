@@ -365,9 +365,12 @@ fn print_help() {
     eprintln!("    unset <key>           Remove config value (reverts to default)");
     eprintln!("  debug              Print support/debug diagnostics");
     eprintln!("  bg                 Run and control git-ai background service");
-    eprintln!("  install-hooks      Install git hooks for AI authorship tracking");
+    eprintln!("  install, install-hooks  Install hooks for AI authorship tracking");
     eprintln!(
         "    --env                  Also add git-ai to shell PATH configs (used by the install scripts)"
+    );
+    eprintln!(
+        "    --wsl                  Also install git-ai in eligible WSL distributions (Windows only)"
     );
     eprintln!("    --skills               Also install agent skill files");
     eprintln!("    --visual-studio-extension");

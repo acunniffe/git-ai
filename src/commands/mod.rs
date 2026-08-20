@@ -15,6 +15,7 @@ pub mod git_handlers;
 pub mod git_hook_handlers;
 pub mod install_env;
 pub mod install_hooks;
+pub mod install_wsl;
 pub mod log;
 pub mod login;
 pub mod logout;
