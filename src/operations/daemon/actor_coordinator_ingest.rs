@@ -72,6 +72,25 @@ impl ActorDaemonCoordinator {
     /// processed until all causally-prior git operations have been ingested
     /// through their root `atexit`/connection-close boundary.
     pub(crate) async fn wait_for_trace_ingest_processed_through(&self) {
+        self.wait_for_trace_ingest_drained(|coordinator| {
+            coordinator.has_open_trace_roots_that_may_mutate_refs()
+        })
+        .await
+    }
+
+    /// Family-scoped drain fence for sync requests: waits for the ingest
+    /// worker to catch up, but only blocks on open mutating roots that could
+    /// affect `family` (unattributed roots fail closed). A long-running
+    /// mutating command in one repository must not stall syncs of unrelated
+    /// repositories served by the same daemon.
+    pub(crate) async fn wait_for_trace_ingest_processed_through_family(&self, family: &str) {
+        self.wait_for_trace_ingest_drained(|coordinator| {
+            coordinator.has_open_trace_roots_that_may_mutate_family(family)
+        })
+        .await
+    }
+
+    async fn wait_for_trace_ingest_drained(&self, has_blocking_open_roots: impl Fn(&Self) -> bool) {
         loop {
             // Read the current high-water mark. Any payload enqueued before this
             // point has a seq <= this value. We need to wait until the ingest
@@ -89,12 +108,12 @@ impl ActorDaemonCoordinator {
                 }
             }
 
-            if !self.has_open_trace_roots_that_may_mutate_refs() {
+            if !has_blocking_open_roots(self) {
                 return;
             }
 
             let progress = self.trace_ingest_progress_notify.notified();
-            if !self.has_open_trace_roots_that_may_mutate_refs() {
+            if !has_blocking_open_roots(self) {
                 return;
             }
             tokio::select! {

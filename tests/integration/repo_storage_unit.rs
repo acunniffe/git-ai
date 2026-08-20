@@ -199,6 +199,60 @@ fn test_persisted_working_log_checkpoint_storage() {
     assert_eq!(checkpoints[1].author, "test-author-2");
 }
 
+#[test]
+fn test_append_checkpoint_to_persists_the_materialized_collection_without_rereading() {
+    let repo = TestRepo::new();
+    let repo_storage = storage_for(&repo);
+    let working_log = repo_storage
+        .working_log_for_base_commit("test-commit-sha")
+        .unwrap();
+
+    let first = Checkpoint::new(
+        CheckpointKind::Human,
+        "first-diff".to_string(),
+        "first-author".to_string(),
+        vec![],
+    );
+    working_log
+        .append_checkpoint(&first)
+        .expect("Failed to append first checkpoint");
+    let mut materialized = working_log
+        .read_all_checkpoints()
+        .expect("Failed to materialize checkpoints");
+
+    // Corrupt the on-disk file after materializing: the append must persist
+    // from the in-memory collection, not from a second read of the file.
+    let checkpoints_file = working_log.dir.join("checkpoints.jsonl");
+    fs::write(&checkpoints_file, b"not json\n").unwrap();
+
+    let second = Checkpoint::new(
+        CheckpointKind::Human,
+        "second-diff".to_string(),
+        "second-author".to_string(),
+        vec![],
+    );
+    working_log
+        .append_checkpoint_to(&mut materialized, second)
+        .expect("Failed to append to the materialized collection");
+
+    assert_eq!(
+        materialized.len(),
+        2,
+        "The in-memory collection should now hold both checkpoints"
+    );
+    let persisted = working_log
+        .read_all_checkpoints()
+        .expect("Failed to read checkpoints back");
+    assert_eq!(
+        persisted
+            .iter()
+            .map(|checkpoint| checkpoint.author.as_str())
+            .collect::<Vec<_>>(),
+        vec!["first-author", "second-author"],
+        "The persisted file must reflect the materialized collection plus the append"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // 5. test_read_all_checkpoints_filters_incompatible_versions
 // ---------------------------------------------------------------------------

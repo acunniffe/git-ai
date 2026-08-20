@@ -41,7 +41,11 @@ impl ActorDaemonCoordinator {
         repo_working_dir: String,
     ) -> Result<FamilyStatus, GitAiError> {
         let family = self.backend.resolve_family(Path::new(&repo_working_dir))?;
-        self.wait_for_trace_ingest_processed_through().await;
+        // Family-scoped fence: a sync request only has to wait for trace roots
+        // that could affect its own repository family. `await_completion` and
+        // shutdown keep the global fence.
+        self.wait_for_trace_ingest_processed_through_family(&family.0)
+            .await;
 
         let exec_lock = self.side_effect_exec_lock(&family.0)?;
         let _guard = exec_lock.lock().await;

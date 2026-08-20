@@ -422,22 +422,26 @@ impl PersistedWorkingLog {
 
     /* append checkpoint */
     pub fn append_checkpoint(&self, checkpoint: &Checkpoint) -> Result<(), GitAiError> {
-        // Read existing checkpoints
         let mut checkpoints = self.read_all_checkpoints().unwrap_or_default();
+        self.append_checkpoint_to(&mut checkpoints, checkpoint.clone())
+    }
 
-        // Create a copy, potentially without transcript to reduce storage size.
-        //
-        // Tools that DON'T support refetch (transcript must be kept):
-        // - "mock_ai" - test preset, transcript not stored externally
-        // - Any other agent-v1 custom tools (detected by lack of tool-specific metadata)
-        checkpoints.push(checkpoint.clone());
+    /// Appends to an already-materialized checkpoint collection and persists
+    /// the result. Callers that just read the working log (the daemon
+    /// checkpoint path) use this to avoid re-reading and re-parsing every
+    /// checkpoint a second time per append.
+    pub fn append_checkpoint_to(
+        &self,
+        checkpoints: &mut Vec<Checkpoint>,
+        checkpoint: Checkpoint,
+    ) -> Result<(), GitAiError> {
+        checkpoints.push(checkpoint);
 
         // Prune char-level attributions from older checkpoints for the same files
         // Only the most recent checkpoint per file needs char-level precision
-        self.prune_old_char_attributions(&mut checkpoints);
+        self.prune_old_char_attributions(checkpoints);
 
-        // Write all checkpoints back
-        self.write_all_checkpoints(&checkpoints)
+        self.write_all_checkpoints(checkpoints)
     }
 
     pub fn read_all_checkpoints(&self) -> Result<Vec<Checkpoint>, GitAiError> {
