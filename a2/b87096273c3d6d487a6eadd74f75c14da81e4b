@@ -1,0 +1,33 @@
+tests/daemon_mode.rs
+  s_f00ef7c0f45b07::t_d4fe5e36089648 1321-1360,1362,1368-1375
+  s_f00ef7c0f45b07::t_49ad9868316273 1363-1367
+  s_f00ef7c0f45b07::t_927a00ec3c118c 1361
+tests/integration/repos/test_repo.rs
+  s_f00ef7c0f45b07::t_e9610d42630079 536-653
+  s_f00ef7c0f45b07::t_49ad9868316273 388-392,2893-2897,3381,3464
+  s_f00ef7c0f45b07::t_8f19ba60d50f78 2285,2506,2679,2767,2835
+  s_f00ef7c0f45b07::t_0cf1931e36ff67 2883
+  s_f00ef7c0f45b07::t_16b6ceef176823 1217-1229,1243-1252,1263-1270,1283-1291
+  s_f00ef7c0f45b07::t_6bef730eb0ce71 1451-1462,1471-1479,1616-1622
+  s_f00ef7c0f45b07::t_fd9ee8265aa166 2986,3110-3119
+  s_f00ef7c0f45b07::t_0b459ee60f7cf0 3379-3380,3390-3392,3412-3414,3418-3420,3462-3463
+  s_f00ef7c0f45b07::t_e3690278d5830a 27,29,59-62,386-387
+src/daemon.rs
+  s_f00ef7c0f45b07::t_f27ce77c2979c5 79-80,5062-5066,5110-5112,5262-5268,5285-5294
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "a2b87096273c3d6d487a6eadd74f75c14da81e4b",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

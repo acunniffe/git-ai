@@ -1,0 +1,24 @@
+src/authorship/attribution_recovery.rs
+  s_1eeb4f6def9ecf::t_608ba531264807 1939,2085-2102
+  s_1eeb4f6def9ecf::t_3dcdfa42199c41 1784-1795,1805-1816,1819-1823,1826-1834,1836-1838,1849-1856,1858-1860,1870,1872-1878,1881-1885,1887-1889,1892-1917,1921-1938
+  s_1eeb4f6def9ecf::t_9720c4008261ea 2289-2333
+  s_1eeb4f6def9ecf::t_7248764e0b4fc9 1010,1015
+  s_1eeb4f6def9ecf::t_42e70173f3d090 3-4,15,162,218,669-671,677,691-694,704-705,727,746-748,758-761,766-767,786
+  s_1eeb4f6def9ecf::t_eba3dd713d74f7 1940
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "2025bbb7d17ed2482b258e5d6afc8ab8062f66e2",
+  "prompts": {},
+  "sessions": {
+    "s_1eeb4f6def9ecf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24a5-539f-7dd3-9793-1f096a58ff70",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

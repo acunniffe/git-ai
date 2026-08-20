@@ -1,0 +1,114 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  a0c689ea6253ffbc 527-529,532,535-545,547-551,568-591,597-609,612-624
+agent-support/vscode/src/ai-edit-manager.ts
+  a0c689ea6253ffbc 11,23,25,34-66,145-147,149,151-154,165,183,190,192-193,208-215,218-223,226-259,262-274
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "454fb73382f98bea602c833fdc612ecd43968fe5",
+  "prompts": {
+    "a0c689ea6253ffbc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a4b45448-fc6e-4398-aab3-472eb8d084a0",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "1. Update the @src/commands/checkpoint_agent/agent_presets.rs Github Copilot preset to accept a new param for hook type that when set to before edit will run a human checkpoint. When it's set to before edit, make the conversation and other params optional since the extension won't have them. Add a will edit files list that will scope the human checkpoint as well. That list is required when running a human checkpoint.\n2. Update the @agent-support/vscode/src/ai-edit-manager.ts human checkpoints to send the required data to the github copilot input for human checkpoints. Always need the list of files, current dirty files, etc. The hook input should probably be required at this point. Make sure to follow the todo notes about debouncing human checkpoints (and reduce code duplication so have a single impl for that)",
+          "timestamp": "2025-12-04T00:55:47.094Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you update both the Rust preset and TypeScript extension to support human checkpoints with the required data. Let me create a todo list and start implementing these changes.",
+          "timestamp": "2025-12-04T00:55:59.688Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "TodoWrite",
+          "input": {
+            "todos": [
+              {
+                "activeForm": "Updating GitHub Copilot preset for before_edit events",
+                "content": "Update GitHub Copilot preset in agent_presets.rs to handle before_edit hook events with human checkpoints",
+                "status": "pending"
+              },
+              {
+                "activeForm": "Implementing debounced human checkpoint logic",
+                "content": "Implement debounced human checkpoint logic in ai-edit-manager.ts",
+                "status": "pending"
+              },
+              {
+                "activeForm": "Updating human checkpoint calls with required data",
+                "content": "Update human checkpoint calls to send required data (files, dirty files, etc.)",
+                "status": "pending"
+              },
+              {
+                "activeForm": "Testing the changes",
+                "content": "Test the changes",
+                "status": "pending"
+              }
+            ]
+          },
+          "timestamp": "2025-12-04T00:56:02.805Z"
+        },
+        {
+          "type": "user",
+          "text": "Todos have been modified successfully. Ensure that you continue to use the todo list to track your progress. Please proceed with the current tasks if applicable",
+          "timestamp": "2025-12-04T00:56:02.839Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "TodoWrite",
+          "input": {
+            "todos": [
+              {
+                "activeForm": "Updating GitHub Copilot preset for before_edit events",
+                "content": "Update GitHub Copilot preset in agent_presets.rs to handle before_edit hook events with human checkpoints",
+                "status": "in_progress"
+              },
+              {
+                "activeForm": "Implementing debounced human checkpoint logic",
+                "content": "Implement debounced human checkpoint logic in ai-edit-manager.ts",
+                "status": "pending"
+              },
+              {
+                "activeForm": "Updating human checkpoint calls with required data",
+                "content": "Update human checkpoint calls to send required data (files, dirty files, etc.)",
+                "status": "pending"
+              },
+              {
+                "activeForm": "Testing the changes",
+                "content": "Test the changes",
+                "status": "pending"
+              }
+            ]
+          },
+          "timestamp": "2025-12-04T00:56:17.005Z"
+        },
+        {
+          "type": "user",
+          "text": "Todos have been modified successfully. Ensure that you continue to use the todo list to track your progress. Please proceed with the current tasks if applicable",
+          "timestamp": "2025-12-04T00:56:17.038Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Edit",
+          "input": {
+            "file_path": "/Users/svarlamov/projects/git-ai/src/commands/checkpoint_agent/agent_presets.rs",
+            "new_string": "impl AgentCheckpointPreset for GithubCopilotPreset {\n    fn run(&self, flags: AgentCheckpointFlags) -> Result<AgentRunResult, GitAiError> {\n        // Parse hook_input JSON to extract chat session information\n        let hook_input_json = flags.hook_input.ok_or_else(|| {\n            GitAiError::PresetError(\"hook_input is required for GitHub Copilot preset\".to_string())\n        })?;\n\n        let hook_data: serde_json::Value = serde_json::from_str(&hook_input_json)\n            .map_err(|e| GitAiError::PresetError(format!(\"Invalid JSON in hook_input: {}\", e)))?;\n\n        // Extract hook_event_name to determine checkpoint type\n        let hook_event_name = hook_data\n            .get(\"hook_event_name\")\n            .and_then(|v| v.as_str())\n            .ok_or_else(|| {\n                GitAiError::PresetError(\"hook_event_name not found in hook_input\".to_string())\n            })?;\n\n        // Validate hook_event_name\n        if hook_event_name != \"before_edit\" && hook_event_name != \"after_edit\" {\n            return Err(GitAiError::PresetError(format!(\n                \"Invalid hook_event_name: {}. Expected 'before_edit' or 'after_edit'\",\n                hook_event_name\n            )));\n        }\n\n        // Required working directory provided by the extension\n        let repo_working_dir: String = hook_data\n            .get(\"workspaceFolder\")\n            .and_then(|v| v.as_str())\n            .ok_or_else(|| {\n                GitAiError::PresetError(\n                    \"workspaceFolder not found in hook_input for GitHub Copilot preset\".to_string(),\n                )\n            })?\n            .to_string();\n\n        // Extract dirtyFiles if available\n        let dirty_files = hook_data\n            .get(\"dirtyFiles\")\n            .and_then(|v| v.as_object())\n            .map(|obj| {\n                obj.iter()\n                    .filter_map(|(key, value)| {\n                        value\n                            .as_str()\n                            .map(|content| (key.clone(), content.to_string()))\n                    })\n                    .collect::<HashMap<String, String>>()\n            });\n\n        // Handle before_edit (human checkpoint)\n        if hook_event_name == \"before_edit\" {\n            // Extract will_edit_filepaths (required for human checkpoints)\n            let will_edit_filepaths = hook_data\n                .get(\"will_edit_filepaths\")\n                .and_then(|v| v.as_array())\n                .map(|arr| {\n                    arr.iter()\n                        .filter_map(|v| v.as_str().map(|s| s.to_string()))\n                        .collect::<Vec<String>>()\n                })\n                .ok_or_else(|| {\n                    GitAiError::PresetError(\n                        \"will_edit_filepaths is required for before_edit hook_event_name\".to_string(),\n                    )\n                })?;\n\n            if will_edit_filepaths.is_empty() {\n                return Err(GitAiError::PresetError(\n                    \"will_edit_filepaths cannot be empty for before_edit hook_event_name\".to_string(),\n                ));\n            }\n\n            // Accept either chatSessionId (old) or sessionId (from VS Code extension)\n            let chat_session_id = hook_data\n                .get(\"chatSessionId\")\n                .and_then(|v| v.as_str())\n                .or_else(|| hook_data.get(\"sessionId\").and_then(|v| v.as_str()))\n                .unwrap_or(\"unknown\")\n                .to_string();\n\n            let agent_id = AgentId {\n                tool: \"github-copilot\".to_string(),\n                id: chat_session_id,\n                model: \"unknown\".to_string(),\n            };\n\n            return Ok(AgentRunResult {\n                agent_id,\n                agent_metadata: None,\n                checkpoint_kind: CheckpointKind::Human,\n                transcript: None,\n                repo_working_dir: Some(repo_working_dir),\n                edited_filepaths: None,\n                will_edit_filepaths: Some(will_edit_filepaths),\n                dirty_files,\n            });\n        }\n\n        // Handle after_edit (AI checkpoint)\n        let chat_session_path = hook_data\n            .get(\"chatSessionPath\")\n            .and_then(|v| v.as_str())\n            .ok_or_else(|| {\n                GitAiError::PresetError(\"chatSessionPath not found in hook_input for after_edit\".to_string())\n            })?;\n\n        let agent_metadata = HashMap::from([\n            (\"chat_session_path\".to_string(), chat_session_path.to_string()),\n        ]);\n\n        // Accept either chatSessionId (old) or sessionId (from VS Code extension)\n        let chat_session_id = hook_data\n            .get(\"chatSessionId\")\n            .and_then(|v| v.as_str())\n            .or_else(|| hook_data.get(\"sessionId\").and_then(|v| v.as_str()))\n            .unwrap_or(\"unknown\")\n            .to_string();\n\n        // Read the Copilot chat session JSON (ignore errors)\n        let (transcript, detected_model, edited_filepaths) =\n            GithubCopilotPreset::transcript_and_model_from_copilot_session_json(chat_session_path)\n                .map(|(t, m, f)| (Some(t), m, f))\n                .unwrap_or_else(|e| {\n                    // TODO Log error to sentry (JSON exists but invalid)\n                    eprintln!(\n                        \"[Warning] Failed to parse GitHub Copilot chat session JSON from {} (will update transcript at commit): {}\",\n                        chat_session_path,\n                        e\n                    );\n                    (None, None, None)\n                });\n\n        let agent_id = AgentId {\n            tool: \"github-copilot\".to_string(),\n            id: chat_session_id,\n            model: detected_model.unwrap_or_else(|| \"unknown\".to_string()),\n        };\n\n        Ok(AgentRunResult {\n            agent_id,\n            agent_metadata: Some(agent_metadata),\n            checkpoint_kind: CheckpointKind::AiAgent,\n            transcript,\n            repo_working_dir: Some(repo_working_dir),\n            edited_filepaths,\n            will_edit_filepaths: None,\n            dirty_files,\n        })\n    }\n}",
+            "old_string": "impl AgentCheckpointPreset for GithubCopilotPreset {\n    fn run(&self, flags: AgentCheckpointFlags) -> Result<AgentRunResult, GitAiError> {\n        // Parse hook_input JSON to extract chat session information\n        let hook_input_json = flags.hook_input.ok_or_else(|| {\n            GitAiError::PresetError(\"hook_input is required for GitHub Copilot preset\".to_string())\n        })?;\n\n        let hook_data: serde_json::Value = serde_json::from_str(&hook_input_json)\n            .map_err(|e| GitAiError::PresetError(format!(\"Invalid JSON in hook_input: {}\", e)))?;\n\n        let chat_session_path = hook_data\n            .get(\"chatSessionPath\")\n            .and_then(|v| v.as_str())\n            .ok_or_else(|| {\n                GitAiError::PresetError(\"chatSessionPath not found in hook_input\".to_string())\n            })?;\n        \n        let agent_metadata = HashMap::from([\n            (\"chat_session_path\".to_string(), chat_session_path.to_string()),\n        ]);\n\n        // Accept either chatSessionId (old) or sessionId (from VS Code extension)\n        let chat_session_id = hook_data\n            .get(\"chatSessionId\")\n            .and_then(|v| v.as_str())\n            .or_else(|| hook_data.get(\"sessionId\").and_then(|v| v.as_str()))\n            .unwrap_or(\"unknown\")\n            .to_string();\n\n        // Extract dirtyFiles if available\n        let dirty_files = hook_data\n            .get(\"dirtyFiles\")\n            .and_then(|v| v.as_object())\n            .map(|obj| {\n                obj.iter()\n                    .filter_map(|(key, value)| {\n                        value\n                            .as_str()\n                            .map(|content| (key.clone(), content.to_string()))\n                    })\n                    .collect::<HashMap<String, String>>()\n            });\n\n        // Required working directory provided by the extension\n        let repo_working_dir: String = hook_data\n            .get(\"workspaceFolder\")\n            .and_then(|v| v.as_str())\n            .ok_or_else(|| {\n                GitAiError::PresetError(\n                    \"workspaceFolder not found in hook_input for GitHub Copilot preset\".to_string(),\n                )\n            })?\n            .to_string();\n\n        // Read the Copilot chat session JSON (ignore errors)\n        let (transcript, detected_model, edited_filepaths) =\n            GithubCopilotPreset::transcript_and_model_from_copilot_session_json(chat_session_path)\n                .map(|(t, m, f)| (Some(t), m, f))\n                .unwrap_or_else(|e| {\n                    // TODO Log error to sentry (JSON exists but invalid)\n                    eprintln!(\n                        \"[Warning] Failed to parse GitHub Copilot chat session JSON from {} (will update transcript at commit): {}\",\n                        chat_session_path,\n                        e\n                    );\n                    (None, None, None)\n                });\n\n        let agent_id = AgentId {\n            tool: \"github-copilot\".to_string(),\n            id: chat_session_id,\n            model: detected_model.unwrap_or_else(|| \"unknown\".to_string()),\n        };\n\n        Ok(AgentRunResult {\n            agent_id,\n            agent_metadata: Some(agent_metadata),\n            checkpoint_kind: CheckpointKind::AiAgent,\n            transcript,\n            repo_working_dir: Some(repo_working_dir),\n            edited_filepaths,\n            will_edit_filepaths: None,\n            dirty_files,\n        })\n    }\n}"
+          },
+          "timestamp": "2025-12-04T00:56:51.686Z"
+        }
+      ],
+      "total_additions": 239,
+      "total_deletions": 75,
+      "accepted_lines": 186,
+      "overriden_lines": 2
+    }
+  }
+}

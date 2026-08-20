@@ -1,0 +1,39 @@
+src/commands/share_tui.rs
+  2903a80e7b172cf2 57-65,68,72-79,82-83,100-101
+src/commands/prompt_picker.rs
+  2903a80e7b172cf2 14,40-41,73,248,252,257,260-267,316,331-336,487-523,528-529,532-534,536,538-574
+  9dae44478e043d71 576
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "66e4f73ae26acb7b78e5708ce5c7b9be67d4e792",
+  "prompts": {
+    "2903a80e7b172cf2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7d0a183c-bd94-4b65-95ea-ec6989dd5cc0",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 327,
+      "total_deletions": 350,
+      "accepted_lines": 161,
+      "overriden_lines": 0
+    },
+    "9dae44478e043d71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2a7e508a-5c6c-4944-a717-444429a3c637",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 395,
+      "total_deletions": 251,
+      "accepted_lines": 29,
+      "overriden_lines": 1
+    }
+  }
+}

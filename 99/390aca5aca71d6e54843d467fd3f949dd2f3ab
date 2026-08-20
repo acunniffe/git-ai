@@ -1,0 +1,22 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  s_8d88c8fcb33d86::t_37fc1b637900d3 885-906,914-950,954,958-964,966,970,978-985
+  s_8d88c8fcb33d86::t_9b967fce1868d0 1095-1096,1100,1104,1160-1161,1165,1169,1178-1179,1183,1187
+src/commands/checkpoint_agent/orchestrator.rs
+  s_8d88c8fcb33d86::t_4e52fd5a94ade2 398-400,407-420,426-439,487-489,496-509,515-528
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.0",
+  "base_commit_sha": "99390aca5aca71d6e54843d467fd3f949dd2f3ab",
+  "prompts": {},
+  "sessions": {
+    "s_8d88c8fcb33d86": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ef9eb-f076-7cb1-97a6-e8a992f028b7",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Jean-Michel Bouchard <jim@polarcoordinates.org>"
+    }
+  }
+}

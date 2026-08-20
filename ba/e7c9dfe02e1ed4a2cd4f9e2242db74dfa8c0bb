@@ -1,0 +1,25 @@
+tests/rebase.rs
+  20bfdd600ceee1ee 547-589
+src/utils.rs
+  20bfdd600ceee1ee 13-16,797-871,873-935
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "bae7c9dfe02e1ed4a2cd4f9e2242db74dfa8c0bb",
+  "prompts": {
+    "20bfdd600ceee1ee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c5937-d4b5-7c41-affc-185fb237c579",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 3,
+      "accepted_lines": 185,
+      "overriden_lines": 0
+    }
+  }
+}

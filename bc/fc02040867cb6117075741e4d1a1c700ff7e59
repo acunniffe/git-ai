@@ -1,0 +1,45 @@
+src/authorship/diff_base.rs
+  s_265a605c5598a3::t_652dfc2a1c9bc0 1-17
+src/authorship/post_commit.rs
+  s_265a605c5598a3::t_7e1982a468267f 5
+  s_265a605c5598a3::t_811ddc9a2947a1 11,326-329
+  s_265a605c5598a3::t_9c70fe372ad833 318
+src/authorship/virtual_attribution.rs
+  s_265a605c5598a3::t_0b5dd63366ece2 37-42,2082,2092-2094,2102,2146-2149
+  s_265a605c5598a3::t_99e0c4ecf65e12 2090-2091,2153,2179
+  s_265a605c5598a3::t_f818a27358ed05 2141-2145
+tests/commit_tree_update_ref.rs
+  s_265a605c5598a3::t_16c46df0eeb3e5 1858
+  s_265a605c5598a3::t_028697f6eb9e2e 73-94,1780-1857
+src/authorship/mod.rs
+  s_265a605c5598a3::t_73a388159f5d5f 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.5",
+  "base_commit_sha": "bcfc02040867cb6117075741e4d1a1c700ff7e59",
+  "prompts": {},
+  "humans": {
+    "h_55c03ed47cd416": {
+      "author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  },
+  "sessions": {
+    "s_265a605c5598a3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1ad2-b684-7bb2-9cdb-ace8798b8812",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_ddd48773cb990e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "52faaf7a-10cf-40f8-98a8-fcc7f4f083b2",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

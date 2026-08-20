@@ -1,0 +1,67 @@
+src/commands/mod.rs
+  s_a73b2a35c101af::t_dfbfd6a87a5832 1-13
+src/commands/internal.rs
+  s_a73b2a35c101af::t_583c0af620589d 8
+  s_a73b2a35c101af::t_c2cfdec7b28f34 1-7,9-392
+src/commands/diff.rs
+  s_a73b2a35c101af::t_fe0bc0fdec51e9 1-812
+tests/integration/repos/test_repo.rs
+  s_a73b2a35c101af::t_45931c84f16006 2440-2571
+src/commands/checkpoint.rs
+  s_a73b2a35c101af::t_59304d29f99ccb 1-1062
+src/commands/stash.rs
+  s_a73b2a35c101af::t_bbec495f09daf3 1-126
+src/daemon/trace2_listener_win.rs
+  s_a73b2a35c101af::t_ac7996107fa28e 12-14,16-18,21-29,31-34,36-43,45-51,53
+  s_a73b2a35c101af::t_262192d079892d 441,446-503,530-557,575,581-623,625,627-632,655-684,686-690,693,715,717-735,738-742,744-748,750-752,755-806,810-811,815-825,827,830-834,841-847,849-851,854-863,866,868-869,871-904,906-923,925-933,936-937,939-941,944-967,971-972,974-987,991-1028
+  s_a73b2a35c101af::t_97aece069c0769 1-6,56-58,60-62,69,71-82,84-87,89-96,98-103,105-115,117,119,121-127,129,131-138,140-149,152,154-176,178,182-184,189-195,198-230,232-244,246-258,264-271,273-279,281,283-288,291,293-298,301,305,308-311,313,316,318-349,356-391,393-400,402,404-427,431-435,439-440,442-445,504-529,558-574,576-580,633-654,685,696-714,716,736-737,743,749,753-754,807-809,812-814,835-840,848,852-853,864-865,867,870,938,942-943,968-970,973,988-990
+  s_a73b2a35c101af::t_beb3606d362e42 63-67
+  s_a73b2a35c101af::t_74d78e9f5141db 691-692,694-695
+src/commands/helpers.rs
+  s_a73b2a35c101af::t_633f89cfdecf76 1-70
+src/commands/post_rewrite.rs
+  s_a73b2a35c101af::t_9a2601063d7c75 1-337
+src/commands/status.rs
+  s_a73b2a35c101af::t_77c7839f6ea09a 1-82
+src/commands/blame.rs
+  s_a73b2a35c101af::t_8837935a31556b 1-456
+src/daemon/mod.rs
+  s_a73b2a35c101af::t_9809cad600b178 24
+src/commands/fetch_notes.rs
+  s_a73b2a35c101af::t_74f2339436e799 1-140
+src/commands/ci.rs
+  s_a73b2a35c101af::t_8643283e6dd139 1-145
+tests/integration/daemon_lifecycle.rs
+  s_a73b2a35c101af::t_f328ffd348159e 338,348-349,355,357,360,364-370,375-380,383
+  s_a73b2a35c101af::t_6382bd0695528e 1-337,339-347,350-354,356,358-359,361-363,371-374,381-382,384-568
+tests/integration/main.rs
+  s_a73b2a35c101af::t_ffafa1e86772ce 45
+  s_a73b2a35c101af::t_7c3759b0b24023 57-58
+  s_a73b2a35c101af::t_0acee35ed7f07c 55-56
+src/commands/bg.rs
+  s_a73b2a35c101af::t_ca9d229931f68f 1-31
+src/main.rs
+  s_a73b2a35c101af::t_093659f6878806 1,4,10-29
+src/commands/install.rs
+  s_a73b2a35c101af::t_670091543ad928 1-182
+tests/integration/install_e2e.rs
+  s_a73b2a35c101af::t_baeddafa62fffa 1-511
+src/commands/post_commit.rs
+  s_a73b2a35c101af::t_debd0257c83be4 1-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "a5dfa04b8ef683707b3f1907a562e990c5a7c2ea",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

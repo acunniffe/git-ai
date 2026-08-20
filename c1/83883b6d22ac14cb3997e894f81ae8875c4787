@@ -1,0 +1,54 @@
+tests/integration/main.rs
+  s_35dc4a4b913bd2::t_49ac5b0946c601 47
+tests/integration/config_cli_coverage.rs
+  s_35dc4a4b913bd2::t_518a14bcbc8c15 9,11
+  s_35dc4a4b913bd2::t_0598949d34a582 202-214,228-232,234-259,262,267-270,289-301,306-307,309-312,345-346,352-353
+  s_35dc4a4b913bd2::t_89e7ac85c4e257 302,305,308,333,338-344,347-349
+  s_35dc4a4b913bd2::t_69aa3025a86523 215-227,233,260-261,263-266,271-288,303-304,313-332,334-337,350-351
+  s_35dc4a4b913bd2::t_b842dd4b8c0b0b 1-8,10,12-142,191-201
+  s_35dc4a4b913bd2::t_5efd3e601cf334 354-356
+  s_35dc4a4b913bd2::t_a034e88a645a5d 157-160
+  s_35dc4a4b913bd2::t_4b923ec61b9198 143-156,161-178,185-190
+  s_b9c74d90e0aacc::t_7aa25d2636cbf5 179-184
+src/commands/config.rs
+  s_35dc4a4b913bd2::t_0f10f20ec8ba82 206
+  s_35dc4a4b913bd2::t_6cbcfcbb4085b6 1447,1454-1482
+  s_35dc4a4b913bd2::t_c0f859893e1e29 154-157
+  s_35dc4a4b913bd2::t_f5f29db950dd45 599-605,607-608,610-617,619
+  s_35dc4a4b913bd2::t_9acd501d857b38 1135-1155
+  s_35dc4a4b913bd2::t_2e2e27a9eb15b6 360-382
+  s_35dc4a4b913bd2::t_d8dd9a5cae6055 118-122
+  s_35dc4a4b913bd2::t_5d4bc07e2235da 793-813,819-821
+  s_35dc4a4b913bd2::t_cb14ff9003ae7c 965-984,986
+  s_35dc4a4b913bd2::t_17ace5a94c1a08 1301-1307,1312-1327,1329
+  s_35dc4a4b913bd2::t_37053e7fa31f52 1711-1742
+  s_35dc4a4b913bd2::t_50a81ab5750561 499-507
+  s_35dc4a4b913bd2::t_e023f494f33306 814-818
+  s_35dc4a4b913bd2::t_b5b0839b3cb7d7 1308-1311
+  s_35dc4a4b913bd2::t_97e88dbef59e80 1448-1453
+  s_b9c74d90e0aacc::t_7aa25d2636cbf5 606,609
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "c183883b6d22ac14cb3997e894f81ae8875c4787",
+  "prompts": {},
+  "sessions": {
+    "s_35dc4a4b913bd2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6143c255-d93d-4a16-bf9f-af1f008b2180",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b9c74d90e0aacc": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-88a9bdf107f3460a84a94a562c43798b",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+src/metrics/local_stats.rs
+  s_0db412aeb21ffe::t_f87a5a90807cb9 614
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.2",
+  "base_commit_sha": "58e56a0a52a8d095abbc17ad0237b507b1e26f26",
+  "prompts": {},
+  "sessions": {
+    "s_0db412aeb21ffe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfef8749-d442-403d-b447-4d2895852996",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

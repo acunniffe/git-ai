@@ -1,0 +1,24 @@
+src/commands/hooks/checkout_hooks.rs
+  7cb497240c3524af 93-96,126-131,153-158,162-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "d3866c61bd5f08d3102782632870b7194c7c1a24",
+  "prompts": {
+    "7cb497240c3524af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "824c14ec-df6d-4a75-ba4a-256448ada43e",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 21,
+      "total_deletions": 3,
+      "accepted_lines": 21,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/68464af0e09814a474f198f1191f4f75f8667f270020f3d7b4b9d64e8adb4ba6"
+    }
+  }
+}
