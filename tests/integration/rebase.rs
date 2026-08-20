@@ -900,6 +900,74 @@ fn test_rebase_with_conflicts() {
     feature_file.assert_lines_and_blame(crate::lines!["// AI feature".ai()]);
 }
 
+/// ENG-289 regression: a conflicted rebase whose `git rebase --continue`
+/// fails at least once before succeeding must still migrate line-level
+/// attribution exactly like a clean single-continue rebase. The failed
+/// attempts run through trace2 like any other git command, but they change
+/// no refs, so they must not advance or corrupt the reflog cursor used to
+/// establish the rebase's ref transitions.
+#[test]
+fn test_rebase_failed_continue_attempts_preserve_line_attribution() {
+    let repo = TestRepo::new();
+
+    let mut conflict_file = repo.filename("conflict.txt");
+    conflict_file.set_contents(crate::lines!["line 1", "line 2", "line 3"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+
+    let default_branch = repo.current_branch();
+
+    // Feature: an AI edit that will conflict, then a clean AI commit on top.
+    repo.git(&["checkout", "-b", "feature"]).unwrap();
+    conflict_file.replace_at(1, "AI CHANGE".ai());
+    repo.stage_all_and_commit("AI conflicting change").unwrap();
+    let mut feature_file = repo.filename("feature.txt");
+    feature_file.set_contents(crate::lines!["// AI feature".ai()]);
+    repo.stage_all_and_commit("AI feature file").unwrap();
+
+    // Conflicting human change on the default branch.
+    repo.git(&["checkout", &default_branch]).unwrap();
+    conflict_file.replace_at(1, "MAIN CHANGE".human());
+    repo.stage_all_and_commit("Main conflicting change")
+        .unwrap();
+
+    repo.git(&["checkout", "feature"]).unwrap();
+    assert!(
+        repo.git(&["rebase", &default_branch]).is_err(),
+        "rebase should stop on the conflict"
+    );
+
+    // First failed continue: the conflict is not resolved at all.
+    assert!(
+        repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
+            .is_err(),
+        "continue must fail while the conflict is unresolved"
+    );
+
+    // Second failed continue: resolved in the worktree but never staged.
+    std::fs::write(
+        repo.path().join("conflict.txt"),
+        "line 1\nAI CHANGE\nline 3\n",
+    )
+    .unwrap();
+    assert!(
+        repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
+            .is_err(),
+        "continue must fail while the resolution is unstaged"
+    );
+
+    // Stage the resolution (keeping the AI side) and finish the rebase.
+    repo.git(&["add", "conflict.txt"]).unwrap();
+    repo.git_with_env(&["rebase", "--continue"], &[("GIT_EDITOR", "true")], None)
+        .expect("continue should succeed once the resolution is staged");
+
+    conflict_file.assert_lines_and_blame(crate::lines![
+        "line 1".human(),
+        "AI CHANGE".ai(),
+        "line 3".human(),
+    ]);
+    feature_file.assert_lines_and_blame(crate::lines!["// AI feature".ai()]);
+}
+
 /// Test rebase abort - ensures no authorship corruption on abort
 #[test]
 fn test_rebase_abort() {
