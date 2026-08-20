@@ -41,10 +41,17 @@
 
     <SetProperty
       Id="ConfigureGitAi"
-      Value="install-hooks --api-base &quot;[API_BASE]&quot; --api-key &quot;[API_KEY]&quot;"
+      Value="install-hooks --env --api-base &quot;[API_BASE]&quot; --api-key &quot;[API_KEY]&quot;"
       Before="ConfigureGitAi"
       Sequence="execute"
       Condition="NOT Installed" />
+    <!--
+      ConfigureGitAi runs after WriteEnvironmentStrings so the PATH entry the
+      Environment element above writes is already in place: the env flag then
+      dedupes against it (leaving the MSI as the sole owner of the
+      uninstallable user PATH entry) and only adds the Git Bash shell config.
+    -->
+
     <CustomAction
       Id="ConfigureGitAi"
       FileRef="GitAiExe"
@@ -54,7 +61,7 @@
       Return="check"
       HideTarget="yes" />
     <InstallExecuteSequence>
-      <Custom Action="ConfigureGitAi" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="ConfigureGitAi" After="WriteEnvironmentStrings" Condition="NOT Installed" />
     </InstallExecuteSequence>
   </Package>
 </Wix>
