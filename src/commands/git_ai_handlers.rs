@@ -1010,8 +1010,8 @@ fn handle_stats(args: &[String]) {
                         if parts.len() == 2 {
                             match CommitRange::new_infer_refname(
                                 &repo,
-                                normalize_head_rev(parts[0]),
-                                normalize_head_rev(parts[1]),
+                                commands::revision::normalize_head_rev(parts[0]),
+                                commands::revision::normalize_head_rev(parts[1]),
                                 // @todo this is probably fine, but we might want to give users an option to override from this command.
                                 None,
                             ) {
@@ -1028,7 +1028,7 @@ fn handle_stats(args: &[String]) {
                             std::process::exit(1);
                         }
                     } else {
-                        commit_sha = Some(normalize_head_rev(arg));
+                        commit_sha = Some(commands::revision::normalize_head_rev(arg));
                     }
                     i += 1;
                 } else {
@@ -1076,30 +1076,6 @@ fn handle_stats(args: &[String]) {
         }
         std::process::exit(1);
     }
-}
-
-/// Normalise a revision token that the user may have typed with a lowercase
-/// "head" prefix.  On case-insensitive file systems (macOS) git accepts both
-/// "head" and "HEAD", but in a linked worktree "head" can resolve to the
-/// *main* repository's HEAD file rather than the worktree's own HEAD, so the
-/// wrong commit is used.  On case-sensitive file systems (Linux) "head"
-/// simply fails with "Not a valid revision".  Normalising to uppercase "HEAD"
-/// before passing to git fixes both issues.
-///
-/// Only the four-character prefix is replaced; suffixes like `~2`, `^1` or
-/// `@{0}` are preserved verbatim.
-fn normalize_head_rev(rev: &str) -> String {
-    if rev.len() >= 4 && rev[..4].eq_ignore_ascii_case("head") {
-        let suffix = &rev[4..];
-        if suffix.is_empty()
-            || suffix.starts_with('~')
-            || suffix.starts_with('^')
-            || suffix.starts_with('@')
-        {
-            return format!("HEAD{}", suffix);
-        }
-    }
-    rev.to_string()
 }
 
 fn handle_git_hooks(args: &[String]) {
