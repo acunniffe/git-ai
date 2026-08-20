@@ -382,7 +382,7 @@ fn parse_install_options(args: &[String]) -> Result<InstallOptions, GitAiError> 
             "--verbose" | "-v" => options.verbose = true,
             "--skills" => options.install_skills = true,
             "--visual-studio-extension" => options.include_visual_studio_extension = true,
-            "--env" => options.configure_env = true,
+            "--env" | "--env=true" => options.configure_env = true,
             value if value.starts_with("--api-base=") => {
                 options.api_base = non_empty_value(&value[11..]);
             }
@@ -734,9 +734,12 @@ async fn async_run_install(
     if !any_checked {
         println!("No compatible IDEs or agent configurations detected. Nothing to install.");
     } else if has_changes && options.dry_run {
+        // Keep --env in the suggested re-run so the requested shell config
+        // is not silently dropped when the user applies the changes.
+        let env_flag = if options.configure_env { " --env" } else { "" };
         println!("\n\x1b[33m⚠ Dry-run mode (default). No changes were made.\x1b[0m");
         println!("To apply these changes, run:");
-        println!("\x1b[1m  git-ai install-hooks --dry-run=false\x1b[0m");
+        println!("\x1b[1m  git-ai install-hooks --dry-run=false{env_flag}\x1b[0m");
     }
 
     // Check for running agents that had hooks updated and warn about restart
@@ -1136,6 +1139,13 @@ mod tests {
         let options = parse_install_options(&args).unwrap();
 
         assert!(options.dry_run);
+        assert!(options.configure_env);
+    }
+
+    #[test]
+    fn parse_install_options_accepts_env_value_form_like_dry_run() {
+        let options = parse_install_options(&["--env=true".to_string()]).unwrap();
+
         assert!(options.configure_env);
     }
 

@@ -5,6 +5,9 @@
 //! warnings and never fail the install command, matching the scripts'
 //! warn-and-continue semantics.
 
+use std::io::Write;
+use std::path::Path;
+
 /// Apply the shell/environment configuration for the current platform.
 pub fn configure_shell_env() {
     #[cfg(unix)]
@@ -14,11 +17,30 @@ pub fn configure_shell_env() {
     windows::configure_shell_env();
 }
 
+/// Byte-level fixed-string search, matching `grep -qsF` (no UTF-8
+/// requirement; missing/unreadable file counts as "not present").
+fn file_contains(path: &Path, needle: &[u8]) -> bool {
+    match std::fs::read(path) {
+        Ok(bytes) => bytes.windows(needle.len()).any(|window| window == needle),
+        Err(_) => false,
+    }
+}
+
+/// Append a `# Added by git-ai installer` comment plus the given config line,
+/// creating the file if needed (UTF-8 without BOM, LF line endings).
+fn append_installer_line(path: &Path, timestamp: &str, line: &str) -> std::io::Result<()> {
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)?;
+    file.write_all(format!("\n# Added by git-ai installer on {timestamp}\n{line}\n").as_bytes())
+}
+
 #[cfg(unix)]
 mod unix {
-    use crate::mdm::utils::home_dir;
+    use super::{append_installer_line, file_contains};
+    use crate::mdm::utils::{binary_exists, home_dir};
     use std::fs;
-    use std::io::Write;
     use std::path::{Path, PathBuf};
     use std::process::{Command, Stdio};
 
@@ -41,13 +63,26 @@ mod unix {
 
     pub(super) fn configure_shell_env() {
         let home = home_dir();
-        let login_shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty());
+        let login_shell = resolve_login_shell(std::env::var("SHELL").ok(), binary_exists("zsh"));
         let timestamp = chrono::Local::now()
             .format("%a %b %e %H:%M:%S %Y")
             .to_string();
         let report = apply_env_config(&home, login_shell.as_deref(), &timestamp);
         print!("{}", render_report(&report, &install_dir_string(&home)));
         chown_created_paths(&report.created_paths);
+    }
+
+    /// Resolve the login shell like install.sh's preamble: use `$SHELL` when
+    /// set, otherwise prefer zsh when it is installed (SHELL is often unbound
+    /// under MDM runs, and zsh is the macOS default). `None` makes
+    /// `detect_all_shells` fall back to bash, matching the script.
+    pub(super) fn resolve_login_shell(
+        env_shell: Option<String>,
+        zsh_available: bool,
+    ) -> Option<String> {
+        env_shell
+            .filter(|s| !s.is_empty())
+            .or_else(|| zsh_available.then(|| "zsh".to_string()))
     }
 
     fn install_dir_string(home: &Path) -> String {
@@ -148,6 +183,14 @@ mod unix {
     ) -> std::io::Result<()> {
         let config_file = &shell_config.config_file;
 
+        // Check for the install dir before touching the file so an
+        // already-configured (possibly read-only) config never needs write
+        // access, like install.sh's `grep -qsF` check.
+        if file_contains(config_file, install_dir.as_bytes()) {
+            report.already_configured.push(shell_config.clone());
+            return Ok(());
+        }
+
         let path_cmd = if shell_config.shell == "fish" {
             // Create the fish config directory if it doesn't exist (fallback case).
             if let Some(config_dir) = config_file.parent()
@@ -161,33 +204,14 @@ mod unix {
             format!("export PATH=\"{install_dir}:$PATH\"")
         };
 
-        if !config_file.is_file() {
+        let created = !config_file.is_file();
+        append_installer_line(config_file, timestamp, &path_cmd)?;
+        if created {
             report.created_paths.push(config_file.clone());
         }
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(config_file)?;
-
-        if file_contains(config_file, install_dir.as_bytes()) {
-            report.already_configured.push(shell_config.clone());
-        } else {
-            file.write_all(
-                format!("\n# Added by git-ai installer on {timestamp}\n{path_cmd}\n").as_bytes(),
-            )?;
-            report.configured.push(shell_config.clone());
-        }
+        report.configured.push(shell_config.clone());
 
         Ok(())
-    }
-
-    /// Byte-level fixed-string search, matching `grep -qsF` (no UTF-8
-    /// requirement; missing/unreadable file counts as "not present").
-    fn file_contains(path: &Path, needle: &[u8]) -> bool {
-        match fs::read(path) {
-            Ok(bytes) => bytes.windows(needle.len()).any(|window| window == needle),
-            Err(_) => false,
-        }
     }
 
     pub(super) fn render_report(report: &EnvSetupReport, install_dir: &str) -> String {
@@ -216,7 +240,9 @@ mod unix {
         }
 
         if report.configured.is_empty() && report.already_configured.is_empty() {
-            out.push_str("\nCould not detect any shell config files.\n");
+            // detect_all_shells always yields at least one config, so an empty
+            // report means every update failed (warnings already on stderr).
+            out.push_str("\nNo shell config files could be updated.\n");
             out.push_str("Please add the following line to your shell config and restart:\n");
             out.push_str(&format!("  export PATH=\"{install_dir}:$PATH\"\n"));
         }
@@ -227,7 +253,8 @@ mod unix {
     /// In root/MDM installs (e.g. JAMF), hand ownership of any files this
     /// process created back to the target user, mirroring the
     /// `chown "$INSTALL_USER" "$created_path"` loop from install.sh. The
-    /// installer script passes the user via GIT_AI_INSTALL_USER.
+    /// handoff only runs when the caller (e.g. the install script, once it
+    /// delegates to `--env`) passes the target user via GIT_AI_INSTALL_USER.
     fn chown_created_paths(created_paths: &[PathBuf]) {
         if created_paths.is_empty() || !crate::utils::is_running_as_superuser() {
             return;
@@ -598,20 +625,83 @@ mod unix {
             assert_eq!(
                 rendered,
                 format!(
-                    "\nCould not detect any shell config files.\n\
+                    "\nNo shell config files could be updated.\n\
                      Please add the following line to your shell config and restart:\n\
                      \x20 export PATH=\"{install_dir}:$PATH\"\n"
                 )
             );
+        }
+
+        #[test]
+        fn resolve_login_shell_prefers_the_shell_env_var() {
+            assert_eq!(
+                resolve_login_shell(Some("/bin/bash".to_string()), true),
+                Some("/bin/bash".to_string())
+            );
+        }
+
+        #[test]
+        fn resolve_login_shell_probes_zsh_when_shell_is_unset_or_empty() {
+            // Mirrors install.sh: an unbound SHELL (e.g. MDM runs) prefers an
+            // installed zsh over the bash fallback.
+            assert_eq!(resolve_login_shell(None, true), Some("zsh".to_string()));
+            assert_eq!(
+                resolve_login_shell(Some(String::new()), true),
+                Some("zsh".to_string())
+            );
+        }
+
+        #[test]
+        fn resolve_login_shell_falls_back_to_bash_when_zsh_is_missing() {
+            // None makes detect_all_shells take the bash fallback arm.
+            assert_eq!(resolve_login_shell(None, false), None);
+        }
+
+        #[test]
+        fn already_configured_read_only_file_is_reported_without_write_access() {
+            let home = tempdir().unwrap();
+            let install_dir = install_dir_string(home.path());
+            let bashrc = home.path().join(".bashrc");
+            let contents = format!("PATH={install_dir}:$PATH # managed dotfile\n");
+            fs::write(&bashrc, &contents).unwrap();
+            let mut perms = fs::metadata(&bashrc).unwrap().permissions();
+            perms.set_readonly(true);
+            fs::set_permissions(&bashrc, perms).unwrap();
+
+            let report = apply_env_config(home.path(), None, TS);
+
+            assert_eq!(report.already_configured.len(), 1);
+            assert!(report.configured.is_empty());
+            assert!(report.created_paths.is_empty());
+            assert_eq!(fs::read_to_string(&bashrc).unwrap(), contents);
+        }
+
+        #[test]
+        fn failed_write_records_nothing_in_the_report() {
+            if crate::utils::is_running_as_superuser() {
+                return; // root bypasses file permissions
+            }
+            let home = tempdir().unwrap();
+            let bashrc = home.path().join(".bashrc");
+            fs::write(&bashrc, "# bashrc\n").unwrap();
+            let mut perms = fs::metadata(&bashrc).unwrap().permissions();
+            perms.set_readonly(true);
+            fs::set_permissions(&bashrc, perms).unwrap();
+
+            let report = apply_env_config(home.path(), None, TS);
+
+            assert!(report.configured.is_empty());
+            assert!(report.already_configured.is_empty());
+            assert!(report.created_paths.is_empty());
+            assert_eq!(fs::read_to_string(&bashrc).unwrap(), "# bashrc\n");
         }
     }
 }
 
 #[cfg(windows)]
 mod windows {
+    use super::{append_installer_line, file_contains};
     use crate::mdm::utils::home_dir;
-    use std::fs;
-    use std::io::Write;
     use std::path::{Path, PathBuf};
 
     const GREEN: &str = "\x1b[0;32m";
@@ -628,7 +718,7 @@ mod windows {
         // Persistent user PATH (skippable, like install.ps1's skip gate; the
         // Git Bash config below runs regardless).
         if std::env::var("GIT_AI_SKIP_PATH_UPDATE").as_deref() == Ok("1") {
-            println!("{YELLOW}Skipping PATH updates because GIT_AI_SKIP_PATH_UPDATE=1{NC}");
+            eprintln!("{YELLOW}Skipping PATH updates because GIT_AI_SKIP_PATH_UPDATE=1{NC}");
         } else {
             let install_dir = home.join(".git-ai").join("bin");
             match ensure_user_path_contains(&install_dir) {
@@ -638,7 +728,7 @@ mod windows {
                 UserPathStatus::AlreadyPresent => {
                     println!("{GREEN}git-ai already present in the user PATH.{NC}")
                 }
-                UserPathStatus::Error => println!("{RED}Failed to update the user PATH.{NC}"),
+                UserPathStatus::Error => eprintln!("{RED}Failed to update the user PATH.{NC}"),
             }
         }
 
@@ -661,7 +751,7 @@ mod windows {
                 )
             }
             GitBashStatus::Failed(message) => {
-                println!("{YELLOW}Warning: Failed to configure Git Bash: {message}{NC}")
+                eprintln!("{YELLOW}Warning: Failed to configure Git Bash: {message}{NC}")
             }
         }
     }
@@ -686,22 +776,30 @@ mod windows {
 
     fn try_update_user_path(install_dir: &str) -> std::io::Result<bool> {
         use winreg::RegKey;
-        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE};
+        use winreg::enums::{HKEY_CURRENT_USER, KEY_READ, KEY_SET_VALUE, REG_EXPAND_SZ};
+        use winreg::types::FromRegValue;
 
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let env_key = hkcu.open_subkey_with_flags("Environment", KEY_READ | KEY_SET_VALUE)?;
         // .NET's GetEnvironmentVariable('Path', 'User') — which install.ps1
-        // used — expands %VAR% references in REG_EXPAND_SZ values on read and
-        // writes the merged result back as REG_SZ. Replicate that exactly.
+        // used — expands %VAR% references on read only for REG_EXPAND_SZ
+        // values (REG_SZ is returned verbatim) and writes the merged result
+        // back as REG_SZ. Replicate that exactly.
         // Only a missing value counts as an empty PATH; any other read
         // failure must fail closed rather than overwrite an existing PATH
         // we could not read.
-        let current: Option<String> = match env_key.get_value("Path") {
-            Ok(value) => Some(value),
+        let expanded: Option<String> = match env_key.get_raw_value("Path") {
+            Ok(value) => {
+                let raw = String::from_reg_value(&value)?;
+                Some(if value.vtype == REG_EXPAND_SZ {
+                    expand_env_strings(&raw)
+                } else {
+                    raw
+                })
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
             Err(e) => return Err(e),
         };
-        let expanded = current.as_deref().map(expand_env_strings);
         match user_path_merge(expanded.as_deref(), install_dir) {
             Some(new_path) => {
                 env_key.set_value("Path", &new_path)?;
@@ -762,7 +860,8 @@ mod windows {
     }
 
     /// Notify running applications that the environment changed, matching
-    /// .NET's SetEnvironmentVariable behavior so new shells pick up the PATH.
+    /// .NET's SetEnvironmentVariable behavior (a 1s-timeout broadcast) so new
+    /// shells pick up the PATH.
     fn broadcast_environment_change() {
         use windows_sys::Win32::UI::WindowsAndMessaging::{
             HWND_BROADCAST, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_SETTINGCHANGE,
@@ -779,7 +878,7 @@ mod windows {
                 0,
                 param.as_ptr() as isize,
                 SMTO_ABORTIFHUNG,
-                5000,
+                1000,
                 std::ptr::null_mut(),
             );
         }
@@ -834,30 +933,20 @@ mod windows {
     }
 
     fn append_git_bash_path(target: &Path, timestamp: &str) -> std::io::Result<bool> {
-        let marker = GIT_BASH_MARKER.as_bytes();
-        let already_present = fs::read(target)
-            .map(|bytes| bytes.windows(marker.len()).any(|window| window == marker))
-            .unwrap_or(false);
-        if already_present {
+        if file_contains(target, GIT_BASH_MARKER.as_bytes()) {
             return Ok(false);
         }
 
         // UTF-8 without BOM and LF line endings, matching install.ps1's
         // AppendAllText with UTF8Encoding($false) and `n.
-        let content = format!(
-            "\n# Added by git-ai installer on {timestamp}\nexport PATH=\"$HOME/.git-ai/bin:$PATH\"\n"
-        );
-        let mut file = fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(target)?;
-        file.write_all(content.as_bytes())?;
+        append_installer_line(target, timestamp, "export PATH=\"$HOME/.git-ai/bin:$PATH\"")?;
         Ok(true)
     }
 
     #[cfg(test)]
     mod tests {
         use super::*;
+        use std::fs;
         use tempfile::tempdir;
 
         const TS: &str = "2025-08-19 10:00:00";
