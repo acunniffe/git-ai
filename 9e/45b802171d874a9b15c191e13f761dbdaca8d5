@@ -1,0 +1,24 @@
+src/observability/flush.rs
+  aee92e64289c06c6 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "9e45b802171d874a9b15c191e13f761dbdaca8d5",
+  "prompts": {
+    "aee92e64289c06c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bf5aea9e-3bc5-4121-a560-0dc7efee0607",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 4,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/70191a13f796bfeaf5662dafa4dc156f6b857bcce3d2056ffeaf345456eef74f"
+    }
+  }
+}

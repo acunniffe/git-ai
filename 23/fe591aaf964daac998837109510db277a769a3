@@ -1,0 +1,26 @@
+src/commands/install_hooks.rs
+  s_8d9d36585aec71::t_31214a6f8ea543 241
+  s_8d9d36585aec71::t_fd39ff38c5459b 271
+  s_8d9d36585aec71::t_c1609bd12273b3 311,313,316,320
+src/utils.rs
+  s_8d9d36585aec71::t_23ca3ae3b24745 50
+src/commands/git_ai_handlers.rs
+  s_8d9d36585aec71::t_6c186236652535 35-37,42-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "23fe591aaf964daac998837109510db277a769a3",
+  "prompts": {},
+  "sessions": {
+    "s_8d9d36585aec71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "33d20787-e26d-4a7f-9364-7a48fad08505",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": []
+    }
+  }
+}

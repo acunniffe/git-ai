@@ -1,0 +1,23 @@
+.github/workflows/nightly-agent-integration.yml
+  s_fda43523464d26::t_571505e4d6c8cd 203,302
+src/daemon.rs
+  s_fda43523464d26::t_571505e4d6c8cd 2728-2730,3660-3662,3684,6525-6526,6528,6555,6559-6561,6578,6581,10152
+  s_fda43523464d26::t_ad09a3592dfc7e 6580,10114-10117
+  s_fda43523464d26::t_4ad3438711af9e 10093,10112-10113,10118-10119,10161-10186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "fc637724106cf1133e9231471de261577a76a998",
+  "prompts": {},
+  "sessions": {
+    "s_fda43523464d26": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc4a6-2184-7652-87b8-de70eff8cc2e",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

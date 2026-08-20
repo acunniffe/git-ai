@@ -1,0 +1,26 @@
+src/git/mod.rs
+  s_d01cfbfe3af2e2::t_8248473787c853 5
+src/git/gix_backend.rs
+  s_d01cfbfe3af2e2::t_b581e758bac2eb 190,192
+  s_d01cfbfe3af2e2::t_25a36bbb5d4928 1-3,5-28,30-189,191,193-241
+  s_d01cfbfe3af2e2::t_ae3259db2e56b2 4
+  s_d01cfbfe3af2e2::t_90339f812f9463 29
+Cargo.toml
+  s_d01cfbfe3af2e2::t_b6f2b80f02fe5e 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "d1cf0eafb91d1b34066e2c11d38dc27922b3c272",
+  "prompts": {},
+  "sessions": {
+    "s_d01cfbfe3af2e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cf9f0e5-b326-4a90-8216-2e35a90a30d9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

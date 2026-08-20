@@ -1,0 +1,133 @@
+tests/integration/rebase_note_integrity.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 5
+tests/integration/repo_storage_unit.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 41-43,51,55
+src/git/repo_storage.rs
+  s_f00ef7c0f45b07::t_a63412a3cdb2a9 191-192
+  s_f00ef7c0f45b07::t_27810f6677e326 530-531
+src/git/notes_api.rs
+  s_032cf4fb6d69d7::t_4ca6118e6fbdb0 50-60,64,66-67,71,83,85
+  s_032cf4fb6d69d7::t_88404403925b0d 137-138
+src/commands/git_ai_handlers.rs
+  s_032cf4fb6d69d7::t_018c2ab6b783a4 229,677,697,721,738
+src/authorship/mod.rs
+  s_032cf4fb6d69d7::t_20333d17abb399 8
+  s_032cf4fb6d69d7::t_5b963d5af8995d 17
+  s_032cf4fb6d69d7::t_d756e1e15cf398 18
+  s_032cf4fb6d69d7::t_667581eee48b16 19
+  s_032cf4fb6d69d7::t_2f89185ac81fc9 20
+tests/integration/rebase_realworld.rs
+  s_032cf4fb6d69d7::t_88404403925b0d 6
+src/git/repository.rs
+  s_f00ef7c0f45b07::t_110ac27a2d776e 2646,2653,2705-2706,2716-2717
+  s_b3918a71142a3e::t_16e5bc066fd4e1 2655,2659-2660,2663
+src/daemon.rs
+  s_f00ef7c0f45b07::t_f7c97c5fa63d7c 40
+  s_f00ef7c0f45b07::t_18a3314c00ee83 373-374,3910,5258,1802
+  s_f00ef7c0f45b07::t_e6ab2f8699128d 504-513
+  s_f00ef7c0f45b07::t_9d023bc264e2a3 709
+  s_032cf4fb6d69d7::t_a42799b77763eb 733-734
+  s_f00ef7c0f45b07::t_1ed048cce837e6 737,739
+  s_032cf4fb6d69d7::t_3e061505b8a447 740,746,769,4658,4832
+  s_b3918a71142a3e::t_d44077ee010843 763,1324,1860,1863,1869,1840
+  s_032cf4fb6d69d7::t_2828464a087eeb 771
+  s_b3918a71142a3e::t_b897ee897992f4 866
+  s_b3918a71142a3e::t_809ca361022fce 1870-1871,2490,2531,2560,2563,2912,2923,3273,5360,6983,7101
+  s_b3918a71142a3e::t_9438acf042cbd8 1872,2913,2924,3274,3433,3437,4667,5361,5455,5716,5718,5742,6973,6984,7102,1786,1834
+  s_f00ef7c0f45b07::t_ba749b899cfc9c 2580,4544
+  s_f00ef7c0f45b07::t_7eaadc06b100d4 2774-2775,2818
+  s_f00ef7c0f45b07::t_8110027f606120 2969-2970
+  s_f00ef7c0f45b07::t_196bd40ce267d2 2971-2975,2977-2981,2983-2984,2986
+  s_f00ef7c0f45b07::t_a975576c128bc5 3279-3280,3454-3456,3479
+  s_f00ef7c0f45b07::t_ec0124b77a5030 3453
+  s_af2d349a5e032c::t_b76ff431c46f45 3490,3492-3493
+  s_f00ef7c0f45b07::t_3bdf1f9c0e82c0 3634
+  s_f00ef7c0f45b07::t_59adadc21a1289 3902
+  s_f00ef7c0f45b07::t_df379fd9b50588 3906
+  s_f00ef7c0f45b07::t_4646157f744d95 4150-4151
+  s_032cf4fb6d69d7::t_0860afd75daff3 4511-4512
+  s_f00ef7c0f45b07::t_c418e141f8ac5f 4534-4537,4539-4540,4542
+  s_032cf4fb6d69d7::t_502e2be88438da 4647-4657,4659,4661-4666,4669-4679,4683-4691,4698,4703-4708
+  s_032cf4fb6d69d7::t_42d2ebe8df66a3 4668
+  s_032cf4fb6d69d7::t_174828c975d936 4680
+  s_032cf4fb6d69d7::t_e26a2c1b3be88d 4681
+  s_032cf4fb6d69d7::t_0090736ada2b43 4876-4877
+  s_032cf4fb6d69d7::t_a738bcbcf82cc4 4986-4991,5065
+  s_032cf4fb6d69d7::t_16fec90aaed897 4994,5005
+  s_f00ef7c0f45b07::t_9e103d84dc4131 5011
+  s_032cf4fb6d69d7::t_2d224425653365 5018-5019
+  s_032cf4fb6d69d7::t_c02af5737bbdfc 5021,5024,5035,5059-5060,5062-5063,5066,5096
+  s_b3918a71142a3e::t_80d9b8cecfc8a6 5486
+  s_f00ef7c0f45b07::t_70887726b11d70 5679,5695,5715
+  s_f00ef7c0f45b07::t_ae8084c8e66067 5744-5758
+  s_f00ef7c0f45b07::t_3fe1a769c158b7 5774,5787,5789-5801,5807-5817
+  s_b3918a71142a3e::t_a3a35f774aecc7 5979-5980
+  s_f00ef7c0f45b07::t_862af8a7846130 5988-5989,5999,6021,6043,2257
+  s_f00ef7c0f45b07::t_ecf8c7944bf1fa 6880-6881,6889,6891-6893,6910,6916-6917
+  s_f00ef7c0f45b07::t_2b61c0f8eeaf80 6970-6972,1805,1808
+  s_f00ef7c0f45b07::t_a9a4b93b1d239b 7166-7168,7248,7251
+  s_f00ef7c0f45b07::t_47553f3626d70d 7247,7252-7253
+  s_f00ef7c0f45b07::t_0704f300cc817b 7391-7393
+  s_f00ef7c0f45b07::t_3b7a809d5a59e3 7410-7411,1827,1830,1841
+  s_032cf4fb6d69d7::t_9024cdc4db6a67 4682
+  s_f00ef7c0f45b07::t_6e0fec2d75cc39 5004,5071,5074-5075,5100,5103-5104
+  s_032cf4fb6d69d7::t_0d023237258aa7 1737-1738,1741-1742,1745-1748,1756-1764,1767-1777,1833,1835-1836,5064,5067-5068,5087-5095,5097
+  s_f00ef7c0f45b07::t_eeff5695624d1f 1816-1817
+  s_f00ef7c0f45b07::t_f5ba98d3143919 1823,1829
+  s_f00ef7c0f45b07::t_996b152adb368d 1839
+  s_f00ef7c0f45b07::t_106c354e3ab6e7 1843-1844
+  s_f00ef7c0f45b07::t_5127b274ef9496 5078,5107
+  s_032cf4fb6d69d7::t_fbcb6be207e3a5 5084-5085,5113-5114
+  s_f00ef7c0f45b07::t_9320cf8727036f 5086,5115
+tests/daemon_mode.rs
+  s_f00ef7c0f45b07::t_1fd4f711e5573c 142-153
+  s_f00ef7c0f45b07::t_2e02e15fec33be 870-871
+  s_f00ef7c0f45b07::t_45e955ed98e475 1175
+  s_f00ef7c0f45b07::t_8d759d3f3cdb8f 1176-1177
+  s_f00ef7c0f45b07::t_7587132a263fb3 1245,1248-1251,1258,1264-1267,1271,1276-1278
+  s_f00ef7c0f45b07::t_d4fe5e36089648 1279,1285,1292,1308,1315
+  s_f00ef7c0f45b07::t_279f5cc9e0dc91 1319
+  s_f00ef7c0f45b07::t_8344a047e400f4 1326
+  s_f00ef7c0f45b07::t_9a1c88127976dc 1327,1333,1335,1353-1354
+  s_f00ef7c0f45b07::t_903f8f7f84dc06 3097-3099
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "ec46981a4021bb7e2abe2f19bb9c2e2d872b0157",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b3918a71142a3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de268d2e-4705-4c20-86ca-d1dc04eda164",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
