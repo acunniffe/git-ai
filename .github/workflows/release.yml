@@ -78,7 +78,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Get version from Cargo.toml
         id: get-version
@@ -109,7 +109,7 @@ jobs:
 
       - name: Install Rust toolchain (non-Docker)
         if: matrix.use_docker == false
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: "1.93.0"
           targets: ${{ matrix.target }}
@@ -255,7 +255,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Get version from Cargo.toml
         id: get-version
@@ -265,7 +265,7 @@ jobs:
           echo "version=v$VERSION" >> $GITHUB_OUTPUT
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: "1.93.0"
           targets: x86_64-apple-darwin
@@ -358,7 +358,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download Windows x64 binary
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -417,7 +417,7 @@ jobs:
     environment: release
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download macOS ARM64 binary
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -471,8 +471,14 @@ jobs:
           VERSION="${VERSION#v}"
           mkdir -p release
           chmod +x artifacts/git-ai-macos-arm64 artifacts/git-ai-macos-x64
+          lipo -create artifacts/git-ai-macos-arm64 artifacts/git-ai-macos-x64 -output artifacts/git-ai-macos-universal
+          lipo artifacts/git-ai-macos-universal -verify_arch x86_64 arm64
+          if [[ "${{ inputs.dry_run }}" != "true" ]]; then
+            codesign --verify --strict --verbose=2 --all-architectures artifacts/git-ai-macos-universal
+          fi
           packaging/macos/build-pkg.sh --binary artifacts/git-ai-macos-arm64 --arch arm64 --version "$VERSION" --output release/git-ai-macos-arm64.pkg
           packaging/macos/build-pkg.sh --binary artifacts/git-ai-macos-x64 --arch x64 --version "$VERSION" --output release/git-ai-macos-x64.pkg
+          packaging/macos/build-pkg.sh --binary artifacts/git-ai-macos-universal --arch universal --version "$VERSION" --output release/git-ai-macos-universal.pkg
 
       - name: Notarize PKG installers
         if: inputs.dry_run != true
@@ -543,6 +549,27 @@ jobs:
           if (Test-Path (Join-Path $env:LOCALAPPDATA 'Git AI')) { throw 'MSI created the retired LocalAppData runtime' }
           if (Test-Path (Join-Path $env:ProgramFiles 'Git AI')) { throw 'MSI created a system-wide runtime' }
 
+          $binaryVersion = (& $gitAi --version).Trim()
+          $installer = New-Object -ComObject WindowsInstaller.Installer
+          $database = $installer.GetType().InvokeMember(
+            'OpenDatabase', 'InvokeMethod', $null, $installer, @($msi, 0)
+          )
+          $query = "SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = 'ProductCode'"
+          $view = $database.GetType().InvokeMember(
+            'OpenView', 'InvokeMethod', $null, $database, @($query)
+          )
+          $view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)
+          $record = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)
+          $productCode = $record.GetType().InvokeMember(
+            'StringData', 'GetProperty', $null, $record, 1
+          )
+          $registeredVersion = $installer.GetType().InvokeMember(
+            'ProductInfo', 'GetProperty', $null, $installer, @($productCode, 'VersionString')
+          )
+          if ($registeredVersion -ne $binaryVersion) {
+            throw "MSI version '$registeredVersion' does not match binary version '$binaryVersion'"
+          }
+
           $uninstall = Start-Process msiexec.exe -ArgumentList "/x `"$msi`" /qn /norestart" -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with exit code $($uninstall.ExitCode)" }
 
@@ -570,13 +597,16 @@ jobs:
           console_home="$(/usr/bin/dscl . -read "/Users/$console_user" NFSHomeDirectory | /usr/bin/awk 'NR == 1 { print $2 }')"
           git_ai="$console_home/.git-ai/bin/git-ai"
 
-          if [ "$(uname -m)" = "arm64" ]; then
-            PKG=release/git-ai-macos-arm64.pkg
-          else
-            PKG=release/git-ai-macos-x64.pkg
-          fi
+          PKG=release/git-ai-macos-universal.pkg
           sudo installer -pkg "$PKG" -target /
-          "$git_ai" --version
+          lipo "$git_ai" -verify_arch x86_64 arm64
+          binary_version="$("$git_ai" --version)"
+          receipt_id="com.git-ai.git-ai"
+          receipt_version="$(pkgutil --pkg-info "$receipt_id" | awk -F': ' '$1 == "version" { print $2 }')"
+          if [ "$receipt_version" != "$binary_version" ]; then
+            echo "::error::PKG receipt version '$receipt_version' does not match binary version '$binary_version'"
+            exit 1
+          fi
 
           binary_owner="$(/usr/bin/stat -f%Su "$git_ai")"
           state_owner="$(/usr/bin/stat -f%Su "$console_home/.git-ai")"
@@ -677,7 +707,7 @@ jobs:
           fi
 
       - name: Checkout code for install script
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: repo
 
@@ -777,6 +807,7 @@ jobs:
             - **macOS (Apple Silicon)**: `git-ai-macos-arm64`
             - **macOS PKG (Intel)**: `git-ai-macos-x64.pkg`
             - **macOS PKG (Apple Silicon)**: `git-ai-macos-arm64.pkg`
+            - **macOS PKG (Universal)**: `git-ai-macos-universal.pkg`
 
             ### SHA256 Checksums
             ```
@@ -809,14 +840,14 @@ jobs:
 
       - name: Checkout code for version bump
         if: inputs.release_production == true
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ steps.release-bot-token.outputs.token }}
           fetch-depth: 0
 
       - name: Install Rust toolchain
         if: inputs.release_production == true
-        uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # master
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
         with:
           toolchain: stable
 
@@ -876,7 +907,12 @@ jobs:
   publish-pkg:
     name: Publish macOS PKG installers
     needs: [create-release, package-pkg, test-pkg, build]
-    if: inputs.dry_run != true && needs.create-release.result == 'success' && needs.package-pkg.result == 'success' && needs.test-pkg.result == 'success'
+    if: >-
+      !cancelled() &&
+      inputs.dry_run != true &&
+      needs.create-release.result == 'success' &&
+      needs.package-pkg.result == 'success' &&
+      needs.test-pkg.result == 'success'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -912,4 +948,8 @@ jobs:
             RELEASE_TAG="${BASE_VERSION}-next-${SHORT_SHA}"
           fi
 
-          gh release upload "$RELEASE_TAG" release/git-ai-macos-*.pkg release/PKG-SHA256SUMS --clobber
+          gh release upload "$RELEASE_TAG" \
+            release/git-ai-macos-*.pkg \
+            release/PKG-SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
