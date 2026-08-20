@@ -4,6 +4,7 @@ use crate::authorship::ignore::{
     build_ignore_matcher, effective_ignore_patterns, should_ignore_file_with_matcher,
 };
 use crate::commands::blame::GitAiBlameOptions;
+use crate::commands::revision::normalize_head_rev;
 use crate::error::GitAiError;
 use crate::git::notes_api::{read_authorship, read_note};
 use crate::git::repository::{InternalGitProfile, Repository, exec_git_with_profile};
@@ -239,7 +240,7 @@ pub fn parse_diff_args(args: &[String]) -> Result<ParsedDiffArgs, GitAiError> {
                         "--blame-deletions-since requires a value".to_string(),
                     ));
                 }
-                options.blame_deletions_since = Some(args[i + 1].clone());
+                options.blame_deletions_since = Some(normalize_head_rev(&args[i + 1]));
                 i += 2;
             }
             "--include-stats" => {
@@ -288,21 +289,21 @@ pub fn parse_diff_args(args: &[String]) -> Result<ParsedDiffArgs, GitAiError> {
                     "Invalid diff arguments. Expected: <commit>, <commit1>..<commit2>, or <commit1> <commit2>".to_string(),
                 ));
             }
-            DiffSpec::TwoCommit((*start).to_string(), (*end).to_string())
+            DiffSpec::TwoCommit(normalize_head_rev(start), normalize_head_rev(end))
         }
         [arg] => {
             // Check for commit range (start..end)
             if arg.contains("..") {
                 let parts: Vec<&str> = arg.split("..").collect();
                 if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
-                    DiffSpec::TwoCommit(parts[0].to_string(), parts[1].to_string())
+                    DiffSpec::TwoCommit(normalize_head_rev(parts[0]), normalize_head_rev(parts[1]))
                 } else {
                     return Err(GitAiError::Generic(
                         "Invalid commit range format. Expected: <commit>..<commit>".to_string(),
                     ));
                 }
             } else {
-                DiffSpec::SingleCommit(positional_args[0].to_string())
+                DiffSpec::SingleCommit(normalize_head_rev(positional_args[0]))
             }
         }
         _ => {

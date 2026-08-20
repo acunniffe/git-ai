@@ -121,6 +121,7 @@ mod refs_unit;
 mod repo_storage_unit;
 mod repository_unit;
 mod reset;
+mod revision_normalization;
 mod rewrite_ops_attribution;
 mod secrets_benchmark;
 mod session_event_attribution;
