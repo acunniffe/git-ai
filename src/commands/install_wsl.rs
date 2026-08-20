@@ -70,17 +70,20 @@ fn install_on_windows(config: InstallConfig<'_>) {
     );
     let failures = install_in_distros(&distros, |distro| {
         println!("Installing Git AI in WSL distribution: {distro}");
-        let args = install_args(
-            distro,
+        let args = install_args(distro);
+        let env = forwarded_env(
             config.api_base,
             config.api_key,
             release_tag.as_deref(),
+            std::env::var("WSLENV").ok().as_deref(),
         );
-        let status = Command::new("wsl.exe")
+        let mut command = Command::new("wsl.exe");
+        command
             .args(&args)
+            .envs(env)
             .stdin(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
+            .creation_flags(CREATE_NO_WINDOW);
+        let status = command.status();
         match status {
             Ok(status) if status.success() => true,
             Ok(status) => {
@@ -156,33 +159,57 @@ fn release_tag(env_release_tag: Option<&str>, binary_version: &str, debug: bool)
 }
 
 #[cfg(any(windows, test))]
-fn install_args(
-    distro: &str,
-    api_base: Option<&str>,
-    api_key: Option<&str>,
-    release_tag: Option<&str>,
-) -> Vec<String> {
-    let mut args = vec![
+fn install_args(distro: &str) -> Vec<String> {
+    vec![
         "--distribution".to_owned(),
         distro.to_owned(),
         "--exec".to_owned(),
-        "env".to_owned(),
-    ];
-    if let Some(value) = api_base {
-        args.push(format!("API_BASE={value}"));
-    }
-    if let Some(value) = api_key {
-        args.push(format!("API_KEY={value}"));
-    }
-    if let Some(value) = release_tag {
-        args.push(format!("GIT_AI_RELEASE_TAG={value}"));
-    }
-    args.extend([
         "bash".to_owned(),
         "-c".to_owned(),
         INSTALL_SCRIPT.to_owned(),
-    ]);
-    args
+    ]
+}
+
+#[cfg(any(windows, test))]
+fn forwarded_env(
+    api_base: Option<&str>,
+    api_key: Option<&str>,
+    release_tag: Option<&str>,
+    inherited_wslenv: Option<&str>,
+) -> Vec<(String, String)> {
+    let values = [
+        ("API_BASE", api_base),
+        ("API_KEY", api_key),
+        ("GIT_AI_RELEASE_TAG", release_tag),
+    ];
+    let mut env = values
+        .into_iter()
+        .filter_map(|(name, value)| value.map(|value| (name.to_owned(), value.to_owned())))
+        .collect::<Vec<_>>();
+    if env.is_empty() {
+        return env;
+    }
+
+    let mut wslenv = inherited_wslenv
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_default();
+    for (name, _) in &env {
+        let already_forwarded = wslenv.split(':').any(|entry| {
+            entry
+                .split_once('/')
+                .map_or(entry, |(entry_name, _)| entry_name)
+                .eq_ignore_ascii_case(name)
+        });
+        if !already_forwarded {
+            if !wslenv.is_empty() {
+                wslenv.push(':');
+            }
+            wslenv.push_str(name);
+        }
+    }
+    env.push(("WSLENV".to_owned(), wslenv));
+    env
 }
 
 #[cfg(any(windows, test))]
@@ -226,25 +253,43 @@ mod tests {
     }
 
     #[test]
-    fn install_arguments_keep_values_in_separate_process_arguments() {
+    fn install_arguments_do_not_expose_forwarded_configuration() {
         assert_eq!(
-            install_args(
-                "Ubuntu Dev",
-                Some("https://enterprise.example/path?a=b"),
-                Some("key with spaces; untouched"),
-                Some("v1.2.3")
-            ),
+            install_args("Ubuntu Dev"),
             [
                 "--distribution",
                 "Ubuntu Dev",
                 "--exec",
-                "env",
-                "API_BASE=https://enterprise.example/path?a=b",
-                "API_KEY=key with spaces; untouched",
-                "GIT_AI_RELEASE_TAG=v1.2.3",
                 "bash",
                 "-c",
                 INSTALL_SCRIPT,
+            ]
+        );
+    }
+
+    #[test]
+    fn forwarded_configuration_uses_wslenv_without_overwriting_existing_entries() {
+        assert_eq!(
+            forwarded_env(
+                Some("https://enterprise.example/path?a=b"),
+                Some("key with spaces; untouched"),
+                Some("v1.2.3"),
+                Some("EXISTING/p:API_KEY/u")
+            ),
+            [
+                (
+                    "API_BASE".to_owned(),
+                    "https://enterprise.example/path?a=b".to_owned()
+                ),
+                (
+                    "API_KEY".to_owned(),
+                    "key with spaces; untouched".to_owned()
+                ),
+                ("GIT_AI_RELEASE_TAG".to_owned(), "v1.2.3".to_owned()),
+                (
+                    "WSLENV".to_owned(),
+                    "EXISTING/p:API_KEY/u:API_BASE:GIT_AI_RELEASE_TAG".to_owned()
+                ),
             ]
         );
     }
