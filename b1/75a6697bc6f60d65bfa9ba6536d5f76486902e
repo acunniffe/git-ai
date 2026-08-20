@@ -1,0 +1,19 @@
+src/daemon/trace_normalizer.rs
+  s_17132eb1f3e626::t_80f8935946ab43 888-889,891,1490,1508-1516
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "b175a6697bc6f60d65bfa9ba6536d5f76486902e",
+  "prompts": {},
+  "sessions": {
+    "s_17132eb1f3e626": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf3b-df78-7ff2-9251-6b93b18db257",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

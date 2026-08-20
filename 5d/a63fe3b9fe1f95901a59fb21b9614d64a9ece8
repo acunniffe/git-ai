@@ -1,0 +1,24 @@
+src/commands/upgrade.rs
+  c43c7d242e921f0b 4,50,178-286,332-336,339-340,357,376-382,386-387,390,393,400,402,410,442-460,462,468,480-485,589-618,622,803,808-811,819-820,842-845,854-857,901-990
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.29",
+  "base_commit_sha": "5da63fe3b9fe1f95901a59fb21b9614d64a9ece8",
+  "prompts": {
+    "c43c7d242e921f0b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f37dbda0-4849-4a14-82b8-0af25230acbe",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 300,
+      "total_deletions": 36,
+      "accepted_lines": 296,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/33aa9834a6b269cf07023f5b144d632aa35015679163c5c54e09c8145af9893c"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+skills/prompt-analysis/SKILL.md
+  73602057f4652363 2-4
+src/mdm/skills_installer.rs
+  73602057f4652363 8-9,12,15-16,19,54-70,72,84-87,90-102,114,116-126,136-137,142,151,154-156,161,164-174,176-180,182-185,188,192,219,230,239-242,244-246,249-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.37",
+  "base_commit_sha": "44a2a5f27b01354db05791efb6303db4c2153a93",
+  "prompts": {
+    "73602057f4652363": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f9a2bca8-79a0-4c8e-a363-819ddfb7a198",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 132,
+      "total_deletions": 80,
+      "accepted_lines": 99,
+      "overriden_lines": 0
+    }
+  }
+}

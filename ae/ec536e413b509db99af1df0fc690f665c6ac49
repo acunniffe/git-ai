@@ -1,0 +1,26 @@
+DAEMON_PLAN.md
+  s_a73b2a35c101af::t_70929749650cb2 307
+  s_a73b2a35c101af::t_22614bf4ace141 309
+  s_a73b2a35c101af::t_d754b8f7f38f0f 117-123,125-126,128,130-132
+  s_a73b2a35c101af::t_6412327d211140 154-159,161,164-166,168,170-171,173,179,181-187
+  s_a73b2a35c101af::t_c654c295eecc27 191-194,200,202-205,207-211
+  s_a73b2a35c101af::t_f38491ece87446 304,308
+  s_a73b2a35c101af::t_156eba7c05f2b4 310
+  s_a73b2a35c101af::t_5ad3d4f6a13f6c 138-139,141,143-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "aeec536e413b509db99af1df0fc690f665c6ac49",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

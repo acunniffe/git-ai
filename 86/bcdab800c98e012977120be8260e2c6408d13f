@@ -1,0 +1,39 @@
+src/git/repository.rs
+  s_d01cfbfe3af2e2::t_084c51373bb83a 291-297
+  s_d01cfbfe3af2e2::t_981be3deca31ed 842-846
+  s_d01cfbfe3af2e2::t_0a31a3614b893f 998
+  s_d01cfbfe3af2e2::t_53177d06c1adf2 1392-1395
+  s_d01cfbfe3af2e2::t_58f385314b6172 1572-1575
+  s_d01cfbfe3af2e2::t_adf8205f53ffcc 847-852
+  s_d01cfbfe3af2e2::t_198f09618228dc 1445-1455
+src/git/refs.rs
+  s_d01cfbfe3af2e2::t_6d912f973d8c2c 262-277
+  s_d01cfbfe3af2e2::t_216102ac48e855 564-567
+  s_d01cfbfe3af2e2::t_aa2defb458ef86 697-700
+  s_d01cfbfe3af2e2::t_68a4bcdf006311 181-196
+  s_d01cfbfe3af2e2::t_76c8636579a3cd 445-452
+src/git/gix_backend.rs
+  s_d01cfbfe3af2e2::t_981be3deca31ed 239-243,253-258,262-266,269-271,277-279,310-312,333-352,364,366-367,369-371
+  s_d01cfbfe3af2e2::t_bebb9db04c96c5 326-332,353-363,365,368,372-383
+  s_d01cfbfe3af2e2::t_ac6ebc3c4b72ea 423-434
+  s_d01cfbfe3af2e2::t_0efcf1880c06b0 238,244-252,259-261,267-268,272-276,280-309,313-325,384-397
+src/daemon/git_backend.rs
+  s_d01cfbfe3af2e2::t_2e417542c873fe 5
+  s_d01cfbfe3af2e2::t_128b5f4bb3aaea 300-311,313,316-323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "86bcdab800c98e012977120be8260e2c6408d13f",
+  "prompts": {},
+  "sessions": {
+    "s_d01cfbfe3af2e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cf9f0e5-b326-4a90-8216-2e35a90a30d9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

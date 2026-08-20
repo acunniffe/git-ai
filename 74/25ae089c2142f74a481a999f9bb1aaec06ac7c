@@ -1,0 +1,23 @@
+scripts/release-to-jfrog.sh
+  63c42de935b6604b 103-126,128-129,131,167-179,182,184,186-187,190-191,194,196,200,202,274,352,359-360,364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.24",
+  "base_commit_sha": "7425ae089c2142f74a481a999f9bb1aaec06ac7c",
+  "prompts": {
+    "63c42de935b6604b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "575ef473-9abd-4c53-84cc-584e06d05182",
+        "model": "unknown"
+      },
+      "human_author": "shawn.tian <shawn.tian@bkyo.io>",
+      "messages": [],
+      "total_additions": 58,
+      "total_deletions": 36,
+      "accepted_lines": 56,
+      "overriden_lines": 0
+    }
+  }
+}

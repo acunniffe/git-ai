@@ -1,0 +1,21 @@
+agent-support/opencode/package.json
+  s_21b93aaf9d7382::t_dbbf9b2452722d 11
+agent-support/opencode/package-lock.json
+  ai_agent 12,20-22,25,29-30,42-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "f06432a593199d97b848da545fff96220edceb04",
+  "prompts": {},
+  "sessions": {
+    "s_21b93aaf9d7382": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "334dc815-7cfe-416d-839f-6f98811a07c6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

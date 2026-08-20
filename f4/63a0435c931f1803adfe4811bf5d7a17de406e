@@ -1,0 +1,41 @@
+src/commands/checkpoint_agent/orchestrator.rs
+  s_59382cac373d67::t_6ed438b5b94e2d 261,780-785
+  s_59382cac373d67::t_997cd166b0abb8 91-93,100-102
+  s_59382cac373d67::t_022c3c87a5bf35 66,69-73,75-90,94-99,103-157,253,316-319,436-439,443-446
+  s_59382cac373d67::t_3bddcd943e74e4 14,60-65,67,166-167,169-179,198,200,202-203,291-297,440-442,447-466,473-482,494
+  s_59382cac373d67::t_63da1723cdc9b3 732-779,786-797
+  s_59382cac373d67::t_a5cfcdc9e22cea 201
+  s_59382cac373d67::t_8aee89aedbf92d 68
+src/commands/git_ai_handlers.rs
+  s_59382cac373d67::t_3bddcd943e74e4 400,402-409,413-420
+  s_59382cac373d67::t_d5cafdb2b7f498 421-422
+src/commands/checkpoint_agent/presets/amp.rs
+  s_59382cac373d67::t_6ed438b5b94e2d 547-548
+  s_59382cac373d67::t_18479de713cba5 370,536-546,549-554
+  s_59382cac373d67::t_3bddcd943e74e4 147-148
+  s_59382cac373d67::t_bcf5cd9ddf639f 555
+tests/integration/checkpoint_size.rs
+  s_59382cac373d67::t_5f3dda01713218 1
+  s_59382cac373d67::t_74ef1ccd3a090f 7,289-314,317-356
+  s_59382cac373d67::t_9f65f3a301f098 10-23,357-408
+  s_59382cac373d67::t_6ed438b5b94e2d 315-316
+  s_59382cac373d67::t_3166616eca0afb 409
+src/config.rs
+  s_59382cac373d67::t_3bddcd943e74e4 25-27,659,665,671
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "f463a0435c931f1803adfe4811bf5d7a17de406e",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

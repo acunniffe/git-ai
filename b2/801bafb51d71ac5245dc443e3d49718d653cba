@@ -1,0 +1,63 @@
+src/commands/activity_tui.rs
+  s_27ed236e4270d9::t_279dbd698f6d39 167,176,188
+  s_0db412aeb21ffe::t_ee58274e52f831 664-668
+  s_0db412aeb21ffe::t_34454fcfc8770d 613-615
+  s_0db412aeb21ffe::t_7546b0c454c320 470-473
+  s_0db412aeb21ffe::t_dab40dde770036 758-760
+  s_27ed236e4270d9::t_010d78da049834 8
+  s_27ed236e4270d9::t_463a12dbcf3f75 310-319
+  s_0db412aeb21ffe::t_45c432f8461532 1032-1057
+  s_27ed236e4270d9::t_0b88cab64de542 20-58
+  s_27ed236e4270d9::t_6a1e87f435ef32 268
+  s_27ed236e4270d9::t_4bc6f328213980 304-305
+  s_0db412aeb21ffe::t_f3f3c3a0313d15 536-538
+  s_27ed236e4270d9::t_c1c691937111aa 220-222
+  s_0db412aeb21ffe::t_5211e5dade4cf6 949-951
+  s_27ed236e4270d9::t_856707649221e2 822-938,943-945
+  s_0db412aeb21ffe::t_240a0cce6e0142 381
+  s_0db412aeb21ffe::t_988030b145c160 987-997
+  s_0db412aeb21ffe::t_13495d631b8d5e 15
+  s_27ed236e4270d9::t_882ef1d1c9d2f0 273
+  s_27ed236e4270d9::t_911f2dc3d452ad 224-232
+  s_0db412aeb21ffe::t_6f59eb5586c55d 425,442
+  s_27ed236e4270d9::t_1a2e4e3611a0a7 127,135-137,153-156
+  s_0db412aeb21ffe::t_753c27ad110869 497-499
+  s_27ed236e4270d9::t_d1a0a9db4513b8 115-118
+  s_27ed236e4270d9::t_a4aac147a169c4 5-6
+  s_27ed236e4270d9::t_fc3d2ea07f1b3c 17
+  s_27ed236e4270d9::t_b881a14716215c 144-149,190-196,223,387-391,503-508,542-547,939-942,973-974
+  s_27ed236e4270d9::t_7bb96aec1e4239 812-821
+  s_0db412aeb21ffe::t_f0a781ae5962be 963-968,979-986
+  s_0db412aeb21ffe::t_c5799795643c94 680-682
+src/metrics/local_stats.rs
+  s_27ed236e4270d9::t_6fc85233743175 935-985,987-1002,1004-1031,1033-1087,1090-1118
+  s_27ed236e4270d9::t_b881a14716215c 986,1003,1032,1088-1089
+src/commands/activity.rs
+  s_27ed236e4270d9::t_788083cfc031a1 6
+  s_27ed236e4270d9::t_b881a14716215c 84,112-118
+  s_27ed236e4270d9::t_675e94d192a61d 110-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "b2801bafb51d71ac5245dc443e3d49718d653cba",
+  "prompts": {},
+  "sessions": {
+    "s_0db412aeb21ffe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfef8749-d442-403d-b447-4d2895852996",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}
