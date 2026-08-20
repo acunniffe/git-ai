@@ -19,6 +19,7 @@ pub mod login;
 pub mod logout;
 pub mod notes_migrate;
 pub mod personal_dashboard;
+pub mod revision;
 pub mod show;
 pub mod show_prompt;
 pub mod status;
