@@ -14,7 +14,7 @@
 //!    `cargo test regenerate_models_dev_pricing_snapshot -- --ignored`
 //!
 //! Within a catalog, a model id is matched by exact id, then by the longest
-//! catalog id at token boundaries, then by family-base fallback (see
+//! catalog id at token boundaries, then by family fallback (see
 //! [`PricingCatalog::pricing_for`]).
 //!
 //! Tiered pricing (e.g. higher rates above 200k context) is intentionally
@@ -94,9 +94,9 @@ impl PricingCatalog {
     /// 2. Longest catalog id occurring in the model id at token boundaries —
     ///    covers date-suffixed snapshots ("claude-sonnet-4-6-20250101") and
     ///    provider-prefixed ids ("us.anthropic.claude-fable-5").
-    /// 3. Family-base fallback: ids the catalog doesn't know at all (legacy
-    ///    or too new) are priced like the base model of their family, so
-    ///    they estimate at family rates instead of silently costing $0.
+    /// 3. Family fallback: ids the catalog doesn't know at all (legacy or
+    ///    too new) are priced like the median-priced model of their family,
+    ///    so they estimate at family rates instead of silently costing $0.
     pub fn pricing_for(&self, model: &str) -> Option<&ModelPricing> {
         let model = model.to_lowercase();
         if let Some(pricing) = self.entries.get(&model) {
@@ -110,18 +110,27 @@ impl PricingCatalog {
             .or_else(|| self.family_fallback(&model))
     }
 
-    /// Price an unknown model id like the base model of its family: the
-    /// shortest (tie-broken lexicographically) catalog id sharing a family
-    /// token, e.g. "claude-opus-4-1" → "claude-opus-5" rates.
+    /// Price an unknown model id like the median-priced catalog model of its
+    /// family (by input rate, tie-broken by output rate then id). The median
+    /// gives a representative family rate that's robust to outliers in either
+    /// direction — legacy expensive entries (gpt-4 at ~24x gpt-5's input
+    /// rate) as much as nano/mini variants — without parsing version numbers.
     fn family_fallback(&self, model: &str) -> Option<&ModelPricing> {
         let token = FAMILY_FALLBACK_TOKENS
             .iter()
             .find(|token| contains_at_token_boundary(model, token))?;
-        self.entries
+        let mut family: Vec<(&String, &ModelPricing)> = self
+            .entries
             .iter()
             .filter(|(id, _)| contains_at_token_boundary(id, token))
-            .min_by_key(|(id, _)| (id.len(), id.as_str()))
-            .map(|(_, pricing)| pricing)
+            .collect();
+        family.sort_by(|(id_a, a), (id_b, b)| {
+            a.input
+                .total_cmp(&b.input)
+                .then(a.output.total_cmp(&b.output))
+                .then(id_a.cmp(id_b))
+        });
+        family.get(family.len() / 2).map(|(_, pricing)| *pricing)
     }
 }
 
@@ -347,28 +356,34 @@ mod tests {
     }
 
     #[test]
-    fn lookup_falls_back_to_family_base_pricing() {
+    fn lookup_falls_back_to_median_family_pricing() {
         let catalog = embedded_catalog();
         // These ids are absent from the catalog (legacy, or newer than the
-        // snapshot) but must estimate at family-base rates rather than $0.
-        // Equality assertions pin the current family base (shortest id).
+        // snapshot) but must estimate at family rates rather than $0. The
+        // equality assertions pin the current family medians.
         assert_eq!(
             catalog.pricing_for("claude-3-5-sonnet-20241022"),
-            catalog.pricing_for("claude-sonnet-5"),
-            "legacy sonnet ids price at the sonnet family base"
+            catalog.pricing_for("claude-sonnet-4-6"),
+            "legacy sonnet ids price at the median sonnet rate"
         );
         assert_eq!(
             catalog.pricing_for("claude-opus-4-1"),
             catalog.pricing_for("claude-opus-5"),
-            "uncataloged opus ids price at the opus family base"
+            "uncataloged opus ids price at the median opus rate"
         );
         assert!(
             catalog.pricing_for("claude-opus-4-9").is_some(),
             "dash-versioned successors newer than the catalog must not price as $0"
         );
+        // The median must not resolve to a family outlier: legacy gpt-4 costs
+        // ~24x the input rate of current gpt-5-generation models.
+        let unknown_gpt = catalog
+            .pricing_for("gpt-51")
+            .expect("gpt family must price");
+        let gpt4 = catalog.pricing_for("gpt-4").expect("snapshot has gpt-4");
         assert!(
-            catalog.pricing_for("gpt-51").is_some(),
-            "unknown gpt-family ids price at the gpt family base"
+            unknown_gpt.input < gpt4.input,
+            "unknown gpt ids must not price at legacy gpt-4 outlier rates"
         );
     }
 
