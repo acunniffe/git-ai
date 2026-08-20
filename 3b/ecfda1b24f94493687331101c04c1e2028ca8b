@@ -1,0 +1,23 @@
+agent-support/vscode/src/blame-lens-manager.ts
+  8c51dcac0d30b011 1088,1090,1098-1101,1103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "3becfda1b24f94493687331101c04c1e2028ca8b",
+  "prompts": {
+    "8c51dcac0d30b011": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc1bbd8a-6818-4868-823d-1fad22cba90a",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 4,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}

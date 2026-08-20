@@ -1,0 +1,74 @@
+tests/integration/performance.rs
+  s_6c8cd8fd88f02c::t_29b88bda5eca26 18
+src/feature_flags.rs
+  s_6c8cd8fd88f02c::t_29b88bda5eca26 81,270,281,294,304
+  s_6c8cd8fd88f02c::t_2bc736938f2339 138,149,160-189
+  s_6c8cd8fd88f02c::t_26f2e74b36c799 190
+docs/rewrite-ops-spec.md
+  s_6c8cd8fd88f02c::t_0928b21d463298 75-86
+tests/integration/main.rs
+  s_6c8cd8fd88f02c::t_2bc736938f2339 91
+src/commands/config.rs
+  s_6c8cd8fd88f02c::t_29b88bda5eca26 211
+tests/integration/lite_mode.rs
+  s_6c8cd8fd88f02c::t_22a70b5c4f9a91 125,324,369-372,385-386
+  s_6c8cd8fd88f02c::t_3bcce50c299e22 106
+  s_6c8cd8fd88f02c::t_b0c2fef384b765 257-261
+  s_6c8cd8fd88f02c::t_2bc736938f2339 1,4-5,7-11,68-105,107-124,126-127,241-256,262-269,303-323,325-326,351-368,373-384,387-393,672-742
+  s_6c8cd8fd88f02c::t_b395d857d248ab 128-143,145-146,148-150,270-295,297-298,300-302,327-336,338-343,345-346,348-349
+  s_6c8cd8fd88f02c::t_788c3de27663ae 350
+  s_6c8cd8fd88f02c::t_2c7c35c14d5381 395-411,420-422,426-430
+  s_6c8cd8fd88f02c::t_b48e1f28e1e0c1 412-419,423-425
+  s_6c8cd8fd88f02c::t_0e0c01a28e4f67 394
+  s_c9fae768bb9b35::t_317ff136f9c13b 431-473
+  s_c9fae768bb9b35::t_cfdaee7f456f22 12-19,526-616,618-648,653-662,663,666,668,670-671
+  s_c9fae768bb9b35::t_8fd829e1a03049 240,472-523
+  s_c9fae768bb9b35::t_da131d21ea70d9 2-3,6,20-67,151-236,238
+  s_c9fae768bb9b35::t_7129232075b71a 237,239
+  s_c9fae768bb9b35::t_3f6933bb4a9f9b 649-650
+  s_c9fae768bb9b35::t_d67dbc42561f63 144,147,296,299,344,347
+  s_c9fae768bb9b35::t_d35545c75cca98 617,651-652,664-665,667,669
+  s_c9fae768bb9b35::t_3b3e6345a3994d 337
+src/daemon.rs
+  s_6c8cd8fd88f02c::t_22a70b5c4f9a91 6036
+  s_6c8cd8fd88f02c::t_d964f3daf90500 5389-5392,5395,5406-5407,5424,5430-5435,5582-5587,5701,5901,6028,6037,6090-6104,6237-6238,6247-6248,6304-6305,6405,6479
+  s_6c8cd8fd88f02c::t_1560225ce2177d 6482-6483
+  s_6c8cd8fd88f02c::t_5a3115dff3e18a 5399,6029-6035,6239-6246,6329,6338-6341
+  s_6c8cd8fd88f02c::t_16492d494a36cd 5408-5409,5425,5428-5429
+  s_c9fae768bb9b35::t_ad2d0d6efce1f1 6480-6481
+  s_c9fae768bb9b35::t_2041b0eb922b09 2692-2695,2696-2697,2740,5059-5063,5064-5068,5086,5393-5394,5396-5398,5402-5407,5460,5467-5468,5470-5472,5474-5476,5478,5486,5491-5492,5502-5507
+  s_c9fae768bb9b35::t_0b355d2620d38a 5410-5417,5423,5426-5427
+  s_c9fae768bb9b35::t_89162b03877d82 5418-5422
+src/git/repo_storage.rs
+  s_6c8cd8fd88f02c::t_b395d857d248ab 996-1007,1011-1026
+  s_6c8cd8fd88f02c::t_5a3115dff3e18a 193-195
+  s_6c8cd8fd88f02c::t_d46bcdc45386b2 1008-1010
+tests/integration/ci_squash_rebase.rs
+  s_c9fae768bb9b35::t_da131d21ea70d9 408
+tests/integration/repos/test_file.rs
+  s_c9fae768bb9b35::t_884791446d5859 347-360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "7df7e2069f7f145cc0c5964338ae1c50b2e4769f",
+  "prompts": {},
+  "sessions": {
+    "s_6c8cd8fd88f02c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fbee6-54ed-7253-ac14-00b9647d1dad",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_c9fae768bb9b35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf97-4dce-7972-ac6d-22bfc367a861",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

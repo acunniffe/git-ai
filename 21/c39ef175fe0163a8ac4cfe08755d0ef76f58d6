@@ -1,0 +1,35 @@
+src/daemon.rs
+  s_11c3e1cdda522c::t_099d163bceb332 4525,4528-4529,4532-4546,4549-4562
+  s_11c3e1cdda522c::t_6efe1db0d91b44 7995-7998,8000-8006,8009-8019,8022-8024,8026-8038,8046-8067,8071-8072
+  s_11c3e1cdda522c::t_b58776d7fd2093 7857-7861,7869-7871,7874-7883
+  s_11c3e1cdda522c::t_eb915202d66253 8121
+  s_11c3e1cdda522c::t_40d809cda4ade7 10165-10208
+  s_11c3e1cdda522c::t_241a15dc1b8ac8 8042-8043,8045
+  s_11c3e1cdda522c::t_b946a98de8ea77 10164
+tests/commit_tree_update_ref.rs
+  s_11c3e1cdda522c::t_241a15dc1b8ac8 857
+  s_11c3e1cdda522c::t_e64c5b3a0903af 227-255
+  s_11c3e1cdda522c::t_3ecea6bd30d9ea 741-746,751-752,754-799,806-856,858-862,864
+  s_11c3e1cdda522c::t_47c61a03535e5e 800-805
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_e8664396ed89bd 2762,2768
+  s_11c3e1cdda522c::t_498c927907d4c0 2684,2687,2691-2692,2694
+  s_11c3e1cdda522c::t_5f701332f40ede 2619-2683,2685-2686,2695-2761,2763-2767,2769-2771
+  s_11c3e1cdda522c::t_3208c75912f9f6 2688-2690,2693
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "21c39ef175fe0163a8ac4cfe08755d0ef76f58d6",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

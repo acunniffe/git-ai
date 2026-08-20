@@ -1,0 +1,22 @@
+tests/git-compat/run-core-tests.py
+  s_f10adf65457c03::t_add9d146e7b9e8 417-421
+  s_f10adf65457c03::t_dbebe1c1db17a3 34-43,144,146-154,177-183,186-193,207,224-227,444-451,453
+.github/workflows/git-core-compat.yml
+  s_f10adf65457c03::t_ca96859c273732 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "e1cb4557d9ca215b75abca1c397cb69814f323d8",
+  "prompts": {},
+  "sessions": {
+    "s_f10adf65457c03": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ed65b-b511-78f0-8af1-09100f937ee9",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

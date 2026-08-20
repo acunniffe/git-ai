@@ -1,0 +1,23 @@
+src/metrics/events.rs
+  s_218fc31e3ddd9a::t_7ac9b719d6a70d 701,712
+src/metrics/attrs.rs
+  s_218fc31e3ddd9a::t_d011346eaa0b51 276,291,311
+  s_218fc31e3ddd9a::t_ec1c95d66869e4 297
+  s_218fc31e3ddd9a::t_9c23fa9467e2dd 419
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.7",
+  "base_commit_sha": "5487d5e9de4b6be09e738671b7f54869c84bbdb3",
+  "prompts": {},
+  "sessions": {
+    "s_218fc31e3ddd9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1fdad75-0ada-417b-8f9c-3ed0c18eb119",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>"
+    }
+  }
+}

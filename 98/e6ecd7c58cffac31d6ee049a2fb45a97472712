@@ -1,0 +1,25 @@
+src/commands/mod.rs
+  59cbbfb599040d1b 18
+src/commands/git_ai_handlers.rs
+  59cbbfb599040d1b 75-77,173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.34",
+  "base_commit_sha": "98e6ecd7c58cffac31d6ee049a2fb45a97472712",
+  "prompts": {
+    "59cbbfb599040d1b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "491a41a9-3765-42f9-ac73-8cfc83010467",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 259,
+      "total_deletions": 68,
+      "accepted_lines": 184,
+      "overriden_lines": 0
+    }
+  }
+}
