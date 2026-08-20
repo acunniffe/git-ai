@@ -1,0 +1,86 @@
+name: Update models.dev Pricing Snapshot
+
+# Regenerates the embedded models.dev pricing snapshot weekly and opens a PR
+# when prices or the model catalog changed, so the offline fallback used by
+# `git-ai usage` never lags far behind the live catalog.
+
+on:
+  schedule:
+    # Mondays 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  SNAPSHOT_PATH: src/metrics/models_dev_pricing_snapshot.json
+  BRANCH: chore/update-models-dev-pricing-snapshot
+
+jobs:
+  update-pricing-snapshot:
+    name: Regenerate pricing snapshot
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: stable
+
+      - name: Cache dependencies
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Regenerate snapshot from models.dev
+        run: cargo test --lib regenerate_models_dev_pricing_snapshot -- --ignored
+
+      - name: Open or update PR if the snapshot changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet "$SNAPSHOT_PATH"; then
+            echo "Snapshot is already up to date."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Reuse a fixed branch so consecutive weeks update the open PR
+          # instead of accumulating new ones.
+          git checkout -B "$BRANCH"
+          git add "$SNAPSHOT_PATH"
+          git commit -m "chore: update models.dev pricing snapshot"
+          git push --force origin "$BRANCH"
+
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            cat > /tmp/pr-body.md <<'EOF'
+          Automated weekly refresh of the embedded models.dev pricing snapshot used as the offline fallback for `git-ai usage` cost estimates.
+
+          Regenerated from https://models.dev/api.json by the `update-models-dev-pricing` workflow. Review the diff for price changes and new/removed models.
+
+          Note: CI does not start automatically on PRs opened by `GITHUB_TOKEN` — close and reopen this PR to trigger it.
+          EOF
+            # Note: PRs opened with GITHUB_TOKEN don't trigger pull_request
+            # workflows; close and reopen the PR (or push to it) to run CI.
+            gh pr create \
+              --head "$BRANCH" \
+              --title "chore: update models.dev pricing snapshot" \
+              --body-file /tmp/pr-body.md
+          else
+            echo "Open PR for $BRANCH already exists; branch updated."
+          fi
