@@ -1047,10 +1047,134 @@ impl EventValues for CheckpointValues {
     }
 }
 
+/// Value positions for "daemon_ingest_anomaly" event.
+pub mod daemon_ingest_anomaly_pos {
+    pub const TRACE_PAYLOADS_DROPPED_QUEUE_FULL: usize = 0; // u64 - delta since last report
+    pub const TRACE_CONNECTIONS_DROPPED: usize = 1; // u64 - delta since last report
+    pub const TELEMETRY_METRIC_BATCHES_DROPPED: usize = 2; // u64 - delta since last report
+    pub const CHECKPOINTS_DROPPED: usize = 3; // u64 - delta since last report
+}
+
+/// Values for Event ID 8: daemon_ingest_anomaly
+///
+/// Emitted by the daemon's socket-health loop whenever trace payloads,
+/// trace connections, or telemetry metric batches were dropped since the
+/// previous report. Attribution loss must be loud, never silent.
+///
+/// **Fields:**
+/// | Position | Name | Type |
+/// |----------|------|------|
+/// | 0 | trace_payloads_dropped_queue_full | u64 |
+/// | 1 | trace_connections_dropped | u64 |
+/// | 2 | telemetry_metric_batches_dropped | u64 |
+/// | 3 | checkpoints_dropped | u64 |
+#[derive(Debug, Clone, Default)]
+pub struct DaemonIngestAnomalyValues {
+    pub trace_payloads_dropped_queue_full: PosField<u64>,
+    pub trace_connections_dropped: PosField<u64>,
+    pub telemetry_metric_batches_dropped: PosField<u64>,
+    pub checkpoints_dropped: PosField<u64>,
+}
+
+impl DaemonIngestAnomalyValues {
+    pub fn new(
+        trace_payloads_dropped_queue_full: u64,
+        trace_connections_dropped: u64,
+        telemetry_metric_batches_dropped: u64,
+        checkpoints_dropped: u64,
+    ) -> Self {
+        Self {
+            trace_payloads_dropped_queue_full: Some(Some(trace_payloads_dropped_queue_full)),
+            trace_connections_dropped: Some(Some(trace_connections_dropped)),
+            telemetry_metric_batches_dropped: Some(Some(telemetry_metric_batches_dropped)),
+            checkpoints_dropped: Some(Some(checkpoints_dropped)),
+        }
+    }
+}
+
+impl PosEncoded for DaemonIngestAnomalyValues {
+    fn to_sparse(&self) -> SparseArray {
+        let mut map = SparseArray::new();
+
+        sparse_set(
+            &mut map,
+            daemon_ingest_anomaly_pos::TRACE_PAYLOADS_DROPPED_QUEUE_FULL,
+            u64_to_json(&self.trace_payloads_dropped_queue_full),
+        );
+        sparse_set(
+            &mut map,
+            daemon_ingest_anomaly_pos::TRACE_CONNECTIONS_DROPPED,
+            u64_to_json(&self.trace_connections_dropped),
+        );
+        sparse_set(
+            &mut map,
+            daemon_ingest_anomaly_pos::TELEMETRY_METRIC_BATCHES_DROPPED,
+            u64_to_json(&self.telemetry_metric_batches_dropped),
+        );
+        sparse_set(
+            &mut map,
+            daemon_ingest_anomaly_pos::CHECKPOINTS_DROPPED,
+            u64_to_json(&self.checkpoints_dropped),
+        );
+
+        map
+    }
+
+    fn from_sparse(arr: &SparseArray) -> Self {
+        Self {
+            trace_payloads_dropped_queue_full: sparse_get_u64(
+                arr,
+                daemon_ingest_anomaly_pos::TRACE_PAYLOADS_DROPPED_QUEUE_FULL,
+            ),
+            trace_connections_dropped: sparse_get_u64(
+                arr,
+                daemon_ingest_anomaly_pos::TRACE_CONNECTIONS_DROPPED,
+            ),
+            telemetry_metric_batches_dropped: sparse_get_u64(
+                arr,
+                daemon_ingest_anomaly_pos::TELEMETRY_METRIC_BATCHES_DROPPED,
+            ),
+            checkpoints_dropped: sparse_get_u64(
+                arr,
+                daemon_ingest_anomaly_pos::CHECKPOINTS_DROPPED,
+            ),
+        }
+    }
+}
+
+impl EventValues for DaemonIngestAnomalyValues {
+    fn event_id() -> MetricEventId {
+        MetricEventId::DaemonIngestAnomaly
+    }
+
+    fn to_sparse(&self) -> SparseArray {
+        PosEncoded::to_sparse(self)
+    }
+
+    fn from_sparse(arr: &SparseArray) -> Self {
+        PosEncoded::from_sparse(arr)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    #[test]
+    fn daemon_ingest_anomaly_values_round_trip() {
+        use super::PosEncoded;
+
+        let values = DaemonIngestAnomalyValues::new(3, 1, 7, 2);
+        let sparse = PosEncoded::to_sparse(&values);
+        let decoded = <DaemonIngestAnomalyValues as PosEncoded>::from_sparse(&sparse);
+
+        assert_eq!(decoded.trace_payloads_dropped_queue_full, Some(Some(3)));
+        assert_eq!(decoded.trace_connections_dropped, Some(Some(1)));
+        assert_eq!(decoded.telemetry_metric_batches_dropped, Some(Some(7)));
+        assert_eq!(decoded.checkpoints_dropped, Some(Some(2)));
+        assert_eq!(DaemonIngestAnomalyValues::event_id() as u16, 8);
+    }
 
     #[test]
     fn test_committed_values_builder() {

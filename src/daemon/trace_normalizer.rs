@@ -60,6 +60,26 @@ pub struct TraceNormalizer<B: GitBackend> {
 
 const COMPLETED_ROOT_RETENTION_LIMIT: usize = 16_384;
 
+/// The trace2 event types `ingest_payload`'s dispatch actually consumes.
+///
+/// Everything else a git process emits (`version`, `cmd_path`,
+/// `cmd_ancestry`, `cmd_mode`, `child_*`, `region_*`, `data`, `data_json`,
+/// `thread_*`, `error`, `signal`, …) is discarded by the dispatch's default
+/// arm, so the trace readers drop those frames at ingestion instead of
+/// letting them occupy ingest-queue slots — only ~6 of the ~25-35 frames a
+/// commit emits are consumed, so this multiplies the queue's effective
+/// headroom. `exec` is matched by the dispatch but explicitly ignored, so it
+/// is dropped too. Keep this list in sync with the dispatch in
+/// `ingest_payload`.
+pub(crate) const INGESTED_TRACE_EVENTS: &[&str] = &[
+    "start",
+    "def_repo",
+    "cmd_name",
+    "def_param",
+    "exit",
+    "atexit",
+];
+
 impl<B: GitBackend> TraceNormalizer<B> {
     pub fn new(backend: Arc<B>) -> Self {
         Self {
@@ -230,6 +250,9 @@ impl<B: GitBackend> TraceNormalizer<B> {
         &mut self,
         payload: &Value,
     ) -> Result<Option<NormalizedCommand>, GitAiError> {
+        // NOTE: keep `INGESTED_TRACE_EVENTS` in sync with the dispatch below —
+        // the trace readers drop every other event type before it can occupy
+        // an ingest-queue slot.
         let event = payload
             .get("event")
             .and_then(Value::as_str)

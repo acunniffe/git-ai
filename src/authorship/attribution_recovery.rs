@@ -242,6 +242,7 @@ pub(crate) fn recover_attribution(
         before_external_recovery(&unknown_after_edges);
     }
 
+    let mut metrics_db_unavailable = false;
     recover_session_event_mtime(
         repo,
         parent_sha,
@@ -250,6 +251,7 @@ pub(crate) fn recover_attribution(
         authorship_log,
         committed_hunks,
         context.file_timestamps,
+        &mut metrics_db_unavailable,
     )?;
 
     let unknown_after_session_events = unknown_lines_by_file(authorship_log, committed_hunks);
@@ -265,7 +267,21 @@ pub(crate) fn recover_attribution(
         authorship_log,
         &unknown_after_session_events,
         context.file_timestamps,
+        &mut metrics_db_unavailable,
     )? {
+        return Ok(());
+    }
+
+    // The metrics DB could not be consulted (busy/broken): "no matching AI
+    // session" was never established, so assigning the remaining lines to the
+    // human author would be misattribution, not a conservative default. Leave
+    // them unattributed instead; losing attribution is acceptable, inventing
+    // it is not.
+    if metrics_db_unavailable {
+        tracing::warn!(
+            commit = %commit_sha,
+            "metrics DB unavailable during attribution recovery; leaving unknown lines unattributed"
+        );
         return Ok(());
     }
 
@@ -273,26 +289,60 @@ pub(crate) fn recover_attribution(
     Ok(())
 }
 
+/// Budget for acquiring the metrics DB mutex on the post-commit path. Session
+/// event recovery is best-effort: when telemetry holds the database busy,
+/// give up quickly (the caller treats "no candidate" conservatively) instead
+/// of stalling commit processing behind telemetry work.
+const SESSION_EVENT_CANDIDATE_LOCK_BUDGET: std::time::Duration =
+    std::time::Duration::from_millis(500);
+
+/// Try to acquire a mutex within a bounded budget, polling instead of
+/// blocking, so a contended lock cannot stall the caller indefinitely.
+pub(crate) fn try_lock_with_budget<T>(
+    mutex: &std::sync::Mutex<T>,
+    budget: std::time::Duration,
+) -> Option<std::sync::MutexGuard<'_, T>> {
+    let started = std::time::Instant::now();
+    loop {
+        match mutex.try_lock() {
+            Ok(guard) => return Some(guard),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => {
+                return Some(poisoned.into_inner());
+            }
+            Err(std::sync::TryLockError::WouldBlock) => {}
+        }
+        if started.elapsed() >= budget {
+            return None;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+/// Whether a matching session-event recovery candidate exists.
+///
+/// `Some(true)`/`Some(false)` are definitive answers; `None` means the
+/// metrics DB could not be consulted (lock budget expired because telemetry
+/// is holding it busy, the DB failed to open, or the query errored) and the
+/// caller must not treat that as "no candidate" — doing so would trigger
+/// sweep-and-wait work exactly when the commit path should not stall behind
+/// telemetry.
 pub(crate) fn matching_session_event_candidate_exists(
     timestamps_ns: &[u128],
     target_repo_url: &str,
-) -> Result<bool, GitAiError> {
+) -> Option<bool> {
     if timestamps_ns.is_empty() || target_repo_url.is_empty() {
-        return Ok(false);
+        return Some(false);
     }
 
-    let candidates = match crate::metrics::db::MetricsDatabase::global() {
-        Ok(db) => match db.lock() {
-            Ok(db) => db.session_event_candidates_near_timestamps(
-                timestamps_ns,
-                SESSION_EVENT_RECOVERY_WINDOW_NS,
-            )?,
-            Err(_) => Vec::new(),
-        },
-        Err(_) => Vec::new(),
-    };
+    let db = crate::metrics::db::MetricsDatabase::global().ok()?;
+    let candidates = try_lock_with_budget(db, SESSION_EVENT_CANDIDATE_LOCK_BUDGET)?
+        .session_event_candidates_near_timestamps(timestamps_ns, SESSION_EVENT_RECOVERY_WINDOW_NS)
+        .map_err(|error| {
+            tracing::debug!(%error, "session-event candidate query failed");
+        })
+        .ok()?;
 
-    Ok(select_best_session_event_candidate(&candidates, timestamps_ns, target_repo_url).is_some())
+    Some(select_best_session_event_candidate(&candidates, timestamps_ns, target_repo_url).is_some())
 }
 
 fn recover_bash_mtime(
@@ -415,6 +465,7 @@ fn recover_bash_mtime(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn recover_session_event_mtime(
     repo: &Repository,
     parent_sha: &str,
@@ -423,6 +474,7 @@ fn recover_session_event_mtime(
     authorship_log: &mut AuthorshipLog,
     committed_hunks: &HashMap<String, Vec<LineRange>>,
     captured_file_timestamps: Option<&FileTimestampsByPath>,
+    metrics_db_unavailable: &mut bool,
 ) -> Result<(), GitAiError> {
     let workdir = repo.workdir()?;
     let unknown_by_file = unknown_lines_by_file(authorship_log, committed_hunks);
@@ -450,14 +502,30 @@ fn recover_session_event_mtime(
     all_timestamps.dedup();
 
     let candidates = match crate::metrics::db::MetricsDatabase::global() {
-        Ok(db) => match db.lock() {
-            Ok(db) => db.session_event_candidates_near_timestamps(
+        // Bounded acquire: recovery is best-effort and must not stall commit
+        // processing behind telemetry holding the metrics DB. An expired
+        // budget is recorded as "unavailable", never as "no candidates".
+        Ok(db) => match try_lock_with_budget(db, SESSION_EVENT_CANDIDATE_LOCK_BUDGET) {
+            Some(db) => match db.session_event_candidates_near_timestamps(
                 &all_timestamps,
                 SESSION_EVENT_RECOVERY_WINDOW_NS,
-            )?,
-            Err(_) => Vec::new(),
+            ) {
+                Ok(candidates) => candidates,
+                Err(error) => {
+                    tracing::debug!(%error, "session-event candidate query failed");
+                    *metrics_db_unavailable = true;
+                    return Ok(());
+                }
+            },
+            None => {
+                *metrics_db_unavailable = true;
+                return Ok(());
+            }
         },
-        Err(_) => Vec::new(),
+        Err(_) => {
+            *metrics_db_unavailable = true;
+            return Ok(());
+        }
     };
     if candidates.is_empty() {
         return Ok(());
@@ -528,6 +596,7 @@ fn recover_session_event_mtime(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn recover_commit_metadata(
     repo: &Repository,
     parent_sha: &str,
@@ -536,6 +605,7 @@ fn recover_commit_metadata(
     authorship_log: &mut AuthorshipLog,
     unknown_by_file: &UnknownLinesByFile,
     captured_file_timestamps: Option<&FileTimestampsByPath>,
+    metrics_db_unavailable: &mut bool,
 ) -> Result<bool, GitAiError> {
     if unknown_by_file.is_empty() {
         return Ok(true);
@@ -556,6 +626,7 @@ fn recover_commit_metadata(
         &detections,
         &latest_timestamps,
         target_repo_url.as_deref(),
+        metrics_db_unavailable,
     )?
     else {
         return Ok(false);
@@ -896,6 +967,7 @@ fn select_commit_metadata_session(
     detections: &[CommitAgentDetection],
     latest_timestamps: &[u128],
     target_repo_url: Option<&str>,
+    metrics_db_unavailable: &mut bool,
 ) -> Result<Option<CommitMetadataSessionSelection>, GitAiError> {
     if detections.is_empty() {
         return Ok(None);
@@ -908,13 +980,24 @@ fn select_commit_metadata_session(
         detections,
         latest_timestamps,
         target_repo_url,
+        metrics_db_unavailable,
     )? {
         return Ok(Some(selection));
     }
-    if let Some(selection) =
-        select_latest_commit_metadata_metric_session(detections, target_repo_url)?
-    {
+    if let Some(selection) = select_latest_commit_metadata_metric_session(
+        detections,
+        target_repo_url,
+        metrics_db_unavailable,
+    )? {
         return Ok(Some(selection));
+    }
+
+    // The metrics DB could not be consulted: "no matching session" was never
+    // established, so minting a synthesized session would be misattribution.
+    // Reporting no-selection lets recover_attribution's unavailable guard
+    // leave the lines unattributed instead.
+    if *metrics_db_unavailable {
+        return Ok(None);
     }
 
     Ok(Some(synthesized_commit_metadata_session(
@@ -1009,20 +1092,37 @@ fn select_nearest_commit_metadata_metric_session(
     detections: &[CommitAgentDetection],
     latest_timestamps: &[u128],
     target_repo_url: Option<&str>,
+    metrics_db_unavailable: &mut bool,
 ) -> Result<Option<CommitMetadataSessionSelection>, GitAiError> {
     if latest_timestamps.is_empty() {
         return Ok(None);
     }
 
     let candidates = match crate::metrics::db::MetricsDatabase::global() {
-        Ok(db) => match db.lock() {
-            Ok(db) => db.session_event_candidates_near_timestamps(
+        // Bounded acquire: recovery is best-effort and must not stall commit
+        // processing behind telemetry holding the metrics DB. An expired
+        // budget is recorded as "unavailable", never as "no candidates".
+        Ok(db) => match try_lock_with_budget(db, SESSION_EVENT_CANDIDATE_LOCK_BUDGET) {
+            Some(db) => match db.session_event_candidates_near_timestamps(
                 latest_timestamps,
                 SESSION_EVENT_RECOVERY_WINDOW_NS,
-            )?,
-            Err(_) => Vec::new(),
+            ) {
+                Ok(candidates) => candidates,
+                Err(error) => {
+                    tracing::debug!(%error, "session-event candidate query failed");
+                    *metrics_db_unavailable = true;
+                    return Ok(None);
+                }
+            },
+            None => {
+                *metrics_db_unavailable = true;
+                return Ok(None);
+            }
         },
-        Err(_) => Vec::new(),
+        Err(_) => {
+            *metrics_db_unavailable = true;
+            return Ok(None);
+        }
     };
 
     let mut best: Option<(
@@ -1083,18 +1183,32 @@ fn select_nearest_commit_metadata_metric_session(
 fn select_latest_commit_metadata_metric_session(
     detections: &[CommitAgentDetection],
     target_repo_url: Option<&str>,
+    metrics_db_unavailable: &mut bool,
 ) -> Result<Option<CommitMetadataSessionSelection>, GitAiError> {
     let db = match crate::metrics::db::MetricsDatabase::global() {
         Ok(db) => db,
-        Err(_) => return Ok(None),
+        Err(_) => {
+            *metrics_db_unavailable = true;
+            return Ok(None);
+        }
     };
-    let db = match db.lock() {
-        Ok(db) => db,
-        Err(_) => return Ok(None),
+    // Bounded acquire: recovery is best-effort and must not stall commit
+    // processing behind telemetry holding the metrics DB. An expired budget
+    // is recorded as "unavailable", never as "no candidates".
+    let Some(db) = try_lock_with_budget(db, SESSION_EVENT_CANDIDATE_LOCK_BUDGET) else {
+        *metrics_db_unavailable = true;
+        return Ok(None);
     };
 
     for detection in detections {
-        let candidates = db.latest_session_event_candidates_for_tools(detection.kind.tools)?;
+        let candidates = match db.latest_session_event_candidates_for_tools(detection.kind.tools) {
+            Ok(candidates) => candidates,
+            Err(error) => {
+                tracing::debug!(%error, "latest session-event candidate query failed");
+                *metrics_db_unavailable = true;
+                return Ok(None);
+            }
+        };
         if let Some((candidate, _)) = candidates
             .iter()
             .filter_map(|candidate| {
@@ -1826,6 +1940,210 @@ mod tests {
         AttestationEntry, AuthorshipLog, FileAttestation,
     };
     use crate::authorship::working_log::AgentId;
+
+    #[test]
+    #[serial_test::serial]
+    fn preflight_reports_unknown_when_metrics_db_is_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        // SAFETY: serialized via #[serial]; the metrics DB singleton is
+        // pointed at a temp path before its first initialization.
+        unsafe {
+            std::env::set_var("GIT_AI_TEST_METRICS_DB_PATH", dir.path().join("metrics-db"));
+        }
+        let db = crate::metrics::db::MetricsDatabase::global().unwrap();
+        // The singleton keeps this path for the process lifetime; leak the
+        // temp dir so the open connection never points at a deleted file.
+        std::mem::forget(dir);
+
+        let _held = db.lock().unwrap();
+        let checker = std::thread::spawn(|| {
+            matching_session_event_candidate_exists(
+                &[1_000_000_000u128],
+                "https://example.com/repo.git",
+            )
+        });
+        let result = checker.join().unwrap();
+        // SAFETY: serialized via #[serial].
+        unsafe {
+            std::env::remove_var("GIT_AI_TEST_METRICS_DB_PATH");
+        }
+        assert_eq!(
+            result, None,
+            "a busy metrics DB must report unknown, not a definitive absence"
+        );
+    }
+
+    fn claude_marker_detections() -> Vec<CommitAgentDetection> {
+        let detections = detect_commit_metadata_agents(&CommitMetadata {
+            message: "Add feature\n\nCo-Authored-By: Claude <noreply@anthropic.com>".to_string(),
+            author_name: "Dev".to_string(),
+            author_email: "dev@example.com".to_string(),
+        });
+        assert!(
+            !detections.is_empty(),
+            "the marker commit message should produce agent detections"
+        );
+        detections
+    }
+
+    fn point_metrics_db_at_temp_path()
+    -> &'static std::sync::Mutex<crate::metrics::db::MetricsDatabase> {
+        let dir = tempfile::tempdir().unwrap();
+        // SAFETY: callers are serialized via #[serial]; the metrics DB
+        // singleton is pointed at a temp path before its first initialization.
+        unsafe {
+            std::env::set_var("GIT_AI_TEST_METRICS_DB_PATH", dir.path().join("metrics-db"));
+        }
+        let db = crate::metrics::db::MetricsDatabase::global().unwrap();
+        // The singleton keeps this path for the process lifetime; leak the
+        // temp dir so the open connection never points at a deleted file.
+        std::mem::forget(dir);
+        db
+    }
+
+    fn clear_metrics_db_env() {
+        // SAFETY: callers are serialized via #[serial].
+        unsafe {
+            std::env::remove_var("GIT_AI_TEST_METRICS_DB_PATH");
+        }
+    }
+
+    /// A busy metrics DB means "no matching session" was never established:
+    /// minting a synthesized session anyway would credit lines to a session
+    /// that never existed — misattribution, strictly worse than leaving the
+    /// lines unattributed.
+    #[test]
+    #[serial_test::serial]
+    fn commit_metadata_session_is_not_synthesized_when_metrics_db_is_busy() {
+        let db = point_metrics_db_at_temp_path();
+        let detections = claude_marker_detections();
+
+        let _held = db.lock().unwrap();
+        let checker = std::thread::spawn(move || {
+            let log = AuthorshipLog::new();
+            let mut unavailable = false;
+            let selection = select_commit_metadata_session(
+                &log,
+                &detections,
+                &[1_000_000_000u128],
+                None,
+                &mut unavailable,
+            );
+            (selection, unavailable)
+        });
+        let (selection, unavailable) = checker.join().unwrap();
+        clear_metrics_db_env();
+
+        assert!(unavailable, "the busy DB must be reported as unavailable");
+        assert!(
+            selection.unwrap().is_none(),
+            "a busy metrics DB must not mint a synthesized session"
+        );
+    }
+
+    /// The synthesized fallback is legitimate when the DB was consulted and
+    /// genuinely has no candidate rows.
+    #[test]
+    #[serial_test::serial]
+    fn commit_metadata_session_synthesized_when_db_is_healthy_but_empty() {
+        let _db = point_metrics_db_at_temp_path();
+        let detections = claude_marker_detections();
+
+        let log = AuthorshipLog::new();
+        let mut unavailable = false;
+        let selection = select_commit_metadata_session(
+            &log,
+            &detections,
+            &[1_000_000_000u128],
+            None,
+            &mut unavailable,
+        )
+        .unwrap();
+        clear_metrics_db_env();
+
+        assert!(!unavailable, "an uncontended DB must count as consulted");
+        let selection =
+            selection.expect("a consulted-but-empty DB must still mint the synthesized fallback");
+        assert_eq!(selection.tier, "synthesized_session");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn commit_metadata_selector_reports_db_unavailable_when_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        // SAFETY: serialized via #[serial]; the metrics DB singleton is
+        // pointed at a temp path before its first initialization.
+        unsafe {
+            std::env::set_var("GIT_AI_TEST_METRICS_DB_PATH", dir.path().join("metrics-db"));
+        }
+        let db = crate::metrics::db::MetricsDatabase::global().unwrap();
+        // The singleton keeps this path for the process lifetime; leak the
+        // temp dir so the open connection never points at a deleted file.
+        std::mem::forget(dir);
+
+        // Uncontended: the DB is consulted and the flag stays clear.
+        let mut unavailable = false;
+        let selection =
+            select_latest_commit_metadata_metric_session(&[], None, &mut unavailable).unwrap();
+        assert!(selection.is_none());
+        assert!(!unavailable, "an uncontended DB must count as consulted");
+
+        // Contended: the selector must report "unavailable", never let the
+        // caller mistake a busy DB for "no matching AI session" (which would
+        // end in AI lines being attributed to the human author).
+        let _held = db.lock().unwrap();
+        let checker = std::thread::spawn(|| {
+            let mut unavailable = false;
+            let selection =
+                select_latest_commit_metadata_metric_session(&[], None, &mut unavailable);
+            (selection, unavailable)
+        });
+        let (selection, unavailable) = checker.join().unwrap();
+        // SAFETY: serialized via #[serial].
+        unsafe {
+            std::env::remove_var("GIT_AI_TEST_METRICS_DB_PATH");
+        }
+        assert!(selection.unwrap().is_none());
+        assert!(
+            unavailable,
+            "a busy metrics DB must be reported as unavailable"
+        );
+    }
+
+    #[test]
+    fn try_lock_with_budget_returns_within_budget_when_contended() {
+        let mutex = std::sync::Arc::new(std::sync::Mutex::new(()));
+        let held = std::sync::Arc::clone(&mutex);
+        let (acquired_tx, acquired_rx) = std::sync::mpsc::channel::<()>();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let holder = std::thread::spawn(move || {
+            let _guard = held.lock().unwrap();
+            let _ = acquired_tx.send(());
+            let _ = release_rx.recv();
+        });
+        acquired_rx
+            .recv()
+            .expect("holder thread should acquire the lock");
+
+        let started = std::time::Instant::now();
+        let budget = std::time::Duration::from_millis(100);
+        assert!(
+            try_lock_with_budget(&mutex, budget).is_none(),
+            "a contended lock must not be acquired"
+        );
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed >= budget && elapsed < std::time::Duration::from_millis(1000),
+            "bounded acquire took {elapsed:?}, expected roughly the {budget:?} budget"
+        );
+
+        let _ = release_tx.send(());
+        holder.join().unwrap();
+        assert!(
+            try_lock_with_budget(&mutex, budget).is_some(),
+            "an uncontended lock must be acquired immediately"
+        );
+    }
 
     fn test_agent(external_session_id: &str) -> AgentId {
         AgentId {
