@@ -854,3 +854,116 @@ fn daemon_trace_ingest_backpressure_shuts_down_without_blocking_listener() {
 
     panic!("daemon did not fail closed within 2s when trace ingest queue capacity was exhausted");
 }
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_sync_for_unrelated_family_ignores_open_mutating_root_of_other_family() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let control_socket = daemon_control_socket_path(&repo);
+    let repo_working_dir = repo_workdir_string(&repo);
+
+    // A second repository family: the daemon resolves families from the
+    // filesystem alone, so a minimal worktree with a .git dir suffices.
+    let other = tempfile::tempdir().expect("failed to create other family dir");
+    let other_worktree = other.path().join("other-repo");
+    let other_git_dir = other_worktree.join(".git");
+    fs::create_dir_all(&other_git_dir).expect("failed to create other .git dir");
+    fs::write(other_git_dir.join("HEAD"), "ref: refs/heads/main\n")
+        .expect("failed to write other HEAD");
+    let other_working_dir = other_worktree
+        .canonicalize()
+        .expect("failed to canonicalize other worktree")
+        .to_string_lossy()
+        .to_string();
+
+    // Hold open a mutating trace root attributed to the other family: start +
+    // def_repo frames, no exit/atexit, connection kept open.
+    let mut open_root_stream =
+        open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+            .expect("failed to open trace socket for the long-running root");
+    write_trace_frames_to_stream(
+        &mut open_root_stream,
+        &[
+            json!({
+                "event": "start",
+                "sid": "other-family-open-root",
+                "argv": ["git", "commit", "-m", "long-running commit"],
+                "time_ns": 1_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "other-family-open-root",
+                "worktree": other_worktree.to_string_lossy(),
+                "repo": other_git_dir.to_string_lossy(),
+                "time_ns": 1_001u64,
+            }),
+        ],
+    );
+
+    // Wait until the daemon has registered the open root: syncs of the
+    // originating family start hitting the drain fence (client timeout).
+    let registered_deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        let probe = send_control_request_with_timeout(
+            &control_socket,
+            &ControlRequest::SyncFamily {
+                repo_working_dir: other_working_dir.clone(),
+            },
+            Duration::from_millis(250),
+        );
+        if probe.is_err() {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < registered_deadline,
+            "the open mutating root never started fencing syncs of its own family"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+
+    // An unrelated family must sync promptly while the other family's
+    // mutating root stays open.
+    let response = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_working_dir.clone(),
+        },
+        Duration::from_secs(10),
+    )
+    .expect("sync of an unrelated family must not wait on another family's open mutating root");
+    assert!(
+        response.ok,
+        "unrelated family sync should succeed: {:?}",
+        response.error
+    );
+
+    // Guard: the originating family stays fenced until its root closes.
+    let (done_tx, done_rx) = mpsc::channel();
+    let waiter_control_socket = control_socket.clone();
+    let waiter_working_dir = other_working_dir.clone();
+    let waiter = thread::spawn(move || {
+        let result = send_control_request_with_timeout(
+            &waiter_control_socket,
+            &ControlRequest::SyncFamily {
+                repo_working_dir: waiter_working_dir,
+            },
+            Duration::from_secs(30),
+        );
+        let _ = done_tx.send(result.is_ok());
+    });
+    assert!(
+        done_rx.recv_timeout(Duration::from_secs(1)).is_err(),
+        "the originating family must stay fenced while its mutating root is open"
+    );
+
+    drop(open_root_stream);
+    let completed = done_rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("the originating family sync should complete once the root closes");
+    assert!(
+        completed,
+        "the originating family sync should get a response after the root closes"
+    );
+    waiter.join().expect("waiter thread should not panic");
+}

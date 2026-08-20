@@ -35,6 +35,11 @@ pub(crate) mod actor_coordinator_side_effects;
 pub(crate) mod actor_coordinator_trace;
 pub(crate) mod actor_coordinator_worktree;
 pub(crate) mod actor_types;
+// Compiled out of test-support library builds: the checkpoint path's
+// test-support stub never consults the limiter, while lib unit tests
+// (cfg(test)) exercise it directly.
+#[cfg(any(test, not(feature = "test-support")))]
+pub(crate) mod agent_usage_limiter;
 pub(crate) mod attribution_self_check;
 pub(crate) mod checkpoint_stream_authority;
 pub(crate) mod cherry_pick_helpers;

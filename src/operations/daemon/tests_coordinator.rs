@@ -152,6 +152,98 @@ async fn checkpoint_control_request_waits_while_blocked_behind_pending_root() {
 }
 
 #[tokio::test]
+async fn family_fence_ignores_open_mutating_roots_of_other_families() {
+    let coord = Arc::new(ActorDaemonCoordinator::new());
+    let temp = tempfile::tempdir().unwrap();
+    let make_repo = |name: &str| {
+        let worktree = temp.path().join(name);
+        let git_dir = worktree.join(".git");
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::write(git_dir.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        worktree
+    };
+    let originating_repo = make_repo("originating");
+    let unrelated_repo = make_repo("unrelated");
+    let originating_family = coord.backend.resolve_family(&originating_repo).unwrap().0;
+    let unrelated_family = coord.backend.resolve_family(&unrelated_repo).unwrap().0;
+
+    let sid = "20260411T120000.000000-Psid-family-fence";
+    coord.trace_root_connection_opened(sid).unwrap();
+    let mut payload = serde_json::json!({
+        "event": "start",
+        "sid": sid,
+        "argv": ["git", "commit", "-m", "test commit"],
+        "worktree": originating_repo,
+        "time_ns": 1u64,
+    });
+    assert!(
+        coord.prepare_trace_payload_for_ingest(&mut payload),
+        "commit start should mark the root as mutating"
+    );
+
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        coord.wait_for_trace_ingest_processed_through_family(&unrelated_family),
+    )
+    .await
+    .expect("an unrelated family must not wait on another family's open mutating root");
+
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            coord.wait_for_trace_ingest_processed_through_family(&originating_family),
+        )
+        .await
+        .is_err(),
+        "the originating family must stay fenced while its mutating root is open"
+    );
+
+    coord
+        .record_trace_connection_close(&[sid.to_string()])
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        coord.wait_for_trace_ingest_processed_through_family(&originating_family),
+    )
+    .await
+    .expect("the originating family fence should pass once the root closes");
+}
+
+#[tokio::test]
+async fn family_fence_fails_closed_for_unattributed_open_roots() {
+    let coord = Arc::new(ActorDaemonCoordinator::new());
+    let sid = "20260411T120000.000000-Psid-unattributed";
+    coord.trace_root_connection_opened(sid).unwrap();
+    // No worktree hint: the root cannot be attributed to any family yet.
+    let mut payload = make_start_payload(&["git", "commit", "-m", "test commit"]);
+    payload["sid"] = serde_json::json!(sid);
+    assert!(
+        coord.prepare_trace_payload_for_ingest(&mut payload),
+        "commit start should mark the root as mutating"
+    );
+
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(50),
+            coord.wait_for_trace_ingest_processed_through_family("/any/family/.git"),
+        )
+        .await
+        .is_err(),
+        "an open mutating root with no family attribution must block every family"
+    );
+
+    coord
+        .record_trace_connection_close(&[sid.to_string()])
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(1),
+        coord.wait_for_trace_ingest_processed_through_family("/any/family/.git"),
+    )
+    .await
+    .expect("the fence should pass once the unattributed root closes");
+}
+
+#[tokio::test]
 async fn trace_connection_close_without_atexit_cancels_pending_root() {
     let coord = Arc::new(ActorDaemonCoordinator::new());
     coord.start_trace_ingest_worker().unwrap();

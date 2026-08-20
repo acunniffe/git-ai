@@ -199,6 +199,18 @@ impl ActorDaemonCoordinator {
     }
 
     pub(crate) fn has_open_trace_roots_that_may_mutate_refs(&self) -> bool {
+        self.has_open_trace_roots_that_may_mutate(None)
+    }
+
+    /// Family-scoped variant: open mutating roots attributed to a different
+    /// repository family are ignored. A root with no family attribution yet
+    /// fails closed (blocks every family), matching
+    /// `family_entry_blocked_by_prior_open_trace_root`.
+    pub(crate) fn has_open_trace_roots_that_may_mutate_family(&self, family: &str) -> bool {
+        self.has_open_trace_roots_that_may_mutate(Some(family))
+    }
+
+    fn has_open_trace_roots_that_may_mutate(&self, family: Option<&str>) -> bool {
         let Ok(ingress) = self.trace_ingress_state.lock() else {
             return false;
         };
@@ -206,6 +218,12 @@ impl ActorDaemonCoordinator {
             *count > 0
                 && !ingress.root_definitely_read_only.contains(root)
                 && ingress.root_mutating.get(root).copied().unwrap_or(true)
+                && family.is_none_or(|family| {
+                    ingress
+                        .root_families
+                        .get(root)
+                        .is_none_or(|root_family| root_family == family)
+                })
         })
     }
 
