@@ -1,0 +1,61 @@
+src/daemon/control_api.rs
+  s_11c3e1cdda522c::t_dd7b49eeeafcb1 26-28
+src/metrics/types.rs
+  s_11c3e1cdda522c::t_ec7e4d566a2bea 26
+src/daemon/telemetry_worker.rs
+  s_11c3e1cdda522c::t_c4b8bc62499b79 211-225
+src/metrics/events.rs
+  s_11c3e1cdda522c::t_46d9d08a83186e 1050-1054,1056-1069,1071-1075,1077-1083,1085-1089,1091-1113,1119-1135,1141-1158
+  s_11c3e1cdda522c::t_26a883cbf2e38b 1136-1140
+  s_9af36d4c7591fb::t_dcdd2f928aaf55 1164
+  s_11c3e1cdda522c::t_c4b8bc62499b79 1055,1070,1076,1084,1090,1114-1118,1168,1175
+  s_11c3e1cdda522c::t_2d86862a403f51 1165-1167,1169-1174,1176-1178
+src/daemon.rs
+  s_11c3e1cdda522c::t_26a883cbf2e38b 8850-8852
+  s_11c3e1cdda522c::t_cf2858b5c15eff 2799-2804
+  s_11c3e1cdda522c::t_dd7e55f8d8d523 4433-4434
+  s_11c3e1cdda522c::t_e0b3404d489ba7 7688-7691,7708-7730
+  s_11c3e1cdda522c::t_59cb8e9621aa6d 7920-7923
+  s_11c3e1cdda522c::t_4cb005f1d06239 8882-8885,8898,8907-8908
+  s_11c3e1cdda522c::t_2050c9b94fd198 7803-7805
+  s_11c3e1cdda522c::t_5c096786881855 8108-8111
+  s_11c3e1cdda522c::t_debe4c80a0a9cc 4431-4432,4439-4442
+  s_11c3e1cdda522c::t_70abb7b92f6922 8873-8880
+  s_11c3e1cdda522c::t_93441b36066313 9243
+  s_11c3e1cdda522c::t_6e3de766d1ae51 7651
+  s_11c3e1cdda522c::t_ecbf1ab8e0f3c8 7741-7750,7771-7775,7781-7783
+  s_11c3e1cdda522c::t_45572394b9a1b1 7176-7186,7188-7189
+  s_11c3e1cdda522c::t_7e621e0cec3e67 7890-7893
+  s_11c3e1cdda522c::t_4308ad0e47f9ec 8755
+  s_11c3e1cdda522c::t_cead47897e25e0 11040-11041
+  s_11c3e1cdda522c::t_fa4b7cd222f43a 7486
+  s_11c3e1cdda522c::t_cc81f28f8659ab 2922-2923
+  s_11c3e1cdda522c::t_c4b8bc62499b79 2622-2623,2626-2628,2633-2635,2805-2809,2924-2925,7187,7670-7673,7692-7707,7751-7770,7898-7916,8218-8221,8333-8336,8754,8782-8789,8798,8835-8849,8853-8872,8881,8886-8897,8899-8906,9239-9242,9337-9343,9347-9349,9351,10954-11039
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_b4e26643191288 7086-7104,7109,7111-7120,7122-7127,7141-7166,7168-7187,7189-7235
+  s_11c3e1cdda522c::t_e74e2ce767d488 7075-7085,7105-7108,7110,7121,7128-7140,7167,7188,7236-7358
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "1389458747594d15a79503c31723be18912b4b47",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_9af36d4c7591fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01bbf-395c-7a60-85f6-2b33f43556d6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
