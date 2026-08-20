@@ -1,0 +1,23 @@
+tests/integration/bash_attribution.rs
+  s_75a4c24a376e66::t_acf5f58afa0e36 181-255
+  s_75a4c24a376e66::t_de8a1746e3dc14 180
+src/commands/checkpoint_agent/orchestrator.rs
+  s_75a4c24a376e66::t_cdd8fa9408a38c 457-478,554-574
+  s_75a4c24a376e66::t_78c1ef7c737ce2 575
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "364b4df7633664969f6e0b00f94dd837f702f93e",
+  "prompts": {},
+  "sessions": {
+    "s_75a4c24a376e66": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f5758-6085-7bc0-8dd9-a797aa7f7ab7",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

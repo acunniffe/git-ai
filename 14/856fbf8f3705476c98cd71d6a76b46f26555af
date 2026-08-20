@@ -1,0 +1,25 @@
+tests/integration/ci_partial_clone.rs
+  d399d0c49e2cbcc7 1-299
+tests/integration/main.rs
+  d399d0c49e2cbcc7 24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.4",
+  "base_commit_sha": "14856fbf8f3705476c98cd71d6a76b46f26555af",
+  "prompts": {
+    "d399d0c49e2cbcc7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f90f9c0f-3572-484d-a950-653197d37a79",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "shortdiv",
+      "messages": [],
+      "total_additions": 316,
+      "total_deletions": 219,
+      "accepted_lines": 300,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,24 @@
+src/daemon/git_backend.rs
+  s_7e719d19471fd9::t_7cc10aaf524c80 330,332-335,567,730-745,764-765
+  s_7e719d19471fd9::t_1cb10a3135128d 766-767
+  s_7e719d19471fd9::t_ff8403c8ab4549 4,329,331,746-763
+tests/integration/tls_native_certs.rs
+  s_7e719d19471fd9::t_7cc10aaf524c80 15-31,35-41
+  s_7e719d19471fd9::t_cb556ee7003aaa 32-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.11",
+  "base_commit_sha": "c2f6a915e2609b8472fa381f84f5aa48a232569e",
+  "prompts": {},
+  "sessions": {
+    "s_7e719d19471fd9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f38e7-aa09-72c3-b383-9aa431d64253",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

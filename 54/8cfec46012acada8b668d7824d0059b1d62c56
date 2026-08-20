@@ -1,0 +1,87 @@
+src/daemon.rs
+  s_11c3e1cdda522c::t_099d163bceb332 4609,4612-4613,4616-4630,4633-4646
+  s_11c3e1cdda522c::t_6efe1db0d91b44 8081-8084,8086-8092,8095-8105,8125-8127,8129-8141,8149-8165,8174-8178,8214-8215
+  s_11c3e1cdda522c::t_b58776d7fd2093 7941-7945,7955-7957,7960-7969
+  s_11c3e1cdda522c::t_eb915202d66253 8282
+  s_11c3e1cdda522c::t_40d809cda4ade7 10542-10545,10547-10554,10555-10570,10571-10580
+  s_11c3e1cdda522c::t_241a15dc1b8ac8 8145-8146,8148
+  s_11c3e1cdda522c::t_b946a98de8ea77 10488
+  s_11c3e1cdda522c::t_e8fe0d25ad2f1f 8211,10489-10532,10535-10539
+  s_11c3e1cdda522c::t_34f29d7ddcb0ae 49
+  s_11c3e1cdda522c::t_74562b3e217677 2790-2802
+  s_11c3e1cdda522c::t_ea160590c112cd 8108-8124
+  s_11c3e1cdda522c::t_ee859e50cdaa59 91-96
+  s_11c3e1cdda522c::t_8feada59b22343 8856,8858-8863,8866-8867,8870-8876
+  s_11c3e1cdda522c::t_85868a7183a7b4 8166-8173,8182-8193,8201-8210
+  s_11c3e1cdda522c::t_ec9292d8994c3e 8212,8925-8927,8933-8990
+  s_11c3e1cdda522c::t_0356e354ddd803 8254,8259-8264
+  s_11c3e1cdda522c::t_07c003dcfea047 8517,8522-8525,8532,8540,8550-8553,8556,8562-8608
+  s_11c3e1cdda522c::t_0bad78ff167050 3119-3122,8255-8258,10533-10534
+  s_11c3e1cdda522c::t_fd6dcaf679c9ad 3102-3118,3123-3157,3162-3163
+  s_11c3e1cdda522c::t_5265fe8ed72bbc 8414-8420,8422-8430,8433-8457,8462-8468,8473,8476
+  s_11c3e1cdda522c::t_c168b8e0f5ffeb 2905-2911
+  s_11c3e1cdda522c::t_1c31fe0572936a 7953-7954
+  s_11c3e1cdda522c::t_bc4e1dc4246a3c 8194-8200
+  s_11c3e1cdda522c::t_a17d9ff40ed368 8213,8877,8991,10488
+  s_11c3e1cdda522c::t_0c9febfa73a7d0 7117,7119
+tests/commit_tree_update_ref.rs
+  s_11c3e1cdda522c::t_241a15dc1b8ac8 857
+  s_11c3e1cdda522c::t_e64c5b3a0903af 227-255
+  s_11c3e1cdda522c::t_3ecea6bd30d9ea 741-746,751-752,754-799,806-856,858-862,864
+  s_11c3e1cdda522c::t_47c61a03535e5e 800-805
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_e8664396ed89bd 2812,2818
+  s_11c3e1cdda522c::t_498c927907d4c0 2734,2737,2741-2742,2744
+  s_11c3e1cdda522c::t_5f701332f40ede 2669-2733,2735-2736,2745-2811,2813-2817,2819-2821
+  s_11c3e1cdda522c::t_3208c75912f9f6 2738-2740,2743
+  s_11c3e1cdda522c::t_886bf052158ade 6315-6436,6441-6536,6541-6545
+  s_11c3e1cdda522c::t_0bad78ff167050 6437-6440,6538-6539
+  s_11c3e1cdda522c::t_83f70154d8641d 6235-6314
+  s_11c3e1cdda522c::t_fb642af7b6a2a7 6537,6540
+  s_11c3e1cdda522c::t_1c3d1807b8b5ae 6546-6563
+src/tokio_runtime.rs
+  s_11c3e1cdda522c::t_687fb0c7381e4e 16-20
+  s_11c3e1cdda522c::t_d204a47974ccdd 105-117
+  s_11c3e1cdda522c::t_dacbc7fd18da63 218-223,229-233
+  s_11c3e1cdda522c::t_4e7cbec0cff062 224-228
+  s_11c3e1cdda522c::t_faa98deb5e2f04 217
+src/sqlite.rs
+  s_11c3e1cdda522c::t_bced7694272161 53-64
+  s_5c8e781c6d99da::t_c35919ed0484fd 52
+  s_11c3e1cdda522c::t_7a37d6a47c34d4 3,9-13,20,30
+src/daemon/telemetry_worker.rs
+  s_11c3e1cdda522c::t_5fe2112dbc5487 636-643
+  s_11c3e1cdda522c::t_e0fc5b206336d3 338
+  s_11c3e1cdda522c::t_4e7cbec0cff062 205
+  s_11c3e1cdda522c::t_48576a3a59dd53 198-204,206-210,216,223-224,228-241,255
+  s_11c3e1cdda522c::t_6d7efaa583542a 1666-1691
+  s_11c3e1cdda522c::t_aed2879445c76b 456-460,464-465,469,472,474,476-477,484-501,506
+src/authorship/attribution_recovery.rs
+  s_11c3e1cdda522c::t_5b3e2b5c8c425e 276-304,314-315,319
+  s_11c3e1cdda522c::t_c83de21e397489 1859-1862,1864-1866,1868-1869,1873-1893
+  s_11c3e1cdda522c::t_a73d5641ee9ff0 1863,1867,1870-1872
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "548cfec46012acada8b668d7824d0059b1d62c56",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_5c8e781c6d99da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65ad6ab4-e951-4bfd-9acb-5a0f5874a1df",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

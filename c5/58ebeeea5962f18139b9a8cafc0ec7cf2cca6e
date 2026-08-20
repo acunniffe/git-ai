@@ -1,0 +1,26 @@
+src/commands/blame.rs
+  24d84c9a5b21aeeb 640-649
+tests/integration/diff.rs
+  24d84c9a5b21aeeb 2604-2729
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "c558ebeeea5962f18139b9a8cafc0ec7cf2cca6e",
+  "prompts": {
+    "24d84c9a5b21aeeb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7440728e-eccc-472f-b1f9-7039cba86479",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 136,
+      "total_deletions": 0,
+      "accepted_lines": 136,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/42c27cc115dfc5b111fd244a282396ad1a89d727f4afdaa5adf5d0e04659c3f8"
+    }
+  }
+}

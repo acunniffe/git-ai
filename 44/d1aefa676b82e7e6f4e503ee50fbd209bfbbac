@@ -1,0 +1,34 @@
+tests/integration/cursor.rs
+  s_acbbcc77bb9da5::t_acc3d854381f08 529
+  s_acbbcc77bb9da5::t_bd16ed91f76096 546-547
+tests/integration/checkpoint_unit.rs
+  s_acbbcc77bb9da5::t_40632b0d55fff1 920-921
+  s_acbbcc77bb9da5::t_af979a80169bdb 551-553,561-564
+  s_acbbcc77bb9da5::t_669d0b235856cf 351-353,362-365
+  s_acbbcc77bb9da5::t_8cc09d5614ba55 884-885
+  s_acbbcc77bb9da5::t_dc319484419baf 1253
+  s_acbbcc77bb9da5::t_8de9f75ee624c3 1360
+  s_acbbcc77bb9da5::t_3821efa2f38811 57,99,141,176,453,492,609,652,719,775,833,1071,1117,1176
+tests/integration/repos/test_repo.rs
+  s_acbbcc77bb9da5::t_d93b5294842b86 3053-3063,3065-3072,3074-3081,3083-3084,3086
+tests/integration/checkpoint_size.rs
+  s_acbbcc77bb9da5::t_ef27cc6a8adf2f 104,128
+tests/integration/worktrees.rs
+  s_acbbcc77bb9da5::t_34449a3cf9f39c 596-597,698-699,765-766,823-824
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "44d1aefa676b82e7e6f4e503ee50fbd209bfbbac",
+  "prompts": {},
+  "sessions": {
+    "s_acbbcc77bb9da5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebbc887-2ebd-47b6-8edf-b19158eee095",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

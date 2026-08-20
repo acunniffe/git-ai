@@ -1,0 +1,38 @@
+tests/integration/bash_attribution.rs
+  s_66b90f591e0a84::t_5310f6f2f2f29b 257-355
+  s_66b90f591e0a84::t_e35d449cfae3bb 256
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_66b90f591e0a84::t_f5523afca8da3d 223-225
+  s_66b90f591e0a84::t_f8d00e3cfffccb 593,635
+src/streams/model_extraction.rs
+  s_66b90f591e0a84::t_0e79e98c0cd1dc 449-450,463,619,687-688,1652-1672
+  s_66b90f591e0a84::t_60067657ef6be7 1590,1599-1651,1673-1693
+  s_66b90f591e0a84::t_df5ba50571e322 1,4-5,9-10,16-17,282-448,451-462,464-608,637-668,674-686,689-708,711-717,719-745,801-802
+  s_66b90f591e0a84::t_fd229fe6134a7e 1694,1696-1736
+  s_66b90f591e0a84::t_1f6b6f8156e607 609-618,620-636,669-673,709-710,718
+  s_66b90f591e0a84::t_19610cfebaa361 1695
+tests/integration/github_copilot_integration.rs
+  s_66b90f591e0a84::t_fac68b65bade8b 380-381,383,386-427,429-433,437,451,457,460-466,468,471-473,478,484,489,499-500,515
+  s_66b90f591e0a84::t_d98cb6c83689dd 283,300-330,348,435,450,452-456,458-459,467,469-470,474-477,479-483,485-488,490-498,501-513,526-527
+  s_66b90f591e0a84::t_3b273714e69048 4,279-282,284-299,331-347,349-379,382,384-385,428,434,436,438-449,514,516-517,525
+src/daemon.rs
+  s_66b90f591e0a84::t_43e49e785f06b7 1055-1060
+src/authorship/attribution_recovery.rs
+  s_66b90f591e0a84::t_0f34144cf7138d 363-367,369,371,403-405,1523,1531
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.22",
+  "base_commit_sha": "79cb2e83a25e9814d3d9f1e0c291109644362d30",
+  "prompts": {},
+  "sessions": {
+    "s_66b90f591e0a84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd9a5-78b2-75e3-9d03-2be4de358c59",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

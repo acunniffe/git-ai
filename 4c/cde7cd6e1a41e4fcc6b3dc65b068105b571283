@@ -1,0 +1,9 @@
+src/commands/hooks/clone_hooks.rs
+  human 47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "4ccde7cd6e1a41e4fcc6b3dc65b068105b571283",
+  "prompts": {}
+}

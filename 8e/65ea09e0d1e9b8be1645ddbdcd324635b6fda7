@@ -1,0 +1,32 @@
+src/authorship/rewrite_revert.rs
+  s_4d604bdd40c765::t_a7b45844c45be0 115-118,228-233
+  s_4d604bdd40c765::t_2214ccb72e76ba 234,340-353
+src/metrics/events.rs
+  s_4d604bdd40c765::t_5a45a98b8473d2 314-315,318-319
+src/daemon/telemetry_worker.rs
+  s_4d604bdd40c765::t_adafc1063f9359 411-412,426-428,432-434,539-540,566,590-591,599,603,624
+  s_4d604bdd40c765::t_1f1b34abd31905 1049-1052,1056,1070-1071,1078-1080,1106,1109,1113-1114,1117-1119,1404,1456,1458,1599-1600
+src/commands/flush_metrics_db.rs
+  s_4d604bdd40c765::t_f3545954d0d551 35,88,156-157,159-161,168,174
+  s_4d604bdd40c765::t_c09a792f0c7dc0 90,93,100
+src/api/metrics.rs
+  s_4d604bdd40c765::t_e2ccb52eeb1aa0 107,138
+src/metrics/db.rs
+  s_4d604bdd40c765::t_049fb7886f2f98 17,39,43,47,65,69-70,438,441,443-445,446-447,477-479,494-496,499-500,501-504,725-727,819-821,841-842,917,978,1343,1345-1346,1352,1356,1361,1363,1395,1405
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "8e65ea09e0d1e9b8be1645ddbdcd324635b6fda7",
+  "prompts": {},
+  "sessions": {
+    "s_4d604bdd40c765": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee61a-3160-7480-af4b-dd94e5be48f4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+.github/workflows/test-visualstudio-extension.yml
+  s_7c5783049a5bb3::t_f77e9b3c701011 27,30-32,35,49,52-54,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "7804a005c5de30050675cf6201fc705cfe36e612",
+  "prompts": {},
+  "sessions": {
+    "s_7c5783049a5bb3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019eb46c-974d-76a2-8a4e-1cb97cb4fcfd",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

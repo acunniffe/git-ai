@@ -1,0 +1,22 @@
+specs/git_ai_standard_v3.0.0.md
+  s_89986672b11285::t_cfc8b5dc3c6825 251,253
+  s_89986672b11285::t_b7b76dc9776a6b 152,156,196
+  s_89986672b11285::t_163098dc17d5b0 889
+  s_89986672b11285::t_aa4ca6195b25eb 58,75,82,88-89,112,124-134,137-151,153-155,157,159,161-189,191-193,195,197,211,218-250,252,254,256,258,264,268-269,271,273,275,279-281,283,285,287-293,295-327,329,334,355,371-417,886-888,890-907,911-913
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "e2411d98202af9c9fba60a6f2da70a6cd7af0fa1",
+  "prompts": {},
+  "sessions": {
+    "s_89986672b11285": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d32d8ee4-9a10-43f4-bfd0-e6839382998f",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

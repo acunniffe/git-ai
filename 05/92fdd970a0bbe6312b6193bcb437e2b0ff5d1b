@@ -1,0 +1,28 @@
+src/git/repo_storage.rs
+  f4f2b364dfcacebb 71,149
+tests/integration/main.rs
+  f4f2b364dfcacebb 73,98,101
+tests/integration/repo_storage_unit.rs
+  f4f2b364dfcacebb 1-3,5-611
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "0592fdd970a0bbe6312b6193bcb437e2b0ff5d1b",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 614,
+      "total_deletions": 2,
+      "accepted_lines": 612,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/d0a426303d29d74b4c4e2c4c4113a64b4a84fb87c5734ef60a4c1db3bc3c1e18"
+    }
+  }
+}

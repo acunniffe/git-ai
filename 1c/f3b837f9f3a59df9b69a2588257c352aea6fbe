@@ -1,0 +1,26 @@
+src/mdm/agents/vim.rs
+  73a492d33da4b1eb 10-18,67-68,92-97
+src/mdm/agents/mod.rs
+  73a492d33da4b1eb 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "1cf3b837f9f3a59df9b69a2588257c352aea6fbe",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 6,
+      "accepted_lines": 18,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/1339cc8875cc4cbef231bd24dd64f7fabaf37a1c6c212120754bc574cc31c389"
+    }
+  }
+}

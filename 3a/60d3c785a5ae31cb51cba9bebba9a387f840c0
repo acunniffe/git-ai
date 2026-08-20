@@ -1,0 +1,19 @@
+docs/concurrent-checkpoint-admission.md
+  s_48aaaaad03ca08::t_a21bf5156529dd 1-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "3a60d3c785a5ae31cb51cba9bebba9a387f840c0",
+  "prompts": {},
+  "sessions": {
+    "s_48aaaaad03ca08": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d7b-a01f-7771-85c5-12212e9825ce",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

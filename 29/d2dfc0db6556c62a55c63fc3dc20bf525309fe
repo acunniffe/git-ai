@@ -1,0 +1,26 @@
+src/transcripts/agents/opencode.rs
+  75b8b35dceb7e11d 1-31,34-35,38-39,43-48,50,54-60,64,66-69,72-76,79-80,82-83,87-92,95,99-103,105,109,113-115,117-150,153-160,163,172,187-188,190,192-210
+  0cd56453d16f4fdd 33,37,81,104,116,152
+  759815a68a4f7264 70,166,171,211-227,232-235,236,237-239
+src/transcripts/model_extraction.rs
+  759815a68a4f7264 1-9,11-18,20-84,85-88,89-167,172-182,201-203,207-208,215-235,237-249,251-256,258-264,266-271,273-278,279-284,285-286,299-300,303-306,308-313,315-327,329-334,336-347,349-351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "29d2dfc0db6556c62a55c63fc3dc20bf525309fe",
+  "prompts": {
+    "759815a68a4f7264": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9b8122a-6f33-4fcb-a981-7260b993c9a7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 13,
+      "total_deletions": 8,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}

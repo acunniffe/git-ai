@@ -1,0 +1,27 @@
+src/git/repository.rs
+  37d38b1962149277 10
+tests/integration/git_repository_comprehensive.rs
+  37d38b1962149277 937,941,945
+tests/integration/range_authorship_unit.rs
+  37d38b1962149277 38,42,87,91,135,139,205,209,251,286,290,349,353,426,430,499,503,560,564,1011,1015
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "912d1ac85ff03f714384c11f65fad7d189f8097d",
+  "prompts": {
+    "37d38b1962149277": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "07016d2c-15e0-4e25-adb7-1aebfcbf7874",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 26,
+      "total_deletions": 341,
+      "accepted_lines": 25,
+      "overriden_lines": 0
+    }
+  }
+}

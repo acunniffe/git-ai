@@ -1,0 +1,162 @@
+src/commands/mod.rs
+  378fb6fca27ec67c 14
+src/mdm/mod.rs
+  5f4ad1a4e8537eb7 3,9
+src/mdm/skills_installer.rs
+  73602057f4652363 7-8,11,14-15,18,53-69,71,83-86,89-101,113,115-125,133,142,145-147,152,155-165,167-171,173-176,181,200,209,218-221,223-225,228-230
+  5f4ad1a4e8537eb7 1-6,9-10,12-13,16-17,19-52,70,72-73,75-78,80-82,102-112,114,126-132,134-141,143-144,148-151,153-154,172,177-180,182-199,201-208,210-217,222,226-227,231-243
+src/commands/git_ai_handlers.rs
+  378fb6fca27ec67c 153-155,220-228
+src/config.rs
+  5f4ad1a4e8537eb7 531-532,536,541,545-554
+src/commands/prompts_db.rs
+  b17379a67b0c6fff 141-142,228,576-583,590,825,902,944
+  378fb6fca27ec67c 186-187,189-199,205,212,216-218,220-222,224,226,230-231,233,695-697,703-704,706-707,710-722,732,758-762,764-765,767,769-770,775,781,790-791,793-796,804,810,816,819-821,884-886
+  a4b7eae1f2251260 16,209,644-649,657,693,780,786-789,802,805-807,811-815,822,827-833,837-840,857,865-866,882,899,941-942,945-950,971,1017,1041,1045-1046,1058,1067,1076-1079
+  e03fe9780da2ede6 1-9,14-15,17-88,90-92,94-104,106-128,132-140,143-160,170-185,203,206-207,211,223,227,240-241,243-505,507-514,536-575,584,589,592,598-643,661-687,689-692,698-702,708-709,733-757,772-774,776-777,779,783,785,792,797-801,823,834-836,841-844,856,858-864,867-876,883,889-891,898
+  0217c3402080a8f9 778
+  c0c4b294278941ad 10-12,89,93,188,200-202,210,213-215,219,225,232,234-239,242,515-535,593-597,650-656,658-660,688,694,705,723-727,729-731,763,766,768,771,782,784,803,808-809,817-818,824,826,845-846,855,877-881,887-888,892-894,897,901,903-940,943,951-967,972-1016,1018-1040,1042-1044,1048-1049,1052-1057,1059-1066,1068-1075
+  4eb4a98baaadda2e 105,129-131,161-169,208,229
+src/commands/install_hooks.rs
+  5f4ad1a4e8537eb7 4,94,99-101,223-225
+  ba39693df25f4f2a 95-96,216-217,222
+skills/prompt-analysis/SKILL.md
+  73602057f4652363 2-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.37",
+  "base_commit_sha": "2388ab122b70c795a9e9f6ff31ece02685f4d6b9",
+  "prompts": {
+    "0217c3402080a8f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a69132a6-c20f-4ce6-9c86-1f7769105518",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "378fb6fca27ec67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "58954daf-a21e-4a01-8772-1e99560d6c42",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 87,
+      "overriden_lines": 0
+    },
+    "4eb4a98baaadda2e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5299283d-e81e-46f3-b1c5-c5f66af31093",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    },
+    "5f4ad1a4e8537eb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73dc2433-1436-4e3a-8c4a-5d0a57540f45",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 170,
+      "overriden_lines": 0
+    },
+    "73602057f4652363": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f9a2bca8-79a0-4c8e-a363-819ddfb7a198",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 95,
+      "overriden_lines": 0
+    },
+    "a4b7eae1f2251260": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3956fbe0-0433-414a-b494-6f68eb3a4d38",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 60,
+      "overriden_lines": 0
+    },
+    "b17379a67b0c6fff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6ea3123-7a07-4a09-be9b-54f7e34762a7",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    },
+    "ba39693df25f4f2a": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "afa9600e-5a42-4355-bcbb-849a893c7c9a",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    },
+    "c0c4b294278941ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "03301983-134c-4e89-8076-40674a26c671",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 249,
+      "overriden_lines": 0
+    },
+    "e03fe9780da2ede6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "804179f1-4b2d-4a41-b880-89fc183f1e11",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 639,
+      "overriden_lines": 0
+    }
+  }
+}
