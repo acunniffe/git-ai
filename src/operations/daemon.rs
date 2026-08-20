@@ -41,6 +41,11 @@ pub(crate) mod actor_types;
 #[cfg(any(test, not(feature = "test-support")))]
 pub(crate) mod agent_usage_limiter;
 pub(crate) mod attribution_self_check;
+// The outbox publish/consume storage layer is unix-only; on other platforms
+// clients get UnsupportedPlatform at publish time and there is nothing to
+// replay.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) mod checkpoint_outbox_worker;
 pub(crate) mod checkpoint_stream_authority;
 pub(crate) mod cherry_pick_helpers;
 pub(crate) mod client_helpers;

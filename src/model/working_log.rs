@@ -156,6 +156,11 @@ pub struct Checkpoint {
     pub known_human_metadata: Option<KnownHumanMetadata>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trace_id: Option<String>,
+    /// Delivery-envelope identity for checkpoints applied from a
+    /// `CheckpointDeliver` request. At-least-once outbox replay checks this
+    /// before appending so a delivery is never applied twice.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery_id: Option<String>,
 }
 
 impl Checkpoint {
@@ -180,6 +185,7 @@ impl Checkpoint {
             git_ai_version: Some(GIT_AI_VERSION.to_string()),
             known_human_metadata: None,
             trace_id: None,
+            delivery_id: None,
         }
     }
 }

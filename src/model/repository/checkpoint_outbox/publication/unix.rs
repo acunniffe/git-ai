@@ -119,11 +119,11 @@ impl SecureRoot {
             .map_err(|error| E::from_io("sync outbox root", error))
     }
 
-    fn directory(&self) -> &File {
+    pub(super) fn directory(&self) -> &File {
         &self.directory
     }
 
-    fn as_raw_fd(&self) -> RawFd {
+    pub(super) fn as_raw_fd(&self) -> RawFd {
         self.directory.as_raw_fd()
     }
 }
@@ -143,12 +143,12 @@ impl FileIdentity {
     }
 }
 
-struct DirectoryEntries {
+pub(super) struct DirectoryEntries {
     stream: *mut libc::DIR,
 }
 
 impl DirectoryEntries {
-    fn open(directory_fd: RawFd) -> Result<Self, CheckpointOutboxError> {
+    pub(super) fn open(directory_fd: RawFd) -> Result<Self, CheckpointOutboxError> {
         let dot = c".";
         let descriptor = unsafe {
             libc::openat(
@@ -171,7 +171,7 @@ impl DirectoryEntries {
         Ok(Self { stream })
     }
 
-    fn next_name(&mut self) -> Result<Option<CString>, CheckpointOutboxError> {
+    pub(super) fn next_name(&mut self) -> Result<Option<CString>, CheckpointOutboxError> {
         loop {
             clear_errno();
             let entry = unsafe { libc::readdir(self.stream) };
@@ -312,7 +312,7 @@ fn validate_acknowledged_record(
     Ok(root.join(OsStr::from_bytes(ready_name.to_bytes())))
 }
 
-fn open_record_at(directory_fd: RawFd, name: &CStr) -> io::Result<File> {
+pub(super) fn open_record_at(directory_fd: RawFd, name: &CStr) -> io::Result<File> {
     let descriptor = unsafe {
         libc::openat(
             directory_fd,
@@ -451,7 +451,7 @@ fn validate_record_metadata(metadata: &Metadata) -> Result<(), CheckpointOutboxE
     Ok(())
 }
 
-fn validate_record_file(file: &File) -> Result<Metadata, CheckpointOutboxError> {
+pub(super) fn validate_record_file(file: &File) -> Result<Metadata, CheckpointOutboxError> {
     let metadata = file
         .metadata()
         .map_err(|error| E::from_io("inspect ready record", error))?;
@@ -476,11 +476,15 @@ impl Drop for TemporaryRecord {
     }
 }
 
-fn c_filename(name: &str) -> Result<CString, CheckpointOutboxError> {
+pub(super) fn c_filename(name: &str) -> Result<CString, CheckpointOutboxError> {
     CString::new(name).map_err(|_| CheckpointOutboxError::UnsafeReadyRecord)
 }
 
-fn rename_replace(directory_fd: RawFd, source: &CStr, destination: &CStr) -> io::Result<()> {
+pub(super) fn rename_replace(
+    directory_fd: RawFd,
+    source: &CStr,
+    destination: &CStr,
+) -> io::Result<()> {
     let result = unsafe {
         libc::renameat(
             directory_fd,

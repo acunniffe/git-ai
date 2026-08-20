@@ -9,6 +9,8 @@ mod platform_acl;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 mod unix;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(super) mod unix_consume;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod unix_durability;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(super) use unix::open_private_record_at;
@@ -146,6 +148,7 @@ mod tests {
             path_role: PreparedPathRole::Edited,
             stream_source: None,
             metadata: HashMap::new(),
+            delivery_id: None,
         };
         CheckpointDelivery::from_requests_at(vec![request], 42).remove(0)
     }

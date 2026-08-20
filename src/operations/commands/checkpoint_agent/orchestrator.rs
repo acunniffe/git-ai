@@ -284,6 +284,7 @@ fn split_files_into_requests(
             path_role,
             stream_source: stream_source.clone(),
             metadata: metadata.clone(),
+            delivery_id: None,
         })
         .collect()
 }

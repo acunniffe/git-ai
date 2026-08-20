@@ -180,6 +180,7 @@ mod tests {
                 path_role: PreparedPathRole::Edited,
                 stream_source: None,
                 metadata: HashMap::new(),
+                delivery_id: None,
             }],
             42,
         )
