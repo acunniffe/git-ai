@@ -183,6 +183,7 @@ fn handle_run(args: &[String]) -> Result<(), String> {
     if has_flag(args, "--mode") {
         return Err("--mode is no longer supported; daemon always runs in write mode".to_string());
     }
+    crate::tokio_runtime::configure_daemon_allocator()?;
     let config = daemon_config_from_env_or_default_paths()?;
     let markers = SandboxMarkers::from_env();
     if let Some(marker) = markers.strong_marker_name() {
@@ -198,10 +199,8 @@ fn handle_run(args: &[String]) -> Result<(), String> {
             e
         )
     })?;
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| e.to_string())?;
+    let runtime = crate::tokio_runtime::build_daemon_runtime()?;
+    crate::tokio_runtime::initialize();
     let exit_action = runtime
         .block_on(async move { crate::operations::daemon::run_daemon(config).await })
         .map_err(|e| e.to_string())?;

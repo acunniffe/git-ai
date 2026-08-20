@@ -545,6 +545,14 @@ fn get_checkpoint_entry_for_file(
     parent_note_attributions: Arc<HashMap<String, Vec<LineAttribution>>>,
     ts: u128,
 ) -> Result<Option<(WorkingLogEntry, FileLineStats)>, GitAiError> {
+    // Deterministic blocking work for the TestRepo throughput guard; release builds omit it.
+    #[cfg(feature = "test-support")]
+    if let Some(delay_millis) = std::env::var_os("GIT_AI_TEST_CHECKPOINT_FILE_DELAY_MS")
+        .and_then(|value| value.to_str().and_then(|value| value.parse::<u64>().ok()))
+    {
+        std::thread::sleep(std::time::Duration::from_millis(delay_millis));
+    }
+
     let file_start = Instant::now();
     let initial_attrs_for_file = initial_attributions
         .get(&file_path)
