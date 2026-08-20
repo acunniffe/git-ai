@@ -34,6 +34,9 @@ GIT_AI_BIN="$GIT_AI_BIN_DIR/git-ai"
 /usr/bin/install -d -o "$CONSOLE_USER" -g "$USER_GROUP" -m 0755 "$GIT_AI_BIN_DIR"
 /usr/sbin/chown "$CONSOLE_USER:$USER_GROUP" "$GIT_AI_HOME" "$GIT_AI_BIN_DIR"
 /usr/bin/install -o "$CONSOLE_USER" -g "$USER_GROUP" -m 0755 "$SOURCE_BINARY" "$GIT_AI_BIN"
-/usr/bin/su - "$CONSOLE_USER" -c "\"$GIT_AI_BIN\" install-hooks"
+# --env also adds ~/.git-ai/bin to the user's shell PATH configs. `su -`
+# gives a login environment, so HOME/SHELL are the console user's and any
+# created rc files are owned by them.
+/usr/bin/su - "$CONSOLE_USER" -c "\"$GIT_AI_BIN\" install-hooks --env"
 
 exit 0
