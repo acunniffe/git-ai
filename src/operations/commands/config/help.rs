@@ -44,6 +44,7 @@ pub(super) fn print_config_help() {
     println!("  git-ai config set codex_hooks_format hooks_json");
     println!("  git-ai config set allow_superuser true");
     println!("  git-ai config set transcript_streaming_lookback_days 1");
+    println!("  git-ai config set daemon_memory_limit_mb 1024");
     println!("  git-ai config set custom_attributes '{{\"team\":\"platform\"}}'");
     println!("  git-ai config --add custom_attributes.team platform");
     println!("  git-ai config unset exclude_repositories");

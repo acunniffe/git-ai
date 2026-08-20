@@ -1353,7 +1353,7 @@ fn should_redact_key_value(key: &str, value: &str) -> bool {
 fn collect_git_ai_config_dump() -> Result<String, String> {
     let runtime = config::Config::get();
     let mut out = String::new();
-    let config_path = config::config_file_path_public()
+    let config_path = config::config_file_path()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "<unavailable>".to_string());
     let git_ai_dir = config::git_ai_dir_path()

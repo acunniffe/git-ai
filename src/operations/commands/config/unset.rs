@@ -190,6 +190,13 @@ pub(super) fn unset_config_value(key: &str) -> Result<(), String> {
                     println!("- [max_checkpoint_total_lines]: {}", v);
                 }
             }
+            "daemon_memory_limit_mb" => {
+                let old_value = file_config.daemon_memory_limit_mb.take();
+                crate::config::save_file_config(&file_config)?;
+                if let Some(v) = old_value {
+                    println!("- [daemon_memory_limit_mb]: {}", v);
+                }
+            }
             "custom_attributes" => {
                 let old_value = file_config.custom_attributes.take();
                 crate::config::save_file_config(&file_config)?;

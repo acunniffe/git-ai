@@ -436,6 +436,11 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
 
     let coordinator = Arc::new(coordinator_inner);
     coordinator.start_trace_ingest_worker()?;
+    if let Some(limit_mb) = crate::config::Config::get().daemon_memory_limit_mb()
+        && let Some(limit_bytes) = limit_mb.checked_mul(crate::config::MEBIBYTE_BYTES)
+    {
+        super::memory_watchdog::start(Arc::clone(&coordinator), limit_bytes)?;
+    }
     let rt_handle = tokio::runtime::Handle::current();
     let control_socket_path = config.control_socket_path.clone();
     let trace_socket_path = config.trace_socket_path.clone();
