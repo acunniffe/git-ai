@@ -6,20 +6,26 @@
 //!
 //! 1. A local cache (`~/.git-ai/internal/models_dev_pricing.json`), refreshed
 //!    from models.dev by `git-ai usage` at most once per day (best-effort —
-//!    failures fall through silently).
+//!    failures fall through silently). The cache only ever holds fetched
+//!    data, so machines that can never reach models.dev keep using the
+//!    embedded snapshot of whatever binary they run.
 //! 2. An embedded snapshot (`models_dev_pricing_snapshot.json`) baked into the
 //!    binary at compile time. Regenerate it with:
 //!    `cargo test regenerate_models_dev_pricing_snapshot -- --ignored`
+//!
+//! Within a catalog, a model id is matched by exact id, then by the longest
+//! catalog id at token boundaries, then by family-base fallback (see
+//! [`PricingCatalog::pricing_for`]).
 //!
 //! Tiered pricing (e.g. higher rates above 200k context) is intentionally
 //! ignored: recorded token usage carries no per-request context size, and the
 //! resulting figures are estimates either way.
 
+use crate::utils::{read_json_file, unix_timestamp_now, write_json_file};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
-use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Mutex, OnceLock};
 
 const EMBEDDED_SNAPSHOT: &str = include_str!("models_dev_pricing_snapshot.json");
 const MODELS_DEV_API_URL: &str = "https://models.dev/api.json";
@@ -42,6 +48,13 @@ const PROVIDER_ALLOWLIST: [&str; 8] = [
     "moonshotai",
     "zai",
 ];
+
+/// Family tokens used as a last-resort pricing fallback for model ids the
+/// catalog doesn't know (legacy ids like "claude-3-5-sonnet-20241022" or
+/// successors newer than the catalog like "claude-opus-4-9"). Covers the
+/// model families the supported agents emit.
+const FAMILY_FALLBACK_TOKENS: [&str; 7] =
+    ["opus", "sonnet", "haiku", "fable", "gpt", "gemini", "grok"];
 
 /// Per-million-token pricing for a model (USD). Cache fields default to 0 —
 /// models.dev omits them for models without prompt caching.
@@ -75,11 +88,15 @@ impl PricingCatalog {
         ))
     }
 
-    /// Look up pricing for a model id. Exact (case-insensitive) matches win;
-    /// otherwise the longest catalog id that appears in the model id at token
-    /// boundaries is used, which handles date-suffixed snapshots
-    /// ("claude-sonnet-4-6-20250101") and provider-prefixed ids
-    /// ("us.anthropic.claude-fable-5") without hardcoded family rules.
+    /// Look up pricing for a model id (case-insensitive). Resolution order:
+    ///
+    /// 1. Exact id match.
+    /// 2. Longest catalog id occurring in the model id at token boundaries —
+    ///    covers date-suffixed snapshots ("claude-sonnet-4-6-20250101") and
+    ///    provider-prefixed ids ("us.anthropic.claude-fable-5").
+    /// 3. Family-base fallback: ids the catalog doesn't know at all (legacy
+    ///    or too new) are priced like the base model of their family, so
+    ///    they estimate at family rates instead of silently costing $0.
     pub fn pricing_for(&self, model: &str) -> Option<&ModelPricing> {
         let model = model.to_lowercase();
         if let Some(pricing) = self.entries.get(&model) {
@@ -89,6 +106,21 @@ impl PricingCatalog {
             .iter()
             .filter(|(id, _)| contains_at_token_boundary(&model, id))
             .max_by_key(|(id, _)| id.len())
+            .map(|(_, pricing)| pricing)
+            .or_else(|| self.family_fallback(&model))
+    }
+
+    /// Price an unknown model id like the base model of its family: the
+    /// shortest (tie-broken lexicographically) catalog id sharing a family
+    /// token, e.g. "claude-opus-4-1" → "claude-opus-5" rates.
+    fn family_fallback(&self, model: &str) -> Option<&ModelPricing> {
+        let token = FAMILY_FALLBACK_TOKENS
+            .iter()
+            .find(|token| contains_at_token_boundary(model, token))?;
+        self.entries
+            .iter()
+            .filter(|(id, _)| contains_at_token_boundary(id, token))
+            .min_by_key(|(id, _)| (id.len(), id.as_str()))
             .map(|(_, pricing)| pricing)
     }
 }
@@ -111,18 +143,37 @@ fn contains_at_token_boundary(haystack: &str, needle: &str) -> bool {
 }
 
 /// Look up pricing for a model id in the global catalog (local cache when
-/// present, embedded snapshot otherwise).
+/// present, embedded snapshot otherwise). Memoized per distinct id: misses of
+/// the exact-match fast path scan the catalog linearly, and callers invoke
+/// this once per recorded message.
 pub fn pricing_for(model: &str) -> Option<&'static ModelPricing> {
-    catalog().pricing_for(model)
+    static MEMO: OnceLock<Mutex<HashMap<String, Option<&'static ModelPricing>>>> = OnceLock::new();
+    let memo = MEMO.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(cache) = memo.lock()
+        && let Some(cached) = cache.get(model)
+    {
+        return *cached;
+    }
+    let result = catalog().pricing_for(model);
+    if let Ok(mut cache) = memo.lock() {
+        cache.insert(model.to_string(), result);
+    }
+    result
+}
+
+/// True when the process must not touch the user-level pricing cache: unit
+/// tests run in-process (cfg!(test)) and integration-test subprocesses carry
+/// the codebase-wide GIT_AI_TEST_DB_PATH marker. Both always use the embedded
+/// snapshot so results don't depend on developer-machine state.
+fn use_embedded_only() -> bool {
+    cfg!(test) || std::env::var_os("GIT_AI_TEST_DB_PATH").is_some()
 }
 
 fn catalog() -> &'static PricingCatalog {
     static CATALOG: OnceLock<PricingCatalog> = OnceLock::new();
     CATALOG.get_or_init(|| {
-        // In-process unit tests always use the embedded snapshot so results
-        // don't depend on the developer's local pricing cache.
-        if !cfg!(test)
-            && let Some(cache) = cache_path().and_then(|path| read_cache(&path))
+        if !use_embedded_only()
+            && let Some(cache) = cache_path().and_then(|path| read_json_file::<PricingCache>(&path))
             && !cache.models.is_empty()
         {
             return PricingCatalog::from_entries(cache.models);
@@ -148,59 +199,53 @@ fn cache_path() -> Option<PathBuf> {
     crate::config::internal_dir_path().map(|dir| dir.join(CACHE_FILE_NAME))
 }
 
-fn read_cache(path: &std::path::Path) -> Option<PricingCache> {
-    let bytes = std::fs::read(path).ok()?;
-    serde_json::from_slice(&bytes).ok()
-}
-
-fn write_cache(path: &std::path::Path, cache: &PricingCache) {
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    if let Ok(json) = serde_json::to_vec(cache) {
-        let _ = std::fs::write(path, json);
-    }
-}
-
-fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs()
-}
-
 /// Best-effort refresh of the on-disk pricing cache from models.dev, called
 /// by `git-ai usage` before stats are computed (i.e. before the global
 /// catalog is first read). Skipped in tests and when the last attempt was
-/// less than a day ago; on fetch failure the previous catalog is kept and the
-/// attempt timestamp is still advanced.
+/// less than a day ago.
 pub fn refresh_cache_if_stale() {
-    if std::env::var_os("GIT_AI_TEST_DB_PATH").is_some() {
+    if use_embedded_only() {
         return;
     }
     let Some(path) = cache_path() else {
         return;
     };
-    let now = current_timestamp();
-    let existing = read_cache(&path);
+    let now = unix_timestamp_now();
+    let existing: Option<PricingCache> = read_json_file(&path);
     if let Some(cache) = &existing
-        && now.saturating_sub(cache.last_attempt_at) < REFRESH_INTERVAL_SECS
+        && is_fresh(cache.last_attempt_at, now)
     {
         return;
     }
-    let models = match fetch_and_trim_catalog() {
+    write_json_file(&path, &next_cache(existing, fetch_and_trim_catalog(), now));
+}
+
+/// A refresh attempt at `last_attempt_at` is still fresh at `now` when it
+/// lies within the past refresh interval. Future timestamps (clock skew, a
+/// since-corrected clock) count as stale so a bogus timestamp can't block
+/// refreshes indefinitely.
+fn is_fresh(last_attempt_at: u64, now: u64) -> bool {
+    last_attempt_at <= now && now - last_attempt_at < REFRESH_INTERVAL_SECS
+}
+
+/// Fold a fetch result into the next cache state. On failure the previously
+/// fetched models are kept, but the embedded snapshot is never copied into
+/// the cache: an empty cache keeps falling through to the (possibly newer)
+/// snapshot shipped with the running binary, while the bumped attempt
+/// timestamp still throttles the next fetch.
+fn next_cache(
+    existing: Option<PricingCache>,
+    fetched: Result<BTreeMap<String, ModelPricing>, String>,
+    now: u64,
+) -> PricingCache {
+    let models = match fetched {
         Ok(models) => models,
-        Err(_) => existing
-            .map(|cache| cache.models)
-            .unwrap_or_else(|| embedded_catalog().entries),
+        Err(_) => existing.map(|cache| cache.models).unwrap_or_default(),
     };
-    write_cache(
-        &path,
-        &PricingCache {
-            last_attempt_at: now,
-            models,
-        },
-    );
+    PricingCache {
+        last_attempt_at: now,
+        models,
+    }
 }
 
 fn fetch_and_trim_catalog() -> Result<BTreeMap<String, ModelPricing>, String> {
@@ -302,11 +347,36 @@ mod tests {
     }
 
     #[test]
+    fn lookup_falls_back_to_family_base_pricing() {
+        let catalog = embedded_catalog();
+        // These ids are absent from the catalog (legacy, or newer than the
+        // snapshot) but must estimate at family-base rates rather than $0.
+        // Equality assertions pin the current family base (shortest id).
+        assert_eq!(
+            catalog.pricing_for("claude-3-5-sonnet-20241022"),
+            catalog.pricing_for("claude-sonnet-5"),
+            "legacy sonnet ids price at the sonnet family base"
+        );
+        assert_eq!(
+            catalog.pricing_for("claude-opus-4-1"),
+            catalog.pricing_for("claude-opus-5"),
+            "uncataloged opus ids price at the opus family base"
+        );
+        assert!(
+            catalog.pricing_for("claude-opus-4-9").is_some(),
+            "dash-versioned successors newer than the catalog must not price as $0"
+        );
+        assert!(
+            catalog.pricing_for("gpt-51").is_some(),
+            "unknown gpt-family ids price at the gpt family base"
+        );
+    }
+
+    #[test]
     fn lookup_rejects_non_boundary_substrings_and_unknown_models() {
         let catalog = embedded_catalog();
-        // "gpt-5" appears in both, but not at a token boundary.
+        // "gpt" appears in "somegpt-5", but not at a token boundary.
         assert_eq!(catalog.pricing_for("somegpt-5"), None);
-        assert_eq!(catalog.pricing_for("gpt-51"), None);
         assert_eq!(catalog.pricing_for("totally-unknown-model"), None);
         assert_eq!(catalog.pricing_for(""), None);
     }
@@ -368,10 +438,7 @@ mod tests {
         assert!(trim_catalog(r#"{"anthropic": {"models": {}}}"#).is_err());
     }
 
-    #[test]
-    fn cache_round_trips_through_disk() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join(CACHE_FILE_NAME);
+    fn fetched_models() -> BTreeMap<String, ModelPricing> {
         let mut models = BTreeMap::new();
         models.insert(
             "claude-test-1".to_string(),
@@ -382,26 +449,63 @@ mod tests {
                 cache_write: 12.5,
             },
         );
-        write_cache(
-            &path,
-            &PricingCache {
-                last_attempt_at: 1234567890,
-                models: models.clone(),
-            },
-        );
-
-        let cache = read_cache(&path).unwrap();
-        assert_eq!(cache.last_attempt_at, 1234567890);
-        assert_eq!(cache.models, models);
+        models
     }
 
     #[test]
-    fn read_cache_returns_none_for_missing_or_corrupt_files() {
+    fn refresh_failure_never_copies_embedded_data_into_the_cache() {
+        // First-ever attempt fails: the cache records the attempt but stays
+        // empty, so catalog() keeps using the running binary's snapshot.
+        let cache = next_cache(None, Err("offline".to_string()), 100);
+        assert_eq!(cache.last_attempt_at, 100);
+        assert!(cache.models.is_empty());
+
+        // A later failure keeps previously *fetched* models.
+        let existing = PricingCache {
+            last_attempt_at: 100,
+            models: fetched_models(),
+        };
+        let cache = next_cache(Some(existing), Err("offline".to_string()), 200);
+        assert_eq!(cache.last_attempt_at, 200);
+        assert_eq!(cache.models, fetched_models());
+
+        // Success replaces the models outright.
+        let existing = PricingCache {
+            last_attempt_at: 200,
+            models: BTreeMap::new(),
+        };
+        let cache = next_cache(Some(existing), Ok(fetched_models()), 300);
+        assert_eq!(cache.last_attempt_at, 300);
+        assert_eq!(cache.models, fetched_models());
+    }
+
+    #[test]
+    fn staleness_treats_future_timestamps_as_stale() {
+        let now = 1_000_000_000;
+        assert!(is_fresh(now, now));
+        assert!(is_fresh(now - REFRESH_INTERVAL_SECS + 1, now));
+        assert!(!is_fresh(now - REFRESH_INTERVAL_SECS, now));
+        // A clock that was skewed ahead when the cache was written must not
+        // block refreshes after it is corrected.
+        assert!(!is_fresh(now + 1, now));
+        assert!(!is_fresh(u64::MAX, now));
+    }
+
+    #[test]
+    fn cache_round_trips_through_disk() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(CACHE_FILE_NAME);
-        assert!(read_cache(&path).is_none());
-        std::fs::write(&path, "not json").unwrap();
-        assert!(read_cache(&path).is_none());
+        write_json_file(
+            &path,
+            &PricingCache {
+                last_attempt_at: 1234567890,
+                models: fetched_models(),
+            },
+        );
+
+        let cache: PricingCache = read_json_file(&path).unwrap();
+        assert_eq!(cache.last_attempt_at, 1234567890);
+        assert_eq!(cache.models, fetched_models());
     }
 
     /// Regenerates the embedded snapshot from the live models.dev catalog.

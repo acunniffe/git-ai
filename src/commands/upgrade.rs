@@ -9,7 +9,8 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+#[cfg(windows)]
+use std::time::Duration;
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -135,27 +136,17 @@ fn get_update_check_cache_path() -> Option<PathBuf> {
 }
 
 fn read_update_cache() -> Option<UpdateCache> {
-    let path = get_update_check_cache_path()?;
-    let bytes = fs::read(path).ok()?;
-    serde_json::from_slice(&bytes).ok()
+    crate::utils::read_json_file(&get_update_check_cache_path()?)
 }
 
 fn write_update_cache(cache: &UpdateCache) {
     if let Some(path) = get_update_check_cache_path() {
-        if let Some(parent) = path.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if let Ok(json) = serde_json::to_vec(cache) {
-            let _ = fs::write(path, json);
-        }
+        crate::utils::write_json_file(&path, cache);
     }
 }
 
 fn current_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_else(|_| Duration::from_secs(0))
-        .as_secs()
+    crate::utils::unix_timestamp_now()
 }
 
 #[cfg(windows)]

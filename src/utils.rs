@@ -446,9 +446,74 @@ pub fn unescape_git_path(path: &str) -> String {
     })
 }
 
+/// Current Unix time in seconds.
+pub fn unix_timestamp_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Read and deserialize a JSON file, returning None on any error (missing
+/// file, unreadable, or unparseable). For best-effort local caches.
+pub fn read_json_file<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Option<T> {
+    let bytes = std::fs::read(path).ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+/// Best-effort atomic JSON write for local cache files: serialize, write to a
+/// sibling temp file, then rename over the target so concurrent readers never
+/// observe a partial file. Parent directories are created as needed; failures
+/// are silently ignored.
+pub fn write_json_file<T: serde::Serialize>(path: &std::path::Path, value: &T) {
+    let Ok(json) = serde_json::to_vec(value) else {
+        return;
+    };
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
+    if std::fs::write(&tmp, json).is_ok() && std::fs::rename(&tmp, path).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // =========================================================================
+    // JSON cache file helpers
+    // =========================================================================
+
+    #[test]
+    fn test_json_file_round_trip_and_overwrite() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nested").join("cache.json");
+
+        write_json_file(&path, &serde_json::json!({"a": 1}));
+        assert_eq!(
+            read_json_file::<serde_json::Value>(&path),
+            Some(serde_json::json!({"a": 1})),
+            "write must create parent dirs and round-trip"
+        );
+
+        write_json_file(&path, &serde_json::json!({"a": 2}));
+        assert_eq!(
+            read_json_file::<serde_json::Value>(&path),
+            Some(serde_json::json!({"a": 2})),
+            "write must atomically replace an existing file"
+        );
+    }
+
+    #[test]
+    fn test_read_json_file_none_for_missing_or_corrupt() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cache.json");
+        assert_eq!(read_json_file::<serde_json::Value>(&path), None);
+        std::fs::write(&path, "not json").unwrap();
+        assert_eq!(read_json_file::<serde_json::Value>(&path), None);
+    }
 
     // =========================================================================
     // LockFile Tests
