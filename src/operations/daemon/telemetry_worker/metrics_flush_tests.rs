@@ -361,22 +361,30 @@ fn flush_pending_metric_records_uploads_new_rows_after_old_failure() {
 }
 
 fn session_event_json(ts: u32, repo_url: Option<&str>) -> String {
-    // Attribute position 1 is REPO_URL in the sparse encoding.
-    match repo_url {
-        Some(url) => format!(r#"{{"t":{ts},"e":5,"v":{{}},"a":{{"1":"{url}"}}}}"#),
-        None => format!(r#"{{"t":{ts},"e":5,"v":{{}},"a":{{}}}}"#),
-    }
+    let attrs = repo_url
+        .map(|url| {
+            format!(
+                r#"{{"{}":"{url}"}}"#,
+                crate::metrics::attrs::attr_pos::REPO_URL
+            )
+        })
+        .unwrap_or_else(|| "{}".to_string());
+    format!(
+        r#"{{"t":{ts},"e":{},"v":{{}},"a":{attrs}}}"#,
+        crate::metrics::types::MetricEventId::SessionEvent as u16
+    )
+}
+
+/// Config with the given allow/exclude remote patterns, everything else default.
+fn repo_filter_config(allowed: &[&str], excluded: &[&str]) -> crate::config::Config {
+    crate::config::tests::create_test_config(
+        allowed.iter().map(|p| p.to_string()).collect(),
+        excluded.iter().map(|p| p.to_string()).collect(),
+    )
 }
 
 fn parse_event(json: &str) -> MetricEvent {
     serde_json::from_str(json).unwrap()
-}
-
-fn exclusions(patterns: &[&str]) -> Vec<glob::Pattern> {
-    patterns
-        .iter()
-        .map(|pattern| glob::Pattern::new(pattern).unwrap())
-        .collect()
 }
 
 #[test]
@@ -385,9 +393,12 @@ fn session_event_with_now_excluded_remote_is_skipped() {
         1,
         Some("https://github.com/acme/private"),
     ));
-    let excluded = exclusions(&["https://github.com/acme/private"]);
+    let config = repo_filter_config(
+        &["https://github.com/acme/*"],
+        &["https://github.com/acme/private"],
+    );
 
-    assert!(!should_deliver_metric_event(&event, true, &excluded));
+    assert!(!should_deliver_metric_event(&event, &config));
 }
 
 #[test]
@@ -399,16 +410,20 @@ fn session_event_with_unexcluded_remote_still_delivers() {
         1,
         Some("https://github.com/acme/public"),
     ));
-    let excluded = exclusions(&["https://github.com/acme/private"]);
+    let config = repo_filter_config(
+        &["https://github.com/acme/*"],
+        &["https://github.com/acme/private"],
+    );
 
-    assert!(should_deliver_metric_event(&event, true, &excluded));
+    assert!(should_deliver_metric_event(&event, &config));
 }
 
 #[test]
 fn session_event_without_remote_delivers_while_opted_in() {
     let event = parse_event(&session_event_json(1, None));
 
-    assert!(should_deliver_metric_event(&event, true, &[]));
+    let config = repo_filter_config(&["https://github.com/acme/*"], &[]);
+    assert!(should_deliver_metric_event(&event, &config));
 }
 
 #[test]
@@ -421,15 +436,17 @@ fn session_events_are_skipped_when_the_allowlist_is_emptied() {
     ));
     let without_remote = parse_event(&session_event_json(2, None));
 
-    assert!(!should_deliver_metric_event(&with_remote, false, &[]));
-    assert!(!should_deliver_metric_event(&without_remote, false, &[]));
+    let config = repo_filter_config(&[], &[]);
+    assert!(!should_deliver_metric_event(&with_remote, &config));
+    assert!(!should_deliver_metric_event(&without_remote, &config));
 }
 
 #[test]
 fn non_session_events_deliver_regardless_of_eligibility() {
     let committed = parse_event(&event_json(1));
 
-    assert!(should_deliver_metric_event(&committed, false, &[]));
+    let config = repo_filter_config(&[], &[]);
+    assert!(should_deliver_metric_event(&committed, &config));
 }
 
 #[test]
@@ -445,11 +462,14 @@ fn flush_skips_ineligible_session_events_and_marks_them_delivered() {
         ])
         .unwrap();
 
-    let excluded = exclusions(&["https://github.com/acme/private"]);
+    let config = repo_filter_config(
+        &["https://github.com/acme/*"],
+        &["https://github.com/acme/private"],
+    );
     let uploaded = Rc::new(RefCell::new(Vec::<Vec<u32>>::new()));
     let result = run_flush_with(
         &db,
-        |event| should_deliver_metric_event(event, true, &excluded),
+        |event| should_deliver_metric_event(event, &config),
         {
             let uploaded = Rc::clone(&uploaded);
             move |batch| {

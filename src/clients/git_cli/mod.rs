@@ -264,10 +264,18 @@ pub fn exec_git_with_stdin_writer(
     args: &[String],
     write_stdin: impl FnOnce(&mut dyn std::io::Write) -> std::io::Result<()> + Send,
 ) -> Result<Output, GitAiError> {
-    let effective_args = args_with_internal_git_profile(
-        &args_with_disabled_hooks_if_needed(args),
-        InternalGitProfile::General,
-    );
+    exec_git_with_stdin_writer_and_profile(args, InternalGitProfile::General, write_stdin)
+}
+
+/// Profile-aware variant of [`exec_git_with_stdin_writer`]; the shared
+/// implementation behind every stdin-feeding git execution.
+fn exec_git_with_stdin_writer_and_profile(
+    args: &[String],
+    profile: InternalGitProfile,
+    write_stdin: impl FnOnce(&mut dyn std::io::Write) -> std::io::Result<()> + Send,
+) -> Result<Output, GitAiError> {
+    let effective_args =
+        args_with_internal_git_profile(&args_with_disabled_hooks_if_needed(args), profile);
     let mut child = spawn_git_piped(&effective_args)?;
     let stdin = child.stdin.take().expect("git child stdin is piped");
 
@@ -384,29 +392,7 @@ pub fn exec_git_stdin_with_profile(
     stdin_data: &[u8],
     profile: InternalGitProfile,
 ) -> Result<Output, GitAiError> {
-    // TODO Make sure to handle process signals, etc.
-    let effective_args =
-        args_with_internal_git_profile(&args_with_disabled_hooks_if_needed(args), profile);
-    let (child, stdin_handle) = spawn_git_stdin_piped(&effective_args, stdin_data)?;
-
-    let output = child.wait_with_output().map_err(GitAiError::IoError)?;
-
-    if let Some(handle) = stdin_handle
-        && let Err(e) = handle.join().expect("stdin writer thread panicked")
-        && e.kind() != std::io::ErrorKind::BrokenPipe
-    {
-        return Err(GitAiError::IoError(e));
-    }
-
-    if !output.status.success() {
-        return Err(git_cli_error(
-            output.status.code(),
-            &output.stderr,
-            effective_args,
-        ));
-    }
-
-    Ok(output)
+    exec_git_with_stdin_writer_and_profile(args, profile, |writer| writer.write_all(stdin_data))
 }
 
 #[cfg(test)]

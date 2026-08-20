@@ -17,7 +17,8 @@ pub use note_fanout::{
     fanout_note_pathspec_for_commit, fanout_note_pathspec_for_ref, flat_note_pathspec_for_commit,
     flat_note_pathspec_for_ref, notes_path_for_object,
 };
-use note_fanout::{normalize_note_path, write_note_deletions, write_note_path};
+use note_fanout::{normalize_note_path, write_note_entry};
+pub(in crate::operations::git) use note_fanout::{write_blob_stanza, write_notes_commit_header};
 
 // Modern refspecs without force to enable proper merging
 pub const AI_AUTHORSHIP_REFNAME: &str = "ai";
@@ -329,6 +330,13 @@ fn prepare_notes_batch_write<'a>(
     Ok(Some((existing_notes_tip, deduped_entries, now)))
 }
 
+pub(in crate::operations::git) fn fast_import_args(repo: &Repository) -> Vec<String> {
+    let mut args = repo.global_args_for_exec();
+    args.push("fast-import".to_string());
+    args.push("--quiet".to_string());
+    args
+}
+
 pub(in crate::operations::git) fn notes_add_batch(
     repo: &Repository,
     entries: &[(String, String)],
@@ -339,32 +347,20 @@ pub(in crate::operations::git) fn notes_add_batch(
         return Ok(());
     };
 
-    let mut fast_import_args = repo.global_args_for_exec();
-    fast_import_args.push("fast-import".to_string());
-    fast_import_args.push("--quiet".to_string());
-    exec_git_with_stdin_writer(&fast_import_args, |writer| {
-        for (idx, entry) in deduped_entries.iter().enumerate() {
-            let note_content = &entry.1;
-            writer.write_all(b"blob\n")?;
-            writeln!(writer, "mark :{}", idx + 1)?;
-            writeln!(writer, "data {}", note_content.len())?;
-            writer.write_all(note_content.as_bytes())?;
-            writer.write_all(b"\n")?;
+    exec_git_with_stdin_writer(&fast_import_args(repo), |writer| {
+        for (idx, (_commit_sha, note_content)) in deduped_entries.iter().copied().enumerate() {
+            write_blob_stanza(writer, idx + 1, note_content)?;
         }
 
-        writer.write_all(b"commit refs/notes/ai\n")?;
-        writeln!(writer, "committer git-ai <git-ai@local> {} +0000", now)?;
-        writer.write_all(b"data 0\n")?;
-        if let Some(existing_tip) = existing_notes_tip.as_deref() {
-            writeln!(writer, "from {}", existing_tip)?;
-        }
+        write_notes_commit_header(
+            writer,
+            AI_AUTHORSHIP_FULL_REF,
+            format_args!("git-ai <git-ai@local> {now} +0000"),
+            existing_notes_tip.as_deref(),
+        )?;
 
-        for (idx, entry) in deduped_entries.iter().enumerate() {
-            let commit_sha = &entry.0;
-            write_note_deletions(writer, commit_sha)?;
-            write!(writer, "M 100644 :{} ", idx + 1)?;
-            write_note_path(writer, commit_sha)?;
-            writer.write_all(b"\n")?;
+        for (idx, (commit_sha, _note_content)) in deduped_entries.iter().copied().enumerate() {
+            write_note_entry(writer, commit_sha, format_args!(":{}", idx + 1))?;
         }
         writer.write_all(b"\n")
     })?;
@@ -372,7 +368,7 @@ pub(in crate::operations::git) fn notes_add_batch(
         repo,
         deduped_entries
             .iter()
-            .map(|entry| (entry.0.as_str(), entry.1.as_str())),
+            .map(|(commit_sha, note_content)| (commit_sha.as_str(), note_content.as_str())),
     );
 
     Ok(())
@@ -391,23 +387,16 @@ pub(in crate::operations::git) fn notes_add_blob_batch(
         return Ok(());
     };
 
-    let mut fast_import_args = repo.global_args_for_exec();
-    fast_import_args.push("fast-import".to_string());
-    fast_import_args.push("--quiet".to_string());
-    exec_git_with_stdin_writer(&fast_import_args, |writer| {
-        writer.write_all(b"commit refs/notes/ai\n")?;
-        writeln!(writer, "committer git-ai <git-ai@local> {} +0000", now)?;
-        writer.write_all(b"data 0\n")?;
-        if let Some(existing_tip) = existing_notes_tip.as_deref() {
-            writeln!(writer, "from {}", existing_tip)?;
-        }
+    exec_git_with_stdin_writer(&fast_import_args(repo), |writer| {
+        write_notes_commit_header(
+            writer,
+            AI_AUTHORSHIP_FULL_REF,
+            format_args!("git-ai <git-ai@local> {now} +0000"),
+            existing_notes_tip.as_deref(),
+        )?;
 
-        for entry in &deduped_entries {
-            let (commit_sha, blob_oid) = &**entry;
-            write_note_deletions(writer, commit_sha)?;
-            write!(writer, "M 100644 {} ", blob_oid)?;
-            write_note_path(writer, commit_sha)?;
-            writer.write_all(b"\n")?;
+        for (commit_sha, blob_oid) in deduped_entries.iter().copied() {
+            write_note_entry(writer, commit_sha, format_args!("{blob_oid}"))?;
         }
         writer.write_all(b"\n")
     })?;
@@ -419,7 +408,7 @@ pub(in crate::operations::git) fn notes_add_blob_batch(
         let hook_entries = (|| -> Result<Vec<(String, String)>, GitAiError> {
             let mut unique_blob_oids: Vec<String> = deduped_entries
                 .iter()
-                .map(|entry| entry.1.clone())
+                .map(|(_commit_sha, blob_oid)| blob_oid.clone())
                 .collect::<HashSet<_>>()
                 .into_iter()
                 .collect();
@@ -428,8 +417,7 @@ pub(in crate::operations::git) fn notes_add_blob_batch(
 
             Ok(deduped_entries
                 .iter()
-                .filter_map(|entry| {
-                    let (commit_sha, blob_oid) = &**entry;
+                .filter_map(|(commit_sha, blob_oid)| {
                     blob_contents
                         .get(blob_oid)
                         .map(|note_content| (commit_sha.clone(), note_content.clone()))

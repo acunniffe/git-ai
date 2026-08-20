@@ -14,11 +14,30 @@ pub(crate) const MAX_JSONL_SCAN_BYTES: u64 = 50 * 1024;
 const MAX_JSONL_HEAD_SCAN_BYTES: usize = 1024 * 1024;
 const MAX_JSONL_HEAD_LINES: usize = 20;
 
+/// Scans the tail window newest-line-first, then — only when the file
+/// extended beyond that window — the leading lines. The head pass exists for
+/// formats that record the model once at session start (e.g. Copilot CLI's
+/// `session.model_change`), which falls outside the tail window of long
+/// sessions; for files the tail window covered entirely it would only re-read
+/// the same lines.
+pub(crate) fn scan_jsonl(
+    path: &Path,
+    extract_from_line: fn(&str) -> Option<String>,
+) -> Result<Option<String>, StreamError> {
+    let (value, tail_was_truncated) = scan_jsonl_tail(path, extract_from_line)?;
+    if value.is_some() {
+        return Ok(value);
+    }
+    if tail_was_truncated && let Some(value) = scan_jsonl_head(path, extract_from_line) {
+        return Ok(Some(value));
+    }
+    Ok(None)
+}
+
 /// Scans the trailing `MAX_JSONL_SCAN_BYTES` window, newest line first,
 /// returning the first extracted value plus whether the file extended beyond
-/// the window (callers use the flag to decide whether a head scan is worth
-/// running).
-pub(crate) fn scan_jsonl_tail(
+/// the window.
+fn scan_jsonl_tail(
     path: &Path,
     extract_from_line: fn(&str) -> Option<String>,
 ) -> Result<(Option<String>, bool), StreamError> {
@@ -74,62 +93,22 @@ pub(crate) fn scan_jsonl_tail(
 
 /// Scans up to `MAX_JSONL_HEAD_LINES` leading lines within a
 /// `MAX_JSONL_HEAD_SCAN_BYTES` budget. Lines longer than the tail window are
-/// skipped rather than buffered, so a single oversized record cannot inflate
-/// memory or hide later lines.
-pub(crate) fn scan_jsonl_head(
-    path: &Path,
-    extract_from_line: fn(&str) -> Option<String>,
-) -> Option<String> {
+/// skipped, so a single oversized record cannot hide later lines.
+fn scan_jsonl_head(path: &Path, extract_from_line: fn(&str) -> Option<String>) -> Option<String> {
     let file = File::open(path).ok()?;
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::new(file).take(MAX_JSONL_HEAD_SCAN_BYTES as u64);
     let mut line = Vec::new();
-    let mut line_is_oversized = false;
-    let mut lines_scanned = 0;
-    let mut bytes_scanned = 0;
 
-    while lines_scanned < MAX_JSONL_HEAD_LINES && bytes_scanned < MAX_JSONL_HEAD_SCAN_BYTES {
-        let bytes_remaining = MAX_JSONL_HEAD_SCAN_BYTES - bytes_scanned;
-        let (consumed, reached_newline) = {
-            let buffer = reader.fill_buf().ok()?;
-            if buffer.is_empty() {
-                if !line_is_oversized
-                    && let Ok(line) = std::str::from_utf8(&line)
-                    && let Some(value) = extract_from_line(line)
-                {
-                    return Some(value);
-                }
-                break;
-            }
-
-            let searchable = &buffer[..buffer.len().min(bytes_remaining)];
-            let newline = searchable.iter().position(|byte| *byte == b'\n');
-            let consumed = newline.map_or(searchable.len(), |index| index + 1);
-
-            if !line_is_oversized {
-                if line.len() + consumed <= MAX_JSONL_SCAN_BYTES as usize {
-                    line.extend_from_slice(&searchable[..consumed]);
-                } else {
-                    line.clear();
-                    line_is_oversized = true;
-                }
-            }
-
-            (consumed, newline.is_some())
-        };
-
-        reader.consume(consumed);
-        bytes_scanned += consumed;
-
-        if reached_newline {
-            lines_scanned += 1;
-            if !line_is_oversized
-                && let Ok(line) = std::str::from_utf8(&line)
-                && let Some(value) = extract_from_line(line)
-            {
-                return Some(value);
-            }
-            line.clear();
-            line_is_oversized = false;
+    for _ in 0..MAX_JSONL_HEAD_LINES {
+        line.clear();
+        if reader.read_until(b'\n', &mut line).ok()? == 0 {
+            break;
+        }
+        if line.len() <= MAX_JSONL_SCAN_BYTES as usize
+            && let Ok(line) = std::str::from_utf8(&line)
+            && let Some(value) = extract_from_line(line)
+        {
+            return Some(value);
         }
     }
 

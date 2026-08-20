@@ -3,7 +3,7 @@
 use super::{MetricsDbHandle, TelemetryStores};
 use crate::clients::api::metrics::{MetricsUploadResponse, metrics_upload_allowed};
 use crate::clients::api::{ApiClient, ApiContext};
-use crate::config::{Config, remote_matches_patterns};
+use crate::config::Config;
 use crate::error::GitAiError;
 use crate::metrics::attrs::attr_pos;
 use crate::metrics::pos_encoded::sparse_get_string;
@@ -153,26 +153,16 @@ pub(in crate::operations::daemon) struct PendingMetricsFlushResult {
 /// Delivery-time eligibility recheck for queued telemetry.
 ///
 /// Collection is opt-in per repository, so session events queued while a
-/// repository was eligible must not leak after eligibility is revoked. A
-/// session event carries at most the normalized remote URL, so only
-/// remote-based rules can be re-checked here: an emptied allowlist (opt-in
-/// fully revoked) or a now-excluded remote skips the event, while path-based
-/// eligibility — unverifiable from the event alone — keeps its
-/// ingestion-time decision.
-fn should_deliver_metric_event(
-    event: &MetricEvent,
-    has_allowed_repositories: bool,
-    exclude_repositories: &[glob::Pattern],
-) -> bool {
+/// repository was eligible must not leak after eligibility is revoked. The
+/// policy itself lives on [`Config::revokes_queued_remote_collection`]; this
+/// only scopes it to session events and pulls the remote URL out of the
+/// event's attributes.
+fn should_deliver_metric_event(event: &MetricEvent, config: &Config) -> bool {
     if event.event_id != MetricEventId::SessionEvent as u16 {
         return true;
     }
-    if !has_allowed_repositories {
-        return false;
-    }
-    sparse_get_string(&event.attrs, attr_pos::REPO_URL)
-        .flatten()
-        .is_none_or(|url| !remote_matches_patterns(exclude_repositories, &url))
+    let remote_url = sparse_get_string(&event.attrs, attr_pos::REPO_URL).flatten();
+    !config.revokes_queued_remote_collection(remote_url.as_deref())
 }
 
 fn flush_pending_metrics_from_db(
@@ -190,13 +180,7 @@ fn flush_pending_metrics_from_db(
     let config = Config::fresh();
     flush_pending_metric_records_with(
         |limit| lock_db().and_then(|mut l| l.dequeue_pending_batch(limit)),
-        |event| {
-            should_deliver_metric_event(
-                event,
-                config.has_allowed_repositories(),
-                &config.exclude_repositories,
-            )
-        },
+        |event| should_deliver_metric_event(event, &config),
         |ids| lock_db().and_then(|mut l| l.mark_records_delivered(ids, current_unix_ts())),
         |ids, error| {
             let now = current_unix_ts();

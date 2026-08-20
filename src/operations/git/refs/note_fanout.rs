@@ -66,20 +66,52 @@ pub(super) fn write_note_deletions(
     Ok(())
 }
 
-/// Writes the standard single-level fanout note path for `oid` (the same
-/// shape [`notes_path_for_object`] returns) without allocating a `String`.
-pub(super) fn write_note_path(
+/// Writes one fast-import blob stanza carrying `content` under mark `mark`.
+/// The trailing newline is a fast-import stream separator, not part of the
+/// data.
+pub(in crate::operations::git) fn write_blob_stanza(
     writer: &mut (impl std::io::Write + ?Sized),
-    oid: &str,
+    mark: usize,
+    content: &str,
 ) -> std::io::Result<()> {
-    if oid.len() <= 2 {
-        writer.write_all(oid.as_bytes())
-    } else {
-        let oid = oid.as_bytes();
-        writer.write_all(&oid[..2])?;
-        writer.write_all(b"/")?;
-        writer.write_all(&oid[2..])
+    writer.write_all(b"blob\n")?;
+    writeln!(writer, "mark :{mark}")?;
+    writeln!(writer, "data {}", content.len())?;
+    writer.write_all(content.as_bytes())?;
+    writer.write_all(b"\n")
+}
+
+/// Writes a fast-import commit header for `notes_ref` with an empty message,
+/// starting `from` the given parent when present.
+pub(in crate::operations::git) fn write_notes_commit_header(
+    writer: &mut (impl std::io::Write + ?Sized),
+    notes_ref: &str,
+    committer_line: std::fmt::Arguments<'_>,
+    from: Option<&str>,
+) -> std::io::Result<()> {
+    writeln!(writer, "commit {notes_ref}")?;
+    writeln!(writer, "committer {committer_line}")?;
+    writer.write_all(b"data 0\n")?;
+    if let Some(from) = from {
+        writeln!(writer, "from {from}")?;
     }
+    Ok(())
+}
+
+/// Writes one note replacement: deletions at every legacy fanout depth
+/// followed by an `M 100644 <source> <fanout path>` line, where `source` is
+/// a mark reference or blob OID.
+pub(super) fn write_note_entry(
+    writer: &mut (impl std::io::Write + ?Sized),
+    commit_sha: &str,
+    source: std::fmt::Arguments<'_>,
+) -> std::io::Result<()> {
+    write_note_deletions(writer, commit_sha)?;
+    writeln!(
+        writer,
+        "M 100644 {source} {}",
+        notes_path_for_object(commit_sha)
+    )
 }
 
 #[cfg(test)]
@@ -99,23 +131,6 @@ mod tests {
             String::from_utf8(script).unwrap(),
             "D abcdef\nD ab/cdef\nD ab/cd/ef\n"
         );
-    }
-
-    #[test]
-    fn write_note_path_matches_notes_path_for_object() {
-        for oid in [
-            "a",
-            "ab",
-            "abcdef",
-            "abcdef1234567890abcdef1234567890abcdef12",
-        ] {
-            let mut written = Vec::new();
-            write_note_path(&mut written, oid).unwrap();
-            assert_eq!(
-                String::from_utf8(written).unwrap(),
-                notes_path_for_object(oid)
-            );
-        }
     }
 
     #[test]
