@@ -145,8 +145,8 @@ impl ActorDaemonCoordinator {
                 FamilySequencerEntry::ReadyCommand(Box::new(command)),
             );
         }
-        self.drain_ready_family_sequencer_entries_locked(family)
-            .await
+        drop(_guard);
+        self.schedule_family_drain(family).await
     }
 
     pub(crate) async fn drain_ready_family_sequencer_entries(
@@ -168,20 +168,43 @@ impl ActorDaemonCoordinator {
             })?;
             map.keys().cloned().collect::<Vec<_>>()
         };
-        for family in families {
-            self.drain_ready_family_sequencer_entries(&family).await?;
+        let results = futures::future::join_all(families.into_iter().map(|family| async move {
+            let result = self.drain_ready_family_sequencer_entries(&family).await;
+            (family, result)
+        }))
+        .await;
+        // Surface the first failure only after every family had its drain
+        // pass: one family's error must not starve the others.
+        let mut first_error = None;
+        for (family, result) in results {
+            if let Err(error) = result {
+                tracing::error!(%error, %family, "family drain failed");
+                first_error.get_or_insert(error);
+            }
         }
-        Ok(())
+        first_error.map_or(Ok(()), Err)
     }
 
     pub(crate) async fn drain_ready_family_sequencers_after_root_cleared(
         &self,
         family: Option<String>,
     ) -> Result<(), GitAiError> {
-        if let Some(family) = family {
-            self.drain_ready_family_sequencer_entries(&family).await
-        } else {
-            self.drain_all_ready_family_sequencers().await
+        match family {
+            Some(family) => self.schedule_family_drain(&family).await,
+            None => {
+                let families = {
+                    let map = self.family_sequencers_by_family.lock().map_err(|_| {
+                        PersistenceError::LockPoisoned {
+                            what: "family sequencer map",
+                        }
+                    })?;
+                    map.keys().cloned().collect::<Vec<_>>()
+                };
+                for family in families {
+                    self.schedule_family_drain(&family).await?;
+                }
+                Ok(())
+            }
         }
     }
 
@@ -223,8 +246,8 @@ impl ActorDaemonCoordinator {
                 }
             }
         }
-        self.drain_ready_family_sequencer_entries_locked(&family)
-            .await?;
+        drop(_guard);
+        self.schedule_family_drain(&family).await?;
         Ok(Some(family))
     }
 

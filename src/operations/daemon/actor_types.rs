@@ -177,6 +177,16 @@ pub struct ActorDaemonCoordinator {
         Mutex<HashMap<String, VecDeque<RecentReplayPrerequisite>>>,
     pub(crate) side_effect_errors_by_family: Mutex<HashMap<String, BTreeMap<u64, String>>>,
     pub(crate) side_effect_exec_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
+    /// Weak self-reference set by `register_self` after the coordinator is
+    /// wrapped in its `Arc` (production daemons and full-daemon tests do
+    /// this). Family drains are then scheduled on their own tasks so
+    /// independent families progress concurrently; an unregistered
+    /// coordinator (bare unit-test rigs) falls back to the historical inline
+    /// drain.
+    pub(crate) self_ref: std::sync::OnceLock<std::sync::Weak<ActorDaemonCoordinator>>,
+    /// Coalescing state for scheduled family drains: present = a drain task
+    /// is running for that family; `true` = re-drain requested while running.
+    pub(crate) scheduled_family_drains: Mutex<HashMap<String, bool>>,
     pub(crate) bash_sessions: Mutex<crate::operations::daemon::bash_sessions::BashSessionState>,
     pub(crate) test_completion_log_dir: Option<PathBuf>,
     pub(crate) test_completion_log_lock: Mutex<()>,

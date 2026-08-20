@@ -100,6 +100,8 @@ mod telemetry_worker_tests;
 #[cfg(test)]
 mod tests_coordinator;
 #[cfg(test)]
+mod tests_coordinator_drain;
+#[cfg(test)]
 mod tests_daemon_units;
 #[cfg(test)]
 mod tests_ingress;

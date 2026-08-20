@@ -435,6 +435,7 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
     }
 
     let coordinator = Arc::new(coordinator_inner);
+    coordinator.register_self();
     coordinator.start_trace_ingest_worker()?;
     if let Some(limit_mb) = crate::config::Config::get().daemon_memory_limit_mb()
         && let Some(limit_bytes) = limit_mb.checked_mul(crate::config::MEBIBYTE_BYTES)

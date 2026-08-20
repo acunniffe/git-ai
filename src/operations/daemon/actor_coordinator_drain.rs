@@ -39,8 +39,59 @@ impl ActorDaemonCoordinator {
             );
         }
 
-        self.drain_ready_family_sequencer_entries_locked(family)
-            .await
+        drop(_guard);
+        self.schedule_family_drain(family).await
+    }
+
+    /// Runs a family's drain on its own task so independent families make
+    /// progress concurrently (the per-family exec lock still serializes work
+    /// within a family). Concurrent schedules for the same family coalesce
+    /// into one running task with a re-drain flag. Falls back to draining
+    /// inline when no `Arc` self-reference was registered (bare unit-test
+    /// coordinators), preserving their historical synchronous behavior.
+    pub(crate) async fn schedule_family_drain(&self, family: &str) -> Result<(), GitAiError> {
+        let Some(coordinator) = self.upgraded_self() else {
+            return self.drain_ready_family_sequencer_entries(family).await;
+        };
+
+        {
+            let mut scheduled = self.scheduled_family_drains.lock().map_err(|_| {
+                PersistenceError::LockPoisoned {
+                    what: "scheduled family drains",
+                }
+            })?;
+            if let Some(redrain_requested) = scheduled.get_mut(family) {
+                *redrain_requested = true;
+                return Ok(());
+            }
+            scheduled.insert(family.to_string(), false);
+        }
+
+        let family = family.to_string();
+        tokio::spawn(async move {
+            loop {
+                if let Err(error) = coordinator
+                    .drain_ready_family_sequencer_entries(&family)
+                    .await
+                {
+                    tracing::error!(%error, %family, "scheduled family drain failed");
+                }
+                let mut scheduled = match coordinator.scheduled_family_drains.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                match scheduled.get_mut(&family) {
+                    Some(redrain_requested) if *redrain_requested => {
+                        *redrain_requested = false;
+                    }
+                    _ => {
+                        scheduled.remove(&family);
+                        break;
+                    }
+                }
+            }
+        });
+        Ok(())
     }
 
     pub(crate) async fn drain_ready_family_sequencer_entries_locked(
