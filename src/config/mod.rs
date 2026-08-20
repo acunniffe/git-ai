@@ -29,7 +29,7 @@ pub use author::AuthorConfig;
 #[cfg(any(test, feature = "test-support"))]
 pub use file::ConfigPatch;
 pub use file::{
-    CodexHooksFormat, FileConfig, UpdateChannel, config_file_path_public, is_real_git_candidate,
+    CodexHooksFormat, FileConfig, UpdateChannel, config_file_path, is_real_git_candidate,
     load_file_config_public, save_file_config,
 };
 pub use notes_backend::{NotesBackendConfig, NotesBackendKind};
@@ -45,6 +45,8 @@ pub const DEFAULT_API_BASE_URL: &str = "https://usegitai.com";
 pub const DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES: usize = 3 * 1024 * 1024;
 pub const DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES: usize = 32 * 1024 * 1024;
 pub const DEFAULT_MAX_CHECKPOINT_TOTAL_LINES: usize = 500_000;
+pub(crate) const MEBIBYTE_BYTES: u64 = 1024 * 1024;
+pub(crate) const MAX_DAEMON_MEMORY_LIMIT_MB: u64 = u64::MAX / MEBIBYTE_BYTES;
 
 #[derive(Serialize)]
 pub struct Config {
@@ -80,6 +82,7 @@ pub struct Config {
     pub(crate) max_checkpoint_file_size_bytes: usize,
     pub(crate) max_checkpoint_total_size_bytes: usize,
     pub(crate) max_checkpoint_total_lines: usize,
+    pub(crate) daemon_memory_limit_mb: Option<u64>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -110,13 +113,6 @@ struct CachedAuthorConfig {
 static AUTHOR_CONFIG_CACHE: OnceLock<Mutex<Option<CachedAuthorConfig>>> = OnceLock::new();
 
 impl Config {
-    /// Initialize the global configuration exactly once.
-    /// Safe to call multiple times; subsequent calls are no-ops.
-    #[allow(dead_code)]
-    pub fn init() {
-        let _ = CONFIG.get_or_init(build_config);
-    }
-
     /// Access the global configuration. Lazily initializes if not already initialized.
     pub fn get() -> &'static Config {
         CONFIG.get_or_init(build_config)
@@ -438,6 +434,11 @@ impl Config {
     /// Returns the total line budget for content in one checkpoint request.
     pub fn max_checkpoint_total_lines(&self) -> usize {
         self.max_checkpoint_total_lines
+    }
+
+    /// Returns the daemon peak-RSS limit in MiB, or `None` when disabled.
+    pub fn daemon_memory_limit_mb(&self) -> Option<u64> {
+        self.daemon_memory_limit_mb
     }
 
     /// Returns true if quiet mode is enabled (suppresses chart output after commits)

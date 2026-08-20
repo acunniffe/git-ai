@@ -238,6 +238,24 @@ pub(super) fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result
                 crate::config::save_file_config(&file_config)?;
                 println!("[max_checkpoint_total_lines]: {}", lines);
             }
+            "daemon_memory_limit_mb" => {
+                let limit_mb = value.trim().parse::<u64>().map_err(|_| {
+                    format!(
+                        "Invalid daemon_memory_limit_mb value '{}'. Expected a positive integer in MiB",
+                        value
+                    )
+                })?;
+                if limit_mb == 0 || limit_mb > crate::config::MAX_DAEMON_MEMORY_LIMIT_MB {
+                    return Err(format!(
+                        "Invalid daemon_memory_limit_mb value '{}'. Expected an integer between 1 and {} MiB",
+                        value,
+                        crate::config::MAX_DAEMON_MEMORY_LIMIT_MB
+                    ));
+                }
+                file_config.daemon_memory_limit_mb = Some(limit_mb);
+                crate::config::save_file_config(&file_config)?;
+                println!("[daemon_memory_limit_mb]: {}", limit_mb);
+            }
             "custom_attributes" => {
                 if add_mode {
                     return Err("Cannot use --add with custom_attributes at top level. Use dot notation: custom_attributes.key".to_string());

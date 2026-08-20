@@ -18,6 +18,13 @@ pub(super) const DAEMON_LOG_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1
 
 static DAEMON_LOG_UPLOAD_IN_FLIGHT: std::sync::OnceLock<Arc<AtomicBool>> =
     std::sync::OnceLock::new();
+static DAEMON_RUN_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// A stable id for this daemon process, shared by the periodic telemetry
+/// worker and the emergency upload path so their events correlate.
+pub(super) fn daemon_run_id() -> &'static str {
+    DAEMON_RUN_ID.get_or_init(crate::uuid::generate_v4).as_str()
+}
 
 struct DaemonLogUploadInFlightGuard {
     in_flight: Arc<AtomicBool>,
@@ -143,6 +150,58 @@ fn flush_daemon_logs(events: Vec<DaemonLogEvent>, daemon_id: &str, install_id: &
     upload_daemon_log_chunk(events, daemon_id, install_id, |request| {
         client.upload_daemon_logs(request).map(|_| ())
     })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EmergencyLogUploadStatus {
+    Completed,
+    TimedOut,
+    ThreadUnavailable,
+}
+
+/// Give one emergency diagnostic a bounded chance to reach the log endpoint.
+///
+/// Normal daemon-log delivery is deliberately fire-and-forget. Memory-limit
+/// shutdown cannot rely on that worker surviving process exit, so this path
+/// waits briefly for its own upload without allowing a stuck network request
+/// to keep an unhealthy daemon alive.
+pub(crate) fn upload_emergency_daemon_log(
+    event: DaemonLogEvent,
+    timeout: std::time::Duration,
+) -> EmergencyLogUploadStatus {
+    upload_emergency_daemon_log_with(event, timeout, |event| {
+        let install_id = crate::config::get_or_create_distinct_id();
+        let _ = flush_daemon_logs(vec![event], daemon_run_id(), &install_id);
+    })
+}
+
+pub(super) fn upload_emergency_daemon_log_with<Upload>(
+    event: DaemonLogEvent,
+    timeout: std::time::Duration,
+    upload: Upload,
+) -> EmergencyLogUploadStatus
+where
+    Upload: FnOnce(DaemonLogEvent) + Send + 'static,
+{
+    let (completion_tx, completion_rx) = std::sync::mpsc::sync_channel(0);
+    let spawn_result = std::thread::Builder::new()
+        .name("git-ai-emergency-log-upload".to_string())
+        .spawn(move || {
+            upload(event);
+            let _ = completion_tx.send(());
+        });
+
+    if spawn_result.is_err() {
+        return EmergencyLogUploadStatus::ThreadUnavailable;
+    }
+
+    match completion_rx.recv_timeout(timeout) {
+        Ok(()) => EmergencyLogUploadStatus::Completed,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => EmergencyLogUploadStatus::TimedOut,
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            EmergencyLogUploadStatus::ThreadUnavailable
+        }
+    }
 }
 
 pub(super) fn upload_daemon_log_chunk<Upload>(

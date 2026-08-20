@@ -43,6 +43,7 @@ pub(crate) mod daemon_config;
 pub(crate) mod git_op_side_effects;
 pub(crate) mod lifecycle;
 pub(crate) mod log_setup;
+pub(crate) mod memory_watchdog;
 pub(crate) mod parent_diff_batch;
 pub(crate) mod revert_rebase_helpers;
 pub(crate) mod self_check;

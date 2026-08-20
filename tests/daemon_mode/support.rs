@@ -24,6 +24,9 @@ mod trace_listener;
 #[path = "load.rs"]
 mod load;
 
+#[path = "memory_watchdog.rs"]
+mod memory_watchdog;
+
 use git_ai::config::{NotesBackendConfig, NotesBackendKind};
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use git_ai::model::checkpoint_delivery::CHECKPOINT_DELIVERY_SCHEMA_VERSION;
@@ -643,6 +646,7 @@ struct DaemonGuard {
     control_socket_path: PathBuf,
     trace_socket_path: PathBuf,
     repo_working_dir: String,
+    stderr_log_path: PathBuf,
 }
 
 impl DaemonGuard {
@@ -654,6 +658,14 @@ impl DaemonGuard {
         let daemon_home = repo.daemon_home_path();
         let control_socket_path = daemon_control_socket_path(repo);
         let trace_socket_path = daemon_trace_socket_path(repo);
+        let stderr_log_path = daemon_home.join("daemon-guard.stderr.log");
+        fs::create_dir_all(&daemon_home).expect("failed to create daemon test home");
+        let stderr_log = fs::OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&stderr_log_path)
+            .expect("failed to create daemon stderr log");
         let mut command = Command::new(get_binary_path());
         command
             .arg("bg")
@@ -662,7 +674,11 @@ impl DaemonGuard {
             .env("GIT_AI_TEST_DB_PATH", repo.test_db_path())
             .env("GITAI_TEST_DB_PATH", repo.test_db_path())
             .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            .stderr(
+                stderr_log
+                    .try_clone()
+                    .expect("failed to clone daemon stderr log"),
+            );
         for (key, value) in extra_env {
             command.env(key, value);
         }
@@ -685,6 +701,7 @@ impl DaemonGuard {
                 control_socket_path: control_socket_path.clone(),
                 trace_socket_path: trace_socket_path.clone(),
                 repo_working_dir: repo_workdir_string(repo),
+                stderr_log_path: stderr_log_path.clone(),
             };
             match daemon.wait_until_ready() {
                 Ok(()) => return daemon,
@@ -772,6 +789,10 @@ impl DaemonGuard {
 
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+
+    fn stderr_contents(&self) -> String {
+        fs::read_to_string(&self.stderr_log_path).unwrap_or_default()
     }
 }
 

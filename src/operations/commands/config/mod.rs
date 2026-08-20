@@ -58,6 +58,7 @@ pub fn handle_config(args: &[String]) {
             if key == "feature_flags.transcript_streaming"
                 || key == "feature_flags.transcript_sweep"
                 || key == "transcript_streaming_lookback_days"
+                || key == "daemon_memory_limit_mb"
             {
                 println!("Run `git-ai bg restart` for changes to take effect.");
             }
@@ -72,6 +73,9 @@ pub fn handle_config(args: &[String]) {
             if let Err(e) = unset_config_value(key) {
                 eprintln!("Error: {}", e);
                 std::process::exit(1);
+            }
+            if key == "daemon_memory_limit_mb" {
+                println!("Run `git-ai bg restart` for changes to take effect.");
             }
         }
         key => {

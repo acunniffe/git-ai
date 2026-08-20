@@ -152,6 +152,13 @@ pub(super) fn show_all_config() -> Result<(), String> {
         "max_checkpoint_total_lines".to_string(),
         Value::Number(runtime_config.max_checkpoint_total_lines().into()),
     );
+    effective_config.insert(
+        "daemon_memory_limit_mb".to_string(),
+        runtime_config
+            .daemon_memory_limit_mb()
+            .map(|limit| Value::Number(limit.into()))
+            .unwrap_or(Value::Null),
+    );
 
     effective_config.insert(
         "custom_attributes".to_string(),
@@ -297,6 +304,10 @@ pub(super) fn get_config_value(key: &str) -> Result<(), String> {
             "max_checkpoint_total_lines" => {
                 Value::Number(runtime_config.max_checkpoint_total_lines().into())
             }
+            "daemon_memory_limit_mb" => runtime_config
+                .daemon_memory_limit_mb()
+                .map(|limit| Value::Number(limit.into()))
+                .unwrap_or(Value::Null),
             "custom_attributes" => serde_json::to_value(runtime_config.custom_attributes())
                 .unwrap_or_else(|_| Value::Object(serde_json::Map::new())),
             "notes_backend" => {

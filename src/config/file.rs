@@ -15,6 +15,7 @@ use super::notes_backend::{NotesBackendConfig, NotesBackendKind};
 use super::{
     Config, DEFAULT_API_BASE_URL, DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
     DEFAULT_MAX_CHECKPOINT_TOTAL_LINES, DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
+    MAX_DAEMON_MEMORY_LIMIT_MB,
 };
 
 #[cfg(any(test, feature = "test-support"))]
@@ -148,6 +149,8 @@ pub struct FileConfig {
     pub max_checkpoint_total_size_bytes: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_checkpoint_total_lines: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub daemon_memory_limit_mb: Option<u64>,
 }
 
 /// Serializable config patch for test overrides
@@ -193,11 +196,12 @@ pub struct ConfigPatch {
     pub max_checkpoint_total_size_bytes: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_checkpoint_total_lines: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub daemon_memory_limit_mb: Option<u64>,
 }
 
 pub(crate) fn load_file_config() -> Option<FileConfig> {
-    let path = config_file_path()?;
-    let data = fs::read(&path).ok()?;
+    let data = fs::read(config_file_path()?).ok()?;
     parse_file_config_bytes(&data).ok()
 }
 
@@ -225,18 +229,11 @@ pub(crate) fn strip_utf8_bom(data: &[u8]) -> &[u8] {
 }
 
 pub(crate) fn parse_file_config_bytes(data: &[u8]) -> Result<FileConfig, serde_json::Error> {
-    let data = strip_utf8_bom(data);
-    serde_json::from_slice::<FileConfig>(data)
+    serde_json::from_slice::<FileConfig>(strip_utf8_bom(data))
 }
 
-pub(crate) fn config_file_path() -> Option<PathBuf> {
+pub fn config_file_path() -> Option<PathBuf> {
     Some(home_dir().join(".git-ai").join("config.json"))
-}
-
-/// Public accessor for config file path
-#[allow(dead_code)]
-pub fn config_file_path_public() -> Option<PathBuf> {
-    config_file_path()
 }
 
 /// Load the raw file config
@@ -506,6 +503,11 @@ pub(crate) fn build_config() -> Config {
         DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
     );
 
+    let daemon_memory_limit_mb = file_cfg
+        .as_ref()
+        .and_then(|c| c.daemon_memory_limit_mb)
+        .and_then(normalize_daemon_memory_limit_mb);
+
     let config = Config {
         git_path,
         exclude_prompts_in_repositories,
@@ -534,6 +536,7 @@ pub(crate) fn build_config() -> Config {
         max_checkpoint_file_size_bytes,
         max_checkpoint_total_size_bytes,
         max_checkpoint_total_lines,
+        daemon_memory_limit_mb,
     };
 
     #[cfg(any(test, feature = "test-support"))]
@@ -913,5 +916,18 @@ pub(crate) fn apply_test_config_patch(config: &mut Config) {
         if let Some(max_lines) = patch.max_checkpoint_total_lines {
             config.max_checkpoint_total_lines = max_lines;
         }
+        if let Some(limit_mb) = patch.daemon_memory_limit_mb {
+            config.daemon_memory_limit_mb = normalize_daemon_memory_limit_mb(limit_mb);
+        }
     }
+}
+
+fn normalize_daemon_memory_limit_mb(limit_mb: u64) -> Option<u64> {
+    if limit_mb == 0 || limit_mb > MAX_DAEMON_MEMORY_LIMIT_MB {
+        eprintln!(
+            "Warning: daemon_memory_limit_mb must be between 1 and {MAX_DAEMON_MEMORY_LIMIT_MB} MiB; memory monitoring is disabled"
+        );
+        return None;
+    }
+    Some(limit_mb)
 }

@@ -59,6 +59,7 @@ pub(crate) fn create_test_config(
         max_checkpoint_file_size_bytes: DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
         max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
         max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+        daemon_memory_limit_mb: None,
     }
 }
 
@@ -365,36 +366,11 @@ fn test_remote_pattern_matching_handles_azure_https_and_ssh_shape_difference() {
 
 fn create_test_config_with_exclude_prompts(exclude_prompts_patterns: Vec<String>) -> Config {
     Config {
-        git_path: "/usr/bin/git".to_string(),
         exclude_prompts_in_repositories: exclude_prompts_patterns
             .into_iter()
             .filter_map(|s| Pattern::new(&s).ok())
             .collect(),
-        include_prompts_in_repositories: vec![],
-        allowed_repositories: vec![],
-        exclude_repositories: vec![],
-        telemetry_enabled: false,
-        telemetry_oss_disabled: false,
-        telemetry_enterprise_dsn: None,
-        disable_version_checks: false,
-        disable_auto_updates: false,
-        update_channel: UpdateChannel::Latest,
-        feature_flags: FeatureFlags::default(),
-        api_base_url: DEFAULT_API_BASE_URL.to_string(),
-        prompt_storage: "default".to_string(),
-        default_prompt_storage: None,
-        api_key: None,
-        quiet: false,
-        allow_superuser: false,
-        author: AuthorConfig::default(),
-        custom_attributes: HashMap::new(),
-        git_ai_hooks: HashMap::new(),
-        codex_hooks_format: CodexHooksFormat::ConfigToml,
-        notes_backend: NotesBackendConfig::default(),
-        transcript_streaming_lookback_days: Some(7),
-        max_checkpoint_file_size_bytes: DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
-        max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
-        max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+        ..create_test_config(vec![], vec![])
     }
 }
 
@@ -499,7 +475,6 @@ fn create_test_config_with_include_prompts(
     default_prompt_storage: Option<&str>,
 ) -> Config {
     Config {
-        git_path: "/usr/bin/git".to_string(),
         exclude_prompts_in_repositories: exclude_patterns
             .into_iter()
             .filter_map(|s| Pattern::new(&s).ok())
@@ -508,30 +483,9 @@ fn create_test_config_with_include_prompts(
             .into_iter()
             .filter_map(|s| Pattern::new(&s).ok())
             .collect(),
-        allowed_repositories: vec![],
-        exclude_repositories: vec![],
-        telemetry_enabled: false,
-        telemetry_oss_disabled: false,
-        telemetry_enterprise_dsn: None,
-        disable_version_checks: false,
-        disable_auto_updates: false,
-        update_channel: UpdateChannel::Latest,
-        feature_flags: FeatureFlags::default(),
-        api_base_url: DEFAULT_API_BASE_URL.to_string(),
         prompt_storage: prompt_storage.to_string(),
         default_prompt_storage: default_prompt_storage.map(|s| s.to_string()),
-        api_key: None,
-        quiet: false,
-        allow_superuser: false,
-        author: AuthorConfig::default(),
-        custom_attributes: HashMap::new(),
-        git_ai_hooks: HashMap::new(),
-        codex_hooks_format: CodexHooksFormat::ConfigToml,
-        notes_backend: NotesBackendConfig::default(),
-        transcript_streaming_lookback_days: Some(7),
-        max_checkpoint_file_size_bytes: DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
-        max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
-        max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+        ..create_test_config(vec![], vec![])
     }
 }
 

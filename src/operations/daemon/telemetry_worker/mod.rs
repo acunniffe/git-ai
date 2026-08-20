@@ -24,8 +24,9 @@ use tokio::time::{Duration, Instant, sleep_until};
 use cas_flush::flush_cas;
 use daemon_log_upload::{
     DAEMON_LOG_HEARTBEAT_INTERVAL, daemon_heartbeat_event, daemon_log_upload_enabled,
-    dispatch_daemon_log_upload,
+    daemon_run_id, dispatch_daemon_log_upload,
 };
+pub(crate) use daemon_log_upload::{EmergencyLogUploadStatus, upload_emergency_daemon_log};
 use metrics_flush::{
     METRICS_UPLOAD_AVAILABLE, count_pending_metrics_for_await, flush_metrics,
     flush_pending_metrics, metrics_store, spawn_metrics_metadata_backfill,
@@ -334,7 +335,7 @@ pub fn spawn_telemetry_worker(stores: TelemetryStores) -> DaemonTelemetryWorkerH
         flush_tx,
         stores: Some(stores),
     };
-    let daemon_id = crate::uuid::generate_v4();
+    let daemon_id = daemon_run_id().to_string();
 
     spawn_metrics_metadata_backfill(stores);
 

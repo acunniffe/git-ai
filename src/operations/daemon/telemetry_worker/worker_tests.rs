@@ -158,3 +158,42 @@ fn telemetry_buffer_requeues_failed_daemon_logs_without_dropping_newer_events() 
         "new-2"
     );
 }
+
+#[test]
+fn emergency_daemon_log_upload_waits_for_completion() {
+    let (uploaded_tx, uploaded_rx) = std::sync::mpsc::channel();
+
+    let status = daemon_log_upload::upload_emergency_daemon_log_with(
+        sample_daemon_log_event("memory emergency"),
+        std::time::Duration::from_secs(1),
+        move |event| uploaded_tx.send(event.message).unwrap(),
+    );
+
+    assert_eq!(status, EmergencyLogUploadStatus::Completed);
+    assert_eq!(uploaded_rx.recv().unwrap(), "memory emergency");
+}
+
+#[test]
+fn emergency_daemon_log_upload_reuses_the_daemon_run_id() {
+    let run_id = daemon_run_id().to_string();
+
+    assert_eq!(daemon_run_id(), run_id);
+}
+
+#[test]
+fn emergency_daemon_log_upload_has_a_hard_wait_bound() {
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let started_at = std::time::Instant::now();
+
+    let status = daemon_log_upload::upload_emergency_daemon_log_with(
+        sample_daemon_log_event("memory emergency"),
+        std::time::Duration::from_millis(10),
+        move |_event| {
+            let _ = release_rx.recv_timeout(std::time::Duration::from_secs(1));
+        },
+    );
+
+    assert_eq!(status, EmergencyLogUploadStatus::TimedOut);
+    assert!(started_at.elapsed() < std::time::Duration::from_millis(500));
+    release_tx.send(()).unwrap();
+}

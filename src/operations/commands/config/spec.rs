@@ -316,6 +316,16 @@ const CONFIG_KEY_SPECS: &[ConfigKeySpec] = &[
         show_in_help: true,
     },
     ConfigKeySpec {
+        name: "daemon_memory_limit_mb",
+        aliases: NO_ALIASES,
+        value_kind: ConfigValueKind::Integer,
+        sensitive: false,
+        nesting: ConfigNesting::None,
+        mutation: ConfigMutation::Replace,
+        help: "daemon_memory_limit_mb              Daemon peak-RSS limit in MiB",
+        show_in_help: true,
+    },
+    ConfigKeySpec {
         name: "custom_attributes",
         aliases: NO_ALIASES,
         value_kind: ConfigValueKind::Object,
