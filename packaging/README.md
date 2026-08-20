@@ -38,5 +38,5 @@ These values configure only the installing user's Git AI config. They are
 hidden from MSI logs, but command-line arguments can still be visible to local
 process inspection and shell history. Use your endpoint-management secret
 mechanism when available. When WSL installation is enabled, the API values are
-also forwarded to each Linux installer and can be visible in local process
-inspection while `wsl.exe` is running.
+also forwarded to each Linux installer through the `wsl.exe` child environment
+and `WSLENV`; they are not added to the WSL process command line.
