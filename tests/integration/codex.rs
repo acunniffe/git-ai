@@ -872,6 +872,10 @@ fn test_codex_e2e_model_falls_back_to_config() {
         .replace("\"model\":\"gpt-5-codex\"", "\"model\":null");
     fs::write(&transcript_path, transcript).unwrap();
 
+    let patch = format!(
+        "*** Update File: {}\n@@ fn old() {{}}\n+fn configured_model() {{}}\n",
+        file_path.to_string_lossy()
+    );
     checkpoint_codex(
         &repo,
         CodexHookInput::pre_file_edit(
@@ -880,10 +884,7 @@ fn test_codex_e2e_model_falls_back_to_config() {
             "patch-config-model-1",
             &file_path,
         )
-        .with_patch(format!(
-            "*** Update File: {}\n@@ fn old() {{}}\n+fn configured_model() {{}}\n",
-            file_path.to_string_lossy()
-        ))
+        .with_patch(patch.clone())
         .with_transcript_path(&transcript_path),
     );
 
@@ -897,10 +898,7 @@ fn test_codex_e2e_model_falls_back_to_config() {
             "patch-config-model-1",
             &file_path,
         )
-        .with_patch(format!(
-            "*** Update File: {}\n@@ fn old() {{}}\n+fn configured_model() {{}}\n",
-            file_path.to_string_lossy()
-        ))
+        .with_patch(patch)
         .with_transcript_path(&transcript_path),
     );
 

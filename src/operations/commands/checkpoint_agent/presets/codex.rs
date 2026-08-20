@@ -109,19 +109,8 @@ impl AgentPreset for CodexPreset {
         }
 
         let model = parse::optional_str(&data, "model")
-            .map(str::to_string)
-            .or_else(|| {
-                transcript_path.as_ref().and_then(|tp| {
-                    crate::operations::streams::model_extraction::extract_model(
-                        Path::new(tp),
-                        crate::operations::streams::sweep::StreamFormat::CodexJsonl,
-                        None,
-                    )
-                    .ok()
-                    .flatten()
-                })
-            })
-            .unwrap_or_else(|| "unknown".to_string());
+            .unwrap_or("unknown")
+            .to_string();
 
         let context = PresetContext {
             agent_id: AgentId {
@@ -216,24 +205,42 @@ impl AgentPreset for CodexPreset {
             let Some(context) = event.preset_context_mut() else {
                 continue;
             };
-            if context.metadata.contains_key("transcript_path") {
-                continue;
+            let discovered_source = if context.metadata.contains_key("transcript_path") {
+                None
+            } else {
+                Self::discover_transcript_path(&context.external_session_id).map(|path| {
+                    context.metadata.insert(
+                        "transcript_path".to_string(),
+                        path.to_string_lossy().into_owned(),
+                    );
+                    StreamSource {
+                        path,
+                        format: StreamFormat::CodexJsonl,
+                        session_id: generate_session_id(&context.external_session_id, "codex"),
+                        external_session_id: context.external_session_id.clone(),
+                        external_parent_session_id: None,
+                    }
+                })
+            };
+
+            // Hooks may omit the model; resolve it from bounded local evidence
+            // only after authorization, like every other preset.
+            if context.agent_id.model == "unknown"
+                && let Some(path) = context.metadata.get("transcript_path")
+                && let Some(model) = crate::operations::streams::model_extraction::extract_model(
+                    Path::new(path),
+                    crate::operations::streams::sweep::StreamFormat::CodexJsonl,
+                    None,
+                )
+                .ok()
+                .flatten()
+            {
+                context.agent_id.model = model;
             }
-            let Some(path) = Self::discover_transcript_path(&context.external_session_id) else {
-                continue;
-            };
-            context.metadata.insert(
-                "transcript_path".to_string(),
-                path.to_string_lossy().into_owned(),
-            );
-            let source = StreamSource {
-                path,
-                format: StreamFormat::CodexJsonl,
-                session_id: generate_session_id(&context.external_session_id, "codex"),
-                external_session_id: context.external_session_id.clone(),
-                external_parent_session_id: None,
-            };
-            event.set_post_stream_source(source);
+
+            if let Some(source) = discovered_source {
+                event.set_post_stream_source(source);
+            }
         }
 
         Ok(())
@@ -325,7 +332,19 @@ mod tests {
         })
         .to_string();
 
-        let events = CodexPreset.parse(&input, "t_test123456789a").unwrap();
+        // parse() must not read the transcript — the model stays unknown until
+        // authorized enrichment resolves it.
+        let mut events = CodexPreset.parse(&input, "t_test123456789a").unwrap();
+        match &events[0] {
+            ParsedHookEvent::PostBashCall(e) => {
+                assert_eq!(e.context.agent_id.model, "unknown");
+            }
+            _ => panic!("Expected PostBashCall"),
+        }
+
+        CodexPreset
+            .enrich_authorized_events(&input, &mut events)
+            .unwrap();
         match &events[0] {
             ParsedHookEvent::PostBashCall(e) => {
                 assert_eq!(e.context.agent_id.model, "gpt-5.3-codex");

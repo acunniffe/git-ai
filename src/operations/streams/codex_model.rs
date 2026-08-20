@@ -7,7 +7,7 @@
 //! profile's model before the root `model` key.
 
 use crate::model::stream_types::StreamError;
-use crate::operations::streams::jsonl_scan::{scan_jsonl_head, scan_jsonl_tail};
+use crate::operations::streams::jsonl_scan::scan_jsonl;
 use crate::operations::streams::model_extraction::normalize_model;
 use std::fs::File;
 use std::io::Read;
@@ -16,12 +16,7 @@ use std::path::{Path, PathBuf};
 const MAX_CODEX_CONFIG_BYTES: u64 = 1024 * 1024;
 
 pub(crate) fn extract_model_from_codex_jsonl(path: &Path) -> Result<Option<String>, StreamError> {
-    let (model, _) = scan_jsonl_tail(path, extract_model_from_codex_jsonl_line)?;
-    if model.is_some() {
-        return Ok(model);
-    }
-
-    if let Some(model) = scan_jsonl_head(path, extract_model_from_codex_jsonl_line) {
+    if let Some(model) = scan_jsonl(path, extract_model_from_codex_jsonl_line)? {
         return Ok(Some(model));
     }
 
@@ -38,17 +33,9 @@ fn extract_model_from_codex_jsonl_line(line: &str) -> Option<String> {
     }
 
     let payload = json.get("payload")?;
-    string_candidate(payload.get("model"))
-        .or_else(|| string_candidate(payload.get("model_id")))
-        .or_else(|| string_candidate(payload.get("modelId")))
-}
-
-fn string_candidate(value: Option<&serde_json::Value>) -> Option<String> {
-    normalize_model(value?.as_str()?)
-}
-
-fn toml_string_candidate(value: Option<&toml::Value>) -> Option<String> {
-    normalize_model(value?.as_str()?)
+    ["model", "model_id", "modelId"]
+        .iter()
+        .find_map(|key| normalize_model(payload.get(key)?.as_str()?))
 }
 
 fn extract_model_from_codex_config(path: &Path) -> Option<String> {
@@ -67,9 +54,16 @@ fn extract_model_from_codex_config(path: &Path) -> Option<String> {
     config
         .get("profile")
         .and_then(toml::Value::as_str)
-        .and_then(|profile| config.get("profiles")?.get(profile)?.get("model"))
-        .and_then(|model| toml_string_candidate(Some(model)))
-        .or_else(|| toml_string_candidate(config.get("model")))
+        .and_then(|profile| {
+            normalize_model(
+                config
+                    .get("profiles")?
+                    .get(profile)?
+                    .get("model")?
+                    .as_str()?,
+            )
+        })
+        .or_else(|| normalize_model(config.get("model")?.as_str()?))
 }
 
 fn codex_home_from_transcript_path(path: &Path) -> Option<PathBuf> {
@@ -101,21 +95,31 @@ mod tests {
             .join(name)
     }
 
-    fn extract_codex_model_with_config(config: &str) -> Option<String> {
+    const MODELLESS_TRANSCRIPT: &str = r#"{"type":"session_meta","payload":{"model":null}}"#;
+
+    /// Builds a codex home named `home_dir_name` holding `config` and a
+    /// transcript with `transcript_line`, then runs extraction on it.
+    /// Returns the codex home alongside the result for env-var tests.
+    fn extract_codex_model_in_home(
+        home_dir_name: &str,
+        config: &str,
+        transcript_line: &str,
+    ) -> (tempfile::TempDir, std::path::PathBuf, Option<String>) {
         let dir = tempfile::TempDir::new().unwrap();
-        let codex_home = dir.path().join(".codex");
+        let codex_home = dir.path().join(home_dir_name);
         let session_dir = codex_home.join("sessions/2026/06/30");
         std::fs::create_dir_all(&session_dir).unwrap();
         std::fs::write(codex_home.join("config.toml"), config).unwrap();
 
         let transcript = session_dir.join("rollout-test.jsonl");
-        std::fs::write(
-            &transcript,
-            r#"{"type":"session_meta","payload":{"model":null}}"#,
-        )
-        .unwrap();
+        std::fs::write(&transcript, transcript_line).unwrap();
 
-        extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap()
+        let result = extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap();
+        (dir, codex_home, result)
+    }
+
+    fn extract_codex_model_with_config(config: &str) -> Option<String> {
+        extract_codex_model_in_home(".codex", config, MODELLESS_TRANSCRIPT).2
     }
 
     #[test]
@@ -233,48 +237,26 @@ model = "profile-only-model"
 
     #[test]
     fn test_extract_model_codex_prefers_transcript_model_over_config() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let codex_home = dir.path().join(".codex");
-        let session_dir = codex_home.join("sessions/2026/06/30");
-        std::fs::create_dir_all(&session_dir).unwrap();
-        std::fs::write(codex_home.join("config.toml"), r#"model = "config-model""#).unwrap();
-
-        let transcript = session_dir.join("rollout-test.jsonl");
-        std::fs::write(
-            &transcript,
+        let (_dir, _home, result) = extract_codex_model_in_home(
+            ".codex",
+            r#"model = "config-model""#,
             r#"{"type":"session_meta","payload":{"model":"transcript-model"}}"#,
-        )
-        .unwrap();
-
-        let result = extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap();
+        );
         assert_eq!(result, Some("transcript-model".to_string()));
     }
 
     #[test]
     fn test_extract_model_codex_rejects_oversized_config() {
-        let dir = tempfile::TempDir::new().unwrap();
-        let codex_home = dir.path().join(".codex");
-        let session_dir = codex_home.join("sessions/2026/06/30");
-        std::fs::create_dir_all(&session_dir).unwrap();
-
         let mut config = String::from("model = \"oversized-config-model\"\n# ");
         config.push_str(&"x".repeat(1024 * 1024));
-        std::fs::write(codex_home.join("config.toml"), config).unwrap();
 
-        let transcript = session_dir.join("rollout-test.jsonl");
-        std::fs::write(
-            &transcript,
-            r#"{"type":"session_meta","payload":{"model":null}}"#,
-        )
-        .unwrap();
-
-        let result = extract_model(&transcript, StreamFormat::CodexJsonl, None).unwrap();
-        assert_eq!(result, None);
+        assert_eq!(extract_codex_model_with_config(&config), None);
     }
 
     #[test]
     #[serial_test::serial]
     fn test_extract_model_codex_config_fallback_respects_codex_home() {
+        let previous_codex_home = std::env::var_os("CODEX_HOME");
         let dir = tempfile::TempDir::new().unwrap();
         let codex_home = dir.path().join("custom-codex-home");
         let session_dir = codex_home.join("sessions/2026/06/30");
@@ -284,15 +266,9 @@ model = "profile-only-model"
             r#"model = "custom-home-model""#,
         )
         .unwrap();
-
         let transcript = session_dir.join("rollout-test.jsonl");
-        std::fs::write(
-            &transcript,
-            r#"{"type":"session_meta","payload":{"model":null}}"#,
-        )
-        .unwrap();
+        std::fs::write(&transcript, MODELLESS_TRANSCRIPT).unwrap();
 
-        let previous_codex_home = std::env::var_os("CODEX_HOME");
         unsafe {
             std::env::set_var("CODEX_HOME", &codex_home);
         }

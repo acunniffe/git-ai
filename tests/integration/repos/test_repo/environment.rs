@@ -145,10 +145,6 @@ impl TestRepo {
             #[cfg(windows)]
             daemon.wait_until_stopped();
         }
-        if daemon_env.is_empty() {
-            self.setup_daemon_mode();
-            return;
-        }
         let daemon = Arc::new(DaemonProcess::start_with_env(
             &self.path,
             &self.test_home,

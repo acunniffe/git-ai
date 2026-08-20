@@ -21,7 +21,7 @@ use super::{
     author_config_file_fingerprint,
 };
 
-fn create_test_config(
+pub(crate) fn create_test_config(
     allowed_repositories: Vec<String>,
     exclude_repositories: Vec<String>,
 ) -> Config {

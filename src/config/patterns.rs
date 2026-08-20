@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use super::Config;
+
 use glob::Pattern;
 use serde::Serializer;
 
@@ -27,6 +29,21 @@ pub(crate) fn repo_root_matches_patterns(patterns: &[Pattern], repo_root: &Path)
             || Pattern::new(pattern_str).is_ok_and(|glob| glob.matches(root))
             || Pattern::new(&format!("{}/**", pattern_str)).is_ok_and(|glob| glob.matches(root))
     })
+}
+
+impl Config {
+    /// Delivery-time recheck for queued telemetry from a repository known
+    /// only by its remote URL. True when the repository is definitely no
+    /// longer collection-eligible: opt-in fully revoked (empty allowlist) or
+    /// the remote now excluded. Path-based allowlist entries cannot be
+    /// re-verified from a remote alone, so an unlisted or missing remote
+    /// keeps its ingestion-time decision.
+    pub(crate) fn revokes_queued_remote_collection(&self, remote_url: Option<&str>) -> bool {
+        if self.allowed_repositories.is_empty() {
+            return true;
+        }
+        remote_url.is_some_and(|url| remote_matches_patterns(&self.exclude_repositories, url))
+    }
 }
 
 pub(crate) fn remote_matches_patterns(patterns: &[Pattern], remote_url: &str) -> bool {

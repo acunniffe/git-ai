@@ -21,7 +21,7 @@ mod prompt_storage;
 mod test_support;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 // --- Public re-exports (preserve every crate::config::X path) ---
 

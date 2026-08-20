@@ -1,7 +1,7 @@
 use crate::model::stream_types::StreamError;
 use crate::operations::streams::codex_model::extract_model_from_codex_jsonl;
 use crate::operations::streams::copilot_model::extract_model_from_copilot_session_json;
-use crate::operations::streams::jsonl_scan::{scan_jsonl_head, scan_jsonl_tail};
+use crate::operations::streams::jsonl_scan::scan_jsonl;
 use crate::operations::streams::sweep::StreamFormat;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +13,7 @@ pub fn extract_model(
     match format {
         StreamFormat::ClaudeJsonl
         | StreamFormat::CopilotEventStreamJsonl
-        | StreamFormat::GeminiJsonl => extract_model_from_jsonl_tail(path),
+        | StreamFormat::GeminiJsonl => scan_jsonl(path, extract_model_from_jsonl_line),
         StreamFormat::CodexJsonl => extract_model_from_codex_jsonl(path),
         StreamFormat::CopilotSessionJson => extract_model_from_copilot_session_json(path),
         StreamFormat::AmpThreadJson => extract_model_from_amp_thread_json(path),
@@ -40,22 +40,6 @@ pub fn extract_model_from_droid_settings(
     };
 
     Ok(json.get("model").and_then(|v| v.as_str()).map(String::from))
-}
-
-fn extract_model_from_jsonl_tail(path: &Path) -> Result<Option<String>, StreamError> {
-    let (model, tail_was_truncated) = scan_jsonl_tail(path, extract_model_from_jsonl_line)?;
-    if model.is_some() {
-        return Ok(model);
-    }
-
-    // Tail didn't contain the model — check the head (Copilot CLI emits
-    // session.model_change only at session start, which may fall outside the tail window).
-    if tail_was_truncated && let Some(model) = scan_jsonl_head(path, extract_model_from_jsonl_line)
-    {
-        return Ok(Some(model));
-    }
-
-    Ok(None)
 }
 
 fn extract_model_from_jsonl_line(line: &str) -> Option<String> {

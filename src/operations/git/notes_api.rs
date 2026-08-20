@@ -358,30 +358,21 @@ pub fn materialize_notes_for_display(repo: &Repository, limit: usize) -> Result<
     //    Structure:
     //      - One `blob` stanza per note (each gets a mark ID).
     //      - One `commit` stanza with `from 0000...` (empty tree) that attaches all blobs.
-    let fast_import_args: Vec<String> = repo
-        .global_args_for_exec()
-        .into_iter()
-        .chain(["fast-import".to_string(), "--quiet".to_string()])
-        .collect();
+    let fast_import_args = crate::operations::git::refs::fast_import_args(repo);
 
     exec_git_with_stdin_writer(&fast_import_args, |writer| {
         for (idx, (_commit_sha, content)) in cached_map.iter().enumerate() {
-            // Blob stanza: `data <exact-byte-count>\n<content-bytes>\n`
-            // The trailing \n after content is a fast-import stream separator, not part of the data.
-            writer.write_all(b"blob\n")?;
-            writeln!(writer, "mark :{}", idx + 1)?;
-            writeln!(writer, "data {}", content.len())?;
-            writer.write_all(content.as_bytes())?;
-            writer.write_all(b"\n")?;
+            crate::operations::git::refs::write_blob_stanza(writer, idx + 1, content)?;
         }
 
-        // Commit stanza — mirrors the pattern used in refs.rs notes_add_batch().
         // Use `from` with an all-zeros SHA to start from an empty tree, ensuring
         // stale notes from prior materializations are removed.
-        writer.write_all(b"commit refs/notes/ai-display\n")?;
-        writer.write_all(b"committer git-ai <git-ai@localhost> 1000000000 +0000\n")?;
-        writer.write_all(b"data 0\n")?;
-        writer.write_all(b"from 0000000000000000000000000000000000000000\n")?;
+        crate::operations::git::refs::write_notes_commit_header(
+            writer,
+            "refs/notes/ai-display",
+            format_args!("git-ai <git-ai@localhost> 1000000000 +0000"),
+            Some("0000000000000000000000000000000000000000"),
+        )?;
 
         for (idx, (commit_sha, _content)) in cached_map.iter().enumerate() {
             writeln!(writer, "M 100644 :{} {}", idx + 1, commit_sha)?;
