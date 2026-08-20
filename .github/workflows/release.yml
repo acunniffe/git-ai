@@ -538,7 +538,7 @@ jobs:
           $gitAi = Join-Path $env:USERPROFILE '.git-ai\bin\git-ai.exe'
           $configPath = Join-Path $env:USERPROFILE '.git-ai\config.json'
 
-          $install = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart API_BASE=$apiBase API_KEY=$apiKey" -Wait -PassThru
+          $install = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart API_BASE=$apiBase API_KEY=$apiKey INSTALL_WSL=0" -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "MSI install failed with exit code $($install.ExitCode)" }
 
           $config = Get-Content $configPath -Raw | ConvertFrom-Json
@@ -563,6 +563,16 @@ jobs:
           $productCode = $record.GetType().InvokeMember(
             'StringData', 'GetProperty', $null, $record, 1
           )
+          $wslQuery = "SELECT ``Value`` FROM ``Property`` WHERE ``Property`` = 'INSTALL_WSL'"
+          $wslView = $database.GetType().InvokeMember(
+            'OpenView', 'InvokeMethod', $null, $database, @($wslQuery)
+          )
+          $wslView.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $wslView, $null)
+          $wslRecord = $wslView.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $wslView, $null)
+          $wslDefault = $wslRecord.GetType().InvokeMember(
+            'StringData', 'GetProperty', $null, $wslRecord, 1
+          )
+          if ($wslDefault -ne '1') { throw "MSI INSTALL_WSL default is '$wslDefault', expected '1'" }
           $registeredVersion = $installer.GetType().InvokeMember(
             'ProductInfo', 'GetProperty', $null, $installer, @($productCode, 'VersionString')
           )

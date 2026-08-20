@@ -17,10 +17,14 @@ The Windows MSI is per-user: it installs under
 `%USERPROFILE%\\.git-ai\\bin` and changes only that user's `PATH` (the MSI
 owns the user PATH entry and removes it on uninstall; `install-hooks --env`
 additionally configures Git Bash profiles when Git Bash is installed). It has
-no all-users or Administrator install mode. The macOS PKG copies its bundled
-binary into the active console user's `~/.git-ai/bin`, then runs setup as that
-user, including adding `~/.git-ai/bin` to the user's shell PATH configs. It
-fails if no valid console user is logged in or per-user setup fails.
+no all-users or Administrator install mode. By default, the MSI also installs
+the same Git AI release into every WSL distribution except Docker-managed
+`docker-desktop*` distributions. WSL setup is best-effort and does not fail the
+Windows installation. Disable it for interactive or silent installs by passing
+`INSTALL_WSL=0` to `msiexec`. The macOS PKG copies its bundled binary into the
+active console user's `~/.git-ai/bin`, then runs setup as that user, including
+adding `~/.git-ai/bin` to the user's shell PATH configs. It fails if no valid
+console user is logged in or per-user setup fails.
 
 For an enterprise endpoint, pass configuration to the MSI when installing:
 
@@ -28,7 +32,11 @@ For an enterprise endpoint, pass configuration to the MSI when installing:
 msiexec /i git-ai-windows-x64.msi API_BASE=https://usegitai.com API_KEY=your-api-key
 ```
 
+To skip WSL installation, add `INSTALL_WSL=0` to that command.
+
 These values configure only the installing user's Git AI config. They are
 hidden from MSI logs, but command-line arguments can still be visible to local
 process inspection and shell history. Use your endpoint-management secret
-mechanism when available.
+mechanism when available. When WSL installation is enabled, the API values are
+also forwarded to each Linux installer and can be visible in local process
+inspection while `wsl.exe` is running.

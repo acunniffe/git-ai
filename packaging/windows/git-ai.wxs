@@ -12,7 +12,9 @@
     <MediaTemplate EmbedCab="yes" />
     <Property Id="API_BASE" Hidden="yes" Secure="yes" />
     <Property Id="API_KEY" Hidden="yes" Secure="yes" />
+    <Property Id="INSTALL_WSL" Value="1" Secure="yes" />
     <Property Id="ConfigureGitAi" Hidden="yes" />
+    <Property Id="WslInstallArgument" Hidden="yes" />
 
     <util:QueryWindowsDirectories />
     <SetProperty
@@ -40,8 +42,14 @@
     </Feature>
 
     <SetProperty
+      Id="WslInstallArgument"
+      Value="--wsl"
+      After="CostFinalize"
+      Sequence="execute"
+      Condition="NOT Installed AND INSTALL_WSL = &quot;1&quot;" />
+    <SetProperty
       Id="ConfigureGitAi"
-      Value="install-hooks --env --api-base &quot;[API_BASE]&quot; --api-key &quot;[API_KEY]&quot;"
+      Value="install-hooks --env [WslInstallArgument] --api-base &quot;[API_BASE]&quot; --api-key &quot;[API_KEY]&quot;"
       Before="ConfigureGitAi"
       Sequence="execute"
       Condition="NOT Installed" />
