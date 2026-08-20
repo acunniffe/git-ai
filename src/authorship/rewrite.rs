@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use crate::authorship::authorship_log::LineRange;
 use crate::authorship::authorship_log_serialization::AuthorshipLog;
 use crate::authorship::hunk_shift::{DiffHunk, parse_hunk_header};
 use crate::config::Config;
@@ -7,7 +8,8 @@ use crate::error::GitAiError;
 use crate::git::notes_api;
 use crate::git::repo_state::is_valid_git_oid;
 use crate::git::repository::{
-    Repository, exec_git, exec_git_allow_nonzero, exec_git_stdin_streaming,
+    Repository, batch_read_paths_at_treeishes, exec_git, exec_git_allow_nonzero,
+    exec_git_stdin_streaming,
 };
 
 const EMPTY_TREE_SHA: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
@@ -396,7 +398,13 @@ pub(crate) fn handle_rewrite_event_with_metrics(
             ref source_head,
             ref squash_commit,
             ref onto,
-        } => handle_squash_merge(repo, source_head, squash_commit, onto),
+        } => handle_squash_merge(
+            repo,
+            source_head,
+            squash_commit,
+            onto,
+            RewriteMetricOperation::SquashMerge,
+        ),
         RewriteEvent::NonFastForward {
             ref old_tip,
             ref new_tip,
@@ -475,11 +483,266 @@ pub(crate) fn handle_non_fast_forward_rewrite_with_operation(
     ))
 }
 
+/// Reconstruct notes for whole-history filters whose rewritten graph can be
+/// disconnected from the original graph (notably root-commit rewrites).
+/// `range-diff` requires a merge base, so pair the two reachable histories by
+/// stable patch id with the existing ordered fallback used by cherry-pick.
+#[allow(dead_code)]
+pub(crate) fn handle_filter_history_rewrite(
+    repo: &Repository,
+    old_tip: &str,
+    new_tip: &str,
+) -> Result<RewriteOutcome, GitAiError> {
+    fn reachable(repo: &Repository, tip: &str) -> Result<Vec<String>, GitAiError> {
+        let mut args = repo.global_args_for_exec();
+        args.extend([
+            "rev-list".to_string(),
+            "--reverse".to_string(),
+            "--topo-order".to_string(),
+            tip.to_string(),
+        ]);
+        let output = exec_git(&args)?;
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|oid| !oid.is_empty())
+            .map(ToOwned::to_owned)
+            .collect())
+    }
+
+    let old_commits = reachable(repo, old_tip)?;
+    let new_commits = reachable(repo, new_tip)?;
+    let mappings = crate::authorship::rewrite_cherry_pick::match_cherry_pick_pairs(
+        repo,
+        &old_commits,
+        &new_commits,
+    )?;
+    if mappings.is_empty() {
+        return Ok(RewriteOutcome::empty());
+    }
+    let source_shas = mappings
+        .iter()
+        .map(|(source, _)| source.clone())
+        .collect::<Vec<_>>();
+    crate::git::sync_authorship::fetch_missing_notes_for_commits(repo, &source_shas)?;
+    let shifted_notes = shift_authorship_notes_merging_existing_with_notes(repo, &mappings)?;
+    if !rewrite_metrics_enabled() {
+        return Ok(RewriteOutcome::empty());
+    }
+    let metric_commits =
+        metric_commits_from_mappings(&mappings, RewriteMetricOperation::NonFastForward);
+    Ok(RewriteOutcome::from_metric_commits(
+        attach_authorship_notes(metric_commits, shifted_notes),
+    ))
+}
+
+#[allow(dead_code)]
+pub(crate) struct CherryPickMainlineSpec {
+    pub source_merge: String,
+    pub new_commit: String,
+    pub mainline_parent: String,
+    pub destination_parent: String,
+}
+
+/// History-aware mainline cherry-pick reconstruction with a constant Git
+/// process count. A merge commit's own note often omits lines inherited from a
+/// side parent, so exact source->destination note shifting is insufficient.
+#[allow(dead_code)]
+pub(crate) fn handle_cherry_pick_mainlines(
+    repo: &Repository,
+    specs: &[CherryPickMainlineSpec],
+) -> Result<RewriteOutcome, GitAiError> {
+    use crate::authorship::hunk_shift::apply_hunk_shifts_to_file_attestation;
+
+    if specs.is_empty() {
+        return Ok(RewriteOutcome::empty());
+    }
+
+    let mut rev_args = repo.global_args_for_exec();
+    rev_args.extend([
+        "rev-list".to_string(),
+        "--topo-order".to_string(),
+        "--parents".to_string(),
+    ]);
+    rev_args.extend(specs.iter().map(|spec| spec.source_merge.clone()));
+    let rev_output = exec_git(&rev_args)?;
+    let mut history_order = Vec::new();
+    let mut parents_by_commit: HashMap<String, Vec<String>> = HashMap::new();
+    for line in String::from_utf8_lossy(&rev_output.stdout).lines() {
+        let mut fields = line.split_whitespace();
+        let Some(commit) = fields.next() else {
+            continue;
+        };
+        history_order.push(commit.to_string());
+        parents_by_commit.insert(commit.to_string(), fields.map(ToOwned::to_owned).collect());
+    }
+
+    fn reachable_from(
+        tip: &str,
+        parents_by_commit: &HashMap<String, Vec<String>>,
+    ) -> HashSet<String> {
+        let mut reachable = HashSet::new();
+        let mut stack = vec![tip.to_string()];
+        while let Some(commit) = stack.pop() {
+            if !reachable.insert(commit.clone()) {
+                continue;
+            }
+            if let Some(parents) = parents_by_commit.get(&commit) {
+                stack.extend(parents.iter().cloned());
+            }
+        }
+        reachable
+    }
+
+    let mut ranges = Vec::with_capacity(specs.len());
+    let mut all_source_commits = Vec::new();
+    for spec in specs {
+        let source_reachable = reachable_from(&spec.source_merge, &parents_by_commit);
+        let excluded = reachable_from(&spec.mainline_parent, &parents_by_commit);
+        let range = history_order
+            .iter()
+            .filter(|commit| source_reachable.contains(*commit) && !excluded.contains(*commit))
+            .cloned()
+            .collect::<Vec<_>>();
+        for commit in &range {
+            if !all_source_commits.contains(commit) {
+                all_source_commits.push(commit.clone());
+            }
+        }
+        ranges.push(range);
+    }
+
+    crate::git::sync_authorship::fetch_missing_notes_for_commits(repo, &all_source_commits)?;
+    let source_notes = notes_api::read_notes_batch(repo, &all_source_commits)?;
+    let destination_shas = specs
+        .iter()
+        .map(|spec| spec.new_commit.clone())
+        .collect::<Vec<_>>();
+    let target_notes = notes_api::read_notes_batch(repo, &destination_shas)?;
+
+    let mut diff_pairs = Vec::new();
+    let mut shift_index = HashMap::new();
+    let mut added_index = Vec::with_capacity(specs.len());
+    for (spec_index, spec) in specs.iter().enumerate() {
+        for source in ranges[spec_index]
+            .iter()
+            .filter(|source| source_notes.contains_key(*source))
+        {
+            shift_index.insert((spec_index, source.clone()), diff_pairs.len());
+            diff_pairs.push((source.clone(), spec.new_commit.clone()));
+        }
+        added_index.push(diff_pairs.len());
+        diff_pairs.push((spec.destination_parent.clone(), spec.new_commit.clone()));
+    }
+    let diffs = compute_diff_trees_batch(repo, &diff_pairs)?;
+
+    let mut writes = Vec::new();
+    let mut metrics = Vec::new();
+    for (spec_index, spec) in specs.iter().enumerate() {
+        let mut source_log = AuthorshipLog::default();
+        for source in &ranges[spec_index] {
+            let Some(raw) = source_notes.get(source) else {
+                continue;
+            };
+            let Ok(mut log) = AuthorshipLog::deserialize_from_string(raw) else {
+                continue;
+            };
+            let Some(index) = shift_index.get(&(spec_index, source.clone())).copied() else {
+                continue;
+            };
+            let shift = &diffs[index];
+            for (old_path, new_path) in &shift.renames {
+                for attestation in &mut log.attestations {
+                    if attestation.file_path == *old_path {
+                        attestation.file_path = new_path.clone();
+                    }
+                }
+            }
+            if !shift.hunks_by_file.is_empty() {
+                log.attestations = log
+                    .attestations
+                    .iter()
+                    .filter_map(|file| match shift.hunks_by_file.get(&file.file_path) {
+                        Some(hunks) => apply_hunk_shifts_to_file_attestation(file, hunks),
+                        None => Some(file.clone()),
+                    })
+                    .collect();
+            }
+            merge_authorship_logs(&mut source_log, &log);
+        }
+
+        let added_lines = &diffs[added_index[spec_index]].added_lines_by_file;
+        clip_authorship_log_to_lines(&mut source_log, added_lines);
+        source_log.metadata.base_commit_sha = spec.new_commit.clone();
+        let final_log = target_notes
+            .get(&spec.new_commit)
+            .and_then(|raw| AuthorshipLog::deserialize_from_string(raw).ok())
+            .map(|resolution| {
+                crate::authorship::conflict_resolution::merge_conflict_resolution_authorship(
+                    Some(source_log.clone()),
+                    resolution,
+                    &spec.new_commit,
+                )
+            })
+            .unwrap_or(source_log);
+        if final_log.attestations.is_empty() {
+            continue;
+        }
+        let note = final_log.serialize_to_string().map_err(|error| {
+            GitAiError::Generic(format!(
+                "failed to serialize mainline cherry-pick authorship log: {error}"
+            ))
+        })?;
+        writes.push((spec.new_commit.clone(), note.clone()));
+        if rewrite_metrics_enabled() {
+            metrics.push(
+                RewriteMetricCommit::new(
+                    spec.new_commit.clone(),
+                    ranges[spec_index].clone(),
+                    RewriteMetricOperation::CherryPick,
+                )
+                .with_parent_sha(spec.destination_parent.clone())
+                .with_parent_diff(diffs[added_index[spec_index]].clone())
+                .with_authorship_note(note),
+            );
+        }
+    }
+    if !writes.is_empty() {
+        notes_api::write_notes_batch(repo, &writes)?;
+    }
+    Ok(RewriteOutcome::from_metric_commits(metrics))
+}
+
+#[allow(dead_code)]
+fn clip_authorship_log_to_lines(
+    log: &mut AuthorshipLog,
+    allowed_by_file: &HashMap<String, Vec<u32>>,
+) {
+    for file in &mut log.attestations {
+        let allowed = allowed_by_file
+            .get(&file.file_path)
+            .map(|lines| lines.iter().copied().collect::<HashSet<_>>())
+            .unwrap_or_default();
+        for entry in &mut file.entries {
+            let retained = entry
+                .line_ranges
+                .iter()
+                .flat_map(LineRange::expand)
+                .filter(|line| allowed.contains(line))
+                .collect::<Vec<_>>();
+            entry.line_ranges = LineRange::compress_lines(&retained);
+        }
+        file.entries.retain(|entry| !entry.line_ranges.is_empty());
+    }
+    log.attestations.retain(|file| !file.entries.is_empty());
+}
+
 fn handle_squash_merge(
     repo: &Repository,
     source_head: &str,
     squash_commit: &str,
     onto: &str,
+    operation: RewriteMetricOperation,
 ) -> Result<RewriteOutcome, GitAiError> {
     use crate::authorship::hunk_shift::apply_hunk_shifts_to_file_attestation;
 
@@ -535,11 +798,23 @@ fn handle_squash_merge(
             && !repo.storage.has_working_log(onto)
         {
             let note = write_authorship_log_for_metrics(repo, squash_commit, existing_log)?;
-            return Ok(squash_metric_outcome(squash_commit, &sources, onto, note));
+            return Ok(squash_metric_outcome(
+                squash_commit,
+                &sources,
+                onto,
+                note,
+                operation,
+            ));
         }
         let note =
             post_squash_resolution_working_log(repo, onto, squash_commit, existing_target_log)?;
-        return Ok(squash_metric_outcome(squash_commit, &sources, onto, note));
+        return Ok(squash_metric_outcome(
+            squash_commit,
+            &sources,
+            onto,
+            note,
+            operation,
+        ));
     }
 
     // Add the final source_head→squash_commit pair
@@ -624,10 +899,22 @@ fn handle_squash_merge(
     if repo.storage.has_working_log(onto) {
         let note =
             post_squash_resolution_working_log(repo, onto, squash_commit, Some(shifted_log))?;
-        Ok(squash_metric_outcome(squash_commit, &sources, onto, note))
+        Ok(squash_metric_outcome(
+            squash_commit,
+            &sources,
+            onto,
+            note,
+            operation,
+        ))
     } else {
         let note = write_authorship_log_for_metrics(repo, squash_commit, &shifted_log)?;
-        Ok(squash_metric_outcome(squash_commit, &sources, onto, note))
+        Ok(squash_metric_outcome(
+            squash_commit,
+            &sources,
+            onto,
+            note,
+            operation,
+        ))
     }
 }
 
@@ -636,16 +923,14 @@ fn squash_metric_outcome(
     sources: &[String],
     onto: &str,
     note: Option<String>,
+    operation: RewriteMetricOperation,
 ) -> RewriteOutcome {
     if !rewrite_metrics_enabled() {
         return RewriteOutcome::empty();
     }
-    let mut metric_commit = RewriteMetricCommit::new(
-        squash_commit.to_string(),
-        sources.to_vec(),
-        RewriteMetricOperation::SquashMerge,
-    )
-    .with_parent_sha(onto.to_string());
+    let mut metric_commit =
+        RewriteMetricCommit::new(squash_commit.to_string(), sources.to_vec(), operation)
+            .with_parent_sha(onto.to_string());
     metric_commit = attach_authorship_note(metric_commit, note);
     RewriteOutcome::from_metric_commits(vec![metric_commit])
 }
@@ -675,6 +960,7 @@ fn post_squash_resolution_working_log(
                 supress_output: true,
                 compute_stats: false,
                 recover_attribution: false,
+                write_note: true,
             },
             move |resolution_log| {
                 Ok(
@@ -740,6 +1026,110 @@ const DIFF_TREE_STREAM_CHUNK_SIZE: usize = 50;
 struct PendingShift {
     new_sha: String,
     log: AuthorshipLog,
+}
+
+/// Transfer the full line provenance of selected paths from a source tree to a
+/// commit created after `git restore --source`. Unlike cherry-pick, restore
+/// copies a tree snapshot, so provenance must include lines last touched by any
+/// source ancestor rather than only the source tip's note.
+#[allow(dead_code)]
+pub(crate) fn apply_restore_source_paths(
+    repo: &Repository,
+    source_sha: &str,
+    target_sha: &str,
+    paths: &[String],
+) -> Result<(), GitAiError> {
+    let mappings = paths
+        .iter()
+        .map(|path| (path.clone(), path.clone()))
+        .collect::<Vec<_>>();
+    apply_copied_path_mappings(repo, source_sha, target_sha, &mappings, "restore")
+}
+
+/// Transfer full history-aware provenance from source paths to different
+/// destination paths. This covers copy-like workspace operations whose final
+/// commit is not necessarily represented by Git as a rename (notably
+/// `git mv --force` over an already tracked destination).
+#[allow(dead_code)]
+pub(crate) fn apply_copied_path_mappings(
+    repo: &Repository,
+    source_sha: &str,
+    target_sha: &str,
+    mappings: &[(String, String)],
+    operation: &str,
+) -> Result<(), GitAiError> {
+    use crate::authorship::hunk_shift::apply_hunk_shifts_to_file_attestation;
+    use crate::authorship::virtual_attribution::{
+        VirtualAttributions, diff_hunks_between_contents,
+    };
+    if source_sha.is_empty() || target_sha.is_empty() || mappings.is_empty() {
+        return Ok(());
+    }
+    let repo_clone = repo.clone();
+    let source_paths = mappings
+        .iter()
+        .map(|(source, _)| source.clone())
+        .collect::<Vec<_>>();
+    let source_va = crate::tokio_runtime::block_on(async {
+        VirtualAttributions::new_for_base_commit(
+            repo_clone,
+            source_sha.to_string(),
+            &source_paths,
+            None,
+        )
+        .await
+    })?;
+    let mut source_log = source_va.to_authorship_log()?;
+    source_log
+        .attestations
+        .retain(|file| mappings.iter().any(|(source, _)| source == &file.file_path));
+    if source_log.attestations.is_empty() {
+        return Ok(());
+    }
+
+    let source_tree = repo.find_commit(source_sha.to_string())?.tree()?.id();
+    let target_tree = repo.find_commit(target_sha.to_string())?.tree()?.id();
+    let source_treeish = source_tree.to_string();
+    let target_treeish = target_tree.to_string();
+    let content_requests = mappings
+        .iter()
+        .flat_map(|(source, destination)| {
+            [
+                (source_treeish.clone(), source.clone()),
+                (target_treeish.clone(), destination.clone()),
+            ]
+        })
+        .collect::<Vec<_>>();
+    let contents = batch_read_paths_at_treeishes(repo, &content_requests)?;
+    source_log.attestations = source_log
+        .attestations
+        .iter()
+        .filter_map(|file| {
+            let (_, destination) = mappings
+                .iter()
+                .find(|(source, _)| source == &file.file_path)?;
+            let old_content = contents.get(&(source_treeish.clone(), file.file_path.clone()))?;
+            let new_content = contents.get(&(target_treeish.clone(), destination.clone()))?;
+            let hunks = diff_hunks_between_contents(old_content, new_content);
+            let mut shifted = apply_hunk_shifts_to_file_attestation(file, &hunks)?;
+            shifted.file_path = destination.clone();
+            Some(shifted)
+        })
+        .collect();
+    if source_log.attestations.is_empty() {
+        return Ok(());
+    }
+    source_log.metadata.base_commit_sha = target_sha.to_string();
+
+    let mut target_log = notes_api::read_authorship_v3(repo, target_sha).unwrap_or_default();
+    merge_authorship_logs(&mut target_log, &source_log);
+    target_log.metadata.base_commit_sha = target_sha.to_string();
+    let serialized = target_log.serialize_to_string().map_err(|error| {
+        GitAiError::Generic(format!(
+            "failed to serialize {operation} authorship log: {error}"
+        ))
+    })?;
+    notes_api::write_note(repo, target_sha, &serialized)
 }
 
 fn shift_authorship_notes_with_existing_mode(
@@ -861,7 +1251,7 @@ fn shift_authorship_notes_with_existing_mode(
     Ok(all_writes)
 }
 
-fn merge_authorship_logs(target: &mut AuthorshipLog, source: &AuthorshipLog) {
+pub(crate) fn merge_authorship_logs(target: &mut AuthorshipLog, source: &AuthorshipLog) {
     for src_fa in &source.attestations {
         if let Some(existing_fa) = target
             .attestations

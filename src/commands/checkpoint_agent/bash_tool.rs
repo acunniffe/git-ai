@@ -125,6 +125,11 @@ const MTIME_GRACE_WINDOW_NS: u128 = (MTIME_GRACE_WINDOW_SECS as u128) * 1_000_00
 /// seconds of latency to every Bash tool call.
 const MAX_TRACKED_FILES: usize = 50_000;
 
+/// Internal Bash-call metadata key containing the tree represented by the
+/// index immediately before the tool invocation. Recovery uses this boundary
+/// to distinguish index mutations made by the tool from work staged earlier.
+pub(crate) const PRE_INDEX_TREE_METADATA_KEY: &str = "git_ai_pre_index_tree";
+
 // ---------------------------------------------------------------------------
 // Core types
 // ---------------------------------------------------------------------------
@@ -955,7 +960,13 @@ pub fn signal_daemon_bash_hook_attempt(
     let session_id = signal.session_id.to_string();
     let tool_use_id = signal.tool_use_id.to_string();
     let agent_id = signal.agent_id.clone();
-    let metadata = signal.metadata.clone();
+    let mut metadata = signal.metadata.clone();
+    if matches!(phase, BashHookAttemptPhase::Start)
+        && let Some(repo_work_dir) = signal.discovered_repo_work_dir
+        && let Some(tree) = capture_index_tree(repo_work_dir)
+    {
+        metadata.insert(PRE_INDEX_TREE_METADATA_KEY.to_string(), tree);
+    }
     let trace_id = signal.trace_id.to_string();
     let command = signal.command.map(ToString::to_string);
 
@@ -989,6 +1000,23 @@ pub fn signal_daemon_bash_hook_attempt(
     {
         tracing::debug!("Failed to signal bash hook attempt {:?}: {}", phase, e);
     }
+}
+
+/// Materialize the current index as a tree object without changing the index
+/// or worktree. Failure (for example, an unmerged index) degrades to the
+/// existing timestamp recovery path.
+pub(crate) fn capture_index_tree(repo_root: &Path) -> Option<String> {
+    let args = vec![
+        "-C".to_string(),
+        repo_root.to_string_lossy().into_owned(),
+        "write-tree".to_string(),
+    ];
+    let output = crate::git::repository::exec_git_allow_nonzero(&args).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let tree = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    crate::git::repo_state::is_valid_git_oid(&tree).then_some(tree)
 }
 
 struct BashSessionEndSignal<'a> {
@@ -1099,13 +1127,17 @@ pub fn handle_bash_pre_tool_use_with_context_and_cwd(
         GitAiError::Generic("no daemon socket available for BashSessionStart".into())
     })?;
 
+    let mut metadata = context.agent_metadata.cloned().unwrap_or_default();
+    if let Some(tree) = capture_index_tree(repo_root) {
+        metadata.insert(PRE_INDEX_TREE_METADATA_KEY.to_string(), tree);
+    }
     let request = ControlRequest::BashSessionStart {
         repo_work_dir: repo_working_dir,
         original_cwd: Some(original_cwd.to_string_lossy().to_string()),
         session_id: context.session_id.to_string(),
         tool_use_id: context.tool_use_id.to_string(),
         agent_id: context.agent_id.clone(),
-        metadata: context.agent_metadata.cloned().unwrap_or_default(),
+        metadata,
         stat_snapshot: Box::new(snap),
         trace_id: context.trace_id.to_string(),
         started_at_ns,

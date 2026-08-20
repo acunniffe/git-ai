@@ -197,6 +197,14 @@ struct CommitMetadataSessionSelection {
 pub(crate) struct AttributionRecoveryContext<'a> {
     pub(crate) file_timestamps: Option<&'a FileTimestampsByPath>,
     pub(crate) before_external_recovery: Option<&'a dyn Fn(&UnknownLinesByFile)>,
+    /// Exact wall-clock interval of a commit-producing Git command. This is
+    /// stronger evidence than filesystem mtimes for commands such as `git am`,
+    /// which can create multiple commits and can delete an early patch's files
+    /// before the command returns.
+    pub(crate) bash_command_window: Option<(u128, u128)>,
+    /// Require a pre-tool index boundary so unrelated pre-staged lines cannot
+    /// be claimed by a regular commit executed inside the Bash call.
+    pub(crate) bash_scope_to_pre_index: bool,
 }
 
 pub(crate) fn recover_attribution(
@@ -212,27 +220,85 @@ pub(crate) fn recover_attribution(
         return Ok(());
     }
 
+    // Every traced Git command has a start/finish window, but only a command
+    // actually enclosed by an AI Bash tool call has a pre-tool index boundary.
+    // Do not disable edge recovery merely because command timestamps exist.
+    let bash_scope_to_pre_index = if context.bash_scope_to_pre_index
+        && let Some((started_at_ns, finished_at_ns)) = context.bash_command_window
+    {
+        bash_index_baseline_candidate_exists(repo, started_at_ns, finished_at_ns)?
+    } else {
+        false
+    };
+
+    if bash_scope_to_pre_index
+        && let Some((started_at_ns, finished_at_ns)) = context.bash_command_window
+    {
+        enforce_bash_pre_index_boundary(
+            repo,
+            commit_sha,
+            authorship_log,
+            committed_hunks,
+            started_at_ns,
+            finished_at_ns,
+        )?;
+    }
+
     if unknown_lines_by_file(authorship_log, committed_hunks).is_empty() {
         return Ok(());
     }
 
-    recover_bash_mtime(
-        repo,
-        parent_sha,
-        commit_sha,
-        human_author,
-        authorship_log,
-        committed_hunks,
-        context.file_timestamps,
-    )?;
+    if let Some((started_at_ns, finished_at_ns)) = context.bash_command_window {
+        let (matched_command_window, saw_overlapping_bash_call) = recover_bash_command_window(
+            repo,
+            parent_sha,
+            commit_sha,
+            human_author,
+            authorship_log,
+            committed_hunks,
+            started_at_ns,
+            finished_at_ns,
+            bash_scope_to_pre_index,
+        )?;
+        // A traced `git commit` normally runs after the Bash tool call that
+        // edited the file, rather than inside it. Preserve the established
+        // mtime recovery path in that case. When a repository-compatible Bash
+        // call does overlap the Git command, its exact window (and optional
+        // pre-index boundary) is authoritative and must not be widened.
+        if !matched_command_window && !saw_overlapping_bash_call {
+            recover_bash_mtime(
+                repo,
+                parent_sha,
+                commit_sha,
+                human_author,
+                authorship_log,
+                committed_hunks,
+                context.file_timestamps,
+            )?;
+        }
+    } else {
+        recover_bash_mtime(
+            repo,
+            parent_sha,
+            commit_sha,
+            human_author,
+            authorship_log,
+            committed_hunks,
+            context.file_timestamps,
+        )?;
+    }
 
-    recover_adjacent_edges(
-        repo,
-        parent_sha,
-        commit_sha,
-        authorship_log,
-        committed_hunks,
-    );
+    // The pre-index tree is an exact provenance boundary. Extending AI ranges
+    // to adjacent unknown lines would cross back into pre-staged human work.
+    if !bash_scope_to_pre_index {
+        recover_adjacent_edges(
+            repo,
+            parent_sha,
+            commit_sha,
+            authorship_log,
+            committed_hunks,
+        );
+    }
     let unknown_after_edges = unknown_lines_by_file(authorship_log, committed_hunks);
     if unknown_after_edges.is_empty() {
         return Ok(());
@@ -273,6 +339,253 @@ pub(crate) fn recover_attribution(
     Ok(())
 }
 
+/// Remove claims made by the selected Bash session for committed lines that
+/// were already present in the index at PreToolUse. This also closes the race
+/// where PostToolUse checkpoints a whole worktree file before asynchronous
+/// commit finalization reaches it.
+fn enforce_bash_pre_index_boundary(
+    repo: &Repository,
+    commit_sha: &str,
+    authorship_log: &mut AuthorshipLog,
+    committed_hunks: &HashMap<String, Vec<LineRange>>,
+    started_at_ns: u128,
+    finished_at_ns: u128,
+) -> Result<(), GitAiError> {
+    let repo_work_dir = repo_worktree_key(repo)?;
+    let candidates = match crate::daemon::bash_history_db::BashHistoryDatabase::global() {
+        Ok(db) => match db.lock() {
+            Ok(db) => db.candidates_overlapping_window(started_at_ns, finished_at_ns)?,
+            Err(_) => Vec::new(),
+        },
+        Err(_) => Vec::new(),
+    };
+    let existing_commit_sessions = existing_commit_session_ids(authorship_log);
+    let Some(candidate) = candidates
+        .iter()
+        .filter_map(|candidate| {
+            bash_command_window_candidate_tier(candidate, &existing_commit_sessions, &repo_work_dir)
+                .map(|tier| (candidate, tier))
+        })
+        .min_by(|(left, left_tier), (right, right_tier)| {
+            left_tier
+                .score()
+                .cmp(&right_tier.score())
+                .then_with(|| right.start_time_ns.cmp(&left.start_time_ns))
+                .then_with(|| right.id.cmp(&left.id))
+        })
+        .map(|(candidate, _)| candidate)
+    else {
+        return Ok(());
+    };
+    let Some(pre_index_tree) = candidate
+        .metadata
+        .get(crate::commands::checkpoint_agent::bash_tool::PRE_INDEX_TREE_METADATA_KEY)
+    else {
+        return Ok(());
+    };
+
+    let added_since_tool_start = repo.diff_added_lines(pre_index_tree, commit_sha, None)?;
+    let prompt_hashes = authorship_log
+        .metadata
+        .prompts
+        .iter()
+        .filter(|(_, prompt)| {
+            prompt.agent_id.tool == candidate.agent_id.tool
+                && prompt.agent_id.id == candidate.agent_id.id
+        })
+        .map(|(hash, _)| hash.clone())
+        .chain(
+            authorship_log
+                .metadata
+                .sessions
+                .iter()
+                .filter(|(_, session)| {
+                    session.agent_id.tool == candidate.agent_id.tool
+                        && session.agent_id.id == candidate.agent_id.id
+                })
+                .map(|(hash, _)| hash.clone()),
+        )
+        .collect::<HashSet<_>>();
+    if prompt_hashes.is_empty() {
+        return Ok(());
+    }
+
+    for file in &mut authorship_log.attestations {
+        let Some(committed_ranges) = committed_hunks.get(&file.file_path) else {
+            continue;
+        };
+        let allowed = added_since_tool_start
+            .get(&file.file_path)
+            .map(|lines| lines.iter().copied().collect::<HashSet<_>>())
+            .unwrap_or_default();
+        let disallowed = committed_ranges
+            .iter()
+            .flat_map(LineRange::expand)
+            .filter(|line| !allowed.contains(line))
+            .collect::<Vec<_>>();
+        let disallowed = LineRange::compress_lines(&disallowed);
+        if disallowed.is_empty() {
+            continue;
+        }
+        for entry in &mut file.entries {
+            let belongs_to_candidate = prompt_hashes
+                .iter()
+                .any(|hash| entry.hash == *hash || entry.hash.starts_with(&format!("{}::", hash)));
+            if belongs_to_candidate {
+                entry.remove_line_ranges(&disallowed);
+            }
+        }
+        file.entries.retain(|entry| !entry.line_ranges.is_empty());
+    }
+    authorship_log
+        .attestations
+        .retain(|file| !file.entries.is_empty());
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn recover_bash_command_window(
+    repo: &Repository,
+    parent_sha: &str,
+    commit_sha: &str,
+    human_author: &str,
+    authorship_log: &mut AuthorshipLog,
+    committed_hunks: &HashMap<String, Vec<LineRange>>,
+    started_at_ns: u128,
+    finished_at_ns: u128,
+    scope_to_pre_index: bool,
+) -> Result<(bool, bool), GitAiError> {
+    let repo_work_dir = repo_worktree_key(repo)?;
+    let unknown_by_file = unknown_lines_by_file(authorship_log, committed_hunks);
+    if unknown_by_file.is_empty() {
+        return Ok((false, false));
+    }
+
+    let candidates = match crate::daemon::bash_history_db::BashHistoryDatabase::global() {
+        Ok(db) => match db.lock() {
+            Ok(db) => db.candidates_overlapping_window(started_at_ns, finished_at_ns)?,
+            Err(_) => Vec::new(),
+        },
+        Err(_) => Vec::new(),
+    };
+    let existing_commit_sessions = existing_commit_session_ids(authorship_log);
+    let saw_overlapping_bash_call = !candidates.is_empty();
+    let Some((candidate, tier)) = candidates
+        .iter()
+        .filter_map(|candidate| {
+            bash_command_window_candidate_tier(candidate, &existing_commit_sessions, &repo_work_dir)
+                .map(|tier| (candidate, tier))
+        })
+        .min_by(|(left, left_tier), (right, right_tier)| {
+            left_tier
+                .score()
+                .cmp(&right_tier.score())
+                .then_with(|| right.start_time_ns.cmp(&left.start_time_ns))
+                .then_with(|| right.id.cmp(&left.id))
+        })
+    else {
+        // An overlapping Bash call that was authoritatively discovered in a
+        // different repository must also suppress the looser mtime fallback.
+        // Otherwise imported files can be stolen merely because their mtimes
+        // happen to land inside that unrelated call.
+        return Ok((false, saw_overlapping_bash_call));
+    };
+
+    let scoped_unknown_by_file = if let Some(pre_index_tree) = candidate
+        .metadata
+        .get(crate::commands::checkpoint_agent::bash_tool::PRE_INDEX_TREE_METADATA_KEY)
+    {
+        let added_since_tool_start = repo.diff_added_lines(pre_index_tree, commit_sha, None)?;
+        unknown_by_file
+            .into_iter()
+            .filter_map(|(file_path, unknown_lines)| {
+                let allowed = added_since_tool_start.get(&file_path)?;
+                let allowed = allowed.iter().copied().collect::<HashSet<_>>();
+                let scoped = unknown_lines
+                    .into_iter()
+                    .filter(|line| allowed.contains(line))
+                    .collect::<Vec<_>>();
+                (!scoped.is_empty()).then_some((file_path, scoped))
+            })
+            .collect::<BTreeMap<_, _>>()
+    } else if scope_to_pre_index {
+        // Without the baseline, a regular commit can contain work staged
+        // before the AI call. Prefer unknown attribution to a false claim.
+        return Ok((true, true));
+    } else {
+        unknown_by_file
+    };
+    if scoped_unknown_by_file.is_empty() {
+        return Ok((true, true));
+    }
+
+    let trace_id = generate_trace_id();
+    let session_id = generate_session_id(&candidate.agent_id.id, &candidate.agent_id.tool);
+    let author_id = format!("{}::{}", session_id, trace_id);
+    insert_session_record(
+        authorship_log,
+        &session_id,
+        &candidate.agent_id,
+        human_author,
+    );
+    for (file_path, unknown_lines) in scoped_unknown_by_file {
+        add_attestation(authorship_log, &file_path, &author_id, &unknown_lines);
+        record_recovery_metric(RecoveryMetricInput {
+            repo,
+            parent_sha,
+            commit_sha,
+            file_path: &file_path,
+            author_id: &author_id,
+            session_id: &session_id,
+            trace_id: &trace_id,
+            tool: &candidate.agent_id.tool,
+            model: &candidate.agent_id.model,
+            external_session_id: &candidate.agent_id.id,
+            external_tool_use_id: Some(&candidate.tool_use_id),
+            edit_kind: "bash",
+            checkpoint_type: "recovered_bash_command_window",
+            recovered_line_count: unknown_lines.len() as u32,
+            metadata: json!({
+                "solver": "bash_command_window",
+                "target_repo_work_dir": repo_work_dir,
+                "selected_bash_call_id": candidate.id,
+                "selected_tool_use_id": candidate.tool_use_id,
+                "selected_command": candidate.command,
+                "command_started_at_ns": started_at_ns,
+                "command_finished_at_ns": finished_at_ns,
+                "selection_tier": tier.as_str(),
+                "candidate_count": candidates.len(),
+                "pre_index_tree": candidate.metadata.get(
+                    crate::commands::checkpoint_agent::bash_tool::PRE_INDEX_TREE_METADATA_KEY
+                ),
+            }),
+            event_ts: Some((candidate.start_time_ns / 1_000_000_000) as u32),
+        });
+    }
+    Ok((true, true))
+}
+
+fn bash_command_window_candidate_tier(
+    candidate: &BashCheckpointCall,
+    existing_commit_sessions: &HashSet<String>,
+    target_repo_work_dir: &str,
+) -> Option<BashCandidateTier> {
+    // A discovered repo is authoritative. Do not fall back to a broad common
+    // parent cwd when the Bash hook explicitly identified a different repo.
+    let location_tier = match candidate.repo_work_dir.as_deref() {
+        Some(repo_work_dir) => path_is_equal_or_child(target_repo_work_dir, repo_work_dir)
+            .then_some(BashCandidateTier::WorkdirAncestor),
+        None => path_is_equal_or_child(target_repo_work_dir, &candidate.original_cwd)
+            .then_some(BashCandidateTier::CwdAncestor),
+    }?;
+    let session_id = bash_candidate_session_id(candidate);
+    if existing_commit_sessions.contains(&session_id) {
+        Some(BashCandidateTier::ExistingCommitSession)
+    } else {
+        Some(location_tier)
+    }
+}
+
 pub(crate) fn matching_session_event_candidate_exists(
     timestamps_ns: &[u128],
     target_repo_url: &str,
@@ -293,6 +606,27 @@ pub(crate) fn matching_session_event_candidate_exists(
     };
 
     Ok(select_best_session_event_candidate(&candidates, timestamps_ns, target_repo_url).is_some())
+}
+
+pub(crate) fn bash_index_baseline_candidate_exists(
+    repo: &Repository,
+    started_at_ns: u128,
+    finished_at_ns: u128,
+) -> Result<bool, GitAiError> {
+    let repo_work_dir = repo_worktree_key(repo)?;
+    let candidates = match crate::daemon::bash_history_db::BashHistoryDatabase::global() {
+        Ok(db) => match db.lock() {
+            Ok(db) => db.candidates_overlapping_window(started_at_ns, finished_at_ns)?,
+            Err(_) => Vec::new(),
+        },
+        Err(_) => Vec::new(),
+    };
+    Ok(candidates.iter().any(|candidate| {
+        bash_command_window_candidate_tier(candidate, &HashSet::new(), &repo_work_dir).is_some()
+            && candidate.metadata.contains_key(
+                crate::commands::checkpoint_agent::bash_tool::PRE_INDEX_TREE_METADATA_KEY,
+            )
+    }))
 }
 
 fn recover_bash_mtime(
@@ -1905,6 +2239,23 @@ mod tests {
             external_tool_use_id: Some(format!("tool-use-{row_id}")),
             repo_url: repo_url.map(ToString::to_string),
         }
+    }
+
+    #[test]
+    fn command_window_candidate_rejects_explicitly_different_repo() {
+        let sessions = HashSet::new();
+        let other_repo = bash_call(1, "session", "tool", "/workspace/other", 1, Some(10));
+        assert_eq!(
+            bash_command_window_candidate_tier(&other_repo, &sessions, "/workspace/target"),
+            None
+        );
+
+        let unresolved_parent =
+            unresolved_bash_attempt(2, "session", "tool", "/workspace", 1, Some(10));
+        assert_eq!(
+            bash_command_window_candidate_tier(&unresolved_parent, &sessions, "/workspace/target"),
+            Some(BashCandidateTier::CwdAncestor)
+        );
     }
 
     #[test]

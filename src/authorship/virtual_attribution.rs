@@ -1464,7 +1464,7 @@ fn split_lines_preserving_terminators(s: &str) -> Vec<&str> {
     lines
 }
 
-fn diff_hunks_between_contents(old_content: &str, new_content: &str) -> Vec<DiffHunk> {
+pub(crate) fn diff_hunks_between_contents(old_content: &str, new_content: &str) -> Vec<DiffHunk> {
     let normalized_old = normalize_line_endings(old_content);
     let normalized_new = normalize_line_endings(new_content);
     let old_lines = split_lines_preserving_terminators(&normalized_old);
@@ -1846,7 +1846,7 @@ fn fill_line_ending_only_mappings(
     }
 }
 
-fn checkout_merge_rebased_content(
+pub(crate) fn checkout_merge_rebased_content(
     base_content: &str,
     target_content: &str,
     observed_content: &str,
