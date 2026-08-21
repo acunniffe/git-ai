@@ -7924,6 +7924,94 @@ fn daemon_marks_repository_filtered_session_events_delivered_without_uploading_t
 }
 
 #[test]
+fn reingest_command_redelivers_bounded_and_all_metrics_through_daemon() {
+    let mut mock_api = MockApiServer::start();
+    let metrics_db_path = std::env::temp_dir().join(format!(
+        "git-ai-reingest-metrics-{}.db",
+        git_ai::uuid::generate_v4()
+    ));
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+        (
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            metrics_db_path.to_str().unwrap(),
+        ),
+    ]);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+    let event = |timestamp: u32, marker: &str| {
+        MetricEvent::with_timestamp(
+            timestamp,
+            &SessionEventValues::new(json!({ "marker": marker })),
+            EventAttributes::with_version("test")
+                .session_id(marker)
+                .trace_id(marker)
+                .to_sparse(),
+        )
+    };
+    let events = [
+        event(now - 300, "before-window"),
+        event(now - 200, "inside-window"),
+        event(now - 100, "after-window"),
+    ];
+    let serialized = events
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    MetricsDatabase::open_at_path(&metrics_db_path)
+        .unwrap()
+        .insert_events_with_delivered_ts(&serialized, Some(u64::from(now)))
+        .unwrap();
+
+    let format_time = |timestamp| {
+        chrono::DateTime::<chrono::Utc>::from_timestamp(i64::from(timestamp), 0)
+            .unwrap()
+            .to_rfc3339()
+    };
+    let output = repo
+        .git_ai(&[
+            "reingest",
+            "--from",
+            &format_time(now - 250),
+            "--to",
+            &format_time(now - 150),
+        ])
+        .expect("bounded reingestion should succeed");
+    assert!(output.contains("reset 1 metric event(s)"), "{output}");
+    repo.git_ai(&["await", "--timeout", "30"])
+        .expect("daemon should deliver the bounded reingestion");
+
+    let bounded_uploads = serde_json::to_string(&mock_api.collect_requests()).unwrap();
+    assert!(bounded_uploads.contains("inside-window"));
+    assert!(!bounded_uploads.contains("before-window"));
+    assert!(!bounded_uploads.contains("after-window"));
+
+    let output = repo
+        .git_ai(&["reingest", "--all"])
+        .expect("all-time reingestion should succeed");
+    assert!(output.contains("reset 3 metric event(s)"), "{output}");
+    repo.git_ai(&["await", "--timeout", "30"])
+        .expect("daemon should deliver the all-time reingestion");
+
+    let all_uploads = serde_json::to_string(&mock_api.collect_requests()).unwrap();
+    assert!(all_uploads.contains("before-window"));
+    assert!(all_uploads.contains("inside-window"));
+    assert!(all_uploads.contains("after-window"));
+    assert_eq!(
+        MetricsDatabase::open_at_path(&metrics_db_path)
+            .unwrap()
+            .status()
+            .unwrap()
+            .delivered,
+        3
+    );
+}
+
+#[test]
 fn await_is_marked_beta_and_returns_promptly_when_idle() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::Dedicated);
 
