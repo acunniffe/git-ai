@@ -110,6 +110,7 @@ mod tests {
             invoked_command: Some(primary.to_string()),
             invoked_args: Vec::new(),
             observed_child_commands: Vec::new(),
+            transport_targets: Vec::new(),
             exit_code: 0,
             started_at_ns: 1,
             finished_at_ns: 2,

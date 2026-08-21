@@ -62,6 +62,7 @@ pub mod daemon_log_layer;
 pub mod domain;
 pub mod family_actor;
 pub mod git_backend;
+pub mod git_notes_push_worker;
 pub mod global_actor;
 mod memory_watchdog;
 pub mod reducer;
@@ -1281,20 +1282,26 @@ fn parsed_invocation_for_normalized_command(
 }
 
 fn apply_push_side_effect(
+    coordinator: &ActorDaemonCoordinator,
+    worker: Option<&crate::daemon::git_notes_push_worker::GitNotesPushWorkerHandle>,
+    family: Option<&str>,
     worktree: &str,
     command: Option<&str>,
     args: &[String],
+    destination: Option<&str>,
 ) -> Result<(), GitAiError> {
     use crate::config::NotesBackendKind;
     use crate::git::cli_parser::is_dry_run;
-    use crate::git::sync_authorship::{push_authorship_notes, push_remote_from_args};
 
-    if crate::config::Config::get().notes_backend_kind() == NotesBackendKind::Http {
-        tracing::debug!("apply_push_side_effect: skipping authorship push (Http backend)");
+    if crate::config::Config::fresh_notes_backend_kind_cached() == NotesBackendKind::Http {
+        tracing::debug!(
+            component = "git_notes_push_worker",
+            phase = "backend_skip",
+            "not scheduling Git notes push because HTTP notes are enabled"
+        );
         return Ok(());
     }
 
-    let repo = find_repository_in_path(worktree)?;
     let parsed = parsed_invocation_for_side_effect(command, args);
 
     if is_dry_run(&parsed.command_args)
@@ -1307,12 +1314,25 @@ fn apply_push_side_effect(
         return Ok(());
     }
 
-    let remote = push_remote_from_args(&repo, &parsed)?;
+    let (Some(worker), Some(family), Some(destination)) = (worker, family, destination) else {
+        tracing::warn!(
+            component = "git_notes_push_worker",
+            phase = "missing_target",
+            family = family.unwrap_or_default(),
+            "skipping asynchronous Git notes push without an immutable trace destination"
+        );
+        return Ok(());
+    };
 
+    let local_ref_lock = coordinator.side_effect_exec_lock(family)?;
     crate::commands::upgrade::maybe_schedule_background_update_check();
-    tracing::debug!("started pushing authorship notes to remote: {}", remote);
-
-    push_authorship_notes(&repo, &remote)
+    worker.enqueue(crate::daemon::git_notes_push_worker::GitNotesPushJob {
+        family: family.to_string(),
+        worktree: worktree.to_string(),
+        destination: destination.to_string(),
+        local_ref_lock,
+    });
+    Ok(())
 }
 
 fn transcript_sweep_triggers_for_events(
@@ -2782,6 +2802,7 @@ pub struct ActorDaemonCoordinator {
     // exits via the shutdown select! arm instead of relying on channel closure.
     trace_ingest_tx: std::sync::OnceLock<mpsc::Sender<Value>>,
     telemetry_worker: Option<crate::daemon::telemetry_worker::DaemonTelemetryWorkerHandle>,
+    git_notes_push_worker: Option<crate::daemon::git_notes_push_worker::GitNotesPushWorkerHandle>,
     stream_worker: Option<crate::daemon::stream_worker::StreamWorkerHandle>,
     transcript_shutdown_notify: std::sync::OnceLock<Arc<tokio::sync::Notify>>,
     streams_db: Option<Arc<crate::streams::db::StreamsDatabase>>,
@@ -2912,6 +2933,7 @@ impl ActorDaemonCoordinator {
             test_completion_log_lock: Mutex::new(()),
             trace_ingest_tx: std::sync::OnceLock::new(),
             telemetry_worker: None,
+            git_notes_push_worker: None,
             stream_worker: None,
             transcript_shutdown_notify: std::sync::OnceLock::new(),
             streams_db: None,
@@ -6205,11 +6227,15 @@ impl ActorDaemonCoordinator {
                             &cmd.invoked_args,
                         )?;
                     }
-                    crate::daemon::domain::SemanticEvent::PushCompleted { .. } => {
+                    crate::daemon::domain::SemanticEvent::PushCompleted { remote } => {
                         apply_push_side_effect(
+                            self,
+                            self.git_notes_push_worker.as_ref(),
+                            family,
                             &worktree,
                             cmd.invoked_command.as_deref(),
                             &cmd.invoked_args,
+                            remote.as_deref(),
                         )?;
                     }
                     crate::daemon::domain::SemanticEvent::CherryPickComplete {
@@ -7089,6 +7115,27 @@ impl ActorDaemonCoordinator {
                     Err(_) => {
                         result.timed_out = true;
                     }
+                }
+            } else {
+                result.timed_out = true;
+            }
+        }
+
+        // Phase 4: drain best-effort asynchronous Git notes pushes last so an
+        // unreachable remote cannot starve transcript processing or telemetry.
+        if !result.timed_out
+            && let Some(worker) = &self.git_notes_push_worker
+        {
+            let now = Instant::now();
+            if now < deadline {
+                let remaining = deadline - now;
+                maybe_log("Git notes pushes");
+                match timeout(remaining, worker.drain()).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        tracing::warn!(error = %e, "await: Git notes push drain failed");
+                    }
+                    Err(_) => result.timed_out = true,
                 }
             } else {
                 result.timed_out = true;
@@ -9199,6 +9246,10 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
     crate::daemon::telemetry_worker::set_daemon_internal_telemetry(telemetry_handle.clone());
     coordinator_inner.telemetry_worker = Some(telemetry_handle.clone());
 
+    coordinator_inner.git_notes_push_worker =
+        Some(crate::daemon::git_notes_push_worker::spawn_git_notes_push_worker());
+    tracing::info!("Git notes push worker spawned");
+
     // Spawn the transcript worker BEFORE wrapping coordinator in Arc
     if config::Config::get()
         .get_feature_flags()
@@ -10290,6 +10341,7 @@ mod tests {
             invoked_command: Some("rebase".to_string()),
             invoked_args: invoked_args.iter().map(|arg| (*arg).to_string()).collect(),
             observed_child_commands: Vec::new(),
+            transport_targets: Vec::new(),
             exit_code: 0,
             started_at_ns: 1,
             finished_at_ns: 2,

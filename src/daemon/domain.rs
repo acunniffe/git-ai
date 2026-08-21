@@ -48,6 +48,11 @@ pub struct NormalizedCommand {
     pub invoked_command: Option<String>,
     pub invoked_args: Vec<String>,
     pub observed_child_commands: Vec<String>,
+    /// Effective transport destinations observed in trace2 after Git resolves a remote.
+    /// These are captured while the command is running so deferred processing never has
+    /// to consult mutable remote configuration.
+    #[serde(default)]
+    pub transport_targets: Vec<String>,
     pub exit_code: i32,
     pub started_at_ns: u128,
     pub finished_at_ns: u128,

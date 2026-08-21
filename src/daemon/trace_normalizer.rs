@@ -18,6 +18,8 @@ pub struct PendingTraceCommand {
     pub raw_argv: Vec<String>,
     pub root_cmd_name: Option<String>,
     pub observed_child_commands: Vec<String>,
+    pub transport_targets: Vec<String>,
+    pub invocation_cwd: Option<PathBuf>,
     pub invocation_worktree: Option<PathBuf>,
     pub worktree: Option<PathBuf>,
     pub family_key: Option<FamilyKey>,
@@ -59,6 +61,7 @@ pub struct TraceNormalizer<B: GitBackend> {
 }
 
 const COMPLETED_ROOT_RETENTION_LIMIT: usize = 16_384;
+const MAX_TRANSPORT_TARGETS_PER_COMMAND: usize = 8;
 
 /// The trace2 event types `ingest_payload`'s dispatch actually consumes.
 ///
@@ -271,6 +274,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             "start" => self.handle_start(payload, sid, &root_sid, ts),
             "def_repo" => self.handle_def_repo(payload, sid, &root_sid),
             "cmd_name" => self.handle_cmd_name(payload, sid, &root_sid),
+            "child_start" => self.handle_child_start(payload, sid, &root_sid),
             "def_param" => self.handle_def_param(payload, &root_sid),
             "exec" => Ok(None),
             "exit" => self.handle_exit(payload, sid, &root_sid, ts, false),
@@ -294,6 +298,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
         }
 
         let raw_argv = payload_argv(payload);
+        let invocation_cwd = payload_invocation_cwd(payload);
         let worktree = payload_worktree(payload)
             .or_else(|| worktree_from_argv(&raw_argv))
             .or_else(|| payload_cwd(payload))
@@ -324,6 +329,8 @@ impl<B: GitBackend> TraceNormalizer<B> {
             raw_argv,
             root_cmd_name: None,
             observed_child_commands: Vec::new(),
+            transport_targets: Vec::new(),
+            invocation_cwd,
             invocation_worktree: worktree.clone(),
             worktree,
             family_key,
@@ -357,6 +364,40 @@ impl<B: GitBackend> TraceNormalizer<B> {
                 .insert(root_sid.to_string(), deferred);
         }
 
+        Ok(None)
+    }
+
+    fn handle_child_start(
+        &mut self,
+        payload: &Value,
+        sid: &str,
+        root_sid: &str,
+    ) -> Result<Option<NormalizedCommand>, GitAiError> {
+        if sid != root_sid {
+            return Ok(None);
+        }
+        let Some(pending) = self.state.pending.get_mut(root_sid) else {
+            return Ok(None);
+        };
+        let Some(target) = transport_target_from_child_start(payload).and_then(|target| {
+            resolve_file_transport_target(payload, target, pending.invocation_cwd.as_deref())
+        }) else {
+            return Ok(None);
+        };
+        if pending.transport_targets.contains(&target) {
+            return Ok(None);
+        }
+        if pending.transport_targets.len() >= MAX_TRANSPORT_TARGETS_PER_COMMAND {
+            tracing::warn!(
+                component = "trace_normalizer",
+                phase = "transport_target_overflow",
+                root_sid,
+                max_targets = MAX_TRANSPORT_TARGETS_PER_COMMAND,
+                "dropping traced transport destination because the command limit was reached"
+            );
+        } else {
+            pending.transport_targets.push(target);
+        }
         Ok(None)
     }
 
@@ -753,6 +794,7 @@ impl<B: GitBackend> TraceNormalizer<B> {
             invoked_command,
             invoked_args,
             observed_child_commands: pending.observed_child_commands,
+            transport_targets: pending.transport_targets,
             exit_code,
             started_at_ns: pending.started_at_ns,
             finished_at_ns,
@@ -826,6 +868,100 @@ fn payload_argv(payload: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn transport_target_from_child_start(payload: &Value) -> Option<String> {
+    let child_class = payload.get("child_class").and_then(Value::as_str)?;
+    let argv = payload_argv(payload);
+
+    let target = match child_class {
+        class if class.starts_with("remote-") => argv.last().cloned(),
+        "transport/file" => argv
+            .last()
+            .and_then(|arg| transport_service_repository(arg))
+            .map(str::to_string),
+        "transport/ssh" => ssh_transport_target(&argv),
+        _ => None,
+    }?;
+    (!target.is_empty() && !target.starts_with('-')).then_some(target)
+}
+
+fn resolve_file_transport_target(
+    payload: &Value,
+    target: String,
+    invocation_cwd: Option<&Path>,
+) -> Option<String> {
+    if payload.get("child_class").and_then(Value::as_str) != Some("transport/file")
+        || Path::new(&target).is_absolute()
+    {
+        return Some(target);
+    }
+
+    let cwd = invocation_cwd.filter(|cwd| cwd.is_absolute())?;
+    let mut resolved = PathBuf::new();
+    for component in cwd.components().chain(Path::new(&target).components()) {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !resolved.pop() {
+                    return None;
+                }
+            }
+            _ => resolved.push(component.as_os_str()),
+        }
+    }
+    Some(resolved.to_string_lossy().into_owned())
+}
+
+fn transport_service_repository(command: &str) -> Option<&str> {
+    // Trace2 classifies this argv as a transport service, so the executable
+    // may be a custom receive-pack command rather than literally
+    // `git-receive-pack`. Git appends the immutable target as the final
+    // argument, quoting it when needed.
+    let command = command.trim();
+    let repository = match command.as_bytes().last().copied() {
+        Some(quote @ (b'\'' | b'"')) => {
+            let opening = command[..command.len() - 1].rfind(char::from(quote))?;
+            command.get(opening + 1..command.len() - 1)?
+        }
+        _ => command.rsplit_once(char::is_whitespace)?.1.trim(),
+    };
+    if repository.is_empty() {
+        return None;
+    }
+    Some(repository)
+}
+
+fn ssh_transport_target(argv: &[String]) -> Option<String> {
+    let service_index = argv.len().checked_sub(1)?;
+    let repository = transport_service_repository(&argv[service_index])?;
+    let host = argv[..service_index]
+        .iter()
+        .rev()
+        .find(|arg| !arg.starts_with('-') && arg.as_str() != "ssh")?;
+    let port = argv[..service_index]
+        .windows(2)
+        .find_map(|pair| (pair[0] == "-p").then_some(pair[1].as_str()))
+        .or_else(|| {
+            argv[..service_index].windows(2).find_map(|pair| {
+                pair[0]
+                    .eq_ignore_ascii_case("-o")
+                    .then(|| pair[1].strip_prefix("Port="))
+                    .flatten()
+            })
+        });
+    if let Some(port) = port {
+        Some(format!(
+            "ssh://{}:{}/{}",
+            host,
+            port,
+            repository.trim_start_matches('/')
+        ))
+    } else if repository.starts_with('/') {
+        Some(format!("ssh://{}{}", host, repository))
+    } else {
+        Some(format!("{}:{}", host, repository))
+    }
+}
+
 /// Trace2 `def_repo` events carry a `repo` index: 1 is the process's primary
 /// repository; higher indices are secondary repositories git opened in
 /// passing (e.g. an embedded subrepo inspected for a gitlink entry). Absent
@@ -848,11 +984,14 @@ fn payload_worktree(payload: &Value) -> Option<PathBuf> {
 }
 
 fn payload_cwd(payload: &Value) -> Option<PathBuf> {
+    payload_invocation_cwd(payload).map(|path| worktree_root_for_path(&path).unwrap_or(path))
+}
+
+fn payload_invocation_cwd(payload: &Value) -> Option<PathBuf> {
     payload
         .get("cwd")
         .and_then(Value::as_str)
         .map(PathBuf::from)
-        .map(|path| worktree_root_for_path(&path).unwrap_or(path))
 }
 
 fn payload_reflog_start_offsets(payload: &Value) -> HashMap<String, u64> {
@@ -1317,6 +1456,228 @@ mod tests {
         assert_eq!(cmd.root_sid, "s1");
         assert_eq!(cmd.primary_command.as_deref(), Some("status"));
         assert_eq!(cmd.exit_code, 0);
+    }
+
+    #[test]
+    fn normalizer_captures_all_resolved_file_push_destinations() {
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+        let start = serde_json::json!({
+            "event":"start", "sid":"push-file", "ts":1,
+            "argv":["git","push","origin","main"], "worktree":"/repo"
+        });
+        let child = serde_json::json!({
+            "event":"child_start", "sid":"push-file", "ts":2,
+            "child_class":"transport/file",
+            "argv":["git-receive-pack '/resolved/remote.git'"]
+        });
+
+        normalizer.ingest_payload(&start).unwrap();
+        normalizer.ingest_payload(&child).unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"child_start", "sid":"push-file", "ts":3,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '/resolved/mirror.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"exit", "sid":"push-file", "ts":4, "code":0
+            }))
+            .unwrap();
+        let command = normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"atexit", "sid":"push-file", "ts":5, "code":0
+            }))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            command.transport_targets,
+            vec!["/resolved/remote.git", "/resolved/mirror.git"]
+        );
+    }
+
+    #[test]
+    fn normalizer_resolves_relative_file_push_destination_from_invocation_cwd() {
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"start", "sid":"push-relative-file", "ts":1,
+                "argv":["git","push","origin","main"],
+                "worktree":"/repo", "cwd":"/repo/subdir"
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"child_start", "sid":"push-relative-file", "ts":2,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '../remote.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"exit", "sid":"push-relative-file", "ts":3, "code":0
+            }))
+            .unwrap();
+        let command = normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"atexit", "sid":"push-relative-file", "ts":4, "code":0
+            }))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(command.transport_targets, vec!["/repo/remote.git"]);
+    }
+
+    #[test]
+    fn normalizer_rejects_relative_file_push_destination_without_invocation_cwd() {
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"start", "sid":"push-relative-file", "ts":1,
+                "argv":["git","push","origin","main"], "worktree":"/repo"
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"child_start", "sid":"push-relative-file", "ts":2,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '../remote.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"exit", "sid":"push-relative-file", "ts":3, "code":0
+            }))
+            .unwrap();
+        let command = normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"atexit", "sid":"push-relative-file", "ts":4, "code":0
+            }))
+            .unwrap()
+            .unwrap();
+
+        assert!(command.transport_targets.is_empty());
+    }
+
+    #[test]
+    fn normalizer_ignores_nested_git_transport_destinations() {
+        let backend = Arc::new(MockBackend::default());
+        backend.set_family("/repo", "/repo/.git");
+        let mut normalizer = TraceNormalizer::new(backend);
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"start", "sid":"push-root", "ts":1,
+                "argv":["git","push","--recurse-submodules=on-demand","origin"],
+                "worktree":"/repo"
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"child_start", "sid":"push-root/submodule", "ts":2,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '/submodule/remote.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"child_start", "sid":"push-root", "ts":3,
+                "child_class":"transport/file",
+                "argv":["git-receive-pack '/superproject/remote.git'"]
+            }))
+            .unwrap();
+        normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"exit", "sid":"push-root", "ts":4, "code":0
+            }))
+            .unwrap();
+        let command = normalizer
+            .ingest_payload(&serde_json::json!({
+                "event":"atexit", "sid":"push-root", "ts":5, "code":0
+            }))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(command.transport_targets, vec!["/superproject/remote.git"]);
+    }
+
+    #[test]
+    fn extracts_http_and_ssh_push_destinations() {
+        let http = serde_json::json!({
+            "child_class":"remote-http",
+            "argv":["git","remote-http","origin","https://example.com/org/repo.git"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&http).as_deref(),
+            Some("https://example.com/org/repo.git")
+        );
+
+        let option_like = serde_json::json!({
+            "child_class":"remote-http",
+            "argv":["git","remote-http","origin","--upload-pack=attacker"]
+        });
+        assert_eq!(transport_target_from_child_start(&option_like), None);
+
+        let ssh = serde_json::json!({
+            "child_class":"transport/ssh",
+            "argv":["ssh","git@example.com","git-receive-pack '/org/repo.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&ssh).as_deref(),
+            Some("ssh://git@example.com/org/repo.git")
+        );
+
+        let ssh_port = serde_json::json!({
+            "child_class":"transport/ssh",
+            "argv":["ssh","-p","2222","git@example.com","git-receive-pack '/org/repo.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&ssh_port).as_deref(),
+            Some("ssh://git@example.com:2222/org/repo.git")
+        );
+
+        let custom_ssh = serde_json::json!({
+            "child_class":"transport/ssh",
+            "argv":["ssh","git@example.com","/opt/git/custom-receive --stateless '/org/repo.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&custom_ssh).as_deref(),
+            Some("ssh://git@example.com/org/repo.git")
+        );
+
+        let relative_ssh = serde_json::json!({
+            "child_class":"transport/ssh",
+            "argv":["ssh","git@example.com","git-receive-pack 'org/repo.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&relative_ssh).as_deref(),
+            Some("git@example.com:org/repo.git")
+        );
+
+        let custom_file = serde_json::json!({
+            "child_class":"transport/file",
+            "argv":["/opt/git/custom-receive '/resolved/remote.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&custom_file).as_deref(),
+            Some("/resolved/remote.git")
+        );
+
+        let spaced_service = serde_json::json!({
+            "child_class":"transport/file",
+            "argv":["git receive-pack '/resolved/remote.git'"]
+        });
+        assert_eq!(
+            transport_target_from_child_start(&spaced_service).as_deref(),
+            Some("/resolved/remote.git")
+        );
     }
 
     #[test]

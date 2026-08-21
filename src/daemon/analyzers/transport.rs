@@ -26,9 +26,16 @@ impl CommandAnalyzer for TransportAnalyzer {
                 remote: first_positional(&args),
                 strategy: infer_pull_strategy(cmd, &args),
             }),
-            "push" => events.push(SemanticEvent::PushCompleted {
-                remote: first_positional(&args),
-            }),
+            "push" if cmd.transport_targets.is_empty() => {
+                events.push(SemanticEvent::PushCompleted {
+                    remote: crate::git::sync_authorship::extract_repository_arg_from_args(&args),
+                })
+            }
+            "push" => events.extend(cmd.transport_targets.iter().cloned().map(|remote| {
+                SemanticEvent::PushCompleted {
+                    remote: Some(remote),
+                }
+            })),
             "clone" => events.push(SemanticEvent::CloneCompleted {
                 target: infer_clone_target(&args)
                     .or_else(|| cmd.worktree.clone())
@@ -136,6 +143,7 @@ mod tests {
             invoked_command: Some(primary.to_string()),
             invoked_args: argv.iter().skip(2).map(|s| s.to_string()).collect(),
             observed_child_commands: Vec::new(),
+            transport_targets: Vec::new(),
             exit_code: 0,
             started_at_ns: 1,
             finished_at_ns: 2,
@@ -166,5 +174,47 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn push_emits_every_trace_resolved_destination_and_named_remote_fails_closed() {
+        let analyzer = TransportAnalyzer;
+        let mut resolved = command("push", &["git", "push", "origin", "main"]);
+        resolved.transport_targets = vec![
+            "/resolved/remote.git".to_string(),
+            "/resolved/mirror.git".to_string(),
+        ];
+        let result = analyzer
+            .analyze(
+                &resolved,
+                AnalysisView {
+                    refs: &Default::default(),
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            result.events.as_slice(),
+            [
+                SemanticEvent::PushCompleted {
+                    remote: Some(remote)
+                },
+                SemanticEvent::PushCompleted {
+                    remote: Some(mirror)
+                }
+            ] if remote == "/resolved/remote.git" && mirror == "/resolved/mirror.git"
+        ));
+
+        let unresolved = analyzer
+            .analyze(
+                &command("push", &["git", "push", "origin", "main"]),
+                AnalysisView {
+                    refs: &Default::default(),
+                },
+            )
+            .unwrap();
+        assert!(matches!(
+            unresolved.events.as_slice(),
+            [SemanticEvent::PushCompleted { remote: None }]
+        ));
     }
 }
