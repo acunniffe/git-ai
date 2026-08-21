@@ -3,6 +3,15 @@ name: Update models.dev Pricing Snapshot
 # Regenerates the embedded models.dev pricing snapshot weekly and opens a PR
 # when prices or the model catalog changed, so the offline fallback used by
 # `git-ai usage` never lags far behind the live catalog.
+#
+# Security notes:
+# - The default GITHUB_TOKEN stays read-only; only the final push/PR step gets
+#   the write-scoped token, so the cargo build (which runs third-party
+#   build.rs/proc-macro code) never sees credentials (checkout uses
+#   persist-credentials: false).
+# - Fetched catalog data is only ever written to the snapshot file — nothing
+#   from models.dev is interpolated into shell commands, branch names, or PR
+#   text — and it ships exclusively through a human-reviewed PR.
 
 on:
   schedule:
@@ -11,8 +20,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 env:
   SNAPSHOT_PATH: src/metrics/models_dev_pricing_snapshot.json
@@ -22,12 +34,22 @@ jobs:
   update-pricing-snapshot:
     name: Regenerate pricing snapshot
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Don't run the cron (or attempt pushes/PRs) from forks.
+    if: github.repository == 'git-ai-project/git-ai'
+    permissions:
+      contents: write # push the snapshot branch
+      pull-requests: write # open/inspect the snapshot PR
 
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
+          # Keep the token out of .git/config: the build step below executes
+          # third-party crate build scripts. The push step authenticates
+          # explicitly instead.
+          persist-credentials: false
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
@@ -59,6 +81,9 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Authenticate git via a credential helper reading GH_TOKEN, which
+          # is scoped to this step only.
+          gh auth setup-git
 
           # Reuse a fixed branch so consecutive weeks update the open PR
           # instead of accumulating new ones.
