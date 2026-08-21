@@ -113,6 +113,13 @@ impl ActorDaemonCoordinator {
         match self.apply_trace_payload_to_state(payload).await? {
             TracePayloadApplyOutcome::None | TracePayloadApplyOutcome::QueuedFamily => {}
             TracePayloadApplyOutcome::Applied(applied) => {
+                // Runs without the family exec lock, concurrently with scheduled
+                // drains. Safe because mutating sequencer commands queue above;
+                // what reaches this arm with a family is either classified
+                // non-mutating (no reflog cursor, so enrichment yields no
+                // semantic events and the side-effect pipeline cannot touch
+                // working logs or notes) or clone/init, which establish a fresh
+                // repository context with no competing drain.
                 if let Some(family) = applied.command.family_key.as_ref().map(|key| key.0.clone()) {
                     self.begin_family_effect(&family)?;
                     let mut commit_file_timestamp_snapshots =

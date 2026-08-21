@@ -27,6 +27,9 @@ mod load;
 #[path = "memory_watchdog.rs"]
 mod memory_watchdog;
 
+#[path = "family_concurrency.rs"]
+mod family_concurrency;
+
 #[path = "outbox_replay.rs"]
 mod outbox_replay;
 

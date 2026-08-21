@@ -14,6 +14,18 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::{Mutex as AsyncMutex, Notify};
 
 impl ActorDaemonCoordinator {
+    /// Store a weak self-reference so family drains can be scheduled on
+    /// their own tasks. Called once, right after the coordinator is wrapped
+    /// in its `Arc`. Coordinators that never register keep the historical
+    /// inline-drain behavior.
+    pub(crate) fn register_self(self: &Arc<Self>) {
+        let _ = self.self_ref.set(Arc::downgrade(self));
+    }
+
+    pub(crate) fn upgraded_self(&self) -> Option<Arc<Self>> {
+        self.self_ref.get().and_then(std::sync::Weak::upgrade)
+    }
+
     pub(crate) fn new() -> Self {
         let backend = Arc::new(crate::operations::daemon::git_backend::SystemGitBackend::new());
         Self {
@@ -36,6 +48,8 @@ impl ActorDaemonCoordinator {
             recent_replay_prerequisites_by_family: Mutex::new(HashMap::new()),
             side_effect_errors_by_family: Mutex::new(HashMap::new()),
             side_effect_exec_locks: Mutex::new(HashMap::new()),
+            self_ref: std::sync::OnceLock::new(),
+            scheduled_family_drains: Mutex::new(HashMap::new()),
             bash_sessions: Mutex::new(
                 crate::operations::daemon::bash_sessions::BashSessionState::new(),
             ),
@@ -387,7 +401,11 @@ impl ActorDaemonCoordinator {
             map.retain(|_, state| !state.entries.is_empty());
         }
         if let Ok(mut map) = self.side_effect_exec_locks.lock() {
-            map.retain(|_, lock| Arc::strong_count(lock) <= 1);
+            // Prune only locks nobody holds (the map's own Arc is the single
+            // strong count). Removing a HELD lock would hand the next
+            // acquirer a fresh mutex while a drain still runs under the old
+            // one, silently breaking per-family side-effect serialization.
+            map.retain(|_, lock| Arc::strong_count(lock) > 1);
         }
         if let Ok(mut map) = self.pending_rebase_original_head_by_worktree.lock() {
             map.shrink_to_fit();

@@ -896,7 +896,12 @@ worktree_test_wrappers! {
             ])
             .expect("branch push to explicit path should succeed");
 
-        let pushed_note = explicit_destination.read_authorship_note(&commit_sha);
+        // Read through `local` so the daemon that ran the push side effect is
+        // synced first: with concurrent family drains, the destination repo's
+        // own family-scoped sync no longer (accidentally) fences the pushing
+        // family's in-flight side effects.
+        let pushed_note =
+            local.read_authorship_note_in_git_dir(explicit_destination.path(), &commit_sha);
         assert!(
             pushed_note.is_some(),
             "git push to an explicit repository path must push authorship notes to that same destination for {}",
