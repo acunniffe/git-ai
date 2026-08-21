@@ -19,6 +19,7 @@ fn delivery(trace_id: &str) -> CheckpointDelivery {
             path_role: PreparedPathRole::Edited,
             stream_source: None,
             metadata: HashMap::new(),
+            delivery_id: None,
         }],
         42,
     )

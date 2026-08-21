@@ -635,9 +635,16 @@ impl PersistedWorkingLog {
     /// Note: Unlike append_checkpoint(), this preserves transcripts because it's used
     /// by post-commit after transcripts have been refetched and need to be preserved
     /// for from_just_working_log() to read them.
+    /// Rewrites the checkpoints file atomically: same-directory temp file,
+    /// fsync, rename over the target, then directory fsync. A crash leaves
+    /// either the old complete list or the new complete list — never a torn
+    /// file. Outbox replay depends on this: its delivery-id dedup reads the
+    /// list, so a torn write could otherwise both lose the recorded id and
+    /// let the replay apply the delivery twice.
     pub fn write_all_checkpoints(&self, checkpoints: &[Checkpoint]) -> Result<(), GitAiError> {
         let checkpoints_file = self.checkpoints_file();
-        let mut output = BufWriter::new(fs::File::create(&checkpoints_file)?);
+        let temp_path = checkpoints_file.with_extension("jsonl.tmp");
+        let mut output = BufWriter::new(fs::File::create(&temp_path)?);
 
         for checkpoint in checkpoints {
             serde_json::to_writer(&mut output, checkpoint)?;
@@ -645,6 +652,17 @@ impl PersistedWorkingLog {
         }
 
         output.flush()?;
+        output
+            .into_inner()
+            .map_err(|e| e.into_error())?
+            .sync_all()?;
+        fs::rename(&temp_path, &checkpoints_file)?;
+        // Windows cannot fsync a directory handle opened via File::open, and
+        // MoveFileEx already writes through; the durability gap is unix-only.
+        #[cfg(unix)]
+        if let Some(dir) = checkpoints_file.parent() {
+            fs::File::open(dir)?.sync_all()?;
+        }
         Ok(())
     }
 

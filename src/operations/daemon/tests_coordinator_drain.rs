@@ -47,6 +47,7 @@ async fn registered_coordinator_schedules_drains_and_completes_blocked_checkpoin
         path_role: PreparedPathRole::Edited,
         stream_source: None,
         metadata: HashMap::new(),
+        delivery_id: None,
     };
     let mut checkpoint = {
         let coord = coord.clone();
