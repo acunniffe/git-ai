@@ -58,11 +58,17 @@ jobs:
           ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          # Don't leave the token in .git/config while npx runs the changelog
+          # bot; the push step authenticates explicitly instead.
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
           node-version: 20
+          # This workflow pushes to main; don't restore a poisonable
+          # dependency cache into it.
+          package-manager-cache: false
 
       - name: Get release body
         id: release-body
@@ -104,9 +110,13 @@ jobs:
         if: steps.config.outputs.dry_run == 'false'
         env:
           RELEASE_TAG: ${{ steps.config.outputs.release_tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Authenticate git via a credential helper reading GH_TOKEN, which
+          # is scoped to this step only.
+          gh auth setup-git
 
           git add CHANGELOG.md
           if git diff --cached --quiet; then

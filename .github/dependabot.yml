@@ -5,6 +5,10 @@ updates:
     target-branch: "main"
     schedule:
       interval: "weekly"
+    # Wait for new releases to age before proposing them, so a compromised
+    # release is likely pulled/yanked before Dependabot suggests it.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
 
@@ -13,6 +17,10 @@ updates:
     target-branch: "main"
     schedule:
       interval: "weekly"
+    # Wait for new releases to age before proposing them, so a compromised
+    # release is likely pulled/yanked before Dependabot suggests it.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(vscode-plugin)"
 
@@ -21,6 +29,10 @@ updates:
     target-branch: "main"
     schedule:
       interval: "weekly"
+    # Wait for new releases to age before proposing them, so a compromised
+    # release is likely pulled/yanked before Dependabot suggests it.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(opencode-plugin)"
 
@@ -29,6 +41,10 @@ updates:
     target-branch: "main"
     schedule:
       interval: "weekly"
+    # Wait for new releases to age before proposing them, so a compromised
+    # release is likely pulled/yanked before Dependabot suggests it.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "chore(intellij-plugin)"
 
@@ -37,6 +53,10 @@ updates:
     target-branch: "main"
     schedule:
       interval: "weekly"
+    # Wait for new releases to age before proposing them, so a compromised
+    # release is likely pulled/yanked before Dependabot suggests it.
+    cooldown:
+      default-days: 7
     groups:
       codeql:
         patterns:

@@ -99,6 +99,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # submodules: true
           fetch-depth: 0
 
@@ -139,10 +140,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          mode="${{ matrix.mode }}"
+          mode="$MATRIX_MODE"
 
           if [ "$mode" = "full" ]; then
-            task test TEST_THREADS=${{ matrix.test_threads }}
+            task test TEST_THREADS="$MATRIX_TEST_THREADS"
             exit 0
           fi
 
@@ -152,8 +153,8 @@ jobs:
               test_targets+=(--test "$(basename "$path" .rs)")
             done < <(find tests -maxdepth 1 -type f -name '*.rs' | sort)
 
-            task test CARGO_TEST_ARGS="${test_targets[*]}" TEST_THREADS=${{ matrix.test_threads }}
-            task test CARGO_TEST_ARGS="--doc" TEST_THREADS=${{ matrix.test_threads }}
+            task test CARGO_TEST_ARGS="${test_targets[*]}" TEST_THREADS="$MATRIX_TEST_THREADS"
+            task test CARGO_TEST_ARGS="--doc" TEST_THREADS="$MATRIX_TEST_THREADS"
             exit 0
           fi
 
@@ -162,8 +163,8 @@ jobs:
             exit 1
           fi
 
-          shard_index=${{ matrix.shard_index }}
-          shard_count=${{ matrix.shard_count }}
+          shard_index=$MATRIX_SHARD_INDEX
+          shard_count=$MATRIX_SHARD_COUNT
           module_infos=()
           module_names=()
 
@@ -227,11 +228,17 @@ jobs:
             echo "  $name"
           done | sort
 
-          task test CARGO_TEST_ARGS="--test integration" EXTRA_TEST_BINARY_ARGS="${skip_args[*]}" TEST_THREADS=${{ matrix.test_threads }}
+          task test CARGO_TEST_ARGS="--test integration" EXTRA_TEST_BINARY_ARGS="${skip_args[*]}" TEST_THREADS="$MATRIX_TEST_THREADS"
         env:
           CARGO_INCREMENTAL: 0
           GIT_AI_TEST_SHARED_DAEMON_POOL_SIZE: ${{ matrix.daemon_pool }}
           RUSTFLAGS: ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+          # Matrix values are passed via env (not template-expanded into the
+          # script) so they can't act as shell injection vectors.
+          MATRIX_MODE: ${{ matrix.mode }}
+          MATRIX_TEST_THREADS: ${{ matrix.test_threads }}
+          MATRIX_SHARD_INDEX: ${{ matrix.shard_index }}
+          MATRIX_SHARD_COUNT: ${{ matrix.shard_count }}
 
       - name: Run tests (Windows)
         if: runner.os == 'Windows'
@@ -244,7 +251,7 @@ jobs:
             $env:Path = "$gitUsrBin;$env:Path"
           }
 
-          $mode = "${{ matrix.mode }}"
+          $mode = $env:MATRIX_MODE
           if ($mode -eq "windows-core") {
             $testTargets = @("--lib", "--bins")
             Get-ChildItem -Path "tests" -Filter "*.rs" -File |
@@ -253,8 +260,8 @@ jobs:
                 $testTargets += @("--test", $_.BaseName)
               }
 
-            task test CARGO_TEST_ARGS="$($testTargets -join ' ')" TEST_THREADS=${{ matrix.test_threads }}
-            task test CARGO_TEST_ARGS="--doc" TEST_THREADS=${{ matrix.test_threads }}
+            task test CARGO_TEST_ARGS="$($testTargets -join ' ')" TEST_THREADS="$env:MATRIX_TEST_THREADS"
+            task test CARGO_TEST_ARGS="--doc" TEST_THREADS="$MATRIX_TEST_THREADS"
             exit 0
           }
 
@@ -262,8 +269,8 @@ jobs:
             throw "Unsupported Windows test mode: $mode"
           }
 
-          $shardIndex = [int]"${{ matrix.shard_index }}"
-          $shardCount = [int]"${{ matrix.shard_count }}"
+          $shardIndex = [int]$env:MATRIX_SHARD_INDEX
+          $shardCount = [int]$env:MATRIX_SHARD_COUNT
           $moduleInfos = @()
 
           Get-Content "tests/integration/main.rs" | ForEach-Object {
@@ -321,10 +328,16 @@ jobs:
           Write-Host "Selected modules:"
           $selectedModules | Sort-Object | ForEach-Object { Write-Host "  $_" }
 
-          task test CARGO_TEST_ARGS="--test integration" EXTRA_TEST_BINARY_ARGS="$skipArgs" TEST_THREADS=${{ matrix.test_threads }}
+          task test CARGO_TEST_ARGS="--test integration" EXTRA_TEST_BINARY_ARGS="$skipArgs" TEST_THREADS="$env:MATRIX_TEST_THREADS"
         env:
           CARGO_INCREMENTAL: 0
           GIT_AI_TEST_SHARED_DAEMON_POOL_SIZE: ${{ matrix.daemon_pool }}
+          # Matrix values are passed via env (not template-expanded into the
+          # script) so they can't act as shell injection vectors.
+          MATRIX_MODE: ${{ matrix.mode }}
+          MATRIX_TEST_THREADS: ${{ matrix.test_threads }}
+          MATRIX_SHARD_INDEX: ${{ matrix.shard_index }}
+          MATRIX_SHARD_COUNT: ${{ matrix.shard_count }}
 
   ubuntu-test-complete:
     name: Test on ubuntu-latest
@@ -484,6 +497,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # submodules: true
           fetch-depth: 0
 

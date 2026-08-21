@@ -152,6 +152,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
@@ -177,18 +178,24 @@ jobs:
           node-version: '22'
 
       - name: Install agent CLI — ${{ matrix.agent }} (${{ matrix.channel }})
+        env:
+          MATRIX_AGENT: ${{ matrix.agent }}
+          MATRIX_NPM_PKG: ${{ matrix.npm_pkg }}
         run: |
-          if [ "${{ matrix.agent }}" = "droid" ]; then
+          if [ "$MATRIX_AGENT" = "droid" ]; then
             curl -fsSL https://app.factory.ai/cli | sh
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           else
-            npm install -g "${{ matrix.npm_pkg }}"
+            npm install -g "$MATRIX_NPM_PKG"
           fi
 
       - name: Verify agent binary is present
+        env:
+          MATRIX_AGENT: ${{ matrix.agent }}
+          MATRIX_BINARY_NAME: ${{ matrix.binary_name }}
         run: |
-          BIN="${{ matrix.binary_name }}"
-          case "${{ matrix.agent }}" in
+          BIN="$MATRIX_BINARY_NAME"
+          case "$MATRIX_AGENT" in
             gemini)   "$BIN" --help 2>&1 | head -3 || true ;;
             *)        "$BIN" --version ;;
           esac
@@ -218,16 +225,21 @@ jobs:
             "$GITHUB_WORKSPACE/target/release/git-ai"
 
       - name: Verify hook wiring
+        env:
+          MATRIX_AGENT: ${{ matrix.agent }}
+          MATRIX_BINARY_NAME: ${{ matrix.binary_name }}
         run: |
           export PATH="$GITHUB_WORKSPACE/target/release:$PATH"
-          bash "$GITHUB_WORKSPACE/scripts/nightly/verify-hook-wiring.sh" "${{ matrix.agent }}" "${{ matrix.binary_name }}"
+          bash "$GITHUB_WORKSPACE/scripts/nightly/verify-hook-wiring.sh" "$MATRIX_AGENT" "$MATRIX_BINARY_NAME"
 
       - name: Synthetic checkpoint test
+        env:
+          MATRIX_AGENT: ${{ matrix.agent }}
         run: |
           export PATH="$GITHUB_WORKSPACE/target/release:$PATH"
           cd /tmp/test-repo
           bash "$GITHUB_WORKSPACE/scripts/nightly/test-synthetic-checkpoint.sh" \
-            "${{ matrix.agent }}" \
+            "$MATRIX_AGENT" \
             /tmp/test-repo
 
       - name: Stop async daemon
@@ -258,6 +270,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
@@ -283,12 +296,15 @@ jobs:
           node-version: '22'
 
       - name: Install agent CLI — ${{ matrix.agent }} (${{ matrix.channel }})
+        env:
+          MATRIX_AGENT: ${{ matrix.agent }}
+          MATRIX_NPM_PKG: ${{ matrix.npm_pkg }}
         run: |
-          if [ "${{ matrix.agent }}" = "droid" ]; then
+          if [ "$MATRIX_AGENT" = "droid" ]; then
             curl -fsSL https://app.factory.ai/cli | sh
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           else
-            npm install -g "${{ matrix.npm_pkg }}"
+            npm install -g "$MATRIX_NPM_PKG"
           fi
 
       - name: Create test repository
@@ -322,19 +338,22 @@ jobs:
           max_attempts: 2
           command: |
             export PATH="$GITHUB_WORKSPACE/target/release:$PATH"
-            export ${{ matrix.api_key_var }}="${{ secrets[matrix.api_key_var] }}"
-            bash "$GITHUB_WORKSPACE/scripts/nightly/test-live-agent.sh" "${{ matrix.agent }}" "${{ matrix.binary_name }}"
+            bash "$GITHUB_WORKSPACE/scripts/nightly/test-live-agent.sh" "$MATRIX_AGENT" "$MATRIX_BINARY_NAME"
         continue-on-error: ${{ matrix.channel == 'latest' }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}
+          MATRIX_AGENT: ${{ matrix.agent }}
+          MATRIX_BINARY_NAME: ${{ matrix.binary_name }}
 
       - name: Verify attribution pipeline
+        env:
+          MATRIX_AGENT: ${{ matrix.agent }}
         run: |
           export PATH="$GITHUB_WORKSPACE/target/release:$PATH"
-          bash "$GITHUB_WORKSPACE/scripts/nightly/verify-attribution.sh" "${{ matrix.agent }}"
+          bash "$GITHUB_WORKSPACE/scripts/nightly/verify-attribution.sh" "$MATRIX_AGENT"
         continue-on-error: ${{ matrix.channel == 'latest' }}
 
       - name: Stop async daemon

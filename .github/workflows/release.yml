@@ -79,6 +79,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Get version from Cargo.toml
         id: get-version
@@ -256,6 +258,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Get version from Cargo.toml
         id: get-version
@@ -359,6 +363,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Download Windows x64 binary
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -418,6 +424,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Download macOS ARM64 binary
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -719,6 +727,7 @@ jobs:
       - name: Checkout code for install script
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           path: repo
 
       - name: Generate version-pinned install script
@@ -847,6 +856,9 @@ jobs:
         with:
           app-id: 3481373
           private-key: ${{ secrets.GIT_AI_INTERNAL_RELEASE_BOT_PRIVATE_KEY }}
+          # The token only pushes the version-bump commit; don't inherit the
+          # app installation's full permission set.
+          permission-contents: write
 
       - name: Checkout code for version bump
         if: inputs.release_production == true
@@ -854,6 +866,10 @@ jobs:
         with:
           token: ${{ steps.release-bot-token.outputs.token }}
           fetch-depth: 0
+          # Don't leave the bot token in .git/config while `cargo check`
+          # runs third-party build scripts; the push step authenticates
+          # explicitly instead.
+          persist-credentials: false
 
       - name: Install Rust toolchain
         if: inputs.release_production == true
@@ -892,9 +908,14 @@ jobs:
 
       - name: Commit and push version bump
         if: inputs.release_production == true
+        env:
+          GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Authenticate git via a credential helper reading GH_TOKEN, which
+          # is scoped to this step only.
+          gh auth setup-git
           git add Cargo.toml Cargo.lock flake.nix
           git commit -m "chore: bump version to ${{ steps.bump-version.outputs.new_version }} [skip ci]"
           git pull --rebase origin main

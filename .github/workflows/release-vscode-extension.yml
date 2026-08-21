@@ -28,6 +28,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
@@ -71,6 +73,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
@@ -102,6 +106,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
@@ -145,10 +151,16 @@ jobs:
         with:
           app-id: 3481373
           private-key: ${{ secrets.GIT_AI_INTERNAL_RELEASE_BOT_PRIVATE_KEY }}
+          # The token only pushes the version-bump commit; don't inherit the
+          # app installation's full permission set.
+          permission-contents: write
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           token: ${{ steps.release-bot-token.outputs.token }}
+          # Don't leave the bot token in .git/config while npm runs package
+          # scripts; the push step authenticates explicitly instead.
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
         with:
@@ -158,9 +170,14 @@ jobs:
         run: npm version patch --no-git-tag-version
 
       - name: Commit version bump
+        env:
+          GH_TOKEN: ${{ steps.release-bot-token.outputs.token }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Authenticate git via a credential helper reading GH_TOKEN, which
+          # is scoped to this step only.
+          gh auth setup-git
           git add package.json package-lock.json
           git commit -m "chore(vscode): bump version to $(node -p "require('./package.json').version")"
           git pull --rebase origin main
