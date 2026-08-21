@@ -94,9 +94,9 @@ pub fn handle_fetch_notes(args: &[String]) {
 
     // When the HTTP notes backend is enabled, warm the local notes-db cache
     // from the HTTP backend instead of fetching refs/notes/ai.
-    if crate::config::Config::get().notes_backend_kind() == NotesBackendKind::Http {
+    if crate::config::Config::fresh().notes_backend_kind() == NotesBackendKind::Http {
         match crate::git::notes_api::warm_cache_for_remote(&repo, &remote_name) {
-            Ok(()) => {
+            Ok(_) => {
                 let elapsed = start.elapsed();
                 if json_output {
                     let output = FetchNotesJsonOutput {

@@ -231,7 +231,7 @@ fn run_log(args: &[String]) -> Result<ExitStatus, LogError> {
 }
 
 fn run_plain_log(global_args: &[String], git_log_args: &[String]) -> Result<ExitStatus, LogError> {
-    if Config::get().notes_backend_kind() != NotesBackendKind::GitNotes {
+    if Config::fresh().notes_backend_kind() != NotesBackendKind::GitNotes {
         return Err(LogError::Message(
             "plain git log --notes=ai only supports the git_notes backend".to_string(),
         ));

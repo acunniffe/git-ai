@@ -2661,6 +2661,65 @@ pub fn exec_git(args: &[String]) -> Result<Output, GitAiError> {
     exec_git_with_profile(args, InternalGitProfile::General)
 }
 
+/// Execute an internal Git command with a hard wall-clock timeout.
+///
+/// This preserves the same disabled-hook and trace2-cleanup policy as `exec_git`.
+pub(crate) fn exec_git_with_timeout(
+    args: &[String],
+    timeout: std::time::Duration,
+) -> Result<crate::process_timeout::TimedCommandOutput, GitAiError> {
+    let effective_args = args_with_internal_git_profile(
+        &args_with_disabled_hooks_if_needed(args),
+        InternalGitProfile::General,
+    );
+    spawn_probe_log(&effective_args);
+    let arg_refs = effective_args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let output = crate::process_timeout::run_command_with_timeout_and_env(
+        config::Config::get().git_cmd(),
+        &arg_refs,
+        None,
+        timeout,
+        std::time::Duration::from_millis(20),
+        INTERNAL_GIT_ENV_REMOVE,
+        INTERNAL_GIT_ENV_SET,
+    )
+    .map_err(|error| {
+        GitAiError::Generic(format!("failed to execute timed Git command: {error}"))
+    })?;
+
+    if output.timed_out {
+        tracing::error!(
+            component = "git_notes_sync",
+            phase = "timeout",
+            timeout_ms = timeout.as_millis() as u64,
+            stderr = %output.stderr,
+            diagnostics = ?output.diagnostics,
+            "internal Git notes transport timed out"
+        );
+        return Err(GitAiError::Generic(format!(
+            "Git command timed out after {}ms: {}",
+            timeout.as_millis(),
+            output.stderr
+        )));
+    }
+    if let Some(wait_error) = &output.wait_error {
+        return Err(GitAiError::Generic(format!(
+            "failed waiting for timed Git command: {wait_error}"
+        )));
+    }
+    if output.status != Some(0) {
+        return Err(GitAiError::GitCliError {
+            code: output.status,
+            stderr: output.stderr.clone(),
+            args: effective_args,
+        });
+    }
+    Ok(output)
+}
+
 /// Helper to execute a git command and return output regardless of exit status.
 /// Callers that need success-only behavior should use `exec_git*`.
 pub fn exec_git_allow_nonzero(args: &[String]) -> Result<Output, GitAiError> {
@@ -2685,21 +2744,31 @@ pub fn exec_git_allow_nonzero_with_env(
 
 #[cfg(feature = "test-support")]
 fn spawn_probe_log(effective_args: &[String]) {
-    let Ok(path) = std::env::var("GIT_AI_SPAWN_LOG") else {
-        return;
-    };
-    let sub = effective_args
-        .iter()
-        .find(|a| !a.starts_with('-') && !a.contains('=') && !a.contains('/') && !a.contains('\\'))
-        .cloned()
-        .unwrap_or_default();
-    if let Ok(mut f) = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
+    if let Ok(path) = std::env::var("GIT_AI_SPAWN_LOG")
+        && let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
     {
         use std::io::Write;
+        let sub = effective_args
+            .iter()
+            .find(|a| {
+                !a.starts_with('-') && !a.contains('=') && !a.contains('/') && !a.contains('\\')
+            })
+            .cloned()
+            .unwrap_or_default();
         let _ = writeln!(f, "{}", sub);
+    }
+
+    if let Ok(path) = std::env::var("GIT_AI_SPAWN_ARGS_LOG")
+        && let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+    {
+        use std::io::Write;
+        let _ = writeln!(f, "{:?}", effective_args);
     }
 }
 
@@ -2741,6 +2810,7 @@ pub fn spawn_git_stdout(args: &[String]) -> Result<Child, GitAiError> {
         &args_with_disabled_hooks_if_needed(args),
         InternalGitProfile::General,
     );
+    spawn_probe_log(&effective_args);
     let mut cmd = Command::new(config::Config::get().git_cmd());
     cmd.args(&effective_args)
         .stdin(std::process::Stdio::null())
@@ -2767,6 +2837,7 @@ pub fn spawn_git_passthrough(args: &[String]) -> Result<Child, GitAiError> {
         &args_with_disabled_hooks_if_needed(args),
         InternalGitProfile::General,
     );
+    spawn_probe_log(&effective_args);
     let mut cmd = Command::new(config::Config::get().git_cmd());
     cmd.args(&effective_args)
         .stdin(std::process::Stdio::inherit())

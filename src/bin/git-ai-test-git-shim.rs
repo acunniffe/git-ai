@@ -76,13 +76,27 @@ fn new_test_sync_session() -> String {
     format!("gt-shim-{}", git_ai::uuid::generate_v4())
 }
 
-fn delay_for_test() {
+fn delay_for_test(argv: &[String]) {
     let Ok(delay_ms) = env::var("GIT_AI_TEST_GIT_SHIM_DELAY_MS") else {
         return;
     };
     let Ok(delay_ms) = delay_ms.parse::<u64>() else {
         return;
     };
+    if let Ok(commands) = env::var("GIT_AI_TEST_GIT_SHIM_DELAY_COMMANDS") {
+        let Ok(cwd) = env::current_dir() else {
+            return;
+        };
+        let command = tracked_parsed_git_invocation_for_test_sync(argv, &cwd).command;
+        if !command.as_deref().is_some_and(|command| {
+            commands
+                .split(',')
+                .map(str::trim)
+                .any(|selected| selected == command)
+        }) {
+            return;
+        }
+    }
     std::thread::sleep(Duration::from_millis(delay_ms));
 }
 
@@ -156,7 +170,7 @@ fn exec_target(target: &str, argv: &[String]) -> ! {
 #[cfg(unix)]
 fn main() {
     let argv = env::args().skip(1).collect::<Vec<_>>();
-    delay_for_test();
+    delay_for_test(&argv);
     let target = select_target(&argv).unwrap_or_else(|error| panic!("{error}"));
     let mut effective_argv = argv.clone();
     let mut test_sync_session = None;
@@ -182,7 +196,7 @@ fn main() {
 #[cfg(not(unix))]
 fn main() {
     let argv = env::args().skip(1).collect::<Vec<_>>();
-    delay_for_test();
+    delay_for_test(&argv);
     let target = select_target(&argv).unwrap_or_else(|error| panic!("{error}"));
     let mut effective_argv = argv.clone();
     let mut test_sync_session = None;

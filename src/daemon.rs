@@ -1363,7 +1363,7 @@ fn apply_pull_notes_sync_side_effect(
     );
 
     if notes_backend == NotesBackendKind::Http {
-        return crate::git::notes_api::warm_cache_for_remote(&repo, &remote);
+        return crate::git::notes_api::warm_cache_for_remote(&repo, &remote).map(|_| ());
     }
 
     fetch_authorship_notes(&repo, &remote)?;
@@ -1386,7 +1386,7 @@ fn apply_clone_notes_sync_side_effect(worktree: &str) -> Result<(), GitAiError> 
     );
 
     if notes_backend == NotesBackendKind::Http {
-        return crate::git::notes_api::warm_cache_for_remote(&repo, remote);
+        return crate::git::notes_api::warm_cache_for_remote(&repo, remote).map(|_| ());
     }
 
     fetch_authorship_notes(&repo, remote)?;

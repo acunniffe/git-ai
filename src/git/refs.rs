@@ -629,43 +629,7 @@ pub(in crate::git) fn get_commits_with_notes_from_list(
         return Ok(Vec::new());
     }
 
-    // Get the git authors for all commits using git rev-list
-    // This approach works in both bare and normal repositories
-    let mut args = repo.global_args_for_exec();
-    args.push("rev-list".to_string());
-    args.push("--no-walk".to_string());
-    args.push("--pretty=format:%H%n%an%n%ae".to_string());
-    for sha in commit_shas {
-        args.push(sha.clone());
-    }
-
-    let output = exec_git(&args)?;
-    let stdout = String::from_utf8(output.stdout)
-        .map_err(|_| GitAiError::Generic("Failed to parse git rev-list output".to_string()))?;
-
-    let mut commit_authors = HashMap::new();
-    let lines: Vec<&str> = stdout.lines().collect();
-    let mut i = 0;
-    while i < lines.len() {
-        let line = lines[i];
-        // Skip commit headers (start with "commit ")
-        if line.starts_with("commit ") {
-            i += 1;
-            if i + 2 < lines.len() {
-                let sha = lines[i].to_string();
-                let name = lines[i + 1].to_string();
-                let email = lines[i + 2].to_string();
-                let author = format!("{} <{}>", name, email);
-                commit_authors.insert(sha, author);
-                i += 3;
-            } else {
-                break;
-            }
-        } else {
-            i += 1;
-        }
-    }
-
+    let commit_authors = commit_authors_for_list(repo, commit_shas)?;
     let note_blob_oids = note_blob_oids_for_commits(repo, commit_shas)?;
     let mut unique_blob_oids = Vec::new();
     let mut seen_blob_oids = HashSet::new();
@@ -705,6 +669,55 @@ pub(in crate::git) fn get_commits_with_notes_from_list(
     Ok(result)
 }
 
+/// Resolve commit authors in one Git invocation without consulting any notes ref.
+pub(in crate::git) fn commit_authors_for_list(
+    repo: &Repository,
+    commit_shas: &[String],
+) -> Result<HashMap<String, String>, GitAiError> {
+    if commit_shas.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    // Get the git authors for all commits using git rev-list. This works in both
+    // bare and normal repositories and is independent of the configured notes backend.
+    let mut args = repo.global_args_for_exec();
+    args.push("rev-list".to_string());
+    args.push("--no-walk".to_string());
+    args.push("--pretty=format:%H%n%an%n%ae".to_string());
+    for sha in commit_shas {
+        args.push(sha.clone());
+    }
+
+    let output = exec_git(&args)?;
+    let stdout = String::from_utf8(output.stdout)
+        .map_err(|_| GitAiError::Generic("Failed to parse git rev-list output".to_string()))?;
+
+    let mut commit_authors = HashMap::new();
+    let lines: Vec<&str> = stdout.lines().collect();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        // Skip commit headers (start with "commit ")
+        if line.starts_with("commit ") {
+            i += 1;
+            if i + 2 < lines.len() {
+                let sha = lines[i].to_string();
+                let name = lines[i + 1].to_string();
+                let email = lines[i + 2].to_string();
+                let author = format!("{} <{}>", name, email);
+                commit_authors.insert(sha, author);
+                i += 3;
+            } else {
+                break;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    Ok(commit_authors)
+}
+
 // Show an authorship note and return its JSON content if found, or None if it doesn't exist.
 pub(in crate::git) fn show_authorship_note(repo: &Repository, commit_sha: &str) -> Option<String> {
     let mut args = repo.global_args_for_exec();
@@ -739,10 +752,30 @@ pub(in crate::git) fn commits_with_authorship_notes(
 // Show an authorship note and return its JSON content if found, or None if it doesn't exist.
 pub(in crate::git) fn get_authorship(repo: &Repository, commit_sha: &str) -> Option<AuthorshipLog> {
     let content = show_authorship_note(repo, commit_sha)?;
-    let mut authorship_log = AuthorshipLog::deserialize_from_string(&content).ok()?;
-    // Keep metadata aligned with the commit where this note is attached.
+    let authorship_log = AuthorshipLog::deserialize_from_string(&content).ok()?;
+    Some(align_authorship_log(authorship_log, commit_sha))
+}
+
+pub(in crate::git) fn align_authorship_log(
+    mut authorship_log: AuthorshipLog,
+    commit_sha: &str,
+) -> AuthorshipLog {
     authorship_log.metadata.base_commit_sha = commit_sha.to_string();
-    Some(authorship_log)
+    authorship_log
+}
+
+pub(in crate::git) fn validate_authorship_log(
+    authorship_log: AuthorshipLog,
+    commit_sha: &str,
+) -> Result<AuthorshipLog, GitAiError> {
+    if authorship_log.metadata.schema_version != AUTHORSHIP_LOG_VERSION {
+        return Err(GitAiError::Generic(format!(
+            "Unsupported authorship log version: {} (expected: {})",
+            authorship_log.metadata.schema_version, AUTHORSHIP_LOG_VERSION
+        )));
+    }
+
+    Ok(align_authorship_log(authorship_log, commit_sha))
 }
 
 #[allow(dead_code)]
@@ -764,7 +797,7 @@ pub(in crate::git) fn get_reference_as_authorship_log_v3(
         .ok_or_else(|| GitAiError::Generic("No authorship note found".to_string()))?;
 
     // Try to deserialize as AuthorshipLog
-    let mut authorship_log = match AuthorshipLog::deserialize_from_string(&content) {
+    let authorship_log = match AuthorshipLog::deserialize_from_string(&content) {
         Ok(log) => log,
         Err(_) => {
             return Err(GitAiError::Generic(
@@ -773,18 +806,7 @@ pub(in crate::git) fn get_reference_as_authorship_log_v3(
         }
     };
 
-    // Check version compatibility
-    if authorship_log.metadata.schema_version != AUTHORSHIP_LOG_VERSION {
-        return Err(GitAiError::Generic(format!(
-            "Unsupported authorship log version: {} (expected: {})",
-            authorship_log.metadata.schema_version, AUTHORSHIP_LOG_VERSION
-        )));
-    }
-
-    // Keep metadata aligned with the commit where this note is attached.
-    authorship_log.metadata.base_commit_sha = commit_sha.to_string();
-
-    Ok(authorship_log)
+    validate_authorship_log(authorship_log, commit_sha)
 }
 
 /// Sanitize a remote name to create a safe ref name
@@ -1018,6 +1040,7 @@ pub(crate) fn sort_commit_shas_by_date_desc(
     let mut sha_vec: Vec<String> = shas.into_iter().collect();
     let mut args = repo.global_args_for_exec();
     args.push("log".to_string());
+    args.push("--no-notes".to_string());
     args.push("--format=%H".to_string());
     args.push("--date-order".to_string());
     args.push("--no-walk".to_string());
