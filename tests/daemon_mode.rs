@@ -7414,6 +7414,55 @@ fn await_reflects_triggered_notes_flush() {
     );
 }
 
+/// Flush passes that skip for the same unchanged reason must not log INFO
+/// per pass: an unauthenticated daemon runs a flush every 3 seconds, so a
+/// per-pass INFO line writes ~29k lines/day into the daemon log file. The
+/// skip reason logs at INFO once when it first applies (and again when it
+/// changes); unchanged repeats are debug-only.
+#[test]
+fn daemon_flush_skip_reason_logs_once_not_per_pass() {
+    // Default test repo: no API key, not logged in — every flush pass skips
+    // the metrics upload for the same "not authenticated" reason.
+    let repo = TestRepo::new();
+    let control_socket_path = daemon_control_socket_path(&repo);
+
+    // Each trigger runs one serialized flush pass in the telemetry loop.
+    for _ in 0..3 {
+        send_control_request(&control_socket_path, &ControlRequest::FlushNotes)
+            .expect("flush trigger should be accepted");
+        thread::sleep(Duration::from_millis(300));
+    }
+
+    let needle = "metrics: skipping pending upload, not authenticated";
+    let started = std::time::Instant::now();
+    while !repo.daemon_stderr_contents().contains(needle) {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "skip reason was never logged:\n{}",
+            repo.daemon_stderr_contents()
+        );
+        thread::sleep(Duration::from_millis(100));
+    }
+    // Let any in-flight flush passes finish before counting occurrences.
+    thread::sleep(Duration::from_millis(500));
+
+    let logs = repo.daemon_stderr_contents();
+    let occurrences = logs.matches(needle).count();
+    assert_eq!(
+        occurrences, 1,
+        "unchanged skip reason should log once, not once per flush pass:\n{}",
+        logs
+    );
+    // The notes-flush skip reason (default backend is GitNotes, not Http) is
+    // gated the same way; passes that flush a telemetry batch hit it.
+    let notes_skips = logs.matches("notes: skipping flush").count();
+    assert!(
+        notes_skips <= 1,
+        "unchanged notes skip reason should log at most once:\n{}",
+        logs
+    );
+}
+
 /// A control client that connects and vanishes (times out, dies mid-request)
 /// is routine under load — it must not produce ERROR-level noise or affect
 /// the daemon's health.

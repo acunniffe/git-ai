@@ -34,6 +34,53 @@ const MAX_DAEMON_LOG_BUFFER_EVENTS: usize = 5000;
 
 static METRICS_UPLOAD_AVAILABLE: AtomicBool = AtomicBool::new(false);
 static METRICS_METADATA_BACKFILL_STARTED: AtomicBool = AtomicBool::new(false);
+static METRICS_SKIP_LOG_GATE: TransitionLogGate = TransitionLogGate::new();
+static NOTES_SKIP_LOG_GATE: TransitionLogGate = TransitionLogGate::new();
+
+/// Gates a log line that a periodic loop would otherwise emit every pass.
+///
+/// The flush loop runs every 3 seconds, so an unconditional INFO skip line
+/// ("not authenticated", "backend is not Http", ...) writes tens of
+/// thousands of identical lines per day into the daemon log file. The skip
+/// reason still has to be diagnosable from the log, so `log_skip` emits INFO
+/// when the message differs from the previous pass (including the first
+/// occurrence and after `clear`), and demotes unchanged repeats to debug.
+/// Call `clear` when the gated stage proceeds, so a later regression to a
+/// skipping state logs at INFO again.
+struct TransitionLogGate {
+    last_message: std::sync::Mutex<Option<&'static str>>,
+}
+
+impl TransitionLogGate {
+    const fn new() -> Self {
+        Self {
+            last_message: std::sync::Mutex::new(None),
+        }
+    }
+
+    fn log_skip(&self, message: &'static str) {
+        if self.transitioned_to(message) {
+            tracing::info!("{}", message);
+        } else {
+            tracing::debug!("{}", message);
+        }
+    }
+
+    /// Records `message` as the current state; returns whether it changed.
+    fn transitioned_to(&self, message: &'static str) -> bool {
+        let mut last = self.last_message.lock().unwrap_or_else(|e| e.into_inner());
+        if *last == Some(message) {
+            false
+        } else {
+            *last = Some(message);
+            true
+        }
+    }
+
+    fn clear(&self) {
+        *self.last_message.lock().unwrap_or_else(|e| e.into_inner()) = None;
+    }
+}
 static DAEMON_RUN_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static DAEMON_LOG_UPLOAD_IN_FLIGHT: std::sync::OnceLock<Arc<AtomicBool>> =
     std::sync::OnceLock::new();
@@ -874,11 +921,13 @@ fn flush_pending_metrics() {
     let should_upload = metrics_upload_allowed(&api_base_url, &client);
     METRICS_UPLOAD_AVAILABLE.store(should_upload, Ordering::Relaxed);
     if !should_upload {
-        // Info: pending metrics silently never uploading is an attribution-
-        // telemetry delivery failure; this line makes it diagnosable.
-        tracing::info!("metrics: skipping pending upload, not authenticated");
+        // Pending metrics silently never uploading is an attribution-
+        // telemetry delivery failure; the gate keeps it diagnosable (INFO on
+        // first occurrence) without logging every 3-second flush pass.
+        METRICS_SKIP_LOG_GATE.log_skip("metrics: skipping pending upload, not authenticated");
         return;
     }
+    METRICS_SKIP_LOG_GATE.clear();
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     if let Err(e) = flush_pending_metrics_from_db(&client, deadline) {
@@ -1516,19 +1565,21 @@ pub fn flush_notes() {
     use crate::api::types::{NoteEntry, NotesUploadRequest};
     use crate::config::NotesBackendKind;
 
-    // Skip reasons log at info: a note that silently never uploads is an
-    // attribution-delivery failure, and these lines are what make a
-    // "0 notes uploaded" report diagnosable from the daemon log.
+    // A note that silently never uploads is an attribution-delivery failure,
+    // and these skip lines are what make a "0 notes uploaded" report
+    // diagnosable from the daemon log — but the flush loop calls this every
+    // 3 seconds, so unchanged skip reasons log INFO once, then debug.
     let cfg = Config::fresh();
     if cfg.notes_backend_kind() != NotesBackendKind::Http {
-        tracing::info!("notes: skipping flush, backend is not Http");
+        NOTES_SKIP_LOG_GATE.log_skip("notes: skipping flush, backend is not Http");
         return;
     }
 
     let backend_url = match cfg.notes_backend_url() {
         Some(url) => url.to_string(),
         None => {
-            tracing::info!("notes: skipping flush, notes_backend.backend_url is not configured");
+            NOTES_SKIP_LOG_GATE
+                .log_skip("notes: skipping flush, notes_backend.backend_url is not configured");
             return;
         }
     };
@@ -1536,9 +1587,10 @@ pub fn flush_notes() {
     let client = ApiClient::new(context);
 
     if !client.is_logged_in() && !client.has_api_key() {
-        tracing::info!("notes: skipping flush, not authenticated");
+        NOTES_SKIP_LOG_GATE.log_skip("notes: skipping flush, not authenticated");
         return;
     }
+    NOTES_SKIP_LOG_GATE.clear();
 
     // Dequeue up to 50 pending notes.
     let pending = match crate::notes::db::NotesDatabase::global() {
@@ -1789,6 +1841,27 @@ mod tests {
 
     fn event_json(ts: u32) -> String {
         format!(r#"{{"t":{ts},"e":1,"v":{{}},"a":{{}}}}"#)
+    }
+
+    #[test]
+    fn transition_log_gate_reports_change_only_on_new_message() {
+        let gate = TransitionLogGate::new();
+        assert!(gate.transitioned_to("not authenticated"));
+        assert!(!gate.transitioned_to("not authenticated"));
+        assert!(gate.transitioned_to("backend is not Http"));
+        assert!(!gate.transitioned_to("backend is not Http"));
+        // Flipping back to a previously seen message is still a change.
+        assert!(gate.transitioned_to("not authenticated"));
+    }
+
+    #[test]
+    fn transition_log_gate_clear_rearms_the_gate() {
+        let gate = TransitionLogGate::new();
+        assert!(gate.transitioned_to("not authenticated"));
+        // The skip resolved (e.g. the user logged in)...
+        gate.clear();
+        // ...so a later regression to the same skip reason logs again.
+        assert!(gate.transitioned_to("not authenticated"));
     }
 
     fn unix_now() -> u64 {
