@@ -2899,15 +2899,16 @@ mod tests {
         let reset = db.reingest_metrics(Some(from_ts), Some(to_ts)).unwrap();
 
         assert_eq!(reset, 3);
-        let rows: Vec<(
-            i64,
-            Option<i64>,
-            i64,
-            Option<String>,
-            Option<i64>,
-            i64,
-            Option<i64>,
-        )> = db
+        struct DeliveryState {
+            id: i64,
+            delivered_ts: Option<i64>,
+            attempts: i64,
+            last_sync_error: Option<String>,
+            last_sync_at: Option<i64>,
+            next_retry_at: i64,
+            processing_started_at: Option<i64>,
+        }
+        let rows: Vec<DeliveryState> = db
             .conn
             .prepare(
                 "SELECT id, delivered_ts, attempts, last_sync_error, last_sync_at, \
@@ -2916,15 +2917,15 @@ mod tests {
             )
             .unwrap()
             .query_map([], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                    row.get(6)?,
-                ))
+                Ok(DeliveryState {
+                    id: row.get(0)?,
+                    delivered_ts: row.get(1)?,
+                    attempts: row.get(2)?,
+                    last_sync_error: row.get(3)?,
+                    last_sync_at: row.get(4)?,
+                    next_retry_at: row.get(5)?,
+                    processing_started_at: row.get(6)?,
+                })
             })
             .unwrap()
             .collect::<Result<_, _>>()
@@ -2933,19 +2934,19 @@ mod tests {
         for (index, row) in rows.iter().enumerate() {
             let in_range = matches!(index, 1..=3);
             if in_range {
-                assert_eq!(row.1, None, "row {} should be pending", row.0);
-                assert_eq!(row.2, 0);
-                assert_eq!(row.3, None);
-                assert_eq!(row.4, None);
-                assert_eq!(row.5, 0);
-                assert_eq!(row.6, None);
+                assert_eq!(row.delivered_ts, None, "row {} should be pending", row.id);
+                assert_eq!(row.attempts, 0);
+                assert_eq!(row.last_sync_error, None);
+                assert_eq!(row.last_sync_at, None);
+                assert_eq!(row.next_retry_at, 0);
+                assert_eq!(row.processing_started_at, None);
             } else {
-                assert_eq!(row.1, Some(now as i64), "row {} changed", row.0);
-                assert_eq!(row.2, 6);
-                assert_eq!(row.3.as_deref(), Some("stopped"));
-                assert_eq!(row.4, Some(now as i64));
-                assert_eq!(row.5, now as i64);
-                assert_eq!(row.6, Some(now as i64));
+                assert_eq!(row.delivered_ts, Some(now as i64), "row {} changed", row.id);
+                assert_eq!(row.attempts, 6);
+                assert_eq!(row.last_sync_error.as_deref(), Some("stopped"));
+                assert_eq!(row.last_sync_at, Some(now as i64));
+                assert_eq!(row.next_retry_at, now as i64);
+                assert_eq!(row.processing_started_at, Some(now as i64));
             }
         }
     }
