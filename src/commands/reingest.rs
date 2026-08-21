@@ -158,7 +158,11 @@ fn parse_rfc3339_timestamp(flag: &str, value: &str) -> Result<u32, String> {
 }
 
 fn parse_since_duration(value: &str) -> Result<u64, String> {
-    let (digits, unit) = value.split_at(value.len().saturating_sub(1));
+    let split_index = value
+        .char_indices()
+        .next_back()
+        .map_or(0, |(index, _)| index);
+    let (digits, unit) = value.split_at(split_index);
     let amount = digits
         .parse::<u64>()
         .ok()
@@ -262,6 +266,7 @@ mod tests {
             vec!["--all", "--since", "1d"],
             vec!["--since", "0d"],
             vec!["--since", "1d2h"],
+            vec!["--since", "5µ"],
             vec![
                 "--from",
                 "2023-11-14T22:13:20Z",
