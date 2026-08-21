@@ -23,6 +23,13 @@ pub enum ControlRequest {
     /// Signal the daemon that new notes are pending in notes-db and should be flushed.
     #[serde(rename = "notes.flush")]
     FlushNotes,
+    /// Reset local metric delivery state for a half-open event-time range, or
+    /// for all rows when both bounds are absent.
+    #[serde(rename = "metrics.reingest")]
+    ReingestMetrics {
+        from_ts: Option<u32>,
+        to_ts: Option<u32>,
+    },
     /// Report ingest loss counters (dropped trace payloads/connections).
     #[serde(rename = "stats.ingest")]
     StatsIngest,
@@ -184,4 +191,25 @@ pub struct CasSyncPayload {
     pub data: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metrics_reingest_request_uses_stable_wire_shape() {
+        let request = ControlRequest::ReingestMetrics {
+            from_ts: Some(100),
+            to_ts: Some(200),
+        };
+
+        assert_eq!(
+            serde_json::to_value(request).unwrap(),
+            serde_json::json!({
+                "method": "metrics.reingest",
+                "params": { "from_ts": 100, "to_ts": 200 }
+            })
+        );
+    }
 }

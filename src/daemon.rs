@@ -7202,6 +7202,22 @@ impl ActorDaemonCoordinator {
                 }
                 Ok(ControlResponse::ok(None, None))
             }
+            ControlRequest::ReingestMetrics { from_ts, to_ts } => {
+                if let Some(worker) = &self.telemetry_worker {
+                    worker
+                        .reingest_metrics(from_ts, to_ts)
+                        .await
+                        .and_then(|reset| {
+                            serde_json::to_value(json!({ "reset": reset }))
+                                .map(|value| ControlResponse::ok(None, Some(value)))
+                                .map_err(GitAiError::from)
+                        })
+                } else {
+                    Err(GitAiError::Generic(
+                        "telemetry worker is not available".to_string(),
+                    ))
+                }
+            }
             ControlRequest::StatsIngest => Ok(ControlResponse::ok(
                 None,
                 Some(json!({
@@ -9491,6 +9507,7 @@ fn checkpoint_control_response_timeout(
         ControlRequest::Await { timeout_secs } => {
             Duration::from_secs(timeout_secs.saturating_add(5))
         }
+        ControlRequest::ReingestMetrics { .. } => DAEMON_CHECKPOINT_RESPONSE_TIMEOUT,
         ControlRequest::Shutdown => DAEMON_CHECKPOINT_RESPONSE_TIMEOUT,
         _ => DAEMON_CONTROL_RESPONSE_TIMEOUT,
     }

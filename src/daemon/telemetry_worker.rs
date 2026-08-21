@@ -51,6 +51,12 @@ struct FlushRequest {
     completion: tokio::sync::oneshot::Sender<FlushStatus>,
 }
 
+struct MetricsReingestRequest {
+    from_ts: Option<u32>,
+    to_ts: Option<u32>,
+    completion: tokio::sync::oneshot::Sender<Result<usize, String>>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FlushMode {
     Periodic,
@@ -263,6 +269,7 @@ async fn drain_metrics_persist_requests(
 pub struct DaemonTelemetryWorkerHandle {
     buffer: Arc<Mutex<TelemetryBuffer>>,
     flush_tx: tokio::sync::mpsc::UnboundedSender<FlushRequest>,
+    metrics_reingest_tx: tokio::sync::mpsc::UnboundedSender<MetricsReingestRequest>,
     metrics_persist_tx: tokio::sync::mpsc::Sender<MetricsPersistRequest>,
 }
 
@@ -270,14 +277,17 @@ impl DaemonTelemetryWorkerHandle {
     #[cfg(test)]
     pub fn new_noop() -> Self {
         let (flush_tx, _flush_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (metrics_reingest_tx, metrics_reingest_rx) = tokio::sync::mpsc::unbounded_channel();
         let (metrics_persist_tx, persist_rx) =
             tokio::sync::mpsc::channel(METRICS_PERSIST_QUEUE_CAPACITY);
         // Keep the receiver alive so noop submissions look like a full-but-
         // healthy queue instead of a dead persist worker.
         std::mem::forget(persist_rx);
+        std::mem::forget(metrics_reingest_rx);
         Self {
             buffer: Arc::new(Mutex::new(TelemetryBuffer::new())),
             flush_tx,
+            metrics_reingest_tx,
             metrics_persist_tx,
         }
     }
@@ -363,6 +373,26 @@ impl DaemonTelemetryWorkerHandle {
         completion_rx
             .await
             .map_err(|_| GitAiError::Generic("telemetry flush was cancelled".to_string()))
+    }
+
+    /// Reset matching local metrics in the serialized telemetry loop.
+    pub async fn reingest_metrics(
+        &self,
+        from_ts: Option<u32>,
+        to_ts: Option<u32>,
+    ) -> Result<usize, GitAiError> {
+        let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+        self.metrics_reingest_tx
+            .send(MetricsReingestRequest {
+                from_ts,
+                to_ts,
+                completion: completion_tx,
+            })
+            .map_err(|_| GitAiError::Generic("telemetry worker has stopped".to_string()))?;
+        completion_rx
+            .await
+            .map_err(|_| GitAiError::Generic("metrics reingestion was cancelled".to_string()))?
+            .map_err(GitAiError::Generic)
     }
 
     /// Returns the current number of metrics waiting for upload.
@@ -545,11 +575,13 @@ pub fn submit_daemon_internal_daemon_logs(events: Vec<DaemonLogEvent>) -> bool {
 pub fn spawn_telemetry_worker() -> DaemonTelemetryWorkerHandle {
     let buffer = Arc::new(Mutex::new(TelemetryBuffer::new()));
     let (flush_tx, flush_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (metrics_reingest_tx, metrics_reingest_rx) = tokio::sync::mpsc::unbounded_channel();
     let (metrics_persist_tx, metrics_persist_rx) =
         tokio::sync::mpsc::channel(METRICS_PERSIST_QUEUE_CAPACITY);
     let handle = DaemonTelemetryWorkerHandle {
         buffer: buffer.clone(),
         flush_tx,
+        metrics_reingest_tx,
         metrics_persist_tx: metrics_persist_tx.clone(),
     };
     let daemon_id = daemon_run_id().to_string();
@@ -559,7 +591,14 @@ pub fn spawn_telemetry_worker() -> DaemonTelemetryWorkerHandle {
 
     telemetry_runtime.spawn(metrics_persist_loop(metrics_persist_rx));
     telemetry_runtime.spawn(async move {
-        telemetry_flush_loop(buffer, daemon_id, flush_rx, metrics_persist_tx).await;
+        telemetry_flush_loop(
+            buffer,
+            daemon_id,
+            flush_rx,
+            metrics_reingest_rx,
+            metrics_persist_tx,
+        )
+        .await;
     });
 
     handle
@@ -638,17 +677,44 @@ async fn telemetry_flush_loop(
     buffer: Arc<Mutex<TelemetryBuffer>>,
     daemon_id: String,
     mut flush_rx: tokio::sync::mpsc::UnboundedReceiver<FlushRequest>,
+    mut metrics_reingest_rx: tokio::sync::mpsc::UnboundedReceiver<MetricsReingestRequest>,
     metrics_persist_tx: tokio::sync::mpsc::Sender<MetricsPersistRequest>,
 ) {
     let started_at = std::time::Instant::now();
     let mut next_heartbeat_at = started_at + DAEMON_LOG_HEARTBEAT_INTERVAL;
     let mut flush_requests: Vec<FlushRequest> = Vec::new();
+    let mut metrics_reingest_requests: Vec<MetricsReingestRequest> = Vec::new();
 
     loop {
         tokio::select! {
             _ = sleep_until(next_telemetry_flush_at(Instant::now())) => {}
             Some(request) = flush_rx.recv() => {
                 flush_requests.push(request);
+            }
+            Some(request) = metrics_reingest_rx.recv() => {
+                metrics_reingest_requests.push(request);
+            }
+        }
+
+        let explicitly_requested =
+            !flush_requests.is_empty() || !metrics_reingest_requests.is_empty();
+
+        if !metrics_reingest_requests.is_empty() {
+            let persist_queue_drained =
+                drain_metrics_persist_requests(&metrics_persist_tx, METRICS_PERSIST_DRAIN_DEADLINE)
+                    .await;
+            for request in metrics_reingest_requests.drain(..) {
+                let result = if persist_queue_drained {
+                    tokio::task::spawn_blocking(move || {
+                        reingest_metrics_in_db(request.from_ts, request.to_ts)
+                    })
+                    .await
+                    .map_err(|error| format!("metrics reingestion task panicked: {error}"))
+                    .and_then(|result| result.map_err(|error| error.to_string()))
+                } else {
+                    Err("timed out waiting for queued metrics to persist".to_string())
+                };
+                let _ = request.completion.send(result);
             }
         }
 
@@ -662,10 +728,10 @@ async fn telemetry_flush_loop(
             None
         };
 
-        let flush_mode = if flush_requests.is_empty() {
-            FlushMode::Periodic
-        } else {
+        let flush_mode = if explicitly_requested {
             FlushMode::Await
+        } else {
+            FlushMode::Periodic
         };
         // An awaited flush certifies "everything submitted so far is flushed
         // or counted as pending": batches still sitting in the persist queue
@@ -727,6 +793,14 @@ async fn telemetry_flush_loop(
                 .requeue_failed_daemon_logs(requeue_daemon_logs);
         }
     }
+}
+
+fn reingest_metrics_in_db(from_ts: Option<u32>, to_ts: Option<u32>) -> Result<usize, GitAiError> {
+    let db = MetricsDatabase::global()?;
+    let mut db_lock = db
+        .lock()
+        .map_err(|_| GitAiError::Generic("metrics DB lock poisoned".to_string()))?;
+    db_lock.reingest_metrics(from_ts, to_ts)
 }
 
 fn take_telemetry_flush_snapshot(
@@ -1801,10 +1875,12 @@ mod tests {
     #[tokio::test]
     async fn metrics_persist_queue_drops_loudly_when_full() {
         let (flush_tx, _flush_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (metrics_reingest_tx, _metrics_reingest_rx) = tokio::sync::mpsc::unbounded_channel();
         let (metrics_persist_tx, _persist_rx) = tokio::sync::mpsc::channel(1);
         let handle = DaemonTelemetryWorkerHandle {
             buffer: Arc::new(Mutex::new(TelemetryBuffer::new())),
             flush_tx,
+            metrics_reingest_tx,
             metrics_persist_tx,
         };
         let event: MetricEvent = serde_json::from_str(&event_json(1)).unwrap();
