@@ -1,0 +1,24 @@
+docs/superpowers/specs/2026-04-14-daemon-logging-design.md
+  a6bcdcf51f19c92d 1-220
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "2b505073ea9b894f1fd1d4556ff0e752bdcf0451",
+  "prompts": {
+    "a6bcdcf51f19c92d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84365ffc-bffe-41d6-b7e2-11822ec2da90",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 220,
+      "total_deletions": 0,
+      "accepted_lines": 220,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5dd269a15d3ad32f3615f13334bd6a9b97af430e92f29ff3b7b831b123878686"
+    }
+  }
+}

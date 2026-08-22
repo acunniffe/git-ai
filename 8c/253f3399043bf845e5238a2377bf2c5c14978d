@@ -1,0 +1,24 @@
+src/commands/git_hook_handlers.rs
+  05783d1283e80389 2044,2054,2590-2662,2664-2754,3246,3248-3249,3251-3254,3256-3259,3261-3263,3265-3319,3322-3337,3340-3351,3354-3356,3358-3421,3423-3424
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.6",
+  "base_commit_sha": "8c253f3399043bf845e5238a2377bf2c5c14978d",
+  "prompts": {
+    "05783d1283e80389": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c90b9-1e81-7671-b35f-835df6eb8759",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 396,
+      "total_deletions": 163,
+      "accepted_lines": 340,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/04f6dbe503f51a97c5d90a4335624d725163ac6490f6768eba2b1468ff98ce83"
+    }
+  }
+}

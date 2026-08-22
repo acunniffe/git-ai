@@ -1,0 +1,22 @@
+src/privilege.rs
+  s_1946ff3ec655a6::t_f389271f1d38d3 28
+  s_1946ff3ec655a6::t_ba7e51695bbbd0 1-27,29-259
+src/lib.rs
+  s_1946ff3ec655a6::t_7f31a9f03ff4e2 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.4",
+  "base_commit_sha": "3244cf0438ec72e1c5e64cac684604cf46703adf",
+  "prompts": {},
+  "sessions": {
+    "s_1946ff3ec655a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c7c4393-fb5b-4f09-b279-1a660e430da3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null
+    }
+  }
+}

@@ -1,0 +1,21 @@
+agent-support/vscode/package-lock.json
+  ai_agent 3,9
+agent-support/vscode/package.json
+  s_be3d6789a4739f::t_a1f7a658162ab1 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "02be748fc4aa5daad5b7a292574ebb2384a8dcd6",
+  "prompts": {},
+  "sessions": {
+    "s_be3d6789a4739f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "518eacf9-30f9-4849-b452-42cf98d706e5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

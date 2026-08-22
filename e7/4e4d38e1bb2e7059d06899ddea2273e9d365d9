@@ -1,0 +1,115 @@
+install.ps1
+  c17a5ec 60,62-70,74,76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "11b25cc7282e6191c5d830d1a2524308d49a22fe",
+  "prompts": {
+    "c17a5ec": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c1a63c44-13a1-4e71-b919-8669e09a2006",
+        "model": "gpt-5-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Having a standard git is a requirement, so if we can't find one then we should error out and fail the script.\n\nAlso, make sure that detect_std_git will error out if calling --version on that git isn't successful."
+        },
+        {
+          "type": "assistant",
+          "text": "I'll open `install.sh` to locate `detect_std_git` and update it to fail if a standard git isn't found or if `--version` fails."
+        },
+        {
+          "type": "assistant",
+          "text": "I'll update `install.sh`: enhance `detect_std_git` to error if no standard git is found or if `--version` fails, and change the later warning to a hard error so the script fails when no git is detected."
+        },
+        {
+          "type": "assistant",
+          "text": "I'll run a quick lint check on the modified file to ensure no issues were introduced."
+        },
+        {
+          "type": "assistant",
+          "text": "- Updated `detect_std_git` in `install.sh` to fail if no standard git is found and to validate the detected git by calling `--version`; if that check fails, the script errors out.\n- Converted the later warning about missing git to a hard error, ensuring the installer exits when git is unavailable.\n\nAll changes lint-clean."
+        },
+        {
+          "type": "user",
+          "text": "Check my updates in @install.sh and update @install.ps1 accordingly as well"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll update the PowerShell installer to mirror your `install.sh` changes: validate the presence of a standard Git and ensure `--version` succeeds, fail early with helpful messages, invoke detection before the rest of the install, and remove the later warning block."
+        },
+        {
+          "type": "assistant",
+          "text": "I'll run a quick lint check on the modified PowerShell and shell installers to ensure no issues were introduced."
+        },
+        {
+          "type": "assistant",
+          "text": "- Mirrored your `install.sh` behavior in `install.ps1`:\n  - `Get-StdGitPath` now fails if Git isn’t found or if `git --version` fails, with the same detailed guidance and issue URL.\n  - Performed fail-fast Git detection before the rest of the installer runs.\n  - Removed the late-stage warning about missing Git since we now error earlier.\n- Left your enhanced error messages intact in `install.sh` and aligned PowerShell messaging.\n\nBoth scripts lint-clean."
+        },
+        {
+          "type": "user",
+          "text": "Update @install.sh to add a symlink in our wrapper folder that will link `git-og` to the std git path"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll add a `git-og` symlink in `install.sh` pointing to the detected standard Git path and then run a lint check to ensure no issues."
+        },
+        {
+          "type": "assistant",
+          "text": "- Added creation of `git-og` symlink in `install.sh`, pointing to the validated `STD_GIT_PATH`, alongside the existing `git` symlink.\n- Lint check passed."
+        },
+        {
+          "type": "user",
+          "text": "Do the same in @install.ps1"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll add a Windows-friendly shim for `git-og` in `install.ps1` that invokes the detected standard Git, similar to the symlink you added in `install.sh`, and then verify no lint issues."
+        },
+        {
+          "type": "assistant",
+          "text": "- Added a `git-og` shim in `install.ps1` by creating `git-og.cmd` that forwards all args to the validated `$stdGitPath`, mirroring the `install.sh` symlink behavior.\n- Lint check passed."
+        },
+        {
+          "type": "user",
+          "text": "PS C:\\Users\\Administrator> irm https://raw.githubusercontent.com/acunniffe/git-ai/feat/install-scripts-force-git/install.ps1 | iex\niex : At line:218 char:37\n+ $gitOgShimContent = \"@echo off`r`n\\\"$stdGitPath\\\" %*`r`n\"\n+                                     ~~~~~~~~~~~~~~~~~~~~~\nUnexpected token '$stdGitPath\\\" %*`r`n\"' in expression or statement.\nAt line:218 char:48\n+ $gitOgShimContent = \"@echo off`r`n\\\"$stdGitPath\\\" %*`r`n\"\n+                                                ~~~~~~~~~~\nUnexpected token '\\\" %*`r`n\"' in expression or statement.\nAt line:1 char:101\n+ ... com/acunniffe/git-ai/feat/install-scripts-force-git/install.ps1 | iex\n+                                                                       ~~~\n    + CategoryInfo          : ParserError: (:) [Invoke-Expression], ParseException\n    + FullyQualifiedErrorId : UnexpectedToken,Microsoft.PowerShell.Commands.InvokeExpressionCommand"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll fix the PowerShell parsing by changing the way the `git-og` shim content is constructed, using PowerShell-appropriate escapes and `Environment.NewLine` to avoid the unexpected token error, then verify with a lint check."
+        },
+        {
+          "type": "assistant",
+          "text": "- Fixed PowerShell parse error by constructing `git-og.cmd` content with `Environment.NewLine` and proper backtick-escaped quotes: it now writes a valid one-liner like `\"C:\\Program Files\\Git\\cmd\\git.exe\" %*`.\n- Forced write with `-Force` to ensure overwriting existing shim.\n\nYou can retry the install command; it should no longer throw the unexpected token error."
+        },
+        {
+          "type": "user",
+          "text": "Should we force all of our shims? The script should be idemptotent"
+        },
+        {
+          "type": "assistant",
+          "text": "Yes. I’ve already made the shims idempotent and forced:\n\n- macOS/Linux: `ln -sf \"${INSTALL_DIR}/git-ai\" \"${INSTALL_DIR}/git\"` and `ln -sf \"$STD_GIT_PATH\" \"${INSTALL_DIR}/git-og\"`.\n- Windows: `Copy-Item -Force` for `git.exe` and `Set-Content -Force` for `git-og.cmd` (plus `Move-Item -Force` for the binary).\n\nRe-running the installer will consistently overwrite/update these without errors."
+        },
+        {
+          "type": "user",
+          "text": "Currently, both @install.sh and @install.ps1 error out if std git path includes git-ai. This is correct, however, since we want the script to be idempotent, we need to try to recover this.\n\nCheck the JSON config for the path to standard git and then check that as the std path. If that still doesn't exist or points to a git-ai path, then we finally error out."
+        },
+        {
+          "type": "assistant",
+          "text": "I'll update both installers to recover by reading the saved `git_path` from `~/.git-ai/config.json` when the detected PATH `git` is missing or points to our `git-ai` shim. If the config path exists, doesn't include `git-ai`, and passes `--version`, we'll use it; otherwise we'll error out. I'll make the changes now and then check for lint issues."
+        },
+        {
+          "type": "assistant",
+          "text": "- Added recovery in both installers:\n  - `install.sh`: if PATH `git` is empty or contains `git-ai`, read `~/.git-ai/config.json`, parse `git_path` via `sed`, and use it if it doesn’t include `git-ai` and `--version` succeeds.\n  - `install.ps1`: if PATH `git` is empty or contains `git-ai`, read `$HOME\\.git-ai\\config.json`, use `git_path` if it exists, doesn’t include `git-ai`, and the file exists; then validate with `--version`. Otherwise, error out.\n- Lint checks passed."
+        }
+      ],
+      "total_additions": 274,
+      "total_deletions": 0,
+      "accepted_lines": 274,
+      "overriden_lines": 0
+    }
+  }
+}

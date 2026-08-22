@@ -1,0 +1,24 @@
+.github/workflows/git-core-compat.yml
+  c1970e7fa3ca2e03 69-84,89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "8e8a9a985aeb55c33feee7deba4388fa0002e3c6",
+  "prompts": {
+    "c1970e7fa3ca2e03": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5772698e-67e6-4639-a483-cbb8405da325",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test User",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 1,
+      "accepted_lines": 17,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/f563bfea3793a325c8aef30b6242a256f03812004052f57d0fcc7ab3db5d02b0"
+    }
+  }
+}

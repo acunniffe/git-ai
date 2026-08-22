@@ -1,0 +1,31 @@
+src/commands/git_ai_handlers.rs
+  s_8d2579124116c6::t_079b26ec087a4c 114
+  s_8d2579124116c6::t_f0e34dc5547f41 344
+  s_27ed236e4270d9::t_c83a2af5dda2b3 56
+  s_27ed236e4270d9::t_277000dab4900d 112
+  s_27ed236e4270d9::t_2f07c027007265 342
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.2",
+  "base_commit_sha": "81800eafe0472c63e3a578c929d7acac05b22584",
+  "prompts": {},
+  "sessions": {
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

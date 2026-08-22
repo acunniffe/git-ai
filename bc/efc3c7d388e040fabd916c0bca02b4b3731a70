@@ -1,0 +1,22 @@
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_e99b144ead241a 7436
+  s_11c3e1cdda522c::t_e37614c8c292a9 7417-7435,7437-7443
+src/daemon/telemetry_worker.rs
+  s_11c3e1cdda522c::t_041820d0552f41 877-879,1519-1521,1524,1531,1539
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "bcefc3c7d388e040fabd916c0bca02b4b3731a70",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,49 @@
+src/git/reftable.rs
+  s_f07947361914e3::t_f8587cd512dd29 135,154,185
+  s_f07947361914e3::t_bb9b77328d972f 94-95,125,286-293,1243,1250
+  s_f07947361914e3::t_6f599dce816052 1093
+  s_f07947361914e3::t_bae78e0834e0ee 248
+  s_f07947361914e3::t_fca18239f5c684 294,1094-1102,1104,1106-1123,1252
+  s_f07947361914e3::t_97ea54abf30db7 87,217,260,269-279,298-299
+  s_f07947361914e3::t_a52fcf75c094ff 186-190,198-204
+  s_f07947361914e3::t_1b7c42e2a21b7e 92-93,280-285,1242,1244-1249,1251
+  s_f07947361914e3::t_db10c922251ae6 224,226,229-234,237,315-355,358
+  s_f07947361914e3::t_d85a207f4ec08d 1103,1105
+  s_f07947361914e3::t_61d42fabb6813f 295
+  s_f07947361914e3::t_bc97b8ef8f1467 1253
+tests/integration/repos/test_repo.rs
+  s_f07947361914e3::t_3d639b5d10ac2a 1314-1319,1512-1518,1528
+tests/integration/reftable.rs
+  s_f07947361914e3::t_99e3c2cae321db 3,98-124,127-130
+src/daemon/ref_cursor.rs
+  s_f07947361914e3::t_e36f3fb5548b7d 254,268,276,286,295-298,307,315,317-318,538,1262-1264,4302-4312,4363-4400,4455-4496
+  s_13e48d840a2980::t_9dd4a3a8a6d9af 4189-4190
+  s_f07947361914e3::t_1b7c42e2a21b7e 9,2638-2644,2653,2658,4177-4188
+  s_f07947361914e3::t_97574cb9b9e6cd 2661
+  s_f07947361914e3::t_97ea54abf30db7 2648-2652
+  s_f07947361914e3::t_bae78e0834e0ee 2645
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "338eb234ebadc5f22916ddb73490fdc004a45699",
+  "prompts": {},
+  "sessions": {
+    "s_13e48d840a2980": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f765a-288a-7a62-a9ff-7d178ae1f739",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f07947361914e3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fce29-d55c-7301-8f5a-44b68d35f39f",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

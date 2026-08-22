@@ -1,0 +1,19 @@
+tests/integration/revision_normalization.rs
+  s_9af36d4c7591fb::t_66e5c431d3a9a8 41-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "b835f972368a4e8681690bcccc29af2cd8274a59",
+  "prompts": {},
+  "sessions": {
+    "s_9af36d4c7591fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01bbf-395c-7a60-85f6-2b33f43556d6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

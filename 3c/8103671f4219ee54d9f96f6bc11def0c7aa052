@@ -1,0 +1,111 @@
+src/commands/whoami.rs
+  e5bf73154f07ce6e 22,27-32,96-102
+src/commands/flush_metrics_db.rs
+  784dc7b4246d9110 39
+  a569505178fc3783 45
+src/utils.rs
+  f9450f3efeea966e 207-208
+  65cd743c8861865a 13,200-206,210-212
+src/api/client.rs
+  a569505178fc3783 242-246
+  784dc7b4246d9110 170,173-174,195,198-199
+src/commands/flush_cas.rs
+  a569505178fc3783 23
+src/observability/flush.rs
+  a569505178fc3783 459
+src/observability/mod.rs
+  a185305f76cb51bc 202,204-207
+src/authorship/post_commit.rs
+  a569505178fc3783 162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.11",
+  "base_commit_sha": "3c8103671f4219ee54d9f96f6bc11def0c7aa052",
+  "prompts": {
+    "65cd743c8861865a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a34814c4-b1eb-4c07-b228-014a54b93a69",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 34,
+      "total_deletions": 23,
+      "accepted_lines": 11,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/779f5866b0a719814a2c5fa95bc728a97f23386d7c95c03ab1bda1b66a14b698"
+    },
+    "784dc7b4246d9110": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1634253-41ef-4e4d-83e1-1ad3da02a25c",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 13,
+      "accepted_lines": 7,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/c9505c8c48cea7dce05296b084786df1e44180594c56561aff9e2ded830da91b"
+    },
+    "a185305f76cb51bc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6014923b-87f2-4be2-9afa-7b492dea935d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 14,
+      "accepted_lines": 5,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/77bc3e2da2d1fa36aabf5c97ea447e8eaa4896efa9a88a5562a81a044ae67e15"
+    },
+    "a569505178fc3783": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "be354490-7d39-4263-b7cc-213dc0fd206c",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 4,
+      "accepted_lines": 9,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/75631db3976d55c2c103ee5f5b8c852ee29da2a8439afef586cc8d5c1b619a85"
+    },
+    "e5bf73154f07ce6e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9fbbb20-7d32-459b-9732-03f3b8e5d6bb",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 16,
+      "total_deletions": 0,
+      "accepted_lines": 15,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/01365b5dc7f2fd1ebc46aada0f4fddbf4334dd9e1230ab308a86ab67a7197ab9"
+    },
+    "f9450f3efeea966e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cb9efc04-2262-43c9-8221-f885a3498e66",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/6b1c4067ea79f0c0387e3cf2dde83e8551953769e7322307a2c9f5d9e2c6e77d"
+    }
+  }
+}

@@ -1,0 +1,37 @@
+src/commands/mod.rs
+  s_563ec768bd999c::t_b7fd7ab5c6fdd0 24
+src/commands/reingest.rs
+  s_563ec768bd999c::t_47c95878e27f19 230-231
+  s_563ec768bd999c::t_b7fd7ab5c6fdd0 197-229,232-279
+  s_563ec768bd999c::t_5e325ce70de815 1-19,24-165,169-196
+  s_563ec768bd999c::t_2908dc7d27d584 20-23,166-168
+tests/daemon_mode.rs
+  s_563ec768bd999c::t_8d9d3b7a458e7a 7900-7986
+  s_11c3e1cdda522c::t_8b4af2a307b92b 7899
+src/commands/git_ai_handlers.rs
+  s_563ec768bd999c::t_5e325ce70de815 193-195,387-390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "9caba473d4ad9e47a88561f62de9bcbb73021fe7",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_563ec768bd999c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0254b-8897-7641-a6f8-28f248f9e8f2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

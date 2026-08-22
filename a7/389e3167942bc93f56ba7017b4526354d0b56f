@@ -1,0 +1,26 @@
+packaging/macos/scripts/postinstall
+  s_eae0725f606f1a::t_e78e05514ebd5b 37-40
+packaging/windows/git-ai.wxs
+  s_eae0725f606f1a::t_2db6e29af68bef 64
+  s_eae0725f606f1a::t_99d635bb082e51 44,48-49,52-54
+  s_eae0725f606f1a::t_98ac066663a290 50-51
+packaging/README.md
+  s_eae0725f606f1a::t_afd3f8901e8b81 8-9
+  s_eae0725f606f1a::t_dd0f0e629b0c84 17-20,22-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "a7389e3167942bc93f56ba7017b4526354d0b56f",
+  "prompts": {},
+  "sessions": {
+    "s_eae0725f606f1a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3befad8-a14b-4826-a404-c35732238c0b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

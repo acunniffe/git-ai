@@ -1,0 +1,32 @@
+src/auth/client.rs
+  78b996e39b4b2d3b 11-31,35-39,41-42,219-426
+src/api/client.rs
+  78b996e39b4b2d3b 4-5,8-12,15,29,34-44,49,59,234-360
+src/auth/credentials.rs
+  78b996e39b4b2d3b 13-15,21-45,47-62,64-71,73-77,80-81,102,117,142,154,165,175,183-186,193,199-241,249-766
+src/auth/types.rs
+  78b996e39b4b2d3b 2,5,18-27,71-201
+Cargo.toml
+  78b996e39b4b2d3b 31,48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "c86fdd945d6937a2df30067c539a7d554b000ff1",
+  "prompts": {
+    "78b996e39b4b2d3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "096db0be-ede0-4292-8dee-251a94159623",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1423,
+      "total_deletions": 280,
+      "accepted_lines": 1169,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/05beb287b9ea78f4d122dfd9bbbe38ffc51a26d0491eff65ff78d8de1ccfcdb4"
+    }
+  }
+}

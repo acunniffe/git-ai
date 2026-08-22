@@ -1,0 +1,36 @@
+agent-support/vscode/src/known-human-checkpoint-manager.ts
+  1eeef423a8daf9cf 20-34,40,51-57,72,80-81,99-103,106-108,116-122,132-135,138,141,166-168,170-171,173,225-226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "481e9856ae45a483f26fb19a618e52dfa780193e",
+  "prompts": {
+    "1eeef423a8daf9cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79926255-b21c-4a93-a653-b32c91077186",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 66,
+      "total_deletions": 80,
+      "accepted_lines": 56,
+      "overriden_lines": 0
+    },
+    "55677818d9a1954c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7cace440-fd7e-403a-a4bd-23df8d106fc4",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 19,
+      "total_deletions": 0,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    }
+  }
+}

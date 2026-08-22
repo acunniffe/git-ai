@@ -1,0 +1,19 @@
+.github/workflows/release.yml
+  s_2740b0b2a8bdc6::t_94f02e3a56d7f8 21-23,25,29,36-37,43-44,46-48,209-210,212-214,281,283,285-289
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "da79071f21f3b018aa7d4ee4e7d5fa8bf3555a88",
+  "prompts": {},
+  "sessions": {
+    "s_2740b0b2a8bdc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6cfb-8eed-7430-8509-7cb0df96f1ba",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

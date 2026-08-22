@@ -1,0 +1,19 @@
+tests/integration/cold_trace2_repo.rs
+  s_7e05ba92eeba4c::t_b60bf88eab8510 368,371,433
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "60d531f04f8bb1be9df0908ff59440d2702fe884",
+  "prompts": {},
+  "sessions": {
+    "s_7e05ba92eeba4c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5da-6f02-7801-8355-ae16942c7ace",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
