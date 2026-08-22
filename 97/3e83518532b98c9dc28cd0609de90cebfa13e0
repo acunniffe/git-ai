@@ -1,0 +1,36 @@
+src/feature_flags.rs
+  s_66613148b4df44::t_cbc6a6b02f717e 244,255,268,278-281
+  s_66613148b4df44::t_716fd2df2dde66 143,154
+  s_66613148b4df44::t_8b156a7257ab6e 86
+src/mdm/agents/mod.rs
+  s_66613148b4df44::t_8b156a7257ab6e 38,42
+src/commands/install_hooks.rs
+  s_66613148b4df44::t_8b156a7257ab6e 4,315-317,350-354,537,548,891
+tests/integration/install_hooks_comprehensive.rs
+  s_66613148b4df44::t_716fd2df2dde66 278,325-333,337
+  s_66613148b4df44::t_9fb02a801c7052 340
+src/commands/config.rs
+  s_66613148b4df44::t_8b156a7257ab6e 154,910-914
+tests/integration/config_cli_coverage.rs
+  s_66613148b4df44::t_8b156a7257ab6e 59-69
+  s_66613148b4df44::t_716fd2df2dde66 39-58,70-77
+  s_66613148b4df44::t_ad863e58623af4 38
+tests/integration/performance.rs
+  s_66613148b4df44::t_cbc6a6b02f717e 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "973e83518532b98c9dc28cd0609de90cebfa13e0",
+  "prompts": {},
+  "sessions": {
+    "s_66613148b4df44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5cd-5c09-7951-86b7-b151a4d0de90",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

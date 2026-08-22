@@ -1,0 +1,29 @@
+src/commands/checkpoint_agent/presets/mod.rs
+  s_c948664c4dfc38::t_e7b9e1095d7121 134
+src/transcripts/sweep.rs
+  s_c948664c4dfc38::t_d3805390ac1518 118
+src/transcripts/model_extraction.rs
+  s_c948664c4dfc38::t_e843fbec249151 338,345
+  s_c948664c4dfc38::t_1c85dade5fe903 78-87
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_c948664c4dfc38::t_3522380a6f5e29 82
+  s_c948664c4dfc38::t_a7ddbd2b8acf7c 66
+src/transcripts/agents/copilot_cli.rs
+  s_c948664c4dfc38::t_38b5120292c6d3 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.7",
+  "base_commit_sha": "0f43ae9f9b51a5456b73e3bb010d71b976f048ef",
+  "prompts": {},
+  "sessions": {
+    "s_c948664c4dfc38": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca3b6018-0bf4-4f44-96d5-67eff7d002f3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

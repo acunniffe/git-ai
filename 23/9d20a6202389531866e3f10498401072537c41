@@ -1,0 +1,27 @@
+src/metrics/db.rs
+  s_5822efdedb26cc::t_c7f9ef78958108 2021-2041
+  s_5822efdedb26cc::t_10087c10457af8 23,1229,1232-1233,1245,1249-1254,1256
+  s_5822efdedb26cc::t_eda4826582fd66 1255
+  s_5822efdedb26cc::t_0713966e7e34b1 1257-1258,2020
+src/authorship/attribution_recovery.rs
+  s_5822efdedb26cc::t_10dd2bf0146315 633
+  s_5822efdedb26cc::t_f5113f7a6ecdc1 1256-1277
+  s_5822efdedb26cc::t_ee1b5756073368 23,623,627-632,634
+  s_5822efdedb26cc::t_1a7e038757ea35 635-636,1255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.1",
+  "base_commit_sha": "239d20a6202389531866e3f10498401072537c41",
+  "prompts": {},
+  "sessions": {
+    "s_5822efdedb26cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efcbc-8f48-7602-a00f-b20b39b170ef",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

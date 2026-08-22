@@ -1,0 +1,19 @@
+src/daemon/telemetry_worker.rs
+  s_734b4ab9b5e9c5::t_9e8863aa3dca2d 641-643
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "24b1b4b840d738908a20a94b7af7c1c07e6c54ec",
+  "prompts": {},
+  "sessions": {
+    "s_734b4ab9b5e9c5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89130adf-0950-4a26-ac8c-94f49b5d0cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

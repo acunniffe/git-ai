@@ -1,0 +1,28 @@
+.github/workflows/git-core-compat.yml
+  bb8d2d0b65361de7 17,19-22,51
+.github/workflows/test.yml
+  bb8d2d0b65361de7 17,23,53
+tests/git-compat/run-core-tests.py
+  bb8d2d0b65361de7 6,17,22,29,75-76,79-80,247-315,324-325,334,346-352,356,358-360,364-366,385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "d19f743b594739092eb0dc8614738c622a2ff0c5",
+  "prompts": {
+    "bb8d2d0b65361de7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c6464-8757-7870-a4df-394e69e82a66",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 115,
+      "total_deletions": 14,
+      "accepted_lines": 104,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/2f3d4b7bd24dd8cf7fd0f0b6cbf39db02891dcf8896938a54b5c809d078edb44"
+    }
+  }
+}

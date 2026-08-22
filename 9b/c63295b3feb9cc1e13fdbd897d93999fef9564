@@ -1,0 +1,24 @@
+src/mdm/agents/neovim.rs
+  73a492d33da4b1eb 10-18,67-68,92-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "9bc63295b3feb9cc1e13fdbd897d93999fef9564",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 5,
+      "accepted_lines": 17,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/1339cc8875cc4cbef231bd24dd64f7fabaf37a1c6c212120754bc574cc31c389"
+    }
+  }
+}

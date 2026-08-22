@@ -1,0 +1,34 @@
+tests/notes_sync_regression.rs
+  s_0ca8b5afd9749b::t_92e2f41208befb 1139-1144
+  s_0ca8b5afd9749b::t_8c266c98edd50d 1174
+  s_0ca8b5afd9749b::t_f949a4dff07c15 1183-1205
+  s_0ca8b5afd9749b::t_4775f103fb8551 1090-1094
+  s_0ca8b5afd9749b::t_f0e19f16787afb 1206-1207
+  s_0ca8b5afd9749b::t_232cb76c1a2f40 5-7,1080-1089,1095-1138,1145-1173,1175-1182
+src/daemon.rs
+  s_0ca8b5afd9749b::t_d30fef0d4678b0 1056-1057,1062,1072-1074
+  s_0ca8b5afd9749b::t_f949a4dff07c15 1061,1063-1071
+  s_0ca8b5afd9749b::t_a53dab37866653 6238-6239
+src/git/notes_api.rs
+  s_0ca8b5afd9749b::t_f949a4dff07c15 440-441,443-445
+  s_0ca8b5afd9749b::t_29afe00445dcf7 442
+src/git/sync_authorship.rs
+  s_0ca8b5afd9749b::t_29afe00445dcf7 204
+  s_0ca8b5afd9749b::t_f949a4dff07c15 202-203,205-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.1",
+  "base_commit_sha": "b8bf311aaf19eea81269595f9172d45f11ad96b2",
+  "prompts": {},
+  "sessions": {
+    "s_0ca8b5afd9749b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efb8d-b857-78a3-a254-fd6c514f1864",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

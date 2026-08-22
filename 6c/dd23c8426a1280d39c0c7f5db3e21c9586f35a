@@ -1,0 +1,27 @@
+src/git/gix_backend.rs
+  s_d01cfbfe3af2e2::t_a01ba3242b0680 474-475
+src/authorship/post_commit.rs
+  s_d01cfbfe3af2e2::t_a01ba3242b0680 154-157,161-164,171-180,182-183,219-222,231-236
+src/commands/diff.rs
+  s_d01cfbfe3af2e2::t_9780a96cb13736 484-530,534-600,606,611,615-628,634,639,643-656,663-664,671,675,678,682-706
+  s_d01cfbfe3af2e2::t_a01ba3242b0680 531-533,601-605,607-610,612-614,629-633,635-638,640-642,657-662,665-670,672-674,676-677,679-681
+  s_d01cfbfe3af2e2::t_b49460a018530c 483
+src/authorship/virtual_attribution.rs
+  s_d01cfbfe3af2e2::t_9780a96cb13736 1506
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "6cdd23c8426a1280d39c0c7f5db3e21c9586f35a",
+  "prompts": {},
+  "sessions": {
+    "s_d01cfbfe3af2e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cf9f0e5-b326-4a90-8216-2e35a90a30d9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

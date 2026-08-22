@@ -1,0 +1,35 @@
+tests/integration/cold_trace2_repo.rs
+  s_f00ef7c0f45b07::t_26535528862d32 354
+  s_f00ef7c0f45b07::t_b368eba76f7e97 350-351
+  s_f00ef7c0f45b07::t_9db5c96aaa8cfa 334-349,352-353,355-356,366
+tests/integration/rewrite_ops_attribution.rs
+  s_f00ef7c0f45b07::t_847a2ffe450c09 384
+  s_f00ef7c0f45b07::t_8277c3f28fe6dd 257-383,385-398
+src/daemon/ref_cursor.rs
+  s_f00ef7c0f45b07::t_571075489ec21b 1934,2515-2551
+  s_f00ef7c0f45b07::t_77807ba45505e1 3064-3115
+  s_f00ef7c0f45b07::t_18190ab202a012 527,979-995
+  s_f00ef7c0f45b07::t_3b6008c17f2c7b 996,3063,3323-3380
+  s_f00ef7c0f45b07::t_d2099670e98ec7 1922-1925,1930-1933
+  s_f00ef7c0f45b07::t_e7affdd15591cb 820,861-868
+  s_f00ef7c0f45b07::t_b2efec57a897db 652,1039,1041,1043-1061,1065-1118,1121-1125
+src/daemon.rs
+  s_f00ef7c0f45b07::t_1ed048cce837e6 747-753
+  s_f00ef7c0f45b07::t_79c2800c96b3b0 4409-4410,4422-4423,4426,4437,4441-4445
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "ecbb442a80fff0273991da737dadfe5708d72714",
+  "prompts": {},
+  "sessions": {
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

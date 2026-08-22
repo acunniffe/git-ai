@@ -1,0 +1,21 @@
+tests/integration/test_utils.rs
+  s_18b694e06092e7::t_8028163c015b9b 38-45,57
+tests/integration/git_am_attribution.rs
+  s_18b694e06092e7::t_8028163c015b9b 3-5,801,846,848-852,908,942-943
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "8c2879e2176f98a14815e3b9b624d06384c37d78",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,38 @@
+src/commands/checkpoint_agent/droid.rs
+  2e210a749c1636bf 1-14
+src/commands/checkpoint_agent/gemini.rs
+  2e210a749c1636bf 1-13
+src/commands/checkpoint_agent/copilot.rs
+  2e210a749c1636bf 1-14
+src/commands/checkpoint_agent/claude.rs
+  2e210a749c1636bf 1-13
+src/commands/checkpoint_agent/cursor.rs
+  2e210a749c1636bf 1-14
+src/commands/checkpoint_agent/continue.rs
+  2e210a749c1636bf 1-12
+src/commands/checkpoint_agent/agent_presets.rs
+  2e210a749c1636bf 3,11-18
+src/commands/checkpoint_agent/mod.rs
+  2e210a749c1636bf 3-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.1",
+  "base_commit_sha": "f3910b29e27c955226642f6a9d38c20c0ddbee82",
+  "prompts": {
+    "2e210a749c1636bf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86f26a9f-27bc-490f-b9ce-e835b9528954",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 101,
+      "total_deletions": 13,
+      "accepted_lines": 97,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/1058436f78f684a9965756a66073edf78c2bba83b592afbea2d8243ba0589e05"
+    }
+  }
+}
