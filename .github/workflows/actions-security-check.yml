@@ -1,0 +1,41 @@
+name: Actions Security Check
+
+# Static analysis for GitHub Actions security, gated on PRs that touch
+# workflow or Dependabot configuration. Runs zizmor over all of .github/ and
+# fails on any finding of medium or higher severity, so credential leaks,
+# template injection, cache poisoning, and over-broad tokens can't regress.
+#
+# Runs offline (--no-online-audits) so results are deterministic and don't
+# depend on GitHub API state. To reproduce locally:
+#   pipx run zizmor==1.29.0 --no-online-audits --min-severity medium .github/
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - '.github/dependabot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  zizmor:
+    name: zizmor (fails on medium+ findings)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        # zizmor exits non-zero when any finding survives the severity
+        # filter, which fails this check.
+        run: pipx run zizmor==1.29.0 --no-online-audits --min-severity medium .github/
