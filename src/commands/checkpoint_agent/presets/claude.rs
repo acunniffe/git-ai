@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn test_claude_preserves_all_mutating_file_tools() {
-        for tool_name in ["Write", "Edit", "MultiEdit"] {
+        for tool_name in ["Write", "Edit", "MultiEdit", "write", "edit", "multiedit"] {
             let pre = make_claude_hook_input("PreToolUse", tool_name);
             assert!(matches!(
                 ClaudePreset.parse(&pre, "t_test123456789a").unwrap()[..],
