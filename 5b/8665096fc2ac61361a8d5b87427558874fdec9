@@ -1,0 +1,21 @@
+src/commands/diff.rs
+  s_db588346baab10::t_3af99188e03c31 2644
+  s_db588346baab10::t_90915556271165 152
+  s_db588346baab10::t_0b7dc7c834800a 1264,1275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "5b8665096fc2ac61361a8d5b87427558874fdec9",
+  "prompts": {},
+  "sessions": {
+    "s_db588346baab10": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4de542a4-6143-401e-96e2-c086db0b7fd1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

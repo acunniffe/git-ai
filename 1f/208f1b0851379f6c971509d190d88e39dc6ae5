@@ -1,0 +1,40 @@
+src/mdm/ensure_git_symlinks.rs
+  672df556dabd2c09 49,51-59,72-73,82,87,142-144
+  93e7363b64ca5023 7,9,11,13-24,28,32-34,67-71,74-81,83-86,88-141,146-158
+src/mdm/utils.rs
+  93e7363b64ca5023 303,305-324,345
+  672df556dabd2c09 338-344
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.34",
+  "base_commit_sha": "1f208f1b0851379f6c971509d190d88e39dc6ae5",
+  "prompts": {
+    "672df556dabd2c09": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ce8deaf7-ba13-4638-8729-f9eab0ee7f8e",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Your Name <you@example.com>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 24,
+      "overriden_lines": 0
+    },
+    "93e7363b64ca5023": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9f9d6891-edc9-43e8-a45a-588fc227e9a8",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 125,
+      "overriden_lines": 0
+    }
+  }
+}

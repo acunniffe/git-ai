@@ -1,0 +1,21 @@
+scripts/ci-test-with-retry.ps1
+  s_05ee4d24ec1e28::t_605472a30c3eaf 122
+scripts/ci-test-with-retry.sh
+  s_05ee4d24ec1e28::t_6f884586b8c11e 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "35ca621716e7ee97ed4afd4edf320cfc45ff669b",
+  "prompts": {},
+  "sessions": {
+    "s_05ee4d24ec1e28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "26419162-7103-4b30-aae7-7024fd296a87",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

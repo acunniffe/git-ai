@@ -1,0 +1,37 @@
+docs/pr-1153-review-findings.md
+  9b48e215124b4ff7 1-288
+src/transcripts/agents/opencode.rs
+  9b48e215124b4ff7 47,51,56-58,65,117,122-130,136,145,244-251,261-266,286-287,289
+src/authorship/authorship_log_serialization.rs
+  9b48e215124b4ff7 438-454
+src/daemon/transcript_worker.rs
+  9b48e215124b4ff7 171,484-491
+src/daemon.rs
+  9b48e215124b4ff7 4053-4059
+src/daemon/sweep_coordinator.rs
+  9b48e215124b4ff7 104-105
+src/transcripts/sweep.rs
+  9b48e215124b4ff7 89-107
+src/authorship/post_commit.rs
+  9b48e215124b4ff7 92,379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "2591ef106fdc541b84b8a3240ec23aa4ba401829",
+  "prompts": {
+    "9b48e215124b4ff7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90d1e348-0492-449f-9757-84fc31d6fa2c",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 9718,
+      "total_deletions": 65,
+      "accepted_lines": 9687,
+      "overriden_lines": 0
+    }
+  }
+}

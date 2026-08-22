@@ -1,0 +1,22 @@
+.github/workflows/release.yml
+  s_1925ec1346a75e::t_4d1b77e4b39982 141-144,146-158
+  s_1925ec1346a75e::t_d7099383c72e6e 54-140,145,159-161,164,166,314,317-320,322-326,360,362,424,427-430,432-436,463,518,540,543-546,548-552,568
+packaging/windows/build-msi.ps1
+  s_1925ec1346a75e::t_fb9ca69c50e4d0 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.12",
+  "base_commit_sha": "9f3d444588b9586238d7327cf4e9182039e72eed",
+  "prompts": {},
+  "sessions": {
+    "s_1925ec1346a75e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f47d5-dfb0-7480-b98b-ded21a607c9c",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

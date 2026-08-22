@@ -1,0 +1,23 @@
+src/ci/mod.rs
+  s_a73b2a35c101af::t_746c381e570569 505,516-517
+  s_a73b2a35c101af::t_549d19c17e9597 563
+  s_a73b2a35c101af::t_912aebbd923dbd 1-485,487-489,493-498,500-503,506-514,518-524,526-527,533-537,539-559,561,564-744
+  s_a73b2a35c101af::t_4ed7566e9467c5 486,490-492,499,504,515,525,528,538,560,562
+  s_a73b2a35c101af::t_73ba3c0bd0c97d 529-532
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "3d2e2157a251cd52485e7d050b7bb811d1ffe329",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

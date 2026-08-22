@@ -1,0 +1,15 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  s_c2f89225c0cabb::t_f2a8c2e448283d 360-364
+  s_c2f89225c0cabb::t_ea0d03e354da66 381
+  s_c2f89225c0cabb::t_6eb28c58747522 1285-1294
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_c2f89225c0cabb::t_6a4b9c2fab9a95 3-4,7
+  s_c2f89225c0cabb::t_68ea236abd1c6c 56,58-59,61,66,74-75,112-135,139-140,145-146
+  s_c2f89225c0cabb::t_b81784c9902a27 372-452
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "cb0968b2bc947eab9d5d1afb4d4fb44bb31712e8",
+  "prompts": {}
+}

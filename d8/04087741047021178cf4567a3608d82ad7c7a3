@@ -1,0 +1,54 @@
+src/daemon/analyzers/generic.rs
+  s_18b694e06092e7::t_948233728d4bde 118
+src/daemon/domain.rs
+  s_18b694e06092e7::t_441dddf5fb02ca 57,242,246
+src/daemon/trace_normalizer.rs
+  s_18b694e06092e7::t_9aad7f40baa1db 1420-1421,1423-1424,1431,1437-1440
+  s_18b694e06092e7::t_6ac97f20706a03 1418-1419,1422
+  s_18b694e06092e7::t_f4bda0497b6e81 858
+  s_18b694e06092e7::t_441dddf5fb02ca 28,312,742,854,856,868-870
+  s_18b694e06092e7::t_948233728d4bde 442,472,510,1414
+src/daemon/analyzers/workspace.rs
+  s_18b694e06092e7::t_948233728d4bde 42,55,181,274,293
+src/daemon/analyzers/transport.rs
+  s_18b694e06092e7::t_948233728d4bde 143
+src/daemon/reducer.rs
+  s_18b694e06092e7::t_63033c24577751 288
+src/daemon/coordinator.rs
+  s_18b694e06092e7::t_63033c24577751 169,193
+src/daemon/family_actor.rs
+  s_18b694e06092e7::t_63033c24577751 191
+tests/integration/git_rm_attribution.rs
+  s_18b694e06092e7::t_f4bda0497b6e81 22-24
+  s_18b694e06092e7::t_15e330fdb6d0b6 26
+src/daemon/global_actor.rs
+  s_18b694e06092e7::t_63033c24577751 82
+src/daemon.rs
+  s_18b694e06092e7::t_f4bda0497b6e81 823,825-830,835-837
+  s_18b694e06092e7::t_7fc8b3eab69e53 4410-4411,5225-5227,5229,5233,5264-5267,5317,5325,5367
+  s_18b694e06092e7::t_7161859c425575 7539-7540,7545,7562
+  s_18b694e06092e7::t_d741e37b1fe1c2 805-806,812,814-820,824,5224
+  s_18b694e06092e7::t_2bd9e54f71bc33 6701
+  s_18b694e06092e7::t_6cdbdbf688adca 14-15,91,804,807-811,813,821-822,831-834,838-841,1522-1523,1525,1553,1555-1568
+  s_18b694e06092e7::t_e4eebee3bf101f 1569,1604,3444,4412,5368,5370,6702,7527,7563,11261
+src/daemon/ref_cursor.rs
+  s_18b694e06092e7::t_63033c24577751 4232
+src/daemon/analyzers/history.rs
+  s_18b694e06092e7::t_948233728d4bde 524
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "d804087741047021178cf4567a3608d82ad7c7a3",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

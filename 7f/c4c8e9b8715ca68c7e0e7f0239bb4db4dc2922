@@ -1,0 +1,51 @@
+src/daemon/ipc.rs
+  fb7e8da24245c2c6 44,54,64-79
+tests/daemon_lifecycle.rs
+  d0e3d17a4657c7e0 121
+  fb7e8da24245c2c6 1-2,4,6,8,11-16,70-73,78-82,88,93-94,97-102,113,118-119,124,136-137,141-145,148-153,156-158,161-174,219-237,244,262,265
+src/daemon/lifecycle.rs
+  fb7e8da24245c2c6 2,10,13-19,32-38,61,95-99,101-104,106-110,193,199,226-227,232-253,281-286,290-299,306,381,390,397-414,467-483,486-499,518-521,523-524,547-584,586-621
+src/daemon/watcher.rs
+  fb7e8da24245c2c6 16-18,248,256,258-262,264,266
+src/daemon/worker.rs
+  fb7e8da24245c2c6 465-469,471
+src/commands/checkpoint.rs
+  fb7e8da24245c2c6 983
+tests/checkout_switch.rs
+  fb7e8da24245c2c6 39-71,179-206,298-332,528,531,534
+src/commands/hooks/checkout_hooks.rs
+  fb7e8da24245c2c6 152-178,216-218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.9",
+  "base_commit_sha": "7fc4c8e9b8715ca68c7e0e7f0239bb4db4dc2922",
+  "prompts": {
+    "d0e3d17a4657c7e0": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1772845345818169000",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 4,
+      "accepted_lines": 1,
+      "overriden_lines": 6
+    },
+    "fb7e8da24245c2c6": {
+      "agent_id": {
+        "tool": "mock_ai",
+        "id": "ai-thread-1772845009793614000",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 532,
+      "total_deletions": 35,
+      "accepted_lines": 471,
+      "overriden_lines": 30
+    }
+  }
+}

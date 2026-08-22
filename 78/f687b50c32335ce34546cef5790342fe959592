@@ -1,0 +1,62 @@
+src/config.rs
+  s_de275f864bbba0::t_9911ab3198b5be 1701-1724
+  s_de275f864bbba0::t_7784ca14165d42 57-79
+  s_de275f864bbba0::t_4eb329e6fa683c 269-273,275-276,283-293
+  s_de275f864bbba0::t_94ba18eab47bd3 6
+  s_de275f864bbba0::t_ed362987c4ce71 347-384,639-641
+  s_de275f864bbba0::t_2e0673186cd05b 1204
+  s_de275f864bbba0::t_f53e70959b3bb5 1725-1737
+  s_de275f864bbba0::t_cfd520272b11c0 1624-1626
+  s_de275f864bbba0::t_f999eb2a15a844 886-892,898,901-903,914-915,1075-1080,1174
+  s_de275f864bbba0::t_f02e170cac7d5c 893,895,897,899
+  s_de275f864bbba0::t_4d5129eff65c9a 1,4,7,274,280,282,894,896,900,904-913
+  s_de275f864bbba0::t_ced8984d829025 277-279,281
+  s_de275f864bbba0::t_a5e4e0f7b509aa 178,254-255,313
+  s_de275f864bbba0::t_34c926ddd741bd 1691,1933,2078
+src/commands/status.rs
+  s_de275f864bbba0::t_71c3ffd3d27f7c 53
+src/commands/blame.rs
+  s_de275f864bbba0::t_9805763e930730 1404
+tests/integration/simple_additions.rs
+  s_de275f864bbba0::t_2f1f12a5ee12bd 4
+  s_de275f864bbba0::t_24815476920f88 1924-2075
+src/api/client.rs
+  s_de275f864bbba0::t_284a09b19f4b44 64,67-68,71,79-82
+  s_de275f864bbba0::t_4e93c9f71f5f89 72-74
+  s_de275f864bbba0::t_2a2069cf9cb2ef 4
+src/commands/config.rs
+  s_de275f864bbba0::t_fcd6aad6a4f1f6 1538-1551
+  s_de275f864bbba0::t_6c0fb42a9f5b2b 980-990,1126-1137,1143-1149,1151
+  s_de275f864bbba0::t_082c720a0ad098 5
+  s_de275f864bbba0::t_191349fe0c346b 685-704,837-861,863
+  s_de275f864bbba0::t_f70bb21de91b3d 1334-1345
+  s_de275f864bbba0::t_1be5a4a4b8f63e 333-337
+  s_de275f864bbba0::t_7c0e013709b656 111-112,139-140
+  s_de275f864bbba0::t_ebbe76ebb9a73e 451-452,525-548,550
+  s_de275f864bbba0::t_2e0673186cd05b 1138-1142
+src/daemon.rs
+  s_de275f864bbba0::t_0db4d94bc9a731 1378,1773,2758,7120
+tests/integration/repos/test_repo.rs
+  s_de275f864bbba0::t_da380bcf954e8b 1040-1045
+src/git/repository.rs
+  s_de275f864bbba0::t_c85f6a9c21398a 917
+  s_de275f864bbba0::t_dd564ccbaa0f97 930-937,1360,1369-1370,1380-1386
+  s_de275f864bbba0::t_2e0673186cd05b 3092-3095
+  s_de275f864bbba0::t_74be2c85049080 3081-3091,3096-3131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "78f687b50c32335ce34546cef5790342fe959592",
+  "prompts": {},
+  "sessions": {
+    "s_de275f864bbba0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ec794-0a87-7451-a815-5150afadfbd0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+src/daemon/startup.rs
+  s_3b8401a0cbe012::t_a5273f9de0e68e 26-29,39-47,51-62,67-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "dd7619a8a6aa7f67ee6d692270054996c09c3dc5",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

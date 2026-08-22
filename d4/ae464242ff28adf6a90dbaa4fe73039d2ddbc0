@@ -1,0 +1,19 @@
+src/git/diff_tree_to_tree.rs
+  s_218fc31e3ddd9a::t_ee119659942b86 263
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "d4ae464242ff28adf6a90dbaa4fe73039d2ddbc0",
+  "prompts": {},
+  "sessions": {
+    "s_218fc31e3ddd9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1fdad75-0ada-417b-8f9c-3ed0c18eb119",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>"
+    }
+  }
+}

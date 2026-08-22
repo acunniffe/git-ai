@@ -1,0 +1,22 @@
+tests/integration/cherry_pick.rs
+  s_a73b2a35c101af::t_cb345449353c18 125,128-129,136-139,146-147,168,177-180
+  s_a73b2a35c101af::t_273cf9c9bc66d4 235-238,244-248,252-255,259-262,270-275,287-297,299,302
+tests/integration/rebase_realworld.rs
+  s_a73b2a35c101af::t_685d63bd7b0ed8 109,113-114,125-130,133,137-138,140,144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "3b711541f324e094e254dff785ca6f488b93b255",
+  "prompts": {},
+  "sessions": {
+    "s_a73b2a35c101af": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6af2d52f-d907-4b47-ae18-9388fb8b5bd4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

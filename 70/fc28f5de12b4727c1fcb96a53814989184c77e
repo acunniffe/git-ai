@@ -1,0 +1,139 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "70fc28f5de12b4727c1fcb96a53814989184c77e",
+  "prompts": {
+    "160a332c60db998e": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b12b6b63-2822-48e7-86be-1f33567b7d93",
+        "model": "gpt-5.1-codex-mini"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/blame-lens-manager.ts:76-88 this seems to put the border outside of the gutter. Can we do it inside the gutter, like git?",
+          "timestamp": "2025-12-28T13:54:54.916Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 400,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 240,
+            "offset": 420,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": ""
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Swapped the full-line border decorations for little gutter icons so the colored stripe now lives next to the line numbers (just like Git’s diff markers) instead of bleeding into the editor’s content area.\n\n- Added `createGutterIconUri` to generate a tiny SVG data URI for each color and wired it into the per-color decoration creation.\n- Removed the prior border/before styling so the stripe is rendered purely via the gutter icon, and kept the overview ruler indicators for contextual continuity.\n\nTests: not run (not requested).",
+          "timestamp": "2025-12-28T13:55:42.186Z"
+        },
+        {
+          "type": "user",
+          "text": "Hmm when I hover over the gutter it doesn't show me the popover",
+          "timestamp": "2025-12-28T14:13:11.324Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 200,
+            "offset": 760,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 220,
+            "offset": 960,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": ""
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": ""
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Added hover popovers back to the gutter by teaching the per-color decorations to carry `DecorationOptions` instead of bare ranges. Now each AI-colored stripe includes a `hoverMessage` produced by `buildHoverContent`, so hovering the gutter stripe displays the same commit/agent details as hovering the text. The maps that collect ranges now store these options, and both full-file and selection-based decoration paths were updated accordingly while keeping the gutter-only rendering we switched to earlier.\n\nTests: not run (not requested).",
+          "timestamp": "2025-12-28T14:13:52.548Z"
+        },
+        {
+          "type": "user",
+          "text": "Nothing I'm hovering over the gutter range (it's the color I expect) but not getting ANY of the hover. I have to hover the code itself to see the prompt",
+          "timestamp": "2025-12-28T14:15:01.512Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 260,
+            "offset": 60,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/agent-support/vscode/src/blame-lens-manager.ts"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": ""
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": ""
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "apply_patch",
+          "input": {
+            "file_path": ""
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Switched the decoration hit zones to full-line ranges before showing hover content so the gutter stripes now surface their hover cards without needing to rest the cursor on the actual text.\n\n- Both the full-file and selection-based decoration loops now record `DecorationOptions` (with `hoverMessage`) rather than bare ranges, and they reuse a new `createDecorationOption` helper that expands empty lines to a small visible range.\n- The gutter stripe decoration types remain gutter-only, but every range now has a hover payload built via `buildHoverContent`, which lets hovering the stripe (or its adjacent line) trigger the same popover as before.\n\nTests: not run (not requested).",
+          "timestamp": "2025-12-28T14:15:58.159Z"
+        }
+      ],
+      "total_additions": 273,
+      "total_deletions": 258,
+      "accepted_lines": 59,
+      "overriden_lines": 0
+    }
+  }
+}

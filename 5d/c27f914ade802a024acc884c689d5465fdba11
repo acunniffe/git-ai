@@ -1,0 +1,26 @@
+src/utils.rs
+  h_ea2010baa7a42b 112
+  s_02165554672c17::t_f63cbdcdfced9f 111,113-155
+  s_02165554672c17::t_f05ae63d5961ce 1207-1257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.4",
+  "base_commit_sha": "5dc27f914ade802a024acc884c689d5465fdba11",
+  "prompts": {},
+  "humans": {
+    "h_ea2010baa7a42b": {
+      "author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_02165554672c17": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a7da7fa8-aa14-40c2-aa03-8925c1427f59",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}
