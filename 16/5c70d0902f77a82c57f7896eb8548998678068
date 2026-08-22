@@ -1,0 +1,22 @@
+tests/integration/refs_unit.rs
+  s_149fcf156c8ed5::t_31a800733640b3 226-285
+src/git/refs.rs
+  s_149fcf156c8ed5::t_c13e5897ef58cd 663-680,701
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "165c70d0902f77a82c57f7896eb8548998678068",
+  "prompts": {},
+  "logical_commit_id": "165c70d0902f77a82c57f7896eb8548998678068",
+  "sessions": {
+    "s_149fcf156c8ed5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d8ec0-56ca-72e2-8131-a2dae580eaee",
+        "model": "gpt-5.5"
+      },
+      "human_author": "peckfly <31184030+peckfly@users.noreply.github.com>"
+    }
+  }
+}

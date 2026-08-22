@@ -1,0 +1,21 @@
+agent-support/opencode/git-ai.ts
+  s_48e9fed71298c0::t_1814def4fba2ac 20,341,366,368,378,384,389,394,459,480
+src/mdm/agents/opencode.rs
+  s_48e9fed71298c0::t_c34fc1df12e592 215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "6f9a3f6cee946381e7174db5c6fb26117aebe07a",
+  "prompts": {},
+  "sessions": {
+    "s_48e9fed71298c0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8e27-0a8c-7eb2-b677-5719a3a20122",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,53 @@
+tests/integration/cross_repo_cwd_attribution.rs
+  b2a0a009e28305dd 838-1230
+src/git/repository.rs
+  b2a0a009e28305dd 1339-1344,1348-1351,1367-1370,2886-2916
+tests/integration/git_repository_comprehensive.rs
+  b2a0a009e28305dd 170-235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.3",
+  "base_commit_sha": "e0ba349f9eb80064dbbd61d00c9d5e6b86e94f88",
+  "prompts": {
+    "b2a0a009e28305dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ada16363-357a-4e11-996e-c44f22e3a09b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "zitao.zhang",
+      "messages": [],
+      "total_additions": 902,
+      "total_deletions": 138,
+      "accepted_lines": 768,
+      "overriden_lines": 0
+    },
+    "ccdebac802270046": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d1fcb-9746-7ed3-b9e3-4f3cb65cc526",
+        "model": "gpt-5.4"
+      },
+      "human_author": "zitao.zhang",
+      "messages": [],
+      "total_additions": 866,
+      "total_deletions": 0,
+      "accepted_lines": 866,
+      "overriden_lines": 0
+    },
+    "cd9d5a14598b867b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "942d007a-ddfa-44ab-bcdc-a1c5dee74030",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "zitao.zhang",
+      "messages": [],
+      "total_additions": 452,
+      "total_deletions": 0,
+      "accepted_lines": 452,
+      "overriden_lines": 0
+    }
+  }
+}

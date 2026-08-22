@@ -1,0 +1,43 @@
+src/daemon.rs
+  s_17132eb1f3e626::t_404cf208dbecdf 9604
+src/daemon/analyzers/generic.rs
+  s_17132eb1f3e626::t_5e48f0f1664c0f 113
+src/daemon/analyzers/history.rs
+  s_17132eb1f3e626::t_a76b36796514b6 413
+src/daemon/analyzers/transport.rs
+  s_17132eb1f3e626::t_2b04feabef025b 29-38,146,180,183-186,197-204
+src/daemon/analyzers/workspace.rs
+  s_17132eb1f3e626::t_a8725d866760cd 133
+src/daemon/coordinator.rs
+  s_17132eb1f3e626::t_1034c00b85c947 165,189
+src/daemon/domain.rs
+  s_17132eb1f3e626::t_cd30c47b0c20ff 51-52,55
+src/daemon/family_actor.rs
+  s_17132eb1f3e626::t_a87565009b4a63 187
+src/daemon/global_actor.rs
+  s_17132eb1f3e626::t_736b296095463c 78
+src/daemon/reducer.rs
+  s_17132eb1f3e626::t_866fa9e65c2990 284
+src/daemon/ref_cursor.rs
+  s_17132eb1f3e626::t_8a3f28013643af 3927
+src/daemon/trace_normalizer.rs
+  s_17132eb1f3e626::t_ae72b8d3a27598 21,64,309,359-376,774,1439,1457-1464,1469,1475-1476,1511,1544,1585
+tests/notes_sync_regression.rs
+  s_17132eb1f3e626::t_b6428f26a04292 1610-1658
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "8795a1fc2a4d1c6e7d7a39121ba7e98195a72e8a",
+  "prompts": {},
+  "sessions": {
+    "s_17132eb1f3e626": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf3b-df78-7ff2-9251-6b93b18db257",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

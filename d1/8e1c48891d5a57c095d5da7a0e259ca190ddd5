@@ -1,0 +1,117 @@
+src/authorship/stats.rs
+  2d5fd47105c4b94c 543-547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "d18e1c48891d5a57c095d5da7a0e259ca190ddd5",
+  "prompts": {
+    "2d5fd47105c4b94c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2cb6b37d-2c6b-4d20-a072-66e9b25cdc09",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "hey I got a range stats result that looks suspicious  @src/authorship/stats.rs:558-563 \n\n\n\ntool model breakdown specifically \n\n\n\nThe contract for ai_additions is ai_accepted + mixed\n\n\n\nStats: CommitStats { human_additions: 189, mixed_additions: 1, ai_additions: 1, ai_accepted: 0, total_ai_additions: 203, total_ai_deletions: 6, time_waiting_for_ai: 0, git_diff_deleted_lines: 5, git_diff_added_lines: 189, tool_model_breakdown: {\"cursor::claude-4.5-opus-high-thinking\": ToolModelHeadlineStats { ai_additions: 187, mixed_additions: 1, ai_accepted: 0, total_ai_additions: 203, total_ai_deletions: 6, time_waiting_for_ai: 0 }} }\n\n\n\n\n\n\n\nbut I see 187 instead of 1",
+          "timestamp": "2025-12-06T19:38:34.594Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me investigate this discrepancy in the stats calculation. The issue seems to be that `ai_additions` at the top level is 1, but in the `tool_model_breakdown` it shows 187.",
+          "timestamp": "2025-12-06T19:38:40.655Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 200,
+            "offset": 550,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "grep",
+          "input": {
+            "-C": 3,
+            "path": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs",
+            "pattern": "tool_model_breakdown"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 100,
+            "offset": 460,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "I see the bug! Looking at the code:\n\n**Top-level `ai_additions`** (lines 542-546):\n```rust\ncommit_stats.ai_additions = std::cmp::min(\n    commit_stats.mixed_additions + commit_stats.ai_accepted,\n    git_diff_added_lines,\n);\n```\n\n**Tool-level `ai_additions`** (lines 523-527):\n```rust\ntool_stats.ai_additions += std::cmp::min(\n    prompt_record.total_additions,\n    prompt_record.overriden_lines + prompt_record.accepted_lines,\n);\n```\n\nThese are completely different formulas! The tool-level is using `total_additions` and per-prompt `accepted_lines` instead of following the same contract of `ai_additions = ai_accepted + mixed_additions`.\n\nIn your case:\n- Top level: `ai_additions = min(1 + 0, 189) = 1` ✅\n- Tool level: Using different formula → `187` ❌\n\nLet me fix this so the tool-level `ai_additions` follows the same contract:",
+          "timestamp": "2025-12-06T19:39:31.100Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 70,
+            "offset": 1,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll fix this. The solution is to:\n1. Remove the incorrect `tool_stats.ai_additions +=` calculation inside the loop\n2. After the loop, set `ai_additions = ai_accepted + mixed_additions` for each tool (following the same contract as top-level)",
+          "timestamp": "2025-12-06T19:39:37.752Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs"
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 514,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/stats.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "The fix looks good. Let me run the tests to make sure this doesn't break anything:",
+          "timestamp": "2025-12-06T19:40:01.832Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test stats --no-fail-fast 2>&1 | head -100",
+            "is_background": false
+          }
+        },
+        {
+          "type": "tool_use",
+          "name": "run_terminal_cmd",
+          "input": {
+            "command": "cd /Users/aidancunniffe/Desktop/git-ai && cargo test stats --no-fail-fast 2>&1 | tail -100",
+            "is_background": false
+          }
+        }
+      ],
+      "total_additions": 5,
+      "total_deletions": 4,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,21 @@
+src/commands/install_hooks/shell_env.rs
+  s_11a225d6fd6dae::t_43dea19228c018 128,131-133
+  s_11a225d6fd6dae::t_7e1929a4f0ae32 127,134,207-211,396-399
+  s_11a225d6fd6dae::t_8509776d08063a 400-401
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "4deb80b4a00e45bdb56b05d1ee274cc8069a7ea2",
+  "prompts": {},
+  "sessions": {
+    "s_11a225d6fd6dae": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01137-c2dd-76c1-9b00-b804175d9803",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

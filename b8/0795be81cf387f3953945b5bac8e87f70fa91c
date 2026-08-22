@@ -1,0 +1,48 @@
+tests/integration/ref_modes_attribution.rs
+  s_18b694e06092e7::t_00c43fc0efa6f8 52-55,97
+  s_18b694e06092e7::t_3852e98f6bb8a8 1-51,56-96,98-111
+tests/commit_tree_update_ref.rs
+  s_18b694e06092e7::t_e95fd4dbd957ee 877,1082,1216
+tests/integration/stash_modes_attribution.rs
+  s_18b694e06092e7::t_9114179eec5437 45-46,52,54-55,65-66,92-93,127-128,136-138
+  s_18b694e06092e7::t_b4a840917ec960 8-11,13-16,22-26,30-34,47-51,58-62,68-72,83-86,89,95-99,104-108,131-135,140-144
+  s_18b694e06092e7::t_153fbc22a66d23 195,209-210
+  s_18b694e06092e7::t_958086bff204a3 171-186,189-194,196-208,211-220,348
+  s_18b694e06092e7::t_a1d8da575474fe 349-356
+  s_18b694e06092e7::t_5aa7786ab5b88a 334
+  s_18b694e06092e7::t_8f7ca833c667bf 3-4,187-188,221-238,244-245,251-256,261-274,279-285,291-301,303-306,308-333,335-347
+  s_18b694e06092e7::t_6455dd7bdb990f 1-2,5-7,12,17-21,27-29,35-44,53,56-57,63-64,67,73-82,87-88,90-91,94,100-103,109-126,129-130,139,145-170
+  s_18b694e06092e7::t_d2e3053f6e3b62 239-243,246-250,257-260,275-278,286-290,302,307
+tests/integration/main.rs
+  s_18b694e06092e7::t_4aa254303a8958 166
+  s_18b694e06092e7::t_424d7f0aace04d 150
+  s_18b694e06092e7::t_f87f1578cd935f 144
+  s_18b694e06092e7::t_8d057b7133f079 158
+  s_18b694e06092e7::t_6c46df653e8a70 128
+tests/integration/worktree_modes_attribution.rs
+  s_18b694e06092e7::t_2cd541c7a915f9 1-297
+tests/integration/submodule_modes_attribution.rs
+  s_18b694e06092e7::t_6c46df653e8a70 1-37,39-40,42-54,60-71,76-93,99-118,123-142,148-158,165-183,189
+  s_18b694e06092e7::t_437625083f2060 38,41,55-59,72-75,94-98,119-122,143-147,159-164,184-188
+  s_18b694e06092e7::t_5f3b26d5f10c12 190-201
+tests/integration/sparse_checkout_attribution.rs
+  s_18b694e06092e7::t_beb2999e074312 42,46-53,79-81,98
+  s_18b694e06092e7::t_a6dc4f040ad037 97,99
+  s_18b694e06092e7::t_f87f1578cd935f 1-41,43-45,54-78,82-96,100-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "b80795be81cf387f3953945b5bac8e87f70fa91c",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

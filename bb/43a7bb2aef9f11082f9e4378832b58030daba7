@@ -1,0 +1,34 @@
+src/utils.rs
+  s_728f84008e76fc::t_d73752eb3c4c4a 449-480,485-516
+  s_57cce68e8a6c88::t_1843dd3fc139d3 517
+src/commands/upgrade.rs
+  s_728f84008e76fc::t_1608957e674aac 12
+  s_728f84008e76fc::t_1f20b9ad744a1a 13
+  s_728f84008e76fc::t_3f2cd8dc746244 139,144,149
+src/metrics/model_pricing.rs
+  s_728f84008e76fc::t_12762a6732c708 9-11,16-19,24,26,28,52-58,91-99,110-124,146-148,150-169,175-176,205,207,213-214,216,220-241,243,245-248,349-374,378,441,452-498,502,506,508
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "bb43a7bb2aef9f11082f9e4378832b58030daba7",
+  "prompts": {},
+  "sessions": {
+    "s_57cce68e8a6c88": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01f81-1ad4-7ef1-b10a-98b34b80994d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_728f84008e76fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b9c2fec-234c-43b0-aceb-0bb0ff75be4a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

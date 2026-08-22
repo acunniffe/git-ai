@@ -1,0 +1,25 @@
+src/commands/daemon.rs
+  s_06f7e3a37b8bfd::t_9128ff40c9e70e 683-686
+src/streams/agents/copilot_otel.rs
+  s_06f7e3a37b8bfd::t_ea999b5b5762af 348
+  s_06f7e3a37b8bfd::t_1c115b2df4de19 896-1018
+src/daemon/stream_worker.rs
+  s_06f7e3a37b8bfd::t_bb0b015673a713 887-889
+  s_06f7e3a37b8bfd::t_d93dde69d92e20 192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "3d3a82383e906f3bbc671301ba5a23fb38509dfc",
+  "prompts": {},
+  "sessions": {
+    "s_06f7e3a37b8bfd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e9b740ed-58dd-431f-a5c0-1fc57d383fb1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

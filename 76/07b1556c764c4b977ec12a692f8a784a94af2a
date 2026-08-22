@@ -1,0 +1,38 @@
+src/utils.rs
+  cd96f9aef96041b9 213-252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.11",
+  "base_commit_sha": "7607b1556c764c4b977ec12a692f8a784a94af2a",
+  "prompts": {
+    "2a7f6a5d7f8ceb1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9ee926f9-ddf1-4544-92b1-de497b8862e8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 860,
+      "total_deletions": 0,
+      "accepted_lines": 860,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5e07cdcace2d844f409d1da3189e3101098f3c3d801449eb84a144821bacfa48"
+    },
+    "cd96f9aef96041b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "395dfaad-cbe9-4a32-9d87-5db7e59c72e2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 40,
+      "total_deletions": 0,
+      "accepted_lines": 40,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/d9aa68890063e2bb381bdb4b2bc0c29ce62500b7502dbfba39ccbaf737927908"
+    }
+  }
+}

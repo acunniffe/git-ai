@@ -1,0 +1,170 @@
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_1e211a9cfd9487 6692,6694
+  s_11c3e1cdda522c::t_0bad78ff167050 6891-6894,6992-6993
+  s_11c3e1cdda522c::t_e72b5d051baabb 6344-6347
+  s_11c3e1cdda522c::t_83f70154d8641d 6324-6343,6348-6407
+  s_11c3e1cdda522c::t_bd63f829396435 6475,7001
+  s_11c3e1cdda522c::t_886bf052158ade 6408-6471,6474,6837-6890,6895-6990,6995-7000
+  s_11c3e1cdda522c::t_fb642af7b6a2a7 6991,6994
+  s_11c3e1cdda522c::t_c7f8eae15faf04 6472-6473,6476-6691,6693,6695-6793,6807,6834,6835-6836
+  s_11c3e1cdda522c::t_1c3d1807b8b5ae 7002-7008,7026-7031,7096-7097
+  s_11c3e1cdda522c::t_93c71e1ff60fc0 7009-7025,7032-7095
+src/daemon.rs
+  s_11c3e1cdda522c::t_5265fe8ed72bbc 8497-8503,8512-8517,8519-8520,8523-8530,8538-8540,8563,8570,8588-8594,8599,8602
+  s_11c3e1cdda522c::t_1c31fe0572936a 7988-7989
+  dbec0bfb1993ce92 8495-8496,8511,8649,8696,8711,8780-8781,9036-9037,9050-9051
+  s_11c3e1cdda522c::t_5a49cc01bcb5a0 8531-8537,8541-8544,8548,8550-8558,8564,8569,8571-8576,8580-8583
+  s_11c3e1cdda522c::t_3cb4fbea54a733 10824
+  s_11c3e1cdda522c::t_ea160590c112cd 8159-8175
+  s_11c3e1cdda522c::t_0356e354ddd803 8307,8312-8317
+  s_11c3e1cdda522c::t_bbba36774cfa8a 8545-8547,8549,8577-8579
+  s_11c3e1cdda522c::t_8cb6324f4e5938 10677
+  s_11c3e1cdda522c::t_a78f60fc3944ce 10678-10685
+  s_11c3e1cdda522c::t_c168b8e0f5ffeb 2905-2911
+  s_11c3e1cdda522c::t_0bc649a51534b5 10776-10795
+  s_11c3e1cdda522c::t_34f29d7ddcb0ae 49
+  s_11c3e1cdda522c::t_ee859e50cdaa59 91-96
+  s_11c3e1cdda522c::t_07c003dcfea047 8648,8671,8728-8763,8771-8779
+  s_11c3e1cdda522c::t_a17d9ff40ed368 8266,9049,9176
+  s_11c3e1cdda522c::t_a2557c51fc5fe4 8505-8510
+  s_7d470640a960b2::t_17fd3e9c4694cf 8667-8668,8672-8673,8680
+  s_11c3e1cdda522c::t_cead47897e25e0 3181-3184,7964,7966-7967,8001,8200-8202,8439-8440,8445-8448,8504,8559-8562,8565-8568,8603-8607,8650-8660,8662-8666,8688-8695,8697-8710,8717-8727,8764-8770,9130-9133,9161,10731-10771
+  s_11c3e1cdda522c::t_655bf185cc9b8f 8441-8444,8449-8454,8482-8494
+  s_11c3e1cdda522c::t_de2c3a542dae4c 9003,9006,9040-9041,9110,9177-9178
+  s_11c3e1cdda522c::t_8bb200cc9f30b5 3110
+  s_11c3e1cdda522c::t_bc4e1dc4246a3c 8247-8253
+  s_11c3e1cdda522c::t_ec9292d8994c3e 8265,9109,9117-9129,9134-9160,9162-9175
+  a6bcdcf51f19c92d 9111
+  s_11c3e1cdda522c::t_8feada59b22343 9030,9032-9035,9044-9048
+  s_11c3e1cdda522c::t_e8fe0d25ad2f1f 8264,10675-10676,10686-10725,10728-10730
+  s_11c3e1cdda522c::t_0a8fab2882a916 10797-10798,10804-10811
+  s_11c3e1cdda522c::t_fd6dcaf679c9ad 3108-3109,3111-3114,3122-3131,3136-3155,3162-3176,3185-3186
+  s_11c3e1cdda522c::t_74562b3e217677 2790-2802
+  s_11c3e1cdda522c::t_b946a98de8ea77 10774,10823
+  s_11c3e1cdda522c::t_95bce3d966ee7d 3115-3121
+  s_11c3e1cdda522c::t_85868a7183a7b4 8220-8226,8235-8246,8254-8263
+  s_11c3e1cdda522c::t_d226d4df2365e0 10773
+  s_11c3e1cdda522c::t_0bad78ff167050 3132-3135,8308-8311,10726-10727
+  s_11c3e1cdda522c::t_07a6d2706df11c 10772,10796,10799-10803,10812-10822
+  s_11c3e1cdda522c::t_8fb2ebf1f641a7 10775
+  s_5822efdedb26cc::t_aaec9a0b6ffdb2 3090-3091,7149
+  s_11c3e1cdda522c::t_42cd96ddff0e42 3021,3027-3036
+  s_11c3e1cdda522c::t_0c9febfa73a7d0 7151
+  s_11c3e1cdda522c::t_3af724657ad8c6 3092
+  s_11c3e1cdda522c::t_93441b36066313 9052-9061
+src/daemon/telemetry_worker.rs
+  s_36e4b30d0b68c4::t_b3d2ba8cbae5d1 290
+  s_11c3e1cdda522c::t_982cc29dff7d92 718-720,728
+  s_11c3e1cdda522c::t_aed2879445c76b 511-515,519-520,527,529,531-532,539-540,567-571,576
+  s_11c3e1cdda522c::t_e0fc5b206336d3 393
+  s_11c3e1cdda522c::t_48576a3a59dd53 198-204,206-210,259,266,270-276,310
+  s_11c3e1cdda522c::t_4e7cbec0cff062 205
+  s_11c3e1cdda522c::t_6d7efaa583542a 298,1753-1778
+  s_11c3e1cdda522c::t_1946f7aed58d79 725
+  s_11c3e1cdda522c::t_5fe2112dbc5487 721-724,726-727,729
+  s_11c3e1cdda522c::t_4203ad48525935 663-664
+  s_11c3e1cdda522c::t_547187877c348b 211-245,251,258,260-262,277-289,291-297
+  s_11c3e1cdda522c::t_7fa395615b4712 299
+  s_11c3e1cdda522c::t_1e11a3bcd97610 641-650
+  s_11c3e1cdda522c::t_1fd7444348576f 612
+  s_11c3e1cdda522c::t_f163ed34a65057 524,533,541-566
+src/sqlite.rs
+  s_5c8e781c6d99da::t_c35919ed0484fd 52
+  s_11c3e1cdda522c::t_bced7694272161 53-64
+  s_11c3e1cdda522c::t_7a37d6a47c34d4 3,9-13,20,30
+src/authorship/attribution_recovery.rs
+  s_11c3e1cdda522c::t_1ea1bbc05328c0 324-328,332,334,337-343,345
+  s_11c3e1cdda522c::t_68d731a666e457 505,508-509
+  s_11c3e1cdda522c::t_511a19e432eb10 1087,1090-1091
+  s_11c3e1cdda522c::t_c83de21e397489 1944,1997-1999,2001-2003,2005-2006,2010-2024
+  s_11c3e1cdda522c::t_0ac396863092df 321-323
+  s_11c3e1cdda522c::t_00bcfcedb028e6 1945,1947-1993
+  s_11c3e1cdda522c::t_a73d5641ee9ff0 2000,2004,2007-2009
+  s_11c3e1cdda522c::t_6bc7c841713118 245,254,270,275-287,468,477,506-507,513-516,518-521,592,601,622,963,976,980-984
+  s_11c3e1cdda522c::t_9946bfc0d959de 1080,1088-1089,1095-1098,1100-1103,1164,1168-1171,1174-1175,1177
+  s_11c3e1cdda522c::t_4f3f35dc87425c 1173,1176,1178
+  s_11c3e1cdda522c::t_5b3e2b5c8c425e 292-320
+  s_11c3e1cdda522c::t_6fc16d2c5fc4ca 1915-1943,1994-1996
+  s_11c3e1cdda522c::t_54911ce48a7150 1946
+src/tokio_runtime.rs
+  s_11c3e1cdda522c::t_4e7cbec0cff062 224-228
+  s_11c3e1cdda522c::t_d204a47974ccdd 105-117
+  s_11c3e1cdda522c::t_687fb0c7381e4e 16-20
+  s_11c3e1cdda522c::t_faa98deb5e2f04 217
+  s_11c3e1cdda522c::t_dacbc7fd18da63 218-223,229-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "28d92314388c47680b71f2c873cd2fe465ffbbd5",
+  "prompts": {
+    "a6bcdcf51f19c92d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84365ffc-bffe-41d6-b7e2-11822ec2da90",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages_url": "https://usegitai.com/cas/c7b32f859e87d5a226fe321806a74e15a0eea07f4bd4add043d9fdb0adee777e",
+      "total_additions": 35,
+      "total_deletions": 0,
+      "accepted_lines": 35,
+      "overriden_lines": 0
+    },
+    "dbec0bfb1993ce92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cc8540b-3147-48dd-aac5-5978b60cb05d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages_url": "https://usegitai.com/cas/ae5851b8a43cb53bf76fbe9cf65e842d789a94c01811072852915f5dd37af22a",
+      "total_additions": 12,
+      "total_deletions": 4,
+      "accepted_lines": 314,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_36e4b30d0b68c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "18288edc-a740-4bbc-98d3-db70db720809",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_5822efdedb26cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efcbc-8f48-7602-a00f-b20b39b170ef",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_5c8e781c6d99da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65ad6ab4-e951-4bfd-9acb-5a0f5874a1df",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_7d470640a960b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa51d-4cb8-7471-ad38-ead1f195155b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
