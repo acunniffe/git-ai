@@ -874,9 +874,9 @@ fn flush_pending_metrics() {
     let should_upload = metrics_upload_allowed(&api_base_url, &client);
     METRICS_UPLOAD_AVAILABLE.store(should_upload, Ordering::Relaxed);
     if !should_upload {
-        // Info: pending metrics silently never uploading is an attribution-
-        // telemetry delivery failure; this line makes it diagnosable.
-        tracing::info!("metrics: skipping pending upload, not authenticated");
+        // Debug: the flush loop lands here every 3 seconds while
+        // unauthenticated, so anything louder floods the daemon log.
+        tracing::debug!("metrics: skipping pending upload, not authenticated");
         return;
     }
 
@@ -1516,19 +1516,19 @@ pub fn flush_notes() {
     use crate::api::types::{NoteEntry, NotesUploadRequest};
     use crate::config::NotesBackendKind;
 
-    // Skip reasons log at info: a note that silently never uploads is an
-    // attribution-delivery failure, and these lines are what make a
-    // "0 notes uploaded" report diagnosable from the daemon log.
+    // Skip reasons log at debug: the flush loop lands here every 3 seconds
+    // for daemons whose notes backend never uploads (GitNotes default,
+    // missing URL, unauthenticated), so anything louder floods the log.
     let cfg = Config::fresh();
     if cfg.notes_backend_kind() != NotesBackendKind::Http {
-        tracing::info!("notes: skipping flush, backend is not Http");
+        tracing::debug!("notes: skipping flush, backend is not Http");
         return;
     }
 
     let backend_url = match cfg.notes_backend_url() {
         Some(url) => url.to_string(),
         None => {
-            tracing::info!("notes: skipping flush, notes_backend.backend_url is not configured");
+            tracing::debug!("notes: skipping flush, notes_backend.backend_url is not configured");
             return;
         }
     };
@@ -1536,7 +1536,7 @@ pub fn flush_notes() {
     let client = ApiClient::new(context);
 
     if !client.is_logged_in() && !client.has_api_key() {
-        tracing::info!("notes: skipping flush, not authenticated");
+        tracing::debug!("notes: skipping flush, not authenticated");
         return;
     }
 

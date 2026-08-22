@@ -7414,6 +7414,33 @@ fn await_reflects_triggered_notes_flush() {
     );
 }
 
+/// The telemetry flush loop runs every 3 seconds, so its skip reasons
+/// ("not authenticated", "backend is not Http", ...) must log at debug, not
+/// INFO — an unauthenticated or default-config daemon would otherwise write
+/// tens of thousands of identical INFO lines per day into its log file.
+#[test]
+fn daemon_flush_skip_reasons_do_not_log_at_info() {
+    // Default test repo: no API key, GitNotes backend — every flush pass
+    // skips both the metrics upload and the notes flush.
+    let repo = TestRepo::new();
+    let control_socket_path = daemon_control_socket_path(&repo);
+
+    // Each trigger runs one serialized flush pass in the telemetry loop.
+    for _ in 0..3 {
+        send_control_request(&control_socket_path, &ControlRequest::FlushNotes)
+            .expect("flush trigger should be accepted");
+        thread::sleep(Duration::from_millis(300));
+    }
+
+    let logs = repo.daemon_stderr_contents();
+    for needle in ["metrics: skipping pending upload", "notes: skipping flush"] {
+        assert!(
+            !logs.contains(needle),
+            "flush skip reason {needle:?} should not appear at the default log level:\n{logs}"
+        );
+    }
+}
+
 /// A control client that connects and vanishes (times out, dies mid-request)
 /// is routine under load — it must not produce ERROR-level noise or affect
 /// the daemon's health.
