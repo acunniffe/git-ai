@@ -1,0 +1,19 @@
+.github/workflows/actions-security-check.yml
+  s_728f84008e76fc::t_779cec89fe092b 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "34f8154b22b9ac9d05a71358973e0395cbd11875",
+  "prompts": {},
+  "sessions": {
+    "s_728f84008e76fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b9c2fec-234c-43b0-aceb-0bb0ff75be4a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
