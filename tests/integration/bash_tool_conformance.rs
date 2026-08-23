@@ -544,12 +544,19 @@ fn test_bash_tool_orchestration_multiple_tool_uses() {
 #[test]
 fn test_classify_tool_claude() {
     assert_eq!(classify_tool(Agent::Claude, "Write"), ToolClass::FileEdit);
+    assert_eq!(classify_tool(Agent::Claude, "write"), ToolClass::FileEdit);
     assert_eq!(classify_tool(Agent::Claude, "Edit"), ToolClass::FileEdit);
+    assert_eq!(classify_tool(Agent::Claude, "edit"), ToolClass::FileEdit);
     assert_eq!(
         classify_tool(Agent::Claude, "MultiEdit"),
         ToolClass::FileEdit
     );
+    assert_eq!(
+        classify_tool(Agent::Claude, "multiedit"),
+        ToolClass::FileEdit
+    );
     assert_eq!(classify_tool(Agent::Claude, "Bash"), ToolClass::Bash);
+    assert_eq!(classify_tool(Agent::Claude, "bash"), ToolClass::Bash);
     assert_eq!(classify_tool(Agent::Claude, "Read"), ToolClass::Skip);
     assert_eq!(classify_tool(Agent::Claude, "Glob"), ToolClass::Skip);
     assert_eq!(
