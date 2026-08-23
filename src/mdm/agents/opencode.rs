@@ -286,8 +286,8 @@ mod tests {
 
         let content = fs::read_to_string(&plugin_path).unwrap();
         assert!(content.contains("GitAiPlugin"));
-        assert!(content.contains("tool.execute.before"));
-        assert!(content.contains("tool.execute.after"));
+        assert!(content.contains("execute.before"));
+        assert!(content.contains("execute.after"));
         // Uses the opencode preset with session_id-based hook input and absolute path
         assert!(content.contains("session_id"));
         // Placeholder should be replaced with actual binary path in the const declaration
@@ -299,13 +299,13 @@ mod tests {
     fn test_opencode_plugin_content_is_valid_typescript() {
         let content = OPENCODE_PLUGIN_CONTENT;
 
-        assert!(content.contains("import type { Plugin }"));
+        assert!(content.contains("import { Plugin }"));
         assert!(content.contains("@opencode-ai/plugin"));
-        assert!(content.contains("export const GitAiPlugin: Plugin"));
+        assert!(content.contains("export const GitAiPlugin = Plugin.define("));
         assert!(content.contains("export default GitAiPlugin"));
         assert!(content.contains("child_process"));
-        assert!(content.contains("\"tool.execute.before\""));
-        assert!(content.contains("\"tool.execute.after\""));
+        assert!(content.contains("\"execute.before\""));
+        assert!(content.contains("\"execute.after\""));
         assert!(content.contains("FILE_EDIT_TOOLS"));
         assert!(content.contains("isBashTool"));
         assert!(content.contains("apply_patch"));

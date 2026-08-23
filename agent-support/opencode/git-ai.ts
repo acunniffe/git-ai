@@ -17,7 +17,7 @@
  * @see https://opencode.ai/docs/plugins/
  */
 
-import type { Plugin } from "@opencode-ai/plugin"
+import { Plugin } from "@opencode-ai/plugin"
 import { spawn } from "child_process"
 import { readFile, stat } from "fs/promises"
 import { dirname, isAbsolute, join, resolve } from "path"
@@ -146,9 +146,17 @@ const extractFilePaths = (args: unknown, cwd?: string): string[] => {
 type ToolHookInput = {
   tool?: unknown
   sessionID?: unknown
-  callID?: unknown
-  args?: unknown
+  id?: unknown
+  input?: unknown
 }
+
+type ToolHookOutput = {
+  status?: "completed" | "error"
+  result?: { metadata?: unknown }
+  error?: unknown
+}
+
+type PluginContext = Parameters<NonNullable<Plugin.Plugin["setup"]>>[0]
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -258,18 +266,21 @@ const runCheckpoint = (hookInput: string): Promise<void> => {
   })
 }
 
-export const GitAiPlugin: Plugin = async (ctx) => {
+export const GitAiPlugin = Plugin.define({
+  id: "git-ai",
+  setup: async (ctx) => {
   try {
-    return createGitAiPlugin(ctx)
+    const hooks = createGitAiPlugin(ctx)
+    await ctx.tool.hook("execute.before", hooks.before)
+    await ctx.tool.hook("execute.after", hooks.after)
   } catch (error) {
     debugLog("failed to initialize plugin", error)
-    return {}
   }
-}
+  },
+})
 
-const createGitAiPlugin = (ctx: Parameters<Plugin>[0]): Awaited<ReturnType<Plugin>> => {
-  const { worktree, directory } = ctx
-  const defaultCwd = worktree || directory || process.cwd()
+const createGitAiPlugin = (ctx: PluginContext) => {
+  const defaultCwd = process.cwd()
 
   // Track pending calls by callID so we can reference them in the after hook
   const pendingCalls = new Map<string, { repoDir: string; sessionID: string; toolInput: unknown }>()
@@ -443,9 +454,9 @@ const createGitAiPlugin = (ctx: Parameters<Plugin>[0]): Awaited<ReturnType<Plugi
   }
 
   return {
-    "tool.execute.before": swallowHookErrors(
+    before: swallowHookErrors(
       "pre-tool checkpoint failed",
-      async (input: ToolHookInput, output?: { args?: unknown }) => {
+      async (input: ToolHookInput) => {
         const toolName = hookString(input.tool)
         const isTrackedEdit = isEditTool(toolName)
         const isTrackedBash = isBashTool(toolName)
@@ -453,9 +464,9 @@ const createGitAiPlugin = (ctx: Parameters<Plugin>[0]): Awaited<ReturnType<Plugi
           return
         }
 
-        const callID = hookString(input.callID)
+        const callID = hookString(input.id)
         const sessionID = hookString(input.sessionID)
-        const toolInput = output?.args ?? input.args
+        const toolInput = input.input
         const toolCwd = resolveCwd(extractToolCwd(asRecord(toolInput)))
         const filePaths = isTrackedEdit ? extractFilePaths(toolInput, toolCwd) : []
         const repoDir = await resolveRepoDir(filePaths, toolCwd)
@@ -477,15 +488,15 @@ const createGitAiPlugin = (ctx: Parameters<Plugin>[0]): Awaited<ReturnType<Plugi
       },
     ),
 
-    "tool.execute.after": swallowHookErrors(
+    after: swallowHookErrors(
       "post-tool checkpoint failed",
-      async (input: ToolHookInput, output?: { metadata?: unknown }) => {
+      async (input: ToolHookInput & ToolHookOutput) => {
         const toolName = hookString(input.tool)
         if (!isEditTool(toolName) && !isBashTool(toolName)) {
           return
         }
 
-        const callID = hookString(input.callID)
+        const callID = hookString(input.id)
         const callInfo = pendingCalls.get(callID)
         pendingCalls.delete(callID)
 
@@ -494,8 +505,8 @@ const createGitAiPlugin = (ctx: Parameters<Plugin>[0]): Awaited<ReturnType<Plugi
           return
         }
 
-        const toolCwd = resolveCwd(extractToolCwd(asRecord(input.args)))
-        const metadataFilePaths = extractMetadataFilePaths(output?.metadata, toolCwd)
+        const toolCwd = resolveCwd(extractToolCwd(asRecord(input.input)))
+        const metadataFilePaths = extractMetadataFilePaths(input.result?.metadata, toolCwd)
         const toolInput = withMetadataFilePaths(callInfo.toolInput, metadataFilePaths)
 
         const hookInput = JSON.stringify({
