@@ -1,9 +1,9 @@
 //! Event-specific value structs for metrics.
 
 use super::pos_encoded::{
-    PosEncoded, PosField, sparse_get_string, sparse_get_u32, sparse_get_u64, sparse_get_vec_string,
-    sparse_get_vec_u32, sparse_set, string_to_json, u32_to_json, u64_to_json, vec_string_to_json,
-    vec_u32_to_json,
+    PosEncoded, PosField, f64_to_json, sparse_get_f64, sparse_get_string, sparse_get_u32,
+    sparse_get_u64, sparse_get_vec_string, sparse_get_vec_u32, sparse_set, string_to_json,
+    u32_to_json, u64_to_json, vec_string_to_json, vec_u32_to_json,
 };
 use super::types::{EventValues, MetricEventId, SparseArray};
 
@@ -2342,5 +2342,249 @@ mod session_event_tests {
     fn test_otel_trace_values_event_id() {
         assert_eq!(OtelTraceValues::event_id(), MetricEventId::OtelTrace);
         assert_eq!(OtelTraceValues::event_id() as u16, 6);
+    }
+}
+
+/// Value positions for "token_usage" event.
+pub mod token_usage_pos {
+    pub const BUCKET_TS: usize = 0; // u64 - 5-minute UTC bucket start (unix seconds)
+    pub const INPUT_TOKENS: usize = 1; // u64
+    pub const OUTPUT_TOKENS: usize = 2; // u64
+    pub const CACHE_READ_TOKENS: usize = 3; // u64
+    pub const CACHE_WRITE_TOKENS: usize = 4; // u64
+    pub const TOTAL_TOKENS: usize = 5; // u64
+    pub const REASONING_OUTPUT_TOKENS: usize = 6; // u64 - subset of output, agents that report it
+    pub const EST_COST_MICRO_USD: usize = 7; // u64 - estimated cost in 1e-6 USD
+    pub const CREDITS: usize = 8; // f64 - reserved for credit-based agents
+    pub const MESSAGE_COUNT: usize = 9; // u32 - deduplicated entries in the bucket
+}
+
+/// Values for Event ID 9: token_usage
+///
+/// One event per (session_id, model, bucket_ts): the deduplicated token usage
+/// and estimated cost of a 5-minute UTC bucket. The server upserts on that
+/// key with newest event_ts winning, so a bucket is re-emitted whenever its
+/// aggregate changes (including corrections downward and drops to zero).
+/// Uses EventAttributes for standard metadata (repo_url, tool, model,
+/// session ids, etc.); the model attribute is the bucket's model.
+///
+/// **Fields:**
+/// | Position | Name | Type |
+/// |----------|------|------|
+/// | 0 | bucket_ts | u64 |
+/// | 1 | input_tokens | u64 |
+/// | 2 | output_tokens | u64 |
+/// | 3 | cache_read_tokens | u64 |
+/// | 4 | cache_write_tokens | u64 |
+/// | 5 | total_tokens | u64 |
+/// | 6 | reasoning_output_tokens | u64 (unset when the agent reports none) |
+/// | 7 | est_cost_micro_usd | u64 |
+/// | 8 | credits | f64 (reserved, unset) |
+/// | 9 | message_count | u32 |
+#[derive(Debug, Clone, Default)]
+pub struct TokenUsageValues {
+    pub bucket_ts: PosField<u64>,
+    pub input_tokens: PosField<u64>,
+    pub output_tokens: PosField<u64>,
+    pub cache_read_tokens: PosField<u64>,
+    pub cache_write_tokens: PosField<u64>,
+    pub total_tokens: PosField<u64>,
+    pub reasoning_output_tokens: PosField<u64>,
+    pub est_cost_micro_usd: PosField<u64>,
+    pub credits: PosField<f64>,
+    pub message_count: PosField<u32>,
+}
+
+impl TokenUsageValues {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn bucket_ts(mut self, value: u64) -> Self {
+        self.bucket_ts = Some(Some(value));
+        self
+    }
+
+    pub fn input_tokens(mut self, value: u64) -> Self {
+        self.input_tokens = Some(Some(value));
+        self
+    }
+
+    pub fn output_tokens(mut self, value: u64) -> Self {
+        self.output_tokens = Some(Some(value));
+        self
+    }
+
+    pub fn cache_read_tokens(mut self, value: u64) -> Self {
+        self.cache_read_tokens = Some(Some(value));
+        self
+    }
+
+    pub fn cache_write_tokens(mut self, value: u64) -> Self {
+        self.cache_write_tokens = Some(Some(value));
+        self
+    }
+
+    pub fn total_tokens(mut self, value: u64) -> Self {
+        self.total_tokens = Some(Some(value));
+        self
+    }
+
+    /// Left unset (not zero) when the agent reports no reasoning tokens.
+    pub fn reasoning_output_tokens_opt(mut self, value: Option<u64>) -> Self {
+        if let Some(value) = value {
+            self.reasoning_output_tokens = Some(Some(value));
+        }
+        self
+    }
+
+    pub fn est_cost_micro_usd(mut self, value: u64) -> Self {
+        self.est_cost_micro_usd = Some(Some(value));
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn credits(mut self, value: f64) -> Self {
+        self.credits = Some(Some(value));
+        self
+    }
+
+    pub fn message_count(mut self, value: u32) -> Self {
+        self.message_count = Some(Some(value));
+        self
+    }
+}
+
+impl PosEncoded for TokenUsageValues {
+    fn to_sparse(&self) -> SparseArray {
+        let mut map = SparseArray::new();
+        sparse_set(
+            &mut map,
+            token_usage_pos::BUCKET_TS,
+            u64_to_json(&self.bucket_ts),
+        );
+        sparse_set(
+            &mut map,
+            token_usage_pos::INPUT_TOKENS,
+            u64_to_json(&self.input_tokens),
+        );
+        sparse_set(
+            &mut map,
+            token_usage_pos::OUTPUT_TOKENS,
+            u64_to_json(&self.output_tokens),
+        );
+        sparse_set(
+            &mut map,
+            token_usage_pos::CACHE_READ_TOKENS,
+            u64_to_json(&self.cache_read_tokens),
+        );
+        sparse_set(
+            &mut map,
+            token_usage_pos::CACHE_WRITE_TOKENS,
+            u64_to_json(&self.cache_write_tokens),
+        );
+        sparse_set(
+            &mut map,
+            token_usage_pos::TOTAL_TOKENS,
+            u64_to_json(&self.total_tokens),
+        );
+        sparse_set(
+            &mut map,
+            token_usage_pos::REASONING_OUTPUT_TOKENS,
+            u64_to_json(&self.reasoning_output_tokens),
+        );
+        sparse_set(
+            &mut map,
+            token_usage_pos::EST_COST_MICRO_USD,
+            u64_to_json(&self.est_cost_micro_usd),
+        );
+        sparse_set(
+            &mut map,
+            token_usage_pos::CREDITS,
+            f64_to_json(&self.credits),
+        );
+        sparse_set(
+            &mut map,
+            token_usage_pos::MESSAGE_COUNT,
+            u32_to_json(&self.message_count),
+        );
+        map
+    }
+
+    fn from_sparse(arr: &SparseArray) -> Self {
+        Self {
+            bucket_ts: sparse_get_u64(arr, token_usage_pos::BUCKET_TS),
+            input_tokens: sparse_get_u64(arr, token_usage_pos::INPUT_TOKENS),
+            output_tokens: sparse_get_u64(arr, token_usage_pos::OUTPUT_TOKENS),
+            cache_read_tokens: sparse_get_u64(arr, token_usage_pos::CACHE_READ_TOKENS),
+            cache_write_tokens: sparse_get_u64(arr, token_usage_pos::CACHE_WRITE_TOKENS),
+            total_tokens: sparse_get_u64(arr, token_usage_pos::TOTAL_TOKENS),
+            reasoning_output_tokens: sparse_get_u64(arr, token_usage_pos::REASONING_OUTPUT_TOKENS),
+            est_cost_micro_usd: sparse_get_u64(arr, token_usage_pos::EST_COST_MICRO_USD),
+            credits: sparse_get_f64(arr, token_usage_pos::CREDITS),
+            message_count: sparse_get_u32(arr, token_usage_pos::MESSAGE_COUNT),
+        }
+    }
+}
+
+impl EventValues for TokenUsageValues {
+    fn event_id() -> MetricEventId {
+        MetricEventId::TokenUsage
+    }
+
+    fn to_sparse(&self) -> SparseArray {
+        PosEncoded::to_sparse(self)
+    }
+
+    fn from_sparse(arr: &SparseArray) -> Self {
+        PosEncoded::from_sparse(arr)
+    }
+}
+
+#[cfg(test)]
+mod token_usage_tests {
+    use super::*;
+
+    #[test]
+    fn test_token_usage_values_event_id() {
+        assert_eq!(TokenUsageValues::event_id(), MetricEventId::TokenUsage);
+        assert_eq!(TokenUsageValues::event_id() as u16, 9);
+    }
+
+    #[test]
+    fn test_token_usage_values_sparse_roundtrip() {
+        let values = TokenUsageValues::new()
+            .bucket_ts(1_700_000_100)
+            .input_tokens(100)
+            .output_tokens(50)
+            .cache_read_tokens(200)
+            .cache_write_tokens(30)
+            .total_tokens(380)
+            .reasoning_output_tokens_opt(Some(12))
+            .est_cost_micro_usd(4_567)
+            .message_count(3);
+
+        let sparse = PosEncoded::to_sparse(&values);
+        let restored = <TokenUsageValues as PosEncoded>::from_sparse(&sparse);
+        assert_eq!(restored.bucket_ts, Some(Some(1_700_000_100)));
+        assert_eq!(restored.input_tokens, Some(Some(100)));
+        assert_eq!(restored.output_tokens, Some(Some(50)));
+        assert_eq!(restored.cache_read_tokens, Some(Some(200)));
+        assert_eq!(restored.cache_write_tokens, Some(Some(30)));
+        assert_eq!(restored.total_tokens, Some(Some(380)));
+        assert_eq!(restored.reasoning_output_tokens, Some(Some(12)));
+        assert_eq!(restored.est_cost_micro_usd, Some(Some(4_567)));
+        assert_eq!(restored.credits, None);
+        assert_eq!(restored.message_count, Some(Some(3)));
+    }
+
+    #[test]
+    fn test_reasoning_tokens_omitted_when_absent() {
+        let values = TokenUsageValues::new()
+            .bucket_ts(300)
+            .reasoning_output_tokens_opt(None);
+        let sparse = PosEncoded::to_sparse(&values);
+        assert!(!sparse.contains_key(&token_usage_pos::REASONING_OUTPUT_TOKENS.to_string()));
+        assert!(!sparse.contains_key(&token_usage_pos::CREDITS.to_string()));
     }
 }

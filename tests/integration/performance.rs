@@ -23,6 +23,7 @@ fn setup() {
         bash_checkpoints_v2: false,
         daemon_log_upload: true,
         rewrite_metrics_events: false,
+        token_usage_metrics: false,
     };
 
     git_ai::config::Config::set_test_feature_flags(test_flags.clone());

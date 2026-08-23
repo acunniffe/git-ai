@@ -24,6 +24,7 @@ pub enum MetricEventId {
     OtelTrace = 6,
     RewriteCommitted = 7,
     DaemonIngestAnomaly = 8,
+    TokenUsage = 9,
 }
 
 /// Trait for event-specific values.
@@ -200,6 +201,7 @@ mod tests {
         assert_eq!(MetricEventId::InstallHooks as u16, 3);
         assert_eq!(MetricEventId::Checkpoint as u16, 4);
         assert_eq!(MetricEventId::RewriteCommitted as u16, 7);
+        assert_eq!(MetricEventId::TokenUsage as u16, 9);
     }
 
     #[test]

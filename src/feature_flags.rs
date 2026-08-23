@@ -86,6 +86,7 @@ define_feature_flags!(
     bash_checkpoints_v2: bash_checkpoints_v2, debug = false, release = false,
     daemon_log_upload: daemon_log_upload, debug = true, release = true,
     rewrite_metrics_events: rewrite_metrics_events, debug = true, release = false,
+    token_usage_metrics: token_usage_metrics, debug = true, release = false,
 );
 
 impl FeatureFlags {
@@ -143,6 +144,7 @@ mod tests {
             assert!(!flags.bash_checkpoints_v2);
             assert!(flags.daemon_log_upload);
             assert!(flags.rewrite_metrics_events);
+            assert!(flags.token_usage_metrics);
         }
         #[cfg(not(debug_assertions))]
         {
@@ -154,6 +156,7 @@ mod tests {
             assert!(!flags.bash_checkpoints_v2);
             assert!(flags.daemon_log_upload);
             assert!(!flags.rewrite_metrics_events);
+            assert!(!flags.token_usage_metrics);
         }
     }
 
@@ -275,6 +278,7 @@ mod tests {
             bash_checkpoints_v2: true,
             daemon_log_upload: true,
             rewrite_metrics_events: true,
+            token_usage_metrics: true,
         };
 
         let serialized = serde_json::to_string(&flags).unwrap();
@@ -286,6 +290,7 @@ mod tests {
         assert!(serialized.contains("bash_checkpoints_v2"));
         assert!(serialized.contains("daemon_log_upload"));
         assert!(serialized.contains("rewrite_metrics_events"));
+        assert!(serialized.contains("token_usage_metrics"));
     }
 
     #[test]
@@ -299,6 +304,7 @@ mod tests {
             bash_checkpoints_v2: true,
             daemon_log_upload: true,
             rewrite_metrics_events: true,
+            token_usage_metrics: true,
         };
         let cloned = flags.clone();
         assert_eq!(cloned.lite_mode, flags.lite_mode);
@@ -309,6 +315,7 @@ mod tests {
         assert_eq!(cloned.bash_checkpoints_v2, flags.bash_checkpoints_v2);
         assert_eq!(cloned.daemon_log_upload, flags.daemon_log_upload);
         assert_eq!(cloned.rewrite_metrics_events, flags.rewrite_metrics_events);
+        assert_eq!(cloned.token_usage_metrics, flags.token_usage_metrics);
     }
 
     #[test]
