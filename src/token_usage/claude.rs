@@ -38,19 +38,41 @@ impl UsageExtractor for ClaudeUsageExtractor {
     }
 }
 
+/// The fields the replacement policy compares. Built from a fresh
+/// [`UsageEntry`] or from a stored database row.
+#[derive(Debug, Clone, Copy)]
+pub struct ReplacementCandidate {
+    pub is_sidechain: bool,
+    pub token_total: u64,
+    pub has_speed: bool,
+}
+
+impl From<&UsageEntry> for ReplacementCandidate {
+    fn from(entry: &UsageEntry) -> Self {
+        Self {
+            is_sidechain: entry.is_sidechain,
+            token_total: entry.dedupe_token_total(),
+            has_speed: entry.has_speed,
+        }
+    }
+}
+
 /// Replacement policy for two entries sharing a dedup identity (ccusage
 /// `should_replace_deduped_entry`): non-sidechain beats sidechain, then the
 /// larger token total wins, then a `usage.speed` marker breaks the tie.
-pub fn should_replace_entry(candidate: &UsageEntry, existing: &UsageEntry) -> bool {
+pub fn should_replace(candidate: ReplacementCandidate, existing: ReplacementCandidate) -> bool {
     if candidate.is_sidechain != existing.is_sidechain {
         return existing.is_sidechain;
     }
-    let candidate_total = candidate.dedupe_token_total();
-    let existing_total = existing.dedupe_token_total();
-    if candidate_total != existing_total {
-        return candidate_total > existing_total;
+    if candidate.token_total != existing.token_total {
+        return candidate.token_total > existing.token_total;
     }
     candidate.has_speed && !existing.has_speed
+}
+
+/// [`should_replace`] over full entries.
+pub fn should_replace_entry(candidate: &UsageEntry, existing: &UsageEntry) -> bool {
+    should_replace(candidate.into(), existing.into())
 }
 
 #[derive(Deserialize)]

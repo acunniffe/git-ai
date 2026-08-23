@@ -12,6 +12,7 @@
 pub mod claude;
 pub mod codex;
 pub mod cost;
+pub mod db;
 pub mod extractor;
 pub mod types;
 
