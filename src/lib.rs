@@ -21,6 +21,7 @@ pub mod repo_url;
 pub(crate) mod sandbox;
 pub mod sqlite;
 pub mod streams;
+pub mod token_usage;
 pub mod tokio_runtime;
 pub mod utils;
 pub mod uuid;
