@@ -6,20 +6,30 @@
 //! - `tracked_files`: the authoritative read cursor (byte offset) and
 //!   serialized extractor state per transcript file,
 //! - `usage_entries`: deduplicated per-entry token usage,
-//! - `bucket_state`: the fingerprint of the last emitted aggregate per
-//!   `(session_id, model, bucket_ts)`, so unchanged buckets are never
-//!   re-emitted.
+//! - `bucket_state`: the fingerprint and revision of the last emitted
+//!   aggregate per `(session_id, model, bucket_ts)`, so unchanged buckets are
+//!   never re-emitted.
 //!
 //! Keeping the cursor here (rather than in the streams database) matters:
 //! [`TokenUsageDatabase::commit_batch`] writes the entries, the extractor
 //! state, and the advanced cursor in a single transaction, so a crash can
 //! never replay lines against post-batch parser state.
 //!
+//! Entry deduplication is **global across sessions**, matching ccusage's
+//! whole-files dedup: `claude --resume`/`--continue`/fork writes a new
+//! transcript whose leading lines are copies of the parent conversation with
+//! the original message/request ids, and git-ai tracks that file as a new
+//! session. A session-scoped dedup would re-count the copied history on
+//! every resume. The first-seen row keeps the entry (and its session
+//! attribution); the replacement policy can move a row to the replacing
+//! session, in which case [`TokenUsageDatabase::commit_batch`] reports the
+//! previous session so its buckets can be reconciled too.
+//!
 //! Changed buckets are found by *reconciliation*, not change tracking:
-//! [`TokenUsageDatabase::session_buckets`] enumerates every bucket the
-//! session has entries or emission state for, and the caller re-emits those
-//! whose current aggregate fingerprint differs from the emitted one. Because
-//! no pending-emission state lives in memory, a crash or failed emission is
+//! [`TokenUsageDatabase::changed_buckets`] aggregates every bucket the
+//! session has entries or emission state for in one pass and returns those
+//! whose fingerprint differs from the last emitted one. Because no
+//! pending-emission state lives in memory, a crash or failed emission is
 //! healed by the next pass over the session.
 
 use std::path::Path;
@@ -87,7 +97,25 @@ const MIGRATIONS: &[&str] = &[
 
     INSERT INTO schema_version (version) VALUES (1);
     "#,
+    // Version 2: global dedup indexes (resume/fork dedup crosses sessions),
+    // pending-flush marker + error backoff timestamp on tracked files, and a
+    // per-bucket emission revision.
+    r#"
+    CREATE INDEX IF NOT EXISTS idx_usage_entries_key
+        ON usage_entries(entry_key);
+    CREATE INDEX IF NOT EXISTS idx_usage_entries_message_global
+        ON usage_entries(message_id) WHERE message_id IS NOT NULL;
+
+    ALTER TABLE tracked_files ADD COLUMN pending_flush INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE tracked_files ADD COLUMN last_error_at INTEGER;
+    ALTER TABLE bucket_state ADD COLUMN emit_seq INTEGER NOT NULL DEFAULT 0;
+
+    INSERT INTO schema_version (version) VALUES (2);
+    "#,
 ];
+
+const TRACKED_FILE_COLUMNS: &str = "session_id, stream_path, tool, byte_offset, state_json, \
+     last_known_size, last_modified, processing_errors, last_error_at, pending_flush";
 
 /// A tracked transcript file: read cursor plus extractor state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +128,25 @@ pub struct TrackedFile {
     pub last_known_size: i64,
     pub last_modified: Option<i64>,
     pub processing_errors: i64,
+    pub last_error_at: Option<i64>,
+    /// The extractor reported buffered entries at the end of the last pass;
+    /// the file must be re-processed even if its bytes have not changed.
+    pub pending_flush: bool,
+}
+
+fn read_tracked_file(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackedFile> {
+    Ok(TrackedFile {
+        session_id: row.get(0)?,
+        stream_path: row.get(1)?,
+        tool: row.get(2)?,
+        byte_offset: row.get::<_, i64>(3)?.max(0) as u64,
+        state_json: row.get(4)?,
+        last_known_size: row.get(5)?,
+        last_modified: row.get(6)?,
+        processing_errors: row.get(7)?,
+        last_error_at: row.get(8)?,
+        pending_flush: row.get(9)?,
+    })
 }
 
 /// The aggregate of one `(session_id, model, bucket_ts)` bucket, i.e. exactly
@@ -136,6 +183,41 @@ impl BucketAggregate {
     }
 }
 
+/// One reconciliation candidate: a bucket whose current aggregate differs
+/// from the last emitted fingerprint.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedBucket {
+    pub model: String,
+    pub bucket_ts: u32,
+    pub aggregate: BucketAggregate,
+    /// Revision of the last emission for this bucket (0 when never emitted).
+    /// The next emission carries `emit_seq + 1` so the server can order
+    /// same-second re-emissions.
+    pub emit_seq: u64,
+}
+
+/// One extracted batch to persist atomically.
+pub struct BatchCommit<'a> {
+    pub session_id: &'a str,
+    pub stream_path: &'a str,
+    pub entries: &'a [UsageEntry],
+    pub new_offset: u64,
+    pub state_json: Option<&'a str>,
+    /// The extractor still holds buffered entries (see
+    /// `UsageExtractor::has_pending`).
+    pub pending_flush: bool,
+    /// Retention cutoff: entries whose bucket falls before this are dropped
+    /// instead of inserted, so backfill never uploads history the next prune
+    /// would delete.
+    pub min_bucket_ts: u32,
+}
+
+/// Clamp a token count for an INTEGER column (defensive: corrupt transcripts
+/// can carry absurd values).
+fn to_db_i64(value: u64) -> i64 {
+    value.min(i64::MAX as u64) as i64
+}
+
 /// SQLite database for token-usage state.
 pub struct TokenUsageDatabase {
     conn: Arc<Mutex<Connection>>,
@@ -154,6 +236,21 @@ impl TokenUsageDatabase {
         };
         db.migrate()?;
         Ok(db)
+    }
+
+    /// Best-effort removal of the database files (main + WAL/SHM). Used when
+    /// the feature flag is off so no collected data is retained.
+    pub fn remove_database_files(path: &Path) {
+        for suffix in ["", "-wal", "-shm"] {
+            let mut file = path.as_os_str().to_owned();
+            file.push(suffix);
+            let file = std::path::PathBuf::from(file);
+            if file.exists()
+                && let Err(e) = std::fs::remove_file(&file)
+            {
+                tracing::warn!(error = %e, path = %file.display(), "failed to remove token-usage database file");
+            }
+        }
     }
 
     fn lock(&self) -> MutexGuard<'_, Connection> {
@@ -211,87 +308,146 @@ impl TokenUsageDatabase {
             params![session_id, stream_path, tool],
         )?;
         Ok(conn.query_row(
-            "SELECT session_id, stream_path, tool, byte_offset, state_json,
-                    last_known_size, last_modified, processing_errors
-             FROM tracked_files WHERE session_id = ?1 AND stream_path = ?2",
+            &format!(
+                "SELECT {TRACKED_FILE_COLUMNS} FROM tracked_files
+                 WHERE session_id = ?1 AND stream_path = ?2"
+            ),
             params![session_id, stream_path],
-            |row| {
-                Ok(TrackedFile {
-                    session_id: row.get(0)?,
-                    stream_path: row.get(1)?,
-                    tool: row.get(2)?,
-                    byte_offset: row.get::<_, i64>(3)?.max(0) as u64,
-                    state_json: row.get(4)?,
-                    last_known_size: row.get(5)?,
-                    last_modified: row.get(6)?,
-                    processing_errors: row.get(7)?,
-                })
-            },
+            read_tracked_file,
         )?)
     }
 
     /// All tracked files (sweep enumeration).
     pub fn all_files(&self) -> Result<Vec<TrackedFile>, GitAiError> {
         let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "SELECT session_id, stream_path, tool, byte_offset, state_json,
-                    last_known_size, last_modified, processing_errors
-             FROM tracked_files",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(TrackedFile {
-                session_id: row.get(0)?,
-                stream_path: row.get(1)?,
-                tool: row.get(2)?,
-                byte_offset: row.get::<_, i64>(3)?.max(0) as u64,
-                state_json: row.get(4)?,
-                last_known_size: row.get(5)?,
-                last_modified: row.get(6)?,
-                processing_errors: row.get(7)?,
-            })
-        })?;
+        let mut stmt =
+            conn.prepare(&format!("SELECT {TRACKED_FILE_COLUMNS} FROM tracked_files"))?;
+        let rows = stmt.query_map([], read_tracked_file)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Persist one extracted batch atomically: deduplicated entries, the
     /// advanced read cursor, and the extractor state. Clears any recorded
-    /// processing error.
-    pub fn commit_batch(
-        &self,
-        session_id: &str,
-        stream_path: &str,
-        entries: &[UsageEntry],
-        new_offset: u64,
-        state_json: Option<&str>,
-    ) -> Result<(), GitAiError> {
+    /// processing error. Returns the *other* sessions whose rows were
+    /// replaced by this batch (resume/fork dedup can move an entry between
+    /// sessions), so their buckets can be reconciled too.
+    pub fn commit_batch(&self, batch: &BatchCommit<'_>) -> Result<Vec<String>, GitAiError> {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
-        for entry in entries {
-            upsert_entry(&tx, session_id, entry)?;
+        let mut foreign_sessions: Vec<String> = Vec::new();
+        for entry in batch.entries {
+            if bucket_ts(entry.ts) < batch.min_bucket_ts {
+                continue;
+            }
+            if let Some(previous_session) = upsert_entry(&tx, batch.session_id, entry)?
+                && !foreign_sessions.contains(&previous_session)
+            {
+                foreign_sessions.push(previous_session);
+            }
         }
         tx.execute(
             "UPDATE tracked_files
-             SET byte_offset = ?1, state_json = ?2, processing_errors = 0, last_error = NULL
-             WHERE session_id = ?3 AND stream_path = ?4",
-            params![new_offset as i64, state_json, session_id, stream_path],
+             SET byte_offset = ?1, state_json = ?2, pending_flush = ?3,
+                 processing_errors = 0, last_error = NULL, last_error_at = NULL
+             WHERE session_id = ?4 AND stream_path = ?5",
+            params![
+                batch.new_offset as i64,
+                batch.state_json,
+                batch.pending_flush,
+                batch.session_id,
+                batch.stream_path
+            ],
         )?;
         tx.commit()?;
-        Ok(())
+        Ok(foreign_sessions)
     }
 
-    /// Every `(model, bucket_ts)` the session has entries or emission state
-    /// for — the reconciliation candidates. Buckets present only in
-    /// `bucket_state` (all their entries were replaced away or pruned) are
-    /// included so an emptied bucket can re-emit as zero.
-    pub fn session_buckets(&self, session_id: &str) -> Result<Vec<(String, u32)>, GitAiError> {
+    /// Reconcile the session in one pass: aggregate every bucket it has
+    /// entries or emission state for, and return those whose fingerprint
+    /// differs from the last emitted one (including buckets that emptied to
+    /// zero, which are present only in `bucket_state`).
+    pub fn changed_buckets(&self, session_id: &str) -> Result<Vec<ChangedBucket>, GitAiError> {
         let conn = self.lock();
+
+        // (model, bucket_ts) -> (fingerprint, emit_seq) of the last emission.
         let mut stmt = conn.prepare(
-            "SELECT model, bucket_ts FROM usage_entries WHERE session_id = ?1
-             UNION
-             SELECT model, bucket_ts FROM bucket_state WHERE session_id = ?1",
+            "SELECT model, bucket_ts, emitted_fingerprint, emit_seq
+             FROM bucket_state WHERE session_id = ?1",
         )?;
-        let rows = stmt.query_map(params![session_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
-        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+        let emitted: Vec<(String, u32, String, i64)> = stmt
+            .query_map(params![session_id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut emitted: std::collections::HashMap<(String, u32), (String, u64)> = emitted
+            .into_iter()
+            .map(|(model, bucket, fp, seq)| ((model, bucket), (fp, seq.max(0) as u64)))
+            .collect();
+
+        let mut stmt = conn.prepare(
+            "SELECT model, bucket_ts,
+                    COALESCE(SUM(input_tokens), 0),
+                    COALESCE(SUM(output_tokens), 0),
+                    COALESCE(SUM(cache_read_tokens), 0),
+                    COALESCE(SUM(cache_write_tokens), 0),
+                    COUNT(reasoning_output_tokens),
+                    COALESCE(SUM(reasoning_output_tokens), 0),
+                    COALESCE(SUM(total_tokens), 0),
+                    COALESCE(SUM(cost_micro_usd), 0),
+                    COUNT(*)
+             FROM usage_entries
+             WHERE session_id = ?1
+             GROUP BY model, bucket_ts",
+        )?;
+        let aggregates: Vec<(String, u32, BucketAggregate)> = stmt
+            .query_map(params![session_id], |row| {
+                let reasoning_entries: i64 = row.get(6)?;
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    BucketAggregate {
+                        input: row.get::<_, i64>(2)? as u64,
+                        output: row.get::<_, i64>(3)? as u64,
+                        cache_read: row.get::<_, i64>(4)? as u64,
+                        cache_write: row.get::<_, i64>(5)? as u64,
+                        reasoning_output: (reasoning_entries > 0)
+                            .then(|| row.get::<_, i64>(7).map(|v| v as u64))
+                            .transpose()?,
+                        total: row.get::<_, i64>(8)? as u64,
+                        cost_micro_usd: row.get::<_, i64>(9)? as u64,
+                        message_count: row.get::<_, i64>(10)? as u32,
+                    },
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut changed = Vec::new();
+        for (model, bucket, aggregate) in aggregates {
+            let last = emitted.remove(&(model.clone(), bucket));
+            let emit_seq = last.as_ref().map_or(0, |(_, seq)| *seq);
+            if last.map(|(fp, _)| fp).as_deref() != Some(aggregate.fingerprint().as_str()) {
+                changed.push(ChangedBucket {
+                    model,
+                    bucket_ts: bucket,
+                    aggregate,
+                    emit_seq,
+                });
+            }
+        }
+        // Buckets with emission state but no remaining entries: emptied, and
+        // re-emitted as zero unless zero was already emitted.
+        for ((model, bucket), (fingerprint, emit_seq)) in emitted {
+            let aggregate = BucketAggregate::default();
+            if fingerprint != aggregate.fingerprint() {
+                changed.push(ChangedBucket {
+                    model,
+                    bucket_ts: bucket,
+                    aggregate,
+                    emit_seq,
+                });
+            }
+        }
+        Ok(changed)
     }
 
     /// Update the file-size/mtime snapshot used to skip unchanged files.
@@ -316,12 +472,13 @@ impl TokenUsageDatabase {
         session_id: &str,
         stream_path: &str,
         error: &str,
+        now_ts: i64,
     ) -> Result<(), GitAiError> {
         self.lock().execute(
             "UPDATE tracked_files
-             SET processing_errors = processing_errors + 1, last_error = ?1
-             WHERE session_id = ?2 AND stream_path = ?3",
-            params![error, session_id, stream_path],
+             SET processing_errors = processing_errors + 1, last_error = ?1, last_error_at = ?2
+             WHERE session_id = ?3 AND stream_path = ?4",
+            params![error, now_ts, session_id, stream_path],
         )?;
         Ok(())
     }
@@ -383,37 +540,49 @@ impl TokenUsageDatabase {
     }
 
     /// Record that the bucket's current aggregate was handed to the metrics
-    /// pipeline.
+    /// pipeline as revision `emit_seq`.
     pub fn mark_emitted(
         &self,
         session_id: &str,
         model: &str,
         bucket: u32,
         fingerprint: &str,
+        emit_seq: u64,
         now_ts: i64,
     ) -> Result<(), GitAiError> {
         self.lock().execute(
-            "INSERT INTO bucket_state (session_id, model, bucket_ts, emitted_fingerprint, last_emitted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+            "INSERT INTO bucket_state (session_id, model, bucket_ts, emitted_fingerprint, emit_seq, last_emitted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
              ON CONFLICT(session_id, model, bucket_ts)
-             DO UPDATE SET emitted_fingerprint = ?4, last_emitted_at = ?5",
-            params![session_id, model, bucket, fingerprint, now_ts],
+             DO UPDATE SET emitted_fingerprint = ?4, emit_seq = ?5, last_emitted_at = ?6",
+            params![
+                session_id,
+                model,
+                bucket,
+                fingerprint,
+                to_db_i64(emit_seq),
+                now_ts
+            ],
         )?;
         Ok(())
     }
 
     /// Retention prune: drop entries and bucket state older than the cutoff
-    /// bucket. Cursors are monotonic, so pruned history is never re-read.
+    /// bucket, atomically (a partial prune would leave orphan bucket_state
+    /// rows that re-emit zero over real historical data). Cursors are
+    /// monotonic, so pruned history is never re-read.
     pub fn prune_buckets_before(&self, cutoff_bucket_ts: u32) -> Result<usize, GitAiError> {
-        let conn = self.lock();
-        let entries = conn.execute(
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        let entries = tx.execute(
             "DELETE FROM usage_entries WHERE bucket_ts < ?1",
             params![cutoff_bucket_ts],
         )?;
-        conn.execute(
+        tx.execute(
             "DELETE FROM bucket_state WHERE bucket_ts < ?1",
             params![cutoff_bucket_ts],
         )?;
+        tx.commit()?;
         Ok(entries)
     }
 }
@@ -421,49 +590,57 @@ impl TokenUsageDatabase {
 /// A stored entry's dedup-relevant fields.
 struct ExistingRow {
     rowid: i64,
+    session_id: String,
     replacement: ReplacementCandidate,
 }
 
 /// Insert one entry with ccusage's dedup semantics: exact `(message_id,
 /// request_id)` identity first (encoded in `entry_key`), then the
 /// message-id-only fallback for sidechain replays, with the replacement
-/// policy deciding winners.
+/// policy deciding winners. Both lookups are global (see the module docs).
+/// Returns the previous owner's session id when a replacement moved the row
+/// between sessions.
 fn upsert_entry(
     tx: &Transaction<'_>,
     session_id: &str,
     entry: &UsageEntry,
-) -> Result<(), GitAiError> {
+) -> Result<Option<String>, GitAiError> {
     let bucket = bucket_ts(entry.ts);
-    let existing = find_dedupe_target(tx, session_id, entry)?;
+    let existing = find_dedupe_target(tx, entry)?;
     match existing {
         Some(row) => {
             if should_replace(entry.into(), row.replacement) {
                 tx.execute(
                     "UPDATE usage_entries SET
-                        entry_key = ?1, message_id = ?2, model = ?3, bucket_ts = ?4,
-                        input_tokens = ?5, output_tokens = ?6, cache_read_tokens = ?7,
-                        cache_write_tokens = ?8, reasoning_output_tokens = ?9,
-                        total_tokens = ?10, cost_micro_usd = ?11, is_sidechain = ?12,
-                        has_speed = ?13
-                     WHERE rowid = ?14",
+                        session_id = ?1, entry_key = ?2, message_id = ?3, model = ?4,
+                        bucket_ts = ?5, input_tokens = ?6, output_tokens = ?7,
+                        cache_read_tokens = ?8, cache_write_tokens = ?9,
+                        reasoning_output_tokens = ?10, total_tokens = ?11,
+                        cost_micro_usd = ?12, is_sidechain = ?13, has_speed = ?14
+                     WHERE rowid = ?15",
                     params![
+                        session_id,
                         entry.entry_key,
                         entry.message_id,
                         entry.model,
                         bucket,
-                        entry.tokens.input as i64,
-                        entry.tokens.output as i64,
-                        entry.tokens.cache_read as i64,
-                        entry.tokens.cache_write as i64,
-                        entry.tokens.reasoning_output.map(|v| v as i64),
-                        entry.tokens.total as i64,
-                        entry_cost_micro_usd(entry).map(|v| v as i64),
+                        to_db_i64(entry.tokens.input),
+                        to_db_i64(entry.tokens.output),
+                        to_db_i64(entry.tokens.cache_read),
+                        to_db_i64(entry.tokens.cache_write),
+                        entry.tokens.reasoning_output.map(to_db_i64),
+                        to_db_i64(entry.tokens.total),
+                        entry_cost_micro_usd(entry).map(to_db_i64),
                         entry.is_sidechain,
                         entry.has_speed,
                         row.rowid,
                     ],
                 )?;
+                if row.session_id != session_id {
+                    return Ok(Some(row.session_id));
+                }
             }
+            Ok(None)
         }
         None => {
             tx.execute(
@@ -479,50 +656,51 @@ fn upsert_entry(
                     entry.message_id,
                     entry.model,
                     bucket,
-                    entry.tokens.input as i64,
-                    entry.tokens.output as i64,
-                    entry.tokens.cache_read as i64,
-                    entry.tokens.cache_write as i64,
-                    entry.tokens.reasoning_output.map(|v| v as i64),
-                    entry.tokens.total as i64,
-                    entry_cost_micro_usd(entry).map(|v| v as i64),
+                    to_db_i64(entry.tokens.input),
+                    to_db_i64(entry.tokens.output),
+                    to_db_i64(entry.tokens.cache_read),
+                    to_db_i64(entry.tokens.cache_write),
+                    entry.tokens.reasoning_output.map(to_db_i64),
+                    to_db_i64(entry.tokens.total),
+                    entry_cost_micro_usd(entry).map(to_db_i64),
                     entry.is_sidechain,
                     entry.has_speed,
                 ],
             )?;
+            Ok(None)
         }
     }
-    Ok(())
 }
 
 fn find_dedupe_target(
     tx: &Transaction<'_>,
-    session_id: &str,
     entry: &UsageEntry,
 ) -> Result<Option<ExistingRow>, GitAiError> {
     let read_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<ExistingRow> {
-        let token_total = row.get::<_, i64>(1)? as u64
-            + row.get::<_, i64>(2)? as u64
-            + row.get::<_, i64>(3)? as u64
-            + row.get::<_, i64>(4)? as u64;
+        let token_total = (row.get::<_, i64>(2)? as u64)
+            .saturating_add(row.get::<_, i64>(3)? as u64)
+            .saturating_add(row.get::<_, i64>(4)? as u64)
+            .saturating_add(row.get::<_, i64>(5)? as u64);
         Ok(ExistingRow {
             rowid: row.get(0)?,
+            session_id: row.get(1)?,
             replacement: ReplacementCandidate {
                 token_total,
-                is_sidechain: row.get(5)?,
-                has_speed: row.get(6)?,
+                is_sidechain: row.get(6)?,
+                has_speed: row.get(7)?,
             },
         })
     };
-    const ROW_COLUMNS: &str = "rowid, input_tokens, output_tokens, \
+    const ROW_COLUMNS: &str = "rowid, session_id, input_tokens, output_tokens, \
                                cache_read_tokens, cache_write_tokens, is_sidechain, has_speed";
 
     let exact = tx
         .query_row(
             &format!(
-                "SELECT {ROW_COLUMNS} FROM usage_entries WHERE session_id = ?1 AND entry_key = ?2"
+                "SELECT {ROW_COLUMNS} FROM usage_entries WHERE entry_key = ?1
+                 ORDER BY rowid LIMIT 1"
             ),
-            params![session_id, entry.entry_key],
+            params![entry.entry_key],
             read_row,
         )
         .optional()?;
@@ -538,14 +716,11 @@ fn find_dedupe_target(
     };
     let mut stmt = tx.prepare(&format!(
         "SELECT {ROW_COLUMNS} FROM usage_entries
-         WHERE session_id = ?1 AND message_id = ?2 AND (?3 OR is_sidechain)
+         WHERE message_id = ?1 AND (?2 OR is_sidechain)
          ORDER BY rowid LIMIT 1"
     ))?;
     Ok(stmt
-        .query_row(
-            params![session_id, message_id, entry.is_sidechain],
-            read_row,
-        )
+        .query_row(params![message_id, entry.is_sidechain], read_row)
         .optional()?)
 }
 
@@ -584,9 +759,23 @@ mod tests {
         }
     }
 
+    fn commit_for(db: &TokenUsageDatabase, session: &str, entries: &[UsageEntry]) -> Vec<String> {
+        let path = format!("/{session}.jsonl");
+        db.ensure_file(session, &path, "claude").unwrap();
+        db.commit_batch(&BatchCommit {
+            session_id: session,
+            stream_path: &path,
+            entries,
+            new_offset: 0,
+            state_json: None,
+            pending_flush: false,
+            min_bucket_ts: 0,
+        })
+        .unwrap()
+    }
+
     fn commit(db: &TokenUsageDatabase, entries: &[UsageEntry]) {
-        db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
-        db.commit_batch("s1", "/t.jsonl", entries, 0, None).unwrap()
+        commit_for(db, "s1", entries);
     }
 
     #[test]
@@ -594,10 +783,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("token-usage-db");
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 1);
+        assert_eq!(db.schema_version().unwrap(), 2);
         drop(db);
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 1);
+        assert_eq!(db.schema_version().unwrap(), 2);
     }
 
     #[test]
@@ -606,29 +795,88 @@ mod tests {
         let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
         assert_eq!(file.byte_offset, 0);
         assert_eq!(file.state_json, None);
-        db.commit_batch("s1", "/t.jsonl", &[], 42, Some("{\"x\":1}"))
-            .unwrap();
+        assert!(!file.pending_flush);
+        db.commit_batch(&BatchCommit {
+            session_id: "s1",
+            stream_path: "/t.jsonl",
+            entries: &[],
+            new_offset: 42,
+            state_json: Some("{\"x\":1}"),
+            pending_flush: true,
+            min_bucket_ts: 0,
+        })
+        .unwrap();
         let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
         assert_eq!(file.byte_offset, 42);
         assert_eq!(file.state_json.as_deref(), Some("{\"x\":1}"));
+        assert!(file.pending_flush);
     }
 
     #[test]
-    fn commit_batch_is_atomic_for_cursor_state_and_entries() {
+    fn commit_batch_persists_entries_and_reports_changed_buckets() {
         let (_dir, db) = db();
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
-        assert_eq!(
-            db.session_buckets("s1").unwrap(),
-            vec![("claude-sonnet-4-20250514".to_string(), 600)]
-        );
-        let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
-            .unwrap();
+        let changed = db.changed_buckets("s1").unwrap();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].model, "claude-sonnet-4-20250514");
+        assert_eq!(changed[0].bucket_ts, 600);
+        assert_eq!(changed[0].emit_seq, 0);
+        let agg = changed[0].aggregate;
         assert_eq!(agg.input, 10);
         assert_eq!(agg.output, 5);
         assert_eq!(agg.message_count, 1);
         assert_eq!(agg.cost_micro_usd, 1_000);
         assert_eq!(agg.reasoning_output, None);
+    }
+
+    #[test]
+    fn resumed_session_does_not_recount_copied_history() {
+        // claude --resume copies the parent conversation into a NEW session
+        // file with the original message/request ids; dedup must be global.
+        let (_dir, db) = db();
+        commit_for(&db, "s1", &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
+        let foreign = commit_for(&db, "s2", &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
+        assert!(foreign.is_empty(), "identical copy must not replace");
+        // The entry stays attributed to the first-seen session.
+        assert_eq!(
+            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+                .unwrap()
+                .message_count,
+            1
+        );
+        assert_eq!(
+            db.aggregate_bucket("s2", "claude-sonnet-4-20250514", 600)
+                .unwrap()
+                .message_count,
+            0
+        );
+    }
+
+    #[test]
+    fn cross_session_replacement_reports_the_previous_owner() {
+        // The resumed copy carries larger totals (the original was a partial
+        // streaming re-emit): the replacement moves the entry to the new
+        // session, and the old session is reported for reconciliation.
+        let (_dir, db) = db();
+        commit_for(&db, "s1", &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
+        let foreign = commit_for(
+            &db,
+            "s2",
+            &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))],
+        );
+        assert_eq!(foreign, vec!["s1".to_string()]);
+        assert_eq!(
+            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+                .unwrap()
+                .message_count,
+            0
+        );
+        assert_eq!(
+            db.aggregate_bucket("s2", "claude-sonnet-4-20250514", 600)
+                .unwrap()
+                .output,
+            50
+        );
     }
 
     #[test]
@@ -642,10 +890,7 @@ mod tests {
         // therefore the emission fingerprint) is unchanged.
         commit(&db, &[e]);
         assert_eq!(db.aggregate_bucket("s1", model, 600).unwrap(), before);
-        let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
-            .unwrap();
-        assert_eq!(agg.message_count, 1);
+        assert_eq!(before.message_count, 1);
     }
 
     #[test]
@@ -720,49 +965,72 @@ mod tests {
     }
 
     #[test]
-    fn replacement_across_buckets_keeps_both_reconciliation_candidates() {
+    fn changed_buckets_skips_unchanged_and_reports_emptied() {
         let (_dir, db) = db();
+        let model = "claude-sonnet-4-20250514";
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
-        let model = "claude-sonnet-4-20250514".to_string();
-        db.mark_emitted("s1", &model, 600, "fp-old", 1).unwrap();
-        // Streaming re-emit landed in the next bucket with larger totals: the
-        // emptied bucket stays visible via bucket_state, the new one via its
-        // entry.
+        let changed = db.changed_buckets("s1").unwrap();
+        assert_eq!(changed.len(), 1);
+        db.mark_emitted(
+            "s1",
+            model,
+            600,
+            &changed[0].aggregate.fingerprint(),
+            changed[0].emit_seq + 1,
+            1,
+        )
+        .unwrap();
+        // Nothing changed: no candidates.
+        assert!(db.changed_buckets("s1").unwrap().is_empty());
+
+        // The entry moves to the next bucket: the emptied bucket re-emits
+        // zero (with the bumped revision) and the new bucket emits.
         commit(&db, &[entry("m1|r1", Some("m1"), 900, tokens(10, 50))]);
-        let mut buckets = db.session_buckets("s1").unwrap();
-        buckets.sort();
-        assert_eq!(buckets, vec![(model.clone(), 600), (model.clone(), 900)]);
-        assert_eq!(
-            db.aggregate_bucket("s1", &model, 600)
-                .unwrap()
-                .message_count,
-            0
-        );
-        assert_eq!(
-            db.aggregate_bucket("s1", &model, 900)
-                .unwrap()
-                .message_count,
-            1
-        );
+        let mut changed = db.changed_buckets("s1").unwrap();
+        changed.sort_by_key(|c| c.bucket_ts);
+        assert_eq!(changed.len(), 2);
+        assert_eq!(changed[0].bucket_ts, 600);
+        assert_eq!(changed[0].aggregate, BucketAggregate::default());
+        assert_eq!(changed[0].emit_seq, 1);
+        assert_eq!(changed[1].bucket_ts, 900);
+        assert_eq!(changed[1].aggregate.output, 50);
+        assert_eq!(changed[1].emit_seq, 0);
+
+        // Emit the zero once; it never comes back.
+        db.mark_emitted(
+            "s1",
+            model,
+            600,
+            &BucketAggregate::default().fingerprint(),
+            2,
+            2,
+        )
+        .unwrap();
+        let changed = db.changed_buckets("s1").unwrap();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].bucket_ts, 900);
     }
 
     #[test]
-    fn emptied_bucket_aggregates_to_zero_with_changed_fingerprint() {
+    fn entries_before_the_retention_cutoff_are_dropped_at_insert() {
         let (_dir, db) = db();
-        commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
-        let model = "claude-sonnet-4-20250514";
-        let before = db.aggregate_bucket("s1", model, 600).unwrap();
-        db.mark_emitted("s1", model, 600, &before.fingerprint(), 1)
-            .unwrap();
-
-        commit(&db, &[entry("m1|r1", Some("m1"), 900, tokens(10, 50))]);
-        let after = db.aggregate_bucket("s1", model, 600).unwrap();
-        assert_eq!(after, BucketAggregate::default());
-        assert_ne!(after.fingerprint(), before.fingerprint());
-        assert_eq!(
-            db.emitted_fingerprint("s1", model, 600).unwrap().as_deref(),
-            Some(before.fingerprint().as_str())
-        );
+        db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        db.commit_batch(&BatchCommit {
+            session_id: "s1",
+            stream_path: "/t.jsonl",
+            entries: &[
+                entry("m1|r1", Some("m1"), 600, tokens(10, 5)),
+                entry("m2|r2", Some("m2"), 999_900, tokens(1, 1)),
+            ],
+            new_offset: 0,
+            state_json: None,
+            pending_flush: false,
+            min_bucket_ts: 900,
+        })
+        .unwrap();
+        let changed = db.changed_buckets("s1").unwrap();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].bucket_ts, 999_900);
     }
 
     #[test]
@@ -809,24 +1077,43 @@ mod tests {
     }
 
     #[test]
+    fn absurd_token_values_clamp_instead_of_wrapping() {
+        let (_dir, db) = db();
+        let mut e = entry("m1|r1", Some("m1"), 600, tokens(0, 1));
+        e.tokens.input = u64::MAX;
+        e.tokens.total = u64::MAX;
+        e.transcript_cost_micro_usd = Some(1);
+        commit(&db, &[e]);
+        let agg = db
+            .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            .unwrap();
+        assert_eq!(agg.input, i64::MAX as u64);
+        assert_eq!(agg.total, i64::MAX as u64);
+    }
+
+    #[test]
     fn record_error_tracks_and_commit_clears() {
         let (_dir, db) = db();
         db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
-        db.record_error("s1", "/t.jsonl", "boom").unwrap();
-        db.record_error("s1", "/t.jsonl", "boom again").unwrap();
-        assert_eq!(
-            db.ensure_file("s1", "/t.jsonl", "claude")
-                .unwrap()
-                .processing_errors,
-            2
-        );
-        db.commit_batch("s1", "/t.jsonl", &[], 10, None).unwrap();
-        assert_eq!(
-            db.ensure_file("s1", "/t.jsonl", "claude")
-                .unwrap()
-                .processing_errors,
-            0
-        );
+        db.record_error("s1", "/t.jsonl", "boom", 100).unwrap();
+        db.record_error("s1", "/t.jsonl", "boom again", 200)
+            .unwrap();
+        let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        assert_eq!(file.processing_errors, 2);
+        assert_eq!(file.last_error_at, Some(200));
+        db.commit_batch(&BatchCommit {
+            session_id: "s1",
+            stream_path: "/t.jsonl",
+            entries: &[],
+            new_offset: 10,
+            state_json: None,
+            pending_flush: false,
+            min_bucket_ts: 0,
+        })
+        .unwrap();
+        let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        assert_eq!(file.processing_errors, 0);
+        assert_eq!(file.last_error_at, None);
     }
 
     #[test]
@@ -841,7 +1128,7 @@ mod tests {
     }
 
     #[test]
-    fn prune_drops_old_buckets_and_state() {
+    fn prune_drops_old_buckets_and_state_atomically() {
         let (_dir, db) = db();
         commit(
             &db,
@@ -851,18 +1138,29 @@ mod tests {
             ],
         );
         let model = "claude-sonnet-4-20250514";
-        db.mark_emitted("s1", model, 600, "fp", 1).unwrap();
+        db.mark_emitted("s1", model, 600, "fp", 1, 1).unwrap();
         assert_eq!(db.prune_buckets_before(999_000).unwrap(), 1);
         assert_eq!(
             db.aggregate_bucket("s1", model, 600).unwrap().message_count,
             0
         );
         assert_eq!(db.emitted_fingerprint("s1", model, 600).unwrap(), None);
-        assert_eq!(
-            db.aggregate_bucket("s1", model, 999_900)
-                .unwrap()
-                .message_count,
-            1
-        );
+        // No orphan bucket_state row: the emptied old bucket is NOT a
+        // reconciliation candidate after the prune.
+        let changed = db.changed_buckets("s1").unwrap();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].bucket_ts, 999_900);
+    }
+
+    #[test]
+    fn remove_database_files_deletes_main_and_wal() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token-usage-db");
+        let db = TokenUsageDatabase::open(&path).unwrap();
+        drop(db);
+        assert!(path.exists());
+        TokenUsageDatabase::remove_database_files(&path);
+        assert!(!path.exists());
+        assert!(!path.with_file_name("token-usage-db-wal").exists());
     }
 }
