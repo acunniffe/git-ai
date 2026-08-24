@@ -775,44 +775,35 @@ impl MetricsDatabase {
                 // Legacy rows predate cached event metadata. Reuse the existing
                 // bounded-batch backfill before applying an event-time filter so
                 // valid historical events are not silently missed.
-                self.backfill_event_metadata()?;
-                self.conn
-                    .execute(
-                        r#"
-                        UPDATE metrics
-                        SET delivered_ts = NULL,
-                            attempts = 0,
-                            last_sync_error = NULL,
-                            last_sync_at = NULL,
-                            next_retry_at = 0,
-                            processing_started_at = NULL
-                        WHERE event_ts >= ?1
-                          AND event_ts < ?2
-                          AND event_kind IS NOT NULL
-                        "#,
-                        params![i64::from(from_ts), i64::from(to_ts)],
-                    )
-                    .map_err(Into::into)
+                if !self.event_metadata_backfill_completed()? {
+                    self.backfill_event_metadata()?;
+                }
             }
-            (None, None) => self
-                .conn
-                .execute(
-                    r#"
-                    UPDATE metrics
-                    SET delivered_ts = NULL,
-                        attempts = 0,
-                        last_sync_error = NULL,
-                        last_sync_at = NULL,
-                        next_retry_at = 0,
-                        processing_started_at = NULL
-                    "#,
-                    [],
-                )
-                .map_err(Into::into),
+            (None, None) => {}
             _ => Err(GitAiError::Generic(
                 "metrics reingestion requires no bounds or an ordered from/to pair".to_string(),
-            )),
-        }
+            ))?,
+        };
+
+        self.conn
+            .execute(
+                r#"
+                UPDATE metrics
+                SET delivered_ts = NULL,
+                    attempts = 0,
+                    last_sync_error = NULL,
+                    last_sync_at = NULL,
+                    next_retry_at = 0,
+                    processing_started_at = NULL
+                WHERE processing_started_at IS NULL
+                  AND (
+                    (?1 IS NULL AND ?2 IS NULL)
+                    OR (event_ts >= ?1 AND event_ts < ?2 AND event_kind IS NOT NULL)
+                  )
+                "#,
+                params![from_ts.map(i64::from), to_ts.map(i64::from)],
+            )
+            .map_err(Into::into)
     }
 
     /// Summarize local metrics delivery state for user-facing diagnostics.
@@ -1293,7 +1284,7 @@ impl MetricsDatabase {
 
         loop {
             let (summary, last_id) =
-                self.backfill_event_metadata_batch_after(after_id, METADATA_BACKFILL_BATCH_SIZE)?;
+                self.backfill_event_metadata_batch_once(after_id, METADATA_BACKFILL_BATCH_SIZE)?;
             total.scanned += summary.scanned;
             total.updated += summary.updated;
 
@@ -2885,8 +2876,14 @@ mod tests {
             .execute(
                 "UPDATE metrics \
                  SET attempts = 6, last_sync_error = 'stopped', last_sync_at = ?1, \
-                     next_retry_at = ?1, processing_started_at = ?1",
+                     next_retry_at = ?1",
                 params![now as i64],
+            )
+            .unwrap();
+        db.conn
+            .execute(
+                "UPDATE metrics SET processing_started_at = ?1 WHERE id = ?2",
+                params![now as i64, ids[1]],
             )
             .unwrap();
         db.conn
@@ -2898,7 +2895,7 @@ mod tests {
 
         let reset = db.reingest_metrics(Some(from_ts), Some(to_ts)).unwrap();
 
-        assert_eq!(reset, 3);
+        assert_eq!(reset, 2);
         struct DeliveryState {
             id: i64,
             delivered_ts: Option<i64>,
@@ -2932,7 +2929,7 @@ mod tests {
             .unwrap();
 
         for (index, row) in rows.iter().enumerate() {
-            let in_range = matches!(index, 1..=3);
+            let in_range = matches!(index, 2..=3);
             if in_range {
                 assert_eq!(row.delivered_ts, None, "row {} should be pending", row.id);
                 assert_eq!(row.attempts, 0);
@@ -2946,23 +2943,56 @@ mod tests {
                 assert_eq!(row.last_sync_error.as_deref(), Some("stopped"));
                 assert_eq!(row.last_sync_at, Some(now as i64));
                 assert_eq!(row.next_retry_at, now as i64);
-                assert_eq!(row.processing_started_at, Some(now as i64));
+                assert_eq!(
+                    row.processing_started_at,
+                    (index == 1).then_some(now as i64)
+                );
             }
         }
+    }
+
+    #[test]
+    fn test_reingest_metrics_skips_completed_metadata_backfill() {
+        let (mut db, _temp_dir) = create_test_db();
+        let event_ts = seconds_ago(100);
+        let ids = db
+            .insert_events_with_delivered_ts(&[event_json(event_ts)], Some(unix_now()))
+            .unwrap();
+
+        db.backfill_event_metadata_batch_once(0, 100).unwrap();
+        assert!(db.event_metadata_backfill_completed().unwrap());
+        db.conn
+            .execute(
+                "UPDATE metrics SET event_ts = NULL, event_kind = NULL WHERE id = ?1",
+                params![ids[0]],
+            )
+            .unwrap();
+
+        assert_eq!(
+            db.reingest_metrics(Some(event_ts - 1), Some(event_ts + 1))
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
     fn test_reingest_all_resets_rows_without_event_metadata() {
         let (mut db, _temp_dir) = create_test_db();
         let now = unix_now();
-        db.insert_events_with_delivered_ts(
+        let ids = db.insert_events_with_delivered_ts(
             &[event_json(seconds_ago(100)), "not-json".to_string()],
             Some(now),
         )
         .unwrap();
+        db.conn
+            .execute(
+                "UPDATE metrics SET processing_started_at = ?1 WHERE id = ?2",
+                params![now as i64, ids[0]],
+            )
+            .unwrap();
 
-        assert_eq!(db.reingest_metrics(None, None).unwrap(), 2);
-        assert_eq!(db.status().unwrap().pending_retryable, 2);
+        assert_eq!(db.reingest_metrics(None, None).unwrap(), 1);
+        assert_eq!(db.status().unwrap().pending_retryable, 1);
     }
 
     #[test]
