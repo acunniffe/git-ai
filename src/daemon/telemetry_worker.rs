@@ -277,13 +277,13 @@ impl DaemonTelemetryWorkerHandle {
     #[cfg(test)]
     pub fn new_noop() -> Self {
         let (flush_tx, _flush_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (metrics_reingest_tx, metrics_reingest_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (metrics_reingest_tx, _metrics_reingest_rx) =
+            tokio::sync::mpsc::unbounded_channel();
         let (metrics_persist_tx, persist_rx) =
             tokio::sync::mpsc::channel(METRICS_PERSIST_QUEUE_CAPACITY);
         // Keep the receiver alive so noop submissions look like a full-but-
         // healthy queue instead of a dead persist worker.
         std::mem::forget(persist_rx);
-        std::mem::forget(metrics_reingest_rx);
         Self {
             buffer: Arc::new(Mutex::new(TelemetryBuffer::new())),
             flush_tx,
@@ -696,9 +696,6 @@ async fn telemetry_flush_loop(
             }
         }
 
-        let explicitly_requested =
-            !flush_requests.is_empty() || !metrics_reingest_requests.is_empty();
-
         if !metrics_reingest_requests.is_empty() {
             let persist_queue_drained =
                 drain_metrics_persist_requests(&metrics_persist_tx, METRICS_PERSIST_DRAIN_DEADLINE)
@@ -728,11 +725,7 @@ async fn telemetry_flush_loop(
             None
         };
 
-        let flush_mode = if explicitly_requested {
-            FlushMode::Await
-        } else {
-            FlushMode::Periodic
-        };
+        let flush_mode = flush_mode_for_requests(!flush_requests.is_empty());
         // An awaited flush certifies "everything submitted so far is flushed
         // or counted as pending": batches still sitting in the persist queue
         // must reach SQLite first, or the DB-based pending count under-reports
@@ -811,6 +804,14 @@ fn take_telemetry_flush_snapshot(
         None
     } else {
         Some(buffer.take())
+    }
+}
+
+fn flush_mode_for_requests(has_flush_requests: bool) -> FlushMode {
+    if has_flush_requests {
+        FlushMode::Await
+    } else {
+        FlushMode::Periodic
     }
 }
 
@@ -1922,6 +1923,26 @@ mod tests {
         let mut buffer = TelemetryBuffer::new();
 
         assert!(take_telemetry_flush_snapshot(&mut buffer, FlushMode::Await).is_some());
+    }
+
+    #[test]
+    fn reingest_without_flush_request_uses_periodic_flush_mode() {
+        assert_eq!(flush_mode_for_requests(false), FlushMode::Periodic);
+        assert_eq!(flush_mode_for_requests(true), FlushMode::Await);
+    }
+
+    #[tokio::test]
+    async fn noop_worker_reingest_fails_instead_of_hanging() {
+        let handle = DaemonTelemetryWorkerHandle::new_noop();
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(1),
+            handle.reingest_metrics(None, None),
+        )
+        .await
+        .expect("noop reingest should return promptly");
+
+        assert!(result.is_err());
     }
 
     #[test]
