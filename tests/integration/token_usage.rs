@@ -38,18 +38,25 @@ fn now_secs() -> i64 {
         .as_secs() as i64
 }
 
-/// Recent RFC3339 timestamps (start of today + offset) so fixture entries
-/// fall inside the retention window.
+/// Stable anchor for fixture timestamps: yesterday's UTC midnight, computed
+/// once per process. Always in the past, always inside the retention window,
+/// and never shifting between fixture creation and assertion when a test
+/// straddles a UTC midnight.
+fn fixture_base() -> i64 {
+    static BASE: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
+    *BASE.get_or_init(|| now_secs() - now_secs() % 86_400 - 86_400)
+}
+
+/// Recent RFC3339 timestamps so fixture entries fall inside the retention
+/// window.
 fn recent_ts(minute: u32, second: u32) -> String {
-    let base = now_secs() - (now_secs() % 86_400);
-    chrono::DateTime::from_timestamp(base + (minute * 60 + second) as i64, 0)
+    chrono::DateTime::from_timestamp(fixture_base() + (minute * 60 + second) as i64, 0)
         .unwrap()
         .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 fn bucket_of(minute: u32, second: u32) -> u64 {
-    let base = now_secs() - (now_secs() % 86_400);
-    let ts = base as u64 + (minute * 60 + second) as u64;
+    let ts = fixture_base() as u64 + (minute * 60 + second) as u64;
     ts - ts % 300
 }
 

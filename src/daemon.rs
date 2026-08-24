@@ -9248,6 +9248,17 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
     crate::daemon::telemetry_worker::set_daemon_internal_telemetry(telemetry_handle.clone());
     coordinator_inner.telemetry_worker = Some(telemetry_handle.clone());
 
+    // With the token-usage flag off, previously collected data is deleted
+    // regardless of the streaming gate below (the spec's "no collected data
+    // is retained" holds even when transcript_streaming is also off).
+    let token_usage_db_path = config.internal_dir.join("token-usage-db");
+    let token_usage_enabled = config::Config::get()
+        .get_feature_flags()
+        .token_usage_metrics;
+    if !token_usage_enabled {
+        crate::token_usage::db::TokenUsageDatabase::remove_database_files(&token_usage_db_path);
+    }
+
     // Spawn the transcript worker BEFORE wrapping coordinator in Arc
     if config::Config::get()
         .get_feature_flags()
@@ -9266,13 +9277,10 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
                 // The token-usage worker is fed by stream-worker completions,
                 // so it lives inside the transcript_streaming gate, behind
                 // its own startup flag (like transcript_streaming itself).
-                // When the flag is off, nothing runs, no database is created,
-                // and any previously collected data is deleted.
-                let token_usage_db_path = config.internal_dir.join("token-usage-db");
-                let token_usage_handle = if config::Config::get()
-                    .get_feature_flags()
-                    .token_usage_metrics
-                {
+                // When the flag is off, nothing runs and no database is
+                // created (deletion of old data happens above, outside this
+                // gate).
+                let token_usage_handle = if token_usage_enabled {
                     match crate::token_usage::db::TokenUsageDatabase::open(&token_usage_db_path) {
                         Ok(token_db) => {
                             Some(crate::daemon::token_usage_worker::spawn_token_usage_worker(
@@ -9288,9 +9296,6 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
                         }
                     }
                 } else {
-                    crate::token_usage::db::TokenUsageDatabase::remove_database_files(
-                        &token_usage_db_path,
-                    );
                     None
                 };
                 let transcript_handle = crate::daemon::stream_worker::spawn_stream_worker(

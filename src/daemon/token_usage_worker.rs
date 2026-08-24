@@ -169,6 +169,7 @@ impl TokenUsageWorker {
         sweep_ticker.tick().await; // skip the immediate tick
 
         self.enqueue_sweep_tasks().await;
+        self.reconcile_flagged().await;
 
         loop {
             if self.shutdown_flag.load(Ordering::Relaxed) {
@@ -196,6 +197,10 @@ impl TokenUsageWorker {
                 }
                 _ = sweep_ticker.tick() => {
                     self.enqueue_sweep_tasks().await;
+                    // Crash recovery: reconcile flags left by a pass that
+                    // died between its batch commit and its reconcile step,
+                    // even when no file traffic ever triggers a task again.
+                    self.reconcile_flagged().await;
                 }
                 Some(task) = self.notify_rx.recv() => {
                     self.enqueue_notify(task);
@@ -274,6 +279,21 @@ impl TokenUsageWorker {
         for task in tasks {
             self.enqueue_sweep(task);
         }
+    }
+
+    /// Reconcile cross-session flags off the async loop (used by sweeps for
+    /// crash recovery; the per-task path reconciles inline).
+    async fn reconcile_flagged(&self) {
+        let token_db = self.token_db.clone();
+        let telemetry = self.telemetry.clone();
+        let shutdown_flag = self.shutdown_flag.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            let sink = |events: &[MetricEvent]| persist_events(&telemetry, &shutdown_flag, events);
+            if let Err(e) = reconcile_flagged_sessions(&token_db, &sink) {
+                tracing::warn!(error = %e, "token-usage cross-session reconcile failed");
+            }
+        })
+        .await;
     }
 
     async fn process_task(&mut self, task: TokenUsageTask) {
@@ -462,6 +482,7 @@ fn process_task_blocking(
         return Ok(());
     };
     let identity = SessionIdentity::from_stream(&stream);
+    let sink = |events: &[MetricEvent]| persist_events(telemetry, shutdown_flag, events);
     let result = process_file(
         token_db,
         &identity,
@@ -469,19 +490,12 @@ fn process_task_blocking(
         shutdown_flag,
         // Repo discovery is deferred until events are actually emitted.
         || resolve_repo_url_for_stream(streams_db, &stream),
-        |events| {
-            // Backpressure before handing a batch to the telemetry queue.
-            for _ in 0..BACKPRESSURE_MAX_WAITS {
-                if telemetry.metrics_buffer_len() < BACKPRESSURE_THRESHOLD
-                    || shutdown_flag.load(Ordering::Relaxed)
-                {
-                    break;
-                }
-                std::thread::sleep(Duration::from_millis(100));
-            }
-            telemetry.persist_metrics_blocking(events).map(|_| ())
-        },
-    );
+        &sink,
+    )
+    // Cross-session replacements flagged other sessions during the batch
+    // commits: reconcile them now, DB-only (their files are not needed and
+    // may no longer exist).
+    .and_then(|_| reconcile_flagged_sessions(token_db, &sink));
     if let Err(e) = &result {
         // Keyed by the rollup session id (subagent transcripts track under
         // their parent), matching the row ensure_file created.
@@ -495,6 +509,45 @@ fn process_task_blocking(
     result
 }
 
+/// Hand events to the telemetry queue, waiting out buffer backpressure
+/// (same thresholds as the stream worker).
+fn persist_events(
+    telemetry: &DaemonTelemetryWorkerHandle,
+    shutdown_flag: &AtomicBool,
+    events: &[MetricEvent],
+) -> Result<(), GitAiError> {
+    for _ in 0..BACKPRESSURE_MAX_WAITS {
+        if telemetry.metrics_buffer_len() < BACKPRESSURE_THRESHOLD
+            || shutdown_flag.load(Ordering::Relaxed)
+        {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    telemetry.persist_metrics_blocking(events).map(|_| ())
+}
+
+/// Reconcile sessions flagged by cross-session replacements. Emission is
+/// DB-only (aggregate + fingerprint compare), so this works even after the
+/// flagged session's transcripts were deleted; corrections re-emitted here
+/// carry the stored session identity but no repo_url (the server updates the
+/// bucket's values by its key).
+fn reconcile_flagged_sessions(
+    token_db: &TokenUsageDatabase,
+    sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
+) -> Result<(), GitAiError> {
+    for (session_id, external_session_id, tool) in token_db.sessions_needing_reconcile()? {
+        let identity = SessionIdentity {
+            session_id: session_id.clone(),
+            external_session_id,
+            tool,
+        };
+        emit_changed_buckets(token_db, &identity, || None, sink)?;
+        token_db.clear_needs_reconcile(&session_id)?;
+    }
+    Ok(())
+}
+
 /// Incrementally read one transcript file, persist deduplicated entries, and
 /// emit changed buckets through `sink`. Split out (with injectable repo
 /// resolution and sink) for direct testing without a daemon.
@@ -504,9 +557,14 @@ fn process_file(
     stream_path: &str,
     shutdown_flag: &AtomicBool,
     resolve_repo_url: impl FnOnce() -> Option<String>,
-    sink: impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
+    sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
 ) -> Result<(), GitAiError> {
-    let tracked = token_db.ensure_file(&identity.session_id, stream_path, &identity.tool)?;
+    let tracked = token_db.ensure_file(
+        &identity.session_id,
+        stream_path,
+        &identity.tool,
+        &identity.external_session_id,
+    )?;
     let now = now_secs();
 
     // Error backoff: a file whose last pass failed is not retried on every
@@ -548,7 +606,6 @@ fn process_file(
     reader.seek(SeekFrom::Start(offset))?;
 
     let cutoff = retention_cutoff_bucket(now);
-    let mut foreign_sessions: Vec<String> = Vec::new();
     let mut line = String::new();
     let mut reached_end = false;
     let mut interrupted = false;
@@ -590,7 +647,7 @@ fn process_file(
             // turn).
             entries.extend(extractor.flush(now.saturating_mul(1000)));
         }
-        for session in token_db.commit_batch(&BatchCommit {
+        token_db.commit_batch(&BatchCommit {
             session_id: &identity.session_id,
             stream_path,
             entries: &entries,
@@ -598,11 +655,7 @@ fn process_file(
             state_json: extractor.state_json().as_deref(),
             pending_flush: extractor.has_pending(),
             min_bucket_ts: cutoff,
-        })? {
-            if !foreign_sessions.contains(&session) {
-                foreign_sessions.push(session);
-            }
-        }
+        })?;
     }
 
     if interrupted {
@@ -610,12 +663,6 @@ fn process_file(
         // size/mtime snapshot stays stale, so the next pass resumes and
         // reconciles emission.
         return Ok(());
-    }
-    // Cross-session replacements changed other sessions' buckets: invalidate
-    // their snapshots so their next pass re-reconciles with their own
-    // attributes.
-    for session in &foreign_sessions {
-        token_db.invalidate_session_files(session)?;
     }
     emit_changed_buckets(token_db, identity, resolve_repo_url, sink)?;
     // The quiet-skip snapshot is written only after emission succeeded, so a
@@ -632,12 +679,21 @@ fn emit_changed_buckets(
     token_db: &TokenUsageDatabase,
     identity: &SessionIdentity,
     resolve_repo_url: impl FnOnce() -> Option<String>,
-    sink: impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
+    sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
 ) -> Result<(), GitAiError> {
     let changed = token_db.changed_buckets(&identity.session_id)?;
     if changed.is_empty() {
         return Ok(());
     }
+    // Reserve the revisions BEFORE the sink: once a payload with revision
+    // N+1 may exist in the metrics queue, that revision must never be
+    // reused, or a crash before the fingerprint write would re-open the
+    // equal-revision tie. A failed sink merely wastes a revision number.
+    let reservations: Vec<(String, u32, u64)> = changed
+        .iter()
+        .map(|bucket| (bucket.model.clone(), bucket.bucket_ts, bucket.emit_seq + 1))
+        .collect();
+    token_db.reserve_emit_seqs(&identity.session_id, &reservations)?;
     let repo_url = resolve_repo_url();
     let mut events = Vec::with_capacity(changed.len());
     for bucket in &changed {
@@ -702,17 +758,25 @@ mod tests {
         (dir, db, transcript)
     }
 
+    /// Stable anchor for fixture timestamps: yesterday's UTC midnight,
+    /// computed once per process. Always in the past (no future-dated
+    /// fixtures right after midnight), always inside the retention window,
+    /// and never shifting between fixture creation and assertion when a test
+    /// straddles a UTC midnight.
+    fn fixture_base() -> i64 {
+        static BASE: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
+        *BASE.get_or_init(|| now_secs() - now_secs() % 86_400 - 86_400)
+    }
+
     /// Recent RFC3339 timestamps so entries fall inside the retention window.
     fn recent_ts(minute: u32, second: u32) -> String {
-        let base = now_secs() - (now_secs() % 86_400);
-        chrono::DateTime::from_timestamp(base + (minute * 60 + second) as i64, 0)
+        chrono::DateTime::from_timestamp(fixture_base() + (minute * 60 + second) as i64, 0)
             .unwrap()
             .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
     }
 
     fn bucket_of(minute: u32, second: u32) -> u64 {
-        let base = now_secs() - (now_secs() % 86_400);
-        let ts = base as u64 + (minute * 60 + second) as u64;
+        let ts = fixture_base() as u64 + (minute * 60 + second) as u64;
         ts - ts % 300
     }
 
@@ -735,7 +799,7 @@ mod tests {
             &transcript.display().to_string(),
             &flag,
             || Some("https://github.com/acme/repo".to_string()),
-            |events| {
+            &|events| {
                 collected.lock().unwrap().extend(events.to_vec());
                 Ok(())
             },
@@ -962,7 +1026,7 @@ mod tests {
         let events = run_as(&db, &identity, &transcript).unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(
-            db.ensure_file(&identity.session_id, &path, "claude")
+            db.ensure_file(&identity.session_id, &path, "claude", "ext-test")
                 .unwrap()
                 .processing_errors,
             0
@@ -1040,7 +1104,7 @@ mod tests {
     }
 
     #[test]
-    fn cross_session_replacement_invalidates_the_previous_owner() {
+    fn cross_session_replacement_reconciles_the_previous_owner_without_its_file() {
         let (dir, db, transcript_a) = setup();
         let identity_a = identity();
         fs::write(
@@ -1049,10 +1113,13 @@ mod tests {
         )
         .unwrap();
         assert_eq!(run_as(&db, &identity_a, &transcript_a).unwrap().len(), 1);
+        // Session A's transcript disappears (e.g. Claude Code pruned it):
+        // reconciliation of A must not depend on the file.
+        fs::remove_file(&transcript_a).unwrap();
 
         // A resumed session copies the message with larger totals: the entry
-        // moves to the new session, and the previous owner's file snapshot
-        // is invalidated so its zeroed bucket re-reconciles on its next pass.
+        // moves to the new session, and the previous owner is durably
+        // flagged for reconciliation.
         let identity_b = SessionIdentity {
             session_id: "s_resumed".to_string(),
             external_session_id: "ext-resumed".to_string(),
@@ -1068,22 +1135,74 @@ mod tests {
         assert_eq!(events.len(), 1);
         let attrs = EventAttributes::from_sparse(&events[0].attrs);
         assert_eq!(attrs.session_id, Some(Some("s_resumed".to_string())));
+        assert_eq!(db.sessions_needing_reconcile().unwrap().len(), 1);
 
-        let file_a = db
-            .ensure_file(
-                &identity_a.session_id,
-                &transcript_a.display().to_string(),
-                "claude",
-            )
-            .unwrap();
-        assert_eq!(file_a.last_known_size, -1, "snapshot invalidated");
-        // Session A's next pass re-emits its emptied bucket as zero.
-        let events = run_as(&db, &identity_a, &transcript_a).unwrap();
+        // The DB-only reconcile pass emits A's emptied bucket as zero with
+        // A's stored identity, no file read required, and clears the flag.
+        let collected = Mutex::new(Vec::new());
+        reconcile_flagged_sessions(&db, &|events: &[MetricEvent]| {
+            collected.lock().unwrap().extend(events.to_vec());
+            Ok(())
+        })
+        .unwrap();
+        let events = collected.into_inner().unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(
             value_u64(&events[0], token_usage_pos::TOTAL_TOKENS),
             Some(0)
         );
+        let attrs = EventAttributes::from_sparse(&events[0].attrs);
+        assert_eq!(attrs.session_id, Some(Some("s_test".to_string())));
+        assert_eq!(
+            attrs.external_session_id,
+            Some(Some("ext-test".to_string()))
+        );
+        assert!(db.sessions_needing_reconcile().unwrap().is_empty());
+    }
+
+    #[test]
+    fn failed_reconcile_sink_keeps_the_flag_for_retry() {
+        let (dir, db, transcript_a) = setup();
+        let identity_a = identity();
+        fs::write(
+            &transcript_a,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        assert_eq!(run_as(&db, &identity_a, &transcript_a).unwrap().len(), 1);
+
+        let identity_b = SessionIdentity {
+            session_id: "s_resumed".to_string(),
+            external_session_id: "ext-resumed".to_string(),
+            tool: "claude".to_string(),
+        };
+        let transcript_b = dir.path().join("resumed.jsonl");
+        fs::write(
+            &transcript_b,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 30), 90)),
+        )
+        .unwrap();
+        run_as(&db, &identity_b, &transcript_b).unwrap();
+        assert_eq!(db.sessions_needing_reconcile().unwrap().len(), 1);
+
+        // The flag survives a failed reconcile sink...
+        assert!(
+            reconcile_flagged_sessions(&db, &|_: &[MetricEvent]| {
+                Err(GitAiError::Generic("sink down".to_string()))
+            })
+            .is_err()
+        );
+        assert_eq!(db.sessions_needing_reconcile().unwrap().len(), 1);
+
+        // ...and the retry emits the correction and clears it.
+        let collected = Mutex::new(Vec::new());
+        reconcile_flagged_sessions(&db, &|events: &[MetricEvent]| {
+            collected.lock().unwrap().extend(events.to_vec());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(collected.into_inner().unwrap().len(), 1);
+        assert!(db.sessions_needing_reconcile().unwrap().is_empty());
     }
 
     #[test]
@@ -1127,7 +1246,7 @@ mod tests {
             &transcript.display().to_string(),
             &flag,
             || None,
-            |_| Err(GitAiError::Generic("sink down".to_string())),
+            &|_| Err(GitAiError::Generic("sink down".to_string())),
         );
         assert!(result.is_err());
 
@@ -1219,7 +1338,7 @@ mod tests {
         // The settled file's snapshot matches its current metadata.
         let metadata = fs::metadata(&settled_path).unwrap();
         token_db
-            .ensure_file("s_settled", &settled_path, "claude")
+            .ensure_file("s_settled", &settled_path, "claude", "s_settled-ext")
             .unwrap();
         token_db
             .update_file_metadata(
@@ -1311,7 +1430,7 @@ mod tests {
 
         let parent_session = generate_session_id("parent-ext", "claude");
         let tracked = token_db
-            .ensure_file(&parent_session, &missing, "claude")
+            .ensure_file(&parent_session, &missing, "claude", "parent-ext")
             .unwrap();
         assert_eq!(tracked.processing_errors, 1);
         assert!(tracked.last_error_at.is_some());
