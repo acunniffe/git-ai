@@ -10,9 +10,12 @@
 //!   session git-ai knows about is backfilled: a newly tracked file starts at
 //!   byte offset 0 and its full history is bucketed on first processing.
 //! - The read cursor, extractor state, entries, and emission fingerprints all
-//!   live in [`TokenUsageDatabase`]; each batch commits atomically, so there
-//!   is no retry machinery here - a failed file is retried on the next
-//!   notification or sweep, and unchanged files are skipped by size/mtime.
+//!   live in [`TokenUsageDatabase`]; each batch commits atomically, and
+//!   emission reconciles fingerprints across all of the session's buckets, so
+//!   there is no retry machinery here - a failed pass (or a crash at any
+//!   point) is healed by the next notification or sweep, and unchanged files
+//!   are skipped by a size/mtime snapshot written only after a fully
+//!   successful pass.
 //! - Claude subagent transcripts roll up to their parent session (matching
 //!   ccusage), which also lets sidechain replays dedup against the parent's
 //!   entries.
@@ -37,7 +40,7 @@ use crate::error::GitAiError;
 use crate::metrics::{EventAttributes, MetricEvent, PosEncoded, TokenUsageValues};
 use crate::streams::db::{StreamRecord, StreamsDatabase};
 use crate::streams::types::{JsonlLineState, read_jsonl_line};
-use crate::token_usage::db::{DirtyBuckets, TokenUsageDatabase};
+use crate::token_usage::db::TokenUsageDatabase;
 use crate::token_usage::extractor_for_tool;
 
 /// Entry/byte bounds of one atomic batch commit.
@@ -183,8 +186,9 @@ impl TokenUsageWorker {
 
     async fn handle_drain(&mut self, request: DrainRequest) {
         // Consume notifications that were queued before the barrier.
+        let enabled = token_usage_enabled();
         while let Ok(task) = self.notify_rx.try_recv() {
-            if token_usage_enabled() {
+            if enabled {
                 self.enqueue(task);
             }
         }
@@ -371,7 +375,6 @@ fn process_file(
     let mut reader = BufReader::with_capacity(128 * 1024, file);
     reader.seek(SeekFrom::Start(offset))?;
 
-    let mut dirty = DirtyBuckets::new();
     let mut line = String::new();
     let mut reached_end = false;
     let mut interrupted = false;
@@ -407,34 +410,39 @@ fn process_file(
                 }
             }
         }
-        dirty.extend(token_db.commit_batch(
+        token_db.commit_batch(
             &ctx.session_id,
             stream_path,
             &entries,
             offset,
             extractor.state_json().as_deref(),
-        )?);
+        )?;
     }
 
-    if reached_end && !interrupted {
-        token_db.update_file_metadata(&ctx.session_id, stream_path, size, modified)?;
+    if interrupted {
+        // Shutdown mid-pass: entries and cursor are committed, and the
+        // size/mtime snapshot stays stale, so the next pass resumes and
+        // reconciles emission.
+        return Ok(());
     }
-
-    emit_changed_buckets(token_db, ctx, &dirty, sink)
+    emit_changed_buckets(token_db, ctx, sink)?;
+    // The quiet-skip snapshot is written only after emission succeeded, so a
+    // failed hand-off (or a crash anywhere in this pass) leaves the file
+    // "changed" and the next pass re-runs reconciliation.
+    token_db.update_file_metadata(&ctx.session_id, stream_path, size, modified)
 }
 
-/// Re-aggregate each dirty bucket and emit those whose fingerprint differs
-/// from the last emitted one, marking them emitted only after the sink
-/// accepted the events.
+/// Reconcile every bucket the session has entries or emission state for, and
+/// emit those whose aggregate fingerprint differs from the last emitted one,
+/// marking them emitted only after the sink accepted the events.
 fn emit_changed_buckets(
     token_db: &TokenUsageDatabase,
     ctx: &EmissionContext,
-    dirty: &DirtyBuckets,
     sink: impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
 ) -> Result<(), GitAiError> {
     let mut events = Vec::new();
     let mut emitted = Vec::new();
-    for (model, bucket) in dirty {
+    for (model, bucket) in &token_db.session_buckets(&ctx.session_id)? {
         let aggregate = token_db.aggregate_bucket(&ctx.session_id, model, *bucket)?;
         let fingerprint = aggregate.fingerprint();
         if token_db
@@ -757,18 +765,16 @@ mod tests {
         assert!(result.is_err());
 
         // Entries and cursor were committed, but the bucket was not marked
-        // emitted: the next pass over a changed file re-emits it. Touch the
-        // file so the size/mtime skip doesn't apply.
-        let mut content = fs::read_to_string(&transcript).unwrap();
-        content.push_str(&claude_line("m2", "r2", "2026-01-01T00:02:00Z", 5));
-        content.push('\n');
-        fs::write(&transcript, content).unwrap();
+        // emitted and the size/mtime snapshot was not written: the next pass
+        // over the *unchanged* file reconciles and emits it.
         let events = run(&db, &transcript).unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(
             value_u64(&events[0], token_usage_pos::MESSAGE_COUNT),
-            Some(2)
+            Some(1)
         );
+        // And a further pass stays quiet.
+        assert!(run(&db, &transcript).unwrap().is_empty());
     }
 
     fn stream_record(session_id: &str, tool: &str, path: &str) -> StreamRecord {

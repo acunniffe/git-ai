@@ -2786,6 +2786,9 @@ pub struct ActorDaemonCoordinator {
     stream_worker: Option<crate::daemon::stream_worker::StreamWorkerHandle>,
     token_usage_worker: Option<crate::daemon::token_usage_worker::TokenUsageWorkerHandle>,
     transcript_shutdown_notify: std::sync::OnceLock<Arc<tokio::sync::Notify>>,
+    // Separate from the transcript worker's Notify: notify_one wakes exactly
+    // one waiter, so each worker needs its own.
+    token_usage_shutdown_notify: std::sync::OnceLock<Arc<tokio::sync::Notify>>,
     streams_db: Option<Arc<crate::streams::db::StreamsDatabase>>,
     next_trace_ingest_seq: AtomicUsize,
     queued_trace_payloads: AtomicUsize,
@@ -2917,6 +2920,7 @@ impl ActorDaemonCoordinator {
             stream_worker: None,
             token_usage_worker: None,
             transcript_shutdown_notify: std::sync::OnceLock::new(),
+            token_usage_shutdown_notify: std::sync::OnceLock::new(),
             streams_db: None,
             next_trace_ingest_seq: AtomicUsize::new(0),
             queued_trace_payloads: AtomicUsize::new(0),
@@ -3232,6 +3236,9 @@ impl ActorDaemonCoordinator {
         self.shutdown_notify.notify_waiters();
         if let Some(transcript_shutdown) = self.transcript_shutdown_notify.get() {
             transcript_shutdown.notify_one();
+        }
+        if let Some(token_usage_shutdown) = self.token_usage_shutdown_notify.get() {
+            token_usage_shutdown.notify_one();
         }
         // Hold the condvar mutex so notify_all cannot race with the
         // check-then-wait sequence in daemon_update_check_loop.
@@ -9253,6 +9260,9 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
             Ok(streams_db) => {
                 let streams_db = std::sync::Arc::new(streams_db);
                 let shutdown_notify = Arc::new(tokio::sync::Notify::new());
+                // Each worker needs its own shutdown Notify: request_shutdown
+                // uses notify_one, which wakes exactly one waiter.
+                let token_usage_shutdown_notify = Arc::new(tokio::sync::Notify::new());
                 // The token-usage worker is fed by stream-worker completions,
                 // so it lives inside the transcript_streaming gate. Its own
                 // token_usage_metrics flag is re-read per trigger.
@@ -9264,7 +9274,7 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
                             streams_db.clone(),
                             std::sync::Arc::new(token_db),
                             telemetry_handle.clone(),
-                            shutdown_notify.clone(),
+                            token_usage_shutdown_notify.clone(),
                         ))
                     }
                     Err(e) => {
@@ -9284,6 +9294,9 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
                 let _ = coordinator_inner
                     .transcript_shutdown_notify
                     .set(shutdown_notify);
+                let _ = coordinator_inner
+                    .token_usage_shutdown_notify
+                    .set(token_usage_shutdown_notify);
                 tracing::info!("transcript worker spawned");
             }
             Err(e) => {
