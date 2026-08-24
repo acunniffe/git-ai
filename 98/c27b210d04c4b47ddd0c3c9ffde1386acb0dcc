@@ -1,0 +1,20 @@
+src/metrics/db.rs
+  s_563ec768bd999c::t_917ed61b9246ed 778-780,782,785-806,1287
+  s_563ec768bd999c::t_2b1d1c638a1cdf 2879,2883-2888,2898,2932,2946-2949,2954-2977,2982,2987-2992,2994-2995
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "98c27b210d04c4b47ddd0c3c9ffde1386acb0dcc",
+  "prompts": {},
+  "sessions": {
+    "s_563ec768bd999c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0254b-8897-7641-a6f8-28f248f9e8f2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

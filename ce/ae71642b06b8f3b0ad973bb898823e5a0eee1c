@@ -1,28 +1,19 @@
 src/streams/model_extraction.rs
-  s_8c428f36e3d413::t_9a98f74c910607 812,1282,1294-1298,1310,1312-1316,1324-1378
-  s_8c428f36e3d413::t_781077a7943d7f 431,489
-  s_8c428f36e3d413::t_0c1932ccfc426d 278,288,290-297,299-314,316-319,322-351,354-396,398-404,407-430,432-455,457-488,490-516,519-521
-  s_8c428f36e3d413::t_05094552bf24e1 764-765,776-778,801-811
-  s_8c428f36e3d413::t_719f0f697f22ad 275,277,280-281,284-287,813
+  s_01816a836f0bf3::t_f685fa6493de06 275,277-278,280-281,284-288,290-297,299-314,316-319,322-351,354-396,398-404,407-455,457-516,519-521,764-765,776-778,801-813,1282,1294-1298,1310,1312-1316,1324-1378
 tests/integration/github_copilot.rs
-  s_8c428f36e3d413::t_95211c9d03f04e 774-775
-  s_8c428f36e3d413::t_9e3d2136785776 728
-  s_8c428f36e3d413::t_73b1ac710a9610 743
-  s_8c428f36e3d413::t_f8ff55078f406a 669-681
-  s_8c428f36e3d413::t_bc4625eee7b53e 714
-  s_8c428f36e3d413::t_0b1bb65d54b91e 759
+  s_01816a836f0bf3::t_97641a80d1e302 669-681,714,728,743,759,774-775
 ---
 {
   "schema_version": "authorship/3.0.0",
-  "git_ai_version": "development:1.6.22",
+  "git_ai_version": "1.6.22",
   "base_commit_sha": "ceae71642b06b8f3b0ad973bb898823e5a0eee1c",
   "prompts": {},
   "sessions": {
-    "s_8c428f36e3d413": {
+    "s_01816a836f0bf3": {
       "agent_id": {
         "tool": "claude",
-        "id": "12fb610f-3b61-4aed-ba46-50dc5f0ef183",
-        "model": "claude-fable-5"
+        "id": "s_01816a836f0bf3",
+        "model": "unknown"
       },
       "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
     }

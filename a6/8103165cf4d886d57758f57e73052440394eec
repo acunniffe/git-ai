@@ -1,0 +1,19 @@
+packaging/README.md
+  s_7cc0fd1254a715::t_90108214176e50 41-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "a68103165cf4d886d57758f57e73052440394eec",
+  "prompts": {},
+  "sessions": {
+    "s_7cc0fd1254a715": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01fd2-00f6-7c42-959f-d3f5194babdc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
