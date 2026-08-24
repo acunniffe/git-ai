@@ -201,6 +201,8 @@ fn claude_transcript_emits_token_usage_bucket_events() {
     assert!(value_u64(second, token_usage_pos::EST_COST_MICRO_USD).unwrap() > 0);
 
     for event in &events {
+        // The server's ordering key must be present on real pipeline events.
+        assert!(value_u64(event, token_usage_pos::EMITTED_SEQ).unwrap() > 0);
         let attrs = EventAttributes::from_sparse(&event.attrs);
         assert_eq!(
             attrs.session_id,
@@ -414,5 +416,159 @@ fn disabled_flag_spawns_nothing_and_deletes_collected_data() {
     assert!(
         !token_db_path.exists(),
         "token-usage database must not be created with the flag off"
+    );
+}
+
+/// `claude --resume` copies the parent conversation into a NEW session file
+/// with the original message/request ids: driven through the real daemon,
+/// the copied history must not be re-counted under the new session.
+#[test]
+fn resumed_session_through_the_daemon_does_not_double_count() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+
+    let original = repo_root.join("original.jsonl");
+    let history = claude_usage_line("m1", "r1", &recent_ts(1, 0), 50, None);
+    fs::write(&original, format!("{history}\n")).unwrap();
+    let file_path = repo_root.join("example.ts");
+    fs::write(&file_path, "const x = 1;\n").unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-original",
+        &original,
+        &file_path,
+        "const x = 1;\nconst y = 2;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+    assert_eq!(token_usage_events(&metrics_db_path).len(), 1);
+
+    // The resumed session's file replays the identical history line and
+    // adds one new turn in a later bucket.
+    let resumed = repo_root.join("resumed.jsonl");
+    fs::write(
+        &resumed,
+        format!(
+            "{history}\n{}\n",
+            claude_usage_line("m2", "r2", &recent_ts(6, 0), 70, None)
+        ),
+    )
+    .unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-resumed",
+        &resumed,
+        &file_path,
+        "const x = 1;\nconst y = 2;\nconst z = 3;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+
+    let events = token_usage_events(&metrics_db_path);
+    assert_eq!(
+        events.len(),
+        2,
+        "only the resumed session's genuinely new bucket emits"
+    );
+    let new_bucket = &events[1];
+    assert_eq!(
+        value_u64(new_bucket, token_usage_pos::BUCKET_TS),
+        Some(bucket_of(6, 0))
+    );
+    assert_eq!(
+        value_u64(new_bucket, token_usage_pos::MESSAGE_COUNT),
+        Some(1)
+    );
+    let attrs = EventAttributes::from_sparse(&new_bucket.attrs);
+    assert_eq!(
+        attrs.session_id,
+        Some(Some(generate_session_id("sess-resumed", "claude")))
+    );
+}
+
+/// Subagent transcripts (a `<parent>/subagents/*.jsonl` path) roll up to the
+/// parent session through the real daemon, and a sidechain replay of a
+/// parent message dedups across the two files.
+#[test]
+fn subagent_transcript_rolls_up_to_the_parent_session() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+
+    let parent_transcript = repo_root.join("sess-parent.jsonl");
+    fs::write(
+        &parent_transcript,
+        format!(
+            "{}\n",
+            claude_usage_line("m1", "r1", &recent_ts(1, 0), 50, None)
+        ),
+    )
+    .unwrap();
+    let file_path = repo_root.join("example.ts");
+    fs::write(&file_path, "const x = 1;\n").unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-parent",
+        &parent_transcript,
+        &file_path,
+        "const x = 1;\nconst y = 2;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+    assert_eq!(token_usage_events(&metrics_db_path).len(), 1);
+
+    // The subagent file replays the parent's message (sidechain, inflated
+    // cache reads) plus its own turn in a later bucket.
+    let subagent_dir = repo_root.join("sess-parent").join("subagents");
+    fs::create_dir_all(&subagent_dir).unwrap();
+    let subagent_transcript = subagent_dir.join("agent-1.jsonl");
+    let sidechain_replay = format!(
+        r#"{{"timestamp":"{}","isSidechain":true,"sessionId":"ext","requestId":"r-replay","message":{{"id":"m1","model":"claude-sonnet-4-20250514","usage":{{"input_tokens":100,"output_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":50000}}}}}}"#,
+        recent_ts(1, 30)
+    );
+    fs::write(
+        &subagent_transcript,
+        format!(
+            "{sidechain_replay}\n{}\n",
+            claude_usage_line("m2", "r2", &recent_ts(6, 0), 70, None),
+        ),
+    )
+    .unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "agent-1",
+        &subagent_transcript,
+        &file_path,
+        "const x = 1;\nconst y = 2;\nconst z = 3;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+
+    let events = token_usage_events(&metrics_db_path);
+    // The sidechain replay deduped against the parent's entry (no inflated
+    // re-emission of the first bucket); only the subagent's own turn emits,
+    // attributed to the PARENT session.
+    assert_eq!(events.len(), 2);
+    let subagent_event = &events[1];
+    assert_eq!(
+        value_u64(subagent_event, token_usage_pos::BUCKET_TS),
+        Some(bucket_of(6, 0))
+    );
+    assert_eq!(
+        value_u64(subagent_event, token_usage_pos::CACHE_READ_TOKENS),
+        Some(200),
+        "the 50k-cache-read sidechain replay must not count"
+    );
+    let attrs = EventAttributes::from_sparse(&subagent_event.attrs);
+    assert_eq!(
+        attrs.session_id,
+        Some(Some(generate_session_id("sess-parent", "claude")))
     );
 }

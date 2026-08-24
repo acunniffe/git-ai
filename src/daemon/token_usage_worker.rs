@@ -48,9 +48,34 @@ use crate::daemon::telemetry_worker::DaemonTelemetryWorkerHandle;
 use crate::error::GitAiError;
 use crate::metrics::{EventAttributes, MetricEvent, PosEncoded, TokenUsageValues};
 use crate::streams::db::{StreamRecord, StreamsDatabase};
-use crate::streams::types::{JsonlLineState, read_jsonl_line};
 use crate::token_usage::db::{BatchCommit, TokenUsageDatabase, TrackedFile};
 use crate::token_usage::extractor_for_tool;
+
+/// One raw JSONL line read as bytes: unlike UTF-8-strict `read_line`, a
+/// single invalid byte cannot wedge the cursor forever (the line decodes
+/// lossily, fails JSON parsing, is skipped, and the cursor advances —
+/// matching upstream ccusage's byte-level reads).
+enum LineRead {
+    Eof,
+    /// No trailing newline: the writer may still be appending.
+    Partial(usize),
+    Complete(usize),
+}
+
+fn read_line_bytes(
+    reader: &mut impl std::io::BufRead,
+    buf: &mut Vec<u8>,
+) -> std::io::Result<LineRead> {
+    buf.clear();
+    let bytes = reader.read_until(b'\n', buf)?;
+    if bytes == 0 {
+        return Ok(LineRead::Eof);
+    }
+    if buf.last() != Some(&b'\n') {
+        return Ok(LineRead::Partial(bytes));
+    }
+    Ok(LineRead::Complete(bytes))
+}
 
 /// Entry/byte bounds of one atomic batch commit.
 const BATCH_MAX_ENTRIES: usize = 1_000;
@@ -513,11 +538,7 @@ fn process_task_blocking(
             repo_url
         },
         &sink,
-    )
-    // Cross-session replacements flagged other sessions during the batch
-    // commits: reconcile them now, DB-only (their files are not needed and
-    // may no longer exist).
-    .and_then(|_| reconcile_flagged_sessions(token_db, &sink));
+    );
     if let Err(e) = &result {
         // Keyed by the rollup session id (subagent transcripts track under
         // their parent), matching the row ensure_file created.
@@ -527,6 +548,16 @@ fn process_task_blocking(
             &e.to_string(),
             now_secs(),
         );
+    }
+    // Cross-session replacements flagged other sessions during the batch
+    // commits: reconcile them now, DB-only. Failures here belong to the
+    // flagged sessions (the durable flag retries them), NOT to this task's
+    // transcript — charging them here would put a healthy file into error
+    // backoff and point diagnostics at the wrong session.
+    if result.is_ok()
+        && let Err(e) = reconcile_flagged_sessions(token_db, &sink)
+    {
+        tracing::warn!(error = %e, "token-usage cross-session reconcile failed; flags retained for retry");
     }
     result
 }
@@ -606,13 +637,19 @@ fn process_file(
     let Some(mut extractor) = extractor_for_tool(&identity.tool) else {
         return Ok(());
     };
-    // A shrunken file was rewritten: restart from scratch. Entry-level dedup
-    // keeps re-extraction idempotent.
+    // A shrunken file was rewritten, and unreadable persisted state (corrupt
+    // or cross-version) means the cursor position is meaningless for the
+    // fresh extractor: both restart from scratch. Entry-level dedup keeps
+    // re-extraction idempotent, whereas continuing mid-file on default state
+    // would book the session's whole cumulative history as one delta.
     let mut offset = tracked.byte_offset;
     if offset > size {
         offset = 0;
-    } else if let Some(state) = tracked.state_json.as_deref() {
-        extractor.restore_state(state);
+    } else if let Some(state) = tracked.state_json.as_deref()
+        && !extractor.restore_state(state)
+    {
+        tracing::warn!(session_id = %identity.session_id, "unreadable extractor state; re-reading from the start");
+        offset = 0;
     }
 
     // Quiet skip: nothing changed since the last completed pass and the
@@ -629,7 +666,7 @@ fn process_file(
     reader.seek(SeekFrom::Start(offset))?;
 
     let cutoff = retention_cutoff_bucket(now);
-    let mut line = String::new();
+    let mut line: Vec<u8> = Vec::new();
     let mut reached_end = false;
     let mut interrupted = false;
     while !reached_end && !interrupted {
@@ -640,21 +677,36 @@ fn process_file(
                 interrupted = true;
                 break;
             }
-            match read_jsonl_line(&mut reader, &mut line)? {
-                JsonlLineState::Eof => {
+            match read_line_bytes(&mut reader, &mut line)? {
+                LineRead::Eof => {
                     reached_end = true;
                     break;
                 }
-                // A partial trailing line is still being appended; re-read it
-                // next pass (the cursor stays before it).
-                JsonlLineState::Partial => {
+                // A trailing line without a newline is usually a write in
+                // progress: leave the cursor before it. But if it already
+                // parses as complete JSON it will never grow a newline once
+                // the writer is gone, and the size/mtime snapshot would
+                // suppress every later pass — count it now (upstream counts
+                // unterminated final segments too).
+                LineRead::Partial(bytes) => {
+                    let text = String::from_utf8_lossy(&line);
+                    let trimmed = text.trim();
+                    if !trimmed.is_empty()
+                        && serde_json::from_str::<serde_json::Value>(trimmed).is_ok()
+                    {
+                        offset += bytes as u64;
+                        if extractor.wants_line(trimmed) {
+                            entries.extend(extractor.extract_line(trimmed));
+                        }
+                    }
                     reached_end = true;
                     break;
                 }
-                JsonlLineState::Complete(bytes) => {
+                LineRead::Complete(bytes) => {
                     offset += bytes as u64;
                     consumed += bytes;
-                    let trimmed = line.trim_end();
+                    let text = String::from_utf8_lossy(&line);
+                    let trimmed = text.trim_end();
                     if extractor.wants_line(trimmed) {
                         entries.extend(extractor.extract_line(trimmed));
                     }
@@ -712,14 +764,27 @@ fn emit_changed_buckets(
     // N+1 may exist in the metrics queue, that revision must never be
     // reused, or a crash before the fingerprint write would re-open the
     // equal-revision tie. A failed sink merely wastes a revision number.
+    // The revision is floored to wall-clock seconds so that losing the
+    // local revision state (flag off deletes the DB; the DB is rebuilt)
+    // cannot restart below revisions the server has already seen — a
+    // re-enabled backfill would otherwise re-emit at revision 1 and lose to
+    // every previously uploaded value under the highest-revision upsert.
+    let seq_floor = now_secs().max(0) as u64;
+    let changed: Vec<(crate::token_usage::db::ChangedBucket, u64)> = changed
+        .into_iter()
+        .map(|bucket| {
+            let next_seq = (bucket.emit_seq + 1).max(seq_floor);
+            (bucket, next_seq)
+        })
+        .collect();
     let reservations: Vec<(String, u32, u64)> = changed
         .iter()
-        .map(|bucket| (bucket.model.clone(), bucket.bucket_ts, bucket.emit_seq + 1))
+        .map(|(bucket, next_seq)| (bucket.model.clone(), bucket.bucket_ts, *next_seq))
         .collect();
     token_db.reserve_emit_seqs(&identity.session_id, &reservations)?;
     let repo_url = resolve_repo_url();
     let mut events = Vec::with_capacity(changed.len());
-    for bucket in &changed {
+    for (bucket, next_seq) in &changed {
         let aggregate = &bucket.aggregate;
         let values = TokenUsageValues::new()
             .bucket_ts(bucket.bucket_ts as u64)
@@ -733,7 +798,7 @@ fn emit_changed_buckets(
             .message_count(aggregate.message_count)
             // Strictly increasing per bucket: the server keeps the highest
             // revision, so same-second re-emissions cannot tie.
-            .emitted_seq(bucket.emit_seq + 1);
+            .emitted_seq(*next_seq);
         let mut attrs = EventAttributes::with_version(env!("CARGO_PKG_VERSION"))
             .session_id(identity.session_id.clone())
             .external_session_id(identity.external_session_id.clone())
@@ -746,13 +811,13 @@ fn emit_changed_buckets(
     }
     sink(&events)?;
     let now_ts = now_secs();
-    for bucket in changed {
+    for (bucket, next_seq) in changed {
         token_db.mark_emitted(
             &identity.session_id,
             &bucket.model,
             bucket.bucket_ts,
             &bucket.aggregate.fingerprint(),
-            bucket.emit_seq + 1,
+            next_seq,
             now_ts,
         )?;
     }
@@ -866,7 +931,11 @@ mod tests {
             assert_eq!(event.event_id, 9);
             assert_eq!(value_u64(event, token_usage_pos::INPUT_TOKENS), Some(100));
             assert_eq!(value_u64(event, token_usage_pos::MESSAGE_COUNT), Some(1));
-            assert_eq!(value_u64(event, token_usage_pos::EMITTED_SEQ), Some(1));
+            // Revisions are floored to wall-clock seconds so a rebuilt DB
+            // can never restart below previously uploaded revisions.
+            assert!(
+                value_u64(event, token_usage_pos::EMITTED_SEQ).unwrap() >= now_secs() as u64 - 60
+            );
             assert!(value_u64(event, token_usage_pos::EST_COST_MICRO_USD).unwrap() > 0);
             let attrs = EventAttributes::from_sparse(&event.attrs);
             assert_eq!(attrs.session_id, Some(Some("s_test".to_string())));
@@ -908,7 +977,7 @@ mod tests {
             value_u64(&first[0], token_usage_pos::OUTPUT_TOKENS),
             Some(50)
         );
-        assert_eq!(value_u64(&first[0], token_usage_pos::EMITTED_SEQ), Some(1));
+        let first_seq = value_u64(&first[0], token_usage_pos::EMITTED_SEQ).unwrap();
 
         let mut content = fs::read_to_string(&transcript).unwrap();
         content.push_str(&claude_line("m2", "r2", &recent_ts(2, 0), 30));
@@ -925,7 +994,7 @@ mod tests {
             value_u64(&second[0], token_usage_pos::MESSAGE_COUNT),
             Some(2)
         );
-        assert_eq!(value_u64(&second[0], token_usage_pos::EMITTED_SEQ), Some(2));
+        assert!(value_u64(&second[0], token_usage_pos::EMITTED_SEQ).unwrap() > first_seq);
     }
 
     #[test]
@@ -967,7 +1036,9 @@ mod tests {
             value_u64(zero_event, token_usage_pos::MESSAGE_COUNT),
             Some(0)
         );
-        assert_eq!(value_u64(zero_event, token_usage_pos::EMITTED_SEQ), Some(2));
+        assert!(
+            value_u64(zero_event, token_usage_pos::EMITTED_SEQ).unwrap() >= now_secs() as u64 - 60
+        );
     }
 
     #[test]
@@ -993,6 +1064,145 @@ mod tests {
             value_u64(&events[0], token_usage_pos::MESSAGE_COUNT),
             Some(2)
         );
+    }
+
+    #[test]
+    fn invalid_utf8_lines_are_skipped_and_the_cursor_advances() {
+        // A single invalid byte must not wedge the cursor forever (UTF-8
+        // strict reads would error at the same offset on every pass and lose
+        // all usage after that point).
+        let (_dir, db, transcript) = setup();
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(claude_line("m1", "r1", &recent_ts(1, 0), 50).as_bytes());
+        bytes.push(b'\n');
+        bytes.extend_from_slice(b"{\"garbage\": \"\xff\xfe broken\"}\n");
+        bytes.extend_from_slice(claude_line("m2", "r2", &recent_ts(2, 0), 30).as_bytes());
+        bytes.push(b'\n');
+        fs::write(&transcript, bytes).unwrap();
+
+        let events = run(&db, &transcript).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::MESSAGE_COUNT),
+            Some(2),
+            "usage after the invalid-UTF-8 line must still count"
+        );
+        // The cursor advanced past everything: the next pass is quiet.
+        assert!(run(&db, &transcript).unwrap().is_empty());
+    }
+
+    #[test]
+    fn complete_final_line_without_newline_is_counted() {
+        // Agent killed between writing the JSON object and its newline: the
+        // file never grows again, so the entry must be counted now instead
+        // of being suppressed forever by the size/mtime snapshot.
+        let (_dir, db, transcript) = setup();
+        fs::write(
+            &transcript,
+            claude_line("m1", "r1", &recent_ts(1, 0), 50), // no trailing \n
+        )
+        .unwrap();
+        let events = run(&db, &transcript).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::MESSAGE_COUNT),
+            Some(1)
+        );
+        assert!(run(&db, &transcript).unwrap().is_empty());
+    }
+
+    #[test]
+    fn truncated_final_json_stays_pending_until_completed() {
+        // A half-written JSON object (not yet valid) is a write in progress:
+        // the cursor stays before it and the completed line counts later.
+        let (_dir, db, transcript) = setup();
+        let full = claude_line("m1", "r1", &recent_ts(1, 0), 50);
+        fs::write(&transcript, &full[..full.len() - 5]).unwrap();
+        assert!(run(&db, &transcript).unwrap().is_empty());
+        fs::write(&transcript, format!("{full}\n")).unwrap();
+        assert_eq!(run(&db, &transcript).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn unreadable_state_resets_the_cursor_and_recounts_idempotently() {
+        // Continuing mid-file on default codex state would book the whole
+        // cumulative history as one fresh delta; a full re-read dedups by
+        // entry identity instead.
+        let (_dir, db, transcript) = setup();
+        let identity = SessionIdentity {
+            tool: "codex".to_string(),
+            ..identity()
+        };
+        let token_count = |ts: String, total: u64| {
+            format!(
+                r#"{{"timestamp":"{ts}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":{total},"cached_input_tokens":0,"output_tokens":10,"reasoning_output_tokens":0,"total_tokens":{}}}}}}}}}"#,
+                total + 10
+            )
+        };
+        fs::write(
+            &transcript,
+            format!(
+                "{}\n{}\n",
+                token_count(recent_ts(1, 0), 100),
+                token_count(recent_ts(6, 0), 300),
+            ),
+        )
+        .unwrap();
+        let events = run_as(&db, &identity, &transcript).unwrap();
+        assert_eq!(events.len(), 2);
+
+        // Corrupt the persisted state (e.g. a cross-version enum change) and
+        // grow the file so the pass runs.
+        let path = transcript.display().to_string();
+        db.commit_batch(&BatchCommit {
+            session_id: &identity.session_id,
+            stream_path: &path,
+            entries: &[],
+            new_offset: fs::metadata(&transcript).unwrap().len(),
+            state_json: Some("{\"kind\": \"from-the-future\""),
+            pending_flush: false,
+            min_bucket_ts: 0,
+        })
+        .unwrap();
+        let mut content = fs::read_to_string(&transcript).unwrap();
+        content.push_str(&token_count(recent_ts(11, 0), 350));
+        content.push('\n');
+        fs::write(&transcript, content).unwrap();
+
+        // The re-read from offset 0 rebuilds identical entries (deduped) and
+        // only the genuinely new turn emits; nothing double counts.
+        let events = run_as(&db, &identity, &transcript).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::INPUT_TOKENS),
+            Some(50)
+        );
+        let first_bucket = db
+            .aggregate_bucket(&identity.session_id, "gpt-5", bucket_of(1, 0) as u32)
+            .unwrap();
+        assert_eq!(first_bucket.message_count, 1, "no double count");
+    }
+
+    #[test]
+    fn shrunken_file_re_reads_idempotently_from_scratch() {
+        let (_dir, db, transcript) = setup();
+        let l1 = claude_line("m1", "r1", &recent_ts(1, 0), 50);
+        let l2 = claude_line("m2", "r2", &recent_ts(2, 0), 30);
+        fs::write(&transcript, format!("{l1}\n{l2}\n")).unwrap();
+        assert_eq!(run(&db, &transcript).unwrap().len(), 1);
+
+        // The file is truncated back to one line (rewrite/rotation): the
+        // cursor resets and the surviving entry re-extracts idempotently
+        // (no aggregate change, no re-emission). The truncated-away entry
+        // remains counted - a documented residual: entries have no per-file
+        // ownership, and rollouts/transcripts are append-only in practice.
+        fs::write(&transcript, format!("{l1}\n")).unwrap();
+        let events = run(&db, &transcript).unwrap();
+        assert!(events.is_empty(), "no aggregate change from the re-read");
+        let agg = db
+            .aggregate_bucket("s_test", "claude-sonnet-4-20250514", bucket_of(1, 0) as u32)
+            .unwrap();
+        assert_eq!(agg.message_count, 2);
     }
 
     #[test]
