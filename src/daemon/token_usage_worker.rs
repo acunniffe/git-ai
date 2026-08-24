@@ -255,11 +255,6 @@ impl TokenUsageWorker {
                 Ok(Ok(())) => {}
                 Ok(Err(e)) => {
                     tracing::warn!(error = %e, session_id = %task.session_id, "token-usage processing failed");
-                    let _ = self.token_db.record_error(
-                        &task.session_id,
-                        &task.stream_path,
-                        &e.to_string(),
-                    );
                 }
                 Err(e) => {
                     tracing::error!(error = %e, session_id = %task.session_id, "token-usage task panicked");
@@ -318,7 +313,7 @@ fn process_task_blocking(
         return Ok(());
     };
     let ctx = EmissionContext::from_stream(&stream);
-    process_file(token_db, &ctx, &task.stream_path, shutdown_flag, |events| {
+    let result = process_file(token_db, &ctx, &task.stream_path, shutdown_flag, |events| {
         // Backpressure before handing a batch to the telemetry queue.
         for _ in 0..BACKPRESSURE_MAX_WAITS {
             if telemetry.metrics_buffer_len() < BACKPRESSURE_THRESHOLD
@@ -329,7 +324,13 @@ fn process_task_blocking(
             std::thread::sleep(Duration::from_millis(100));
         }
         telemetry.persist_metrics_blocking(events).map(|_| ())
-    })
+    });
+    if let Err(e) = &result {
+        // Keyed by the rollup session id (subagent transcripts track under
+        // their parent), matching the row ensure_file created.
+        let _ = token_db.record_error(&ctx.session_id, &task.stream_path, &e.to_string());
+    }
+    result
 }
 
 /// Incrementally read one transcript file, persist deduplicated entries, and
@@ -843,6 +844,42 @@ mod tests {
         assert_eq!(worker.queue.len(), 1);
         assert_eq!(worker.queue[0].session_id, "s_claude");
         assert_eq!(worker.queue[0].tool, "claude");
+    }
+
+    #[tokio::test]
+    async fn processing_errors_are_recorded_under_the_rollup_session() {
+        // Subagent transcripts track under their parent session id, so error
+        // recording must use the same key or the UPDATE matches no row.
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let missing = dir.path().join("gone.jsonl").display().to_string();
+        let mut record = stream_record("s_child", "claude", &missing);
+        record.external_parent_session_id = Some("parent-ext".to_string());
+        streams_db.insert_stream(&record).unwrap();
+
+        let task = TokenUsageTask {
+            session_id: "s_child".to_string(),
+            tool: "claude".to_string(),
+            stream_path: missing.clone(),
+        };
+        let result = process_task_blocking(
+            &streams_db,
+            &token_db,
+            &DaemonTelemetryWorkerHandle::new_noop(),
+            &task,
+            &AtomicBool::new(false),
+        );
+        assert!(result.is_err());
+
+        let parent_session = generate_session_id("parent-ext", "claude");
+        let tracked = token_db
+            .ensure_file(&parent_session, &missing, "claude")
+            .unwrap();
+        assert_eq!(tracked.processing_errors, 1);
+        assert_eq!(token_db.all_files().unwrap().len(), 1);
     }
 
     #[test]
