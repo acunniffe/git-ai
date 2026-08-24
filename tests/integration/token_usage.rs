@@ -679,13 +679,7 @@ fn replacement_lowering_a_bucket_reemits_lower_totals() {
     // The parent's own entry arrives later: non-sidechain wins despite lower
     // totals, so the bucket must re-emit with the corrected (lower) numbers.
     let mut content = fs::read_to_string(&transcript_path).unwrap();
-    content.push_str(&claude_usage_line(
-        "m1",
-        "r1",
-        &recent_ts(1, 30),
-        10,
-        None,
-    ));
+    content.push_str(&claude_usage_line("m1", "r1", &recent_ts(1, 30), 10, None));
     content.push('\n');
     fs::write(&transcript_path, content).unwrap();
 
@@ -746,13 +740,7 @@ fn emptied_bucket_emits_zero_exactly_once() {
     // larger totals: the original bucket empties and must emit zero so the
     // server stays in sync.
     let mut content = fs::read_to_string(&transcript_path).unwrap();
-    content.push_str(&claude_usage_line(
-        "m1",
-        "r1",
-        &recent_ts(6, 0),
-        90,
-        None,
-    ));
+    content.push_str(&claude_usage_line("m1", "r1", &recent_ts(6, 0), 90, None));
     content.push('\n');
     fs::write(&transcript_path, content).unwrap();
 
