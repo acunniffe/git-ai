@@ -159,6 +159,9 @@ pub fn spawn_token_usage_worker(
         notify_queue: VecDeque::new(),
         sweep_queue: VecDeque::new(),
         queued: HashSet::new(),
+        sweep_interval: Duration::from_secs(30 * 60),
+        #[cfg(test)]
+        test_sink: None,
     };
     tokio::spawn(async move {
         worker.run().await;
@@ -182,12 +185,37 @@ struct TokenUsageWorker {
     /// Sweep/backfill work: processed only in the background loop.
     sweep_queue: VecDeque<TokenUsageTask>,
     queued: HashSet<TokenUsageTask>,
+    /// 30 minutes in production; injectable so tests can drive the ticker.
+    sweep_interval: Duration,
+    /// Test-only event capture: the metrics DB is a process-lifetime
+    /// singleton, so run()-level tests inject a sink instead of a real
+    /// telemetry handle.
+    #[cfg(test)]
+    test_sink: Option<TestSink>,
 }
 
+#[cfg(test)]
+type TestSink = Arc<dyn Fn(&[MetricEvent]) -> Result<(), GitAiError> + Send + Sync>;
+
 impl TokenUsageWorker {
+    /// The sink every task/reconcile pass hands emitted events to.
+    fn make_sink(&self) -> impl Fn(&[MetricEvent]) -> Result<(), GitAiError> + Send + use<> {
+        let telemetry = self.telemetry.clone();
+        let shutdown_flag = self.shutdown_flag.clone();
+        #[cfg(test)]
+        let test_sink = self.test_sink.clone();
+        move |events: &[MetricEvent]| {
+            #[cfg(test)]
+            if let Some(sink) = &test_sink {
+                return sink(events);
+            }
+            persist_events(&telemetry, &shutdown_flag, events)
+        }
+    }
+
     async fn run(mut self) {
         tracing::info!("token-usage worker started");
-        let mut sweep_ticker = interval(Duration::from_secs(30 * 60));
+        let mut sweep_ticker = interval(self.sweep_interval);
         // After suspend/resume, one sweep covers everything; do not replay
         // every missed tick.
         sweep_ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -324,10 +352,8 @@ impl TokenUsageWorker {
     /// crash recovery; the per-task path reconciles inline).
     async fn reconcile_flagged(&self) {
         let token_db = self.token_db.clone();
-        let telemetry = self.telemetry.clone();
-        let shutdown_flag = self.shutdown_flag.clone();
+        let sink = self.make_sink();
         let _ = tokio::task::spawn_blocking(move || {
-            let sink = |events: &[MetricEvent]| persist_events(&telemetry, &shutdown_flag, events);
             if let Err(e) = reconcile_flagged_sessions(&token_db, &sink) {
                 tracing::warn!(error = %e, "token-usage cross-session reconcile failed");
             }
@@ -338,17 +364,11 @@ impl TokenUsageWorker {
     async fn process_task(&mut self, task: TokenUsageTask) {
         let streams_db = self.streams_db.clone();
         let token_db = self.token_db.clone();
-        let telemetry = self.telemetry.clone();
+        let sink = self.make_sink();
         let shutdown_flag = self.shutdown_flag.clone();
         let task_clone = task.clone();
         let mut handle = tokio::task::spawn_blocking(move || {
-            process_task_blocking(
-                &streams_db,
-                &token_db,
-                &telemetry,
-                &task_clone,
-                &shutdown_flag,
-            )
+            process_task_blocking(&streams_db, &token_db, &sink, &task_clone, &shutdown_flag)
         });
         // Keep watching for shutdown while the blocking pass runs: setting
         // the flag makes the pass stop at its next line/batch boundary.
@@ -510,7 +530,7 @@ fn retention_cutoff_bucket(now: i64) -> u32 {
 fn process_task_blocking(
     streams_db: &StreamsDatabase,
     token_db: &TokenUsageDatabase,
-    telemetry: &DaemonTelemetryWorkerHandle,
+    sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
     task: &TokenUsageTask,
     shutdown_flag: &AtomicBool,
 ) -> Result<(), GitAiError> {
@@ -521,7 +541,6 @@ fn process_task_blocking(
         return Ok(());
     };
     let identity = SessionIdentity::from_stream(&stream);
-    let sink = |events: &[MetricEvent]| persist_events(telemetry, shutdown_flag, events);
     let result = process_file(
         token_db,
         &identity,
@@ -537,7 +556,7 @@ fn process_task_blocking(
             }
             repo_url
         },
-        &sink,
+        sink,
     );
     if let Err(e) = &result {
         // Keyed by the rollup session id (subagent transcripts track under
@@ -555,7 +574,7 @@ fn process_task_blocking(
     // transcript — charging them here would put a healthy file into error
     // backoff and point diagnostics at the wrong session.
     if result.is_ok()
-        && let Err(e) = reconcile_flagged_sessions(token_db, &sink)
+        && let Err(e) = reconcile_flagged_sessions(token_db, sink)
     {
         tracing::warn!(error = %e, "token-usage cross-session reconcile failed; flags retained for retry");
     }
@@ -1547,6 +1566,8 @@ mod tests {
             notify_queue: VecDeque::new(),
             sweep_queue: VecDeque::new(),
             queued: HashSet::new(),
+            sweep_interval: Duration::from_secs(30 * 60),
+            test_sink: None,
         }
     }
 
@@ -1668,7 +1689,7 @@ mod tests {
         let result = process_task_blocking(
             &streams_db,
             &token_db,
-            &DaemonTelemetryWorkerHandle::new_noop(),
+            &|_: &[MetricEvent]| Ok(()),
             &task,
             &AtomicBool::new(false),
         );
@@ -1709,5 +1730,227 @@ mod tests {
         assert_eq!(error_backoff_secs(3), 300);
         assert_eq!(error_backoff_secs(4), 1800);
         assert_eq!(error_backoff_secs(100), 1800);
+    }
+
+    fn collecting_sink() -> (Arc<Mutex<Vec<MetricEvent>>>, TestSink) {
+        let collected: Arc<Mutex<Vec<MetricEvent>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink_events = collected.clone();
+        let sink: TestSink = Arc::new(move |events: &[MetricEvent]| {
+            sink_events.lock().unwrap().extend(events.to_vec());
+            Ok(())
+        });
+        (collected, sink)
+    }
+
+    #[test]
+    fn parked_fork_stays_pending_and_a_later_sweep_pass_releases_it() {
+        // A fork whose transcript ends with its first usage event still
+        // parked must survive the full worker chain across two passes:
+        // pending_flush persists, the unchanged file stays a sweep candidate,
+        // and the re-sweep pass releases the turn once the burst window has
+        // passed in wall clock.
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let path = dir.path().join("rollout.jsonl");
+        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let fork_meta = r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#;
+        let token_count = format!(
+            r#"{{"timestamp":"{now}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}}}}}"#
+        );
+        fs::write(&path, format!("{fork_meta}\n{token_count}\n")).unwrap();
+        let path_str = path.display().to_string();
+        streams_db
+            .insert_stream(&stream_record("s_fork", "codex", &path_str))
+            .unwrap();
+        let task = TokenUsageTask {
+            session_id: "s_fork".to_string(),
+            tool: "codex".to_string(),
+            stream_path: path_str.clone(),
+        };
+        let (collected, sink) = collecting_sink();
+
+        // Pass 1: the usage event is written moments ago, so the EOF flush
+        // must not release it (a burst partner may still be coming).
+        process_task_blocking(&streams_db, &token_db, &|e| sink(e), &task, &flag_off()).unwrap();
+        assert!(collected.lock().unwrap().is_empty(), "turn stays parked");
+        let tracked = token_db
+            .ensure_file("s_fork", &path_str, "codex", "s_fork-ext")
+            .unwrap();
+        assert!(tracked.pending_flush);
+        // The bytes have not changed, but the pending flush alone keeps the
+        // file a sweep candidate.
+        assert_eq!(sweep_candidates(&streams_db, &token_db).len(), 1);
+
+        // Pass 2, after the burst window: the parked turn is the session's
+        // own first turn and is released and emitted. (The flush clock has
+        // second granularity, so sleep past the window plus one second.)
+        std::thread::sleep(Duration::from_millis(2100));
+        process_task_blocking(&streams_db, &token_db, &|e| sink(e), &task, &flag_off()).unwrap();
+        let events = collected.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::TOTAL_TOKENS),
+            Some(15)
+        );
+        let tracked = token_db
+            .ensure_file("s_fork", &path_str, "codex", "s_fork-ext")
+            .unwrap();
+        assert!(!tracked.pending_flush);
+        assert!(sweep_candidates(&streams_db, &token_db).is_empty());
+    }
+
+    fn flag_off() -> AtomicBool {
+        AtomicBool::new(false)
+    }
+
+    fn spawn_run_loop(
+        streams_db: Arc<StreamsDatabase>,
+        token_db: Arc<TokenUsageDatabase>,
+        sink: TestSink,
+        sweep_interval: Duration,
+    ) -> (TokenUsageWorkerHandle, Arc<Notify>) {
+        let (notify_tx, notify_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
+        let shutdown_notify = Arc::new(Notify::new());
+        let worker = TokenUsageWorker {
+            streams_db,
+            token_db,
+            telemetry: DaemonTelemetryWorkerHandle::new_noop(),
+            shutdown_notify: shutdown_notify.clone(),
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
+            notify_rx,
+            drain_rx,
+            notify_queue: VecDeque::new(),
+            sweep_queue: VecDeque::new(),
+            queued: HashSet::new(),
+            sweep_interval,
+            test_sink: Some(sink),
+        };
+        tokio::spawn(worker.run());
+        (
+            TokenUsageWorkerHandle {
+                notify_tx,
+                drain_tx,
+            },
+            shutdown_notify,
+        )
+    }
+
+    /// Poll until the collected events contain the given bucket, or panic.
+    async fn wait_for_bucket(collected: &Arc<Mutex<Vec<MetricEvent>>>, bucket: u64) {
+        for _ in 0..600 {
+            if collected
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|e| value_u64(e, token_usage_pos::BUCKET_TS) == Some(bucket))
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        panic!("bucket {bucket} was never emitted");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_loop_startup_sweep_backfills_and_ticker_picks_up_appends() {
+        // The real run() loop, end to end: the startup sweep backfills a
+        // tracked transcript with no notification ever sent, and the sweep
+        // ticker later picks up appended lines on its own.
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let path = dir.path().join("transcript.jsonl");
+        fs::write(
+            &path,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        streams_db
+            .insert_stream(&stream_record(
+                "s_run",
+                "claude",
+                &path.display().to_string(),
+            ))
+            .unwrap();
+        let (collected, sink) = collecting_sink();
+        let (_handle, shutdown) =
+            spawn_run_loop(streams_db, token_db, sink, Duration::from_millis(200));
+
+        wait_for_bucket(&collected, bucket_of(1, 0)).await;
+
+        // Append into a new bucket without notifying: only the ticker sweep
+        // can find it.
+        let mut content = fs::read_to_string(&path).unwrap();
+        content.push_str(&format!(
+            "{}\n",
+            claude_line("m2", "r2", &recent_ts(6, 0), 70)
+        ));
+        fs::write(&path, content).unwrap();
+        wait_for_bucket(&collected, bucket_of(6, 0)).await;
+
+        shutdown.notify_one();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_loop_restart_backfills_from_the_committed_cursor() {
+        // Daemon restart: a fresh worker over the same databases picks up
+        // lines appended while no worker ran, via its startup sweep alone,
+        // without re-emitting history the previous worker already handled.
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let path = dir.path().join("transcript.jsonl");
+        fs::write(
+            &path,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        streams_db
+            .insert_stream(&stream_record(
+                "s_restart",
+                "claude",
+                &path.display().to_string(),
+            ))
+            .unwrap();
+        let (collected, sink) = collecting_sink();
+
+        // Worker A: 30-minute interval, so only its startup sweep runs.
+        let (_handle_a, shutdown_a) = spawn_run_loop(
+            streams_db.clone(),
+            token_db.clone(),
+            sink.clone(),
+            Duration::from_secs(30 * 60),
+        );
+        wait_for_bucket(&collected, bucket_of(1, 0)).await;
+        shutdown_a.notify_one();
+
+        // While no worker runs, the agent keeps writing.
+        let mut content = fs::read_to_string(&path).unwrap();
+        content.push_str(&format!(
+            "{}\n",
+            claude_line("m2", "r2", &recent_ts(6, 0), 70)
+        ));
+        fs::write(&path, content).unwrap();
+
+        // Worker B (the restarted daemon) backfills the gap at startup.
+        let (_handle_b, shutdown_b) =
+            spawn_run_loop(streams_db, token_db, sink, Duration::from_secs(30 * 60));
+        wait_for_bucket(&collected, bucket_of(6, 0)).await;
+        shutdown_b.notify_one();
+
+        let events = collected.lock().unwrap();
+        let first_bucket_emissions = events
+            .iter()
+            .filter(|e| value_u64(e, token_usage_pos::BUCKET_TS) == Some(bucket_of(1, 0)))
+            .count();
+        assert_eq!(first_bucket_emissions, 1, "restart must not re-emit");
     }
 }
