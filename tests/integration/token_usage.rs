@@ -572,3 +572,294 @@ fn subagent_transcript_rolls_up_to_the_parent_session() {
         Some(Some(generate_session_id("sess-parent", "claude")))
     );
 }
+
+/// Fields present on a sidechain replay line: same message id as the parent
+/// but a different request id and inflated cache reads (the ccusage scenario
+/// the message-id fallback dedup exists for).
+fn sidechain_usage_line(msg: &str, req: &str, ts: &str, cache_read: u64) -> String {
+    format!(
+        r#"{{"timestamp":"{ts}","isSidechain":true,"sessionId":"ext","requestId":"{req}","message":{{"id":"{msg}","model":"claude-sonnet-4-20250514","usage":{{"input_tokens":100,"output_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":{cache_read}}}}}}}"#
+    )
+}
+
+#[test]
+fn unchanged_buckets_are_not_reemitted() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+
+    let transcript_path = repo_root.join("claude-session.jsonl");
+    fs::write(
+        &transcript_path,
+        format!(
+            "{}\n",
+            claude_usage_line("m1", "r1", &recent_ts(1, 0), 50, None)
+        ),
+    )
+    .unwrap();
+
+    let file_path = repo_root.join("example.ts");
+    fs::write(&file_path, "const x = 1;\n").unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-token-quiet",
+        &transcript_path,
+        &file_path,
+        "const x = 1;\nconst y = 2;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+    assert_eq!(token_usage_events(&metrics_db_path).len(), 1);
+
+    // The transcript grows, but only with non-usage lines: the file is
+    // re-read incrementally, the bucket aggregate is unchanged, and no event
+    // is emitted.
+    let mut content = fs::read_to_string(&transcript_path).unwrap();
+    content.push_str(&json!({"type": "user", "message": {"content": "more chatter"}}).to_string());
+    content.push('\n');
+    fs::write(&transcript_path, content).unwrap();
+
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-token-quiet",
+        &transcript_path,
+        &file_path,
+        "const x = 1;\nconst y = 2;\nconst z = 3;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+    assert_eq!(
+        token_usage_events(&metrics_db_path).len(),
+        1,
+        "an unchanged bucket must not re-emit"
+    );
+}
+
+#[test]
+fn replacement_lowering_a_bucket_reemits_lower_totals() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+
+    // A sidechain replay is seen first with inflated cache reads.
+    let transcript_path = repo_root.join("claude-session.jsonl");
+    fs::write(
+        &transcript_path,
+        format!(
+            "{}\n",
+            sidechain_usage_line("m1", "r-side", &recent_ts(1, 0), 50_000)
+        ),
+    )
+    .unwrap();
+
+    let file_path = repo_root.join("example.ts");
+    fs::write(&file_path, "const x = 1;\n").unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-token-lower",
+        &transcript_path,
+        &file_path,
+        "const x = 1;\nconst y = 2;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+    let events = token_usage_events(&metrics_db_path);
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        value_u64(&events[0], token_usage_pos::CACHE_READ_TOKENS),
+        Some(50_000)
+    );
+
+    // The parent's own entry arrives later: non-sidechain wins despite lower
+    // totals, so the bucket must re-emit with the corrected (lower) numbers.
+    let mut content = fs::read_to_string(&transcript_path).unwrap();
+    content.push_str(&claude_usage_line(
+        "m1",
+        "r1",
+        &recent_ts(1, 30),
+        10,
+        None,
+    ));
+    content.push('\n');
+    fs::write(&transcript_path, content).unwrap();
+
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-token-lower",
+        &transcript_path,
+        &file_path,
+        "const x = 1;\nconst y = 2;\nconst z = 3;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+
+    let events = token_usage_events(&metrics_db_path);
+    assert_eq!(events.len(), 2);
+    let latest = &events[1];
+    assert_eq!(
+        value_u64(latest, token_usage_pos::CACHE_READ_TOKENS),
+        Some(200)
+    );
+    assert_eq!(value_u64(latest, token_usage_pos::OUTPUT_TOKENS), Some(10));
+    assert_eq!(value_u64(latest, token_usage_pos::MESSAGE_COUNT), Some(1));
+}
+
+#[test]
+fn emptied_bucket_emits_zero_exactly_once() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+
+    let transcript_path = repo_root.join("claude-session.jsonl");
+    fs::write(
+        &transcript_path,
+        format!(
+            "{}\n",
+            claude_usage_line("m1", "r1", &recent_ts(1, 0), 50, None)
+        ),
+    )
+    .unwrap();
+
+    let file_path = repo_root.join("example.ts");
+    fs::write(&file_path, "const x = 1;\n").unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-token-zero",
+        &transcript_path,
+        &file_path,
+        "const x = 1;\nconst y = 2;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+    assert_eq!(token_usage_events(&metrics_db_path).len(), 1);
+
+    // A streaming re-emit of the same message lands in the next bucket with
+    // larger totals: the original bucket empties and must emit zero so the
+    // server stays in sync.
+    let mut content = fs::read_to_string(&transcript_path).unwrap();
+    content.push_str(&claude_usage_line(
+        "m1",
+        "r1",
+        &recent_ts(6, 0),
+        90,
+        None,
+    ));
+    content.push('\n');
+    fs::write(&transcript_path, content).unwrap();
+
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-token-zero",
+        &transcript_path,
+        &file_path,
+        "const x = 1;\nconst y = 2;\nconst z = 3;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+
+    let mut events = token_usage_events(&metrics_db_path);
+    assert_eq!(events.len(), 3, "zeroed bucket + refilled bucket");
+    let latest = events.split_off(1);
+    let zero = latest
+        .iter()
+        .find(|e| value_u64(e, token_usage_pos::BUCKET_TS) == Some(bucket_of(1, 0)))
+        .expect("original bucket re-emitted");
+    assert_eq!(value_u64(zero, token_usage_pos::TOTAL_TOKENS), Some(0));
+    assert_eq!(value_u64(zero, token_usage_pos::MESSAGE_COUNT), Some(0));
+    assert_eq!(
+        value_u64(zero, token_usage_pos::EST_COST_MICRO_USD),
+        Some(0)
+    );
+    let moved = latest
+        .iter()
+        .find(|e| value_u64(e, token_usage_pos::BUCKET_TS) == Some(bucket_of(6, 0)))
+        .expect("new bucket emitted");
+    assert_eq!(value_u64(moved, token_usage_pos::OUTPUT_TOKENS), Some(90));
+
+    // A third pass over a grown-but-unchanged-usage file: the zero bucket
+    // must not re-emit again.
+    let mut content = fs::read_to_string(&transcript_path).unwrap();
+    content.push_str(&json!({"type": "user", "message": {"content": "chatter"}}).to_string());
+    content.push('\n');
+    fs::write(&transcript_path, content).unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-token-zero",
+        &transcript_path,
+        &file_path,
+        "const x = 1;\nconst y = 2;\nconst z = 3;\nconst w = 4;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+    assert_eq!(token_usage_events(&metrics_db_path).len(), 3);
+}
+
+#[test]
+fn deleted_transcript_is_handled_quietly() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+
+    let transcript_path = repo_root.join("claude-session.jsonl");
+    fs::write(
+        &transcript_path,
+        format!(
+            "{}\n",
+            claude_usage_line("m1", "r1", &recent_ts(1, 0), 50, None)
+        ),
+    )
+    .unwrap();
+
+    let file_path = repo_root.join("example.ts");
+    fs::write(&file_path, "const x = 1;\n").unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-token-gone",
+        &transcript_path,
+        &file_path,
+        "const x = 1;\nconst y = 2;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+    assert_eq!(token_usage_events(&metrics_db_path).len(), 1);
+
+    // The transcript disappears; a later checkpoint for the same session
+    // must not panic the daemon, emit new events, or zero out the buckets
+    // already reported to the server.
+    fs::remove_file(&transcript_path).unwrap();
+    let pre_hook = json!({
+        "cwd": repo_root.to_string_lossy(),
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Write",
+        "tool_use_id": "toolu_gone",
+        "session_id": "sess-token-gone",
+        "transcript_path": transcript_path.to_string_lossy(),
+        "tool_input": { "file_path": file_path.to_string_lossy() }
+    })
+    .to_string();
+    let _ = repo.git_ai(&["checkpoint", "claude", "--hook-input", &pre_hook]);
+    sync_token_usage_pipeline(&repo);
+
+    let events = token_usage_events(&metrics_db_path);
+    assert_eq!(
+        events.len(),
+        1,
+        "no new or zeroing events for a deleted file"
+    );
+    assert_eq!(
+        value_u64(&events[0], token_usage_pos::TOTAL_TOKENS),
+        Some(380)
+    );
+}

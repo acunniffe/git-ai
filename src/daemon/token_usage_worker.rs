@@ -315,6 +315,18 @@ impl TokenUsageWorker {
         self.pop_queue(false)
     }
 
+    /// Retention prune, run once per sweep off the async loop.
+    async fn prune_old_entries(&self) {
+        let token_db = self.token_db.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            let cutoff = retention_cutoff_bucket(now_secs());
+            if let Err(e) = token_db.prune_buckets_before(cutoff) {
+                tracing::warn!(error = %e, "token-usage retention prune failed");
+            }
+        })
+        .await;
+    }
+
     /// Enqueue supported transcripts the streams database knows about whose
     /// files changed since the last completed pass. The DB scans and per-file
     /// stats run in `spawn_blocking`, like all other I/O in this module.
@@ -334,18 +346,6 @@ impl TokenUsageWorker {
         for task in tasks {
             self.enqueue_sweep(task);
         }
-    }
-
-    /// Retention prune, run once per sweep off the async loop.
-    async fn prune_old_entries(&self) {
-        let token_db = self.token_db.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            let cutoff = retention_cutoff_bucket(now_secs());
-            if let Err(e) = token_db.prune_buckets_before(cutoff) {
-                tracing::warn!(error = %e, "token-usage retention prune failed");
-            }
-        })
-        .await;
     }
 
     /// Reconcile cross-session flags off the async loop (used by sweeps for
