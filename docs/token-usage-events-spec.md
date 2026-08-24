@@ -88,7 +88,11 @@ The server upserts on `(session_id, model, bucket_ts)` keeping the **highest
 state database *before* events reach the telemetry queue so a crash between
 sink and bookkeeping can never produce two payloads with equal revisions —
 so re-emissions within the same u32 second cannot tie on `event_ts`,
-regardless of upload batching or retry order. A bucket is emitted iff its aggregate's fingerprint
+regardless of upload batching or retry order. Reserved revisions are floored
+to wall-clock seconds (`max(prev + 1, now)`), so a rebuilt state database
+(the flag toggled off deletes it; local data loss) resumes at revisions
+strictly above anything previously uploaded rather than restarting at 1 and
+losing every upsert to the server's highest-revision rule. A bucket is emitted iff its aggregate's fingerprint
 differs from the last emitted fingerprint; an emptied bucket therefore emits
 an all-zero event exactly once. Changed buckets are found by reconciling
 fingerprints across all of the session's buckets in one grouped query on
@@ -131,3 +135,24 @@ the rewritten-burst heuristic, and a fork whose transcript ends with its
 first usage event still parked is released by an end-of-file flush once the
 burst window has passed in wall-clock time (see `src/token_usage/codex.rs`
 for the deviations from ccusage's parent-prefix matching).
+
+## Accepted limitations
+
+Reviewed decisions, accepted rather than accidental:
+
+- **Corrections withheld during exclusion are not replayed.** Events filtered
+  by the repo exclude gate are marked delivered like every other metric kind;
+  a bucket corrected while its repo was excluded stays diverged on the server
+  until the bucket's aggregate changes again after un-exclusion.
+- **Uploader abandonment applies.** TokenUsage rides the shared metrics
+  uploader, which abandons records after six failed upload attempts
+  (~20 hours offline). The state database has already marked those buckets
+  emitted; a later genuine change re-emits at a higher revision and heals the
+  gap, but a correction whose bucket never changes again is lost.
+- **Rewritten transcript content stays counted.** Entries have no per-file
+  ownership, so history that a rewrite/truncation removed from a transcript
+  keeps its rows (bounded by 90-day retention). Transcripts are append-only
+  in practice; the shrink path re-reads from byte 0 and dedup absorbs the
+  replay.
+- **Sweep-discovered work sits outside the `git-ai await` drain barrier**
+  (see Pipeline): backfill is eventual, matching stream-worker semantics.
