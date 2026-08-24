@@ -26,6 +26,7 @@ src/daemon/token_usage_worker.rs
   s_cfe6a4847c079e::t_d8b0aa0732919a 67
   s_cfe6a4847c079e::t_b4050bfaa1cf03 260-263,266-271
   s_cfe6a4847c079e::t_842468c234169f 171,199,264-265
+  s_cfe6a4847c079e::t_556cf942cdf573 258-259
 src/daemon.rs
   s_cfe6a4847c079e::t_78666abd41a01f 9247-9249
   s_cfe6a4847c079e::t_a75b0b98f28592 9292-9294
