@@ -450,6 +450,19 @@ impl TokenUsageDatabase {
         Ok(changed)
     }
 
+    /// Invalidate the quiet-skip snapshot of every file tracked under the
+    /// session, forcing the next sweep or notification to re-process and
+    /// reconcile it. Used when a cross-session replacement changed a bucket
+    /// of a session that is not currently being processed.
+    pub fn invalidate_session_files(&self, session_id: &str) -> Result<(), GitAiError> {
+        self.lock().execute(
+            "UPDATE tracked_files SET last_known_size = -1, last_modified = NULL
+             WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        Ok(())
+    }
+
     /// Update the file-size/mtime snapshot used to skip unchanged files.
     pub fn update_file_metadata(
         &self,
@@ -1114,6 +1127,18 @@ mod tests {
         let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
         assert_eq!(file.processing_errors, 0);
         assert_eq!(file.last_error_at, None);
+    }
+
+    #[test]
+    fn invalidate_session_files_defeats_the_quiet_skip_snapshot() {
+        let (_dir, db) = db();
+        db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        db.update_file_metadata("s1", "/t.jsonl", 1234, Some(99))
+            .unwrap();
+        db.invalidate_session_files("s1").unwrap();
+        let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        assert_eq!(file.last_known_size, -1);
+        assert_eq!(file.last_modified, None);
     }
 
     #[test]
