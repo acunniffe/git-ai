@@ -168,6 +168,7 @@ impl TokenUsageWorker {
         sweep_ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         sweep_ticker.tick().await; // skip the immediate tick
 
+        self.prune_old_entries().await;
         self.enqueue_sweep_tasks().await;
         self.reconcile_flagged().await;
 
@@ -196,6 +197,7 @@ impl TokenUsageWorker {
                     }
                 }
                 _ = sweep_ticker.tick() => {
+                    self.prune_old_entries().await;
                     self.enqueue_sweep_tasks().await;
                     // Crash recovery: reconcile flags left by a pass that
                     // died between its batch commit and its reconcile step,
@@ -279,6 +281,18 @@ impl TokenUsageWorker {
         for task in tasks {
             self.enqueue_sweep(task);
         }
+    }
+
+    /// Retention prune, run once per sweep off the async loop.
+    async fn prune_old_entries(&self) {
+        let token_db = self.token_db.clone();
+        let _ = tokio::task::spawn_blocking(move || {
+            let cutoff = retention_cutoff_bucket(now_secs());
+            if let Err(e) = token_db.prune_buckets_before(cutoff) {
+                tracing::warn!(error = %e, "token-usage retention prune failed");
+            }
+        })
+        .await;
     }
 
     /// Reconcile cross-session flags off the async loop (used by sweeps for
