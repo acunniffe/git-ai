@@ -22,8 +22,10 @@
 //! session. A session-scoped dedup would re-count the copied history on
 //! every resume. The first-seen row keeps the entry (and its session
 //! attribution); the replacement policy can move a row to the replacing
-//! session, in which case [`TokenUsageDatabase::commit_batch`] reports the
-//! previous session so its buckets can be reconciled too.
+//! session, in which case [`TokenUsageDatabase::commit_batch`] durably flags
+//! the previous session (`needs_reconcile`, same transaction) so its buckets
+//! are re-reconciled — without needing that session's files — even across
+//! crashes or after its transcripts were deleted.
 //!
 //! Changed buckets are found by *reconciliation*, not change tracking:
 //! [`TokenUsageDatabase::changed_buckets`] aggregates every bucket the
@@ -97,17 +99,26 @@ const MIGRATIONS: &[&str] = &[
 
     INSERT INTO schema_version (version) VALUES (1);
     "#,
-    // Version 2: global dedup indexes (resume/fork dedup crosses sessions),
-    // pending-flush marker + error backoff timestamp on tracked files, and a
-    // per-bucket emission revision.
+    // Version 2: global dedup (resume/fork dedup crosses sessions),
+    // pending-flush marker + error backoff timestamp + rollup identity on
+    // tracked files, a durable cross-session reconcile flag, and a
+    // per-bucket emission revision. A v1 database may hold cross-session
+    // duplicate keys (its dedup was session-scoped); the first-seen row wins
+    // so the unique index can be created and later replacements cannot
+    // collide on the primary key.
     r#"
-    CREATE INDEX IF NOT EXISTS idx_usage_entries_key
+    DELETE FROM usage_entries WHERE rowid NOT IN (
+        SELECT MIN(rowid) FROM usage_entries GROUP BY entry_key
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_usage_entries_key
         ON usage_entries(entry_key);
     CREATE INDEX IF NOT EXISTS idx_usage_entries_message_global
         ON usage_entries(message_id) WHERE message_id IS NOT NULL;
 
     ALTER TABLE tracked_files ADD COLUMN pending_flush INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE tracked_files ADD COLUMN last_error_at INTEGER;
+    ALTER TABLE tracked_files ADD COLUMN external_session_id TEXT NOT NULL DEFAULT '';
+    ALTER TABLE tracked_files ADD COLUMN needs_reconcile INTEGER NOT NULL DEFAULT 0;
     ALTER TABLE bucket_state ADD COLUMN emit_seq INTEGER NOT NULL DEFAULT 0;
 
     INSERT INTO schema_version (version) VALUES (2);
@@ -115,7 +126,8 @@ const MIGRATIONS: &[&str] = &[
 ];
 
 const TRACKED_FILE_COLUMNS: &str = "session_id, stream_path, tool, byte_offset, state_json, \
-     last_known_size, last_modified, processing_errors, last_error_at, pending_flush";
+     last_known_size, last_modified, processing_errors, last_error_at, pending_flush, \
+     external_session_id, needs_reconcile";
 
 /// A tracked transcript file: read cursor plus extractor state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +144,12 @@ pub struct TrackedFile {
     /// The extractor reported buffered entries at the end of the last pass;
     /// the file must be re-processed even if its bytes have not changed.
     pub pending_flush: bool,
+    /// External id of the rollup session (for emission attributes when the
+    /// session is reconciled without reading any file).
+    pub external_session_id: String,
+    /// A cross-session replacement changed this session's buckets; it must
+    /// be re-reconciled even if none of its files change (or still exist).
+    pub needs_reconcile: bool,
 }
 
 fn read_tracked_file(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackedFile> {
@@ -146,6 +164,8 @@ fn read_tracked_file(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackedFile> {
         processing_errors: row.get(7)?,
         last_error_at: row.get(8)?,
         pending_flush: row.get(9)?,
+        external_session_id: row.get(10)?,
+        needs_reconcile: row.get(11)?,
     })
 }
 
@@ -285,7 +305,13 @@ impl TokenUsageDatabase {
         };
         for (version, migration_sql) in MIGRATIONS.iter().enumerate() {
             if current_version < (version + 1) as u32 {
-                conn.execute_batch(migration_sql)?;
+                // Each migration commits atomically: a crash between the
+                // statements of a partially applied script (e.g. after one
+                // ALTER but before the version row) would otherwise make
+                // every later open() fail forever on re-application.
+                let tx = conn.unchecked_transaction()?;
+                tx.execute_batch(migration_sql)?;
+                tx.commit()?;
             }
         }
         Ok(())
@@ -302,16 +328,26 @@ impl TokenUsageDatabase {
     }
 
     /// Fetch the tracked file row, creating it with a zero cursor when new.
+    /// The rollup session's external id is recorded (or backfilled on rows
+    /// from before it was tracked) so the session can later be reconciled
+    /// without reading any file.
     pub fn ensure_file(
         &self,
         session_id: &str,
         stream_path: &str,
         tool: &str,
+        external_session_id: &str,
     ) -> Result<TrackedFile, GitAiError> {
         let conn = self.lock();
         conn.execute(
-            "INSERT OR IGNORE INTO tracked_files (session_id, stream_path, tool) VALUES (?1, ?2, ?3)",
-            params![session_id, stream_path, tool],
+            "INSERT OR IGNORE INTO tracked_files (session_id, stream_path, tool, external_session_id)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![session_id, stream_path, tool, external_session_id],
+        )?;
+        conn.execute(
+            "UPDATE tracked_files SET external_session_id = ?3
+             WHERE session_id = ?1 AND stream_path = ?2 AND external_session_id = ''",
+            params![session_id, stream_path, external_session_id],
         )?;
         Ok(conn.query_row(
             &format!(
@@ -334,21 +370,22 @@ impl TokenUsageDatabase {
 
     /// Persist one extracted batch atomically: deduplicated entries, the
     /// advanced read cursor, and the extractor state. Clears any recorded
-    /// processing error. Returns the *other* sessions whose rows were
-    /// replaced by this batch (resume/fork dedup can move an entry between
-    /// sessions), so their buckets can be reconciled too.
-    pub fn commit_batch(&self, batch: &BatchCommit<'_>) -> Result<Vec<String>, GitAiError> {
+    /// processing error. When resume/fork dedup moved an entry away from
+    /// another session, that session's `needs_reconcile` flag is set in the
+    /// same transaction, so the pending re-reconciliation survives crashes,
+    /// interrupts, and even the deletion of that session's transcripts.
+    pub fn commit_batch(&self, batch: &BatchCommit<'_>) -> Result<(), GitAiError> {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
-        let mut foreign_sessions: Vec<String> = Vec::new();
         for entry in batch.entries {
             if bucket_ts(entry.ts) < batch.min_bucket_ts {
                 continue;
             }
-            if let Some(previous_session) = upsert_entry(&tx, batch.session_id, entry)?
-                && !foreign_sessions.contains(&previous_session)
-            {
-                foreign_sessions.push(previous_session);
+            if let Some(previous_session) = upsert_entry(&tx, batch.session_id, entry)? {
+                tx.execute(
+                    "UPDATE tracked_files SET needs_reconcile = 1 WHERE session_id = ?1",
+                    params![previous_session],
+                )?;
             }
         }
         tx.execute(
@@ -365,7 +402,28 @@ impl TokenUsageDatabase {
             ],
         )?;
         tx.commit()?;
-        Ok(foreign_sessions)
+        Ok(())
+    }
+
+    /// Sessions flagged for re-reconciliation by a cross-session replacement,
+    /// with the identity needed to emit without reading any file.
+    pub fn sessions_needing_reconcile(&self) -> Result<Vec<(String, String, String)>, GitAiError> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT DISTINCT session_id, external_session_id, tool
+             FROM tracked_files WHERE needs_reconcile = 1",
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Clear the reconcile flag after the session's buckets were reconciled.
+    pub fn clear_needs_reconcile(&self, session_id: &str) -> Result<(), GitAiError> {
+        self.lock().execute(
+            "UPDATE tracked_files SET needs_reconcile = 0 WHERE session_id = ?1",
+            params![session_id],
+        )?;
+        Ok(())
     }
 
     /// Reconcile the session in one pass: aggregate every bucket it has
@@ -456,19 +514,6 @@ impl TokenUsageDatabase {
         Ok(changed)
     }
 
-    /// Invalidate the quiet-skip snapshot of every file tracked under the
-    /// session, forcing the next sweep or notification to re-process and
-    /// reconcile it. Used when a cross-session replacement changed a bucket
-    /// of a session that is not currently being processed.
-    pub fn invalidate_session_files(&self, session_id: &str) -> Result<(), GitAiError> {
-        self.lock().execute(
-            "UPDATE tracked_files SET last_known_size = -1, last_modified = NULL
-             WHERE session_id = ?1",
-            params![session_id],
-        )?;
-        Ok(())
-    }
-
     /// Update the file-size/mtime snapshot used to skip unchanged files.
     pub fn update_file_metadata(
         &self,
@@ -556,6 +601,33 @@ impl TokenUsageDatabase {
                 |row| row.get(0),
             )
             .optional()?)
+    }
+
+    /// Reserve emission revisions *before* events are handed to the sink:
+    /// once a revision may exist in the metrics queue it must never be
+    /// reused, or a crash between sink and fingerprint write would produce
+    /// two payloads with equal revisions and re-open the tie the revision
+    /// exists to eliminate. The fingerprint is deliberately left untouched
+    /// (a placeholder '' on first contact) so a failed sink still
+    /// re-reconciles; a wasted revision number is harmless.
+    pub fn reserve_emit_seqs(
+        &self,
+        session_id: &str,
+        reservations: &[(String, u32, u64)],
+    ) -> Result<(), GitAiError> {
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        for (model, bucket, emit_seq) in reservations {
+            tx.execute(
+                "INSERT INTO bucket_state (session_id, model, bucket_ts, emitted_fingerprint, emit_seq, last_emitted_at)
+                 VALUES (?1, ?2, ?3, '', ?4, 0)
+                 ON CONFLICT(session_id, model, bucket_ts)
+                 DO UPDATE SET emit_seq = ?4",
+                params![session_id, model, bucket, to_db_i64(*emit_seq)],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     /// Record that the bucket's current aggregate was handed to the metrics
@@ -778,9 +850,10 @@ mod tests {
         }
     }
 
-    fn commit_for(db: &TokenUsageDatabase, session: &str, entries: &[UsageEntry]) -> Vec<String> {
+    fn commit_for(db: &TokenUsageDatabase, session: &str, entries: &[UsageEntry]) {
         let path = format!("/{session}.jsonl");
-        db.ensure_file(session, &path, "claude").unwrap();
+        db.ensure_file(session, &path, "claude", &format!("{session}-ext"))
+            .unwrap();
         db.commit_batch(&BatchCommit {
             session_id: session,
             stream_path: &path,
@@ -811,7 +884,9 @@ mod tests {
     #[test]
     fn ensure_file_creates_zero_cursor_and_is_stable() {
         let (_dir, db) = db();
-        let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        let file = db
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .unwrap();
         assert_eq!(file.byte_offset, 0);
         assert_eq!(file.state_json, None);
         assert!(!file.pending_flush);
@@ -825,7 +900,9 @@ mod tests {
             min_bucket_ts: 0,
         })
         .unwrap();
-        let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        let file = db
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .unwrap();
         assert_eq!(file.byte_offset, 42);
         assert_eq!(file.state_json.as_deref(), Some("{\"x\":1}"));
         assert!(file.pending_flush);
@@ -854,8 +931,9 @@ mod tests {
         // file with the original message/request ids; dedup must be global.
         let (_dir, db) = db();
         commit_for(&db, "s1", &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
-        let foreign = commit_for(&db, "s2", &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
-        assert!(foreign.is_empty(), "identical copy must not replace");
+        commit_for(&db, "s2", &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
+        // Identical copy must not replace, so nothing needs reconciling.
+        assert!(db.sessions_needing_reconcile().unwrap().is_empty());
         // The entry stays attributed to the first-seen session.
         assert_eq!(
             db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
@@ -872,18 +950,25 @@ mod tests {
     }
 
     #[test]
-    fn cross_session_replacement_reports_the_previous_owner() {
+    fn cross_session_replacement_flags_the_previous_owner_durably() {
         // The resumed copy carries larger totals (the original was a partial
         // streaming re-emit): the replacement moves the entry to the new
-        // session, and the old session is reported for reconciliation.
+        // session, and the old session is durably flagged for
+        // reconciliation in the same transaction — identity included, so no
+        // file of that session is ever needed again.
         let (_dir, db) = db();
         commit_for(&db, "s1", &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
-        let foreign = commit_for(
+        commit_for(
             &db,
             "s2",
             &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))],
         );
-        assert_eq!(foreign, vec!["s1".to_string()]);
+        assert_eq!(
+            db.sessions_needing_reconcile().unwrap(),
+            vec![("s1".to_string(), "s1-ext".to_string(), "claude".to_string())]
+        );
+        db.clear_needs_reconcile("s1").unwrap();
+        assert!(db.sessions_needing_reconcile().unwrap().is_empty());
         assert_eq!(
             db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
                 .unwrap()
@@ -1033,7 +1118,8 @@ mod tests {
     #[test]
     fn entries_before_the_retention_cutoff_are_dropped_at_insert() {
         let (_dir, db) = db();
-        db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        db.ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .unwrap();
         db.commit_batch(&BatchCommit {
             session_id: "s1",
             stream_path: "/t.jsonl",
@@ -1050,6 +1136,86 @@ mod tests {
         let changed = db.changed_buckets("s1").unwrap();
         assert_eq!(changed.len(), 1);
         assert_eq!(changed[0].bucket_ts, 999_900);
+    }
+
+    #[test]
+    fn v1_databases_with_legacy_cross_session_duplicates_upgrade_cleanly() {
+        // A v1 database (session-scoped dedup) can hold the same entry_key
+        // under several sessions. The v2 migration keeps the first-seen row
+        // and enforces global uniqueness, so a later cross-session
+        // replacement can never collide on the (session_id, entry_key)
+        // primary key and poison the transcript.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token-usage-db");
+        {
+            let conn = rusqlite::Connection::open(&path).unwrap();
+            conn.execute_batch(MIGRATIONS[0]).unwrap();
+            for session in ["s1", "s2", "s3"] {
+                conn.execute(
+                    "INSERT INTO usage_entries (session_id, entry_key, message_id, model, bucket_ts,
+                         input_tokens, output_tokens, total_tokens)
+                     VALUES (?1, 'm1|r1', 'm1', 'claude-sonnet-4-20250514', 600, 10, 5, 15)",
+                    params![session],
+                )
+                .unwrap();
+            }
+        }
+
+        let db = TokenUsageDatabase::open(&path).unwrap();
+        assert_eq!(db.schema_version().unwrap(), 2);
+        // First-seen row (s1) survives; the duplicates are gone.
+        assert_eq!(
+            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+                .unwrap()
+                .message_count,
+            1
+        );
+        assert_eq!(
+            db.aggregate_bucket("s2", "claude-sonnet-4-20250514", 600)
+                .unwrap()
+                .message_count,
+            0
+        );
+        // A cross-session replacement over the legacy key works (this used
+        // to violate the primary key when a duplicate existed).
+        commit_for(
+            &db,
+            "s2",
+            &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))],
+        );
+        assert_eq!(
+            db.aggregate_bucket("s2", "claude-sonnet-4-20250514", 600)
+                .unwrap()
+                .output,
+            50
+        );
+    }
+
+    #[test]
+    fn reserved_revisions_are_never_reused() {
+        // Reservation happens before the sink: a crash between sink and
+        // fingerprint write must not lead to a second payload with an equal
+        // revision.
+        let (_dir, db) = db();
+        let model = "claude-sonnet-4-20250514";
+        commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
+        let changed = db.changed_buckets("s1").unwrap();
+        assert_eq!(changed[0].emit_seq, 0);
+        db.reserve_emit_seqs("s1", &[(model.to_string(), 600, 1)])
+            .unwrap();
+
+        // Fingerprint untouched by the reservation: the bucket still
+        // reconciles (as if the sink crashed), now at the next revision.
+        let changed = db.changed_buckets("s1").unwrap();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].emit_seq, 1);
+
+        // Success path completes the emission; nothing left to reconcile.
+        db.reserve_emit_seqs("s1", &[(model.to_string(), 600, 2)])
+            .unwrap();
+        db.mark_emitted("s1", model, 600, &changed[0].aggregate.fingerprint(), 2, 9)
+            .unwrap();
+        assert!(db.changed_buckets("s1").unwrap().is_empty());
     }
 
     #[test]
@@ -1119,11 +1285,14 @@ mod tests {
     #[test]
     fn record_error_tracks_and_commit_clears() {
         let (_dir, db) = db();
-        db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        db.ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .unwrap();
         db.record_error("s1", "/t.jsonl", "boom", 100).unwrap();
         db.record_error("s1", "/t.jsonl", "boom again", 200)
             .unwrap();
-        let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        let file = db
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .unwrap();
         assert_eq!(file.processing_errors, 2);
         assert_eq!(file.last_error_at, Some(200));
         db.commit_batch(&BatchCommit {
@@ -1136,30 +1305,23 @@ mod tests {
             min_bucket_ts: 0,
         })
         .unwrap();
-        let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        let file = db
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .unwrap();
         assert_eq!(file.processing_errors, 0);
         assert_eq!(file.last_error_at, None);
     }
 
     #[test]
-    fn invalidate_session_files_defeats_the_quiet_skip_snapshot() {
-        let (_dir, db) = db();
-        db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
-        db.update_file_metadata("s1", "/t.jsonl", 1234, Some(99))
-            .unwrap();
-        db.invalidate_session_files("s1").unwrap();
-        let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
-        assert_eq!(file.last_known_size, -1);
-        assert_eq!(file.last_modified, None);
-    }
-
-    #[test]
     fn file_metadata_roundtrip() {
         let (_dir, db) = db();
-        db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        db.ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .unwrap();
         db.update_file_metadata("s1", "/t.jsonl", 1234, Some(99))
             .unwrap();
-        let file = db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
+        let file = db
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .unwrap();
         assert_eq!(file.last_known_size, 1234);
         assert_eq!(file.last_modified, Some(99));
     }
