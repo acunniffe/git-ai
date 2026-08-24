@@ -277,8 +277,7 @@ impl DaemonTelemetryWorkerHandle {
     #[cfg(test)]
     pub fn new_noop() -> Self {
         let (flush_tx, _flush_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (metrics_reingest_tx, _metrics_reingest_rx) =
-            tokio::sync::mpsc::unbounded_channel();
+        let (metrics_reingest_tx, _metrics_reingest_rx) = tokio::sync::mpsc::unbounded_channel();
         let (metrics_persist_tx, persist_rx) =
             tokio::sync::mpsc::channel(METRICS_PERSIST_QUEUE_CAPACITY);
         // Keep the receiver alive so noop submissions look like a full-but-
@@ -1935,12 +1934,10 @@ mod tests {
     async fn noop_worker_reingest_fails_instead_of_hanging() {
         let handle = DaemonTelemetryWorkerHandle::new_noop();
 
-        let result = tokio::time::timeout(
-            Duration::from_secs(1),
-            handle.reingest_metrics(None, None),
-        )
-        .await
-        .expect("noop reingest should return promptly");
+        let result =
+            tokio::time::timeout(Duration::from_secs(1), handle.reingest_metrics(None, None))
+                .await
+                .expect("noop reingest should return promptly");
 
         assert!(result.is_err());
     }
