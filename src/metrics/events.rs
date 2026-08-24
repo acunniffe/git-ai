@@ -2597,6 +2597,33 @@ mod token_usage_tests {
     }
 
     #[test]
+    fn test_token_usage_wire_encoding_is_pinned() {
+        // The sparse positions are the server's decoding contract: a silent
+        // renumbering would corrupt field decoding for every uploaded event.
+        let values = TokenUsageValues::new()
+            .bucket_ts(1_767_225_600)
+            .input_tokens(1)
+            .output_tokens(2)
+            .cache_read_tokens(3)
+            .cache_write_tokens(4)
+            .total_tokens(10)
+            .reasoning_output_tokens_opt(Some(5))
+            .est_cost_micro_usd(6)
+            .credits(7.5)
+            .message_count(8)
+            .emitted_seq(9);
+        let sparse = PosEncoded::to_sparse(&values);
+        let ordered: std::collections::BTreeMap<usize, &serde_json::Value> = sparse
+            .iter()
+            .map(|(k, v)| (k.parse::<usize>().unwrap(), v))
+            .collect();
+        insta::assert_snapshot!(
+            serde_json::to_string(&ordered).unwrap(),
+            @r#"{"0":1767225600,"1":1,"2":2,"3":3,"4":4,"5":10,"6":5,"7":6,"8":7.5,"9":8,"10":9}"#
+        );
+    }
+
+    #[test]
     fn test_reasoning_tokens_omitted_when_absent() {
         let values = TokenUsageValues::new()
             .bucket_ts(300)
