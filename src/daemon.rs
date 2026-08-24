@@ -9264,23 +9264,34 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
                 // uses notify_one, which wakes exactly one waiter.
                 let token_usage_shutdown_notify = Arc::new(tokio::sync::Notify::new());
                 // The token-usage worker is fed by stream-worker completions,
-                // so it lives inside the transcript_streaming gate. Its own
-                // token_usage_metrics flag is re-read per trigger.
-                let token_usage_handle = match crate::token_usage::db::TokenUsageDatabase::open(
-                    config.internal_dir.join("token-usage-db"),
-                ) {
-                    Ok(token_db) => {
-                        Some(crate::daemon::token_usage_worker::spawn_token_usage_worker(
-                            streams_db.clone(),
-                            std::sync::Arc::new(token_db),
-                            telemetry_handle.clone(),
-                            token_usage_shutdown_notify.clone(),
-                        ))
+                // so it lives inside the transcript_streaming gate, behind
+                // its own startup flag (like transcript_streaming itself).
+                // When the flag is off, nothing runs, no database is created,
+                // and any previously collected data is deleted.
+                let token_usage_db_path = config.internal_dir.join("token-usage-db");
+                let token_usage_handle = if config::Config::get()
+                    .get_feature_flags()
+                    .token_usage_metrics
+                {
+                    match crate::token_usage::db::TokenUsageDatabase::open(&token_usage_db_path) {
+                        Ok(token_db) => {
+                            Some(crate::daemon::token_usage_worker::spawn_token_usage_worker(
+                                streams_db.clone(),
+                                std::sync::Arc::new(token_db),
+                                telemetry_handle.clone(),
+                                token_usage_shutdown_notify.clone(),
+                            ))
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "failed to open token-usage database, token-usage worker not started");
+                            None
+                        }
                     }
-                    Err(e) => {
-                        tracing::error!(error = %e, "failed to open token-usage database, token-usage worker not started");
-                        None
-                    }
+                } else {
+                    crate::token_usage::db::TokenUsageDatabase::remove_database_files(
+                        &token_usage_db_path,
+                    );
+                    None
                 };
                 let transcript_handle = crate::daemon::stream_worker::spawn_stream_worker(
                     streams_db.clone(),

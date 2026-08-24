@@ -9,22 +9,31 @@
 //! - Sweeps enumerate the streams database's `transcript` rows, so every
 //!   session git-ai knows about is backfilled: a newly tracked file starts at
 //!   byte offset 0 and its full history is bucketed on first processing.
+//!   Sweep enumeration is cheap per session (one stat compared against the
+//!   token database's size/mtime snapshot); per-file work — extractor state,
+//!   repo discovery, reading — only happens for files that actually changed.
+//! - Notifications and sweep backfill run on separate queues: the await
+//!   drain barrier waits only for notification-driven work, so a first-start
+//!   historical backfill can never starve `git-ai await`.
 //! - The read cursor, extractor state, entries, and emission fingerprints all
 //!   live in [`TokenUsageDatabase`]; each batch commits atomically, and
 //!   emission reconciles fingerprints across all of the session's buckets, so
 //!   there is no retry machinery here - a failed pass (or a crash at any
-//!   point) is healed by the next notification or sweep, and unchanged files
-//!   are skipped by a size/mtime snapshot written only after a fully
-//!   successful pass.
+//!   point) is healed by the next notification or sweep, with a per-file
+//!   error backoff so a permanently failing transcript is not re-read on
+//!   every trigger. The size/mtime quiet-skip snapshot is written only after
+//!   a fully successful pass.
 //! - Claude subagent transcripts roll up to their parent session (matching
 //!   ccusage), which also lets sidechain replays dedup against the parent's
-//!   entries.
-//! - The `token_usage_metrics` feature flag is read fresh on every trigger,
-//!   so the worker can be disabled without a daemon restart (enabling it
-//!   only requires the daemon to be running with the worker spawned).
+//!   entries. Entry dedup itself is global across sessions (resume/fork
+//!   copies); when a replacement moves an entry between sessions, the
+//!   previous owner's files are invalidated so its buckets re-reconcile on
+//!   the next pass with their own attributes.
+//! - The `token_usage_metrics` feature flag gates the worker at daemon
+//!   startup (like `transcript_streaming`); when it is off, the token-usage
+//!   database is deleted so no collected data is retained.
 
-use std::collections::HashSet;
-use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -32,7 +41,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tokio::sync::Notify;
-use tokio::time::interval;
+use tokio::time::{MissedTickBehavior, interval};
 
 use crate::authorship::authorship_log_serialization::generate_session_id;
 use crate::daemon::telemetry_worker::DaemonTelemetryWorkerHandle;
@@ -40,7 +49,7 @@ use crate::error::GitAiError;
 use crate::metrics::{EventAttributes, MetricEvent, PosEncoded, TokenUsageValues};
 use crate::streams::db::{StreamRecord, StreamsDatabase};
 use crate::streams::types::{JsonlLineState, read_jsonl_line};
-use crate::token_usage::db::TokenUsageDatabase;
+use crate::token_usage::db::{BatchCommit, TokenUsageDatabase, TrackedFile};
 use crate::token_usage::extractor_for_tool;
 
 /// Entry/byte bounds of one atomic batch commit.
@@ -50,6 +59,11 @@ const BATCH_MAX_BYTES: usize = 4 * 1024 * 1024;
 /// Same telemetry-buffer backpressure as the stream worker.
 const BACKPRESSURE_THRESHOLD: usize = 5_000;
 const BACKPRESSURE_MAX_WAITS: usize = 40;
+
+/// Entries older than this are neither stored nor emitted, and stored ones
+/// are pruned on sweep: backfill must not upload history that the retention
+/// prune would immediately delete.
+pub(crate) const ENTRY_RETENTION_DAYS: u64 = 90;
 
 /// A transcript file to (re)process, identified by its streams-db row.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -84,7 +98,9 @@ impl TokenUsageWorkerHandle {
         });
     }
 
-    /// Wait until all currently queued work has been processed.
+    /// Wait until all notification-driven work has been processed. Sweep
+    /// backfill intentionally continues in the background so a historical
+    /// backfill cannot starve the await barrier.
     pub async fn drain(&self) -> Result<(), String> {
         let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
         self.drain_tx
@@ -115,7 +131,8 @@ pub fn spawn_token_usage_worker(
         shutdown_flag: Arc::new(AtomicBool::new(false)),
         notify_rx,
         drain_rx,
-        queue: VecDeque::new(),
+        notify_queue: VecDeque::new(),
+        sweep_queue: VecDeque::new(),
         queued: HashSet::new(),
     };
     tokio::spawn(async move {
@@ -135,31 +152,35 @@ struct TokenUsageWorker {
     shutdown_flag: Arc<AtomicBool>,
     notify_rx: tokio::sync::mpsc::UnboundedReceiver<TokenUsageTask>,
     drain_rx: tokio::sync::mpsc::UnboundedReceiver<DrainRequest>,
-    queue: VecDeque<TokenUsageTask>,
+    /// Notification-driven work: drained by the await barrier.
+    notify_queue: VecDeque<TokenUsageTask>,
+    /// Sweep/backfill work: processed only in the background loop.
+    sweep_queue: VecDeque<TokenUsageTask>,
     queued: HashSet<TokenUsageTask>,
-}
-
-/// Read the flag fresh so config changes apply without a daemon restart.
-fn token_usage_enabled() -> bool {
-    crate::config::Config::fresh()
-        .get_feature_flags()
-        .token_usage_metrics
 }
 
 impl TokenUsageWorker {
     async fn run(mut self) {
         tracing::info!("token-usage worker started");
         let mut sweep_ticker = interval(Duration::from_secs(30 * 60));
+        // After suspend/resume, one sweep covers everything; do not replay
+        // every missed tick.
+        sweep_ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         sweep_ticker.tick().await; // skip the immediate tick
 
-        if token_usage_enabled() {
-            self.enqueue_sweep_tasks();
-        }
+        self.enqueue_sweep_tasks();
 
         loop {
-            self.process_queued().await;
+            // Promote notifications that arrived while processing.
+            while let Ok(task) = self.notify_rx.try_recv() {
+                self.enqueue_notify(task);
+            }
             if self.shutdown_flag.load(Ordering::Relaxed) {
                 break;
+            }
+            if let Some(task) = self.pop_next() {
+                self.process_task(task).await;
+                continue;
             }
             tokio::select! {
                 _ = self.shutdown_notify.notified() => {
@@ -167,14 +188,10 @@ impl TokenUsageWorker {
                     break;
                 }
                 _ = sweep_ticker.tick() => {
-                    if token_usage_enabled() {
-                        self.enqueue_sweep_tasks();
-                    }
+                    self.enqueue_sweep_tasks();
                 }
                 Some(task) = self.notify_rx.recv() => {
-                    if token_usage_enabled() {
-                        self.enqueue(task);
-                    }
+                    self.enqueue_notify(task);
                 }
                 Some(request) = self.drain_rx.recv() => {
                     self.handle_drain(request).await;
@@ -185,26 +202,57 @@ impl TokenUsageWorker {
     }
 
     async fn handle_drain(&mut self, request: DrainRequest) {
-        // Consume notifications that were queued before the barrier.
-        let enabled = token_usage_enabled();
+        // Consume notifications that were queued before the barrier, then
+        // process only notification-driven work (not sweep backfill).
         while let Ok(task) = self.notify_rx.try_recv() {
-            if enabled {
-                self.enqueue(task);
+            self.enqueue_notify(task);
+        }
+        while let Some(task) = self.pop_queue(true) {
+            self.process_task(task).await;
+            if self.shutdown_flag.load(Ordering::Relaxed) {
+                break;
             }
         }
-        self.process_queued().await;
         let _ = request.completion.send(());
     }
 
-    fn enqueue(&mut self, task: TokenUsageTask) {
+    fn enqueue_notify(&mut self, task: TokenUsageTask) {
         if self.queued.insert(task.clone()) {
-            self.queue.push_back(task);
+            self.notify_queue.push_back(task);
+        } else if let Some(pos) = self.sweep_queue.iter().position(|t| *t == task) {
+            // Promote: fresh data trumps pending backfill of the same file.
+            self.sweep_queue.remove(pos);
+            self.notify_queue.push_back(task);
         }
     }
 
-    /// Enqueue every supported transcript the streams database knows about.
-    /// New files get a zero cursor in the token-usage database, which is what
-    /// backfills history for sessions tracked before this feature ran.
+    fn enqueue_sweep(&mut self, task: TokenUsageTask) {
+        if self.queued.insert(task.clone()) {
+            self.sweep_queue.push_back(task);
+        }
+    }
+
+    fn pop_queue(&mut self, notify_only: bool) -> Option<TokenUsageTask> {
+        let task = self.notify_queue.pop_front().or_else(|| {
+            if notify_only {
+                None
+            } else {
+                self.sweep_queue.pop_front()
+            }
+        })?;
+        self.queued.remove(&task);
+        Some(task)
+    }
+
+    fn pop_next(&mut self) -> Option<TokenUsageTask> {
+        self.pop_queue(false)
+    }
+
+    /// Enqueue supported transcripts the streams database knows about whose
+    /// files changed since the last completed pass. New files have no
+    /// snapshot yet and are always enqueued, which is what backfills history
+    /// for sessions tracked before this feature ran; missing files are
+    /// skipped quietly.
     fn enqueue_sweep_tasks(&mut self) {
         let streams = match self.streams_db.all_streams() {
             Ok(streams) => streams,
@@ -213,16 +261,31 @@ impl TokenUsageWorker {
                 return;
             }
         };
+        let tracked: HashMap<String, TrackedFile> = match self.token_db.all_files() {
+            Ok(files) => files
+                .into_iter()
+                .map(|file| (file.stream_path.clone(), file))
+                .collect(),
+            Err(e) => {
+                tracing::warn!(error = %e, "token-usage sweep: failed to list tracked files");
+                return;
+            }
+        };
         for stream in streams {
             if stream.stream_kind != "transcript" || extractor_for_tool(&stream.tool).is_none() {
                 continue;
             }
-            // Sessions whose transcript is gone can't be backfilled; skip
-            // them without recording errors so sweeps stay quiet.
-            if !std::path::Path::new(&stream.stream_path).exists() {
+            let Ok(metadata) = std::fs::metadata(&stream.stream_path) else {
+                continue;
+            };
+            if let Some(file) = tracked.get(&stream.stream_path)
+                && file.last_known_size as u64 == metadata.len()
+                && file.last_modified == modified_secs(&metadata)
+                && !file.pending_flush
+            {
                 continue;
             }
-            self.enqueue(TokenUsageTask {
+            self.enqueue_sweep(TokenUsageTask {
                 session_id: stream.session_id,
                 tool: stream.tool,
                 stream_path: stream.stream_path,
@@ -230,51 +293,51 @@ impl TokenUsageWorker {
         }
     }
 
-    async fn process_queued(&mut self) {
-        while let Some(task) = self.queue.pop_front() {
-            self.queued.remove(&task);
-            if self.shutdown_flag.load(Ordering::Relaxed) {
-                return;
+    async fn process_task(&mut self, task: TokenUsageTask) {
+        let streams_db = self.streams_db.clone();
+        let token_db = self.token_db.clone();
+        let telemetry = self.telemetry.clone();
+        let shutdown_flag = self.shutdown_flag.clone();
+        let task_clone = task.clone();
+        let mut handle = tokio::task::spawn_blocking(move || {
+            process_task_blocking(
+                &streams_db,
+                &token_db,
+                &telemetry,
+                &task_clone,
+                &shutdown_flag,
+            )
+        });
+        // Keep watching for shutdown while the blocking pass runs: setting
+        // the flag makes the pass stop at its next line/batch boundary.
+        let result = tokio::select! {
+            result = &mut handle => result,
+            _ = self.shutdown_notify.notified() => {
+                self.shutdown_flag.store(true, Ordering::Relaxed);
+                (&mut handle).await
             }
-            let streams_db = self.streams_db.clone();
-            let token_db = self.token_db.clone();
-            let telemetry = self.telemetry.clone();
-            let shutdown_flag = self.shutdown_flag.clone();
-            let task_clone = task.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                process_task_blocking(
-                    &streams_db,
-                    &token_db,
-                    &telemetry,
-                    &task_clone,
-                    &shutdown_flag,
-                )
-            })
-            .await;
-            match result {
-                Ok(Ok(())) => {}
-                Ok(Err(e)) => {
-                    tracing::warn!(error = %e, session_id = %task.session_id, "token-usage processing failed");
-                }
-                Err(e) => {
-                    tracing::error!(error = %e, session_id = %task.session_id, "token-usage task panicked");
-                }
+        };
+        match result {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, session_id = %task.session_id, "token-usage processing failed");
+            }
+            Err(e) => {
+                tracing::error!(error = %e, session_id = %task.session_id, "token-usage task panicked");
             }
         }
     }
 }
 
-/// Per-file emission context derived from the streams-db row.
-struct EmissionContext {
-    /// Rollup session: subagent transcripts attribute to their parent session
-    /// (matching ccusage), which also dedups sidechain replays.
+/// Rollup identity of the session a transcript belongs to: subagent
+/// transcripts attribute to their parent session (matching ccusage).
+struct SessionIdentity {
     session_id: String,
     external_session_id: String,
     tool: String,
-    repo_url: Option<String>,
 }
 
-impl EmissionContext {
+impl SessionIdentity {
     fn from_stream(stream: &StreamRecord) -> Self {
         let (session_id, external_session_id) = match &stream.external_parent_session_id {
             Some(parent_ext) => (
@@ -286,17 +349,71 @@ impl EmissionContext {
                 stream.external_session_id.clone(),
             ),
         };
-        let repo_url = stream
-            .repo_work_dir
-            .as_ref()
-            .and_then(|dir| crate::repo_url::resolve_repo_url_from_path(&PathBuf::from(dir)));
         Self {
             session_id,
             external_session_id,
             tool: stream.tool.clone(),
-            repo_url,
         }
     }
+}
+
+/// Resolve the repo_url for emission attributes: the stream's stored working
+/// directory, falling back to the agent's cwd inference (persisted back like
+/// the SessionEvent path does) so the repo exclude gate sees a repo_url
+/// whenever one is resolvable.
+fn resolve_repo_url_for_stream(
+    streams_db: &StreamsDatabase,
+    stream: &StreamRecord,
+) -> Option<String> {
+    let work_dir = stream
+        .repo_work_dir
+        .as_ref()
+        .map(PathBuf::from)
+        .or_else(|| {
+            let inferred = crate::streams::agent::get_agent(&stream.tool)?
+                .infer_cwd(Path::new(&stream.stream_path))?;
+            let _ = streams_db.update_repo_work_dir(
+                &stream.session_id,
+                &stream.stream_kind,
+                &stream.stream_path,
+                &inferred.display().to_string(),
+            );
+            Some(inferred)
+        })?;
+    crate::repo_url::resolve_repo_url_from_path(&work_dir)
+}
+
+/// Backoff between attempts for a file whose last pass failed, indexed by
+/// consecutive error count.
+fn error_backoff_secs(errors: i64) -> i64 {
+    match errors {
+        ..=0 => 0,
+        1 => 5,
+        2 => 30,
+        3 => 300,
+        _ => 1800,
+    }
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn modified_secs(metadata: &std::fs::Metadata) -> Option<i64> {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+}
+
+/// Bucket cutoff below which entries are dropped instead of stored.
+fn retention_cutoff_bucket(now: i64) -> u32 {
+    now.saturating_sub((ENTRY_RETENTION_DAYS * 24 * 60 * 60) as i64)
+        .clamp(0, u32::MAX as i64) as u32
 }
 
 fn process_task_blocking(
@@ -312,55 +429,68 @@ fn process_task_blocking(
     else {
         return Ok(());
     };
-    let ctx = EmissionContext::from_stream(&stream);
-    let result = process_file(token_db, &ctx, &task.stream_path, shutdown_flag, |events| {
-        // Backpressure before handing a batch to the telemetry queue.
-        for _ in 0..BACKPRESSURE_MAX_WAITS {
-            if telemetry.metrics_buffer_len() < BACKPRESSURE_THRESHOLD
-                || shutdown_flag.load(Ordering::Relaxed)
-            {
-                break;
+    let identity = SessionIdentity::from_stream(&stream);
+    let result = process_file(
+        token_db,
+        &identity,
+        &task.stream_path,
+        shutdown_flag,
+        // Repo discovery is deferred until events are actually emitted.
+        || resolve_repo_url_for_stream(streams_db, &stream),
+        |events| {
+            // Backpressure before handing a batch to the telemetry queue.
+            for _ in 0..BACKPRESSURE_MAX_WAITS {
+                if telemetry.metrics_buffer_len() < BACKPRESSURE_THRESHOLD
+                    || shutdown_flag.load(Ordering::Relaxed)
+                {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
             }
-            std::thread::sleep(Duration::from_millis(100));
-        }
-        telemetry.persist_metrics_blocking(events).map(|_| ())
-    });
+            telemetry.persist_metrics_blocking(events).map(|_| ())
+        },
+    );
     if let Err(e) = &result {
         // Keyed by the rollup session id (subagent transcripts track under
         // their parent), matching the row ensure_file created.
-        let _ = token_db.record_error(&ctx.session_id, &task.stream_path, &e.to_string());
+        let _ = token_db.record_error(
+            &identity.session_id,
+            &task.stream_path,
+            &e.to_string(),
+            now_secs(),
+        );
     }
     result
 }
 
 /// Incrementally read one transcript file, persist deduplicated entries, and
-/// emit changed buckets through `sink`. Split out (with an injectable sink)
-/// for direct testing without a daemon.
+/// emit changed buckets through `sink`. Split out (with injectable repo
+/// resolution and sink) for direct testing without a daemon.
 fn process_file(
     token_db: &TokenUsageDatabase,
-    ctx: &EmissionContext,
+    identity: &SessionIdentity,
     stream_path: &str,
     shutdown_flag: &AtomicBool,
+    resolve_repo_url: impl FnOnce() -> Option<String>,
     sink: impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
 ) -> Result<(), GitAiError> {
-    let tracked = token_db.ensure_file(&ctx.session_id, stream_path, &ctx.tool)?;
-    let metadata = std::fs::metadata(stream_path)?;
-    let size = metadata.len();
-    let modified = metadata
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64);
+    let tracked = token_db.ensure_file(&identity.session_id, stream_path, &identity.tool)?;
+    let now = now_secs();
 
-    // Quiet skip: nothing changed since the last completed pass.
-    if size == tracked.last_known_size as u64
-        && modified == tracked.last_modified
-        && tracked.byte_offset <= size
+    // Error backoff: a file whose last pass failed is not retried on every
+    // trigger.
+    if tracked.processing_errors > 0
+        && let Some(last_error_at) = tracked.last_error_at
+        && now < last_error_at.saturating_add(error_backoff_secs(tracked.processing_errors))
     {
         return Ok(());
     }
 
-    let Some(mut extractor) = extractor_for_tool(&ctx.tool) else {
+    let metadata = std::fs::metadata(stream_path)?;
+    let size = metadata.len();
+    let modified = modified_secs(&metadata);
+
+    let Some(mut extractor) = extractor_for_tool(&identity.tool) else {
         return Ok(());
     };
     // A shrunken file was rewritten: restart from scratch. Entry-level dedup
@@ -372,10 +502,21 @@ fn process_file(
         extractor.restore_state(state);
     }
 
+    // Quiet skip: nothing changed since the last completed pass and the
+    // extractor holds nothing to flush.
+    if size == tracked.last_known_size as u64
+        && modified == tracked.last_modified
+        && !extractor.has_pending()
+    {
+        return Ok(());
+    }
+
     let file = std::fs::File::open(stream_path)?;
     let mut reader = BufReader::with_capacity(128 * 1024, file);
     reader.seek(SeekFrom::Start(offset))?;
 
+    let cutoff = retention_cutoff_bucket(now);
+    let mut foreign_sessions: Vec<String> = Vec::new();
     let mut line = String::new();
     let mut reached_end = false;
     let mut interrupted = false;
@@ -411,13 +552,25 @@ fn process_file(
                 }
             }
         }
-        token_db.commit_batch(
-            &ctx.session_id,
+        if reached_end {
+            // End of the file: release buffered entries whose deferral
+            // window has passed (e.g. a forked codex session's parked first
+            // turn).
+            entries.extend(extractor.flush(now.saturating_mul(1000)));
+        }
+        for session in token_db.commit_batch(&BatchCommit {
+            session_id: &identity.session_id,
             stream_path,
-            &entries,
-            offset,
-            extractor.state_json().as_deref(),
-        )?;
+            entries: &entries,
+            new_offset: offset,
+            state_json: extractor.state_json().as_deref(),
+            pending_flush: extractor.has_pending(),
+            min_bucket_ts: cutoff,
+        })? {
+            if !foreign_sessions.contains(&session) {
+                foreign_sessions.push(session);
+            }
+        }
     }
 
     if interrupted {
@@ -426,35 +579,39 @@ fn process_file(
         // reconciles emission.
         return Ok(());
     }
-    emit_changed_buckets(token_db, ctx, sink)?;
+    // Cross-session replacements changed other sessions' buckets: invalidate
+    // their snapshots so their next pass re-reconciles with their own
+    // attributes.
+    for session in &foreign_sessions {
+        token_db.invalidate_session_files(session)?;
+    }
+    emit_changed_buckets(token_db, identity, resolve_repo_url, sink)?;
     // The quiet-skip snapshot is written only after emission succeeded, so a
     // failed hand-off (or a crash anywhere in this pass) leaves the file
     // "changed" and the next pass re-runs reconciliation.
-    token_db.update_file_metadata(&ctx.session_id, stream_path, size, modified)
+    token_db.update_file_metadata(&identity.session_id, stream_path, size, modified)
 }
 
-/// Reconcile every bucket the session has entries or emission state for, and
-/// emit those whose aggregate fingerprint differs from the last emitted one,
-/// marking them emitted only after the sink accepted the events.
+/// Reconcile the session's buckets in one pass and emit those whose
+/// fingerprint differs from the last emitted one, marking them emitted only
+/// after the sink accepted the events. Repo discovery runs only when there
+/// is something to emit.
 fn emit_changed_buckets(
     token_db: &TokenUsageDatabase,
-    ctx: &EmissionContext,
+    identity: &SessionIdentity,
+    resolve_repo_url: impl FnOnce() -> Option<String>,
     sink: impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
 ) -> Result<(), GitAiError> {
-    let mut events = Vec::new();
-    let mut emitted = Vec::new();
-    for (model, bucket) in &token_db.session_buckets(&ctx.session_id)? {
-        let aggregate = token_db.aggregate_bucket(&ctx.session_id, model, *bucket)?;
-        let fingerprint = aggregate.fingerprint();
-        if token_db
-            .emitted_fingerprint(&ctx.session_id, model, *bucket)?
-            .as_deref()
-            == Some(fingerprint.as_str())
-        {
-            continue;
-        }
+    let changed = token_db.changed_buckets(&identity.session_id)?;
+    if changed.is_empty() {
+        return Ok(());
+    }
+    let repo_url = resolve_repo_url();
+    let mut events = Vec::with_capacity(changed.len());
+    for bucket in &changed {
+        let aggregate = &bucket.aggregate;
         let values = TokenUsageValues::new()
-            .bucket_ts(*bucket as u64)
+            .bucket_ts(bucket.bucket_ts as u64)
             .input_tokens(aggregate.input)
             .output_tokens(aggregate.output)
             .cache_read_tokens(aggregate.cache_read)
@@ -462,28 +619,31 @@ fn emit_changed_buckets(
             .total_tokens(aggregate.total)
             .reasoning_output_tokens_opt(aggregate.reasoning_output)
             .est_cost_micro_usd(aggregate.cost_micro_usd)
-            .message_count(aggregate.message_count);
+            .message_count(aggregate.message_count)
+            // Strictly increasing per bucket: the server keeps the highest
+            // revision, so same-second re-emissions cannot tie.
+            .emitted_seq(bucket.emit_seq + 1);
         let mut attrs = EventAttributes::with_version(env!("CARGO_PKG_VERSION"))
-            .session_id(ctx.session_id.clone())
-            .external_session_id(ctx.external_session_id.clone())
-            .tool(&ctx.tool)
-            .model(model);
-        if let Some(url) = &ctx.repo_url {
+            .session_id(identity.session_id.clone())
+            .external_session_id(identity.external_session_id.clone())
+            .tool(&identity.tool)
+            .model(&bucket.model);
+        if let Some(url) = &repo_url {
             attrs = attrs.repo_url(url.clone());
         }
         events.push(MetricEvent::new(&values, attrs.to_sparse()));
-        emitted.push((model.clone(), *bucket, fingerprint));
-    }
-    if events.is_empty() {
-        return Ok(());
     }
     sink(&events)?;
-    let now_ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    for (model, bucket, fingerprint) in emitted {
-        token_db.mark_emitted(&ctx.session_id, &model, bucket, &fingerprint, now_ts)?;
+    let now_ts = now_secs();
+    for bucket in changed {
+        token_db.mark_emitted(
+            &identity.session_id,
+            &bucket.model,
+            bucket.bucket_ts,
+            &bucket.aggregate.fingerprint(),
+            bucket.emit_seq + 1,
+            now_ts,
+        )?;
     }
     Ok(())
 }
@@ -491,17 +651,15 @@ fn emit_changed_buckets(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::PosEncoded;
     use crate::metrics::events::token_usage_pos;
     use std::fs;
     use std::sync::Mutex;
 
-    fn ctx() -> EmissionContext {
-        EmissionContext {
+    fn identity() -> SessionIdentity {
+        SessionIdentity {
             session_id: "s_test".to_string(),
             external_session_id: "ext-test".to_string(),
             tool: "claude".to_string(),
-            repo_url: Some("https://github.com/acme/repo".to_string()),
         }
     }
 
@@ -512,29 +670,52 @@ mod tests {
         (dir, db, transcript)
     }
 
+    /// Recent RFC3339 timestamps so entries fall inside the retention window.
+    fn recent_ts(minute: u32, second: u32) -> String {
+        let base = now_secs() - (now_secs() % 86_400);
+        chrono::DateTime::from_timestamp(base + (minute * 60 + second) as i64, 0)
+            .unwrap()
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    }
+
+    fn bucket_of(minute: u32, second: u32) -> u64 {
+        let base = now_secs() - (now_secs() % 86_400);
+        let ts = base as u64 + (minute * 60 + second) as u64;
+        ts - ts % 300
+    }
+
     fn claude_line(msg: &str, req: &str, ts: &str, output: u64) -> String {
         format!(
             r#"{{"timestamp":"{ts}","sessionId":"ext-test","requestId":"{req}","message":{{"id":"{msg}","model":"claude-sonnet-4-20250514","usage":{{"input_tokens":100,"output_tokens":{output},"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}}}}"#
         )
     }
 
-    fn run(
+    fn run_as(
         db: &TokenUsageDatabase,
+        identity: &SessionIdentity,
         transcript: &std::path::Path,
     ) -> Result<Vec<MetricEvent>, GitAiError> {
         let collected = Mutex::new(Vec::new());
         let flag = AtomicBool::new(false);
         process_file(
             db,
-            &ctx(),
+            identity,
             &transcript.display().to_string(),
             &flag,
+            || Some("https://github.com/acme/repo".to_string()),
             |events| {
                 collected.lock().unwrap().extend(events.to_vec());
                 Ok(())
             },
         )?;
         Ok(collected.into_inner().unwrap())
+    }
+
+    fn run(
+        db: &TokenUsageDatabase,
+        transcript: &std::path::Path,
+    ) -> Result<Vec<MetricEvent>, GitAiError> {
+        run_as(db, &identity(), transcript)
     }
 
     fn value_u64(event: &MetricEvent, pos: usize) -> Option<u64> {
@@ -548,8 +729,8 @@ mod tests {
             &transcript,
             format!(
                 "{}\n{}\n",
-                claude_line("m1", "r1", "2026-01-01T00:01:00Z", 50),
-                claude_line("m2", "r2", "2026-01-01T00:06:00Z", 70),
+                claude_line("m1", "r1", &recent_ts(1, 0), 50),
+                claude_line("m2", "r2", &recent_ts(6, 0), 70),
             ),
         )
         .unwrap();
@@ -561,12 +742,12 @@ mod tests {
             .map(|e| value_u64(e, token_usage_pos::BUCKET_TS).unwrap())
             .collect();
         buckets.sort_unstable();
-        // 2026-01-01T00:00:00Z = 1767225600.
-        assert_eq!(buckets, vec![1_767_225_600, 1_767_225_900]);
+        assert_eq!(buckets, vec![bucket_of(1, 0), bucket_of(6, 0)]);
         for event in &events {
             assert_eq!(event.event_id, 9);
             assert_eq!(value_u64(event, token_usage_pos::INPUT_TOKENS), Some(100));
             assert_eq!(value_u64(event, token_usage_pos::MESSAGE_COUNT), Some(1));
+            assert_eq!(value_u64(event, token_usage_pos::EMITTED_SEQ), Some(1));
             assert!(value_u64(event, token_usage_pos::EST_COST_MICRO_USD).unwrap() > 0);
             let attrs = EventAttributes::from_sparse(&event.attrs);
             assert_eq!(attrs.session_id, Some(Some("s_test".to_string())));
@@ -587,7 +768,7 @@ mod tests {
         let (_dir, db, transcript) = setup();
         fs::write(
             &transcript,
-            format!("{}\n", claude_line("m1", "r1", "2026-01-01T00:01:00Z", 50)),
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
         )
         .unwrap();
         assert_eq!(run(&db, &transcript).unwrap().len(), 1);
@@ -596,11 +777,11 @@ mod tests {
     }
 
     #[test]
-    fn appended_usage_reemits_the_bucket_with_higher_totals() {
+    fn appended_usage_reemits_the_bucket_with_bumped_revision() {
         let (_dir, db, transcript) = setup();
         fs::write(
             &transcript,
-            format!("{}\n", claude_line("m1", "r1", "2026-01-01T00:01:00Z", 50)),
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
         )
         .unwrap();
         let first = run(&db, &transcript).unwrap();
@@ -608,9 +789,10 @@ mod tests {
             value_u64(&first[0], token_usage_pos::OUTPUT_TOKENS),
             Some(50)
         );
+        assert_eq!(value_u64(&first[0], token_usage_pos::EMITTED_SEQ), Some(1));
 
         let mut content = fs::read_to_string(&transcript).unwrap();
-        content.push_str(&claude_line("m2", "r2", "2026-01-01T00:02:00Z", 30));
+        content.push_str(&claude_line("m2", "r2", &recent_ts(2, 0), 30));
         content.push('\n');
         fs::write(&transcript, content).unwrap();
 
@@ -624,6 +806,7 @@ mod tests {
             value_u64(&second[0], token_usage_pos::MESSAGE_COUNT),
             Some(2)
         );
+        assert_eq!(value_u64(&second[0], token_usage_pos::EMITTED_SEQ), Some(2));
     }
 
     #[test]
@@ -631,7 +814,7 @@ mod tests {
         let (_dir, db, transcript) = setup();
         fs::write(
             &transcript,
-            format!("{}\n", claude_line("m1", "r1", "2026-01-01T00:01:00Z", 50)),
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
         )
         .unwrap();
         assert_eq!(run(&db, &transcript).unwrap().len(), 1);
@@ -639,7 +822,7 @@ mod tests {
         // The same message re-emits with larger totals in the next bucket:
         // the old bucket empties and must re-emit as zero exactly once.
         let mut content = fs::read_to_string(&transcript).unwrap();
-        content.push_str(&claude_line("m1", "r1", "2026-01-01T00:06:00Z", 90));
+        content.push_str(&claude_line("m1", "r1", &recent_ts(6, 0), 90));
         content.push('\n');
         fs::write(&transcript, content).unwrap();
 
@@ -655,8 +838,8 @@ mod tests {
             })
             .collect();
         by_bucket.sort_unstable();
-        assert_eq!(by_bucket[0], (1_767_225_600, 0));
-        assert_eq!(by_bucket[1], (1_767_225_900, 190));
+        assert_eq!(by_bucket[0], (bucket_of(1, 0), 0));
+        assert_eq!(by_bucket[1], (bucket_of(6, 0), 190));
         let zero_event = events
             .iter()
             .find(|e| value_u64(e, token_usage_pos::TOTAL_TOKENS) == Some(0))
@@ -665,13 +848,14 @@ mod tests {
             value_u64(zero_event, token_usage_pos::MESSAGE_COUNT),
             Some(0)
         );
+        assert_eq!(value_u64(zero_event, token_usage_pos::EMITTED_SEQ), Some(2));
     }
 
     #[test]
     fn partial_trailing_line_is_left_for_the_next_pass() {
         let (_dir, db, transcript) = setup();
-        let complete = claude_line("m1", "r1", "2026-01-01T00:01:00Z", 50);
-        let partial = claude_line("m2", "r2", "2026-01-01T00:02:00Z", 70);
+        let complete = claude_line("m1", "r1", &recent_ts(1, 0), 50);
+        let partial = claude_line("m2", "r2", &recent_ts(2, 0), 70);
         let partial_prefix = &partial[..partial.len() - 10];
         fs::write(&transcript, format!("{complete}\n{partial_prefix}")).unwrap();
 
@@ -699,37 +883,81 @@ mod tests {
     }
 
     #[test]
-    fn codex_reasoning_tokens_flow_through() {
+    fn entries_older_than_retention_are_not_emitted() {
         let (_dir, db, transcript) = setup();
-        let ctx = EmissionContext {
-            tool: "codex".to_string(),
-            ..ctx()
-        };
         fs::write(
             &transcript,
-            concat!(
+            format!(
+                "{}\n{}\n",
+                // 2020: far past the retention cutoff.
+                claude_line("m1", "r1", "2020-01-01T00:01:00Z", 50),
+                claude_line("m2", "r2", &recent_ts(1, 0), 70),
+            ),
+        )
+        .unwrap();
+        let events = run(&db, &transcript).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::BUCKET_TS),
+            Some(bucket_of(1, 0))
+        );
+    }
+
+    #[test]
+    fn error_backoff_suppresses_immediate_retries() {
+        let (_dir, db, transcript) = setup();
+        let identity = identity();
+        let path = transcript.display().to_string();
+        // File is missing: the pass errors and the error is recorded (as the
+        // task wrapper does).
+        assert!(run_as(&db, &identity, &transcript).is_err());
+        db.record_error(&identity.session_id, &path, "boom", now_secs())
+            .unwrap();
+
+        // The file now exists with real usage, but the backoff window makes
+        // the next pass a quiet no-op instead of a retry.
+        fs::write(
+            &transcript,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        assert!(run_as(&db, &identity, &transcript).unwrap().is_empty());
+
+        // Once the window has passed (simulated by backdating the error),
+        // processing resumes and a successful pass clears the error state.
+        db.record_error(&identity.session_id, &path, "boom", now_secs() - 60)
+            .unwrap();
+        let events = run_as(&db, &identity, &transcript).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            db.ensure_file(&identity.session_id, &path, "claude")
+                .unwrap()
+                .processing_errors,
+            0
+        );
+    }
+
+    #[test]
+    fn codex_reasoning_tokens_flow_through() {
+        let (_dir, db, transcript) = setup();
+        let identity = SessionIdentity {
+            tool: "codex".to_string(),
+            ..identity()
+        };
+        let token_count_line = format!(
+            r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":100,"cached_input_tokens":40,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":150}}}}}}}}"#,
+            recent_ts(1, 0)
+        );
+        fs::write(
+            &transcript,
+            format!(
+                "{}\n{token_count_line}\n",
                 r#"{"timestamp":"2026-01-01T00:00:00Z","type":"turn_context","payload":{"model":"gpt-5.1"}}"#,
-                "\n",
-                r#"{"timestamp":"2026-01-01T00:01:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":150}}}}"#,
-                "\n",
             ),
         )
         .unwrap();
 
-        let collected = Mutex::new(Vec::new());
-        let flag = AtomicBool::new(false);
-        process_file(
-            &db,
-            &ctx,
-            &transcript.display().to_string(),
-            &flag,
-            |events| {
-                collected.lock().unwrap().extend(events.to_vec());
-                Ok(())
-            },
-        )
-        .unwrap();
-        let events = collected.into_inner().unwrap();
+        let events = run_as(&db, &identity, &transcript).unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(
             value_u64(&events[0], token_usage_pos::INPUT_TOKENS),
@@ -748,19 +976,125 @@ mod tests {
     }
 
     #[test]
+    fn forked_codex_single_turn_is_flushed_at_end_of_file() {
+        // The lone parked turn of a forked session is released by the
+        // end-of-file flush once the burst window has passed in wall-clock
+        // time, instead of being undercounted forever.
+        let (_dir, db, transcript) = setup();
+        let identity = SessionIdentity {
+            tool: "codex".to_string(),
+            ..identity()
+        };
+        let token_count_line = format!(
+            r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}}}}}"#,
+            recent_ts(1, 0)
+        );
+        fs::write(
+            &transcript,
+            format!(
+                "{}\n{token_count_line}\n",
+                r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+            ),
+        )
+        .unwrap();
+        // recent_ts is in the past (>1s), so the flush releases the turn in
+        // the same pass.
+        let events = run_as(&db, &identity, &transcript).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::INPUT_TOKENS),
+            Some(10)
+        );
+    }
+
+    #[test]
+    fn cross_session_replacement_invalidates_the_previous_owner() {
+        let (dir, db, transcript_a) = setup();
+        let identity_a = identity();
+        fs::write(
+            &transcript_a,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        assert_eq!(run_as(&db, &identity_a, &transcript_a).unwrap().len(), 1);
+
+        // A resumed session copies the message with larger totals: the entry
+        // moves to the new session, and the previous owner's file snapshot
+        // is invalidated so its zeroed bucket re-reconciles on its next pass.
+        let identity_b = SessionIdentity {
+            session_id: "s_resumed".to_string(),
+            external_session_id: "ext-resumed".to_string(),
+            tool: "claude".to_string(),
+        };
+        let transcript_b = dir.path().join("resumed.jsonl");
+        fs::write(
+            &transcript_b,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 30), 90)),
+        )
+        .unwrap();
+        let events = run_as(&db, &identity_b, &transcript_b).unwrap();
+        assert_eq!(events.len(), 1);
+        let attrs = EventAttributes::from_sparse(&events[0].attrs);
+        assert_eq!(attrs.session_id, Some(Some("s_resumed".to_string())));
+
+        let file_a = db
+            .ensure_file(
+                &identity_a.session_id,
+                &transcript_a.display().to_string(),
+                "claude",
+            )
+            .unwrap();
+        assert_eq!(file_a.last_known_size, -1, "snapshot invalidated");
+        // Session A's next pass re-emits its emptied bucket as zero.
+        let events = run_as(&db, &identity_a, &transcript_a).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::TOTAL_TOKENS),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn resumed_session_copy_is_not_double_counted() {
+        let (dir, db, transcript_a) = setup();
+        let identity_a = identity();
+        fs::write(
+            &transcript_a,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        assert_eq!(run_as(&db, &identity_a, &transcript_a).unwrap().len(), 1);
+
+        // The resumed file carries an identical copy: nothing new to emit.
+        let identity_b = SessionIdentity {
+            session_id: "s_resumed".to_string(),
+            external_session_id: "ext-resumed".to_string(),
+            tool: "claude".to_string(),
+        };
+        let transcript_b = dir.path().join("resumed.jsonl");
+        fs::write(
+            &transcript_b,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        assert!(run_as(&db, &identity_b, &transcript_b).unwrap().is_empty());
+    }
+
+    #[test]
     fn failed_sink_leaves_bucket_unmarked_for_retry() {
         let (_dir, db, transcript) = setup();
         fs::write(
             &transcript,
-            format!("{}\n", claude_line("m1", "r1", "2026-01-01T00:01:00Z", 50)),
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
         )
         .unwrap();
         let flag = AtomicBool::new(false);
         let result = process_file(
             &db,
-            &ctx(),
+            &identity(),
             &transcript.display().to_string(),
             &flag,
+            || None,
             |_| Err(GitAiError::Generic("sink down".to_string())),
         );
         assert!(result.is_err());
@@ -799,35 +1133,13 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn sweep_enqueues_supported_existing_transcripts_once() {
-        let dir = tempfile::tempdir().unwrap();
-        let streams_db =
-            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
-        let token_db =
-            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
-        let claude_path = dir.path().join("claude.jsonl");
-        fs::write(&claude_path, "{}\n").unwrap();
-        let claude_path = claude_path.display().to_string();
-
-        streams_db
-            .insert_stream(&stream_record("s_claude", "claude", &claude_path))
-            .unwrap();
-        // Unsupported tool and missing file are both skipped.
-        streams_db
-            .insert_stream(&stream_record("s_gem", "gemini", &claude_path))
-            .unwrap();
-        streams_db
-            .insert_stream(&stream_record("s_gone", "claude", "/definitely/gone.jsonl"))
-            .unwrap();
-        // Non-transcript stream kinds are skipped.
-        let mut otel = stream_record("s_otel", "claude", &claude_path);
-        otel.stream_kind = "otel_traces".to_string();
-        streams_db.insert_stream(&otel).unwrap();
-
+    fn test_worker(
+        streams_db: Arc<StreamsDatabase>,
+        token_db: Arc<TokenUsageDatabase>,
+    ) -> TokenUsageWorker {
         let (_notify_tx, notify_rx) = tokio::sync::mpsc::unbounded_channel();
         let (_drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
-        let mut worker = TokenUsageWorker {
+        TokenUsageWorker {
             streams_db,
             token_db,
             telemetry: DaemonTelemetryWorkerHandle::new_noop(),
@@ -835,15 +1147,98 @@ mod tests {
             shutdown_flag: Arc::new(AtomicBool::new(false)),
             notify_rx,
             drain_rx,
-            queue: VecDeque::new(),
+            notify_queue: VecDeque::new(),
+            sweep_queue: VecDeque::new(),
             queued: HashSet::new(),
-        };
+        }
+    }
 
+    #[tokio::test]
+    async fn sweep_enqueues_only_changed_supported_transcripts() {
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let changed_path = dir.path().join("changed.jsonl");
+        fs::write(&changed_path, "{}\n").unwrap();
+        let changed_path = changed_path.display().to_string();
+        let settled_path = dir.path().join("settled.jsonl");
+        fs::write(&settled_path, "{}\n").unwrap();
+        let settled_path = settled_path.display().to_string();
+
+        streams_db
+            .insert_stream(&stream_record("s_changed", "claude", &changed_path))
+            .unwrap();
+        streams_db
+            .insert_stream(&stream_record("s_settled", "claude", &settled_path))
+            .unwrap();
+        // Unsupported tool, missing file, and non-transcript kinds skipped.
+        streams_db
+            .insert_stream(&stream_record("s_gem", "gemini", &changed_path))
+            .unwrap();
+        streams_db
+            .insert_stream(&stream_record("s_gone", "claude", "/definitely/gone.jsonl"))
+            .unwrap();
+        let mut otel = stream_record("s_otel", "claude", &changed_path);
+        otel.stream_kind = "otel_traces".to_string();
+        streams_db.insert_stream(&otel).unwrap();
+
+        // The settled file's snapshot matches its current metadata.
+        let metadata = fs::metadata(&settled_path).unwrap();
+        token_db
+            .ensure_file("s_settled", &settled_path, "claude")
+            .unwrap();
+        token_db
+            .update_file_metadata(
+                "s_settled",
+                &settled_path,
+                metadata.len(),
+                modified_secs(&metadata),
+            )
+            .unwrap();
+
+        let mut worker = test_worker(streams_db, token_db);
         worker.enqueue_sweep_tasks();
         worker.enqueue_sweep_tasks(); // dedup: repeated sweeps don't re-add
-        assert_eq!(worker.queue.len(), 1);
-        assert_eq!(worker.queue[0].session_id, "s_claude");
-        assert_eq!(worker.queue[0].tool, "claude");
+        assert_eq!(worker.sweep_queue.len(), 1);
+        assert_eq!(worker.sweep_queue[0].session_id, "s_changed");
+        assert!(worker.notify_queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn notifications_promote_queued_sweep_tasks_and_drain_skips_backfill() {
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let mut worker = test_worker(streams_db, token_db);
+
+        let backfill = TokenUsageTask {
+            session_id: "s_backfill".to_string(),
+            tool: "claude".to_string(),
+            stream_path: "/a.jsonl".to_string(),
+        };
+        let fresh = TokenUsageTask {
+            session_id: "s_fresh".to_string(),
+            tool: "claude".to_string(),
+            stream_path: "/b.jsonl".to_string(),
+        };
+        worker.enqueue_sweep(backfill.clone());
+        worker.enqueue_sweep(fresh.clone());
+        // A notification for a file already queued for backfill promotes it.
+        worker.enqueue_notify(fresh.clone());
+        assert_eq!(worker.sweep_queue.len(), 1);
+        assert_eq!(worker.notify_queue.len(), 1);
+
+        // The drain barrier only sees notification-driven work.
+        assert_eq!(worker.pop_queue(true), Some(fresh));
+        assert_eq!(worker.pop_queue(true), None);
+        // The background loop still gets the backfill.
+        assert_eq!(worker.pop_next(), Some(backfill));
+        assert_eq!(worker.pop_next(), None);
+        assert!(worker.queued.is_empty());
     }
 
     #[tokio::test]
@@ -879,37 +1274,35 @@ mod tests {
             .ensure_file(&parent_session, &missing, "claude")
             .unwrap();
         assert_eq!(tracked.processing_errors, 1);
+        assert!(tracked.last_error_at.is_some());
         assert_eq!(token_db.all_files().unwrap().len(), 1);
     }
 
     #[test]
     fn subagent_stream_rolls_up_to_parent_session() {
-        let stream = StreamRecord {
-            session_id: "s_child".to_string(),
-            stream_kind: "transcript".to_string(),
-            tool: "claude".to_string(),
-            stream_path: "/tmp/child.jsonl".to_string(),
-            stream_format: "ClaudeJsonl".to_string(),
-            watermark_type: "ByteOffset".to_string(),
-            watermark_value: "0".to_string(),
-            external_session_id: "child-ext".to_string(),
-            external_parent_session_id: Some("parent-ext".to_string()),
-            first_seen_at: 0,
-            last_processed_at: 0,
-            last_known_size: 0,
-            last_modified: None,
-            processing_errors: 0,
-            last_error: None,
-            repo_work_dir: None,
-        };
-        let ctx = EmissionContext::from_stream(&stream);
-        assert_eq!(ctx.session_id, generate_session_id("parent-ext", "claude"));
-        assert_eq!(ctx.external_session_id, "parent-ext");
+        let mut stream = stream_record("s_child", "claude", "/tmp/child.jsonl");
+        stream.external_session_id = "child-ext".to_string();
+        stream.external_parent_session_id = Some("parent-ext".to_string());
+        let identity = SessionIdentity::from_stream(&stream);
+        assert_eq!(
+            identity.session_id,
+            generate_session_id("parent-ext", "claude")
+        );
+        assert_eq!(identity.external_session_id, "parent-ext");
 
-        let mut top_level = stream;
-        top_level.external_parent_session_id = None;
-        let ctx = EmissionContext::from_stream(&top_level);
-        assert_eq!(ctx.session_id, "s_child");
-        assert_eq!(ctx.external_session_id, "child-ext");
+        stream.external_parent_session_id = None;
+        let identity = SessionIdentity::from_stream(&stream);
+        assert_eq!(identity.session_id, "s_child");
+        assert_eq!(identity.external_session_id, "child-ext");
+    }
+
+    #[test]
+    fn error_backoff_schedule_is_bounded() {
+        assert_eq!(error_backoff_secs(0), 0);
+        assert_eq!(error_backoff_secs(1), 5);
+        assert_eq!(error_backoff_secs(2), 30);
+        assert_eq!(error_backoff_secs(3), 300);
+        assert_eq!(error_backoff_secs(4), 1800);
+        assert_eq!(error_backoff_secs(100), 1800);
     }
 }
