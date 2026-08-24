@@ -1148,7 +1148,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("token-usage-db");
         {
-            let conn = rusqlite::Connection::open(&path).unwrap();
+            let conn = crate::sqlite::open_with_memory_limits(&path).unwrap();
             conn.execute_batch(MIGRATIONS[0]).unwrap();
             for session in ["s1", "s2", "s3"] {
                 conn.execute(
