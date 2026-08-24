@@ -312,6 +312,9 @@ struct StreamWorker {
     sweep_rx: tokio::sync::mpsc::UnboundedReceiver<SweepRequest>,
     drain_rx: tokio::sync::mpsc::UnboundedReceiver<DrainRequest>,
     sweep_trigger_gate: SweepTriggerGate,
+    /// Pinged after a transcript task succeeds so token usage can be
+    /// recomputed for that session (cheap non-blocking send).
+    token_usage_worker: Option<crate::daemon::token_usage_worker::TokenUsageWorkerHandle>,
 }
 
 impl StreamWorker {
@@ -326,6 +329,7 @@ impl StreamWorker {
         sweep_rx: tokio::sync::mpsc::UnboundedReceiver<SweepRequest>,
         drain_rx: tokio::sync::mpsc::UnboundedReceiver<DrainRequest>,
         sweep_trigger_gate: SweepTriggerGate,
+        token_usage_worker: Option<crate::daemon::token_usage_worker::TokenUsageWorkerHandle>,
     ) -> Self {
         let sweep_coordinator =
             crate::daemon::sweep_coordinator::SweepCoordinator::new(streams_db.clone());
@@ -343,6 +347,7 @@ impl StreamWorker {
             sweep_rx,
             drain_rx,
             sweep_trigger_gate,
+            token_usage_worker,
         }
     }
 
@@ -984,7 +989,17 @@ impl StreamWorker {
         // Handle result
         match result {
             Ok(Ok(())) => {
-                // Success - task is done
+                // Success - task is done. Let the token-usage worker pick up
+                // the freshly ingested transcript bytes.
+                if task.stream_kind == "transcript"
+                    && let Some(token_usage) = &self.token_usage_worker
+                {
+                    token_usage.notify_stream_processed(
+                        &task.session_id,
+                        &task.tool,
+                        &task.canonical_path,
+                    );
+                }
             }
             Ok(Err(e)) => {
                 // Error - handle retry logic
@@ -1379,6 +1394,7 @@ pub fn spawn_stream_worker(
     streams_db: Arc<StreamsDatabase>,
     telemetry_handle: DaemonTelemetryWorkerHandle,
     shutdown_notify: Arc<Notify>,
+    token_usage_worker: Option<crate::daemon::token_usage_worker::TokenUsageWorkerHandle>,
 ) -> StreamWorkerHandle {
     let (checkpoint_tx, checkpoint_rx) = tokio::sync::mpsc::unbounded_channel();
     let (sweep_tx, sweep_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1395,6 +1411,7 @@ pub fn spawn_stream_worker(
         sweep_rx,
         drain_rx,
         sweep_trigger_gate.clone(),
+        token_usage_worker,
     );
 
     tokio::spawn(async move {
@@ -1492,6 +1509,7 @@ mod scheduling_tests {
             sweep_rx,
             drain_rx,
             sweep_trigger_gate,
+            None,
         );
         (temp, worker, shutdown, checkpoint_tx)
     }
@@ -1669,6 +1687,7 @@ mod subagent_sweep_tests {
             sweep_rx,
             drain_rx,
             SweepTriggerGate::new(),
+            None,
         )
     }
 
