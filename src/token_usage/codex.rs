@@ -1111,6 +1111,38 @@ mod tests {
     }
 
     #[test]
+    fn golden_codex_token_count_extraction_is_pinned() {
+        // Golden extraction over real captured token_count lines (sanitized
+        // rollout excerpt): the serde shape, delta math, model resolution,
+        // and dedup keys are all pinned against production Codex output —
+        // a field rename or type change upstream fails here, not silently.
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/codex-session-token-count.jsonl");
+        let content = std::fs::read_to_string(fixture).unwrap();
+        let mut e = CodexUsageExtractor::default();
+        let mut entries = Vec::new();
+        for line in content.lines() {
+            if e.wants_line(line) {
+                entries.extend(e.extract_line(line));
+            }
+        }
+        let mut sums = (0u64, 0u64, 0u64, 0u64, 0u64);
+        let mut models = std::collections::BTreeSet::new();
+        let mut keys = std::collections::BTreeSet::new();
+        for entry in &entries {
+            sums.0 += entry.tokens.input;
+            sums.1 += entry.tokens.output;
+            sums.2 += entry.tokens.cache_read;
+            sums.3 += entry.tokens.reasoning_output.unwrap();
+            sums.4 += entry.tokens.total;
+            models.insert(entry.model.clone());
+            keys.insert(entry.entry_key.clone());
+        }
+        assert_eq!(keys.len(), entries.len(), "content-derived keys distinct");
+        insta::assert_debug_snapshot!((entries.len(), models, sums));
+    }
+
+    #[test]
     fn numeric_timestamps_are_supported() {
         let mut e = CodexUsageExtractor::default();
         let line = r#"{"timestamp":1767225610,"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}"#;

@@ -1,0 +1,18 @@
+---
+source: src/token_usage/codex.rs
+assertion_line: 1142
+expression: "(entries.len(), models, sums)"
+---
+(
+    8,
+    {
+        "gpt-5.1-codex",
+    },
+    (
+        59288,
+        1144,
+        183296,
+        49,
+        243728,
+    ),
+)
