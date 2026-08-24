@@ -7,10 +7,16 @@ use git_ai::commands::checkpoint_agent::bash_tool::{
     reset_timeout_overrides_for_test, set_daemon_socket_for_test, set_walk_timeout_ms_for_test,
 };
 use git_ai::daemon::bash_history_db::BashHistoryDatabase;
+use git_ai::metrics::MetricEvent;
+use git_ai::metrics::attrs::attr_pos;
+use git_ai::metrics::db::MetricsDatabase;
+use git_ai::metrics::events::checkpoint_pos;
+use git_ai::metrics::types::{MetricEventId, SparseArray};
 use serde_json::json;
 use std::fs;
+use std::path::Path;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn isolated_bash_history_db_path() -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().expect("failed to create isolated bash history db dir");
@@ -947,4 +953,127 @@ trailing dirty 4
         "trailing dirty 3".ai(),
         "trailing dirty 4".unattributed_human(),
     ]);
+}
+
+fn isolated_metrics_db_path() -> (tempfile::TempDir, String) {
+    let dir = tempfile::tempdir().expect("failed to create isolated metrics db dir");
+    let path = dir.path().join("metrics.db");
+    (dir, path.to_string_lossy().to_string())
+}
+
+fn sparse_str(values: &SparseArray, pos: usize) -> Option<&str> {
+    values
+        .get(&pos.to_string())
+        .and_then(|value| value.as_str())
+}
+
+fn claude_file_edit_checkpoint(
+    repo: &TestRepo,
+    file_path: &Path,
+    transcript_path: &Path,
+    hook_event_name: &str,
+) {
+    let hook_input = json!({
+        "cwd": repo.canonical_path().to_string_lossy(),
+        "hook_event_name": hook_event_name,
+        "tool_name": "Write",
+        "tool_use_id": "toolu_edge_metric",
+        "session_id": "edge-metric-session",
+        "transcript_path": transcript_path.to_string_lossy(),
+        "tool_input": {
+            "file_path": file_path.to_string_lossy()
+        }
+    })
+    .to_string();
+
+    repo.git_ai(&["checkpoint", "claude", "--hook-input", &hook_input])
+        .expect("claude checkpoint should succeed");
+}
+
+fn wait_for_edge_recovery_metric(db_path: &str) -> MetricEvent {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let db = MetricsDatabase::open_at_path(Path::new(db_path))
+            .expect("metrics db should open at isolated path");
+        let records = db
+            .get_metric_history(0, None, &[MetricEventId::Checkpoint as u16])
+            .expect("checkpoint metric history should load");
+        if let Some(record) = records.into_iter().find(|record| {
+            sparse_str(&record.event.values, checkpoint_pos::CHECKPOINT_TYPE)
+                == Some("recovered_edge_extension")
+        }) {
+            return record.event;
+        }
+
+        if Instant::now() >= deadline {
+            panic!("recovered_edge_extension checkpoint metric was not persisted");
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn test_edge_extension_recovery_metric_copies_source_session_tool_and_model() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    let repo_root = repo.canonical_path();
+    let file_path = repo.path().join("edge.txt");
+    let transcript_path = repo_root.join("session.jsonl");
+    fs::write(
+        &transcript_path,
+        r#"{"message":{"role":"assistant","model":"claude-sonnet-4"}}
+"#,
+    )
+    .unwrap();
+
+    fs::write(&file_path, "base\n").unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+
+    // Two AI checkpoints so the neighboring lines get different traces.
+    // Virtual attribution only fills gaps when both neighbors share the same
+    // author hash; edge recovery also bridges the same session across traces.
+    fs::write(&file_path, "base\nai before\n").unwrap();
+    claude_file_edit_checkpoint(&repo, &file_path, &transcript_path, "PreToolUse");
+    fs::write(&file_path, "base\nai before edited\n").unwrap();
+    claude_file_edit_checkpoint(&repo, &file_path, &transcript_path, "PostToolUse");
+
+    fs::write(&file_path, "base\nai before edited\nai after\n").unwrap();
+    claude_file_edit_checkpoint(&repo, &file_path, &transcript_path, "PreToolUse");
+    fs::write(&file_path, "base\nai before edited\nai after edited\n").unwrap();
+    claude_file_edit_checkpoint(&repo, &file_path, &transcript_path, "PostToolUse");
+
+    fs::write(
+        &file_path,
+        "base\nai before edited\nunknown gap\nai after edited\n",
+    )
+    .unwrap();
+
+    repo.stage_all_and_commit("Recover edge attribution")
+        .unwrap();
+
+    let mut file = repo.filename("edge.txt");
+    file.assert_committed_lines(lines![
+        "base".unattributed_human(),
+        "ai before edited".ai(),
+        "unknown gap".ai(),
+        "ai after edited".ai(),
+    ]);
+
+    let event = wait_for_edge_recovery_metric(&metrics_db_path);
+    assert_eq!(
+        sparse_str(&event.attrs, attr_pos::TOOL),
+        Some("claude"),
+        "edge recovery metric should copy the neighboring AI session tool"
+    );
+    assert_eq!(
+        sparse_str(&event.attrs, attr_pos::MODEL),
+        Some("claude-sonnet-4"),
+        "edge recovery metric should copy the neighboring AI session model"
+    );
+    assert_eq!(
+        sparse_str(&event.attrs, attr_pos::EXTERNAL_SESSION_ID),
+        Some("edge-metric-session"),
+        "edge recovery metric should copy the neighboring AI session id"
+    );
 }

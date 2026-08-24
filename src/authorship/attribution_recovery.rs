@@ -1308,6 +1308,18 @@ fn recover_adjacent_edges(
                 .next()
                 .unwrap_or(&recovery.source_author)
                 .to_string();
+            let (tool, model, external_session_id) = authorship_log
+                .metadata
+                .sessions
+                .get(&source_session)
+                .map(|session| {
+                    (
+                        session.agent_id.tool.clone(),
+                        session.agent_id.model.clone(),
+                        session.agent_id.id.clone(),
+                    )
+                })
+                .unwrap_or_default();
             let recovered_author = if source_session.starts_with("s_") {
                 format!("{}::{}", source_session, trace_id)
             } else {
@@ -1335,9 +1347,9 @@ fn recover_adjacent_edges(
                 author_id: &recovered_author,
                 session_id: &source_session,
                 trace_id: &trace_id,
-                tool: "",
-                model: "",
-                external_session_id: "",
+                tool: &tool,
+                model: &model,
+                external_session_id: &external_session_id,
                 external_tool_use_id: None,
                 edit_kind: "attribution_recovery_edge",
                 checkpoint_type: "recovered_edge_extension",
