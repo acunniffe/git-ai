@@ -100,13 +100,26 @@ const MIGRATIONS: &[&str] = &[
     INSERT INTO schema_version (version) VALUES (1);
     "#,
     // Version 2: global dedup (resume/fork dedup crosses sessions),
-    // pending-flush marker + error backoff timestamp + rollup identity on
-    // tracked files, a durable cross-session reconcile flag, and a
-    // per-bucket emission revision. A v1 database may hold cross-session
-    // duplicate keys (its dedup was session-scoped); the first-seen row wins
-    // so the unique index can be created and later replacements cannot
-    // collide on the primary key.
+    // pending-flush marker + error backoff timestamp + rollup identity +
+    // emission repo_url on tracked files, a durable cross-session reconcile
+    // flag, and a per-bucket emission revision. A v1 database may hold
+    // cross-session duplicate keys (its dedup was session-scoped); the
+    // first-seen row wins so the unique index can be created and later
+    // replacements cannot collide on the primary key. Sessions that lose
+    // rows to the purge are flagged for reconciliation so their (now lower)
+    // aggregates re-emit instead of leaving inflated values on the server.
     r#"
+    ALTER TABLE tracked_files ADD COLUMN pending_flush INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE tracked_files ADD COLUMN last_error_at INTEGER;
+    ALTER TABLE tracked_files ADD COLUMN external_session_id TEXT NOT NULL DEFAULT '';
+    ALTER TABLE tracked_files ADD COLUMN needs_reconcile INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE tracked_files ADD COLUMN repo_url TEXT;
+    ALTER TABLE bucket_state ADD COLUMN emit_seq INTEGER NOT NULL DEFAULT 0;
+
+    UPDATE tracked_files SET needs_reconcile = 1 WHERE session_id IN (
+        SELECT DISTINCT session_id FROM usage_entries
+        WHERE rowid NOT IN (SELECT MIN(rowid) FROM usage_entries GROUP BY entry_key)
+    );
     DELETE FROM usage_entries WHERE rowid NOT IN (
         SELECT MIN(rowid) FROM usage_entries GROUP BY entry_key
     );
@@ -115,19 +128,13 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX IF NOT EXISTS idx_usage_entries_message_global
         ON usage_entries(message_id) WHERE message_id IS NOT NULL;
 
-    ALTER TABLE tracked_files ADD COLUMN pending_flush INTEGER NOT NULL DEFAULT 0;
-    ALTER TABLE tracked_files ADD COLUMN last_error_at INTEGER;
-    ALTER TABLE tracked_files ADD COLUMN external_session_id TEXT NOT NULL DEFAULT '';
-    ALTER TABLE tracked_files ADD COLUMN needs_reconcile INTEGER NOT NULL DEFAULT 0;
-    ALTER TABLE bucket_state ADD COLUMN emit_seq INTEGER NOT NULL DEFAULT 0;
-
     INSERT INTO schema_version (version) VALUES (2);
     "#,
 ];
 
 const TRACKED_FILE_COLUMNS: &str = "session_id, stream_path, tool, byte_offset, state_json, \
      last_known_size, last_modified, processing_errors, last_error_at, pending_flush, \
-     external_session_id, needs_reconcile";
+     external_session_id, needs_reconcile, repo_url";
 
 /// A tracked transcript file: read cursor plus extractor state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,6 +157,9 @@ pub struct TrackedFile {
     /// A cross-session replacement changed this session's buckets; it must
     /// be re-reconciled even if none of its files change (or still exist).
     pub needs_reconcile: bool,
+    /// repo_url the session's events were last emitted with, persisted so
+    /// DB-only corrections carry the same repo gate attribute.
+    pub repo_url: Option<String>,
 }
 
 fn read_tracked_file(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackedFile> {
@@ -166,6 +176,7 @@ fn read_tracked_file(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackedFile> {
         pending_flush: row.get(9)?,
         external_session_id: row.get(10)?,
         needs_reconcile: row.get(11)?,
+        repo_url: row.get(12)?,
     })
 }
 
@@ -214,6 +225,15 @@ pub struct ChangedBucket {
     /// The next emission carries `emit_seq + 1` so the server can order
     /// same-second re-emissions.
     pub emit_seq: u64,
+}
+
+/// A session flagged for DB-only re-reconciliation, with emission identity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReconcileSession {
+    pub session_id: String,
+    pub external_session_id: String,
+    pub tool: String,
+    pub repo_url: Option<String>,
 }
 
 /// One extracted batch to persist atomically.
@@ -405,16 +425,39 @@ impl TokenUsageDatabase {
         Ok(())
     }
 
-    /// Sessions flagged for re-reconciliation by a cross-session replacement,
-    /// with the identity needed to emit without reading any file.
-    pub fn sessions_needing_reconcile(&self) -> Result<Vec<(String, String, String)>, GitAiError> {
+    /// Sessions flagged for re-reconciliation (cross-session replacement or
+    /// migration purge), with everything needed to emit without reading any
+    /// file: identity plus the repo_url their events were last emitted with.
+    pub fn sessions_needing_reconcile(&self) -> Result<Vec<ReconcileSession>, GitAiError> {
         let conn = self.lock();
         let mut stmt = conn.prepare(
-            "SELECT DISTINCT session_id, external_session_id, tool
-             FROM tracked_files WHERE needs_reconcile = 1",
+            "SELECT session_id, MAX(external_session_id), MAX(tool), MAX(repo_url)
+             FROM tracked_files WHERE needs_reconcile = 1 GROUP BY session_id",
         )?;
-        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+        let rows = stmt.query_map([], |row| {
+            Ok(ReconcileSession {
+                session_id: row.get(0)?,
+                external_session_id: row.get(1)?,
+                tool: row.get(2)?,
+                repo_url: row.get(3)?,
+            })
+        })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Persist the repo_url the session's events are emitted with, so later
+    /// DB-only corrections carry the same repo gate attribute. Never erases
+    /// a stored value (a transient resolution failure must not drop it).
+    pub fn update_session_repo_url(
+        &self,
+        session_id: &str,
+        repo_url: &str,
+    ) -> Result<(), GitAiError> {
+        self.lock().execute(
+            "UPDATE tracked_files SET repo_url = ?2 WHERE session_id = ?1",
+            params![session_id, repo_url],
+        )?;
+        Ok(())
     }
 
     /// Clear the reconcile flag after the session's buckets were reconciled.
@@ -965,7 +1008,12 @@ mod tests {
         );
         assert_eq!(
             db.sessions_needing_reconcile().unwrap(),
-            vec![("s1".to_string(), "s1-ext".to_string(), "claude".to_string())]
+            vec![ReconcileSession {
+                session_id: "s1".to_string(),
+                external_session_id: "s1-ext".to_string(),
+                tool: "claude".to_string(),
+                repo_url: None,
+            }]
         );
         db.clear_needs_reconcile("s1").unwrap();
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
@@ -1158,11 +1206,26 @@ mod tests {
                     params![session],
                 )
                 .unwrap();
+                conn.execute(
+                    "INSERT INTO tracked_files (session_id, stream_path, tool)
+                     VALUES (?1, ?1 || '.jsonl', 'claude')",
+                    params![session],
+                )
+                .unwrap();
             }
         }
 
         let db = TokenUsageDatabase::open(&path).unwrap();
         assert_eq!(db.schema_version().unwrap(), 2);
+        // Sessions whose rows were purged are flagged so their (now lower)
+        // aggregates re-emit; the surviving session is not.
+        let flagged: Vec<String> = db
+            .sessions_needing_reconcile()
+            .unwrap()
+            .into_iter()
+            .map(|session| session.session_id)
+            .collect();
+        assert_eq!(flagged, vec!["s2".to_string(), "s3".to_string()]);
         // First-seen row (s1) survives; the duplicates are gone.
         assert_eq!(
             db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
@@ -1310,6 +1373,27 @@ mod tests {
             .unwrap();
         assert_eq!(file.processing_errors, 0);
         assert_eq!(file.last_error_at, None);
+    }
+
+    #[test]
+    fn session_repo_url_persists_for_db_only_corrections() {
+        let (_dir, db) = db();
+        commit_for(&db, "s1", &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
+        db.update_session_repo_url("s1", "https://github.com/acme/private")
+            .unwrap();
+        // A cross-session replacement flags s1; the reconcile listing carries
+        // the stored repo_url so corrections face the same upload gate.
+        commit_for(
+            &db,
+            "s2",
+            &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))],
+        );
+        let sessions = db.sessions_needing_reconcile().unwrap();
+        assert_eq!(sessions.len(), 1);
+        assert_eq!(
+            sessions[0].repo_url.as_deref(),
+            Some("https://github.com/acme/private")
+        );
     }
 
     #[test]
