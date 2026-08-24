@@ -109,10 +109,17 @@ Values (`token_usage_pos`): `bucket_ts`, `input_tokens`, `output_tokens`,
 model, session ids, and repo_url (no git spawn).
 
 Cost follows ccusage's "auto" mode per entry: the transcript's own `costUSD`
-wins; otherwise cost is computed from the models.dev pricing catalog
-(`src/metrics/model_pricing.rs`), including the 2x-input rate for 1-hour
-ephemeral cache writes. Pricing snapshot refreshes do not retroactively
-rewrite already-emitted buckets (only changed buckets recompute) - intended.
+wins (negative/non-finite values are treated as absent, and every per-entry
+cost clamps to a $10k sanity ceiling); otherwise cost is computed from the
+models.dev pricing catalog (`src/metrics/model_pricing.rs`), including the
+2x-input rate for 1-hour ephemeral cache writes and a cache-read fallback of
+a tenth of the input rate when the catalog omits one. Pricing snapshot
+refreshes do not retroactively rewrite already-emitted buckets (only changed
+buckets recompute) - intended. Documented pricing deviations from ccusage
+(all from pricing via models.dev only): no long-context tiers, no fast-speed
+multipliers, no `codex-auto-review` model mapping; `git-ai usage`
+approximates from the same catalog without the 1h/fallback refinements, so
+TokenUsage events are the authoritative dollars.
 
 ## Session identity
 

@@ -8078,6 +8078,158 @@ fn reingest_command_redelivers_bounded_and_all_metrics_through_daemon() {
     );
 }
 
+/// Pins the fail-open semantics for TokenUsage events with NO repo_url under
+/// an exclude-only config: they upload (matching SessionEvent semantics -
+/// exclusion needs a URL to match). The worker minimizes this window by
+/// resolving repo_url with the infer_cwd fallback and persisting it for
+/// DB-only corrections; sessions that never resolve one are indistinguishable
+/// from non-repo work.
+#[test]
+fn token_usage_without_repo_url_passes_an_exclude_only_gate() {
+    let mut mock_api = MockApiServer::start();
+    let metrics_db_path = std::env::temp_dir().join(format!(
+        "git-ai-no-repo-token-usage-{}.db",
+        git_ai::uuid::generate_v4()
+    ));
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+        (
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            metrics_db_path.to_str().unwrap(),
+        ),
+    ]);
+    fs::write(
+        repo.test_home_path().join(".git-ai/config.json"),
+        r#"{"exclude_repositories":["git@github.com:acme/private"]}"#,
+    )
+    .unwrap();
+
+    let event = MetricEvent::from_values(
+        TokenUsageValues::new()
+            .bucket_ts(1_767_225_600)
+            .input_tokens(10)
+            .total_tokens(10)
+            .message_count(1),
+        EventAttributes::with_version("test")
+            .session_id("no-repo-usage")
+            .tool("claude")
+            .model("claude-sonnet-4")
+            .to_sparse(),
+    );
+    MetricsDatabase::open_at_path(&metrics_db_path)
+        .unwrap()
+        .insert_events(&[serde_json::to_string(&event).unwrap()])
+        .unwrap();
+
+    repo.git_ai(&["await", "--timeout", "30"])
+        .expect("await should flush metrics");
+
+    let uploaded_requests = serde_json::to_string(&mock_api.collect_requests()).unwrap();
+    assert!(
+        uploaded_requests.contains("no-repo-usage"),
+        "no-repo_url events upload under exclude-only configs (documented fail-open)"
+    );
+}
+
+/// The exclude gate through the REAL pipeline: with the repo's remote in
+/// exclude_repositories, the checkpoint-time gate refuses tracking outright
+/// (defense layer 1), so no TokenUsage events are even produced - and
+/// nothing crosses the wire. (The upload-time gate above is defense layer 2,
+/// for sessions tracked BEFORE a repo was excluded.)
+#[test]
+fn excluded_repo_token_usage_never_uploads_via_the_real_pipeline() {
+    let mut mock_api = MockApiServer::start();
+    let metrics_db_path = std::env::temp_dir().join(format!(
+        "git-ai-excluded-pipeline-token-usage-{}.db",
+        git_ai::uuid::generate_v4()
+    ));
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+        (
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            metrics_db_path.to_str().unwrap(),
+        ),
+    ]);
+    fs::write(
+        repo.test_home_path().join(".git-ai/config.json"),
+        r#"{"exclude_repositories":["https://github.com/acme/private"]}"#,
+    )
+    .unwrap();
+    repo.git(&[
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/acme/private.git",
+    ])
+    .expect("remote add should succeed");
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+
+    let transcript_path = repo_root.join("claude-session.jsonl");
+    fs::write(
+        &transcript_path,
+        r#"{"timestamp":"2026-08-23T00:01:00Z","sessionId":"ext","requestId":"r1","message":{"id":"m1","model":"claude-sonnet-4-20250514","usage":{"input_tokens":100,"output_tokens":50,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}}}
+"#,
+    )
+    .unwrap();
+    let file_path = repo_root.join("example.ts");
+    fs::write(
+        &file_path,
+        "const x = 1;
+",
+    )
+    .unwrap();
+    for hook_event_name in ["PreToolUse", "PostToolUse"] {
+        let hook_input = serde_json::json!({
+            "cwd": repo_root.to_string_lossy(),
+            "hook_event_name": hook_event_name,
+            "tool_name": "Write",
+            "tool_use_id": "toolu_excluded",
+            "session_id": "sess-excluded",
+            "transcript_path": transcript_path.to_string_lossy(),
+            "tool_input": { "file_path": file_path.to_string_lossy() }
+        })
+        .to_string();
+        repo.git_ai(&["checkpoint", "claude", "--hook-input", &hook_input])
+            .expect("checkpoint should succeed");
+        if hook_event_name == "PreToolUse" {
+            fs::write(
+                &file_path,
+                "const x = 1;
+const y = 2;
+",
+            )
+            .unwrap();
+        }
+    }
+    repo.git_ai(&["await", "--timeout", "30"])
+        .expect("await should flush metrics");
+
+    // The checkpoint-time gate refused tracking: no TokenUsage events were
+    // produced at all for the excluded repo...
+    let db = MetricsDatabase::open_at_path(&metrics_db_path).unwrap();
+    let produced = db
+        .get_metric_history(
+            0,
+            None,
+            &[git_ai::metrics::types::MetricEventId::TokenUsage as u16],
+        )
+        .unwrap();
+    assert!(
+        produced.is_empty(),
+        "an excluded repo must not be tracked at all"
+    );
+    // ...and nothing crossed the wire.
+    let uploaded_requests = serde_json::to_string(&mock_api.collect_requests()).unwrap();
+    assert!(
+        !uploaded_requests.contains("sess-excluded"),
+        "excluded repo token usage must never upload"
+    );
+}
+
 #[test]
 fn await_is_marked_beta_and_returns_promptly_when_idle() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::Dedicated);
