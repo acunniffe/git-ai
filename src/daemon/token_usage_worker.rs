@@ -502,8 +502,16 @@ fn process_task_blocking(
         &identity,
         &task.stream_path,
         shutdown_flag,
-        // Repo discovery is deferred until events are actually emitted.
-        || resolve_repo_url_for_stream(streams_db, &stream),
+        // Repo discovery is deferred until events are actually emitted; the
+        // result is persisted so later DB-only corrections carry the same
+        // repo gate attribute.
+        || {
+            let repo_url = resolve_repo_url_for_stream(streams_db, &stream);
+            if let Some(url) = &repo_url {
+                let _ = token_db.update_session_repo_url(&identity.session_id, url);
+            }
+            repo_url
+        },
         &sink,
     )
     // Cross-session replacements flagged other sessions during the batch
@@ -541,23 +549,24 @@ fn persist_events(
     telemetry.persist_metrics_blocking(events).map(|_| ())
 }
 
-/// Reconcile sessions flagged by cross-session replacements. Emission is
-/// DB-only (aggregate + fingerprint compare), so this works even after the
-/// flagged session's transcripts were deleted; corrections re-emitted here
-/// carry the stored session identity but no repo_url (the server updates the
-/// bucket's values by its key).
+/// Reconcile sessions flagged by cross-session replacements or the
+/// migration purge. Emission is DB-only (aggregate + fingerprint compare),
+/// so this works even after the flagged session's transcripts were deleted;
+/// corrections carry the stored session identity and the repo_url the
+/// session's events were last emitted with, so they face the same repo
+/// exclude gate as the originals.
 fn reconcile_flagged_sessions(
     token_db: &TokenUsageDatabase,
     sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
 ) -> Result<(), GitAiError> {
-    for (session_id, external_session_id, tool) in token_db.sessions_needing_reconcile()? {
+    for session in token_db.sessions_needing_reconcile()? {
         let identity = SessionIdentity {
-            session_id: session_id.clone(),
-            external_session_id,
-            tool,
+            session_id: session.session_id.clone(),
+            external_session_id: session.external_session_id,
+            tool: session.tool,
         };
-        emit_changed_buckets(token_db, &identity, || None, sink)?;
-        token_db.clear_needs_reconcile(&session_id)?;
+        emit_changed_buckets(token_db, &identity, || session.repo_url, sink)?;
+        token_db.clear_needs_reconcile(&session.session_id)?;
     }
     Ok(())
 }
@@ -1127,6 +1136,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(run_as(&db, &identity_a, &transcript_a).unwrap().len(), 1);
+        // Production persists the emission repo_url per session; corrections
+        // must carry it so they face the same repo exclude gate.
+        db.update_session_repo_url(&identity_a.session_id, "https://github.com/acme/repo")
+            .unwrap();
         // Session A's transcript disappears (e.g. Claude Code pruned it):
         // reconciliation of A must not depend on the file.
         fs::remove_file(&transcript_a).unwrap();
@@ -1170,6 +1183,11 @@ mod tests {
         assert_eq!(
             attrs.external_session_id,
             Some(Some("ext-test".to_string()))
+        );
+        assert_eq!(
+            attrs.repo_url,
+            Some(Some("https://github.com/acme/repo".to_string())),
+            "corrections must carry the stored repo_url for the exclude gate"
         );
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
     }
