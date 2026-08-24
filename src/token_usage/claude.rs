@@ -201,7 +201,12 @@ fn usage_entry(
         cache_write_1h: usage
             .cache_creation
             .map_or(0, |b| b.ephemeral_1h_input_tokens),
-        transcript_cost_micro_usd: cost_usd.map(super::cost::micro_usd),
+        // A negative or non-finite costUSD is corruption, not a price:
+        // treat it as absent so catalog pricing applies instead of a
+        // suppressing Some(0).
+        transcript_cost_micro_usd: cost_usd
+            .filter(|cost| cost.is_finite() && *cost >= 0.0)
+            .map(super::cost::micro_usd),
         is_sidechain,
         has_speed: usage.speed.is_some(),
     }
@@ -577,6 +582,118 @@ mod tests {
         assert_eq!(entries.len(), 2);
         assert!(entries[0].message_id.is_none());
         assert_ne!(entries[0].entry_key, entries[1].entry_key);
+    }
+
+    #[test]
+    fn null_rejection_list_is_pinned() {
+        // ccusage's unsupported-null set: dropping any entry silently
+        // changes what counts. Pin the schema-relevant ones beyond requestId.
+        for field in ["speed", "model", "sessionId", "id", "costUSD"] {
+            let line = format!(
+                r#"{{"timestamp":"2026-01-01T00:00:00Z","{field}":null,"message":{{"id":"m","model":"x","usage":{{"input_tokens":1,"output_tokens":1,"{field}":null}}}},"requestId":"r"}}"#
+            );
+            assert!(
+                extract(&line).is_empty(),
+                "null {field} must reject the line"
+            );
+        }
+    }
+
+    #[test]
+    fn empty_string_identity_fields_reject_the_line() {
+        // An empty requestId would otherwise produce dedup key "m1|",
+        // colliding with the absent-request-id key for the same message.
+        for (field, json) in [
+            (
+                "requestId",
+                r#"{"timestamp":"2026-01-01T00:00:00Z","requestId":"","message":{"id":"m","model":"x","usage":{"input_tokens":1,"output_tokens":1}}}"#,
+            ),
+            (
+                "sessionId",
+                r#"{"timestamp":"2026-01-01T00:00:00Z","sessionId":"","message":{"id":"m","model":"x","usage":{"input_tokens":1,"output_tokens":1}},"requestId":"r"}"#,
+            ),
+            (
+                "model",
+                r#"{"timestamp":"2026-01-01T00:00:00Z","message":{"id":"m","model":"","usage":{"input_tokens":1,"output_tokens":1}},"requestId":"r"}"#,
+            ),
+        ] {
+            assert!(extract(json).is_empty(), "empty {field} must reject");
+        }
+    }
+
+    #[test]
+    fn garbage_cost_usd_falls_back_to_catalog_pricing() {
+        // Negative costUSD is corruption, not a price: it must not become a
+        // Some(0) that suppresses catalog pricing.
+        let line = r#"{"timestamp":"2026-01-01T00:00:00Z","costUSD":-5.0,"message":{"id":"m","model":"claude-sonnet-4-20250514","usage":{"input_tokens":1000000,"output_tokens":0}},"requestId":"r"}"#;
+        let entry = &extract(line)[0];
+        assert_eq!(entry.transcript_cost_micro_usd, None);
+        assert!(super::super::cost::entry_cost_micro_usd(entry).unwrap() > 0);
+    }
+
+    #[test]
+    fn fast_speed_entries_price_at_the_base_rate() {
+        // Documented deviation: no fast-speed multiplier (the models.dev
+        // catalog has no fast rates). Pin that has_speed does not change the
+        // computed cost.
+        let base = r#"{"timestamp":"2026-01-01T00:00:00Z","message":{"id":"m","model":"claude-sonnet-4-20250514","usage":{"input_tokens":1000000,"output_tokens":0}},"requestId":"r"}"#;
+        let fast = r#"{"timestamp":"2026-01-01T00:00:00Z","message":{"id":"m","model":"claude-sonnet-4-20250514","usage":{"input_tokens":1000000,"output_tokens":0,"speed":"fast"}},"requestId":"r"}"#;
+        assert_eq!(
+            super::super::cost::entry_cost_micro_usd(&extract(base)[0]),
+            super::super::cost::entry_cost_micro_usd(&extract(fast)[0]),
+        );
+    }
+
+    #[test]
+    fn golden_fixture_extraction_is_pinned() {
+        // Real captured transcript (23 usage lines, streaming re-emits of
+        // duplicate message ids, cache_creation breakdowns): pins the
+        // parser's behavior against serde-shape regressions and upstream
+        // format drift that would otherwise silently zero production
+        // counting.
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/example-claude-code.jsonl");
+        let content = std::fs::read_to_string(fixture).unwrap();
+        let mut extractor = ClaudeUsageExtractor;
+        let mut entries = Vec::new();
+        for line in content.lines() {
+            if extractor.wants_line(line) {
+                entries.extend(extractor.extract_line(line));
+            }
+        }
+        let mut per_model: std::collections::BTreeMap<String, (usize, u64, u64, u64, u64)> =
+            std::collections::BTreeMap::new();
+        let mut distinct_keys = std::collections::BTreeSet::new();
+        for entry in &entries {
+            let slot = per_model.entry(entry.model.clone()).or_default();
+            slot.0 += 1;
+            slot.1 += entry.tokens.input;
+            slot.2 += entry.tokens.output;
+            slot.3 += entry.tokens.cache_read;
+            slot.4 += entry.tokens.cache_write;
+            distinct_keys.insert(entry.entry_key.clone());
+        }
+        insta::assert_debug_snapshot!((entries.len(), distinct_keys.len(), per_model));
+    }
+
+    #[test]
+    fn secondary_fixtures_still_extract_usage() {
+        for fixture in [
+            "tests/fixtures/claude-code-with-thinking.jsonl",
+            "tests/fixtures/claude-code-with-plan.jsonl",
+            "tests/fixtures/claude-model-not-last.jsonl",
+        ] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(fixture);
+            let content = std::fs::read_to_string(path).unwrap();
+            let mut extractor = ClaudeUsageExtractor;
+            let mut count = 0;
+            for line in content.lines() {
+                if extractor.wants_line(line) {
+                    count += extractor.extract_line(line).len();
+                }
+            }
+            assert!(count > 0, "{fixture} must yield usage entries");
+        }
     }
 
     #[test]

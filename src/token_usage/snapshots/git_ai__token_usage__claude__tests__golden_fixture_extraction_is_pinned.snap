@@ -1,0 +1,18 @@
+---
+source: src/token_usage/claude.rs
+assertion_line: 676
+expression: "(entries.len(), distinct_keys.len(), per_model)"
+---
+(
+    23,
+    13,
+    {
+        "claude-sonnet-4-20250514": (
+            23,
+            101,
+            3337,
+            513911,
+            56296,
+        ),
+    },
+)

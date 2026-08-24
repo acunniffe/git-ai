@@ -21,6 +21,9 @@
 //!   scalar where an object belongs) is skipped whole, where ccusage's lossy
 //!   deserializers would still process it. Timestamp parsing is slightly
 //!   more lenient than ccusage's fixed-width RFC3339 forms.
+//! - Cost: no long-context tiered pricing and no `codex-auto-review` model
+//!   mapping (that model prices at $0 unless the catalog learns it); see
+//!   `cost.rs` for the shared pricing deviations.
 
 use serde::{Deserialize, Serialize};
 
@@ -185,8 +188,17 @@ impl UsageExtractor for CodexUsageExtractor {
         serde_json::to_string(&self.state).ok()
     }
 
-    fn restore_state(&mut self, json: &str) {
-        self.state = serde_json::from_str(json).unwrap_or_default();
+    fn restore_state(&mut self, json: &str) -> bool {
+        match serde_json::from_str(json) {
+            Ok(state) => {
+                self.state = state;
+                true
+            }
+            Err(_) => {
+                self.state = CodexState::default();
+                false
+            }
+        }
     }
 
     fn has_pending(&self) -> bool {
@@ -312,7 +324,14 @@ impl CodexUsageExtractor {
                 }
             }
             ReplayState::SkippingBurst { last_ts_ms } => {
-                if within_burst(last_ts_ms) {
+                if event.is_none() {
+                    // Zero-delta repeats never reach ccusage's skip machine:
+                    // they must neither extend the burst window (a chain of
+                    // sub-second heartbeats could otherwise bridge it across
+                    // the child's real first turn) nor resolve it.
+                    self.state.replay = ReplayState::SkippingBurst { last_ts_ms };
+                    Vec::new()
+                } else if within_burst(last_ts_ms) {
                     self.state.replay = ReplayState::SkippingBurst { last_ts_ms: ts_ms };
                     Vec::new()
                 } else {
@@ -352,10 +371,12 @@ fn make_entry(event: PendingEvent) -> UsageEntry {
 }
 
 /// Content-derived dedup key over the event's full identity (timestamp,
-/// model, all counts), matching ccusage's codex dedup key. A forked or
-/// subagent rollout replaying the parent's events maps them to the same keys
+/// model, all counts), matching ccusage's codex dedup key. A fork that
+/// replays the parent's events verbatim maps them to the same keys
 /// (deduplicated), while distinct turns from files sharing a rollup session
-/// never collide.
+/// never collide. Rewritten bursts (Codex re-stamps replayed history to the
+/// fork instant, so keys differ from the parent's) are handled by the replay
+/// filter above, not by key dedup.
 fn entry_key(ts_ms: i64, model: &str, delta: &CodexTotals) -> String {
     use sha2::{Digest, Sha256};
     let identity = format!(
@@ -388,6 +409,7 @@ struct RawPayload {
     model_id: Option<String>,
     metadata: Option<RawMetadata>,
     // session_meta fields:
+    id: Option<String>,
     forked_from_id: Option<String>,
     source: Option<serde_json::Value>,
 }
@@ -408,11 +430,14 @@ struct RawMetadata {
     model: Option<String>,
 }
 
-/// Fork markers from ccusage `read_codex_session_metadata`.
+/// Fork markers from ccusage `read_codex_session_metadata`. A session that
+/// lists itself as its own parent is not a fork (ccusage guards this too: it
+/// would match the whole stream and drop every event).
 fn is_forked_session(payload: &RawPayload) -> bool {
-    let non_empty = |value: Option<&str>| value.is_some_and(|v| !v.is_empty());
-    non_empty(payload.forked_from_id.as_deref())
-        || non_empty(
+    let own_id = payload.id.as_deref();
+    let is_parent = |value: Option<&str>| value.is_some_and(|v| !v.is_empty() && Some(v) != own_id);
+    is_parent(payload.forked_from_id.as_deref())
+        || is_parent(
             payload
                 .source
                 .as_ref()
@@ -783,7 +808,7 @@ mod tests {
         for line in &lines {
             let mut e = CodexUsageExtractor::default();
             if let Some(json) = &state {
-                e.restore_state(json);
+                assert!(e.restore_state(json));
             }
             resumed_entries.extend(e.extract_line(line));
             state = e.state_json();
@@ -800,7 +825,7 @@ mod tests {
             "2026-01-01T00:00:10Z",
             (100, 0, 50, 0, 150),
         ));
-        e.restore_state("{not json");
+        assert!(!e.restore_state("{not json"));
         assert!(e.state.prev_totals.is_none());
         assert!(matches!(e.state.replay, ReplayState::Done));
     }
@@ -836,6 +861,253 @@ mod tests {
         ));
         assert_eq!(own.len(), 1);
         assert_eq!(own[0].tokens.input, 20);
+    }
+
+    #[test]
+    fn zero_delta_repeats_do_not_extend_an_active_burst() {
+        // ccusage's skip machine never sees zero-delta repeats, so they must
+        // not bridge the burst window across the child's real first turn.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+        );
+        // Burst: two delta events back to back.
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:01.000Z",
+                (10, 0, 5, 0, 15)
+            ))
+            .is_empty()
+        );
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:01.100Z",
+                (20, 0, 10, 0, 30)
+            ))
+            .is_empty()
+        );
+        // Zero-delta heartbeat 0.9s later: discarded, but must not extend.
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:02.000Z",
+                (20, 0, 10, 0, 30)
+            ))
+            .is_empty()
+        );
+        // Child's real first turn 1.7s after the last DELTA event (but only
+        // 0.8s after the heartbeat): counted, matching upstream.
+        let own = e.extract_line(&token_count_line(
+            "2026-01-01T00:00:02.800Z",
+            (30, 0, 15, 0, 45),
+        ));
+        assert_eq!(own.len(), 1);
+        assert_eq!(own[0].tokens.input, 10);
+    }
+
+    #[test]
+    fn repeated_last_usage_with_unchanged_total_is_skipped() {
+        // Codex duplicates final snapshots on close/compaction: a non-zero
+        // last_token_usage alongside an UNCHANGED cumulative total must not
+        // re-count the final turn (ccusage
+        // `skips_repeated_last_usage_when_cumulative_total_is_unchanged`).
+        let mut e = CodexUsageExtractor::default();
+        let line = r#"{"timestamp":"2026-01-01T00:00:10Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150},"last_token_usage":{"input_tokens":100,"cached_input_tokens":0,"output_tokens":50,"reasoning_output_tokens":0,"total_tokens":150}}}}"#;
+        assert_eq!(e.extract_line(line).len(), 1);
+        // Exact duplicate snapshot: cumulative unchanged, last repeated.
+        assert!(e.extract_line(line).is_empty());
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:05:00Z",
+                (100, 0, 50, 0, 150)
+            ))
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn hostile_shapes_skip_the_line_but_preserve_parser_state() {
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(&turn_context_line("gpt-5.1"));
+        assert_eq!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:10Z",
+                (100, 0, 50, 0, 150)
+            ))
+            .len(),
+            1
+        );
+
+        // Unexpected shapes: scalar payload, array info, scalar metadata,
+        // array-valued last usage. Each line is skipped whole (documented
+        // deviation) without corrupting model or cumulative state.
+        for hostile in [
+            r#"{"timestamp":"2026-01-01T00:00:11Z","type":"event_msg","payload":"token_count"}"#,
+            r#"{"timestamp":"2026-01-01T00:00:12Z","type":"event_msg","payload":{"type":"token_count","info":[1,2,3]}}"#,
+            r#"{"timestamp":"2026-01-01T00:00:13Z","type":"event_msg","payload":{"type":"token_count","metadata":"auto","info":{"total_token_usage":{"input_tokens":[1],"output_tokens":50}}}}"#,
+            r#"{"timestamp":"2026-01-01T00:00:14Z","type":"turn_context","payload":"gpt-oops"}"#,
+        ] {
+            assert!(e.extract_line(hostile).is_empty(), "line: {hostile}");
+        }
+
+        // The next good event still deltas from the last good totals under
+        // the sticky model.
+        let next = e.extract_line(&token_count_line(
+            "2026-01-01T00:01:00Z",
+            (150, 0, 70, 0, 220),
+        ));
+        assert_eq!(next.len(), 1);
+        assert_eq!(next[0].tokens.input, 50);
+        assert_eq!(next[0].tokens.output, 20);
+        assert_eq!(next[0].model, "gpt-5.1");
+    }
+
+    #[test]
+    fn float_and_string_counts_are_tolerated_per_field() {
+        // Wrong-typed individual counts fall back to 0 (lossy per-field, like
+        // ccusage) instead of failing the whole line.
+        let mut e = CodexUsageExtractor::default();
+        let line = r#"{"timestamp":"2026-01-01T00:00:10Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":12.5,"cached_input_tokens":"4","output_tokens":50,"reasoning_output_tokens":null,"total_tokens":0}}}}"#;
+        let entries = e.extract_line(line);
+        assert_eq!(entries.len(), 1);
+        // 12.5 is not a u64: lossy -> 0; cached clamps to input (0).
+        assert_eq!(entries[0].tokens.input, 0);
+        assert_eq!(entries[0].tokens.cache_read, 0);
+        assert_eq!(entries[0].tokens.output, 50);
+        assert_eq!(entries[0].tokens.total, 50); // derived: input + output
+    }
+
+    #[test]
+    fn fork_states_roundtrip_through_persisted_state() {
+        // AwaitingSecond-with-pending survives a state save/restore (the
+        // production shape: park in one pass, decide in a later one).
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+        );
+        assert!(
+            e.extract_line(&token_count_line("2026-01-01T00:00:01Z", (10, 0, 5, 0, 15)))
+                .is_empty()
+        );
+        assert!(e.has_pending());
+        let saved = e.state_json().unwrap();
+
+        let mut resumed = CodexUsageExtractor::default();
+        assert!(resumed.restore_state(&saved));
+        assert!(resumed.has_pending());
+        // A burst-confirming second event in the next pass still discards
+        // both...
+        assert!(
+            resumed
+                .extract_line(&token_count_line(
+                    "2026-01-01T00:00:01.500Z",
+                    (20, 0, 10, 0, 30)
+                ))
+                .is_empty()
+        );
+        assert!(matches!(
+            resumed.state.replay,
+            ReplayState::SkippingBurst { .. }
+        ));
+        // ...and SkippingBurst also survives persistence.
+        let saved = resumed.state_json().unwrap();
+        let mut resumed = CodexUsageExtractor::default();
+        assert!(resumed.restore_state(&saved));
+        let own = resumed.extract_line(&token_count_line(
+            "2026-01-01T00:00:20Z",
+            (30, 0, 15, 0, 45),
+        ));
+        assert_eq!(own.len(), 1);
+
+        // The alternative branch: a wall-clock flush in a later pass
+        // releases a parked single turn.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+        );
+        e.extract_line(&token_count_line("2026-01-01T00:00:01Z", (10, 0, 5, 0, 15)));
+        let saved = e.state_json().unwrap();
+        let mut resumed = CodexUsageExtractor::default();
+        assert!(resumed.restore_state(&saved));
+        let flushed = resumed.flush(1_767_225_601_000 + 5_000);
+        assert_eq!(flushed.len(), 1);
+        assert_eq!(flushed[0].tokens.input, 10);
+    }
+
+    #[test]
+    fn burst_window_has_millisecond_precision() {
+        // 00.986 -> 01.009 is 23ms apart: inside the window even though the
+        // integer seconds differ (a seconds-truncating parser would
+        // misclassify real turns straddling a second boundary).
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+        );
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:00.986Z",
+                (10, 0, 5, 0, 15)
+            ))
+            .is_empty()
+        );
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:01.009Z",
+                (20, 0, 10, 0, 30)
+            ))
+            .is_empty(),
+            "23ms apart must be a burst"
+        );
+    }
+
+    #[test]
+    fn string_encoded_near_max_counts_saturate() {
+        let mut e = CodexUsageExtractor::default();
+        let max = u64::MAX;
+        let line = format!(
+            r#"{{"timestamp":"2026-01-01T00:00:10Z","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":"{max}","cached_input_tokens":0,"output_tokens":"{max}","reasoning_output_tokens":0,"total_tokens":0}}}}}}}}"#
+        );
+        let entries = e.extract_line(&line);
+        assert_eq!(entries.len(), 1);
+        // The derived total saturates instead of wrapping.
+        assert_eq!(entries[0].tokens.total, u64::MAX);
+    }
+
+    #[test]
+    fn self_parent_fork_is_not_a_fork() {
+        // ccusage guards a session listing itself as its own parent: treating
+        // it as a fork would burst-skip its real first turns.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"same","forked_from_id":"same"}}"#,
+        );
+        assert!(matches!(e.state.replay, ReplayState::Done));
+        assert_eq!(
+            e.extract_line(&token_count_line("2026-01-01T00:00:01Z", (10, 0, 5, 0, 15)))
+                .len(),
+            1
+        );
+    }
+
+    #[test]
+    fn real_codex_fixture_shapes_parse() {
+        // Conformance over a captured rollout: session_meta/turn_context in
+        // their real shapes must resolve the model and not misfire the fork
+        // detector (no forked_from_id in this session).
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/codex-session-updated.jsonl");
+        let content = std::fs::read_to_string(fixture).unwrap();
+        let mut e = CodexUsageExtractor::default();
+        for line in content.lines() {
+            if e.wants_line(line) {
+                assert!(e.extract_line(line).is_empty()); // no token_count events
+            }
+        }
+        assert!(matches!(e.state.replay, ReplayState::Done));
+        assert!(e.state.model.is_some(), "model from real turn_context");
+        // Usage arriving after the real prelude prices under that model.
+        let entries = e.extract_line(&token_count_line("2026-02-11T05:54:00Z", (10, 0, 5, 0, 15)));
+        assert_eq!(entries.len(), 1);
+        assert_ne!(entries[0].model, FALLBACK_MODEL);
     }
 
     #[test]

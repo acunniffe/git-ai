@@ -19,9 +19,16 @@ pub trait UsageExtractor: Send {
         None
     }
 
-    /// Restore state persisted by an earlier `state_json` call. Unknown or
-    /// corrupt state must reset to defaults rather than fail.
-    fn restore_state(&mut self, _json: &str) {}
+    /// Restore state persisted by an earlier `state_json` call. Returns
+    /// false when the state was unreadable (corrupt, or written by a
+    /// different version): the extractor resets to defaults, and the caller
+    /// must also reset its read cursor — replaying a file against default
+    /// state is safe (entry-level dedup), but continuing mid-file with
+    /// default state would book the session's whole cumulative history as
+    /// one fresh delta.
+    fn restore_state(&mut self, _json: &str) -> bool {
+        true
+    }
 
     /// True when the extractor holds buffered entries that a later
     /// [`UsageExtractor::flush`] could release. Files with pending state must
