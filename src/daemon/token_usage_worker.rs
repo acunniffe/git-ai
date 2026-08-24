@@ -168,7 +168,7 @@ impl TokenUsageWorker {
         sweep_ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         sweep_ticker.tick().await; // skip the immediate tick
 
-        self.enqueue_sweep_tasks();
+        self.enqueue_sweep_tasks().await;
 
         loop {
             if self.shutdown_flag.load(Ordering::Relaxed) {
@@ -195,7 +195,7 @@ impl TokenUsageWorker {
                     }
                 }
                 _ = sweep_ticker.tick() => {
-                    self.enqueue_sweep_tasks();
+                    self.enqueue_sweep_tasks().await;
                 }
                 Some(task) = self.notify_rx.recv() => {
                     self.enqueue_notify(task);
@@ -256,47 +256,23 @@ impl TokenUsageWorker {
     }
 
     /// Enqueue supported transcripts the streams database knows about whose
-    /// files changed since the last completed pass. New files have no
-    /// snapshot yet and are always enqueued, which is what backfills history
-    /// for sessions tracked before this feature ran; missing files are
-    /// skipped quietly.
-    fn enqueue_sweep_tasks(&mut self) {
-        let streams = match self.streams_db.all_streams() {
-            Ok(streams) => streams,
-            Err(e) => {
-                tracing::warn!(error = %e, "token-usage sweep: failed to list streams");
-                return;
-            }
-        };
-        let tracked: HashMap<String, TrackedFile> = match self.token_db.all_files() {
-            Ok(files) => files
-                .into_iter()
-                .map(|file| (file.stream_path.clone(), file))
-                .collect(),
-            Err(e) => {
-                tracing::warn!(error = %e, "token-usage sweep: failed to list tracked files");
-                return;
-            }
-        };
-        for stream in streams {
-            if stream.stream_kind != "transcript" || extractor_for_tool(&stream.tool).is_none() {
-                continue;
-            }
-            let Ok(metadata) = std::fs::metadata(&stream.stream_path) else {
-                continue;
-            };
-            if let Some(file) = tracked.get(&stream.stream_path)
-                && file.last_known_size as u64 == metadata.len()
-                && file.last_modified == modified_secs(&metadata)
-                && !file.pending_flush
+    /// files changed since the last completed pass. The DB scans and per-file
+    /// stats run in `spawn_blocking`, like all other I/O in this module.
+    async fn enqueue_sweep_tasks(&mut self) {
+        let streams_db = self.streams_db.clone();
+        let token_db = self.token_db.clone();
+        let tasks =
+            match tokio::task::spawn_blocking(move || sweep_candidates(&streams_db, &token_db))
+                .await
             {
-                continue;
-            }
-            self.enqueue_sweep(TokenUsageTask {
-                session_id: stream.session_id,
-                tool: stream.tool,
-                stream_path: stream.stream_path,
-            });
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    tracing::error!(error = %e, "token-usage sweep panicked");
+                    return;
+                }
+            };
+        for task in tasks {
+            self.enqueue_sweep(task);
         }
     }
 
@@ -334,6 +310,55 @@ impl TokenUsageWorker {
             }
         }
     }
+}
+
+/// New files have no snapshot yet and are always swept, which is what
+/// backfills history for sessions tracked before this feature ran; settled
+/// files (size/mtime match, nothing pending) and missing files are skipped
+/// quietly.
+fn sweep_candidates(
+    streams_db: &StreamsDatabase,
+    token_db: &TokenUsageDatabase,
+) -> Vec<TokenUsageTask> {
+    let streams = match streams_db.all_streams() {
+        Ok(streams) => streams,
+        Err(e) => {
+            tracing::warn!(error = %e, "token-usage sweep: failed to list streams");
+            return Vec::new();
+        }
+    };
+    let tracked: HashMap<String, TrackedFile> = match token_db.all_files() {
+        Ok(files) => files
+            .into_iter()
+            .map(|file| (file.stream_path.clone(), file))
+            .collect(),
+        Err(e) => {
+            tracing::warn!(error = %e, "token-usage sweep: failed to list tracked files");
+            return Vec::new();
+        }
+    };
+    let mut tasks = Vec::new();
+    for stream in streams {
+        if stream.stream_kind != "transcript" || extractor_for_tool(&stream.tool).is_none() {
+            continue;
+        }
+        let Ok(metadata) = std::fs::metadata(&stream.stream_path) else {
+            continue;
+        };
+        if let Some(file) = tracked.get(&stream.stream_path)
+            && file.last_known_size as u64 == metadata.len()
+            && file.last_modified == modified_secs(&metadata)
+            && !file.pending_flush
+        {
+            continue;
+        }
+        tasks.push(TokenUsageTask {
+            session_id: stream.session_id,
+            tool: stream.tool,
+            stream_path: stream.stream_path,
+        });
+    }
+    tasks
 }
 
 /// Rollup identity of the session a transcript belongs to: subagent
@@ -1205,11 +1230,19 @@ mod tests {
             )
             .unwrap();
 
-        let mut worker = test_worker(streams_db, token_db);
-        worker.enqueue_sweep_tasks();
-        worker.enqueue_sweep_tasks(); // dedup: repeated sweeps don't re-add
+        let candidates = sweep_candidates(&streams_db, &token_db);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].session_id, "s_changed");
+
+        // Enqueue dedup: repeated sweeps don't re-add queued tasks.
+        let mut worker = test_worker(streams_db.clone(), token_db.clone());
+        for task in sweep_candidates(&streams_db, &token_db) {
+            worker.enqueue_sweep(task);
+        }
+        for task in sweep_candidates(&streams_db, &token_db) {
+            worker.enqueue_sweep(task);
+        }
         assert_eq!(worker.sweep_queue.len(), 1);
-        assert_eq!(worker.sweep_queue[0].session_id, "s_changed");
         assert!(worker.notify_queue.is_empty());
     }
 
