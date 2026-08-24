@@ -1,0 +1,34 @@
+tests/fixtures/codex-session-token-count.jsonl
+  s_cfe6a4847c079e::t_4269358309147d 1
+  s_cfe6a4847c079e::t_605de9c3c35fc1 2
+  s_cfe6a4847c079e::t_a05c5996dd31fc 3-10
+src/token_usage/codex.rs
+  s_cfe6a4847c079e::t_b2fc2564e2edd9 1114-1144
+  s_9e507e8c7ddbd9::t_e9670ea388870e 1113
+src/token_usage/snapshots/git_ai__token_usage__codex__tests__golden_codex_token_count_extraction_is_pinned.snap
+  s_cfe6a4847c079e::t_f33eac3e1966c4 1-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "0504ba81f2dc36448ae633f9c3df00cf0f7791df",
+  "prompts": {},
+  "sessions": {
+    "s_9e507e8c7ddbd9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebc3504-cda7-45c7-86d7-2c645db21543",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
