@@ -14,8 +14,14 @@
 //! [`TokenUsageDatabase::commit_batch`] writes the entries, the extractor
 //! state, and the advanced cursor in a single transaction, so a crash can
 //! never replay lines against post-batch parser state.
+//!
+//! Changed buckets are found by *reconciliation*, not change tracking:
+//! [`TokenUsageDatabase::session_buckets`] enumerates every bucket the
+//! session has entries or emission state for, and the caller re-emits those
+//! whose current aggregate fingerprint differs from the emitted one. Because
+//! no pending-emission state lives in memory, a crash or failed emission is
+//! healed by the next pass over the session.
 
-use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -129,10 +135,6 @@ impl BucketAggregate {
         )
     }
 }
-
-/// A bucket whose aggregate may have changed: re-aggregate, compare
-/// fingerprints, emit on mismatch.
-pub type DirtyBuckets = HashSet<(String, u32)>;
 
 /// SQLite database for token-usage state.
 pub struct TokenUsageDatabase {
@@ -253,8 +255,7 @@ impl TokenUsageDatabase {
 
     /// Persist one extracted batch atomically: deduplicated entries, the
     /// advanced read cursor, and the extractor state. Clears any recorded
-    /// processing error. Returns the buckets whose aggregate may have
-    /// changed.
+    /// processing error.
     pub fn commit_batch(
         &self,
         session_id: &str,
@@ -262,12 +263,11 @@ impl TokenUsageDatabase {
         entries: &[UsageEntry],
         new_offset: u64,
         state_json: Option<&str>,
-    ) -> Result<DirtyBuckets, GitAiError> {
+    ) -> Result<(), GitAiError> {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
-        let mut dirty = DirtyBuckets::new();
         for entry in entries {
-            upsert_entry(&tx, session_id, entry, &mut dirty)?;
+            upsert_entry(&tx, session_id, entry)?;
         }
         tx.execute(
             "UPDATE tracked_files
@@ -276,7 +276,22 @@ impl TokenUsageDatabase {
             params![new_offset as i64, state_json, session_id, stream_path],
         )?;
         tx.commit()?;
-        Ok(dirty)
+        Ok(())
+    }
+
+    /// Every `(model, bucket_ts)` the session has entries or emission state
+    /// for — the reconciliation candidates. Buckets present only in
+    /// `bucket_state` (all their entries were replaced away or pruned) are
+    /// included so an emptied bucket can re-emit as zero.
+    pub fn session_buckets(&self, session_id: &str) -> Result<Vec<(String, u32)>, GitAiError> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT model, bucket_ts FROM usage_entries WHERE session_id = ?1
+             UNION
+             SELECT model, bucket_ts FROM bucket_state WHERE session_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
     /// Update the file-size/mtime snapshot used to skip unchanged files.
@@ -406,8 +421,6 @@ impl TokenUsageDatabase {
 /// A stored entry's dedup-relevant fields.
 struct ExistingRow {
     rowid: i64,
-    model: String,
-    bucket_ts: u32,
     replacement: ReplacementCandidate,
 }
 
@@ -419,7 +432,6 @@ fn upsert_entry(
     tx: &Transaction<'_>,
     session_id: &str,
     entry: &UsageEntry,
-    dirty: &mut DirtyBuckets,
 ) -> Result<(), GitAiError> {
     let bucket = bucket_ts(entry.ts);
     let existing = find_dedupe_target(tx, session_id, entry)?;
@@ -451,8 +463,6 @@ fn upsert_entry(
                         row.rowid,
                     ],
                 )?;
-                dirty.insert((row.model, row.bucket_ts));
-                dirty.insert((entry.model.clone(), bucket));
             }
         }
         None => {
@@ -480,7 +490,6 @@ fn upsert_entry(
                     entry.has_speed,
                 ],
             )?;
-            dirty.insert((entry.model.clone(), bucket));
         }
     }
     Ok(())
@@ -492,22 +501,20 @@ fn find_dedupe_target(
     entry: &UsageEntry,
 ) -> Result<Option<ExistingRow>, GitAiError> {
     let read_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<ExistingRow> {
-        let token_total = row.get::<_, i64>(3)? as u64
-            + row.get::<_, i64>(4)? as u64
-            + row.get::<_, i64>(5)? as u64
-            + row.get::<_, i64>(6)? as u64;
+        let token_total = row.get::<_, i64>(1)? as u64
+            + row.get::<_, i64>(2)? as u64
+            + row.get::<_, i64>(3)? as u64
+            + row.get::<_, i64>(4)? as u64;
         Ok(ExistingRow {
             rowid: row.get(0)?,
-            model: row.get(1)?,
-            bucket_ts: row.get(2)?,
             replacement: ReplacementCandidate {
                 token_total,
-                is_sidechain: row.get(7)?,
-                has_speed: row.get(8)?,
+                is_sidechain: row.get(5)?,
+                has_speed: row.get(6)?,
             },
         })
     };
-    const ROW_COLUMNS: &str = "rowid, model, bucket_ts, input_tokens, output_tokens, \
+    const ROW_COLUMNS: &str = "rowid, input_tokens, output_tokens, \
                                cache_read_tokens, cache_write_tokens, is_sidechain, has_speed";
 
     let exact = tx
@@ -546,6 +553,7 @@ fn find_dedupe_target(
 mod tests {
     use super::*;
     use crate::token_usage::types::TokenCounts;
+    use std::collections::HashSet;
 
     fn db() -> (tempfile::TempDir, TokenUsageDatabase) {
         let dir = tempfile::tempdir().unwrap();
@@ -576,7 +584,7 @@ mod tests {
         }
     }
 
-    fn commit(db: &TokenUsageDatabase, entries: &[UsageEntry]) -> DirtyBuckets {
+    fn commit(db: &TokenUsageDatabase, entries: &[UsageEntry]) {
         db.ensure_file("s1", "/t.jsonl", "claude").unwrap();
         db.commit_batch("s1", "/t.jsonl", entries, 0, None).unwrap()
     }
@@ -608,10 +616,10 @@ mod tests {
     #[test]
     fn commit_batch_is_atomic_for_cursor_state_and_entries() {
         let (_dir, db) = db();
-        let dirty = commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
+        commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         assert_eq!(
-            dirty,
-            DirtyBuckets::from([("claude-sonnet-4-20250514".to_string(), 600)])
+            db.session_buckets("s1").unwrap(),
+            vec![("claude-sonnet-4-20250514".to_string(), 600)]
         );
         let agg = db
             .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
@@ -627,9 +635,13 @@ mod tests {
     fn exact_duplicate_replay_is_a_noop() {
         let (_dir, db) = db();
         let e = entry("m1|r1", Some("m1"), 600, tokens(10, 5));
-        assert!(!commit(&db, std::slice::from_ref(&e)).is_empty());
-        // Identical replay: policy keeps the existing row, nothing dirty.
-        assert!(commit(&db, &[e]).is_empty());
+        commit(&db, std::slice::from_ref(&e));
+        let model = "claude-sonnet-4-20250514";
+        let before = db.aggregate_bucket("s1", model, 600).unwrap();
+        // Identical replay: policy keeps the existing row, aggregate (and
+        // therefore the emission fingerprint) is unchanged.
+        commit(&db, &[e]);
+        assert_eq!(db.aggregate_bucket("s1", model, 600).unwrap(), before);
         let agg = db
             .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
             .unwrap();
@@ -640,15 +652,19 @@ mod tests {
     fn streaming_reemit_with_larger_totals_replaces() {
         let (_dir, db) = db();
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
-        let dirty = commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))]);
-        assert!(!dirty.is_empty());
+        commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))]);
         let agg = db
             .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
             .unwrap();
         assert_eq!(agg.output, 50);
         assert_eq!(agg.message_count, 1);
         // Smaller totals never replace.
-        assert!(commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(1, 1))]).is_empty());
+        commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(1, 1))]);
+        assert_eq!(
+            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+                .unwrap(),
+            agg
+        );
     }
 
     #[test]
@@ -659,7 +675,7 @@ mod tests {
         replay.is_sidechain = true;
         // The sidechain replay matches the parent's row via message id and
         // loses to it despite larger totals.
-        assert!(commit(&db, &[replay]).is_empty());
+        commit(&db, &[replay]);
         let agg = db
             .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
             .unwrap();
@@ -673,15 +689,20 @@ mod tests {
         let mut replay = entry("m1|r-side", Some("m1"), 600, tokens(50_000, 5));
         replay.is_sidechain = true;
         commit(&db, &[replay]);
-        let dirty = commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
-        assert!(!dirty.is_empty());
+        commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         let agg = db
             .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
             .unwrap();
         assert_eq!(agg.input, 10);
         assert_eq!(agg.message_count, 1);
-        // The winner's identity is now the parent's exact key.
-        assert!(commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]).is_empty());
+        // The winner's identity is now the parent's exact key: replaying the
+        // parent entry again leaves the aggregate untouched.
+        commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
+        assert_eq!(
+            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+                .unwrap(),
+            agg
+        );
     }
 
     #[test]
@@ -699,16 +720,18 @@ mod tests {
     }
 
     #[test]
-    fn replacement_across_buckets_dirties_both() {
+    fn replacement_across_buckets_keeps_both_reconciliation_candidates() {
         let (_dir, db) = db();
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
-        // Streaming re-emit landed in the next bucket with larger totals.
-        let dirty = commit(&db, &[entry("m1|r1", Some("m1"), 900, tokens(10, 50))]);
         let model = "claude-sonnet-4-20250514".to_string();
-        assert_eq!(
-            dirty,
-            DirtyBuckets::from([(model.clone(), 600), (model.clone(), 900)])
-        );
+        db.mark_emitted("s1", &model, 600, "fp-old", 1).unwrap();
+        // Streaming re-emit landed in the next bucket with larger totals: the
+        // emptied bucket stays visible via bucket_state, the new one via its
+        // entry.
+        commit(&db, &[entry("m1|r1", Some("m1"), 900, tokens(10, 50))]);
+        let mut buckets = db.session_buckets("s1").unwrap();
+        buckets.sort();
+        assert_eq!(buckets, vec![(model.clone(), 600), (model.clone(), 900)]);
         assert_eq!(
             db.aggregate_bucket("s1", &model, 600)
                 .unwrap()
