@@ -20,7 +20,9 @@ use git_ai::daemon::{
 #[cfg(not(windows))]
 use git_ai::git::repository::find_repository_in_path;
 use git_ai::metrics::db::MetricsDatabase;
-use git_ai::metrics::{EventAttributes, MetricEvent, PosEncoded, SessionEventValues};
+use git_ai::metrics::{
+    EventAttributes, MetricEvent, PosEncoded, SessionEventValues, TokenUsageValues,
+};
 use repos::test_file::ExpectedLineExt;
 use repos::test_repo::{
     DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS, DaemonTestCompletionLogEntry, DaemonTestScope, TestRepo,
@@ -7917,6 +7919,73 @@ fn daemon_marks_repository_filtered_session_events_delivered_without_uploading_t
     let uploaded_requests = serde_json::to_string(&mock_api.collect_requests()).unwrap();
     assert!(uploaded_requests.contains("allowed-session"));
     assert!(!uploaded_requests.contains("excluded-session"));
+
+    let metrics_db = MetricsDatabase::open_at_path(&metrics_db_path).unwrap();
+    let status = metrics_db.status().unwrap();
+    assert_eq!(status.delivered, 2);
+}
+
+/// TokenUsage events are transcript-derived like SessionEvents and get the
+/// same upload-time repo gate: sessions tracked before a repo was excluded
+/// keep producing them, so exclusion must apply at delivery.
+#[test]
+fn daemon_marks_repository_filtered_token_usage_events_delivered_without_uploading_them() {
+    let mut mock_api = MockApiServer::start();
+    let metrics_db_path = std::env::temp_dir().join(format!(
+        "git-ai-filtered-token-usage-events-{}.db",
+        git_ai::uuid::generate_v4()
+    ));
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_API_BASE_URL", mock_api.base_url()),
+        ("GIT_AI_API_KEY", "test-api-key"),
+        (
+            "GIT_AI_TEST_METRICS_DB_PATH",
+            metrics_db_path.to_str().unwrap(),
+        ),
+    ]);
+    fs::write(
+        repo.test_home_path().join(".git-ai/config.json"),
+        r#"{"allow_repositories":["https://github.com/acme/*"],"exclude_repositories":["git@github.com:acme/private"]}"#,
+    )
+    .unwrap();
+
+    let token_usage_event = |session_id: &str, repo_url: &str| {
+        MetricEvent::from_values(
+            TokenUsageValues::new()
+                .bucket_ts(1_767_225_600)
+                .input_tokens(10)
+                .output_tokens(5)
+                .total_tokens(15)
+                .est_cost_micro_usd(100)
+                .message_count(1),
+            EventAttributes::with_version("test")
+                .session_id(session_id)
+                .tool("claude")
+                .model("claude-sonnet-4")
+                .repo_url(repo_url)
+                .to_sparse(),
+        )
+    };
+    let events = [
+        token_usage_event("allowed-usage", "https://github.com/acme/public"),
+        token_usage_event("excluded-usage", "https://github.com/acme/private"),
+    ];
+    let serialized_events = events
+        .iter()
+        .map(serde_json::to_string)
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    MetricsDatabase::open_at_path(&metrics_db_path)
+        .unwrap()
+        .insert_events(&serialized_events)
+        .unwrap();
+
+    repo.git_ai(&["await", "--timeout", "30"])
+        .expect("await should flush metrics");
+
+    let uploaded_requests = serde_json::to_string(&mock_api.collect_requests()).unwrap();
+    assert!(uploaded_requests.contains("allowed-usage"));
+    assert!(!uploaded_requests.contains("excluded-usage"));
 
     let metrics_db = MetricsDatabase::open_at_path(&metrics_db_path).unwrap();
     let status = metrics_db.status().unwrap();

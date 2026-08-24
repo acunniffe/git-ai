@@ -17,8 +17,7 @@ transcript file --(incremental read, cursor in token-usage DB)-->
     - prefilter substring check before any JSON parsing
     - per-entry token counts, model, timestamp, transcript costUSD
 --> usage_entries (deduplicated per-entry rows, token-usage DB)
---> dirty (model, bucket) set
---> re-aggregate + fingerprint compare (bucket_state)
+--> reconcile all session buckets: aggregate + fingerprint compare (bucket_state)
 --> TokenUsage MetricEvent --> telemetry queue --> POST /worker/metrics/upload
 ```
 
@@ -63,9 +62,15 @@ The server upserts on `(session_id, model, bucket_ts)` with the newest
 so a re-emitted correction - including one that lowers a bucket or zeroes it
 out entirely - always supersedes the previous value. A bucket is emitted iff
 its aggregate's fingerprint differs from the last emitted fingerprint; an
-emptied bucket therefore emits an all-zero event exactly once. Buckets are
-marked emitted only after the telemetry queue accepted the events, so a
-failed hand-off retries on the next pass.
+emptied bucket therefore emits an all-zero event exactly once. Changed
+buckets are found by reconciling fingerprints across all of the session's
+buckets on every pass (no pending-emission state lives in memory), buckets
+are marked emitted only after the telemetry queue accepted the events, and
+the quiet-skip size/mtime snapshot is written only after a fully successful
+pass - so a failed hand-off or a crash at any point is healed by the next
+pass. At upload time TokenUsage events get the same repo allow/exclude gate
+as SessionEvents (they are transcript-derived, so they keep flowing for
+sessions tracked before a repo was excluded).
 
 Values (`token_usage_pos`): `bucket_ts`, `input_tokens`, `output_tokens`,
 `cache_read_tokens`, `cache_write_tokens`, `total_tokens`,
