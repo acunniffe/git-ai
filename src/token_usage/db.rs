@@ -212,10 +212,16 @@ pub struct BatchCommit<'a> {
     pub min_bucket_ts: u32,
 }
 
+/// Ceiling for any stored token count: one trillion tokens per entry, far
+/// beyond anything real. Clamping to a small fraction of i64::MAX (rather
+/// than i64::MAX itself) keeps `SUM()` over a bucket from overflowing SQLite
+/// integer arithmetic even with millions of clamped rows.
+const TOKEN_VALUE_CEILING: u64 = 1_000_000_000_000;
+
 /// Clamp a token count for an INTEGER column (defensive: corrupt transcripts
 /// can carry absurd values).
 fn to_db_i64(value: u64) -> i64 {
-    value.min(i64::MAX as u64) as i64
+    value.min(TOKEN_VALUE_CEILING) as i64
 }
 
 /// SQLite database for token-usage state.
@@ -1092,16 +1098,22 @@ mod tests {
     #[test]
     fn absurd_token_values_clamp_instead_of_wrapping() {
         let (_dir, db) = db();
-        let mut e = entry("m1|r1", Some("m1"), 600, tokens(0, 1));
-        e.tokens.input = u64::MAX;
-        e.tokens.total = u64::MAX;
-        e.transcript_cost_micro_usd = Some(1);
-        commit(&db, &[e]);
+        // Two clamped rows in one bucket: the aggregate SUM must not
+        // overflow SQLite integer arithmetic (which would make the session's
+        // reconciliation error forever).
+        for (key, msg) in [("m1|r1", "m1"), ("m2|r2", "m2")] {
+            let mut e = entry(key, Some(msg), 600, tokens(0, 1));
+            e.tokens.input = u64::MAX;
+            e.tokens.total = u64::MAX;
+            e.transcript_cost_micro_usd = Some(1);
+            commit(&db, &[e]);
+        }
         let agg = db
             .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
             .unwrap();
-        assert_eq!(agg.input, i64::MAX as u64);
-        assert_eq!(agg.total, i64::MAX as u64);
+        assert_eq!(agg.input, 2 * TOKEN_VALUE_CEILING);
+        assert_eq!(agg.total, 2 * TOKEN_VALUE_CEILING);
+        assert_eq!(db.changed_buckets("s1").unwrap().len(), 1);
     }
 
     #[test]
