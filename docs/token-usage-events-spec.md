@@ -24,8 +24,9 @@ transcript file --(incremental read, cursor in token-usage DB)-->
 
 Driven by `TokenUsageWorker` (`src/daemon/token_usage_worker.rs`):
 
-- **Triggers:** a non-blocking ping from the stream worker after it processes
-  a transcript (success or failure of that pass), a startup sweep, and a
+- **Triggers:** a non-blocking ping from the stream worker after it
+  successfully processes a transcript (a failed stream pass is picked up by
+  the next sweep instead), a startup sweep, and a
   30-minute ticker (missed ticks are skipped, not replayed). Sweeps enumerate
   the streams database's `transcript` rows, so every session git-ai knows
   about is backfilled (a new file starts at byte offset 0); enumeration costs
@@ -42,7 +43,8 @@ Driven by `TokenUsageWorker` (`src/daemon/token_usage_worker.rs`):
 - **Feature flag:** `token_usage_metrics` (debug: on, release: off) gates the
   worker at daemon startup, like `transcript_streaming`. When the flag is
   off, no worker or ticker runs, the token-usage database is not created, and
-  a previously created one is deleted — no collected data is retained.
+  a previously created one is deleted at daemon startup (independent of the
+  `transcript_streaming` gate) — no collected data is retained.
 - **Quietness:** unchanged files are skipped by size/mtime; unchanged buckets
   are never re-emitted (fingerprints); files whose last pass failed back off
   (5s/30s/5m/30m) instead of retrying on every trigger; the telemetry-buffer
@@ -64,11 +66,13 @@ Driven by `TokenUsageWorker` (`src/daemon/token_usage_worker.rs`):
   `claude --resume`/`--continue`/fork copies the parent conversation into a
   new session file with the original message/request ids, and session-scoped
   dedup would re-count that history on every resume. When a replacement moves
-  an entry between sessions, the previous owner's files are invalidated so
-  its buckets re-reconcile on their next pass. Entries older than the 90-day
-  retention window are dropped at insert (backfill never uploads history the
-  prune would delete), and stored entries/bucket state are pruned atomically
-  on sweep.
+  an entry between sessions, the previous owner is durably flagged
+  (`needs_reconcile`, in the same transaction) and re-reconciled DB-only —
+  inline after the pass and from sweeps for crash recovery — so the
+  correction lands even if that session's transcripts were deleted. Entries
+  older than the 90-day retention window are dropped at insert (backfill
+  never uploads history the prune would delete), and stored entries/bucket
+  state are pruned atomically on sweep.
 - `bucket_state` - fingerprint, emission revision (`emit_seq`), and timestamp
   of the last emitted aggregate per bucket.
 
@@ -80,9 +84,11 @@ state (which would corrupt Codex's cumulative-delta computation).
 ## Emission semantics
 
 The server upserts on `(session_id, model, bucket_ts)` keeping the **highest
-`emitted_seq`** — a strictly increasing per-bucket revision — so re-emissions
-within the same u32 second cannot tie on `event_ts`, regardless of upload
-batching or retry order. A bucket is emitted iff its aggregate's fingerprint
+`emitted_seq`** — a strictly increasing per-bucket revision, reserved in the
+state database *before* events reach the telemetry queue so a crash between
+sink and bookkeeping can never produce two payloads with equal revisions —
+so re-emissions within the same u32 second cannot tie on `event_ts`,
+regardless of upload batching or retry order. A bucket is emitted iff its aggregate's fingerprint
 differs from the last emitted fingerprint; an emptied bucket therefore emits
 an all-zero event exactly once. Changed buckets are found by reconciling
 fingerprints across all of the session's buckets in one grouped query on
