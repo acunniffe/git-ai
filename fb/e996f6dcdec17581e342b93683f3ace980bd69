@@ -1,0 +1,25 @@
+tests/integration/test_utils.rs
+  s_78c44450ea684f::t_8b980de4320cb3 34-51
+tests/integration/main.rs
+  s_78c44450ea684f::t_f22471bc39d001 149
+tests/integration/usage_period.rs
+  s_78c44450ea684f::t_89c49ae295dcfd 13-16
+  s_78c44450ea684f::t_7916df2f4a73cb 1-2,4-12,17-44,49-56,66-77,93,95-105,107-133
+  s_78c44450ea684f::t_b588bbc6034379 3,45-48,57-65,78-92,94,106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "fbe996f6dcdec17581e342b93683f3ace980bd69",
+  "prompts": {},
+  "sessions": {
+    "s_78c44450ea684f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf4e0cad-ffa0-45f7-aabb-d48d330d72d1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ethan Hann <ethanhann@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,64 @@
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_fb642af7b6a2a7 6537,6540
+  s_11c3e1cdda522c::t_0bad78ff167050 6437-6440,6538-6539
+  s_11c3e1cdda522c::t_886bf052158ade 6315-6436,6441-6536,6541-6545
+  s_11c3e1cdda522c::t_83f70154d8641d 6235-6314
+src/daemon.rs
+  s_11c3e1cdda522c::t_34f29d7ddcb0ae 49
+  s_11c3e1cdda522c::t_74562b3e217677 2790-2802
+  s_11c3e1cdda522c::t_0bad78ff167050 3126-3129,8262-8265,10577-10578
+  s_11c3e1cdda522c::t_bc4e1dc4246a3c 8201-8207
+  s_11c3e1cdda522c::t_07a6d2706df11c 10582,10584-10587,10590-10594,10603-10613
+  s_11c3e1cdda522c::t_a17d9ff40ed368 8220,8913,9027,10524
+  s_11c3e1cdda522c::t_5a49cc01bcb5a0 8448-8454,8458-8461,8465,8467-8475,8478-8479,8481-8486,8490-8493
+  s_11c3e1cdda522c::t_0a8fab2882a916 10588-10589,10595-10602
+  s_11c3e1cdda522c::t_ea160590c112cd 8115-8131
+  s_11c3e1cdda522c::t_a78f60fc3944ce 10529-10536
+  s_11c3e1cdda522c::t_85868a7183a7b4 8173-8180,8189-8200,8208-8217
+  s_11c3e1cdda522c::t_ec9292d8994c3e 8219,8961-8963,8969-9026
+  s_11c3e1cdda522c::t_fd6dcaf679c9ad 3102-3103,3105-3108,3116-3125,3130-3164,3169-3170
+  s_11c3e1cdda522c::t_ee859e50cdaa59 91-96
+  s_11c3e1cdda522c::t_1c31fe0572936a 7960-7961
+  s_11c3e1cdda522c::t_d226d4df2365e0 10583
+  s_11c3e1cdda522c::t_5265fe8ed72bbc 8421-8427,8429-8434,8436-8437,8440-8447,8455-8457,8476-8477,8480,8498-8504,8509,8512
+  dbec0bfb1993ce92 8428
+  s_11c3e1cdda522c::t_95bce3d966ee7d 3109-3115
+  s_11c3e1cdda522c::t_bbba36774cfa8a 8462-8464,8466,8487-8489
+  s_11c3e1cdda522c::t_8bb200cc9f30b5 3104
+  s_11c3e1cdda522c::t_e8fe0d25ad2f1f 8218,10525-10527,10537-10576,10579-10581
+  s_11c3e1cdda522c::t_0356e354ddd803 8261,8266-8271
+  s_11c3e1cdda522c::t_07c003dcfea047 8553,8558-8561,8568,8576,8586-8589,8592,8598-8644
+  s_11c3e1cdda522c::t_8feada59b22343 8892,8894-8899,8902-8903,8906-8912
+  s_11c3e1cdda522c::t_c168b8e0f5ffeb 2905-2911
+  s_11c3e1cdda522c::t_8cb6324f4e5938 10528
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "ba91a0dbcac8063a43bf81818118f577749385f6",
+  "prompts": {
+    "dbec0bfb1993ce92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cc8540b-3147-48dd-aac5-5978b60cb05d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages_url": "https://usegitai.com/cas/ae5851b8a43cb53bf76fbe9cf65e842d789a94c01811072852915f5dd37af22a",
+      "total_additions": 12,
+      "total_deletions": 4,
+      "accepted_lines": 317,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}

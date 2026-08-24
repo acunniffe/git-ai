@@ -1,0 +1,26 @@
+src/transcripts/agent.rs
+  s_395f5898107085::t_0141916ff05eed 8-13
+src/daemon/sweep_coordinator.rs
+  s_395f5898107085::t_f0935968482192 1,8-27,30-31,46-47,67-68,70-71,73-74,83-94,97,100,116-120,132-164
+src/daemon/transcript_worker.rs
+  s_395f5898107085::t_fdb29835c4c0fe 211-213,218,222-263,266-268,279-294
+  s_395f5898107085::t_82a0efb0a72afd 14
+  s_395f5898107085::t_36ee5cf713c34b 264-265,269-278
+  s_395f5898107085::t_67fb3dd3341277 433
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "2c3aaf8e75a9c1a26848a6868752500eda67387f",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

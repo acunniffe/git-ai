@@ -1,0 +1,39 @@
+tests/integration/rebase_realworld.rs
+  36ee87f956a9e26f 1-602,615-8664
+tests/integration/main.rs
+  36ee87f956a9e26f 76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "89cdae17c9e6163d51fa828915fec440ba9a20c9",
+  "prompts": {
+    "1e9c333a25b3d95f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bba54458-9c9c-4f70-9b68-f3922d7e7f40",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "36ee87f956a9e26f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c663e49-9c9f-4225-aea3-8efb93ab4471",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 8681,
+      "total_deletions": 28,
+      "accepted_lines": 8653,
+      "overriden_lines": 1,
+      "messages_url": "https://usegitai.com/cas/d55dc99e6b949d9e00370b8ac8daf74ddecd8df25e8fcb14bb672bb1f709abc8"
+    }
+  }
+}

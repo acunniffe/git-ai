@@ -1,0 +1,47 @@
+src/authorship/mod.rs
+  s_4515cd2faadcba::t_17f22f1e4b6107 17
+src/authorship/rebase_authorship.rs
+  s_4515cd2faadcba::t_80247c9959803c 2286
+src/git/mod.rs
+  s_4515cd2faadcba::t_ba31f08c9964d8 21
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  s_4515cd2faadcba::t_32fa679ab0301b 51-55
+  s_4515cd2faadcba::t_5bc381ac625f2d 87-91
+src/authorship/rewrite_stash.rs
+  s_4515cd2faadcba::t_f76285b8c4233b 197-206
+tests/integration/squash_merge.rs
+  s_4515cd2faadcba::t_be94ae2debc0a6 415-417
+  s_4515cd2faadcba::t_b2bbe3c53c980d 418
+tests/integration/main.rs
+  s_4515cd2faadcba::t_d1f9913b32a927 100
+  s_4515cd2faadcba::t_76d8fdacc552d3 36-38,40
+src/git/cli_parser.rs
+  s_4515cd2faadcba::t_3ff6f3490b0267 974-1031
+src/commands/mod.rs
+  s_4515cd2faadcba::t_04c72eded31a99 4
+src/commands/git_ai_handlers.rs
+  s_4515cd2faadcba::t_ab33836f7f6ff0 173-174,177-178
+src/authorship/rewrite.rs
+  s_4515cd2faadcba::t_f01e1ccbc49cc0 751-754
+src/ci/ci_context.rs
+  s_4515cd2faadcba::t_e57af1a4627d73 159-163
+tests/integration/agent_v1.rs
+  s_4515cd2faadcba::t_cb6bd1e159b39f 1-2,5
+  s_4515cd2faadcba::t_841f3ae39fcfc1 185-292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "0e0ff938390dbf0b1501a800cef9c846dea3c6e6",
+  "prompts": {},
+  "sessions": {
+    "s_4515cd2faadcba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e4da275b-f76b-43b1-a93f-2f0bb3712ce9",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

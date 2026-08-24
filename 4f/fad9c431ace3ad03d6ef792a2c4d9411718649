@@ -1,0 +1,29 @@
+src/commands/checkpoint_agent/presets/firebender.rs
+  805abd0f664c09cf 445
+src/commands/checkpoint.rs
+  805abd0f664c09cf 30,54,136,158
+src/authorship/mod.rs
+  805abd0f664c09cf 12
+src/commands/checkpoint_agent/bash_tool.rs
+  805abd0f664c09cf 265,267
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "4ffad9c431ace3ad03d6ef792a2c4d9411718649",
+  "prompts": {
+    "805abd0f664c09cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "95d34781-45d6-4032-834e-108e3d30f164",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 734,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}

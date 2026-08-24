@@ -1,0 +1,26 @@
+tests/integration/ci_squash_rebase.rs
+  s_c9fae768bb9b35::t_da131d21ea70d9 408
+tests/integration/lite_mode.rs
+  s_c9fae768bb9b35::t_8fd829e1a03049 238,465-516
+  s_c9fae768bb9b35::t_da131d21ea70d9 2-3,6,20-67,149-234,236
+  s_c9fae768bb9b35::t_7129232075b71a 235,237
+src/daemon.rs
+  s_c9fae768bb9b35::t_0b355d2620d38a 5461-5468,5474,5477-5478
+  s_c9fae768bb9b35::t_89162b03877d82 5469-5473
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "6f14d157c5832cb02d82526f0c3ce922a462db4c",
+  "prompts": {},
+  "sessions": {
+    "s_c9fae768bb9b35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf97-4dce-7972-ac6d-22bfc367a861",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

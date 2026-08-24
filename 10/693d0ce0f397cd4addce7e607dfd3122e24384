@@ -1,0 +1,28 @@
+src/daemon/trace_normalizer.rs
+  s_6fb99caf830c1b::t_cd71607dccf396 1889-1920,1922,1925-1941
+  s_6fb99caf830c1b::t_738d6456af82a1 863-880
+  s_6fb99caf830c1b::t_3000f5468a226a 1514,1601-1610,1612-1613,1615-1642
+tests/daemon_mode.rs
+  s_6fb99caf830c1b::t_6c4ecb427e3005 1558-1617
+src/daemon/coordinator.rs
+  s_6fb99caf830c1b::t_6d4ca7d2e975e0 102,153-162,171
+src/daemon/git_backend.rs
+  s_6fb99caf830c1b::t_9db03bedf241a4 3,40-45,408-417,422,428,433
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.9",
+  "base_commit_sha": "10693d0ce0f397cd4addce7e607dfd3122e24384",
+  "prompts": {},
+  "logical_commit_id": "10693d0ce0f397cd4addce7e607dfd3122e24384",
+  "sessions": {
+    "s_6fb99caf830c1b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e3968-563e-7773-84d4-20aa3354bc56",
+        "model": "gpt-5.5"
+      },
+      "human_author": "peckfly <31184030+peckfly@users.noreply.github.com>"
+    }
+  }
+}

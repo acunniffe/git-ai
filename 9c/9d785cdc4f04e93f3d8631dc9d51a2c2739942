@@ -1,0 +1,36 @@
+tests/integration/install_hooks_comprehensive.rs
+  s_7cc0fd1254a715::t_8239468962075f 357-360,362-377
+  s_7cc0fd1254a715::t_cb3748f0f23435 361
+  s_7cc0fd1254a715::t_b9c995bc6cba56 356
+src/commands/git_ai_handlers.rs
+  s_7cc0fd1254a715::t_cb3748f0f23435 372-374
+  s_7cc0fd1254a715::t_46c78985fb1c25 368
+src/commands/mod.rs
+  s_7cc0fd1254a715::t_ffb89596e43748 18
+src/commands/install_wsl.rs
+  s_7cc0fd1254a715::t_8239468962075f 3,6,71,85,90,96,99,116,132,143,158,186-199,263-266,272-280
+  s_7cc0fd1254a715::t_cb3748f0f23435 26-28,73-78,102-105,118-121,145-148,180-184,209-212,214-217,254-261,267-271
+  s_7cc0fd1254a715::t_ffb89596e43748 1-2,4-5,7-25,29-70,72,79-84,86-89,91-95,97-98,100-101,106-115,117,122-131,133-142,144,149-157,159-179,185,200-208,213,218-253,262,281-282
+src/commands/install_hooks.rs
+  s_7cc0fd1254a715::t_63fba11478074a 1175-1195
+  s_7cc0fd1254a715::t_46c78985fb1c25 759-760,762
+  s_7cc0fd1254a715::t_23058297ca930b 330-339,342-343
+  s_7cc0fd1254a715::t_ffb89596e43748 26,329,340-341,344-348,407
+  s_7cc0fd1254a715::t_7cfb2eb263e8c9 765
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "9c9d785cdc4f04e93f3d8631dc9d51a2c2739942",
+  "prompts": {},
+  "sessions": {
+    "s_7cc0fd1254a715": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01fd2-00f6-7c42-959f-d3f5194babdc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
