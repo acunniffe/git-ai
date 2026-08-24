@@ -2357,16 +2357,19 @@ pub mod token_usage_pos {
     pub const EST_COST_MICRO_USD: usize = 7; // u64 - estimated cost in 1e-6 USD
     pub const CREDITS: usize = 8; // f64 - reserved for credit-based agents
     pub const MESSAGE_COUNT: usize = 9; // u32 - deduplicated entries in the bucket
+    pub const EMITTED_SEQ: usize = 10; // u64 - per-bucket emission revision
 }
 
 /// Values for Event ID 9: token_usage
 ///
 /// One event per (session_id, model, bucket_ts): the deduplicated token usage
 /// and estimated cost of a 5-minute UTC bucket. The server upserts on that
-/// key with newest event_ts winning, so a bucket is re-emitted whenever its
-/// aggregate changes (including corrections downward and drops to zero).
-/// Uses EventAttributes for standard metadata (repo_url, tool, model,
-/// session ids, etc.); the model attribute is the bucket's model.
+/// key keeping the highest emitted_seq (a strictly increasing per-bucket
+/// revision), so a bucket is re-emitted whenever its aggregate changes
+/// (including corrections downward and drops to zero) and same-second
+/// re-emissions cannot tie on the u32-second event_ts. Uses EventAttributes
+/// for standard metadata (repo_url, tool, model, session ids, etc.); the
+/// model attribute is the bucket's model.
 ///
 /// **Fields:**
 /// | Position | Name | Type |
@@ -2381,6 +2384,7 @@ pub mod token_usage_pos {
 /// | 7 | est_cost_micro_usd | u64 |
 /// | 8 | credits | f64 (reserved, unset) |
 /// | 9 | message_count | u32 |
+/// | 10 | emitted_seq | u64 |
 #[derive(Debug, Clone, Default)]
 pub struct TokenUsageValues {
     pub bucket_ts: PosField<u64>,
@@ -2393,6 +2397,7 @@ pub struct TokenUsageValues {
     pub est_cost_micro_usd: PosField<u64>,
     pub credits: PosField<f64>,
     pub message_count: PosField<u32>,
+    pub emitted_seq: PosField<u64>,
 }
 
 impl TokenUsageValues {
@@ -2453,6 +2458,11 @@ impl TokenUsageValues {
         self.message_count = Some(Some(value));
         self
     }
+
+    pub fn emitted_seq(mut self, value: u64) -> Self {
+        self.emitted_seq = Some(Some(value));
+        self
+    }
 }
 
 impl PosEncoded for TokenUsageValues {
@@ -2508,6 +2518,11 @@ impl PosEncoded for TokenUsageValues {
             token_usage_pos::MESSAGE_COUNT,
             u32_to_json(&self.message_count),
         );
+        sparse_set(
+            &mut map,
+            token_usage_pos::EMITTED_SEQ,
+            u64_to_json(&self.emitted_seq),
+        );
         map
     }
 
@@ -2523,6 +2538,7 @@ impl PosEncoded for TokenUsageValues {
             est_cost_micro_usd: sparse_get_u64(arr, token_usage_pos::EST_COST_MICRO_USD),
             credits: sparse_get_f64(arr, token_usage_pos::CREDITS),
             message_count: sparse_get_u32(arr, token_usage_pos::MESSAGE_COUNT),
+            emitted_seq: sparse_get_u64(arr, token_usage_pos::EMITTED_SEQ),
         }
     }
 }
@@ -2562,7 +2578,8 @@ mod token_usage_tests {
             .total_tokens(380)
             .reasoning_output_tokens_opt(Some(12))
             .est_cost_micro_usd(4_567)
-            .message_count(3);
+            .message_count(3)
+            .emitted_seq(7);
 
         let sparse = PosEncoded::to_sparse(&values);
         let restored = <TokenUsageValues as PosEncoded>::from_sparse(&sparse);
@@ -2576,6 +2593,7 @@ mod token_usage_tests {
         assert_eq!(restored.est_cost_micro_usd, Some(Some(4_567)));
         assert_eq!(restored.credits, None);
         assert_eq!(restored.message_count, Some(Some(3)));
+        assert_eq!(restored.emitted_seq, Some(Some(7)));
     }
 
     #[test]
