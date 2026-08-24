@@ -60,10 +60,7 @@ pub(crate) fn handle_reingest(args: &[String]) {
     if !response.ok {
         eprintln!(
             "reingest: {}",
-            response
-                .error
-                .as_deref()
-                .unwrap_or("background service returned an error")
+            response_error_message(response.error.as_deref())
         );
         std::process::exit(1);
     }
@@ -79,6 +76,15 @@ pub(crate) fn handle_reingest(args: &[String]) {
         "reingest: reset {} metric event(s); delivery will continue in the background",
         result.reset
     );
+}
+
+fn response_error_message(error: Option<&str>) -> String {
+    let error = error.unwrap_or("background service returned an error");
+    if error.contains("invalid control request") && error.contains("metrics.reingest") {
+        return "the running background service does not support reingestion; run `git-ai bg restart` and retry"
+            .to_string();
+    }
+    error.to_string()
 }
 
 fn parse_reingest_scope(args: &[String], now_ts: u32) -> Result<ReingestScope, String> {
@@ -280,5 +286,19 @@ mod tests {
                 "unexpectedly accepted {invalid:?}"
             );
         }
+    }
+
+    #[test]
+    fn explains_daemon_version_skew() {
+        assert_eq!(
+            response_error_message(Some(
+                "invalid control request: unknown variant `metrics.reingest`"
+            )),
+            "the running background service does not support reingestion; run `git-ai bg restart` and retry"
+        );
+        assert_eq!(
+            response_error_message(Some("database unavailable")),
+            "database unavailable"
+        );
     }
 }

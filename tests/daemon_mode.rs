@@ -7926,10 +7926,8 @@ fn daemon_marks_repository_filtered_session_events_delivered_without_uploading_t
 #[test]
 fn reingest_command_redelivers_bounded_and_all_metrics_through_daemon() {
     let mut mock_api = MockApiServer::start();
-    let metrics_db_path = std::env::temp_dir().join(format!(
-        "git-ai-reingest-metrics-{}.db",
-        git_ai::uuid::generate_v4()
-    ));
+    let metrics_db_dir = tempfile::tempdir().expect("reingest metrics temp directory");
+    let metrics_db_path = metrics_db_dir.path().join("metrics.db");
     let repo = TestRepo::new_with_daemon_env(&[
         ("GIT_AI_API_BASE_URL", mock_api.base_url()),
         ("GIT_AI_API_KEY", "test-api-key"),
