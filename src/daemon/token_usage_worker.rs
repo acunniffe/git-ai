@@ -171,21 +171,28 @@ impl TokenUsageWorker {
         self.enqueue_sweep_tasks();
 
         loop {
-            // Promote notifications that arrived while processing.
-            while let Ok(task) = self.notify_rx.try_recv() {
-                self.enqueue_notify(task);
-            }
             if self.shutdown_flag.load(Ordering::Relaxed) {
                 break;
             }
-            if let Some(task) = self.pop_next() {
-                self.process_task(task).await;
-                continue;
-            }
+            // Ready work is one select arm (the stream worker's pattern), so
+            // drain requests, notifications, and shutdown are still serviced
+            // between tasks while a long backfill queue is being worked off.
+            let has_ready_task = !self.notify_queue.is_empty() || !self.sweep_queue.is_empty();
             tokio::select! {
                 _ = self.shutdown_notify.notified() => {
                     self.shutdown_flag.store(true, Ordering::Relaxed);
                     break;
+                }
+                _ = async {}, if has_ready_task => {
+                    // Ingest pending notifications first so fresh work is
+                    // picked (and promoted over backfill) before the next
+                    // task is chosen.
+                    while let Ok(task) = self.notify_rx.try_recv() {
+                        self.enqueue_notify(task);
+                    }
+                    if let Some(task) = self.pop_next() {
+                        self.process_task(task).await;
+                    }
                 }
                 _ = sweep_ticker.tick() => {
                     self.enqueue_sweep_tasks();
