@@ -801,9 +801,13 @@ fn emit_changed_buckets(
             .emitted_seq(*next_seq);
         let mut attrs = EventAttributes::with_version(env!("CARGO_PKG_VERSION"))
             .session_id(identity.session_id.clone())
-            .external_session_id(identity.external_session_id.clone())
             .tool(&identity.tool)
             .model(&bucket.model);
+        // Rows migrated from schema v1 have no recorded external id ('');
+        // omit the attribute rather than emitting an empty string.
+        if !identity.external_session_id.is_empty() {
+            attrs = attrs.external_session_id(identity.external_session_id.clone());
+        }
         if let Some(url) = &repo_url {
             attrs = attrs.repo_url(url.clone());
         }
