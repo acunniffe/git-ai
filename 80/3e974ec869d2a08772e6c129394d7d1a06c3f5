@@ -1,0 +1,24 @@
+src/authorship/rebase_authorship.rs
+  933ec7748db846c3 1125-1130,1458-1461,1615-1623,1629,1632,3628,3635-3639,3644,3648-3649,3664,3667-3675,3679,3685-3692,6417-6647
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "803e974ec869d2a08772e6c129394d7d1a06c3f5",
+  "prompts": {
+    "933ec7748db846c3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "448be9a9-e186-4aca-bdf6-07f6acf13c94",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 285,
+      "total_deletions": 15,
+      "accepted_lines": 280,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/53e08ba319ad05bc4f04bdc3760ebc7cbaa9716a6d188d3f324f1c44ae5c9797"
+    }
+  }
+}

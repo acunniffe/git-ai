@@ -1,0 +1,99 @@
+src/daemon/family_actor.rs
+  293268f972235922 211-213,215,219-222,224-225,236,240,251,289-291
+src/commands/git_ai_handlers.rs
+  293268f972235922 1215
+src/mdm/agents/gemini.rs
+  d85763f9dab5b79c 135
+src/commands/checkpoint_agent/amp_preset.rs
+  293268f972235922 203
+src/commands/checkpoint_agent/bash_tool.rs
+  f5bf3e9a735b4a84 33,49,559,1162,743,515-516,352,375,775,777,780-781,783,788,790,795-796,802-803,843,871,874,884,893-894,959,967,979,1023,1027,1034,1093,1131,1135,1142,1618,1627,1635,1076,918,890,940,944,947-948,953-954
+  293268f972235922 306,358,362,379-380,484,1588,328,517-518,353,42,45,48,203-204,209-210,756,758-759,765-766,774,778,782,785-786,797,800-801,804,806-807,1180,1183,1191,1193-1194,844-845,856-857,859,877,883,895,898-900,902-903,905,909,922,956,960,966,968-969,972,980-981,986-987,1003-1004,1015,1018,1029,1032,1035-1037,1176,1179,1094-1095,1111-1112,1123,1126,1137,1140,1143-1145,1233,1237,1589-1590,1592-1594,1598-1600,1603-1605,1607-1608,1610,1612,1619-1620,1636-1637,1685,1692,1717,1720-1722,1730,1734,1736,1739-1742,1750,1754,1757-1759,1766,1769-1771,1773-1775,1777,1780,1783-1785,1787,1790,1077-1078,919-920,891,925,928,945,949,951-952,955,1643-1645,1654,1657,1659,1662-1665,1673,1676,1683-1684,1695,1701-1703,1713
+  53c510710fb3d25e 402
+src/mdm/agents/claude_code.rs
+  d85763f9dab5b79c 124
+tests/integration/bash_tool_benchmark.rs
+  5d2ef031c4dc7aea 20,288,293-294,327,333,368-369,448,453,462
+  f5bf3e9a735b4a84 286,486
+src/mdm/agents/droid.rs
+  d85763f9dab5b79c 119
+tests/integration/bash_tool_conformance.rs
+  d85763f9dab5b79c 813,1011,1015,1035,1039,1044,1049,1051,1053,1056,1058,1061,1063,1065,1068,1070,1072,1155,1158,1160,1164,1167,1173,1177-1178,1182,1184,1188,1193,1195,1199,1201,1210,1213,1216,1218,1223,1226,1230,1234,1237,1257,1261,1267,1271,1280,1287,1290-1291,1306,1308,1315,1319,1321,1325,1337,1350,1362-1363,1372,1380,1382,1387,1392,1396,1399,1402,1407,1409,1414-1415,1418,1421,1429,1433,1435,1439,1444,1447,1456,1466,1473,1475,1479,1481,1485,1490,1494,1496,1500,1502,1506,1511,1519,1521,1525-1526,1530,1532,1536,1545,1552,1560,1564,1573,1579,1583,1590,1593,1595,1599,1604,1606,1608,1614,1616,1620,1625,1628,1631,1637,1640,1647,1650,1655,1657,1661,1666,1669,1672-1673,1679,1681,1685,1690,1693,1695,1700,1703,1707,1712-1713,1718-1719,1724,1726,1730,1735,1737,1740,1746,1749
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "1caa99de481aa8f7d31ef81cc52a243ce7329aa8",
+  "prompts": {
+    "293268f972235922": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "34741536-abcc-42cf-89df-82f40cf18979",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 162,
+      "total_deletions": 1,
+      "accepted_lines": 294,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/db10abb26b61f1135dac9ce0e0fc9c92f2a9ab20e2245fafc0f7a4924f2ae351"
+    },
+    "53c510710fb3d25e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b93935d-0343-456c-ac35-2d34c68929f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 8,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/de556fba4cdba582123cb3739d28ee048bdfac26912e2ddf0af9214d18bbac29"
+    },
+    "5d2ef031c4dc7aea": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1e87cbfc-de33-4279-baa4-8af080c23348",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 517,
+      "total_deletions": 538,
+      "accepted_lines": 11,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/92412b91bdf1e3e6911038ba7c2a57397f83dcb7c68891a8f36beeffe6940d5e"
+    },
+    "d85763f9dab5b79c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79131d5c-9f58-4b93-9c97-b5d930ee22ce",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 60,
+      "total_deletions": 67,
+      "accepted_lines": 242,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/6fc92c1d749bbb07f6abe98b9343d0593e549d2611377b3277d11233f961d2f5"
+    },
+    "f5bf3e9a735b4a84": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "db02b9f8-7051-46aa-99ec-d0fad7911f24",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 96,
+      "total_deletions": 40,
+      "accepted_lines": 258,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/3b7e71856b4ba2b6fc2b0f21ad5b1a32a34c279f0404340a23c6f1201d4c1c7f"
+    }
+  }
+}

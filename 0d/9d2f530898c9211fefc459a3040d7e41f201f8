@@ -1,0 +1,24 @@
+src/authorship/rewrite_cherry_pick.rs
+  s_032cf4fb6d69d7::t_f9a0d33adda987 52
+  s_032cf4fb6d69d7::t_dfd021e9ea8088 6
+  s_032cf4fb6d69d7::t_746ab501fba924 1-5,7-40,42-51,53-310
+  s_032cf4fb6d69d7::t_589b371559ff8e 41
+src/authorship/mod.rs
+  s_032cf4fb6d69d7::t_d756e1e15cf398 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "0d9d2f530898c9211fefc459a3040d7e41f201f8",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

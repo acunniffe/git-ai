@@ -1,0 +1,20 @@
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_151b85bccb9dee::t_810e77dbd88395 30,215-398,457-479
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.12",
+  "base_commit_sha": "689a8d6044a52a0583c65233d0134d171e2a74b3",
+  "prompts": {},
+  "logical_commit_id": "689a8d6044a52a0583c65233d0134d171e2a74b3",
+  "sessions": {
+    "s_151b85bccb9dee": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e6327-5bb9-7bc2-90ad-4c5e0286db41",
+        "model": "gpt-5.5"
+      },
+      "human_author": "peckfly <31184030+peckfly@users.noreply.github.com>"
+    }
+  }
+}

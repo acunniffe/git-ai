@@ -1,0 +1,26 @@
+.github/workflows/performance-benchmarks.yml
+  0defeff3de23389b 52-54,57
+src/daemon/test_sync.rs
+  0defeff3de23389b 20-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "cf5815236f941df91afc99964e5459239891992d",
+  "prompts": {
+    "0defeff3de23389b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3b972d3-1a88-4346-82ad-47e84df4345b",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 4,
+      "accepted_lines": 11,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/c5028e0ea1109f0ba0333c1396ca3c641c14d4a178a45dd6bbd1f0bfa8468e27"
+    }
+  }
+}

@@ -1,0 +1,66 @@
+tests/e2e/user-scenarios.bats
+  s_430b337f892efe::t_e0a0b18adc484d 454,502,570,631,702,758,836,893,971,1146,1265,1378,1479,1604,1651,1724,1799,1878,1983
+src/authorship/post_commit.rs
+  617049f94f0d2a17 7-10,174,179-181,188,193-195,211-213,215-216,226-232,236,311,655-727
+  s_430b337f892efe::t_f51a2ae373e7ac 785
+src/authorship/stats.rs
+  617049f94f0d2a17 482-492
+  s_617049f94f0d2a::t_49be53efaf5eb8 494
+  s_59875d04e5ebbf::t_ac7d7e81754e69 12,20,24
+  s_59875d04e5ebbf::t_9d7d1dcaeefe13 116
+  s_59875d04e5ebbf::t_b098259f7b7875 245,247,319-320
+  s_59875d04e5ebbf::t_265e752f54a442 358-359,361,363
+  s_59875d04e5ebbf::t_22e2bf65ea848c 572,578,589,595,606,612,623,629,640,646,659,674,689,695,705,711,737,743,754,760,771,777,788,794,805,811,1492-1499,575,592,609,626,643,662,677,692,708,740,757,774,791,808
+  s_59875d04e5ebbf::t_9024fd00008884 1397
+  s_430b337f892efe::t_bebadf5e44f8e3 332
+src/metrics/events.rs
+  s_59875d04e5ebbf::t_05139ed56e49ee 47,50-51
+  s_430b337f892efe::t_e7bd27daa92b22 5-6
+  s_430b337f892efe::t_3d687bbf2fec82 24
+  s_430b337f892efe::t_7e714e0090706a 52
+  s_430b337f892efe::t_21bae3eaa0ae4c 609
+  s_430b337f892efe::t_ca9b41d90d3f9d 928,941
+tests/integration/stats.rs
+  617049f94f0d2a17 160
+  s_59875d04e5ebbf::t_35f92c5126da8a 144,153
+  s_59875d04e5ebbf::t_f0827a219e9ad3 391
+  s_59875d04e5ebbf::t_ed61c4f5473fb1 456,465
+  s_430b337f892efe::t_4f5cd619a51ae8 330,351,372,393,414,436,458
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "99a5b30e7af178058b2782100769515b961af3f1",
+  "prompts": {},
+  "sessions": {
+    "s_430b337f892efe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7a0dd11-0ee3-40b5-8b82-f7fe7c4edc58",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/61ab894fa4672064e10b3b1be9f4e56f66e880377ce6410dc8586ad9ddc42823"
+    },
+    "s_59875d04e5ebbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6581f90a-0171-4534-b30b-ad5952501a1a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": []
+    },
+    "s_617049f94f0d2a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cec6ec9-6015-41ad-a344-5a78f9d31c75",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/5cfa831a86db1970cb67365800bf4b437193132733b1fcd7e691239b3c899b39"
+    }
+  }
+}

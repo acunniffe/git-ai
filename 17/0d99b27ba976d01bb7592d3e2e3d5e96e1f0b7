@@ -1,0 +1,21 @@
+src/mdm/agents/codex.rs
+  s_af5d1a2d669194::t_fdd7507aa89b5f 1642-1691
+  s_af5d1a2d669194::t_a6af4126c6d1f1 454-479
+  s_af5d1a2d669194::t_fb9a2c69e8fd79 515-522
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "170d99b27ba976d01bb7592d3e2e3d5e96e1f0b7",
+  "prompts": {},
+  "sessions": {
+    "s_af5d1a2d669194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "21f3abe0-781d-43b5-b598-36fc4ba31d36",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

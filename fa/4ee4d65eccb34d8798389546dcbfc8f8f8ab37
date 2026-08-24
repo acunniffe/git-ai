@@ -1,0 +1,44 @@
+tests/integration/windsurf.rs
+  4dd9b9c59436d64a 8,12-13,504-697
+src/commands/checkpoint_agent/bash_tool.rs
+  4dd9b9c59436d64a 472-476,492
+src/mdm/agents/windsurf.rs
+  4dd9b9c59436d64a 16,20-21
+src/commands/checkpoint_agent/agent_presets.rs
+  4dd9b9c59436d64a 777-867
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.2",
+  "base_commit_sha": "fa4ee4d65eccb34d8798389546dcbfc8f8f8ab37",
+  "prompts": {
+    "4dd9b9c59436d64a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "78ba4f5d-4047-42b6-8ca1-d3289edd873c",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 298,
+      "total_deletions": 2,
+      "accepted_lines": 297,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/e5b0d8bdd40a74e7b568141e0565a0f593e94d298ba67881e0ab6c0d06f69319"
+    },
+    "8a87ee86f85729c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6017ca53-3351-44f8-91bc-fe9bd201ccae",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 76,
+      "total_deletions": 0,
+      "accepted_lines": 72,
+      "overriden_lines": 3,
+      "messages_url": "https://usegitai.com/cas/5db040f8e9c8081543a84e7e0bcbd7f5e921483a0cbe4d842acba52ca7721be1"
+    }
+  }
+}
