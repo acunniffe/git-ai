@@ -16,6 +16,11 @@
 //!   is not possible incrementally, so forks always take ccusage's fallback
 //!   for an unavailable parent log: the "rewritten burst" heuristic (leading
 //!   usage events spaced <= 1s apart are replayed history and are skipped).
+//! - Numeric token fields accept ccusage's aliases and string-encoded
+//!   numbers, but a line whose payload/info has an unexpected *shape* (e.g. a
+//!   scalar where an object belongs) is skipped whole, where ccusage's lossy
+//!   deserializers would still process it. Timestamp parsing is slightly
+//!   more lenient than ccusage's fixed-width RFC3339 forms.
 
 use serde::{Deserialize, Serialize};
 
@@ -45,33 +50,75 @@ pub struct CodexUsageExtractor {
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CodexState {
     /// Most recent model named by a `turn_context` (or usage) payload.
+    #[serde(default)]
     model: Option<String>,
     /// Last cumulative `total_token_usage`, for repeat-skipping and delta
     /// subtraction.
+    #[serde(default)]
     prev_totals: Option<CodexTotals>,
-    /// Monotonic counter assigning stable entry keys.
-    entry_seq: u64,
     #[serde(default)]
     replay: ReplayState,
 }
 
-/// Cumulative or per-turn raw usage as recorded by Codex.
+/// Cumulative or per-turn raw usage as recorded by Codex. Field aliases,
+/// lossy numeric parsing (string-encoded counts), and total derivation match
+/// ccusage's custom `CodexRawUsage` deserializer (rust/adapters/codex/src/
+/// types.rs): a recorded zero total means the field is unusable rather than
+/// that the turn spent nothing, so it derives to input + output (reasoning is
+/// a subset of output and must not be added on top).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 struct CodexTotals {
-    #[serde(default)]
+    #[serde(
+        default,
+        alias = "prompt_tokens",
+        alias = "input",
+        deserialize_with = "lossy_u64"
+    )]
     input_tokens: u64,
-    #[serde(default)]
+    #[serde(
+        default,
+        alias = "cache_read_input_tokens",
+        alias = "cached_tokens",
+        deserialize_with = "lossy_u64"
+    )]
     cached_input_tokens: u64,
-    #[serde(default)]
+    #[serde(
+        default,
+        alias = "completion_tokens",
+        alias = "output",
+        deserialize_with = "lossy_u64"
+    )]
     output_tokens: u64,
-    #[serde(default)]
+    #[serde(default, alias = "reasoning_tokens", deserialize_with = "lossy_u64")]
     reasoning_output_tokens: u64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lossy_u64")]
     total_tokens: u64,
 }
 
+impl CodexTotals {
+    fn normalized(mut self) -> Self {
+        if self.total_tokens == 0 {
+            self.total_tokens = self.input_tokens.saturating_add(self.output_tokens);
+        }
+        self
+    }
+}
+
+/// Accept unsigned integers or numeric strings; anything else counts as
+/// absent (ccusage `deserialize_optional_u64_lossy`).
+fn lossy_u64<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value
+        .as_u64()
+        .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
+        .unwrap_or(0))
+}
+
 /// Fork-replay filter state (ccusage `CodexReplayState`, minus the
-/// parent-prefix arm — see the module docs).
+/// parent-prefix arm — see the module docs). Tracks every usage-carrying
+/// event's timestamp, matching ccusage's `detect_rewritten_burst`, which
+/// anchors on raw usage events even when they are cumulative repeats that
+/// produce no delta.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum ReplayState {
@@ -80,9 +127,12 @@ enum ReplayState {
     Done,
     /// Fork detected; no usage event seen yet.
     AwaitingFirst,
-    /// One usage event buffered: whether it was replayed history depends on
-    /// how soon the next one follows.
-    AwaitingSecond { first: PendingEvent },
+    /// One usage event seen (its delta, if any, is buffered): whether it was
+    /// replayed history depends on how soon the next one follows.
+    AwaitingSecond {
+        first_ts_ms: i64,
+        pending: Option<PendingEvent>,
+    },
     /// Inside the rewritten burst; events within the pause window are
     /// replayed history.
     SkippingBurst { last_ts_ms: i64 },
@@ -150,59 +200,71 @@ impl CodexUsageExtractor {
         // repeats of an unchanged cumulative total, prefer the recorded
         // per-turn usage, else subtract the previous cumulative total.
         let info = payload.info.as_ref();
-        let total_usage = info.and_then(|info| info.total_token_usage);
+        let total_usage = info
+            .and_then(|info| info.total_token_usage)
+            .map(CodexTotals::normalized);
+        let last_usage = info
+            .and_then(|info| info.last_token_usage)
+            .map(CodexTotals::normalized);
+        if total_usage.is_none() && last_usage.is_none() {
+            return Vec::new();
+        }
         let cumulative_advanced =
             total_usage.is_none_or(|totals| self.state.prev_totals != Some(totals));
-        let delta = info
-            .and_then(|info| info.last_token_usage)
+        let delta = last_usage
             .filter(|_| cumulative_advanced)
             .or_else(|| total_usage.map(|totals| subtract_totals(totals, self.state.prev_totals)));
         if let Some(totals) = total_usage {
             self.state.prev_totals = Some(totals);
         }
-        let Some(delta) = delta else {
-            return Vec::new();
-        };
-        if delta.input_tokens == 0
-            && delta.cached_input_tokens == 0
-            && delta.output_tokens == 0
-            && delta.reasoning_output_tokens == 0
-        {
-            return Vec::new();
-        }
+        let delta = delta.filter(|delta| {
+            delta.input_tokens != 0
+                || delta.cached_input_tokens != 0
+                || delta.output_tokens != 0
+                || delta.reasoning_output_tokens != 0
+        });
 
-        let parsed_model = payload_model(payload).or_else(|| info.and_then(info_model));
-        if let Some(model) = &parsed_model {
-            self.state.model = Some(model.clone());
-        }
-        let model = self
-            .state
-            .model
-            .clone()
-            .unwrap_or_else(|| FALLBACK_MODEL.to_string());
-
-        self.filter_replay(ts_ms, model, delta)
+        let event = delta.map(|delta| {
+            let parsed_model = payload_model(payload).or_else(|| info.and_then(info_model));
+            if let Some(model) = &parsed_model {
+                self.state.model = Some(model.clone());
+            }
+            let model = self
+                .state
+                .model
+                .clone()
+                .unwrap_or_else(|| FALLBACK_MODEL.to_string());
+            PendingEvent {
+                ts_ms,
+                model,
+                delta,
+            }
+        });
+        // The replay filter sees every usage-carrying event, including
+        // zero-delta repeats: they still anchor/extend the rewritten burst.
+        self.filter_replay(ts_ms, event)
     }
 
-    /// Run one usage event through the fork-replay filter, returning the
-    /// entries that count as the session's own usage.
-    fn filter_replay(&mut self, ts_ms: i64, model: String, delta: CodexTotals) -> Vec<UsageEntry> {
+    /// Run one usage-carrying event through the fork-replay filter, returning
+    /// the entries that count as the session's own usage. `event` is `None`
+    /// for events that produced no delta but still mark activity.
+    fn filter_replay(&mut self, ts_ms: i64, event: Option<PendingEvent>) -> Vec<UsageEntry> {
+        let within_burst =
+            |anchor_ts_ms: i64| (0..=REWRITTEN_BURST_PAUSE_MS).contains(&(ts_ms - anchor_ts_ms));
         match std::mem::take(&mut self.state.replay) {
-            ReplayState::Done => {
-                vec![self.make_entry(ts_ms, model, delta)]
-            }
+            ReplayState::Done => event.map(|e| vec![make_entry(e)]).unwrap_or_default(),
             ReplayState::AwaitingFirst => {
                 self.state.replay = ReplayState::AwaitingSecond {
-                    first: PendingEvent {
-                        ts_ms,
-                        model,
-                        delta,
-                    },
+                    first_ts_ms: ts_ms,
+                    pending: event,
                 };
                 Vec::new()
             }
-            ReplayState::AwaitingSecond { first } => {
-                if (0..=REWRITTEN_BURST_PAUSE_MS).contains(&(ts_ms - first.ts_ms)) {
+            ReplayState::AwaitingSecond {
+                first_ts_ms,
+                pending,
+            } => {
+                if within_burst(first_ts_ms) {
                     // Two usage events back to back: a replayed burst. Both
                     // belong to the parent's history.
                     self.state.replay = ReplayState::SkippingBurst { last_ts_ms: ts_ms };
@@ -210,46 +272,65 @@ impl CodexUsageExtractor {
                 } else {
                     // A real pause: the session recorded its own turns from
                     // the start.
-                    vec![
-                        self.make_entry(first.ts_ms, first.model, first.delta),
-                        self.make_entry(ts_ms, model, delta),
-                    ]
+                    pending.into_iter().chain(event).map(make_entry).collect()
                 }
             }
             ReplayState::SkippingBurst { last_ts_ms } => {
-                if (0..=REWRITTEN_BURST_PAUSE_MS).contains(&(ts_ms - last_ts_ms)) {
+                if within_burst(last_ts_ms) {
                     self.state.replay = ReplayState::SkippingBurst { last_ts_ms: ts_ms };
                     Vec::new()
                 } else {
-                    vec![self.make_entry(ts_ms, model, delta)]
+                    event.map(|e| vec![make_entry(e)]).unwrap_or_default()
                 }
             }
         }
     }
+}
 
-    fn make_entry(&mut self, ts_ms: i64, model: String, delta: CodexTotals) -> UsageEntry {
-        self.state.entry_seq += 1;
-        // ccusage clamps cached to input; normalized input excludes cache.
-        let cached = delta.cached_input_tokens.min(delta.input_tokens);
-        UsageEntry {
-            entry_key: format!("codex:{}", self.state.entry_seq),
-            message_id: None,
-            ts: (ts_ms / 1000).clamp(0, u32::MAX as i64) as u32,
-            model,
-            tokens: TokenCounts {
-                input: delta.input_tokens - cached,
-                output: delta.output_tokens,
-                cache_read: cached,
-                cache_write: 0,
-                reasoning_output: Some(delta.reasoning_output_tokens),
-                total: delta.total_tokens,
-            },
-            cache_write_1h: 0,
-            transcript_cost_micro_usd: None,
-            is_sidechain: false,
-            has_speed: false,
-        }
+fn make_entry(event: PendingEvent) -> UsageEntry {
+    let PendingEvent {
+        ts_ms,
+        model,
+        delta,
+    } = event;
+    // ccusage clamps cached to input; normalized input excludes cache.
+    let cached = delta.cached_input_tokens.min(delta.input_tokens);
+    UsageEntry {
+        entry_key: entry_key(ts_ms, &model, &delta),
+        message_id: None,
+        ts: (ts_ms / 1000).clamp(0, u32::MAX as i64) as u32,
+        model,
+        tokens: TokenCounts {
+            input: delta.input_tokens - cached,
+            output: delta.output_tokens,
+            cache_read: cached,
+            cache_write: 0,
+            reasoning_output: Some(delta.reasoning_output_tokens),
+            total: delta.total_tokens,
+        },
+        cache_write_1h: 0,
+        transcript_cost_micro_usd: None,
+        is_sidechain: false,
+        has_speed: false,
     }
+}
+
+/// Content-derived dedup key over the event's full identity (timestamp,
+/// model, all counts), matching ccusage's codex dedup key. A forked or
+/// subagent rollout replaying the parent's events maps them to the same keys
+/// (deduplicated), while distinct turns from files sharing a rollup session
+/// never collide.
+fn entry_key(ts_ms: i64, model: &str, delta: &CodexTotals) -> String {
+    use sha2::{Digest, Sha256};
+    let identity = format!(
+        "{ts_ms}:{model}:{}:{}:{}:{}:{}",
+        delta.input_tokens,
+        delta.cached_input_tokens,
+        delta.output_tokens,
+        delta.reasoning_output_tokens,
+        delta.total_tokens
+    );
+    format!("codex:{:x}", Sha256::digest(identity.as_bytes()))[..22].to_string()
 }
 
 #[derive(Deserialize)]
@@ -406,7 +487,7 @@ mod tests {
         assert_eq!(first[0].tokens.output, 50);
         assert_eq!(first[0].tokens.reasoning_output, Some(10));
         assert_eq!(first[0].tokens.total, 150);
-        assert_eq!(first[0].entry_key, "codex:1");
+        assert!(first[0].entry_key.starts_with("codex:"));
 
         let second = e.extract_line(&token_count_line(
             "2026-01-01T00:01:10Z",
@@ -417,7 +498,49 @@ mod tests {
         assert_eq!(second[0].tokens.cache_read, 100);
         assert_eq!(second[0].tokens.output, 40);
         assert_eq!(second[0].tokens.reasoning_output, Some(20));
-        assert_eq!(second[0].entry_key, "codex:2");
+        assert_ne!(second[0].entry_key, first[0].entry_key);
+    }
+
+    #[test]
+    fn entry_keys_are_content_derived_for_cross_file_dedup() {
+        // The same event replayed in another file of the same rollup session
+        // (fork/subagent) must map to the same key so the database dedups it,
+        // while distinct turns never collide (ccusage's identity-based key).
+        let line = token_count_line("2026-01-01T00:00:10Z", (100, 40, 50, 10, 150));
+        let a = CodexUsageExtractor::default().extract_line(&line);
+        let b = CodexUsageExtractor::default().extract_line(&line);
+        assert_eq!(a[0].entry_key, b[0].entry_key);
+
+        let other = CodexUsageExtractor::default().extract_line(&token_count_line(
+            "2026-01-01T00:00:10Z",
+            (100, 40, 51, 10, 151),
+        ));
+        assert_ne!(a[0].entry_key, other[0].entry_key);
+    }
+
+    #[test]
+    fn zero_total_is_derived_from_input_plus_output() {
+        // ccusage: a recorded zero total is unusable and derives to
+        // input + output (reasoning is a subset of output).
+        let mut e = CodexUsageExtractor::default();
+        let entries = e.extract_line(&token_count_line(
+            "2026-01-01T00:00:10Z",
+            (100, 40, 50, 10, 0),
+        ));
+        assert_eq!(entries[0].tokens.total, 150);
+    }
+
+    #[test]
+    fn accepts_aliased_and_string_encoded_token_fields() {
+        let mut e = CodexUsageExtractor::default();
+        let line = r#"{"timestamp":"2026-01-01T00:00:10Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"prompt_tokens":"100","cached_tokens":40,"completion_tokens":"50","reasoning_tokens":10}}}}"#;
+        let entries = e.extract_line(line);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].tokens.input, 60);
+        assert_eq!(entries[0].tokens.cache_read, 40);
+        assert_eq!(entries[0].tokens.output, 50);
+        assert_eq!(entries[0].tokens.reasoning_output, Some(10));
+        assert_eq!(entries[0].tokens.total, 150); // derived: no total recorded
     }
 
     #[test]
@@ -592,7 +715,40 @@ mod tests {
         ));
         e.restore_state("{not json");
         assert!(e.state.prev_totals.is_none());
-        assert_eq!(e.state.entry_seq, 0);
+        assert!(matches!(e.state.replay, ReplayState::Done));
+    }
+
+    #[test]
+    fn zero_delta_repeats_still_anchor_the_rewritten_burst() {
+        // ccusage's burst detection scans raw usage events, so a cumulative
+        // repeat (zero delta) 100ms after the first replayed event still
+        // marks the pair as a burst and the first event is skipped.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+        );
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:01.000Z",
+                (10, 0, 5, 0, 15)
+            ))
+            .is_empty()
+        );
+        // Exact repeat of the cumulative totals: no delta, but real activity.
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:01.100Z",
+                (10, 0, 5, 0, 15)
+            ))
+            .is_empty()
+        );
+        // The child's own first turn after a real pause is the only usage.
+        let own = e.extract_line(&token_count_line(
+            "2026-01-01T00:00:20Z",
+            (30, 0, 15, 0, 45),
+        ));
+        assert_eq!(own.len(), 1);
+        assert_eq!(own[0].tokens.input, 20);
     }
 
     #[test]
