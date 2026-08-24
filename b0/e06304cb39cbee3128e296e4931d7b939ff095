@@ -67,6 +67,16 @@ src/token_usage/db.rs
   s_245e0891e33653::t_01448f80009a8b 237-238,461-462,1397-1398
 src/metrics/events.rs
   s_cfe6a4847c079e::t_5259d8367b45c0 2360,2367-2372,2387,2400,2461-2465,2521-2525,2541,2581-2582,2596
+tests/integration/main.rs
+  s_cfe6a4847c079e::t_da54169a2fada3 150
+tests/integration/token_usage.rs
+  s_cfe6a4847c079e::t_da54169a2fada3 1-336
+src/daemon.rs
+  s_cfe6a4847c079e::t_da54169a2fada3 76,2787,2918,7076-7098,9256-9274,9279,9283
+src/daemon/stream_worker.rs
+  s_cfe6a4847c079e::t_da54169a2fada3 315-317,332,350,992-1002,1397,1414,1512,1690
+src/daemon/token_usage_worker.rs
+  s_cfe6a4847c079e::t_da54169a2fada3 1-872
 ---
 {
   "schema_version": "authorship/3.0.0",
