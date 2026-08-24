@@ -109,7 +109,9 @@ impl RawUsage {
     /// the flat count when present.
     fn cache_creation_tokens(&self) -> u64 {
         match &self.cache_creation {
-            Some(b) => b.ephemeral_5m_input_tokens + b.ephemeral_1h_input_tokens,
+            Some(b) => b
+                .ephemeral_5m_input_tokens
+                .saturating_add(b.ephemeral_1h_input_tokens),
             None => self.cache_creation_input_tokens,
         }
     }
@@ -134,6 +136,7 @@ fn extract_claude_line(line: &str) -> Vec<UsageEntry> {
         raw.message.id.clone(),
         raw.request_id.as_deref(),
         line,
+        "",
         ts,
         resolve_model(raw.message.model.as_deref()),
         &raw.message.usage,
@@ -153,6 +156,7 @@ fn extract_claude_line(line: &str) -> Vec<UsageEntry> {
             message_id,
             raw.request_id.as_deref(),
             line,
+            &format!(":advisor:{index}"),
             ts,
             advisor.model,
             &advisor.usage,
@@ -168,6 +172,7 @@ fn usage_entry(
     message_id: Option<String>,
     request_id: Option<&str>,
     line: &str,
+    key_salt: &str,
     ts: u32,
     model: String,
     usage: &RawUsage,
@@ -181,13 +186,14 @@ fn usage_entry(
         cache_read: usage.cache_read_input_tokens,
         cache_write,
         reasoning_output: None,
-        total: usage.input_tokens
-            + usage.output_tokens
-            + usage.cache_read_input_tokens
-            + cache_write,
+        total: usage
+            .input_tokens
+            .saturating_add(usage.output_tokens)
+            .saturating_add(usage.cache_read_input_tokens)
+            .saturating_add(cache_write),
     };
     UsageEntry {
-        entry_key: entry_key(message_id.as_deref(), request_id, line),
+        entry_key: entry_key(message_id.as_deref(), request_id, line, key_salt),
         message_id,
         ts,
         model,
@@ -202,15 +208,23 @@ fn usage_entry(
 }
 
 /// Dedup key: `message_id|request_id` when the message has an id (the exact
-/// key ccusage hashes), otherwise a content hash so crash-replayed batches
-/// stay idempotent.
-fn entry_key(message_id: Option<&str>, request_id: Option<&str>, line: &str) -> String {
+/// key ccusage hashes), otherwise a content hash so re-reads stay idempotent.
+/// `key_salt` disambiguates advisor sub-entries whose parent has no message
+/// id (they share the parent's line and would otherwise collide).
+fn entry_key(
+    message_id: Option<&str>,
+    request_id: Option<&str>,
+    line: &str,
+    key_salt: &str,
+) -> String {
     match message_id {
         Some(id) => format!("{id}|{}", request_id.unwrap_or_default()),
         None => {
             use sha2::{Digest, Sha256};
-            let digest = Sha256::digest(line.as_bytes());
-            format!("line:{:x}", digest)[..21].to_string()
+            let mut hasher = Sha256::new();
+            hasher.update(line.as_bytes());
+            hasher.update(key_salt.as_bytes());
+            format!("line:{:x}", hasher.finalize())[..21].to_string()
         }
     }
 }
@@ -268,7 +282,10 @@ fn has_unsupported_null_field(line: &[u8]) -> bool {
             while field_start > 0 && line[field_start] != b'"' {
                 field_start -= 1;
             }
-            if line.get(field_start) == Some(&b'"')
+            // field_start < field_end guards the slice: a line starting with
+            // `":null` puts both cursors at 0, and a reversed range panics.
+            if field_start < field_end
+                && line.get(field_start) == Some(&b'"')
                 && is_unsupported_nullable_field(&line[field_start + 1..field_end])
             {
                 return true;
@@ -541,6 +558,25 @@ mod tests {
         assert!(e.has_speed);
         // Model name keeps its base form (deviation from ccusage's "-fast").
         assert_eq!(e.model, "x");
+    }
+
+    #[test]
+    fn garbled_lines_with_leading_null_marker_do_not_panic() {
+        // A line starting with `":null` used to compute a reversed slice
+        // range and panic, poisoning the whole file forever.
+        assert!(!has_unsupported_null_field(br#"":null,"usage":{}}"#));
+        assert!(!has_unsupported_null_field(b":null"));
+        assert!(!has_unsupported_null_field(br#""":null"#));
+        assert!(extract(r#"":null,"usage":{}}"#).is_empty());
+    }
+
+    #[test]
+    fn advisor_entries_without_parent_message_id_get_distinct_keys() {
+        let line = r#"{"timestamp":"2026-01-01T00:00:00Z","message":{"model":"main-model","usage":{"input_tokens":1,"output_tokens":2,"iterations":[{"type":"advisor_message","model":"advisor-model","input_tokens":10,"output_tokens":2}]}}}"#;
+        let entries = extract(line);
+        assert_eq!(entries.len(), 2);
+        assert!(entries[0].message_id.is_none());
+        assert_ne!(entries[0].entry_key, entries[1].entry_key);
     }
 
     #[test]

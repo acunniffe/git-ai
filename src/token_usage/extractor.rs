@@ -22,6 +22,20 @@ pub trait UsageExtractor: Send {
     /// Restore state persisted by an earlier `state_json` call. Unknown or
     /// corrupt state must reset to defaults rather than fail.
     fn restore_state(&mut self, _json: &str) {}
+
+    /// True when the extractor holds buffered entries that a later
+    /// [`UsageExtractor::flush`] could release. Files with pending state must
+    /// be re-processed even when their bytes have not changed.
+    fn has_pending(&self) -> bool {
+        false
+    }
+
+    /// Release buffered entries whose deferral window has passed as of
+    /// `now_ms` (wall clock, unix millis). Called when a pass reaches the end
+    /// of the file.
+    fn flush(&mut self, _now_ms: i64) -> Vec<UsageEntry> {
+        Vec::new()
+    }
 }
 
 /// Extractor for the given git-ai tool id, if token usage is supported.

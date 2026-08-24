@@ -55,7 +55,11 @@ impl UsageEntry {
     /// Token total compared by the Claude replacement policy (ccusage
     /// `usage_token_total`).
     pub fn dedupe_token_total(&self) -> u64 {
-        self.tokens.input + self.tokens.output + self.tokens.cache_write + self.tokens.cache_read
+        self.tokens
+            .input
+            .saturating_add(self.tokens.output)
+            .saturating_add(self.tokens.cache_write)
+            .saturating_add(self.tokens.cache_read)
     }
 }
 

@@ -162,6 +162,12 @@ impl UsageExtractor for CodexUsageExtractor {
                 if raw.payload.as_ref().is_some_and(is_forked_session) {
                     self.state.replay = ReplayState::AwaitingFirst;
                 }
+                // session_meta names the model too (matching
+                // streams::model_extraction, so usage prices under the same
+                // model SessionEvents resolve).
+                if let Some(model) = raw.payload.as_ref().and_then(payload_model) {
+                    self.state.model = Some(model);
+                }
                 Vec::new()
             }
             Some("turn_context") => {
@@ -181,6 +187,36 @@ impl UsageExtractor for CodexUsageExtractor {
 
     fn restore_state(&mut self, json: &str) {
         self.state = serde_json::from_str(json).unwrap_or_default();
+    }
+
+    fn has_pending(&self) -> bool {
+        matches!(
+            self.state.replay,
+            ReplayState::AwaitingSecond {
+                pending: Some(_),
+                ..
+            }
+        )
+    }
+
+    /// A forked session whose transcript ends while its first usage event is
+    /// still parked in `AwaitingSecond` would never release it (a single-turn
+    /// subagent rollout, for example). Once the burst window has passed in
+    /// wall-clock time, no later event can be within it, so the buffered
+    /// event is real usage and is released.
+    fn flush(&mut self, now_ms: i64) -> Vec<UsageEntry> {
+        let ReplayState::AwaitingSecond { first_ts_ms, .. } = &self.state.replay else {
+            return Vec::new();
+        };
+        if now_ms - *first_ts_ms <= REWRITTEN_BURST_PAUSE_MS {
+            return Vec::new();
+        }
+        let ReplayState::AwaitingSecond { pending, .. } =
+            std::mem::replace(&mut self.state.replay, ReplayState::Done)
+        else {
+            unreachable!("matched AwaitingSecond above");
+        };
+        pending.map(make_entry).into_iter().collect()
     }
 }
 
@@ -348,6 +384,8 @@ struct RawPayload {
     info: Option<RawInfo>,
     model: Option<String>,
     model_name: Option<String>,
+    #[serde(alias = "modelId")]
+    model_id: Option<String>,
     metadata: Option<RawMetadata>,
     // session_meta fields:
     forked_from_id: Option<String>,
@@ -360,6 +398,8 @@ struct RawInfo {
     last_token_usage: Option<CodexTotals>,
     model: Option<String>,
     model_name: Option<String>,
+    #[serde(alias = "modelId")]
+    model_id: Option<String>,
     metadata: Option<RawMetadata>,
 }
 
@@ -385,6 +425,7 @@ fn payload_model(payload: &RawPayload) -> Option<String> {
     model_from_parts(
         payload.model.as_deref(),
         payload.model_name.as_deref(),
+        payload.model_id.as_deref(),
         payload.metadata.as_ref(),
     )
 }
@@ -393,13 +434,17 @@ fn info_model(info: &RawInfo) -> Option<String> {
     model_from_parts(
         info.model.as_deref(),
         info.model_name.as_deref(),
+        info.model_id.as_deref(),
         info.metadata.as_ref(),
     )
 }
 
+/// ccusage's model/model_name/metadata.model chain, extended with the
+/// model_id/modelId aliases that streams::model_extraction already accepts.
 fn model_from_parts(
     model: Option<&str>,
     model_name: Option<&str>,
+    model_id: Option<&str>,
     metadata: Option<&RawMetadata>,
 ) -> Option<String> {
     let non_empty = |value: Option<&str>| {
@@ -410,6 +455,7 @@ fn model_from_parts(
     };
     non_empty(model)
         .or_else(|| non_empty(model_name))
+        .or_else(|| non_empty(model_id))
         .or_else(|| non_empty(metadata.and_then(|m| m.model.as_deref())))
 }
 
@@ -660,6 +706,47 @@ mod tests {
             r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
         );
         assert!(matches!(e.state.replay, ReplayState::AwaitingFirst));
+    }
+
+    #[test]
+    fn flush_releases_a_single_turn_forked_session_after_the_burst_window() {
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+        );
+        assert!(
+            e.extract_line(&token_count_line("2026-01-01T00:00:01Z", (10, 0, 5, 0, 15)))
+                .is_empty()
+        );
+        assert!(e.has_pending());
+        // Within the burst window nothing is released yet.
+        let ts_ms = 1_767_225_601_000_i64;
+        assert!(e.flush(ts_ms + 500).is_empty());
+        assert!(e.has_pending());
+        // Past the window no later event can join a burst: the buffered turn
+        // is real usage.
+        let flushed = e.flush(ts_ms + 1_500);
+        assert_eq!(flushed.len(), 1);
+        assert_eq!(flushed[0].tokens.input, 10);
+        assert!(!e.has_pending());
+        assert!(e.flush(ts_ms + 2_000).is_empty());
+    }
+
+    #[test]
+    fn session_meta_and_aliased_model_fields_resolve_the_model() {
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"s","model_id":"gpt-5.3"}}"#,
+        );
+        let entries = e.extract_line(&token_count_line("2026-01-01T00:00:10Z", (1, 0, 1, 0, 2)));
+        assert_eq!(entries[0].model, "gpt-5.3");
+
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"turn_context","payload":{"modelId":"gpt-5.4"}}"#,
+        );
+        let entries = e.extract_line(&token_count_line("2026-01-01T00:00:10Z", (1, 0, 1, 0, 2)));
+        assert_eq!(entries[0].model, "gpt-5.4");
     }
 
     #[test]
