@@ -2979,11 +2979,12 @@ mod tests {
     fn test_reingest_all_resets_rows_without_event_metadata() {
         let (mut db, _temp_dir) = create_test_db();
         let now = unix_now();
-        let ids = db.insert_events_with_delivered_ts(
-            &[event_json(seconds_ago(100)), "not-json".to_string()],
-            Some(now),
-        )
-        .unwrap();
+        let ids = db
+            .insert_events_with_delivered_ts(
+                &[event_json(seconds_ago(100)), "not-json".to_string()],
+                Some(now),
+            )
+            .unwrap();
         db.conn
             .execute(
                 "UPDATE metrics SET processing_started_at = ?1 WHERE id = ?2",
