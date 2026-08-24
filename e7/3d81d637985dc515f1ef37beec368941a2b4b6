@@ -1,0 +1,38 @@
+src/token_usage/extractor.rs
+  s_cfe6a4847c079e::t_9a7a6332244b53 1-34
+src/lib.rs
+  s_cfe6a4847c079e::t_5fd5270eb0964e 24
+src/token_usage/types.rs
+  s_cfe6a4847c079e::t_a8c5c436d0b157 1-94
+src/token_usage/cost.rs
+  s_cfe6a4847c079e::t_0d3cc835233ad8 20-23
+  s_cfe6a4847c079e::t_5df288f7578de8 1-19,24-120
+src/token_usage/codex.rs
+  s_cfe6a4847c079e::t_a017c7f8485323 1-39,45-100,104-158,160-429,435-482,488-489,495-496,502-503,508-523,528-588,593-605
+  s_cfe6a4847c079e::t_0d3cc835233ad8 101-103,159,430-434,483-487,490-494,497-501,504-507,524-527,589-592
+  s_cfe6a4847c079e::t_571c88271f63fa 40-44
+src/token_usage/mod.rs
+  s_cfe6a4847c079e::t_c3ca0be46e90f4 1-19
+src/token_usage/claude.rs
+  s_cfe6a4847c079e::t_9bebf991a5103a 85,88-96
+  s_cfe6a4847c079e::t_0d3cc835233ad8 184-186,247-249,285-286,459-462
+  s_cfe6a4847c079e::t_3b6278d20647ef 368
+  s_cfe6a4847c079e::t_a0e75dc9ee344d 210-214
+  s_cfe6a4847c079e::t_04c36d849f848e 1-84,86-87,97-183,187-209,215-246,250-284,287-367,369-458,463-554
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "e73d81d637985dc515f1ef37beec368941a2b4b6",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
