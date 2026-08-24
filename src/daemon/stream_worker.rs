@@ -989,17 +989,8 @@ impl StreamWorker {
         // Handle result
         match result {
             Ok(Ok(())) => {
-                // Success - task is done. Let the token-usage worker pick up
-                // the freshly ingested transcript bytes.
-                if task.stream_kind == "transcript"
-                    && let Some(token_usage) = &self.token_usage_worker
-                {
-                    token_usage.notify_stream_processed(
-                        &task.session_id,
-                        &task.tool,
-                        &task.canonical_path,
-                    );
-                }
+                // Success - task is done.
+                self.notify_token_usage(&task);
             }
             Ok(Err(e)) => {
                 // Error - handle retry logic
@@ -1357,8 +1348,22 @@ impl StreamWorker {
                 Ok(Err(e)) => {
                     tracing::error!(error = %e, session_id = %task.session_id, "drain task processing error");
                 }
-                Ok(Ok(())) => {}
+                Ok(Ok(())) => {
+                    self.notify_token_usage(&task);
+                }
             }
+        }
+    }
+
+    /// On transcript success, let the token-usage worker pick up the freshly
+    /// ingested bytes (cheap non-blocking send). Called from every task
+    /// success arm — including the drain path — so the await barrier, which
+    /// drains token usage right after transcripts, always sees the ping.
+    fn notify_token_usage(&self, task: &ProcessingTask) {
+        if task.stream_kind == "transcript"
+            && let Some(token_usage) = &self.token_usage_worker
+        {
+            token_usage.notify_stream_processed(&task.session_id, &task.tool, &task.canonical_path);
         }
     }
 
