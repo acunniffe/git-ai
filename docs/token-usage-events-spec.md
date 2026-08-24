@@ -147,8 +147,11 @@ Reviewed decisions, accepted rather than accidental:
 - **Uploader abandonment applies.** TokenUsage rides the shared metrics
   uploader, which abandons records after six failed upload attempts
   (~20 hours offline). The state database has already marked those buckets
-  emitted; a later genuine change re-emits at a higher revision and heals the
-  gap, but a correction whose bucket never changes again is lost.
+  emitted, so this loses any emission — first emissions included (e.g. a
+  historical backfill that ran entirely during a >20h upload outage), not
+  just corrections. A later genuine change to a bucket re-emits it at a
+  higher revision and heals that bucket, but a bucket that never changes
+  again is lost.
 - **Rewritten transcript content stays counted.** Entries have no per-file
   ownership, so history that a rewrite/truncation removed from a transcript
   keeps its rows (bounded by 90-day retention). Transcripts are append-only
@@ -156,3 +159,11 @@ Reviewed decisions, accepted rather than accidental:
   replay.
 - **Sweep-discovered work sits outside the `git-ai await` drain barrier**
   (see Pipeline): backfill is eventual, matching stream-worker semantics.
+- **A fork burst split across passes can over-count once.** The end-of-file
+  flush releases a parked first turn after the burst window passes in wall
+  clock. If Codex writes the two replayed burst lines more than a second
+  apart (buffered/laggy serialization carrying sub-second recorded
+  timestamps) and a pass lands in the gap, the parked replay is released as
+  own usage and its burst partner counts too — bounded to that one pair per
+  fork, and requiring write lag upstream's post-hoc whole-file reads never
+  observe.
