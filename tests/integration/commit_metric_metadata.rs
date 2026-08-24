@@ -1,5 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+use crate::test_utils::isolated_metrics_db_path;
 use git_ai::metrics::MetricEvent;
 use git_ai::metrics::attrs::attr_pos;
 use git_ai::metrics::db::MetricsDatabase;
@@ -9,12 +10,6 @@ use serde_json::json;
 use std::fs;
 use std::path::Path;
 use std::time::{Duration, Instant};
-
-fn isolated_metrics_db_path() -> (tempfile::TempDir, String) {
-    let dir = tempfile::tempdir().expect("failed to create isolated metrics db dir");
-    let path = dir.path().join("metrics.db");
-    (dir, path.to_string_lossy().to_string())
-}
 
 fn codex_checkpoint(
     repo: &TestRepo,

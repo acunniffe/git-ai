@@ -1,5 +1,6 @@
 use crate::repos::test_file::ExpectedLineExt;
 use crate::repos::test_repo::TestRepo;
+use crate::test_utils::extract_json_object;
 /// Tests for UTF-8 filename handling with Chinese characters and emojis.
 ///
 /// This tests verifies that files with non-ASCII characters in their filenames
@@ -11,12 +12,6 @@ use crate::repos::test_repo::TestRepo;
 use git_ai::authorship::stats::CommitStats;
 
 /// Extract the first complete JSON object from mixed stdout/stderr output.
-fn extract_json_object(output: &str) -> String {
-    let start = output.find('{').unwrap_or(0);
-    let end = output.rfind('}').unwrap_or(output.len().saturating_sub(1));
-    output[start..=end].to_string()
-}
-
 #[test]
 fn test_chinese_filename_ai_attribution() {
     let repo = TestRepo::new();

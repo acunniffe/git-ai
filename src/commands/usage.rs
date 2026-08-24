@@ -15,16 +15,48 @@ struct UsageJsonOutput<'a> {
     repos: &'a [RepoActivitySummary],
 }
 
+const DEFAULT_PERIOD: &str = "30d";
+
+/// Map a `--period` token to its window length in days, display label, and bucket granularity.
+fn resolve_period(token: &str) -> Result<(u64, String, BucketGranularity), String> {
+    match token {
+        "1d" => Ok((1, "last 24 hours".to_string(), BucketGranularity::Daily)),
+        "3d" => Ok((3, "last 3 days".to_string(), BucketGranularity::Daily)),
+        "7d" => Ok((7, "last 7 days".to_string(), BucketGranularity::Daily)),
+        "30d" => Ok((30, "last 30 days".to_string(), BucketGranularity::Weekly)),
+        other => Err(format!(
+            "Invalid --period value: {}. Expected one of 1d, 3d, 7d, 30d.",
+            other
+        )),
+    }
+}
+
 pub fn handle_usage(args: &[String]) {
     let mut json = false;
+    let mut period = DEFAULT_PERIOD.to_string();
 
     let mut i = 0;
     while i < args.len() {
-        match args[i].as_str() {
+        let arg = args[i].as_str();
+        match arg {
             "--json" => json = true,
             "--help" | "-h" => {
                 print_help();
                 return;
+            }
+            "--period" => {
+                i += 1;
+                match args.get(i) {
+                    Some(value) => period = value.clone(),
+                    None => {
+                        eprintln!("Missing value for --period.");
+                        eprintln!("Run 'git-ai usage --help' for usage.");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            _ if arg.starts_with("--period=") => {
+                period = arg["--period=".len()..].to_string();
             }
             other => {
                 eprintln!("Unknown argument: {}", other);
@@ -35,14 +67,20 @@ pub fn handle_usage(args: &[String]) {
         i += 1;
     }
 
+    let (days, period_label, granularity) = match resolve_period(&period) {
+        Ok(resolved) => resolved,
+        Err(e) => {
+            eprintln!("{}", e);
+            eprintln!("Run 'git-ai usage --help' for usage.");
+            std::process::exit(1);
+        }
+    };
+
     // Best-effort refresh of the models.dev pricing cache (at most daily)
     // before stats — and therefore cost estimates — are computed.
     crate::metrics::model_pricing::refresh_cache_if_stale();
 
-    // Fixed 30-day window.
-    let since_ts = days_ago(30);
-    let period_label = "last 30 days".to_string();
-    let granularity = BucketGranularity::Weekly;
+    let since_ts = days_ago(days);
 
     // Fetch events once and derive both views from the same snapshot so the
     // per-repo breakdown totals are always consistent with the headline stats.
@@ -107,10 +145,11 @@ fn print_help() {
     eprintln!("Usage: git-ai usage [options]");
     eprintln!();
     eprintln!("Options:");
+    eprintln!("  --period <1d|3d|7d|30d>           Time window (default: 30d)");
     eprintln!("  --json                            Output as JSON");
     eprintln!("  --help                            Show this help");
     eprintln!();
-    eprintln!("Shows activity over the last 30 days from locally recorded metric events.");
+    eprintln!("Shows activity over the selected window from locally recorded metric events.");
     eprintln!("Metric rows older than approximately 365 days are pruned locally.");
 }
 
@@ -508,4 +547,46 @@ fn format_num_u64(n: u64) -> String {
         result.push(c);
     }
     result.chars().rev().collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolve_period_defaults_to_thirty_day_weekly_window() {
+        let resolved = resolve_period(DEFAULT_PERIOD).unwrap();
+
+        assert_eq!(
+            resolved,
+            (30, "last 30 days".to_string(), BucketGranularity::Weekly)
+        );
+    }
+
+    #[test]
+    fn resolve_period_maps_short_windows_to_daily_granularity() {
+        let resolved: Vec<_> = ["1d", "3d", "7d"]
+            .iter()
+            .map(|t| resolve_period(t).unwrap())
+            .collect();
+
+        assert_eq!(
+            resolved,
+            vec![
+                (1, "last 24 hours".to_string(), BucketGranularity::Daily),
+                (3, "last 3 days".to_string(), BucketGranularity::Daily),
+                (7, "last 7 days".to_string(), BucketGranularity::Daily),
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_period_rejects_unknown_token() {
+        let result = resolve_period("90d");
+
+        assert_eq!(
+            result,
+            Err("Invalid --period value: 90d. Expected one of 1d, 3d, 7d, 30d.".to_string())
+        );
+    }
 }
