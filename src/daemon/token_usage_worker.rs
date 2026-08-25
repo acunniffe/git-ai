@@ -32,11 +32,12 @@
 //! - The `token_usage_metrics` feature flag gates the worker at daemon
 //!   startup (like `transcript_streaming`); when it is off, the token-usage
 //!   database is deleted so no collected data is retained.
-//! - Transcript passes are CPU-throttled to a ~30% duty cycle of one core
-//!   (each batch's work is followed by a proportional pause), so a large
-//!   first-run backfill takes ~3x longer instead of pinning a core. Passes
-//!   below the work floor are not throttled, keeping the notify/drain path
-//!   fast.
+//! - Sweep/backfill passes are CPU-throttled to a ~30% duty cycle of one
+//!   core (each batch's work is followed by a proportional pause), so a
+//!   large first-run backfill takes ~3x longer instead of pinning a core.
+//!   Notification-driven passes are never throttled: they sit on the
+//!   `git-ai await` drain barrier's post-commit critical path, and a task
+//!   promoted from the sweep queue by a notification runs unthrottled too.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufReader, Seek, SeekFrom};
@@ -86,14 +87,14 @@ fn read_line_bytes(
 const BATCH_MAX_ENTRIES: usize = 1_000;
 const BATCH_MAX_BYTES: usize = 4 * 1024 * 1024;
 
-/// CPU duty cycle for transcript passes: after each batch, the pass sleeps
-/// long enough that the work occupies at most this share of one core
-/// (work W is followed by a pause of W * (100 - duty) / duty). A multi-
+/// CPU duty cycle for sweep-origin transcript passes: after each batch, the
+/// pass sleeps long enough that the work occupies at most this share of one
+/// core (work W is followed by a pause of W * (100 - duty) / duty). A multi-
 /// gigabyte backfill therefore takes ~3x longer instead of pinning a core.
+/// Notification-origin passes are never throttled (see `TaskOrigin`).
 const THROTTLE_DUTY_PERCENT: u32 = 30;
-/// Passes doing less work than this per batch (quiet skips, small appends)
-/// are not throttled at all, so notification-driven work and the `git-ai
-/// await` drain barrier stay fast.
+/// Batches doing less work than this owe no pause (quiet skips, small
+/// appends swept between notifications).
 const THROTTLE_MIN_WORK: Duration = Duration::from_millis(5);
 /// Upper bound on a single pause (guards pathologically slow batches, and
 /// bounds how long a pass can delay a drain or shutdown).
@@ -133,6 +134,15 @@ struct TokenUsageTask {
     session_id: String,
     tool: String,
     stream_path: String,
+}
+
+/// Which queue a task was popped from. Sweep/backfill passes are CPU-
+/// throttled; notification-driven passes sit on the `git-ai await` drain
+/// path and run unthrottled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TaskOrigin {
+    Notify,
+    Sweep,
 }
 
 struct DrainRequest {
@@ -199,6 +209,8 @@ pub fn spawn_token_usage_worker(
         sweep_interval: Duration::from_secs(30 * 60),
         #[cfg(test)]
         test_sink: None,
+        #[cfg(test)]
+        test_throttle: None,
     };
     tokio::spawn(async move {
         worker.run().await;
@@ -229,10 +241,15 @@ struct TokenUsageWorker {
     /// telemetry handle.
     #[cfg(test)]
     test_sink: Option<TestSink>,
+    /// Test-only throttle-pause recorder, replacing the real sleep.
+    #[cfg(test)]
+    test_throttle: Option<TestThrottle>,
 }
 
 #[cfg(test)]
 type TestSink = Arc<dyn Fn(&[MetricEvent]) -> Result<(), GitAiError> + Send + Sync>;
+#[cfg(test)]
+type TestThrottle = Arc<dyn Fn(Duration) + Send + Sync>;
 
 impl TokenUsageWorker {
     /// The sink every task/reconcile pass hands emitted events to.
@@ -282,8 +299,8 @@ impl TokenUsageWorker {
                     while let Ok(task) = self.notify_rx.try_recv() {
                         self.enqueue_notify(task);
                     }
-                    if let Some(task) = self.pop_next() {
-                        self.process_task(task).await;
+                    if let Some((task, origin)) = self.pop_next() {
+                        self.process_task(task, origin).await;
                     }
                 }
                 _ = sweep_ticker.tick() => {
@@ -311,8 +328,8 @@ impl TokenUsageWorker {
         while let Ok(task) = self.notify_rx.try_recv() {
             self.enqueue_notify(task);
         }
-        while let Some(task) = self.pop_queue(true) {
-            self.process_task(task).await;
+        while let Some((task, origin)) = self.pop_queue(true) {
+            self.process_task(task, origin).await;
             if self.shutdown_flag.load(Ordering::Relaxed) {
                 break;
             }
@@ -336,19 +353,24 @@ impl TokenUsageWorker {
         }
     }
 
-    fn pop_queue(&mut self, notify_only: bool) -> Option<TokenUsageTask> {
-        let task = self.notify_queue.pop_front().or_else(|| {
-            if notify_only {
-                None
-            } else {
-                self.sweep_queue.pop_front()
-            }
-        })?;
+    /// Pop the next task with its origin: notification-driven work (the
+    /// `git-ai await` drain path — never throttled) is always preferred over
+    /// sweep backfill (throttled). A task promoted from the sweep queue by a
+    /// notification pops as notify-origin.
+    fn pop_queue(&mut self, notify_only: bool) -> Option<(TokenUsageTask, TaskOrigin)> {
+        if let Some(task) = self.notify_queue.pop_front() {
+            self.queued.remove(&task);
+            return Some((task, TaskOrigin::Notify));
+        }
+        if notify_only {
+            return None;
+        }
+        let task = self.sweep_queue.pop_front()?;
         self.queued.remove(&task);
-        Some(task)
+        Some((task, TaskOrigin::Sweep))
     }
 
-    fn pop_next(&mut self) -> Option<TokenUsageTask> {
+    fn pop_next(&mut self) -> Option<(TokenUsageTask, TaskOrigin)> {
         self.pop_queue(false)
     }
 
@@ -398,14 +420,44 @@ impl TokenUsageWorker {
         .await;
     }
 
-    async fn process_task(&mut self, task: TokenUsageTask) {
+    /// The pause a sweep-origin pass sleeps after each batch. Tests inject a
+    /// recorder to pin the per-batch call sites without wall-clock waits.
+    fn make_throttle(&self) -> impl Fn(Duration) + Send + Sync + use<> {
+        let shutdown_flag = self.shutdown_flag.clone();
+        #[cfg(test)]
+        let test_throttle = self.test_throttle.clone();
+        move |pause: Duration| {
+            #[cfg(test)]
+            if let Some(throttle) = &test_throttle {
+                throttle(pause);
+                return;
+            }
+            throttle_sleep(pause, &shutdown_flag);
+        }
+    }
+
+    async fn process_task(&mut self, task: TokenUsageTask, origin: TaskOrigin) {
         let streams_db = self.streams_db.clone();
         let token_db = self.token_db.clone();
         let sink = self.make_sink();
+        let throttle_fn = self.make_throttle();
         let shutdown_flag = self.shutdown_flag.clone();
         let task_clone = task.clone();
         let mut handle = tokio::task::spawn_blocking(move || {
-            process_task_blocking(&streams_db, &token_db, &sink, &task_clone, &shutdown_flag)
+            // Only sweep/backfill passes are throttled: notification-driven
+            // passes sit on the `git-ai await` drain barrier's critical path.
+            let throttle: Option<&(dyn Fn(Duration) + Sync)> = match origin {
+                TaskOrigin::Sweep => Some(&throttle_fn),
+                TaskOrigin::Notify => None,
+            };
+            process_task_blocking(
+                &streams_db,
+                &token_db,
+                &sink,
+                throttle,
+                &task_clone,
+                &shutdown_flag,
+            )
         });
         // Keep watching for shutdown while the blocking pass runs: setting
         // the flag makes the pass stop at its next line/batch boundary.
@@ -568,6 +620,7 @@ fn process_task_blocking(
     streams_db: &StreamsDatabase,
     token_db: &TokenUsageDatabase,
     sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
+    throttle: Option<&(dyn Fn(Duration) + Sync)>,
     task: &TokenUsageTask,
     shutdown_flag: &AtomicBool,
 ) -> Result<(), GitAiError> {
@@ -594,6 +647,7 @@ fn process_task_blocking(
             repo_url
         },
         sink,
+        throttle,
     );
     if let Err(e) = &result {
         // Keyed by the rollup session id (subagent transcripts track under
@@ -668,6 +722,7 @@ fn process_file(
     shutdown_flag: &AtomicBool,
     resolve_repo_url: impl FnOnce() -> Option<String>,
     sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
+    throttle: Option<&(dyn Fn(Duration) + Sync)>,
 ) -> Result<(), GitAiError> {
     let tracked = token_db.ensure_file(
         &identity.session_id,
@@ -788,10 +843,12 @@ fn process_file(
             pending_flush: extractor.has_pending(),
             min_bucket_ts: cutoff,
         })?;
-        // CPU throttle: pay for this batch's work with a proportional pause
-        // (also after the final batch, so back-to-back file passes during a
-        // large backfill hold the duty cycle too).
-        throttle_sleep(throttle_pause_for(batch_started.elapsed()), shutdown_flag);
+        // CPU throttle (sweep-origin passes only): pay for this batch's work
+        // with a proportional pause (also after the final batch, so back-to-
+        // back file passes during a large backfill hold the duty cycle too).
+        if let Some(throttle) = throttle {
+            throttle(throttle_pause_for(batch_started.elapsed()));
+        }
     }
 
     if interrupted {
@@ -956,6 +1013,7 @@ mod tests {
                 collected.lock().unwrap().extend(events.to_vec());
                 Ok(())
             },
+            None,
         )?;
         Ok(collected.into_inner().unwrap())
     }
@@ -1554,6 +1612,7 @@ mod tests {
             &flag,
             || None,
             &|_| Err(GitAiError::Generic("sink down".to_string())),
+            None,
         );
         assert!(result.is_err());
 
@@ -1610,6 +1669,7 @@ mod tests {
             queued: HashSet::new(),
             sweep_interval: Duration::from_secs(30 * 60),
             test_sink: None,
+            test_throttle: None,
         }
     }
 
@@ -1700,11 +1760,12 @@ mod tests {
         assert_eq!(worker.sweep_queue.len(), 1);
         assert_eq!(worker.notify_queue.len(), 1);
 
-        // The drain barrier only sees notification-driven work.
-        assert_eq!(worker.pop_queue(true), Some(fresh));
+        // The drain barrier only sees notification-driven work, and a
+        // promoted task pops as notify-origin: it runs unthrottled.
+        assert_eq!(worker.pop_queue(true), Some((fresh, TaskOrigin::Notify)));
         assert_eq!(worker.pop_queue(true), None);
-        // The background loop still gets the backfill.
-        assert_eq!(worker.pop_next(), Some(backfill));
+        // The background loop still gets the backfill, throttled.
+        assert_eq!(worker.pop_next(), Some((backfill, TaskOrigin::Sweep)));
         assert_eq!(worker.pop_next(), None);
         assert!(worker.queued.is_empty());
     }
@@ -1732,6 +1793,7 @@ mod tests {
             &streams_db,
             &token_db,
             &|_: &[MetricEvent]| Ok(()),
+            None,
             &task,
             &AtomicBool::new(false),
         );
@@ -1795,6 +1857,112 @@ mod tests {
     }
 
     #[test]
+    fn throttled_passes_pay_a_pause_per_batch_and_quiet_skips_pay_nothing() {
+        // Pins the call site (finding: deleting the throttle call failed no
+        // test): a throttled multi-batch pass owes exactly one pause per
+        // batch commit, recorded via the injectable sleeper — no wall-clock
+        // assertions needed.
+        let (_dir, db, transcript) = setup();
+        let mut content = String::new();
+        for i in 0..(BATCH_MAX_ENTRIES + 1) {
+            content.push_str(&claude_line(
+                &format!("m{i}"),
+                &format!("r{i}"),
+                &recent_ts(1, 0),
+                50,
+            ));
+            content.push('\n');
+        }
+        fs::write(&transcript, content).unwrap();
+
+        let pauses = Mutex::new(Vec::new());
+        let recorder = |pause: Duration| pauses.lock().unwrap().push(pause);
+        let flag = AtomicBool::new(false);
+        process_file(
+            &db,
+            &identity(),
+            &transcript.display().to_string(),
+            &flag,
+            || None,
+            &|_| Ok(()),
+            Some(&recorder),
+        )
+        .unwrap();
+        assert_eq!(pauses.lock().unwrap().len(), 2, "one pause per batch");
+
+        // Quiet skip: unchanged bytes owe no pause at all.
+        process_file(
+            &db,
+            &identity(),
+            &transcript.display().to_string(),
+            &flag,
+            || None,
+            &|_| Ok(()),
+            Some(&recorder),
+        )
+        .unwrap();
+        assert_eq!(pauses.lock().unwrap().len(), 2, "quiet skip pays nothing");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sweep_passes_are_throttled_and_notify_passes_are_not() {
+        // Origin gating through the real run() loop: the startup sweep pays
+        // throttle pauses; a notification-driven pass (the await drain path)
+        // never does.
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let path = dir.path().join("transcript.jsonl");
+        fs::write(
+            &path,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        streams_db
+            .insert_stream(&stream_record(
+                "s_gate",
+                "claude",
+                &path.display().to_string(),
+            ))
+            .unwrap();
+        let (collected, sink) = collecting_sink();
+        let throttle_calls = Arc::new(Mutex::new(0usize));
+        let recorder_calls = throttle_calls.clone();
+        let (handle, shutdown) = spawn_run_loop_throttled(
+            streams_db,
+            token_db,
+            sink,
+            Duration::from_secs(30 * 60),
+            Some(Arc::new(move |_pause: Duration| {
+                *recorder_calls.lock().unwrap() += 1;
+            })),
+        );
+
+        wait_for_bucket(&collected, bucket_of(1, 0)).await;
+        let after_sweep = *throttle_calls.lock().unwrap();
+        assert!(after_sweep >= 1, "startup sweep pass is throttled");
+
+        // Append and notify: the notification-origin pass emits the new
+        // bucket without ever touching the throttle.
+        let mut content = fs::read_to_string(&path).unwrap();
+        content.push_str(&format!(
+            "{}\n",
+            claude_line("m2", "r2", &recent_ts(6, 0), 70)
+        ));
+        fs::write(&path, content).unwrap();
+        handle.notify_stream_processed("s_gate", "claude", &path);
+        wait_for_bucket(&collected, bucket_of(6, 0)).await;
+        assert_eq!(
+            *throttle_calls.lock().unwrap(),
+            after_sweep,
+            "notify-origin pass must not be throttled"
+        );
+        shutdown.notify_one();
+    }
+
+    #[test]
     fn error_backoff_schedule_is_bounded() {
         assert_eq!(error_backoff_secs(0), 0);
         assert_eq!(error_backoff_secs(1), 5);
@@ -1849,7 +2017,15 @@ mod tests {
 
         // Pass 1: the usage event is written moments ago, so the EOF flush
         // must not release it (a burst partner may still be coming).
-        process_task_blocking(&streams_db, &token_db, &|e| sink(e), &task, &flag_off()).unwrap();
+        process_task_blocking(
+            &streams_db,
+            &token_db,
+            &|e| sink(e),
+            None,
+            &task,
+            &flag_off(),
+        )
+        .unwrap();
         assert!(collected.lock().unwrap().is_empty(), "turn stays parked");
         let tracked = token_db
             .ensure_file("s_fork", &path_str, "codex", "s_fork-ext")
@@ -1864,7 +2040,15 @@ mod tests {
         // stamp plus the window plus one second (the flush clock has second
         // granularity).
         std::thread::sleep(Duration::from_millis(4100));
-        process_task_blocking(&streams_db, &token_db, &|e| sink(e), &task, &flag_off()).unwrap();
+        process_task_blocking(
+            &streams_db,
+            &token_db,
+            &|e| sink(e),
+            None,
+            &task,
+            &flag_off(),
+        )
+        .unwrap();
         let events = collected.lock().unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(
@@ -1888,6 +2072,16 @@ mod tests {
         sink: TestSink,
         sweep_interval: Duration,
     ) -> (TokenUsageWorkerHandle, Arc<Notify>) {
+        spawn_run_loop_throttled(streams_db, token_db, sink, sweep_interval, None)
+    }
+
+    fn spawn_run_loop_throttled(
+        streams_db: Arc<StreamsDatabase>,
+        token_db: Arc<TokenUsageDatabase>,
+        sink: TestSink,
+        sweep_interval: Duration,
+        test_throttle: Option<TestThrottle>,
+    ) -> (TokenUsageWorkerHandle, Arc<Notify>) {
         let (notify_tx, notify_rx) = tokio::sync::mpsc::unbounded_channel();
         let (drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
         let shutdown_notify = Arc::new(Notify::new());
@@ -1904,6 +2098,7 @@ mod tests {
             queued: HashSet::new(),
             sweep_interval,
             test_sink: Some(sink),
+            test_throttle,
         };
         tokio::spawn(worker.run());
         (
