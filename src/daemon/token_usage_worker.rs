@@ -32,6 +32,11 @@
 //! - The `token_usage_metrics` feature flag gates the worker at daemon
 //!   startup (like `transcript_streaming`); when it is off, the token-usage
 //!   database is deleted so no collected data is retained.
+//! - Transcript passes are CPU-throttled to a ~30% duty cycle of one core
+//!   (each batch's work is followed by a proportional pause), so a large
+//!   first-run backfill takes ~3x longer instead of pinning a core. Passes
+//!   below the work floor are not throttled, keeping the notify/drain path
+//!   fast.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::{BufReader, Seek, SeekFrom};
@@ -80,6 +85,38 @@ fn read_line_bytes(
 /// Entry/byte bounds of one atomic batch commit.
 const BATCH_MAX_ENTRIES: usize = 1_000;
 const BATCH_MAX_BYTES: usize = 4 * 1024 * 1024;
+
+/// CPU duty cycle for transcript passes: after each batch, the pass sleeps
+/// long enough that the work occupies at most this share of one core
+/// (work W is followed by a pause of W * (100 - duty) / duty). A multi-
+/// gigabyte backfill therefore takes ~3x longer instead of pinning a core.
+const THROTTLE_DUTY_PERCENT: u32 = 30;
+/// Passes doing less work than this per batch (quiet skips, small appends)
+/// are not throttled at all, so notification-driven work and the `git-ai
+/// await` drain barrier stay fast.
+const THROTTLE_MIN_WORK: Duration = Duration::from_millis(5);
+/// Upper bound on a single pause (guards pathologically slow batches, and
+/// bounds how long a pass can delay a drain or shutdown).
+const THROTTLE_MAX_PAUSE: Duration = Duration::from_secs(5);
+
+/// The pause owed after `work` of batch processing under the duty cycle.
+fn throttle_pause_for(work: Duration) -> Duration {
+    if work < THROTTLE_MIN_WORK {
+        return Duration::ZERO;
+    }
+    (work.saturating_mul(100 - THROTTLE_DUTY_PERCENT) / THROTTLE_DUTY_PERCENT)
+        .min(THROTTLE_MAX_PAUSE)
+}
+
+/// Sleep out a throttle pause in small chunks so shutdown stays prompt.
+fn throttle_sleep(pause: Duration, shutdown_flag: &AtomicBool) {
+    let mut remaining = pause;
+    while !remaining.is_zero() && !shutdown_flag.load(Ordering::Relaxed) {
+        let chunk = remaining.min(Duration::from_millis(50));
+        std::thread::sleep(chunk);
+        remaining = remaining.saturating_sub(chunk);
+    }
+}
 
 /// Same telemetry-buffer backpressure as the stream worker.
 const BACKPRESSURE_THRESHOLD: usize = 5_000;
@@ -689,6 +726,7 @@ fn process_file(
     let mut reached_end = false;
     let mut interrupted = false;
     while !reached_end && !interrupted {
+        let batch_started = std::time::Instant::now();
         let mut entries = Vec::new();
         let mut consumed = 0usize;
         loop {
@@ -750,6 +788,10 @@ fn process_file(
             pending_flush: extractor.has_pending(),
             min_bucket_ts: cutoff,
         })?;
+        // CPU throttle: pay for this batch's work with a proportional pause
+        // (also after the final batch, so back-to-back file passes during a
+        // large backfill hold the duty cycle too).
+        throttle_sleep(throttle_pause_for(batch_started.elapsed()), shutdown_flag);
     }
 
     if interrupted {
@@ -1720,6 +1762,36 @@ mod tests {
         let identity = SessionIdentity::from_stream(&stream);
         assert_eq!(identity.session_id, "s_child");
         assert_eq!(identity.external_session_id, "child-ext");
+    }
+
+    #[test]
+    fn throttle_pause_holds_the_duty_cycle() {
+        // Below the floor: not throttled (quiet skips, small appends), so
+        // notification-driven work and the drain barrier stay fast.
+        assert_eq!(throttle_pause_for(Duration::from_millis(4)), Duration::ZERO);
+        // 30% duty cycle: work W is followed by a pause of 7W/3.
+        assert_eq!(
+            throttle_pause_for(Duration::from_millis(300)),
+            Duration::from_millis(700)
+        );
+        assert_eq!(
+            throttle_pause_for(Duration::from_millis(900)),
+            Duration::from_millis(2100)
+        );
+        // Capped, so one pathologically slow batch cannot stall a drain or
+        // shutdown for minutes.
+        assert_eq!(
+            throttle_pause_for(Duration::from_secs(60)),
+            THROTTLE_MAX_PAUSE
+        );
+    }
+
+    #[test]
+    fn throttle_sleep_exits_promptly_on_shutdown() {
+        let flag = AtomicBool::new(true);
+        let started = std::time::Instant::now();
+        throttle_sleep(Duration::from_secs(5), &flag);
+        assert!(started.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
