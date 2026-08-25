@@ -1,0 +1,49 @@
+tests/integration/tls_native_certs.rs
+  s_392c380bbdc435::t_7e868d006d6506 26
+Cargo.toml
+  s_392c380bbdc435::t_6e3e68a22e0cac 25
+src/daemon/telemetry_worker.rs
+  s_392c380bbdc435::t_daf25c2fd72575 1250,1502-1503
+Cargo.lock
+  s_392c380bbdc435::t_74145951a5249c 146-151,660-669,2442-2450,2981-2989,3788,3790,3793,3796-3812,3827-3832,4017-4025
+src/ci/gitlab.rs
+  s_392c380bbdc435::t_daf25c2fd72575 88
+  s_392c380bbdc435::t_c6be21aacecaff 89-94,306-307
+tests/integration/http_proxy.rs
+  s_392c380bbdc435::t_14f873cec7ea6d 29,33,55-56,59,122-141
+  s_392c380bbdc435::t_fbdcd32433df9a 1
+  s_392c380bbdc435::t_b61ca89954ca4f 2-7,9-14,28,30-32,34-40,48-54,57-58,60-84,86-99,102-103,113-121,142-148,150-152
+  s_392c380bbdc435::t_887b52bd4e59fe 8,106,149
+  s_392c380bbdc435::t_c18f00441d843b 15-27,41-47,110-111
+  s_392c380bbdc435::t_6e3e68a22e0cac 85
+  s_392c380bbdc435::t_8c5b879016822a 100-101,104-105,107-109,112
+src/http.rs
+  s_392c380bbdc435::t_928b87a0c0a820 17-22,57
+  s_392c380bbdc435::t_6e3e68a22e0cac 2-4,25,28,53-56,58,65-69,73-80
+  s_392c380bbdc435::t_887b52bd4e59fe 6-7,13-15
+src/commands/analyze/cube.rs
+  s_392c380bbdc435::t_daf25c2fd72575 90-91,102
+src/api/client.rs
+  s_392c380bbdc435::t_daf25c2fd72575 325,328,330,334,348,350,354
+  s_392c380bbdc435::t_6e3e68a22e0cac 191-197,201,205,212-215,219,223
+src/auth/client.rs
+  s_392c380bbdc435::t_daf25c2fd72575 63,101,145
+tests/integration/main.rs
+  s_392c380bbdc435::t_4f8b1ca8258898 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "439031c202b983378efffa934b19ccf5cda01ddb",
+  "prompts": {},
+  "sessions": {
+    "s_392c380bbdc435": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9098-8bf0-76c0-8ee4-d18f747f9401",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

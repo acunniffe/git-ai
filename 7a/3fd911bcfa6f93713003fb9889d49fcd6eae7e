@@ -1,0 +1,98 @@
+src/metrics/local_stats.rs
+  s_8d2579124116c6::t_3b57a74c5ecd87 2-4,10,12,14-21,35-39,45-59,70,83-85,87-95,109-110,141,145,147-148,164-169,171-182,185,300-304,306,332-336,338,361-384,386-400,315-316,309-310,312-313
+  s_8d2579124116c6::t_9517938b1b6531 7-9,133,135-139
+  s_8d2579124116c6::t_48a4bb488e4366 13
+  s_1af7141303b2b0::t_7e07d46efad8dc 33-34,60-61,71-72,82,96,144,150,186-187,345-346,73,222-223
+  s_1a35d9c51a69d7::t_323500306478c5 74
+  s_1a35d9c51a69d7::t_9ee0e26e808449 142
+  s_1a35d9c51a69d7::t_9058c3536642da 143,153,227
+  s_8d2579124116c6::t_d4a33b78d031c7 146,149
+  s_27ed236e4270d9::t_a3f17e1ff94c43 342
+  s_8d2579124116c6::t_efaa4612a76a08 401-404
+  s_c3aa905e9dfee2::t_5bbafa8543c8c7 405-406,318,327-328,341,323,26-27,67-68,101,103,120,125,131-132,160,163,193-194,201,210,215-218,230,233,249-250,268-269,286,291-295,297-298,343,356,358-360
+  s_8d2579124116c6::t_a1ccb812bb4693 314,317,325,330,339
+  s_8d2579124116c6::t_5b57ccb778ebe5 308,321
+  s_8d2579124116c6::t_498bf7237b6a9e 11,22-25,29-30,32,62-66,99-100,102,114-116,118,122,126,130,161,183-184,188-192,195,197,202-205,208,213,219-220,224,231,234-235,237,239-241,248,251,255-257,265-267,273-276,284-285,287-290,296
+  s_86cae81fcd9c97::t_9073f69732e639 28,31,157-158,229
+  s_0db412aeb21ffe::t_a75fc8f39bebfe 111
+  s_27ed236e4270d9::t_cf42057582c7a0 119
+  s_f4253bff8cf478::t_96b0d69846c837 196,211,236,270
+  s_8d2579124116c6::t_49034777a20685 347-355,357
+  s_8d2579124116c6::t_7a29f6e41332b5 40-43
+  s_8d2579124116c6::t_0fc260bb2b162b 86
+  s_8d2579124116c6::t_c0f55d991b58c5 117
+  s_8d2579124116c6::t_0684d76ce2b4ad 170
+  s_8d2579124116c6::t_585f11f0f11948 305,311,319-320,322
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "7a3fd911bcfa6f93713003fb9889d49fcd6eae7e",
+  "prompts": {},
+  "sessions": {
+    "s_0db412aeb21ffe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfef8749-d442-403d-b447-4d2895852996",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_1a35d9c51a69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7df70395-9a7f-4c32-bf67-e29d2b57634a",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_1af7141303b2b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0947858f-daa2-4553-950d-7c6751535d5d",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_27ed236e4270d9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6971bf9-b65a-47ab-9db2-350fef8767f3",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_86cae81fcd9c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5160589a-86c2-41a5-bdcd-5daee68d43ef",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_8d2579124116c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "39d3b3e7-c4b1-47bb-a8f6-bec27ed43b12",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    },
+    "s_c3aa905e9dfee2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e953b-a3d6-78c1-ab12-b3623076acea",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f4253bff8cf478": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e50b2-525b-70b0-8f45-874075a6ecce",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

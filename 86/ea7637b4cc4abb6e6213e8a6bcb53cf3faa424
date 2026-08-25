@@ -1,0 +1,52 @@
+src/git/mod.rs
+  s_22c662336d649a::t_3b9f95b1801ff0 4
+src/git/repo_state.rs
+  s_22c662336d649a::t_6f658cfa5688cc 197,200-213,216
+  s_22c662336d649a::t_7aba1caa6893d6 81-82
+src/git/repository.rs
+  s_22c662336d649a::t_60861dc7481df3 2101,2107-2111,2116-2117,2122,2127-2129
+  s_22c662336d649a::t_7c49dfae0dcc8e 646-653
+  s_22c662336d649a::t_abb48d9cb10766 1290-1294
+  s_22c662336d649a::t_b5107bce777d5b 909-916
+  s_22c662336d649a::t_0e820fa8b1de4c 986-990
+  s_22c662336d649a::t_22112db28b9a33 2102-2106,2112-2115,2118-2121,2123-2126
+  s_22c662336d649a::t_fd06e9b9fb16bb 1307-1324
+  s_22c662336d649a::t_ee7e82d51b6dcc 1025-1027,1036-1040
+  s_22c662336d649a::t_27c665b4786d08 1028-1035
+src/daemon/checkpoint.rs
+  s_22c662336d649a::t_0b44528b382693 472-477
+Cargo.toml
+  s_22c662336d649a::t_b53e53f56d0030 33
+src/git/fast_reader.rs
+  s_22c662336d649a::t_72ac2dea46b5d7 1-308,310-344,349-451,453-469,471-504,507-638
+  s_22c662336d649a::t_22112db28b9a33 309,345-348,452,470,505-506
+tests/integration/fast_reader.rs
+  s_22c662336d649a::t_2a4f9d7a880924 80
+  s_22c662336d649a::t_3c32fcd421f8fb 2-7,9-31,33-51,53-55,57-79,81-104,106-203,208-216,230-233,235-256,258-259,267
+  s_22c662336d649a::t_d81dafb97a99f7 105
+  s_22c662336d649a::t_a1a1ef94095de5 32
+  s_22c662336d649a::t_22112db28b9a33 204-207,217-221,234,257,260-266
+  s_22c662336d649a::t_140ad3ee4c139e 8
+  s_22c662336d649a::t_0d6d3719c629e4 52
+  s_22c662336d649a::t_6b419f17ca9bbb 1,56,222-229
+tests/integration/main.rs
+  s_22c662336d649a::t_89e0d7dd0d8c3d 52
+Cargo.lock
+  ai_agent 1098
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "86ea7637b4cc4abb6e6213e8a6bcb53cf3faa424",
+  "prompts": {},
+  "sessions": {
+    "s_22c662336d649a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "374fbd35-b4a6-48a9-8d7a-f56eb450bfab",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+.github/workflows/install-scripts-local.yml
+  s_6b9d6b50d80194::t_27dd39f33d1635 102-105
+  s_6b9d6b50d80194::t_08f3b375d8a1da 262-263,265-266
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "b1a7d55e0f03cb28b9eac32ed0f478eb3903f811",
+  "prompts": {},
+  "sessions": {
+    "s_6b9d6b50d80194": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2c8c6857-e890-4537-bcdc-82e2500571f4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+src/git/repo_storage.rs
+  s_18b694e06092e7::t_bf2520710fae04 245-246,275-277
+  s_18b694e06092e7::t_2d66976d7a862b 975,1016-1022
+tests/commit_tree_update_ref.rs
+  s_18b694e06092e7::t_2d66976d7a862b 896-937
+  s_18b694e06092e7::t_938fdf941d7f46 895
+src/authorship/post_commit.rs
+  s_18b694e06092e7::t_bf2520710fae04 357,481,607-609,805,917,982-984
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "7358dd27e13c6a71d74db2e825a827982c110c38",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

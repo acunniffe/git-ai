@@ -1,0 +1,24 @@
+src/commands/post_rewrite.rs
+  s_3b8401a0cbe012::t_90c15c45ca12b8 48-56
+tests/integration/install_e2e.rs
+  s_3b8401a0cbe012::t_105f527a59064d 124
+src/commands/install.rs
+  s_3b8401a0cbe012::t_25711310a87bf0 40-43,51
+  s_3b8401a0cbe012::t_f007a86338ff30 27-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "0516b2916faf70e0ec0b2d3dee572b7c2222259c",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

@@ -1,0 +1,23 @@
+src/commands/install_hooks.rs
+  aa71f99b158a38db 217,222,225,227,229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "6f2a3916c050afc9306fb001e8508a797294198d",
+  "prompts": {
+    "aa71f99b158a38db": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3ed18f53-5ede-4db5-a621-212a483db7f9",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 16,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}

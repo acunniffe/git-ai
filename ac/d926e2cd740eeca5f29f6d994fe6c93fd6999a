@@ -1,0 +1,23 @@
+src/authorship/authorship_log_serialization.rs
+  601fa7cb531db267 52,54-58,253-268,397-401,898-899,902-908,1409-1488
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "acd926e2cd740eeca5f29f6d994fe6c93fd6999a",
+  "prompts": {
+    "601fa7cb531db267": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "535048a0-adb2-46f7-b663-5c12833c69ab",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 116,
+      "total_deletions": 9,
+      "accepted_lines": 148,
+      "overriden_lines": 0
+    }
+  }
+}

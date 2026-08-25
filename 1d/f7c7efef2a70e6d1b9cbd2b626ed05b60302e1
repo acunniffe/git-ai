@@ -1,0 +1,26 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  248804b3100812d4 3791-3792,3799
+src/mdm/agents/firebender.rs
+  248804b3100812d4 66,81,179,472-490,492-531,533-573
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "1df7c7efef2a70e6d1b9cbd2b626ed05b60302e1",
+  "prompts": {
+    "248804b3100812d4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e88c783a-fd4f-4e16-a207-319df87a2026",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 97,
+      "total_deletions": 27,
+      "accepted_lines": 106,
+      "overriden_lines": 2,
+      "messages_url": "https://usegitai.com/cas/fce0d85f0e9424f06177b2906d626a1b00ad1d4b43c0325bb21865a480c27380"
+    }
+  }
+}
