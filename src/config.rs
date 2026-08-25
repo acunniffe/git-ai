@@ -1179,15 +1179,7 @@ fn build_config() -> Config {
     let notes_backend_is_configured =
         kind_from_env.is_some() || url_from_env.is_some() || file_backend.is_some();
 
-    // Unit tests share Config::get() across the entire test process while some
-    // tests temporarily set API-key environment variables. Keep that singleton
-    // deterministic; TestRepo exercises the real binary and the production default.
-    #[cfg(test)]
-    let api_key_defaults_to_http = false;
-    #[cfg(not(test))]
-    let api_key_defaults_to_http = api_key.is_some();
-
-    let default_kind = if api_key_defaults_to_http && !notes_backend_is_configured {
+    let default_kind = if api_key.is_some() && !notes_backend_is_configured {
         NotesBackendKind::Http
     } else {
         NotesBackendKind::GitNotes
