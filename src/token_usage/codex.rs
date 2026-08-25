@@ -216,16 +216,29 @@ impl UsageExtractor for CodexUsageExtractor {
     /// subagent rollout, for example). Once the burst window has passed in
     /// wall-clock time, no later event can be within it, so the buffered
     /// event is real usage and is released.
+    ///
+    /// The successor state is `SkippingBurst` anchored at the released
+    /// event's timestamp, not `Done`: if the release misfired because the
+    /// replayed burst was written with >1s of lag (recorded timestamps still
+    /// sub-second apart), the late-arriving burst partners land within the
+    /// window and are skipped, bounding the over-count to the one released
+    /// event rather than the fork's whole replayed history. A genuine own
+    /// turn is unaffected — its timestamp is necessarily past the window the
+    /// flush itself just waited out, so it exits the skip and counts.
     fn flush(&mut self, now_ms: i64) -> Vec<UsageEntry> {
         let ReplayState::AwaitingSecond { first_ts_ms, .. } = &self.state.replay else {
             return Vec::new();
         };
-        if now_ms - *first_ts_ms <= REWRITTEN_BURST_PAUSE_MS {
+        let anchor_ts_ms = *first_ts_ms;
+        if now_ms - anchor_ts_ms <= REWRITTEN_BURST_PAUSE_MS {
             return Vec::new();
         }
-        let ReplayState::AwaitingSecond { pending, .. } =
-            std::mem::replace(&mut self.state.replay, ReplayState::Done)
-        else {
+        let ReplayState::AwaitingSecond { pending, .. } = std::mem::replace(
+            &mut self.state.replay,
+            ReplayState::SkippingBurst {
+                last_ts_ms: anchor_ts_ms,
+            },
+        ) else {
             unreachable!("matched AwaitingSecond above");
         };
         pending.map(make_entry).into_iter().collect()
@@ -755,6 +768,58 @@ mod tests {
         assert_eq!(flushed[0].tokens.input, 10);
         assert!(!e.has_pending());
         assert!(e.flush(ts_ms + 2_000).is_empty());
+        // The session's own next turn (necessarily past the window the flush
+        // waited out) counts normally.
+        let own = e.extract_line(&token_count_line(
+            "2026-01-01T00:00:05Z",
+            (30, 0, 15, 0, 45),
+        ));
+        assert_eq!(own.len(), 1);
+        assert_eq!(own[0].tokens.input, 20);
+    }
+
+    #[test]
+    fn late_burst_partners_after_a_flush_release_are_skipped() {
+        // The split-burst misfire: a pass's flush releases the parked replay
+        // because >1s of wall clock passed, but Codex then writes the rest of
+        // the rewritten burst (recorded timestamps still sub-second apart).
+        // The flush leaves the skip machine armed at the released event's
+        // timestamp, so the late partners are skipped — the over-count is
+        // bounded to the one released event, not the whole replayed history.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(
+            r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#,
+        );
+        assert!(
+            e.extract_line(&token_count_line("2026-01-01T00:00:01Z", (10, 0, 5, 0, 15)))
+                .is_empty()
+        );
+        let flushed = e.flush(1_767_225_601_000 + 1_500);
+        assert_eq!(flushed.len(), 1, "parked replay released (the misfire)");
+        // Burst partners 2..N, chained within the window of the release.
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:01.500Z",
+                (20, 0, 10, 0, 30)
+            ))
+            .is_empty()
+        );
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-01T00:00:02.200Z",
+                (30, 0, 15, 0, 45)
+            ))
+            .is_empty()
+        );
+        // The child's own first turn after a real pause counts, with the
+        // skipped burst absorbed into the cumulative baseline.
+        let own = e.extract_line(&token_count_line(
+            "2026-01-01T00:00:10Z",
+            (50, 0, 25, 0, 75),
+        ));
+        assert_eq!(own.len(), 1);
+        assert_eq!(own[0].tokens.input, 20);
+        assert_eq!(own[0].tokens.total, 30);
     }
 
     #[test]
