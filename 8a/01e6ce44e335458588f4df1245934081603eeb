@@ -1,0 +1,39 @@
+tests/integration/daemon_runtime_memory.rs
+  s_f5625e539bdb2a::t_b372a00321d056 1-5,7-50
+  s_f5625e539bdb2a::t_90d00bd0b489ce 6
+tests/integration/main.rs
+  s_f5625e539bdb2a::t_b372a00321d056 55
+src/commands/daemon.rs
+  s_f5625e539bdb2a::t_3b6899bada8ec4 20-22,815-828
+  s_f5625e539bdb2a::t_1120101c8f4a6e 23-25,199-200,232-238
+  s_cd75f4d4983cd8::t_ed9296be586d6f 239-240,829
+src/tokio_runtime.rs
+  s_f5625e539bdb2a::t_1120101c8f4a6e 2,6,10,14-37,39-40,69-86
+  s_f5625e539bdb2a::t_0ac14c4fbf00d2 7-9
+  s_f5625e539bdb2a::t_3b6899bada8ec4 11-13
+  s_f5625e539bdb2a::t_b372a00321d056 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "8a01e6ce44e335458588f4df1245934081603eeb",
+  "prompts": {},
+  "sessions": {
+    "s_cd75f4d4983cd8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb395-75ee-75c3-ae47-bb8bd3e752e1",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f5625e539bdb2a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb611-50e1-7002-b32d-c055ac3eb311",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

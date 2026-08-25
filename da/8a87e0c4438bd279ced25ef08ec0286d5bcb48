@@ -1,0 +1,36 @@
+src/ci/ci_context.rs
+  s_1073b58daf9856::t_ebc59459cfb0fe 794-851,854-880
+  s_1073b58daf9856::t_0b2795b5b92570 13-15,37,40,42-43,56,64-65,82
+  s_1073b58daf9856::t_32cd06aa16ba24 376,379,381-382,401-415,424-441,444,448-453,456,466-478,516
+  s_1073b58daf9856::t_e7a57e429c98f5 852-853
+src/ci/github.rs
+  s_1073b58daf9856::t_e543fcf9f92a4b 207,210-218
+src/commands/ci_handlers.rs
+  s_1073b58daf9856::t_70fd12a20d5d72 281
+  s_1073b58daf9856::t_0ed0c0ad75c168 12,27-29,295,298,309,319-321,324-329,333-335,338,341,343-344,355,360
+  s_1073b58daf9856::t_f7bbf1c9564e2d 398-401,419
+tests/integration/ci_squash_rebase.rs
+  s_1073b58daf9856::t_284afb1d330a4e 1158-1219
+  s_1073b58daf9856::t_374af9b0937efa 1017,1090,1095,1098-1099,1107,1110
+  s_1073b58daf9856::t_65b53446b69ed2 604,1647
+tests/integration/ci_handlers_comprehensive.rs
+  s_1073b58daf9856::t_4b6efe9b83f61b 33,62-63,103
+tests/integration/ci_partial_clone.rs
+  s_1073b58daf9856::t_15f8a3e2a648d6 80,150,231,322
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "da8a87e0c4438bd279ced25ef08ec0286d5bcb48",
+  "prompts": {},
+  "sessions": {
+    "s_1073b58daf9856": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e985f-ce37-7b40-8aac-d1d7f1e07e71",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

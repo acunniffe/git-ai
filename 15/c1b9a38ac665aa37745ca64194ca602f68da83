@@ -1,0 +1,65 @@
+src/config.rs
+  e30105b517b290bb 972-975,977-978,980-987,997-1011,1015-1044,1047-1056,1058-1061,1694-1775
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "15c1b9a38ac665aa37745ca64194ca602f68da83",
+  "prompts": {
+    "213d858fd7aa3a28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a3971133-94f8-4b97-8a78-4db5c43291f8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 38,
+      "total_deletions": 43,
+      "accepted_lines": 22,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/05252cf0f89910e2e9ddc60f5d3a5e28ad4208f2470298bc4a399494917ae760"
+    },
+    "713d43d3f8659680": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019cd556-6a7a-70f0-8902-6deff516daaf",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 67,
+      "total_deletions": 4,
+      "accepted_lines": 26,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/2291e0a7b41c1317cf606699af6f0164568ee87a5137d64715bc5a0f0a8296ed"
+    },
+    "c1970e7fa3ca2e03": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5772698e-67e6-4639-a483-cbb8405da325",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Test User",
+      "messages": [],
+      "total_additions": 74,
+      "total_deletions": 15,
+      "accepted_lines": 20,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/151025fa0d2d6860ba4a8ec53a1c8c315272dd4b85444269f78342f87d5882ff"
+    },
+    "e30105b517b290bb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b4c1a1e6-6d85-4533-8acb-dc0ee4ad4ece",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": null,
+      "messages": [],
+      "total_additions": 237,
+      "total_deletions": 89,
+      "accepted_lines": 169,
+      "overriden_lines": 0
+    }
+  }
+}

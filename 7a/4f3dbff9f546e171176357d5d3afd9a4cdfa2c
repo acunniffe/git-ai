@@ -1,0 +1,9 @@
+tests/integration/main.rs
+  4c36c13fe6537f7d 41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "7a4f3dbff9f546e171176357d5d3afd9a4cdfa2c",
+  "prompts": {}
+}

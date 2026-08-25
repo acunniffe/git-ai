@@ -1,0 +1,23 @@
+tests/integration/simple_additions.rs
+  e14e0d4dffce622c 1923-2131,2146-2150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "8a8f4c6c06376eba84dd13bd6d1ac0566ffa9ded",
+  "prompts": {
+    "e14e0d4dffce622c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b20029b4-a3b3-40dd-bad1-fa708c993a5b",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 218,
+      "total_deletions": 4,
+      "accepted_lines": 214,
+      "overriden_lines": 0
+    }
+  }
+}

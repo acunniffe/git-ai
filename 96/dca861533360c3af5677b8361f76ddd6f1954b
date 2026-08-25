@@ -1,0 +1,24 @@
+src/auth/client.rs
+  6ddce2c2583077dc 13-15,23-24,26-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.12",
+  "base_commit_sha": "96dca861533360c3af5677b8361f76ddd6f1954b",
+  "prompts": {
+    "6ddce2c2583077dc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "23e1acd5-0a86-4f16-bb73-c58e1d3ef461",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 20,
+      "accepted_lines": 7,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/732f975232347f594dead391369c02c34a11198ab8d0cb401bc2ffe1efa072ee"
+    }
+  }
+}

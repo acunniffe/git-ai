@@ -1,0 +1,59 @@
+src/commands/checkpoint_agent/presets/firebender.rs
+  52e0337472fe7d8f 130,195-197,219,229,455
+src/commands/checkpoint_agent/presets/pi.rs
+  52e0337472fe7d8f 99,131-133,178,190,250
+src/commands/checkpoint_agent/presets/mock_known_human.rs
+  52e0337472fe7d8f 42
+src/commands/checkpoint_agent/presets/opencode.rs
+  52e0337472fe7d8f 324
+src/commands/checkpoint_agent/presets/mock_ai.rs
+  52e0337472fe7d8f 64
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  52e0337472fe7d8f 43,49-51,54-62,76,85,91-93,96-104,118,156,202
+src/commands/checkpoint_agent/presets/windsurf.rs
+  52e0337472fe7d8f 170
+src/commands/checkpoint_agent/orchestrator.rs
+  52e0337472fe7d8f 178-188
+src/commands/checkpoint_agent/presets/cursor.rs
+  52e0337472fe7d8f 120,211
+src/commands/checkpoint_agent/presets/droid.rs
+  52e0337472fe7d8f 193,247
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  52e0337472fe7d8f 73
+src/commands/checkpoint_agent/presets/claude.rs
+  52e0337472fe7d8f 114,156
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  52e0337472fe7d8f 220,222
+src/commands/checkpoint_agent/presets/mod.rs
+  52e0337472fe7d8f 64,72
+src/commands/checkpoint_agent/presets/amp.rs
+  52e0337472fe7d8f 350
+src/commands/checkpoint_agent/presets/gemini.rs
+  52e0337472fe7d8f 79,121
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  52e0337472fe7d8f 66,73,80,121
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  52e0337472fe7d8f 29,71,132,149,257-261,271,285,308,465,656-660,836-838
+src/commands/checkpoint_agent/presets/known_human.rs
+  52e0337472fe7d8f 10,18,42,47-60,72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "1910a9b360d115a1ce66c0d10bb76eac05a8ff48",
+  "prompts": {
+    "52e0337472fe7d8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f9931c2-b988-437f-8537-64a1ed799b25",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 143,
+      "total_deletions": 96,
+      "accepted_lines": 123,
+      "overriden_lines": 0
+    }
+  }
+}

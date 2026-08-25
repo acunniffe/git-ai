@@ -1,0 +1,195 @@
+src/commands/git_ai_handlers.rs
+  s_0530124e9f5a17::t_1b58226a18d633 115-120
+  s_0844fb27570d8e::t_bc899ebd03b03f 346
+src/commands/analyze/sessions.rs
+  s_0530124e9f5a17::t_981f41babdd017 1683
+  s_2d90d8f4c707ba::t_393c6d596ac6e4 908-945,957-1047,1052-1118
+  s_b4951e5994e4b0::t_0ba54be748cbea 316,325
+  s_b4951e5994e4b0::t_2c698145ad434c 703-708,713
+  s_2d90d8f4c707ba::t_02021a4c849662 22-24
+  s_d4ba0b7e7be54b::t_48e99946ad36a3 744,746-805
+  s_2d90d8f4c707ba::t_c1acf042ff637e 1261-1263,1265-1270
+  s_2d90d8f4c707ba::t_732084a4ee1b50 1220-1228,1230-1233
+  s_2d90d8f4c707ba::t_f34ebdfdddca7b 163-170
+  s_0530124e9f5a17::t_43a488aeba8fe3 115-120,125-126
+  s_d4ba0b7e7be54b::t_6d7c471894fe81 1569-1610
+  s_0530124e9f5a17::t_8c515caaffe89c 2,4-11
+  s_0530124e9f5a17::t_9c4565d0925303 647-649
+  s_0530124e9f5a17::t_8f1723e37cd36e 1,3,12,15-21,25-44,50-56,71-72,96-114,121-124,127-153,160-162,171-175,181-212,227-240,266-280,295,321-324,343-349,354-355,357-363,372-413,415-422,424,429-431,433,435-438,449,451,454-459,461-481,485-526,528,530,532-534,544-550,556-568,570-573,577,579,581-587,589-590,595-596,601-620,622-640,646,663-665,682-684,701-702,709-710,712,714-715,736-743,745,806-828,832-845,847-870,873-907,1119-1146,1151-1165,1179-1188,1190-1195,1207-1214,1216-1219,1234-1237,1243-1244,1246-1253,1255-1260,1271-1272,1274-1284,1290-1322,1323-1336,1340,1353,1363-1365,1367-1369,1374-1375,1377-1378,1411-1415,1445,1447,1495,1515,1527-1535,1538-1568,1672-1674,1676-1682,1684-1689,1724,1728-1729,1744,1750-1752,1755,1758,1766,1768-1818,1822-1823,1827,1860
+  s_0530124e9f5a17::t_4679cae0d63651 425-428,432,434,439-448,450,452-453,460
+  s_0530124e9f5a17::t_38408ea1e22349 1349
+  s_d4ba0b7e7be54b::t_f5c35476066295 1536-1537
+  s_0530124e9f5a17::t_a5862972a26085 1525-1526
+  s_0530124e9f5a17::t_39e159b21d9125 1726
+  s_0530124e9f5a17::t_dbe14a3f9cc9a3 423
+  s_b4951e5994e4b0::t_d7fd87fe46222d 243-246,252-264
+  s_2d90d8f4c707ba::t_c4f470849c5350 482-484
+  s_0530124e9f5a17::t_a34edd4900dd3b 1675
+  s_0530124e9f5a17::t_706f3a304d7f92 527,529,531,535-543,551-555,569,574-576,578,588,591-594,597-600
+  s_b4951e5994e4b0::t_9fb1879a1d7eaa 296-314,326-329,335-342,350-353,356
+  s_0530124e9f5a17::t_cfb4f12e1ac3f0 1366
+  s_0530124e9f5a17::t_df862d33ed48ec 281-284,291-294,621,711,829-831,846,1196-1206,1285-1289
+  s_0530124e9f5a17::t_34f51af086ba98 1147-1150
+  s_b4951e5994e4b0::t_9410fbb9028f69 218-226
+  s_2d90d8f4c707ba::t_22f8563788f66b 215-217
+  s_0530124e9f5a17::t_85ae19925dabf7 1690-1699,1701-1723,1725,1727,1730-1743,1745-1749,1753-1754,1756-1757,1759-1763,1765,1767
+  s_2d90d8f4c707ba::t_78e79b657648c8 1611-1625,1627-1634,1636-1655,1657-1661,1663-1671
+  s_0530124e9f5a17::t_e3029e96f36d4f 871-872
+  s_0530124e9f5a17::t_dac1a0b31f43e0 1446,1488-1494,1511-1513,1516-1520
+  s_0530124e9f5a17::t_f9f55b4292e973 213-214,241
+  s_2d90d8f4c707ba::t_d66696c40afd0b 1425-1432
+  s_2d90d8f4c707ba::t_fffe6f63290c73 57-70,73-95
+  s_2d90d8f4c707ba::t_10eb0febc3101b 1416-1424,1433-1444
+  s_2d90d8f4c707ba::t_d2b662ec8896fa 1468-1487
+  s_b4951e5994e4b0::t_6314c3b01baf82 1828-1859
+  s_b4951e5994e4b0::t_de535c244a6e56 287-290
+  s_b4951e5994e4b0::t_3840c9f84837f0 1819-1821,1824-1826
+  s_b4951e5994e4b0::t_dc2062180d465a 1379-1381,1393-1410
+  s_0530124e9f5a17::t_2c2e0ffe5c639f 1382
+  s_b4951e5994e4b0::t_dd874117030965 247-251,330-334
+  s_0530124e9f5a17::t_19ee4b31082e5d 1376
+  s_d4ba0b7e7be54b::t_98aebe58a39be3 154-159
+  s_0530124e9f5a17::t_e4aed12fae3614 13
+  s_0530124e9f5a17::t_097342e7206cee 285-286,315,317-320
+  s_d4ba0b7e7be54b::t_0f63fad7c44e2b 45-49
+  s_2d90d8f4c707ba::t_9a0752b11eb925 1383-1392
+  s_0530124e9f5a17::t_f1de990a2620dc 1370-1373
+  s_2d90d8f4c707ba::t_912385a9d33413 242
+  s_2d90d8f4c707ba::t_64b4c60a46d343 176-180
+  s_2d90d8f4c707ba::t_912622d80c8a40 364-371
+  s_b4951e5994e4b0::t_923e46fd18da89 716-735
+  s_0530124e9f5a17::t_734962fd97edaa 1337-1339,1341-1348,1350-1352,1354-1362
+  s_0530124e9f5a17::t_db8f1988cc461a 1496-1510,1514,1521-1524
+  s_d4ba0b7e7be54b::t_6c5e04a32cef9c 1448-1467
+  s_2d90d8f4c707ba::t_0f7c4aedcfe86d 1626
+  s_2d90d8f4c707ba::t_4348733fe28116 1635
+  s_2d90d8f4c707ba::t_3876e81fd0ea15 1656
+  s_2d90d8f4c707ba::t_49128895d6dc6c 1662
+  s_0530124e9f5a17::t_f96c6790172a48 1700
+  s_0530124e9f5a17::t_175d5687fefbf8 1764
+  s_3dfd94f53cf5e8::t_af62d706660a52 641-645,650-662,666-681,685-700
+  s_3dfd94f53cf5e8::t_aa6b387a3102dd 1238-1242,1245,1254
+  s_3dfd94f53cf5e8::t_25c65e20d38c3c 1264,1273
+  s_3dfd94f53cf5e8::t_345ffd96862bda 946-956
+  s_3dfd94f53cf5e8::t_4e9a786d073199 1166-1178,1189
+  s_3dfd94f53cf5e8::t_f77e080a9b4dc7 1215,1229
+  s_3dfd94f53cf5e8::t_96a7b8d871d9b6 580
+  s_3dfd94f53cf5e8::t_9a6d1b700f05a1 14
+  s_3dfd94f53cf5e8::t_872c987c5a174b 1048-1051
+  s_3dfd94f53cf5e8::t_39ab5f9aa40bda 265
+  s_3dfd94f53cf5e8::t_ef7761b84b63a4 414
+src/commands/analyze/mod.rs
+  s_0530124e9f5a17::t_1d66e63bea3716 302-303
+  s_3880dfc4c35cce::t_150784bb9c41a2 33
+  s_df5c2180fad6dd::t_ac23c70cc55312 57
+  s_2d90d8f4c707ba::t_c09b1543a4f8f7 19-26
+  s_df5c2180fad6dd::t_04fcb7fbe7f17d 130
+  s_3880dfc4c35cce::t_f8c960dbd3c33f 254
+  s_0530124e9f5a17::t_684a5bcb203db3 298
+  s_3880dfc4c35cce::t_c5cc0d646b6227 300-301
+  s_3880dfc4c35cce::t_f356494491bee8 289
+  s_3880dfc4c35cce::t_87108c61186725 274
+  s_0530124e9f5a17::t_e5b3aeba15bce2 1-18,27-31,34-56,58-84,87-112,114-121,123-129,131-135,138-139,144-146,148-157,162-190,195-198,200-206,208,233-237,250-253,257,259-273,287-288,290-297,299,304-336
+  s_df5c2180fad6dd::t_dc45992c24d7dc 147
+  s_df5c2180fad6dd::t_a72dbfa7399def 32
+  s_0530124e9f5a17::t_df862d33ed48ec 85-86,140-143,158-161,191-194
+  s_3880dfc4c35cce::t_a3e5d319d41b8d 122
+  s_3880dfc4c35cce::t_4b0f9385a5c34a 207,209-213,218-232,255-256
+  s_eea46f23857832::t_57f717615d1049 214-217
+  s_2d90d8f4c707ba::t_6b14cfe142fa47 238-249
+  s_df5c2180fad6dd::t_a10138574d84ca 258
+  s_d4ba0b7e7be54b::t_6804cde8abc191 275-286
+  s_3dfd94f53cf5e8::t_a12213c548894a 113
+  s_3dfd94f53cf5e8::t_74fc2a2a561ff1 136-137
+  s_3dfd94f53cf5e8::t_bd271ea68aebc5 199
+src/commands/analyze/cube.rs
+  s_0530124e9f5a17::t_8278e30d528aba 128-140
+  s_0530124e9f5a17::t_5be8bace7ce45b 1-20,24-76,78-86,89-92,94-98,103-127,141-219,221-237,239-404,406-412
+  s_0530124e9f5a17::t_df862d33ed48ec 93,220,238,405
+  s_3dfd94f53cf5e8::t_f77e080a9b4dc7 99-102
+  s_3dfd94f53cf5e8::t_fc2b704705c92e 87-88
+  s_3dfd94f53cf5e8::t_f9806cefb278c9 77
+  s_3dfd94f53cf5e8::t_4615774d679374 21-23
+src/commands/mod.rs
+  s_0530124e9f5a17::t_8fee86edeae7ef 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.4",
+  "base_commit_sha": "c7dec38a4bbafc36be68eceec049e001cd757e2b",
+  "prompts": {},
+  "sessions": {
+    "s_0530124e9f5a17": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "14984244-894a-465c-bc0b-0f9359297894",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_0844fb27570d8e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5924c828-8379-467c-a0c2-1943fa70ad31",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_2d90d8f4c707ba": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "72efe3a5-00fd-461e-9d62-0b73fb23745a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_3880dfc4c35cce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc890d65-8658-4779-b476-3fe806de6214",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_3dfd94f53cf5e8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8a681e9e-d3c3-4f0a-8f6f-3b78e3b1c3af",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_b4951e5994e4b0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "620ef502-7d5e-4560-9361-ed0d98b50b03",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_d4ba0b7e7be54b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7279c43e-98b1-4bdd-96c2-8e55879192f3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_df5c2180fad6dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "511fa59a-1523-41b7-80fb-431b11a0ec93",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_eea46f23857832": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9bc81d39-8ea6-4f3d-ac93-268830a4a7f3",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

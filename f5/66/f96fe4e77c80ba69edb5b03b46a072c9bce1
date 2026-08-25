@@ -1,0 +1,27 @@
+packaging/windows/git-ai.wxs
+  s_7cc0fd1254a715::t_aeec3eaaef1167 15,17,44-49,52
+packaging/README.md
+  s_7cc0fd1254a715::t_ea366c153fd2eb 35
+  s_7cc0fd1254a715::t_aeec3eaaef1167 20-27,40-42
+  s_7cc0fd1254a715::t_bc3a644cf8eeea 36
+tests/windows_msi_package.rs
+  s_7cc0fd1254a715::t_642c221a527b14 1-38
+.github/workflows/release.yml
+  s_7cc0fd1254a715::t_aeec3eaaef1167 541,566-575
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "f566f96fe4e77c80ba69edb5b03b46a072c9bce1",
+  "prompts": {},
+  "sessions": {
+    "s_7cc0fd1254a715": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01fd2-00f6-7c42-959f-d3f5194babdc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,55 @@
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  s_a5f4b12640a58f::t_2076dba6386d0b 1-10
+src/commands/checkpoint_agent/presets/gemini.rs
+  s_a5f4b12640a58f::t_ee26394b1d20c3 1-10
+src/commands/checkpoint_agent/presets/amp.rs
+  s_a5f4b12640a58f::t_17ae449747aae9 1-10
+src/commands/checkpoint_agent/presets/droid.rs
+  s_a5f4b12640a58f::t_935e296fadaa1c 1-10
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_a5f4b12640a58f::t_6019fa6f04d638 1-10
+src/commands/checkpoint_agent/presets/mod.rs
+  s_a5f4b12640a58f::t_c5db6a4f8780b4 1-119
+src/commands/checkpoint_agent/presets/parse.rs
+  s_a5f4b12640a58f::t_0829e1085e203f 1
+src/commands/checkpoint_agent/mod.rs
+  s_a5f4b12640a58f::t_277f129c605b7b 7
+src/commands/checkpoint_agent/presets/claude.rs
+  s_a5f4b12640a58f::t_1a036bbf55666a 1-10
+src/commands/checkpoint_agent/presets/github_copilot.rs
+  s_a5f4b12640a58f::t_a554e4457ca89e 1-10
+src/commands/checkpoint_agent/agent_presets.rs
+  s_a5f4b12640a58f::t_783ddfcc2849e5 40-41
+src/commands/checkpoint_agent/presets/codex.rs
+  s_a5f4b12640a58f::t_1c3b4c2947363d 1-10
+src/commands/checkpoint_agent/presets/pi.rs
+  s_a5f4b12640a58f::t_2adbdcefe7ff4b 1-10
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  s_a5f4b12640a58f::t_6e8442d8f9a101 1-10
+src/commands/checkpoint_agent/presets/firebender.rs
+  s_a5f4b12640a58f::t_52d8ce9b3161d4 1-10
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  s_a5f4b12640a58f::t_6d96f391d62a66 1-10
+src/commands/checkpoint_agent/presets/windsurf.rs
+  s_a5f4b12640a58f::t_1c0698d2ec28af 1-10
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_a5f4b12640a58f::t_3c1d9556e5b987 1-10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "4a38fe482a31be4040f94592eca3cdfc28ec6e90",
+  "prompts": {},
+  "sessions": {
+    "s_a5f4b12640a58f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cede33a-f5a5-4d2d-8694-f7b2f0278d54",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/2ea113e9bfabeff50cacef7b502c00da35bb7e59962cd2ac5a2150fe16c1a5c9"
+    }
+  }
+}

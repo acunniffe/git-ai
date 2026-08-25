@@ -1,0 +1,44 @@
+tests/performance.rs
+  6f3df0f60ffa19f2 11,628-629,631,633,635,644,651-655,657-658,661-667,674,676-677
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "cd1154f596b7a0b018b0abf1b6c3a5d932a6ded2",
+  "prompts": {
+    "6f3df0f60ffa19f2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ddad2b5a-2441-4ca4-bf26-681c1f6b1c08",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "for chromium human_only_edits_then_commit\n\nTime taken to setup is almost a minute. what's slow? we're using git_og so it should be fast? \n\n\n\nprofile and rereun as needed\n\n38.367182458s\n\n@test tests::test_human_only_edits_then_commit::case_1 (205-252) \n\n\n\n@tests/performance.rs:1-763\n\nWeird that the fixture is slower than the tests",
+          "timestamp": "2025-12-05T15:30:46.518Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me investigate what's happening in the setup. First, let me look at the `TestRepo` implementation to understand the difference between `git` and `git_og`:",
+          "timestamp": "2025-12-05T15:31:00.892Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Let me check what terminal files are available:",
+          "timestamp": "2025-12-05T15:31:15.143Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Found it! Looking at the setup code in `performance.rs`, I can see the problem:\n\n```rust\n// 1. Clean - uses git_og (fast) ✓\nrepo.git_og(&[\"clean\", \"-fd\"])\n\n// 2. Reset - uses git_og (fast) ✓\nrepo.git_og(&[\"reset\", \"--hard\"])\n\n// 3-5. These use git() which goes through the git-ai WRAPPER!\nrepo.git(&[\"symbolic-ref\", \"refs/remotes/origin/HEAD\"])  // ❌ slow\nrepo.git(&[\"checkout\", &default_branch])                   // ❌ slow  \nrepo.git(&[\"checkout\", \"-b\", &branch_name])               // ❌ slow\n```\n\nThe `git()` method runs through the git-ai wrapper binary, which adds overhead (pre/post hooks, storage init, etc.). For Chromium, `git checkout` is expensive, and doing it through the wrapper makes it even worse.\n\nLet me fix this by switching to `git_og()` for the setup operations:",
+          "timestamp": "2025-12-05T15:31:24.198Z"
+        }
+      ],
+      "total_additions": 98,
+      "total_deletions": 103,
+      "accepted_lines": 34,
+      "overriden_lines": 0
+    }
+  }
+}

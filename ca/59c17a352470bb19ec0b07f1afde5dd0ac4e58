@@ -1,0 +1,38 @@
+src/commands/daemon.rs
+  s_b0e77478c0079b::t_2a52c42f8b8d1a 197,205,229-249,407,450,455-458
+  s_b0e77478c0079b::t_4ed8cbb2f2d347 459
+tests/daemon_mode.rs
+  s_b0e77478c0079b::t_031596c1dfe117 612,5268-5275,5278-5375
+  s_b0e77478c0079b::t_ae5782698b13ab 5266-5267,5431
+  s_b0e77478c0079b::t_01d77b7cfe3e2e 5276-5277
+  s_b0e77478c0079b::t_76b580d4ca8cc0 465,477-484,493-497,520,609-611,5394,5397,5424,5427
+  s_b0e77478c0079b::t_20b06354f74910 5376-5393,5395-5396,5398-5414,5416-5423,5425-5426,5428-5430,5432
+  s_b0e77478c0079b::t_91aaac887335e0 5415
+  s_b0e77478c0079b::t_82bc58e0507c1d 5433
+src/daemon.rs
+  s_b0e77478c0079b::t_60cda29fe980ec 66
+  s_b0e77478c0079b::t_0d6ca509e41841 6628-6637,7107-7114,7116
+  s_b0e77478c0079b::t_0bec6d05cf7e8d 8450-8454
+src/daemon/memory_watchdog.rs
+  s_b0e77478c0079b::t_91aaac887335e0 10
+  s_b0e77478c0079b::t_a1f9ee85f7d490 2-3,5-6,8-9,11-12,37-42,49-203,205-206,208-228
+  s_b0e77478c0079b::t_f53e1950edf98b 1,4,7,13-36,43-48,229-335
+  s_b0e77478c0079b::t_2d2e098c83b407 204,207
+  s_b0e77478c0079b::t_60cda29fe980ec 336-391
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.17",
+  "base_commit_sha": "ca59c17a352470bb19ec0b07f1afde5dd0ac4e58",
+  "prompts": {},
+  "sessions": {
+    "s_b0e77478c0079b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb58f-c784-7353-8bc4-2d4463541970",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

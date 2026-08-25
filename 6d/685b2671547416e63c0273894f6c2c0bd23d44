@@ -1,0 +1,35 @@
+src/metrics/types.rs
+  s_cfe6a4847c079e::t_c9a769ce7c050b 204
+  s_cfe6a4847c079e::t_d6077612157a26 27
+tests/integration/performance.rs
+  s_cfe6a4847c079e::t_535f415728943a 26
+src/metrics/mod.rs
+  s_cfe6a4847c079e::t_39d8778ceca2db 20
+src/metrics/events.rs
+  s_cfe6a4847c079e::t_346fb2585504c8 4-6
+  s_cfe6a4847c079e::t_7f9988f79c0e17 2347-2590
+src/feature_flags.rs
+  s_cfe6a4847c079e::t_a8c73baf15c2b9 318
+  s_cfe6a4847c079e::t_3e9e6b939f1cb2 89
+  s_cfe6a4847c079e::t_2a6284eea0c94d 281
+  s_cfe6a4847c079e::t_cea2c9a8f24af1 159
+  s_cfe6a4847c079e::t_6869fd96b50700 307
+  s_cfe6a4847c079e::t_35da8ba8ee1bb1 147
+  s_cfe6a4847c079e::t_123083c16751d8 293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "6d685b2671547416e63c0273894f6c2c0bd23d44",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}

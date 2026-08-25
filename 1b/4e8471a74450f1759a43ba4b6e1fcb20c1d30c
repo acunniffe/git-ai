@@ -1,0 +1,42 @@
+tests/integration/daemon_git_output_memory.rs
+  s_59382cac373d67::t_6bb9c0163c3397 44,52,61,87-90
+  s_59382cac373d67::t_c27cdf165d99c8 91
+  s_59382cac373d67::t_516654a013e45c 106-107,109,116
+  s_59382cac373d67::t_5fd4113554a943 8,10-12,97
+  s_59382cac373d67::t_898fb8d2613e4f 84,114-115,117-118
+  s_59382cac373d67::t_a5bb027200d65a 3-7,3-5,6-7,9,12-25,13-25,39-43,45-51,53-60,62-79,82-83,85-86,92-96,98,103-105,110-113,119
+  s_59382cac373d67::t_bb9be7d93e398c 26-38,80-81,99-102
+  s_59382cac373d67::t_b88cf3a7c05477 1-2
+  s_59382cac373d67::t_fc4a738feee649 108
+docs/daemon-trace2-ingestion-spec.md
+  s_59382cac373d67::t_78030287685b19 66-72
+tests/integration/main.rs
+  s_59382cac373d67::t_a5bb027200d65a 54
+src/git/repository.rs
+  s_59382cac373d67::t_045b15860e541b 3415
+  s_59382cac373d67::t_c3a5a8b4475053 18,22,36,38-115
+  s_59382cac373d67::t_c72191746620d1 2787,2789-2790,2792-2815,2817,2819-2821,2823-2830,2843,2862-2961,3080
+  s_59382cac373d67::t_e8eb9cca0a97c9 2844-2861
+  s_59382cac373d67::t_006b3fc4a76054 3414,3417-3444
+  s_59382cac373d67::t_1fb961c4bae190 116
+  s_59382cac373d67::t_bb9be7d93e398c 37,2791,3395-3413,3416
+src/config.rs
+  s_59382cac373d67::t_a5bb027200d65a 1044
+  s_59382cac373d67::t_c4d8efe915ba5a 1045
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "1b4e8471a74450f1759a43ba4b6e1fcb20c1d30c",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

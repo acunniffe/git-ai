@@ -1,0 +1,21 @@
+src/commands/checkpoint_agent/presets/deepseek.rs
+  s_35170cc186c57c::t_ea5b83e63e81fd 36
+  s_35170cc186c57c::t_432e99805d1692 33-35
+  s_35170cc186c57c::t_3c948f1bc9a7d5 37-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.23",
+  "base_commit_sha": "b5f1e9be179dec8be6f3baeb424c6d4eac1b7e12",
+  "prompts": {},
+  "sessions": {
+    "s_35170cc186c57c": {
+      "agent_id": {
+        "tool": "deepseek",
+        "id": "session-9e39e2d6-9daa-4633-b782-39c707f6f1ca",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}

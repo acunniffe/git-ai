@@ -1,0 +1,22 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.39",
+  "base_commit_sha": "a03445e93f10e51d3277d1db4b5d9069279a5acc",
+  "prompts": {
+    "07a4cb8e826ec759": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5feed3a3-b20d-44f2-8ed6-465673c7c795",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 260,
+      "total_deletions": 0,
+      "accepted_lines": 260,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/58911cf7cf5e0a3ab4d63ad46c3a798d3844c8e4234d15489871ca5382e2d90e"
+    }
+  }
+}

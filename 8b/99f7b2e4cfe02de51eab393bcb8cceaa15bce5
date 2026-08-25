@@ -1,0 +1,162 @@
+src/daemon.rs
+  s_11c3e1cdda522c::t_241a15dc1b8ac8 8275-8276,8278
+  s_11c3e1cdda522c::t_6efe1db0d91b44 8195-8198,8200-8206,8209-8219,8255-8257,8259-8271,8282-8298,8306-8310,8346-8347
+  s_11c3e1cdda522c::t_3cb4fbea54a733 10887,10892
+  s_11c3e1cdda522c::t_eb915202d66253 8414
+  s_11c3e1cdda522c::t_b34b28713723f7 8355-8361,8363-8364,8366-8370
+  s_11c3e1cdda522c::t_40d809cda4ade7 10888-10891,10893-10926
+  s_11c3e1cdda522c::t_099d163bceb332 4654,4657-4658,4661-4675,4678-4691
+  s_11c3e1cdda522c::t_b946a98de8ea77 10886
+  s_11c3e1cdda522c::t_b58776d7fd2093 8052-8056,8066-8068,8071-8073,8078-8079,8081-8083
+  s_11c3e1cdda522c::t_34f29d7ddcb0ae 49
+  s_11c3e1cdda522c::t_74562b3e217677 2790-2794,2801-2808
+  s_11c3e1cdda522c::t_0bad78ff167050 3144-3147,8387-8390,10808-10809
+  s_11c3e1cdda522c::t_bc4e1dc4246a3c 8326-8332
+  s_11c3e1cdda522c::t_07a6d2706df11c 10813,10856-10859,10862-10866,10862-10867,10875-10885,10876-10885
+  s_11c3e1cdda522c::t_a17d9ff40ed368 8345,9141,9258,10755
+  s_11c3e1cdda522c::t_5a49cc01bcb5a0 8583-8589,8593-8596,8600,8602-8610,8616,8621,8623-8628,8632-8635
+  s_11c3e1cdda522c::t_0a8fab2882a916 10860-10861,10867-10874
+  s_11c3e1cdda522c::t_ea160590c112cd 8238-8254
+  s_11c3e1cdda522c::t_a78f60fc3944ce 10760-10767
+  s_11c3e1cdda522c::t_85868a7183a7b4 8299-8305,8314-8325,8333-8342
+  s_11c3e1cdda522c::t_ec9292d8994c3e 8344,9189-9191,9197-9211,9216-9242,9244-9257
+  s_11c3e1cdda522c::t_fd6dcaf679c9ad 3120-3121,3123-3126,3134-3143,3148-3182,3191-3192
+  s_11c3e1cdda522c::t_ee859e50cdaa59 91-96
+  s_11c3e1cdda522c::t_1c31fe0572936a 8064-8065
+  s_11c3e1cdda522c::t_d226d4df2365e0 10814
+  s_11c3e1cdda522c::t_5265fe8ed72bbc 8552-8558,8564-8569,8564-8572,8571-8572,8575-8582,8590-8592,8615,8622,8640-8646,8651,8654
+  dbec0bfb1993ce92 8563
+  s_11c3e1cdda522c::t_95bce3d966ee7d 3127-3133
+  s_11c3e1cdda522c::t_bbba36774cfa8a 8597-8599,8601,8629-8631
+  s_11c3e1cdda522c::t_8bb200cc9f30b5 3122
+  s_11c3e1cdda522c::t_e8fe0d25ad2f1f 8343,10756-10758,10756-10759,10768-10807,10810-10812
+  s_11c3e1cdda522c::t_0356e354ddd803 8386,8391-8396
+  s_11c3e1cdda522c::t_07c003dcfea047 8701,8727-8728,8735,8772-8775,8822-8856,8864-8871
+  s_11c3e1cdda522c::t_8feada59b22343 9120,9122-9127,9131,9134-9140
+  s_11c3e1cdda522c::t_c168b8e0f5ffeb 2911-2912,2915-2919
+  s_11c3e1cdda522c::t_8cb6324f4e5938 10759
+  s_11c3e1cdda522c::t_42cd96ddff0e42 3029,3036,3039-3048
+  s_11c3e1cdda522c::t_3af724657ad8c6 3104
+  s_11c3e1cdda522c::t_0c9febfa73a7d0 7164
+  s_5822efdedb26cc::t_aaec9a0b6ffdb2 3102-3103,7162
+  s_11c3e1cdda522c::t_4cb005f1d06239 8787-8796,8800-8809,8812-8821
+  s_11c3e1cdda522c::t_4308ad0e47f9ec 8715-8716
+  s_11c3e1cdda522c::t_cba3b41a13fda7 8660
+  s_11c3e1cdda522c::t_2050c9b94fd198 7780-7782
+  s_11c3e1cdda522c::t_cf2858b5c15eff 2795-2800
+  s_11c3e1cdda522c::t_f2544bda01004a 8810-8811
+  s_11c3e1cdda522c::t_7e621e0cec3e67 7867-7870
+  s_11c3e1cdda522c::t_debe4c80a0a9cc 4424-4425,4432-4435
+  s_11c3e1cdda522c::t_cc81f28f8659ab 2913-2914
+  s_11c3e1cdda522c::t_45572394b9a1b1 7169-7181
+  s_11c3e1cdda522c::t_5c096786881855 8074-8077
+  s_11c3e1cdda522c::t_275a3649b6ce6a 8797-8799
+  s_11c3e1cdda522c::t_ecbf1ab8e0f3c8 7731-7752,7758-7760
+  s_11c3e1cdda522c::t_fa4b7cd222f43a 7478
+  s_11c3e1cdda522c::t_e0b3404d489ba7 7681-7720
+  s_11c3e1cdda522c::t_dd7e55f8d8d523 4426-4427
+  s_11c3e1cdda522c::t_6e3de766d1ae51 7643
+  s_11c3e1cdda522c::t_59cb8e9621aa6d 7886-7889
+tests/commit_tree_update_ref.rs
+  s_11c3e1cdda522c::t_47c61a03535e5e 810-815
+  s_11c3e1cdda522c::t_e64c5b3a0903af 227-255
+  s_11c3e1cdda522c::t_3ecea6bd30d9ea 741-746,751-752,754-779,789,792,794-809,816-866,868-872
+  s_11c3e1cdda522c::t_241a15dc1b8ac8 867
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_498c927907d4c0 2823,2826,2830-2831,2833
+  s_11c3e1cdda522c::t_3208c75912f9f6 2827-2829,2832
+  s_11c3e1cdda522c::t_e8664396ed89bd 2901,2907
+  s_11c3e1cdda522c::t_bb4a7fa95c41f4 2621-2668,2758-2759
+  s_11c3e1cdda522c::t_5f701332f40ede 2619-2620,2760-2822,2824-2825,2834-2900,2902-2906,2908-2910
+  s_11c3e1cdda522c::t_fb642af7b6a2a7 6970,6973
+  s_11c3e1cdda522c::t_0bad78ff167050 6870-6873,6971-6972
+  s_11c3e1cdda522c::t_886bf052158ade 6408-6475,6816-6869,6874-6969,6974-6978
+  s_11c3e1cdda522c::t_83f70154d8641d 6324-6343,6348-6407
+  s_11c3e1cdda522c::t_1c3d1807b8b5ae 6979-6996
+  s_11c3e1cdda522c::t_6a4479deef8bac 6997-7021,7026-7155
+  s_11c3e1cdda522c::t_275a3649b6ce6a 7022-7025
+src/tokio_runtime.rs
+  s_11c3e1cdda522c::t_dacbc7fd18da63 218-223,229-233
+  s_11c3e1cdda522c::t_687fb0c7381e4e 16-20
+  s_11c3e1cdda522c::t_4e7cbec0cff062 224-228
+  s_11c3e1cdda522c::t_faa98deb5e2f04 217
+  s_11c3e1cdda522c::t_d204a47974ccdd 105-117
+src/daemon/telemetry_worker.rs
+  s_11c3e1cdda522c::t_4e7cbec0cff062 205
+  s_11c3e1cdda522c::t_6d7efaa583542a 1666-1691
+  s_11c3e1cdda522c::t_48576a3a59dd53 198-204,206-210,216,223-224,228-241,255
+  s_11c3e1cdda522c::t_e0fc5b206336d3 338
+  s_11c3e1cdda522c::t_5fe2112dbc5487 636-643
+  s_11c3e1cdda522c::t_aed2879445c76b 456-460,464-465,469,472,474,476-477,484-501,506
+src/authorship/attribution_recovery.rs
+  s_11c3e1cdda522c::t_5b3e2b5c8c425e 276-304,321-322
+  s_11c3e1cdda522c::t_a73d5641ee9ff0 1872,1876,1879-1881
+  s_11c3e1cdda522c::t_0ac396863092df 305-311,315,317,326,331-333
+  s_11c3e1cdda522c::t_c83de21e397489 1868-1871,1873-1875,1877-1878,1882-1902
+src/sqlite.rs
+  s_11c3e1cdda522c::t_bced7694272161 53-64
+  s_5c8e781c6d99da::t_c35919ed0484fd 52
+  s_11c3e1cdda522c::t_7a37d6a47c34d4 3,9-13,20,30
+src/metrics/events.rs
+  s_11c3e1cdda522c::t_2d86862a403f51 1151-1163
+  s_11c3e1cdda522c::t_46d9d08a83186e 1050-1144
+  s_9af36d4c7591fb::t_dcdd2f928aaf55 1150
+src/metrics/types.rs
+  s_11c3e1cdda522c::t_ec7e4d566a2bea 26
+src/daemon/control_api.rs
+  s_11c3e1cdda522c::t_dd7b49eeeafcb1 26-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "8b99f7b2e4cfe02de51eab393bcb8cceaa15bce5",
+  "prompts": {
+    "dbec0bfb1993ce92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cc8540b-3147-48dd-aac5-5978b60cb05d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages_url": "https://usegitai.com/cas/ae5851b8a43cb53bf76fbe9cf65e842d789a94c01811072852915f5dd37af22a",
+      "total_additions": 12,
+      "total_deletions": 4,
+      "accepted_lines": 317,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_5822efdedb26cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efcbc-8f48-7602-a00f-b20b39b170ef",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_5c8e781c6d99da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65ad6ab4-e951-4bfd-9acb-5a0f5874a1df",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_9af36d4c7591fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01bbf-395c-7a60-85f6-2b33f43556d6",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
