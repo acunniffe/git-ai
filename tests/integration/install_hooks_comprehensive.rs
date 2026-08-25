@@ -559,6 +559,22 @@ fn test_run_install_hooks_ignores_unknown_args() {
 // ==============================================================================
 
 #[test]
+fn test_uninstall_alias_runs_uninstall_hooks() {
+    let repo = TestRepo::new();
+    let output = repo
+        .git_ai_command_without_pre_sync_for_test(&["uninstall", "--dry-run"], &[])
+        .output()
+        .expect("run git-ai uninstall --dry-run");
+
+    assert!(
+        output.status.success(),
+        "git-ai uninstall should alias uninstall-hooks:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn test_run_uninstall_hooks_no_args() {
     let result = run_uninstall(&[]);
 
