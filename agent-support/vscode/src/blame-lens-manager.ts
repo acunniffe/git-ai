@@ -13,7 +13,7 @@ export class BlameLensManager {
   private statusBarItem: vscode.StatusBarItem;
   
   // Current blame mode (persisted via settings)
-  private blameMode: BlameMode = 'line';
+  private blameMode: BlameMode = 'off';
   
   // Track notification timeout to prevent stacking
   private notificationTimeout: NodeJS.Timeout | null = null;
