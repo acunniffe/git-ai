@@ -1,0 +1,40 @@
+tests/integration/pull_rebase_ff.rs
+  s_50c8cc07abd384::t_5d8ed94b909540 1342
+tests/integration/rebase_attribution_remaining.rs
+  s_50c8cc07abd384::t_5d8ed94b909540 53,55
+tests/integration/worktrees.rs
+  s_50c8cc07abd384::t_5d8ed94b909540 234,252,276,295
+tests/integration/ci_squash_rebase.rs
+  s_50c8cc07abd384::t_09906f2d8f7e8d 1504-1507
+  s_50c8cc07abd384::t_4bba240a439e43 1573-1578
+  s_50c8cc07abd384::t_5d8ed94b909540 1255,1358-1359,1510
+tests/integration/stash_attribution.rs
+  s_50c8cc07abd384::t_5d8ed94b909540 290-291,830,834,932,936
+tests/integration/sessions_cutover.rs
+  s_50c8cc07abd384::t_5d8ed94b909540 1354,1356
+tests/integration/ci_fork_notes.rs
+  s_50c8cc07abd384::t_5d8ed94b909540 124
+tests/integration/graphite.rs
+  s_50c8cc07abd384::t_5d8ed94b909540 638,795
+tests/commit_tree_update_ref.rs
+  s_50c8cc07abd384::t_bca1d0cf8f57a0 852-853
+  s_50c8cc07abd384::t_a62016febdd184 1062,1196
+tests/integration/rebase_realworld.rs
+  s_50c8cc07abd384::t_07026ad8bd2263 10281,10462,10673,10881,11285,11857-11859,11867,11965,11967,12363,12530,12727,12921,13297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "5c3b08fe1fa09bb6e941f62cbf6f148f439408bd",
+  "prompts": {},
+  "sessions": {
+    "s_50c8cc07abd384": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e1e4e321-1caf-47bf-b232-0be284c09477",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

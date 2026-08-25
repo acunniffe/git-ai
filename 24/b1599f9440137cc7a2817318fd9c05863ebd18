@@ -1,0 +1,23 @@
+Taskfile.yml
+  s_af2d349a5e032c::t_d66171a6445b46 121-128
+tests/integration/fuzzer/mod.rs
+  s_af2d349a5e032c::t_d1c606f04ddf2b 45-47,50-52,59-60
+tests/integration/fuzzer/operations.rs
+  s_af2d349a5e032c::t_9756f62cc11def 159,163,167,171-172,177,180,184,189-190,195,197,200,206,211,219-220,223,230,235,241-243,245,248,253-254,259,261,264,270,273,279,281,283,285,289,296-298
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "24b1599f9440137cc7a2817318fd9c05863ebd18",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+tests/integration/revert_control_attribution.rs
+  s_18b694e06092e7::t_260232d3548ef7 6-9,146-149
+tests/integration/cherry_pick_control_attribution.rs
+  s_18b694e06092e7::t_260232d3548ef7 6-9,65-68
+src/daemon.rs
+  s_18b694e06092e7::t_39fd4b03c56bce 5274,5277
+  s_18b694e06092e7::t_6e0aad4d36a97c 7239,7339
+  s_18b694e06092e7::t_f9e08f07f5bf45 3328-3331,3333-3334,3436,3538
+  s_18b694e06092e7::t_6eec984ee4c6fd 5240-5243,5249-5260,5270
+  s_18b694e06092e7::t_449c7d62c06ede 3327
+  s_18b694e06092e7::t_7cb9f046b8888b 811,816-818,5244-5248,5269,6058-6060
+  s_18b694e06092e7::t_02477f572029cf 812-815,819-820
+  s_18b694e06092e7::t_3e08b23cd726b1 3332,3885-3891,6042,7359
+  s_18b694e06092e7::t_2f263a16006161 6019-6041,6043-6057,6061-6063
+  s_18b694e06092e7::t_a574f873021c09 6712,7240-7250,7340-7342,7353-7358,7360-7366,7370,7372-7373
+  s_18b694e06092e7::t_f662a8cdc7cd02 5261-5268
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "b99953f4482f552b5d223592bd10b24b13ba5441",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

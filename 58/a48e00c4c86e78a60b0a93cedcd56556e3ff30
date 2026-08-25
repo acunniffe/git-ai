@@ -1,0 +1,20 @@
+src/core/attribution.rs
+  s_3b8401a0cbe012::t_65902984e3cdfc 2205-2214,2216,2218,2220-2222
+  s_3b8401a0cbe012::t_ace994d7ead638 2215,2217,2219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "58a48e00c4c86e78a60b0a93cedcd56556e3ff30",
+  "prompts": {},
+  "sessions": {
+    "s_3b8401a0cbe012": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "328718aa-def8-4439-b592-0fa40624b769",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

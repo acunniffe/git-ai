@@ -1,0 +1,95 @@
+src/daemon.rs
+  s_11c3e1cdda522c::t_0bad78ff167050 3126-3129,8296-8299,10677-10678
+  s_11c3e1cdda522c::t_34f29d7ddcb0ae 49
+  s_11c3e1cdda522c::t_5a49cc01bcb5a0 8492-8498,8502-8505,8509,8511-8519,8525,8530,8532-8537,8541-8544
+  a6bcdcf51f19c92d 9062
+  s_11c3e1cdda522c::t_d226d4df2365e0 10724
+  s_11c3e1cdda522c::t_ee859e50cdaa59 91-96
+  s_11c3e1cdda522c::t_07c003dcfea047 8609,8632,8689-8724,8732-8740
+  s_11c3e1cdda522c::t_0a8fab2882a916 10729-10730,10736-10743
+  s_11c3e1cdda522c::t_a17d9ff40ed368 8254,9010,9127
+  s_11c3e1cdda522c::t_bc4e1dc4246a3c 8235-8241
+  s_7d470640a960b2::t_17fd3e9c4694cf 8628-8629,8633-8634,8641
+  s_11c3e1cdda522c::t_8cb6324f4e5938 10628
+  s_11c3e1cdda522c::t_e8fe0d25ad2f1f 8252,10626-10627,10637-10676,10679-10681
+  s_11c3e1cdda522c::t_1c31fe0572936a 7976-7977
+  s_11c3e1cdda522c::t_0356e354ddd803 8295,8300-8305
+  s_11c3e1cdda522c::t_5265fe8ed72bbc 8461-8467,8473-8478,8480-8481,8484-8491,8499-8501,8524,8531,8549-8555,8560,8563
+  s_11c3e1cdda522c::t_95bce3d966ee7d 3109-3115
+  s_11c3e1cdda522c::t_a78f60fc3944ce 10629-10636
+  s_11c3e1cdda522c::t_b946a98de8ea77 10755
+  s_11c3e1cdda522c::t_8bb200cc9f30b5 3104
+  s_11c3e1cdda522c::t_c168b8e0f5ffeb 2905-2911
+  s_11c3e1cdda522c::t_cead47897e25e0 3169-3172,7952,7954-7955,7989,8188-8190,8427-8433,8468-8471,8520-8523,8526-8529,8564-8568,8611-8621,8623-8627,8649-8656,8658-8671,8678-8688,8725-8731,9081-9084,9112,10682-10722
+  s_11c3e1cdda522c::t_8feada59b22343 8991,8993-8996,9005-9009
+  s_11c3e1cdda522c::t_07a6d2706df11c 10723,10725-10728,10731-10735,10744-10754
+  s_11c3e1cdda522c::t_3cb4fbea54a733 10756
+  s_11c3e1cdda522c::t_fd6dcaf679c9ad 3102-3103,3105-3108,3116-3125,3130-3164,3173-3174
+  s_11c3e1cdda522c::t_ec9292d8994c3e 8253,9060,9068-9080,9085-9111,9113-9126
+  s_11c3e1cdda522c::t_85868a7183a7b4 8208-8214,8223-8234,8242-8251
+  s_11c3e1cdda522c::t_74562b3e217677 2790-2802
+  s_11c3e1cdda522c::t_ea160590c112cd 8147-8163
+  dbec0bfb1993ce92 8472,8610,8657,8672,8741-8742,8997-8998,9011-9012
+  s_11c3e1cdda522c::t_bbba36774cfa8a 8506-8508,8510,8538-8540
+  s_11c3e1cdda522c::t_de2c3a542dae4c 8964,8967,9001-9002,9061,9128-9129
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_c7f8eae15faf04 6472-6473,6476-6813
+  s_11c3e1cdda522c::t_fb642af7b6a2a7 6968,6971
+  f9ca43912f7341ba 6977
+  s_11c3e1cdda522c::t_886bf052158ade 6408-6471,6474,6814-6867,6872-6967,6972-6976
+  s_11c3e1cdda522c::t_0bad78ff167050 6868-6871,6969-6970
+  s_11c3e1cdda522c::t_83f70154d8641d 6324-6343,6348-6407
+  s_11c3e1cdda522c::t_e72b5d051baabb 6344-6347
+  s_11c3e1cdda522c::t_bd63f829396435 6475,6978
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "bcb26a01005889bf58740ad7cd332dbdb3f090e9",
+  "prompts": {
+    "a6bcdcf51f19c92d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84365ffc-bffe-41d6-b7e2-11822ec2da90",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages_url": "https://usegitai.com/cas/c7b32f859e87d5a226fe321806a74e15a0eea07f4bd4add043d9fdb0adee777e",
+      "total_additions": 35,
+      "total_deletions": 0,
+      "accepted_lines": 34,
+      "overriden_lines": 0
+    },
+    "dbec0bfb1993ce92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cc8540b-3147-48dd-aac5-5978b60cb05d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages_url": "https://usegitai.com/cas/ae5851b8a43cb53bf76fbe9cf65e842d789a94c01811072852915f5dd37af22a",
+      "total_additions": 12,
+      "total_deletions": 4,
+      "accepted_lines": 305,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_7d470640a960b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa51d-4cb8-7471-ad38-ead1f195155b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

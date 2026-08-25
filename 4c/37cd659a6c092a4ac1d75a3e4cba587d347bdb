@@ -1,0 +1,51 @@
+tests/integration/fuzzer/model.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 269-333
+tests/integration/continue_cli.rs
+  s_1eeb4f6def9ecf::t_86578240b8a7ee 4,16-31,406
+tests/integration/simple_additions.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 4,10-23,245-249,1014-1016
+src/authorship/attribution_recovery.rs
+  s_1eeb4f6def9ecf::t_d788bbca897938 1873-1878,1883-1903
+  s_1eeb4f6def9ecf::t_448e46811cd528 1,3-4,23,162,218,241-243,247-269,277,417,531,640,650-742,746,780-815,1029-1094,1431,1790-1872,1904-1949,2094-2111,2126,2145,2160,2162-2167,2298-2322,2324-2328,2330-2338,2340
+  s_1eeb4f6def9ecf::t_e0a987a8201232 2341
+  s_1eeb4f6def9ecf::t_9c884d532253fa 747,2323,2329,2339
+  s_1eeb4f6def9ecf::t_48ce2dfb09a167 743-745,748-779
+  s_1eeb4f6def9ecf::t_4f927fc8441eb7 1879-1882
+tests/integration/gemini.rs
+  s_1eeb4f6def9ecf::t_2f2eee35a610e6 4,17-32,373
+tests/integration/fuzzer/operations.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 188-189,215-216,262-263,318-319
+tests/integration/session_event_attribution.rs
+  s_1eeb4f6def9ecf::t_4f927fc8441eb7 538
+  s_1eeb4f6def9ecf::t_448e46811cd528 142-167,420-506,589-614
+  s_1eeb4f6def9ecf::t_2201cffba6fdb7 545-564,570-588
+  s_1eeb4f6def9ecf::t_1a6971bf90a00d 565-569
+  s_1eeb4f6def9ecf::t_0e1caab9eb48e7 529-530,539-540
+  s_1eeb4f6def9ecf::t_c24f67134aece9 507-528,531-537,542-544
+  s_1eeb4f6def9ecf::t_806f08f8b77117 541
+  s_1eeb4f6def9ecf::t_fd41efe5502169 615
+tests/integration/squash_merge.rs
+  s_1eeb4f6def9ecf::t_448e46811cd528 562-563,565
+tests/integration/post_commit_unit.rs
+  s_1eeb4f6def9ecf::t_057cbc64924c0f 4-19,79,81
+tests/integration/cold_trace2_repo.rs
+  s_1eeb4f6def9ecf::t_0483b8600027a2 135-137
+tests/integration/windsurf.rs
+  s_1eeb4f6def9ecf::t_6a923ebe1e1b82 3,19-34,341
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.17",
+  "base_commit_sha": "4c37cd659a6c092a4ac1d75a3e4cba587d347bdb",
+  "prompts": {},
+  "sessions": {
+    "s_1eeb4f6def9ecf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f24a5-539f-7dd3-9793-1f096a58ff70",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    }
+  }
+}

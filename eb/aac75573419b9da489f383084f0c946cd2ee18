@@ -1,0 +1,34 @@
+README.md
+  s_bf0fecb29192b8::t_5e3238ff4f9381 139
+  s_bf0fecb29192b8::t_d97a02f9eca0ec 151
+  s_bf0fecb29192b8::t_1e7b5910d2b27b 154
+  s_bf0fecb29192b8::t_8ece6ba3eae1d6 160
+  s_bf0fecb29192b8::t_9bdc54e327e8c2 163
+  h_ea2010baa7a42b 105,109-110,116
+  s_bf0fecb29192b8::t_05d64dc453990d 142
+  s_bf0fecb29192b8::t_d606a9873d8776 148
+  s_bf0fecb29192b8::t_94440fd47be510 145
+  s_bf0fecb29192b8::t_7086ca59c8beb1 131
+  s_bf0fecb29192b8::t_0e7e1fbdf953d4 157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "ebaac75573419b9da489f383084f0c946cd2ee18",
+  "prompts": {},
+  "humans": {
+    "h_ea2010baa7a42b": {
+      "author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_bf0fecb29192b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e0ad58a0-aaf7-4bbc-bae8-41960b225915",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

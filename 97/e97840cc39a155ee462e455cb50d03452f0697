@@ -1,0 +1,23 @@
+docs/superpowers/specs/2026-06-29-daemon-log-upload-client.md
+  s_dbb553167a7332::t_5edc86cee58b05 16,18-19
+src/daemon/telemetry_worker.rs
+  s_dbb553167a7332::t_07ac953bf7cd25 1921,1925,1937
+  s_dbb553167a7332::t_5ba90f6deeb7ed 467,481,514,843,850-854
+  s_dbb553167a7332::t_fa89aca5a92238 820,839
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "97e97840cc39a155ee462e455cb50d03452f0697",
+  "prompts": {},
+  "sessions": {
+    "s_dbb553167a7332": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1378-6188-7562-b85f-cd20f8c541a8",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

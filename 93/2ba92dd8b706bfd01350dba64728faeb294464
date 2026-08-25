@@ -1,0 +1,57 @@
+src/commands/checkpoint_agent/presets/opencode.rs
+  e477d8d4b95eb7f3 14-222,358
+src/commands/checkpoint_agent/presets/kilo.rs
+  e477d8d4b95eb7f3 1-27
+src/mdm/agents/kilo.rs
+  2b80a3e5bc171d13 5-160
+src/mdm/agents/opencode.rs
+  2b80a3e5bc171d13 7-9,14-55,60,65,71,75,79,105,249-250,253-254,261,263,275,277-278,283-284
+agent-support/opencode/git-ai.ts
+  2b80a3e5bc171d13 2,4,8-12,25,239,262,292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "932ba92dd8b706bfd01350dba64728faeb294464",
+  "prompts": {
+    "2b80a3e5bc171d13": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_20243a627ffevXCthLKB4iPQbZ",
+        "model": "unknown"
+      },
+      "human_author": "Michael",
+      "messages": [],
+      "total_additions": 99,
+      "total_deletions": 108,
+      "accepted_lines": 99,
+      "overriden_lines": 0
+    },
+    "e39716043d4e0ec9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_20237ac1cffe8D1ZU0x1AyPzTl",
+        "model": "unknown"
+      },
+      "human_author": "Michael",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 327,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "e477d8d4b95eb7f3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_202478a30ffetc5QShmD8EqWpe",
+        "model": "unknown"
+      },
+      "human_author": "Michael",
+      "messages": [],
+      "total_additions": 222,
+      "total_deletions": 389,
+      "accepted_lines": 222,
+      "overriden_lines": 0
+    }
+  }
+}

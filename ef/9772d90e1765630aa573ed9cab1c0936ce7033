@@ -1,0 +1,26 @@
+agent-support/intellij/build.gradle.kts
+  a454465916db8f55 155,157-158,162-166
+.github/workflows/intellij-build.yml
+  a454465916db8f55 172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "ef9772d90e1765630aa573ed9cab1c0936ce7033",
+  "prompts": {
+    "a454465916db8f55": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84909159-3b46-45cd-8093-c022937afc02",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 6,
+      "accepted_lines": 9,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/f7246166707b0499448be2f198d367a440872cb66ddb6167478211c5d44085f6"
+    }
+  }
+}

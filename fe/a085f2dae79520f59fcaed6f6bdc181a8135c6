@@ -1,0 +1,37 @@
+src/authorship/mod.rs
+  72fc5fe0297670cf 5
+src/utils.rs
+  72fc5fe0297670cf 148-151
+tests/integration/main.rs
+  72fc5fe0297670cf 16
+tests/integration/repos/test_repo.rs
+  72fc5fe0297670cf 207-215,252-254,1258-1301
+src/authorship/background_agent.rs
+  72fc5fe0297670cf 1-2,4-138
+src/authorship/post_commit.rs
+  72fc5fe0297670cf 143-154,157-161,163-173
+tests/integration/background_agent_attribution.rs
+  72fc5fe0297670cf 1-59
+tests/integration/repos/test_file.rs
+  72fc5fe0297670cf 20-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "fea085f2dae79520f59fcaed6f6bdc181a8135c6",
+  "prompts": {
+    "72fc5fe0297670cf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "534bcf48-6a02-485e-8e42-9ed35c20ce5e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 288,
+      "total_deletions": 12,
+      "accepted_lines": 289,
+      "overriden_lines": 4
+    }
+  }
+}

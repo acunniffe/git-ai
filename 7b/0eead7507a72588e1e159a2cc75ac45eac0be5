@@ -1,0 +1,104 @@
+src/authorship/attribution_recovery.rs
+  s_11c3e1cdda522c::t_6bc7c841713118 245,254,270,275-287,468,477,506-507,520-523,525-528,599,608,629,970,983,987-991
+  s_11c3e1cdda522c::t_68d731a666e457 505,508
+  s_11c3e1cdda522c::t_9946bfc0d959de 1095,1103-1104,1117-1120,1122-1125,1186,1190-1193,1196-1197,1199
+  s_11c3e1cdda522c::t_8164cf0519d7b1 509,512-519,1106,1109-1116,1204-1211
+  s_11c3e1cdda522c::t_c83de21e397489 1973,2123-2125,2127-2129,2131-2132,2136-2147
+  s_11c3e1cdda522c::t_0ac396863092df 321-323
+  s_11c3e1cdda522c::t_4f3f35dc87425c 1195,1198,1200
+  s_11c3e1cdda522c::t_6e083d5d1888e5 1976-2072
+  s_11c3e1cdda522c::t_5b3e2b5c8c425e 292-320
+  s_11c3e1cdda522c::t_511a19e432eb10 1102,1105
+  s_11c3e1cdda522c::t_53bb165970d7d6 995-1002
+  s_11c3e1cdda522c::t_6fc16d2c5fc4ca 1944-1972,2120-2122
+  s_11c3e1cdda522c::t_1ea1bbc05328c0 324-328,332,334,337-343,345
+  s_11c3e1cdda522c::t_6aff319d6dba2b 1975
+  s_11c3e1cdda522c::t_a73d5641ee9ff0 2126,2130,2133-2135
+  s_11c3e1cdda522c::t_00bcfcedb028e6 1974,2073-2119
+src/tokio_runtime.rs
+  s_11c3e1cdda522c::t_687fb0c7381e4e 16-20
+  s_11c3e1cdda522c::t_faa98deb5e2f04 217
+  s_11c3e1cdda522c::t_dacbc7fd18da63 218-223,229-233
+  s_11c3e1cdda522c::t_4e7cbec0cff062 224-228
+  s_11c3e1cdda522c::t_d204a47974ccdd 105-117
+src/sqlite.rs
+  s_11c3e1cdda522c::t_7a37d6a47c34d4 3,9-13,20,30
+  s_5c8e781c6d99da::t_c35919ed0484fd 52
+  s_11c3e1cdda522c::t_bced7694272161 53-64
+src/daemon.rs
+  s_11c3e1cdda522c::t_3af724657ad8c6 3092
+  s_11c3e1cdda522c::t_93441b36066313 9054-9063
+  s_11c3e1cdda522c::t_42cd96ddff0e42 3021,3027-3036
+  s_5822efdedb26cc::t_aaec9a0b6ffdb2 3090-3091
+  s_11c3e1cdda522c::t_f297f9be30d88d 7149-7155
+src/daemon/telemetry_worker.rs
+  s_11c3e1cdda522c::t_aed2879445c76b 525-529,533-534,541,543,545-546,553-554,581-585,590
+  s_11c3e1cdda522c::t_5fe2112dbc5487 735-738,740-741,743
+  s_11c3e1cdda522c::t_547187877c348b 211-245,251,258,260-262,277-289,291-297
+  s_11c3e1cdda522c::t_44e402741358a2 326-339
+  s_11c3e1cdda522c::t_1e11a3bcd97610 655-664
+  s_11c3e1cdda522c::t_e0fc5b206336d3 407
+  s_11c3e1cdda522c::t_f163ed34a65057 538,547,555-580
+  s_11c3e1cdda522c::t_48576a3a59dd53 198-204,206-210,259,266,270-276,310
+  s_11c3e1cdda522c::t_094863cc9ff6b5 862-864
+  s_11c3e1cdda522c::t_dcd4fb97502f25 1553-1564
+  s_11c3e1cdda522c::t_1946f7aed58d79 739
+  s_11c3e1cdda522c::t_4203ad48525935 677-678
+  s_11c3e1cdda522c::t_6d7efaa583542a 298,1786-1811
+  s_11c3e1cdda522c::t_da0f8245116d4d 1504-1506,1509,1516,1524
+  s_11c3e1cdda522c::t_1fd7444348576f 626
+  s_11c3e1cdda522c::t_fa6c48adf36f3f 1579-1580
+  s_11c3e1cdda522c::t_7fa395615b4712 299
+  s_11c3e1cdda522c::t_982cc29dff7d92 732-734,742
+  s_11c3e1cdda522c::t_4e7cbec0cff062 205
+  s_36e4b30d0b68c4::t_b3d2ba8cbae5d1 290
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_089e8f773a5618 7231-7240,7282-7302,7304,7306
+  s_11c3e1cdda522c::t_ea27df7dec31d6 7174-7177
+  s_11c3e1cdda522c::t_160c56d1af2565 7241-7255,7257,7259-7281,7303,7305,7307-7320,7324-7326
+  s_11c3e1cdda522c::t_1c3d1807b8b5ae 7133-7139,7157-7162,7229-7230
+  s_11c3e1cdda522c::t_d6b6e6073409b2 7256,7258
+  s_11c3e1cdda522c::t_9f81f30cec2f43 7321-7323,7402-7404,7408-7410
+  s_11c3e1cdda522c::t_094863cc9ff6b5 7185-7188,7209,7224-7227
+  s_11c3e1cdda522c::t_93c71e1ff60fc0 7140-7156,7163-7173,7178-7184,7189-7208,7210-7223,7228
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "7b0eead7507a72588e1e159a2cc75ac45eac0be5",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_36e4b30d0b68c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "18288edc-a740-4bbc-98d3-db70db720809",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_5822efdedb26cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efcbc-8f48-7602-a00f-b20b39b170ef",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_5c8e781c6d99da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65ad6ab4-e951-4bfd-9acb-5a0f5874a1df",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

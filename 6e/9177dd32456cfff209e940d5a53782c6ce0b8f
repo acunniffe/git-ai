@@ -1,0 +1,53 @@
+src/daemon.rs
+  s_2c8a703bb1fd71::t_9461ae6319178c 6453,6458-6460,6464-6467
+  s_f5625e539bdb2a::t_a25c3da162add9 6440-6447,6503-6504
+  s_f5625e539bdb2a::t_ed18bd71c478fb 6454,6486-6487,6493
+  s_2c8a703bb1fd71::t_9b557aab0699aa 2829-2830
+  s_2c8a703bb1fd71::t_b6bc051c49a2bb 6455-6457,6461-6463
+  s_2c8a703bb1fd71::t_691ca7f5c8cd0b 2728-2734
+  s_2c8a703bb1fd71::t_d92697dfcc1b35 6484-6485,6492,6494-6496,6498-6500
+  s_2c8a703bb1fd71::t_cafe0d045c5634 6488-6490,6497
+tests/daemon_mode.rs
+  s_f5625e539bdb2a::t_c0a2f0324c8b61 2698-2701,2704,2706,2750,2763,2766-2771
+  s_f5625e539bdb2a::t_2aa28b55a02982 37-38,2681-2697,2705,2707-2720,2722-2749,2751-2762,2764-2765,2772,2776-2785,2806-2807,2822,2824,2826-2827
+  s_f5625e539bdb2a::t_7a2241883bce6b 2808-2816
+  s_f5625e539bdb2a::t_145a8fd545af0f 2817-2821,2823
+  s_f5625e539bdb2a::t_9a2d8e83cc62ca 2702-2703
+  s_f5625e539bdb2a::t_af6810f4ac3982 2721,2773-2775,2786-2805,2825
+  s_b9b743c5283e17::t_bfa5dd7f6efd8b 2828-2829
+src/tokio_runtime.rs
+  s_f5625e539bdb2a::t_2aa28b55a02982 68-76
+  s_f5625e539bdb2a::t_1c1939246abce1 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "6e9177dd32456cfff209e940d5a53782c6ce0b8f",
+  "prompts": {},
+  "sessions": {
+    "s_2c8a703bb1fd71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa2b7669-72a3-4ce8-8fbf-62fd9caee4f5",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_b9b743c5283e17": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc47e-5ecb-7a11-a7c7-acf9387ba281",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f5625e539bdb2a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb611-50e1-7002-b32d-c055ac3eb311",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

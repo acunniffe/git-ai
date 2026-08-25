@@ -1,0 +1,101 @@
+src/daemon.rs
+  s_11c3e1cdda522c::t_a78f60fc3944ce 10662-10669
+  s_11c3e1cdda522c::t_07c003dcfea047 8642,8665,8722-8757,8765-8773
+  s_11c3e1cdda522c::t_de2c3a542dae4c 8997,9000,9034-9035,9094,9161-9162
+  s_11c3e1cdda522c::t_5a49cc01bcb5a0 8525-8531,8535-8538,8542,8544-8552,8558,8563,8565-8570,8574-8577
+  s_11c3e1cdda522c::t_0bc649a51534b5 10760-10779
+  s_11c3e1cdda522c::t_ee859e50cdaa59 91-96
+  s_11c3e1cdda522c::t_3cb4fbea54a733 10808
+  s_11c3e1cdda522c::t_8fb2ebf1f641a7 10759
+  dbec0bfb1993ce92 8489-8490,8505,8643,8690,8705,8774-8775,9030-9031,9044-9045
+  s_11c3e1cdda522c::t_0bad78ff167050 3126-3129,8302-8305,10710-10711
+  s_11c3e1cdda522c::t_07a6d2706df11c 10756,10780,10783-10787,10796-10806
+  s_11c3e1cdda522c::t_a17d9ff40ed368 8260,9043,9160
+  s_11c3e1cdda522c::t_e8fe0d25ad2f1f 8258,10659-10660,10670-10709,10712-10714
+  s_7d470640a960b2::t_17fd3e9c4694cf 8661-8662,8666-8667,8674
+  s_11c3e1cdda522c::t_85868a7183a7b4 8214-8220,8229-8240,8248-8257
+  s_11c3e1cdda522c::t_c168b8e0f5ffeb 2905-2911
+  s_11c3e1cdda522c::t_7e5343ec7b5d95 3150-3155
+  s_11c3e1cdda522c::t_1c31fe0572936a 7982-7983
+  s_11c3e1cdda522c::t_bc4e1dc4246a3c 8241-8247
+  s_11c3e1cdda522c::t_0356e354ddd803 8301,8306-8311
+  a6bcdcf51f19c92d 9095
+  s_11c3e1cdda522c::t_8cb6324f4e5938 10661
+  s_11c3e1cdda522c::t_8feada59b22343 9024,9026-9029,9038-9042
+  s_11c3e1cdda522c::t_0a8fab2882a916 10781-10782,10788-10795
+  s_11c3e1cdda522c::t_95bce3d966ee7d 3109-3115
+  s_11c3e1cdda522c::t_cead47897e25e0 3175-3178,7958,7960-7961,7995,8194-8196,8433-8434,8439-8442,8498,8553-8556,8559-8562,8597-8601,8644-8654,8656-8660,8682-8689,8691-8704,8711-8721,8758-8764,9114-9117,9145,10715-10755
+  s_11c3e1cdda522c::t_d226d4df2365e0 10757
+  s_11c3e1cdda522c::t_b946a98de8ea77 10758,10807
+  s_11c3e1cdda522c::t_34f29d7ddcb0ae 49
+  s_11c3e1cdda522c::t_bbba36774cfa8a 8539-8541,8543,8571-8573
+  s_11c3e1cdda522c::t_74562b3e217677 2790-2802
+  s_11c3e1cdda522c::t_a2557c51fc5fe4 8499-8504
+  s_11c3e1cdda522c::t_8bb200cc9f30b5 3104
+  s_11c3e1cdda522c::t_5265fe8ed72bbc 8491-8497,8506-8511,8513-8514,8517-8524,8532-8534,8557,8564,8582-8588,8593,8596
+  s_11c3e1cdda522c::t_fd6dcaf679c9ad 3102-3103,3105-3108,3116-3125,3130-3149,3156-3170,3179-3180
+  s_11c3e1cdda522c::t_ea160590c112cd 8153-8169
+  s_11c3e1cdda522c::t_ec9292d8994c3e 8259,9093,9101-9113,9118-9144,9146-9159
+  s_11c3e1cdda522c::t_655bf185cc9b8f 8435-8438,8443-8448,8476-8488
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_c7f8eae15faf04 6472-6473,6476-6691,6693,6695-6793,6807,6820,6835-6836
+  s_11c3e1cdda522c::t_fb642af7b6a2a7 6991,6994
+  s_11c3e1cdda522c::t_bd63f829396435 6475,7001
+  s_11c3e1cdda522c::t_886bf052158ade 6408-6471,6474,6837-6890,6895-6990,6995-7000
+  s_11c3e1cdda522c::t_83f70154d8641d 6324-6343,6348-6407
+  s_11c3e1cdda522c::t_e72b5d051baabb 6344-6347
+  s_11c3e1cdda522c::t_1e211a9cfd9487 6692,6694
+  s_11c3e1cdda522c::t_0bad78ff167050 6891-6894,6992-6993
+  s_11c3e1cdda522c::t_eff2406a97069b 6794-6806,6808-6819,6821-6834
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "10abc2bc448bcc3b30dca60825b3852a3faa5631",
+  "prompts": {
+    "a6bcdcf51f19c92d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84365ffc-bffe-41d6-b7e2-11822ec2da90",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages_url": "https://usegitai.com/cas/c7b32f859e87d5a226fe321806a74e15a0eea07f4bd4add043d9fdb0adee777e",
+      "total_additions": 35,
+      "total_deletions": 0,
+      "accepted_lines": 35,
+      "overriden_lines": 0
+    },
+    "dbec0bfb1993ce92": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1cc8540b-3147-48dd-aac5-5978b60cb05d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages_url": "https://usegitai.com/cas/ae5851b8a43cb53bf76fbe9cf65e842d789a94c01811072852915f5dd37af22a",
+      "total_additions": 12,
+      "total_deletions": 4,
+      "accepted_lines": 316,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_7d470640a960b2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa51d-4cb8-7471-ad38-ead1f195155b",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

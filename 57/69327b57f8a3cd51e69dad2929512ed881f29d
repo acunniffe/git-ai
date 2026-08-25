@@ -1,0 +1,35 @@
+src/daemon/trace_normalizer.rs
+  s_17132eb1f3e626::t_c7f6c0d93f2c6d 252,346,349-351,832,840-841
+  s_17132eb1f3e626::t_7bd85d9f5fa3a1 1422-1464,1476-1480
+  s_17132eb1f3e626::t_66a7bb88ab96e4 1421
+  s_17132eb1f3e626::t_eee8080a78fea6 1481
+src/git/sync_authorship.rs
+  s_17132eb1f3e626::t_dfbfe6c907b36b 818-822,831-835,843-845
+  s_17132eb1f3e626::t_8ee65273bf1d95 372-376
+  s_17132eb1f3e626::t_7bd85d9f5fa3a1 713-714,728-743,771,846,848,857
+  s_17132eb1f3e626::t_c7f6c0d93f2c6d 561,574
+  s_17132eb1f3e626::t_2c7647559ab1c3 847
+  s_17132eb1f3e626::t_dbe728644ba30f 849-850
+  s_17132eb1f3e626::t_272350514fa3f0 856
+  s_17132eb1f3e626::t_fc9ae9eef56a34 858-860
+src/daemon.rs
+  s_17132eb1f3e626::t_c7f6c0d93f2c6d 6890,6912,6937-6951
+  s_17132eb1f3e626::t_37aa7efd779774 6952-6954
+  s_17132eb1f3e626::t_2afc189e528247 6955-6957
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "5769327b57f8a3cd51e69dad2929512ed881f29d",
+  "prompts": {},
+  "sessions": {
+    "s_17132eb1f3e626": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf3b-df78-7ff2-9251-6b93b18db257",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

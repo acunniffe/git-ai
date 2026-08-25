@@ -1,0 +1,25 @@
+docs/superpowers/specs/2026-04-29-telemetry-streams-design.md
+  s_74a31c9b27ce26::t_e0e94844bee913 729
+  s_74a31c9b27ce26::t_aebe99a4b85993 54-55
+  s_74a31c9b27ce26::t_afafc2837c27d7 24
+  s_74a31c9b27ce26::t_0034308c04bd23 651,653
+  s_74a31c9b27ce26::t_a1768ae1536e95 11
+  s_74a31c9b27ce26::t_4574d36c9a688a 692-693,699-702
+  s_74a31c9b27ce26::t_ce7ab3ae2705f1 59,64-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "85eb1415e9b9e2e07023e7eb44837e924cad4195",
+  "prompts": {},
+  "sessions": {
+    "s_74a31c9b27ce26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f769e90b-24f1-4f4b-92c3-236cbea1cee2",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}
