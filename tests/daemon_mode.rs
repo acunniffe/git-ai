@@ -882,7 +882,12 @@ fn assert_post_commit_uploads_prompt_cas() {
         patch.exclude_prompts_in_repositories = Some(vec![]);
         patch.prompt_storage = Some("default".to_string());
         patch.telemetry_oss_disabled = Some(true);
+        patch.notes_backend = Some(NotesBackendConfig {
+            kind: NotesBackendKind::GitNotes,
+            backend_url: None,
+        });
     });
+    repo.restart_dedicated_daemon_with_env_for_test(&[("GIT_AI_NOTES_BACKEND_KIND", "git_notes")]);
 
     let repo_root = repo.canonical_path();
     let file_path = repo_root.join("test.ts");

@@ -637,10 +637,9 @@ impl Config {
         self.notes_backend.kind
     }
 
-    /// Returns the configured notes backend URL, or `None` if unset.
+    /// Returns the notes backend URL.
     ///
-    /// Callers must handle `None` explicitly — typically by skipping the operation when the HTTP backend
-    /// is enabled but no URL has been configured.
+    /// When no dedicated URL is configured, this falls back to `api_base_url`.
     pub fn notes_backend_url(&self) -> Option<&str> {
         self.notes_backend.backend_url.as_deref()
     }
@@ -1177,13 +1176,32 @@ fn build_config() -> Config {
             _ => None,
         });
     let url_from_env = env::var("GIT_AI_NOTES_BACKEND_URL").ok();
+    let notes_backend_is_configured =
+        kind_from_env.is_some() || url_from_env.is_some() || file_backend.is_some();
+
+    // Unit tests share Config::get() across the entire test process while some
+    // tests temporarily set API-key environment variables. Keep that singleton
+    // deterministic; TestRepo exercises the real binary and the production default.
+    #[cfg(test)]
+    let api_key_defaults_to_http = false;
+    #[cfg(not(test))]
+    let api_key_defaults_to_http = api_key.is_some();
+
+    let default_kind = if api_key_defaults_to_http && !notes_backend_is_configured {
+        NotesBackendKind::Http
+    } else {
+        NotesBackendKind::GitNotes
+    };
 
     let notes_backend = NotesBackendConfig {
         kind: kind_from_env
             .or_else(|| file_backend.as_ref().map(|b| b.kind))
-            .unwrap_or(NotesBackendKind::GitNotes),
-        backend_url: url_from_env
-            .or_else(|| file_backend.as_ref().and_then(|b| b.backend_url.clone())),
+            .unwrap_or(default_kind),
+        backend_url: Some(resolve_notes_backend_url(
+            url_from_env,
+            file_backend.as_ref(),
+            &api_base_url,
+        )),
     };
 
     // Transcript streaming lookback: env > file > default (7 days). 0 means unlimited (None).
@@ -1295,6 +1313,16 @@ fn build_config() -> Config {
         max_checkpoint_total_lines,
         daemon_memory_limit_mb,
     }
+}
+
+fn resolve_notes_backend_url(
+    url_from_env: Option<String>,
+    file_backend: Option<&NotesBackendConfig>,
+    api_base_url: &str,
+) -> String {
+    url_from_env
+        .or_else(|| file_backend.and_then(|backend| backend.backend_url.clone()))
+        .unwrap_or_else(|| api_base_url.to_string())
 }
 
 fn normalize_daemon_memory_limit_mb(limit_mb: u64) -> Option<u64> {
@@ -2645,10 +2673,11 @@ mod tests {
     }
 
     #[test]
-    fn test_notes_backend_url_unset_returns_none() {
-        // When backend_url is absent, notes_backend_url() is None. Callers must handle the unconfigured case explicitly.
-        let config = create_test_config(vec![], vec![]);
-        assert_eq!(config.notes_backend_url(), None);
+    fn test_notes_backend_url_unset_falls_back_to_api_base_url() {
+        assert_eq!(
+            resolve_notes_backend_url(None, None, DEFAULT_API_BASE_URL),
+            DEFAULT_API_BASE_URL
+        );
     }
 
     #[test]
