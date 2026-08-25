@@ -1755,7 +1755,10 @@ mod tests {
         let token_db =
             Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
         let path = dir.path().join("rollout.jsonl");
-        let now = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        // Stamped slightly in the future so pass 1 cannot release early on a
+        // loaded CI box (release needs >1s of wall clock past this stamp).
+        let now = (chrono::Utc::now() + chrono::Duration::seconds(2))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let fork_meta = r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#;
         let token_count = format!(
             r#"{{"timestamp":"{now}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":10,"cached_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0,"total_tokens":15}}}}}}}}"#
@@ -1785,9 +1788,10 @@ mod tests {
         assert_eq!(sweep_candidates(&streams_db, &token_db).len(), 1);
 
         // Pass 2, after the burst window: the parked turn is the session's
-        // own first turn and is released and emitted. (The flush clock has
-        // second granularity, so sleep past the window plus one second.)
-        std::thread::sleep(Duration::from_millis(2100));
+        // own first turn and is released and emitted. Sleep past the future
+        // stamp plus the window plus one second (the flush clock has second
+        // granularity).
+        std::thread::sleep(Duration::from_millis(4100));
         process_task_blocking(&streams_db, &token_db, &|e| sink(e), &task, &flag_off()).unwrap();
         let events = collected.lock().unwrap();
         assert_eq!(events.len(), 1);
