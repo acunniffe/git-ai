@@ -41,7 +41,7 @@
             "line",
             "all"
           ],
-          "default": "line",
+          "default": "off",
           "scope": "application",
           "enumDescriptions": [
             "Disable gutter decorations",

@@ -20,12 +20,11 @@ export class Config {
     if (mode === 'off' || mode === 'line' || mode === 'all') {
       return mode;
     }
-    return 'line'; // default
+    return 'off'; // default
   }
 
   static async setBlameMode(mode: BlameMode): Promise<void> {
     await this.getRoot().update("blameMode", mode, vscode.ConfigurationTarget.Global);
   }
 }
-
 
