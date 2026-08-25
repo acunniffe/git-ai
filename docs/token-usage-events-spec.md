@@ -159,11 +159,13 @@ Reviewed decisions, accepted rather than accidental:
   replay.
 - **Sweep-discovered work sits outside the `git-ai await` drain barrier**
   (see Pipeline): backfill is eventual, matching stream-worker semantics.
-- **A fork burst split across passes can over-count once.** The end-of-file
-  flush releases a parked first turn after the burst window passes in wall
-  clock. If Codex writes the two replayed burst lines more than a second
-  apart (buffered/laggy serialization carrying sub-second recorded
+- **A fork burst split across passes can over-count one event.** The
+  end-of-file flush releases a parked first turn after the burst window
+  passes in wall clock. If Codex writes the replayed burst lines more than a
+  second apart (buffered/laggy serialization carrying sub-second recorded
   timestamps) and a pass lands in the gap, the parked replay is released as
-  own usage and its burst partner counts too — bounded to that one pair per
-  fork, and requiring write lag upstream's post-hoc whole-file reads never
+  own usage. The flush leaves the skip machine armed at the released event's
+  timestamp, so the late-arriving remainder of the burst is still skipped —
+  the over-count is bounded to that single released event per fork, and the
+  race requires write lag upstream's post-hoc whole-file reads never
   observe.
