@@ -1,0 +1,86 @@
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_0bad78ff167050 6437-6440,6538-6539
+  s_11c3e1cdda522c::t_83f70154d8641d 6235-6314
+  s_11c3e1cdda522c::t_886bf052158ade 6315-6436,6441-6536,6541-6545
+  s_11c3e1cdda522c::t_fb642af7b6a2a7 6537,6540
+  s_11c3e1cdda522c::t_1c3d1807b8b5ae 6546-6563
+src/daemon.rs
+  s_11c3e1cdda522c::t_34f29d7ddcb0ae 49
+  s_11c3e1cdda522c::t_bc4e1dc4246a3c 8211-8217
+  s_11c3e1cdda522c::t_5265fe8ed72bbc 8431-8437,8439-8447,8450-8457,8465-8467,8486-8487,8490,8508-8514,8519,8522
+  s_11c3e1cdda522c::t_5a49cc01bcb5a0 8458-8464,8468-8471,8475,8477-8485,8488,8489,8491-8496,8500-8503
+  s_11c3e1cdda522c::t_ee859e50cdaa59 91-96
+  s_11c3e1cdda522c::t_a17d9ff40ed368 8230,8923,9037,10534
+  s_11c3e1cdda522c::t_0356e354ddd803 8271,8276-8281
+  s_11c3e1cdda522c::t_07c003dcfea047 8563,8568-8571,8578,8586,8596-8599,8602,8608-8654
+  s_11c3e1cdda522c::t_74562b3e217677 2790-2802
+  s_11c3e1cdda522c::t_85868a7183a7b4 8183-8190,8199-8210,8218-8227
+  s_11c3e1cdda522c::t_fd6dcaf679c9ad 3112-3113,3115-3118,3126-3135,3140-3174,3179-3180
+  s_11c3e1cdda522c::t_ec9292d8994c3e 8229,8971-8973,8979-9036
+  s_11c3e1cdda522c::t_e8fe0d25ad2f1f 8228,10535-10538,10547-10586,10589-10591
+  s_11c3e1cdda522c::t_07a6d2706df11c 10592,10594-10597,10600-10605,10614-10623
+  s_11c3e1cdda522c::t_0bad78ff167050 3136-3139,8272-8275,10587-10588
+  s_11c3e1cdda522c::t_1c31fe0572936a 7970-7971
+  s_11c3e1cdda522c::t_c168b8e0f5ffeb 2905-2911
+  s_11c3e1cdda522c::t_ea160590c112cd 8125-8141
+  s_11c3e1cdda522c::t_8feada59b22343 8902,8904-8909,8912-8913,8916-8922
+  s_11c3e1cdda522c::t_d226d4df2365e0 10593
+  s_11c3e1cdda522c::t_42cd96ddff0e42 3021,3028,3031-3040
+  s_11c3e1cdda522c::t_3af724657ad8c6 3096
+  s_11c3e1cdda522c::t_0c9febfa73a7d0 7136
+  s_5822efdedb26cc::t_aaec9a0b6ffdb2 3094-3095,7134
+src/tokio_runtime.rs
+  s_11c3e1cdda522c::t_dacbc7fd18da63 218-223,229-233
+  s_11c3e1cdda522c::t_687fb0c7381e4e 16-20
+  s_11c3e1cdda522c::t_4e7cbec0cff062 224-228
+  s_11c3e1cdda522c::t_faa98deb5e2f04 217
+  s_11c3e1cdda522c::t_d204a47974ccdd 105-117
+src/daemon/telemetry_worker.rs
+  s_11c3e1cdda522c::t_4e7cbec0cff062 205
+  s_11c3e1cdda522c::t_6d7efaa583542a 1666-1691
+  s_11c3e1cdda522c::t_48576a3a59dd53 198-204,206-210,216,223-224,228-241,255
+  s_11c3e1cdda522c::t_e0fc5b206336d3 338
+  s_11c3e1cdda522c::t_5fe2112dbc5487 636-643
+  s_11c3e1cdda522c::t_aed2879445c76b 456-460,464-465,469,472,474,476-477,484-501,506
+src/authorship/attribution_recovery.rs
+  s_11c3e1cdda522c::t_5b3e2b5c8c425e 276-304,321-322
+  s_11c3e1cdda522c::t_a73d5641ee9ff0 1872,1876,1879-1881
+  s_11c3e1cdda522c::t_0ac396863092df 305-311,315,317,326,331-333
+  s_11c3e1cdda522c::t_c83de21e397489 1868-1871,1873-1875,1877-1878,1882-1902
+src/sqlite.rs
+  s_11c3e1cdda522c::t_bced7694272161 53-64
+  s_5c8e781c6d99da::t_c35919ed0484fd 52
+  s_11c3e1cdda522c::t_7a37d6a47c34d4 3,9-13,20,30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "5da8dbf393250135e7cad69ad435cd62d9300a37",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    },
+    "s_5822efdedb26cc": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efcbc-8f48-7602-a00f-b20b39b170ef",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_5c8e781c6d99da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "65ad6ab4-e951-4bfd-9acb-5a0f5874a1df",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

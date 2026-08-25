@@ -1,0 +1,24 @@
+src/utils.rs
+  s_e854a3d044b01a::t_2a9d91d1376572 1198-1203
+  s_e854a3d044b01a::t_c630e098b0f52b 349-351
+src/commands/daemon.rs
+  s_e854a3d044b01a::t_ea50c91c2fefc4 8-10
+  s_e854a3d044b01a::t_ea8627d8664cc1 355-364,366-368,378-381
+  s_e854a3d044b01a::t_d4b98d12726fbb 390-391
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "2379611964b22be8e3d904803addb2c6f125934a",
+  "prompts": {},
+  "sessions": {
+    "s_e854a3d044b01a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9897160c-8861-4664-a94d-7ebbc49aac61",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ubuntu <ubuntu@ip-172-31-38-209.ap-south-1.compute.internal>"
+    }
+  }
+}

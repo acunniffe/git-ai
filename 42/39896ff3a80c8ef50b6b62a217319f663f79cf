@@ -1,0 +1,21 @@
+src/daemon.rs
+  s_c9fae768bb9b35::t_ad2d0d6efce1f1 6441-6442
+tests/integration/lite_mode.rs
+  s_c9fae768bb9b35::t_317ff136f9c13b 276-318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "4239896ff3a80c8ef50b6b62a217319f663f79cf",
+  "prompts": {},
+  "sessions": {
+    "s_c9fae768bb9b35": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf97-4dce-7972-ac6d-22bfc367a861",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

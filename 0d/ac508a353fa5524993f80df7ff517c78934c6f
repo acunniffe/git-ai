@@ -1,0 +1,11 @@
+src/http.rs
+  1869dfcc0dd7127e 1-2,9,12-13,16,19-68
+tests/integration/tls_native_certs.rs
+  1869dfcc0dd7127e 23-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "0dac508a353fa5524993f80df7ff517c78934c6f",
+  "prompts": {}
+}

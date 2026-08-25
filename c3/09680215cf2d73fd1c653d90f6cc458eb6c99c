@@ -1,0 +1,50 @@
+src/commands/install_hooks.rs
+  s_ba4e223de8de79::t_0e293f6ab0e343 333-334
+src/daemon/git_backend.rs
+  s_ba4e223de8de79::t_1d9594d6ee0479 204-206
+  s_ba4e223de8de79::t_0e293f6ab0e343 207-217
+  s_ba4e223de8de79::t_6b08fe9a36a0f0 178-180
+src/authorship/virtual_attribution.rs
+  s_ba4e223de8de79::t_0e293f6ab0e343 218-221
+src/mdm/spinner.rs
+  s_ba4e223de8de79::t_0e293f6ab0e343 3,12-15
+src/http.rs
+  s_ba4e223de8de79::t_67f8ae886e64c2 195-196
+  s_ba4e223de8de79::t_0e293f6ab0e343 36-39,48-51,139-141,148-149,160,185-188,260
+src/commands/git_hook_handlers.rs
+  s_ba4e223de8de79::t_07dd88312b46c1 284-286,288-301,307,311,317-328,336,341-349
+  s_ba4e223de8de79::t_0e293f6ab0e343 127-129,598-602
+  s_ba4e223de8de79::t_595bd6e9045a8f 151
+src/auth/client.rs
+  s_ba4e223de8de79::t_0e293f6ab0e343 62-65,102-105,148-151
+src/api/client.rs
+  s_ba4e223de8de79::t_0e293f6ab0e343 207-208
+src/transcripts/agents/cursor.rs
+  s_ba4e223de8de79::t_0e293f6ab0e343 32-35
+src/uuid.rs
+  s_ba4e223de8de79::t_0e293f6ab0e343 12-27
+src/git/repository.rs
+  s_ba4e223de8de79::t_fd1aca8ba415d7 1228-1231,1235-1239,1242-1243,1245-1249
+  s_ba4e223de8de79::t_6821900b495267 1350,1353-1355
+  s_ba4e223de8de79::t_816e90b77655fd 1621-1623,1627-1629,1632-1638
+  s_ba4e223de8de79::t_69c480a49d2125 2213-2225,2228-2235
+  s_ba4e223de8de79::t_0e293f6ab0e343 1232-1233,1351-1352,1624-1625,2226-2227
+  s_ba4e223de8de79::t_0a17836a57414c 1255,1257-1273
+  s_ba4e223de8de79::t_7e2f8ffb1205c2 1338,1345-1348
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "c309680215cf2d73fd1c653d90f6cc458eb6c99c",
+  "prompts": {},
+  "sessions": {
+    "s_ba4e223de8de79": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "81f985e5-0182-4a69-b30b-d3d0cb3a9b96",
+        "model": "unknown"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

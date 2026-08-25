@@ -1,0 +1,25 @@
+.github/workflows/release.yml
+  s_c52e3670519f45::t_89d08a433754f8 579,581
+  s_c52e3670519f45::t_6f32d2390f56be 474-475,481,783
+  s_c52e3670519f45::t_2c24e635a83dc1 476-478
+packaging/macos/build-pkg.sh
+  s_c52e3670519f45::t_6f32d2390f56be 6,29
+packaging/README.md
+  s_c52e3670519f45::t_6f32d2390f56be 12-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "fb7f49014c4adfb0f610bf6b27104314907f505d",
+  "prompts": {},
+  "sessions": {
+    "s_c52e3670519f45": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa4c7-7d0e-73e0-a57b-de20fe2a3f62",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+.github/workflows/update-models-dev-pricing.yml
+  s_728f84008e76fc::t_65e2178a83eb2d 6-14,23-27,37-40,49-52,84-86
+  s_728f84008e76fc::t_403db9dce6ce4a 41-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "f7b494738494221192b078893ba2a2ea6eee0af3",
+  "prompts": {},
+  "sessions": {
+    "s_728f84008e76fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b9c2fec-234c-43b0-aceb-0bb0ff75be4a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

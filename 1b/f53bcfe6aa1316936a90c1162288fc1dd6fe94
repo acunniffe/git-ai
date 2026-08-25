@@ -1,0 +1,64 @@
+src/commands/checkpoint_agent/presets/opencode.rs
+  759815a68a4f7264 280-288,293
+src/commands/checkpoint_agent/presets/github_copilot.rs
+  759815a68a4f7264 9,132-138,242-250,242-255,252-255
+tests/integration/droid.rs
+  75b8b35dceb7e11d 1-17,19-25,34,37-208,211-272,275-325,328,330-338
+  0cd56453d16f4fdd 18,26-33,35-36,329
+  759815a68a4f7264 273-274
+src/commands/checkpoint_agent/presets/droid.rs
+  759815a68a4f7264 10,127-134,149
+tests/integration/gemini.rs
+  75b8b35dceb7e11d 1-17,19-25,33-151,154-310,312-576,578-594
+  0cd56453d16f4fdd 18,26-29,31-32,577
+  759815a68a4f7264 152-153,311
+src/transcripts/agents/opencode.rs
+  75b8b35dceb7e11d 1-31,34-35,38-39,43-48,50,54-60,64,66-69,72-76,79-80,82-83,87-92,95,99-103,105,109,113-115,117-150,153-160,163,172,187-188,190,192-210
+  0cd56453d16f4fdd 33,37,81,104,116,152
+  759815a68a4f7264 70,166,171,211-227,214-239,232-235,237-239
+tests/integration/opencode.rs
+  75b8b35dceb7e11d 1-16,18-21,23-24,26-30,32-33,46,60,68,81,86,89,98,101-188,191-406,409-411
+  0cd56453d16f4fdd 17,22,25,31,34-35,37,40-41,45,53-55,58-59,62-63,67,69,74-76,79-80,82-83,88,91,93,95,96,97,99-100,412
+  759815a68a4f7264 48-49,189-190,407-408
+src/commands/checkpoint_agent/presets/gemini.rs
+  759815a68a4f7264 10,34-40
+tests/integration/claude_code.rs
+  75b8b35dceb7e11d 1-12,14-20,27,29-245,247,250-253,255-261,270-403,405-411,420-422,426-439
+  0cd56453d16f4fdd 13,21-26,28,254,262-267,269,404,412-417,418,419,423-425
+  759815a68a4f7264 246,248-249
+tests/integration/amp.rs
+  75b8b35dceb7e11d 1-22,25-31,36,39-41,44-50,55,58-135,138-234,236-363
+  0cd56453d16f4fdd 23-24,32-35,37-38,42-43,51-54,56-57,364-368
+  759815a68a4f7264 136-137,235
+src/commands/checkpoint_agent/presets/amp.rs
+  759815a68a4f7264 304-314
+src/transcripts/model_extraction.rs
+  759815a68a4f7264 1-17,1-307,19-83,87-166,168-179,184-187,189-211,213-225,227-232,234-240,242-247,249-254,256-261,263-268,270-282,284-289,291-302,304-307
+src/commands/checkpoint_agent/presets/claude.rs
+  759815a68a4f7264 10,72-78
+src/transcripts/mod.rs
+  s_5647f8cfeeb487::t_904e5689835373 22
+  0cd56453d16f4fdd 52
+  759815a68a4f7264 45
+tests/fixtures/claude-model-not-last.jsonl
+  759815a68a4f7264 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "1bf53bcfe6aa1316936a90c1162288fc1dd6fe94",
+  "prompts": {
+    "759815a68a4f7264": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9b8122a-6f33-4fcb-a981-7260b993c9a7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "total_additions": 468,
+      "total_deletions": 73,
+      "accepted_lines": 395,
+      "overriden_lines": 0
+    }
+  }
+}

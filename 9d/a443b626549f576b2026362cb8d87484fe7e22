@@ -1,0 +1,47 @@
+tests/integration/cherry_pick.rs
+  s_4d9a8a8cf0ead7::t_0f8fab50409875 12-17,824,1417
+  s_4d9a8a8cf0ead7::t_01166e8f0ed1c7 1415-1416,1418
+  s_4d9a8a8cf0ead7::t_eeef718c0d35fd 822-823,825
+  s_4d9a8a8cf0ead7::t_33759653a687ab 842-843,933-934,1482
+src/daemon.rs
+  s_4d9a8a8cf0ead7::t_acb3a6723de684 5724-5734,5737-5745,6451-6453
+  s_4d9a8a8cf0ead7::t_e86d27798b94c6 1341,1349,1355-1378
+  s_4d9a8a8cf0ead7::t_6fd371a22d8923 5735-5736
+  s_4d9a8a8cf0ead7::t_7d0393b729d89e 6454
+  s_4d9a8a8cf0ead7::t_b661d204ac9d71 1333-1340,1342-1348,1350-1354,1379-1381,1383,1388,1391,1393-1409,1412-1413
+src/git/notes_api.rs
+  s_4d9a8a8cf0ead7::t_6fd371a22d8923 418,428
+  s_4d9a8a8cf0ead7::t_e4bc93da39c148 409-417,419-424,429,440,453,463
+tests/notes_sync_regression.rs
+  s_4d9a8a8cf0ead7::t_7555cf53ecedee 7,1305-1306,1309,1311-1316
+  s_4d9a8a8cf0ead7::t_6b86db3010b038 10
+  s_4d9a8a8cf0ead7::t_bae4a6847a51ff 1358-1362,1414-1415
+  s_4d9a8a8cf0ead7::t_7eb9f346494c08 560,607-608
+  s_4d9a8a8cf0ead7::t_7bb460fc33a44b 1344-1346,1353-1357,1389
+  s_4d9a8a8cf0ead7::t_1128774515fd15 1301-1304,1307-1308,1310,1317-1333,1336-1343,1347-1348,1363-1388,1390-1413,1416,1429-1457,1459,1465-1466
+  s_4d9a8a8cf0ead7::t_04409d7f16fec6 1458
+  s_4d9a8a8cf0ead7::t_41435cf429e3c7 6
+  s_4d9a8a8cf0ead7::t_5a4b31ac927480 5,1334-1335,1349-1352,1417-1428,1460-1464
+tests/integration/pull_rebase_ff.rs
+  s_4d9a8a8cf0ead7::t_7eb9f346494c08 2248
+  s_4d9a8a8cf0ead7::t_d28bc4710907d2 641-664,669-673,676-703,705-724,734-747,749-750,2249
+  s_4d9a8a8cf0ead7::t_bbf95d6a2ee98e 665-668,674-675,748
+  s_4d9a8a8cf0ead7::t_257b1e21672e22 640
+  s_4d9a8a8cf0ead7::t_7deca1d70d4894 704,725-733
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.17",
+  "base_commit_sha": "9da443b626549f576b2026362cb8d87484fe7e22",
+  "prompts": {},
+  "sessions": {
+    "s_4d9a8a8cf0ead7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faf99-b634-74a3-b57b-4b0b1be32e93",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

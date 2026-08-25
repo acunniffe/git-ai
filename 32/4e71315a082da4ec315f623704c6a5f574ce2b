@@ -1,0 +1,21 @@
+src/daemon/stream_worker.rs
+  s_cfe6a4847c079e::t_e8d33ba63d0de8 1351-1353,1358-1366
+  s_cfe6a4847c079e::t_772d1f1acafde2 992-993
+  s_cfe6a4847c079e::t_af5b24c9bd4f24 1367-1369
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "324e71315a082da4ec315f623704c6a5f574ce2b",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
