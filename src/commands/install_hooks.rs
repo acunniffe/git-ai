@@ -1,7 +1,7 @@
 use crate::config;
 use crate::daemon::DaemonConfig;
 use crate::error::GitAiError;
-use crate::git::repository::{GitAuthorIdentity, current_git_committer_identity_resolution};
+use crate::git::repository::{GitAuthorIdentity, global_git_config_committer_identity};
 use crate::mdm::agents::get_all_installers;
 use crate::mdm::hook_installer::HookInstallerParams;
 use crate::mdm::skills_installer;
@@ -533,12 +533,14 @@ fn should_prompt_for_author(
 /// AI-authorship attribution. Never fails the install: any config error or
 /// prompt timeout just skips.
 fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_config: &InstallConfig) {
-    if std::env::var_os("GIT_AI_NO_AUTHOR_PROMPT").is_some() {
+    let opted_out = std::env::var("GIT_AI_NO_AUTHOR_PROMPT")
+        .is_ok_and(|v| !matches!(v.as_str(), "" | "0" | "false" | "False" | "FALSE"));
+    if opted_out {
         return;
     }
     let interactive = (crate::utils::is_interactive_terminal() && std::io::stdout().is_terminal())
         || std::env::var_os("GIT_AI_TEST_FORCE_TTY").is_some();
-    let Ok(mut file_config) = crate::config::load_file_config_public() else {
+    let Ok(file_config) = crate::config::load_file_config_public() else {
         return;
     };
     let author_configured = file_config
@@ -560,12 +562,20 @@ fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_confi
         return;
     }
 
-    let default = current_git_committer_identity_resolution().identity;
+    // Default to the explicitly configured global git identity only: `git var
+    // GIT_COMMITTER_IDENT` fabricates a junk identity (user@hostname) on
+    // machines with no user.name/user.email, and Enter would persist it.
+    let default = global_git_config_committer_identity().unwrap_or_default();
     let Some(author) = prompt_author_identity(
         &default,
         || crate::utils::read_line_with_timeout(AUTHOR_PROMPT_TIMEOUT),
         &mut std::io::stdout(),
     ) else {
+        return;
+    };
+    // Re-load right before saving: the prompt blocks on human input, and saving
+    // the pre-prompt snapshot would clobber any concurrent config change.
+    let Ok(mut file_config) = crate::config::load_file_config_public() else {
         return;
     };
     file_config.author = Some(author);
@@ -584,7 +594,8 @@ fn prompt_author_identity(
     let _ = writeln!(
         out,
         "Confirm the author identity git-ai will use for AI-authorship attribution\n\
-         (press Enter to accept, or type a new value; auto-skips in 15s):"
+         (press Enter to accept, or type a new value; each prompt auto-skips after {}s):",
+        AUTHOR_PROMPT_TIMEOUT.as_secs()
     );
     let Some(name) =
         prompt_author_field("Author name", default.name.as_deref(), &mut read_line, out)
