@@ -1,0 +1,25 @@
+src/git/sync_authorship.rs
+  s_ebc7901582a561::t_2d87562820065f 226
+  h_edab809c32d497 220,225,227-228,233,479-493
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "d07c5be9796e7f97df71fa5319e9aebc7a3a2a34",
+  "prompts": {},
+  "humans": {
+    "h_edab809c32d497": {
+      "author": "Marek Białowąs <marek.bialowas@phoenix-rtos.com>"
+    }
+  },
+  "sessions": {
+    "s_ebc7901582a561": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "0ce6c143-e5f3-4ed7-8e00-6acd9581a161",
+        "model": "unknown"
+      },
+      "human_author": "Marek Białowąs <marek.bialowas@phoenix-rtos.com>"
+    }
+  }
+}
