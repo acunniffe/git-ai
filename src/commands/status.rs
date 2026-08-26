@@ -250,7 +250,7 @@ fn get_working_dir_diff_stats(
         if paths.is_empty() {
             return Ok((0, 0));
         }
-        if paths.len() > MAX_PATHSPEC_ARGS {
+        if needs_working_dir_post_filter(paths) {
             // Disable rename detection so git reports renames as separate
             // delete + add entries with clean filenames. Without this,
             // numstat outputs "old => new" arrow notation in the filename
@@ -277,6 +277,10 @@ fn get_working_dir_diff_stats(
         needs_post_filter,
         ignore_matcher,
     ))
+}
+
+fn needs_working_dir_post_filter(paths: &HashSet<String>) -> bool {
+    paths.len() > MAX_PATHSPEC_ARGS || paths.iter().any(|path| !path.is_ascii())
 }
 
 fn parse_working_dir_numstat_stats(
@@ -383,6 +387,13 @@ mod tests {
         );
 
         assert_eq!((added, deleted), (3, 1));
+    }
+
+    #[test]
+    fn non_ascii_pathspecs_force_post_filtering() {
+        let pathspecs = HashSet::from(["caf\u{e9}.txt".to_string()]);
+
+        assert!(needs_working_dir_post_filter(&pathspecs));
     }
 
     #[test]
