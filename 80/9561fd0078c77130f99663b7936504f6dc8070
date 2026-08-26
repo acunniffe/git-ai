@@ -1,0 +1,43 @@
+tests/integration/worktrees.rs
+  h_edab809c32d497 616,776
+src/git/repository.rs
+  h_edab809c32d497 1160-1162,2406,2408-2410,2426
+src/commands/checkpoint_agent/bash_tool.rs
+  s_ebc7901582a561::t_993dbe3ae4fa1a 526
+  h_edab809c32d497 18,502-506,508-510,513-514,517-525,527-541,543-547,549-556,558-564,574,587,627,640-642,663-665,669,686-691,704-733,800-804,807,838,844,866-870,873-882
+  s_ebc7901582a561::t_c7c3fe62baef30 805-806,808-819,822-828,830-837,839-843,845-855,857-860,862
+tests/integration/main.rs
+  s_ebc7901582a561::t_c7c3fe62baef30 124
+tests/integration/git_repository_comprehensive.rs
+  s_ebc7901582a561::t_64b26bafbfee41 189-190,202-203
+tests/integration/multi_repo_workspace.rs
+  s_ebc7901582a561::t_64b26bafbfee41 8,593-600,609-625,628-646,655-673
+  h_edab809c32d497 601,607-608,647,653-654
+  s_ebc7901582a561::t_c7c3fe62baef30 602-606,626-627,648-652
+tests/integration/repository_unit.rs
+  h_edab809c32d497 393,436
+tests/integration/submodule_attribution.rs
+  s_ebc7901582a561::t_c7c3fe62baef30 135-137,145-147,306
+  h_edab809c32d497 1-134,138-144,148-305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.1",
+  "base_commit_sha": "809561fd0078c77130f99663b7936504f6dc8070",
+  "prompts": {},
+  "humans": {
+    "h_edab809c32d497": {
+      "author": "Marek Białowąs <marek.bialowas@phoenix-rtos.com>"
+    }
+  },
+  "sessions": {
+    "s_ebc7901582a561": {
+      "agent_id": {
+        "tool": "github-copilot",
+        "id": "0ce6c143-e5f3-4ed7-8e00-6acd9581a161",
+        "model": "unknown"
+      },
+      "human_author": "Marek Białowąs <marek.bialowas@phoenix-rtos.com>"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+src/commands/install_hooks.rs
+  s_030ba9a1afbf5e::t_17feb69e182b29 325
+  s_030ba9a1afbf5e::t_531a5bcc33484f 312-324,328,336
+  s_030ba9a1afbf5e::t_0337ed76f92014 339-340
+  s_030ba9a1afbf5e::t_671b37a49577bd 329-335
+src/daemon.rs
+  s_030ba9a1afbf5e::t_531a5bcc33484f 7153-7171,7176-7236,7406-7413,7415-7417
+  s_030ba9a1afbf5e::t_17feb69e182b29 7172-7175
+  s_030ba9a1afbf5e::t_092e479c30c034 9158-9229
+tests/async_mode.rs
+  s_030ba9a1afbf5e::t_9029b5eaaf12d2 8
+  s_030ba9a1afbf5e::t_bd806f5d959415 94-97,104,246,270-275,282-310,316,318-323,325,327,329,332-334,350,352-357,359-367,369-382
+  s_030ba9a1afbf5e::t_37f10be61d32a8 233-245,328,330-331,335-338,349,351,358
+  s_030ba9a1afbf5e::t_e5caa1d7169eb6 247,383
+  s_030ba9a1afbf5e::t_885ab2209aeec1 38-51,326,339-348
+  s_030ba9a1afbf5e::t_17feb69e182b29 276-281,311-315,317,324,368
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "1db07db7ed8f79b1677e48036a3c5461c94c65e5",
+  "prompts": {},
+  "sessions": {
+    "s_030ba9a1afbf5e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6219-0974-7e51-9aa5-175f63df5ecd",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

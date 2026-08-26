@@ -1,0 +1,27 @@
+src/commands/install_hooks.rs
+  s_66613148b4df44::t_bdf081c6d5608a 4,24,542,885,1083,1105
+src/mdm/agents/mod.rs
+  s_66613148b4df44::t_bdf081c6d5608a 37-39,42-43,47
+src/mdm/agents/claude_code.rs
+  s_66613148b4df44::t_0e0aa4e1204767 1-2,26-73,275,528-535,739,751
+tests/integration/claude_sandbox.rs
+  s_66613148b4df44::t_0e0aa4e1204767 1-51
+tests/integration/main.rs
+  s_66613148b4df44::t_4aec1ef6087069 43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "38ae2b14e1c67ec30e3fc64e2d1e07a96cd61abe",
+  "prompts": {},
+  "sessions": {
+    "s_66613148b4df44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5cd-5c09-7951-86b7-b151a4d0de90",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

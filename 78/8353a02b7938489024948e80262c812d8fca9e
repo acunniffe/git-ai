@@ -1,0 +1,30 @@
+flake.nix
+  s_e741a3b593d12c::t_9d1648a45d0ff6 394-395
+  s_e741a3b593d12c::t_a3e8e3f88ab80f 445-466,472-477,788-806,815-820
+  s_e741a3b593d12c::t_dbe46810736349 467,470,810,813
+  s_e741a3b593d12c::t_a28a0f6f17af49 468-469,471,478-480
+  s_e741a3b593d12c::t_71d9776bc6ce8a 635-652
+  s_e741a3b593d12c::t_b603a5f84ecbff 669-681
+  s_e741a3b593d12c::t_1f0e390b654094 682
+  s_e741a3b593d12c::t_66ce2a720a3762 750-751
+  s_e741a3b593d12c::t_d3ebfffe2ac8ad 811-812,814,821-823
+  s_e741a3b593d12c::t_4ce1017aeeba0f 978-995
+  s_e741a3b593d12c::t_9eea11e940cf2b 1012
+  s_e741a3b593d12c::t_004b856101dfb0 1017-1041
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.9",
+  "base_commit_sha": "788353a02b7938489024948e80262c812d8fca9e",
+  "prompts": {},
+  "sessions": {
+    "s_e741a3b593d12c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "80b521e7-fc91-4b30-8d38-fd810dc19cec",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>"
+    }
+  }
+}

@@ -1,0 +1,65 @@
+src/commands/blame.rs
+  s_69f49db26ad6e0::t_3e04a6a663afdb 1178-1184
+  s_69f49db26ad6e0::t_3021d74fb48015 1077-1081,1085-1088
+  s_7b6c368ce17a46::t_363c9a17d5e49d 985-988,995-999
+  s_69f49db26ad6e0::t_cc26c386063d8b 1082-1084
+  s_7b6c368ce17a46::t_d1b3e069a53fed 3
+  s_7b6c368ce17a46::t_931c03dee69d3d 937-973
+  s_7b6c368ce17a46::t_ba24d1fbdfa1c2 1117-1120
+  s_69f49db26ad6e0::t_2a1a2b7420f5e2 2292-2298,2300-2301,2303,2305,2311-2320
+  s_7b6c368ce17a46::t_9f7ed3da536ea7 1128-1132
+  s_69f49db26ad6e0::t_36bf546935867c 2299,2302,2304,2306-2310
+  s_69f49db26ad6e0::t_4cc2bea8de7d9a 1776-1780
+src/commands/checkpoint_agent/presets/mock_ai.rs
+  s_69f49db26ad6e0::t_5d9d1847a3d0df 20,24,46-54,61
+tests/integration/blame_flags.rs
+  s_69f49db26ad6e0::t_b5615d2a3aedf5 1475-1501,1503,1506-1509,1511-1540
+  s_69f49db26ad6e0::t_3cedbcbb6ae5cb 1570-1571
+  s_69f49db26ad6e0::t_75d44ef685c96a 1502,1504-1505,1510
+src/commands/git_ai_handlers.rs
+  s_69f49db26ad6e0::t_2b4729c8308705 1053-1074,1079,1088,1091-1095
+tests/integration/snapshots/integration__initial_attributions__initial_and_blame_merge.snap
+  s_69f49db26ad6e0::t_fa722fbdeb8aee 2-3,6
+tests/integration/snapshots/integration__initial_attributions__initial_and_blame_merge@worktree.snap
+  s_69f49db26ad6e0::t_c2e5fa25852760 2-3,6
+tests/integration/snapshots/integration__initial_attributions__initial_attributions_in_subsequent_checkpoint.snap
+  s_69f49db26ad6e0::t_7b3f54c0ddd57c 2-3,6
+tests/integration/snapshots/integration__initial_attributions__initial_attributions_in_subsequent_checkpoint@worktree.snap
+  s_69f49db26ad6e0::t_54aba1be0cc9b9 2-3,6
+tests/integration/snapshots/integration__initial_attributions__initial_only_no_blame_data.snap
+  s_69f49db26ad6e0::t_682b794a831ec7 2-3,6
+tests/integration/snapshots/integration__initial_attributions__initial_only_no_blame_data@worktree.snap
+  s_69f49db26ad6e0::t_bfa6ce9129ab25 2-3,6
+tests/integration/snapshots/integration__initial_attributions__initial_wins_overlaps.snap
+  s_69f49db26ad6e0::t_732f10140ae1ff 3,6
+tests/integration/snapshots/integration__initial_attributions__initial_wins_overlaps@worktree.snap
+  s_69f49db26ad6e0::t_7dd1b212d68cfc 3,6
+tests/integration/snapshots/integration__initial_attributions__partial_file_coverage.snap
+  s_69f49db26ad6e0::t_9cdf6b78aae644 2-3,6
+tests/integration/snapshots/integration__initial_attributions__partial_file_coverage@worktree.snap
+  s_69f49db26ad6e0::t_34fdbcb1db44fe 2-3,6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.4",
+  "base_commit_sha": "dcec06d1124ff6628656da59dffa3d62de581412",
+  "prompts": {},
+  "sessions": {
+    "s_69f49db26ad6e0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d80c286-70cb-400f-b0bb-ede635e64a92",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_7b6c368ce17a46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "91a8af7c-4436-460a-9027-242dc6655274",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

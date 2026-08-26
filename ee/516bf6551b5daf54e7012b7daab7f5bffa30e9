@@ -1,0 +1,24 @@
+tests/integration/reset.rs
+  2de4ed9274e38630 638-639,646
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "ee516bf6551b5daf54e7012b7daab7f5bffa30e9",
+  "prompts": {
+    "2de4ed9274e38630": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ba8b128a-03da-4815-b476-b148f4ab0621",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 4,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/b617655c418cf02d9c70e4c7ef5e539a8c14e057353441e520d17a5c2aa6d32e"
+    }
+  }
+}

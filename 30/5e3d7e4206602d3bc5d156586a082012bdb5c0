@@ -1,0 +1,19 @@
+src/token_usage/db.rs
+  s_cfe6a4847c079e::t_7ab2e4763df872 215-220,224,1101-1110,1114-1116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "305e3d7e4206602d3bc5d156586a082012bdb5c0",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

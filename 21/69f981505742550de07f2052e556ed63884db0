@@ -1,0 +1,25 @@
+install.sh
+  s_eae0725f606f1a::t_9fd255457f3c8e 280-283
+install.ps1
+  s_eae0725f606f1a::t_abcdda661c723f 448-449,452,461-470,472-473,475,478-479
+tests/windows_install_script.rs
+  s_eae0725f606f1a::t_228d87562a8c4e 485
+  s_eae0725f606f1a::t_c217fab43912c0 474-476
+  s_eae0725f606f1a::t_bfde0f5f09efe3 470-473,477-484,486-500
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "2169f981505742550de07f2052e556ed63884db0",
+  "prompts": {},
+  "sessions": {
+    "s_eae0725f606f1a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3befad8-a14b-4826-a404-c35732238c0b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

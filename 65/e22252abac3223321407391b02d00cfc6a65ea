@@ -1,0 +1,19 @@
+src/daemon/telemetry_worker.rs
+  s_563ec768bd999c::t_edbc99d5620866 280,1937-1940
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "65e22252abac3223321407391b02d00cfc6a65ea",
+  "prompts": {},
+  "sessions": {
+    "s_563ec768bd999c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0254b-8897-7641-a6f8-28f248f9e8f2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

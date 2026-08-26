@@ -1,0 +1,23 @@
+src/utils.rs
+  36fbb5a120565645 215-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.20",
+  "base_commit_sha": "1ed4e2a3730bef647fd3e1b7f28acb186205320e",
+  "prompts": {
+    "36fbb5a120565645": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c18eaf0d-f68d-41ca-a203-c85672399aba",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 34,
+      "total_deletions": 0,
+      "accepted_lines": 34,
+      "overriden_lines": 0
+    }
+  }
+}

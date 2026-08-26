@@ -1,0 +1,24 @@
+src/mdm/agents/windsurf.rs
+  73a492d33da4b1eb 6-7,211,214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "35bb4e57613bf12ed11b05c43411211166435c03",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 28,
+      "accepted_lines": 4,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/3cb279e89c8c149108e20c6f30be3b08c4804946c255d4fa940fadf3eccdec3a"
+    }
+  }
+}

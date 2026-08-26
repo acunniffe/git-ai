@@ -1,0 +1,19 @@
+tests/daemon_mode.rs
+  s_1cad3d343f032c::t_f334cc4def8189 1795
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "e83ce0e85f66b8f58aa788d66233ab6f1b27690f",
+  "prompts": {},
+  "sessions": {
+    "s_1cad3d343f032c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5e4-a9ac-7e93-abc1-50595b3638e2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

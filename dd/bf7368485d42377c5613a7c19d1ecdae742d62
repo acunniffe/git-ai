@@ -1,0 +1,19 @@
+src/commands/config.rs
+  s_c237608ce9e001::t_3860abe9af7af2 110,355-360,435,649-653,958-964
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "ddbf7368485d42377c5613a7c19d1ecdae742d62",
+  "prompts": {},
+  "sessions": {
+    "s_c237608ce9e001": {
+      "agent_id": {
+        "tool": "devin",
+        "id": "devin-df795ffee1934288bb5f7a2db8bc27af",
+        "model": "unknown"
+      },
+      "human_author": "acunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

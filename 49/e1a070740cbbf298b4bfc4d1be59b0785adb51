@@ -1,0 +1,94 @@
+src/main.rs
+  477a302 54,56,61,68-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.21",
+  "base_commit_sha": "49e1a070740cbbf298b4bfc4d1be59b0785adb51",
+  "prompts": {
+    "477a302": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "c66a639a-0189-4d5c-a81a-d05c4711287a",
+        "model": "composer-1"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Write a utility function to check if we're running in WSL on a windows machine. \n\nUse  compiler macros ie #[not(windows)] to set it to false automatically and save the check. \n\nThis should run once, lazzily if its value is checked  Do it at the bottom of @main.rs",
+          "timestamp": "2025-11-19T18:40:06.070Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a lazy utility function at the bottom of `main.rs` to detect WSL, using compiler macros to return false on non-Windows.",
+          "timestamp": "2025-11-19T18:40:11.684Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/main.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding a lazy WSL detection function at the bottom of `main.rs`:",
+          "timestamp": "2025-11-19T18:40:12.393Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/main.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Re-evaluating: WSL runs Linux, so detection should happen on Unix/Linux, not Windows. Updating the implementation:",
+          "timestamp": "2025-11-19T18:40:15.544Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/main.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updating the implementation: WSL runs Linux, so detection should happen on Unix/Linux, not Windows. Adjusting the logic accordingly:",
+          "timestamp": "2025-11-19T18:40:17.401Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/main.rs"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Checking for linter errors:",
+          "timestamp": "2025-11-19T18:40:20.054Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updating to match your request: using `#[cfg(not(windows))]` to return false. Since WSL runs Linux, detection should happen on Unix/Linux. Adjusting accordingly:",
+          "timestamp": "2025-11-19T18:40:24.609Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": "/Users/aidancunniffe/Desktop/git-ai/src/main.rs"
+          }
+        }
+      ],
+      "total_additions": 7,
+      "total_deletions": 10,
+      "accepted_lines": 23,
+      "overriden_lines": 0
+    }
+  }
+}

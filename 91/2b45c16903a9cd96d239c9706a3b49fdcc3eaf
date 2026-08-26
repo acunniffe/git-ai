@@ -1,0 +1,25 @@
+src/daemon/family_actor.rs
+  s_f07947361914e3::t_796f0527e47bcb 113-114,116
+src/daemon/reducer.rs
+  s_f07947361914e3::t_2dc1dda9e948c3 14,73,76,82,127-130,134,165,167,170,177-184,187-193,434-472
+src/daemon/ref_cursor.rs
+  s_f07947361914e3::t_8b8da099fd620f 140,143-149,151,155,158,211,517,1269,1292,1301,1311,2394-2423
+tests/commit_tree_update_ref.rs
+  s_f07947361914e3::t_397c878718054d 734-761
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "912b45c16903a9cd96d239c9706a3b49fdcc3eaf",
+  "prompts": {},
+  "sessions": {
+    "s_f07947361914e3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fce29-d55c-7301-8f5a-44b68d35f39f",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
