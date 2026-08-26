@@ -1,0 +1,97 @@
+{
+  "schema_version": "behavior-policy/1.0.0",
+  "change_intent": "preserve",
+  "default_evidence_result": "inconclusive",
+  "claim": "The report-only evidence infrastructure does not modify git-ai production behavior.",
+  "observable_surfaces": [
+    "argv[0] binary dispatch and git proxy transparency",
+    "CLI stdout, stderr, exit codes, help, version, JSON, and porcelain formats",
+    "authorship/3.0.0 Git Note bytes and compatibility",
+    "working-log, checkpoint-outbox, configuration, and SQLite file formats",
+    "Git refs, notes, commits, index, worktree, and filesystem transitions",
+    "checkpoint and daemon control responses",
+    "trace2 ingestion, ref transitions, rewrite events, and emitted telemetry events",
+    "external Git, HTTP, keyring, editor, and installation boundary effects",
+    "family-actor sequencing, checkpoint ordering, concurrency, and signal forwarding",
+    "critical-path latency and constant-time Git-work boundaries where contractual",
+    "Unix socket, Windows named-pipe, macOS, Linux, and Windows compatibility"
+  ],
+  "old_domain_case_ids": [
+    "cli-help",
+    "cli-version",
+    "cli-unknown-command",
+    "cli-parser-version-routing",
+    "checkpoint-hook-exit-zero",
+    "git-notes-authorship-schema",
+    "git-notes-revert-rewrite",
+    "sqlite-primary-note",
+    "sqlite-amend-rewrite"
+  ],
+  "new_domain_case_ids": [],
+  "expected_deltas": [],
+  "expected_public_compatibility": {},
+  "blocking_evidence_gaps": [
+    "CI architecture collection does not execute a frozen black-box base/head harness",
+    "the portable behavioral evaluator and corpus are intentionally not duplicated into the repository workflow"
+  ],
+  "removed_or_weakened_assertions": [],
+  "unmeasured_surfaces": [
+    "Windows and named-pipe behavior",
+    "performance and timing budgets",
+    "network, HTTP, and authentication boundaries",
+    "concurrency and load ordering",
+    "IDE and editor extensions and installers"
+  ],
+  "residual_risk": [
+    "The direct oracle is bounded and cannot establish universal program equivalence.",
+    "Unchanged repository tests support baseline viability but do not prove equivalence.",
+    "Architecture metrics and panel agreement cannot change an inconclusive or contradicted behavioral result.",
+    "Historical behavior remains measured, inferred, or unavailable and inferred evidence is never described as proven."
+  ],
+  "harness": {
+    "schema_version": "git-ai-behavior-oracle/1.0.0",
+    "execution": "interactive-portable-skill-only",
+    "frozen": true,
+    "digest": "00948083f9e310cbeee6fb6721ffbc5fe81df0f823e10bd096f4418f14732039",
+    "fixture_set_digest": "ff3053ea376be631effb9c13eeaf1a66edb4733895dfca8896fc683929fe70f8",
+    "seed": 20260826,
+    "corpus": {
+      "canonical_sha256": "de5d443861c3bcff999f6d998ec258668372d4183058fd9a3041fd4fc1190e9a",
+      "raw_sha256": "e41b4aa5d430f0c83ee62084b51ea022883b86bf72fa88a354be425638976cfe"
+    },
+    "normalizer": {
+      "schema_version": "behavior-normalizer/1.0.0",
+      "sha256": "04e511741169e04c62a4dc4ad7c8eece4bad4e46c774628f741dc3dc42fb309b"
+    },
+    "baseline": "exact frozen nine-case external black-box run",
+    "cases": [
+      {"case_id": "cli-help", "paths": ["src/main.rs", "src/cli/", "docs/contracts/cli-output.md"]},
+      {"case_id": "cli-version", "paths": ["src/main.rs", "src/cli/", "docs/contracts/cli-output.md"]},
+      {"case_id": "cli-unknown-command", "paths": ["src/main.rs", "src/cli/", "docs/contracts/cli-output.md"]},
+      {"case_id": "cli-parser-version-routing", "paths": ["src/main.rs", "src/cli/", "docs/contracts/cli-output.md"]},
+      {"case_id": "checkpoint-hook-exit-zero", "paths": ["tests/daemon_mode/checkpoint.rs", "docs/contracts/checkpoint-interface.md"]},
+      {"case_id": "git-notes-authorship-schema", "paths": ["tests/integration/log.rs", "specs/git_ai_standard_v3.0.0.md"]},
+      {"case_id": "git-notes-revert-rewrite", "paths": ["tests/integration/rewrite_ops_attribution.rs", "docs/architecture/rewrite-ops-spec.md"]},
+      {"case_id": "sqlite-primary-note", "paths": ["tests/integration/sqlite_notes_backend.rs", "docs/contracts/notes-backend-spec.md"]},
+      {"case_id": "sqlite-amend-rewrite", "paths": ["tests/integration/sqlite_notes_backend.rs", "tests/integration/rebase_note_integrity.rs"]}
+    ]
+  },
+  "intent_rules": {
+    "preserve": "require a viable baseline, identical frozen old-domain harness/corpus, zero unexplained differences, and separate public compatibility evidence",
+    "relocate-internal": "apply preservation rules; internal ownership and call traces may change, but public endpoints, events, and formats may not",
+    "extend": "preserve every old-domain case, add a new-domain corpus, and require exact declared additions with no undeclared removals",
+    "intentional-change": "require an exact expected-delta manifest and preserve unaffected cases"
+  },
+  "testing_guardrails": {
+    "observable_behavior_only": true,
+    "source_shape_tests": false,
+    "run_new_preservation_tests_on_base_and_head": true,
+    "record_removed_or_weakened_assertions": true,
+    "coverage_or_mutation_is_determinative": false
+  },
+  "ci_collection": {
+    "evidence_result": "inconclusive",
+    "historical_label": "unavailable",
+    "reason": "The secretless architecture workflow parses repository bytes but does not build or execute git-ai or a frozen behavioral harness."
+  }
+}

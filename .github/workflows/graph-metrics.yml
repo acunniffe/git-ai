@@ -1,0 +1,387 @@
+name: Architecture Evidence
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "23 8 * * 3"
+
+# Pull-request bytes are hostile parser input. This workflow has no secrets,
+# write token, cache restore, target build, or target-code execution.
+permissions:
+  contents: read
+
+concurrency:
+  group: architecture-evidence-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12.14"
+  PYTHONHASHSEED: "0"
+  TZ: UTC
+  CRG_SERIAL_PARSE: "1"
+  CRG_LEIDEN_SEED: "42"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_NO_INPUT: "1"
+
+jobs:
+  analyze:
+    name: Collect report-only architecture evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out analysis corpus
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: corpus
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: false
+          lfs: false
+
+      - name: Set up pinned Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Verify runtime and dependency lock
+        shell: bash
+        working-directory: corpus
+        run: |
+          set -euo pipefail
+          python -I -c 'import platform, sys; assert sys.version_info[:3] == (3, 12, 14), sys.version; assert platform.python_implementation() == "CPython"'
+          test "$(sha256sum .github/graph-metrics-requirements.lock | cut -d ' ' -f 1)" = "d21852f298badee13c0f716b8352727680d4a76062af57e9238b45caea7ec20c"
+          python -I - <<'PY'
+          import json
+          from pathlib import Path
+
+          policy = json.loads(Path(".github/graph-metrics.yml").read_text(encoding="utf-8"))
+          behavior = json.loads(Path(".github/behavior-evidence.yml").read_text(encoding="utf-8"))
+          assert policy["schema_version"] == "graph-evidence/1.0.0"
+          assert policy["mode"] == "report-only"
+          assert policy["analyzer"]["version"] == "2.3.8"
+          assert policy["runtime"]["python"] == "3.12.14"
+          assert policy["runtime"]["dependency_lock_sha256"] == "d21852f298badee13c0f716b8352727680d4a76062af57e9238b45caea7ec20c"
+          assert behavior["schema_version"] == "behavior-policy/1.0.0"
+          assert behavior["ci_collection"]["evidence_result"] == "inconclusive"
+          PY
+
+      - name: Install the exact hash-locked analyzer
+        shell: bash
+        working-directory: corpus
+        run: |
+          set -euo pipefail
+          python -I -m pip install --isolated --disable-pip-version-check --no-cache-dir --no-deps --only-binary=:all: --no-compile --require-hashes --force-reinstall -r .github/graph-metrics-requirements.lock
+          python -I -m pip check
+
+      - name: Measure and verify installed analyzer identity
+        shell: bash
+        env:
+          IDENTITY_PATH: ${{ runner.temp }}/architecture-evidence-analyzer-identity.json
+        run: |
+          set -euo pipefail
+          python -I - <<'PY'
+          import base64
+          import csv
+          import hashlib
+          import importlib.metadata
+          import json
+          import os
+          import shutil
+          import sys
+          from pathlib import Path, PurePosixPath
+
+          def digest_file(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          def record_digest(value):
+              algorithm, separator, encoded = value.partition("=")
+              if separator != "=" or algorithm != "sha256" or not encoded:
+                  raise SystemExit(f"unsupported RECORD hash: {value!r}")
+              decoded = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+              if len(decoded) != hashlib.sha256().digest_size:
+                  raise SystemExit("invalid RECORD digest length")
+              return decoded.hex()
+
+          distribution = importlib.metadata.distribution("code-review-graph")
+          if distribution.version != "2.3.8":
+              raise SystemExit(f"unexpected analyzer version: {distribution.version}")
+          site_packages = Path(distribution.locate_file("")).resolve()
+          record_relative = next(
+              item for item in distribution.files
+              if str(item).replace("\\", "/").endswith(".dist-info/RECORD")
+          )
+          record_path = Path(distribution.locate_file(record_relative)).resolve()
+          package_records = []
+          for row in csv.reader(record_path.read_text(encoding="utf-8").splitlines()):
+              if len(row) != 3 or not row[0]:
+                  raise SystemExit("malformed analyzer RECORD")
+              relative, recorded_hash, recorded_size = row
+              posix = relative.replace("\\", "/")
+              parts = PurePosixPath(posix).parts
+              is_code = bool(parts) and parts[0] == "code_review_graph" and "__pycache__" not in parts and not posix.endswith(".pyc")
+              if not is_code:
+                  continue
+              if not recorded_hash:
+                  raise SystemExit(f"unhashed analyzer package file: {relative}")
+              candidate = (site_packages / relative).resolve()
+              if not candidate.is_file() or candidate.is_symlink():
+                  raise SystemExit(f"missing analyzer package file: {relative}")
+              actual = digest_file(candidate)
+              if actual != record_digest(recorded_hash):
+                  raise SystemExit(f"analyzer RECORD mismatch: {relative}")
+              if recorded_size.isdigit() and candidate.stat().st_size != int(recorded_size):
+                  raise SystemExit(f"analyzer size mismatch: {relative}")
+              package_records.append({"path": posix, "sha256": actual, "size": candidate.stat().st_size})
+          package_records.sort(key=lambda item: item["path"])
+          installed = hashlib.sha256(
+              json.dumps(package_records, sort_keys=True, separators=(",", ":")).encode("utf-8")
+          ).hexdigest()
+          expected = "b14eb2ed706b208dd5c9ea5474161ba10a65081b4fdffa042cdbc1f87fe4ca15"
+          if installed != expected:
+              raise SystemExit(f"installed analyzer digest mismatch: {installed}")
+          executable = Path(shutil.which("code-review-graph") or "").resolve()
+          identity = {
+              "distribution_name": "code-review-graph",
+              "version": distribution.version,
+              "distribution_sha256": "013ae3c119cc7de337f9e88fe36daef82e2d4def942a014edcf97f126e208547",
+              "installed_code_sha256": installed,
+              "measured_file_count": len(package_records),
+              "entrypoint_sha256": digest_file(executable),
+              "interpreter_sha256": digest_file(Path(sys.executable).resolve()),
+          }
+          Path(os.environ["IDENTITY_PATH"]).write_text(
+              json.dumps(identity, sort_keys=True, separators=(",", ":")) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          code-review-graph --version
+
+      - name: Resolve immutable base and head revisions
+        id: revisions
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+          EVENT_HEAD_SHA: ${{ github.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
+          CURRENT_REPOSITORY_ID: ${{ github.repository_id }}
+        run: |
+          set -euo pipefail
+          corpus="$GITHUB_WORKSPACE/corpus"
+          case "$EVENT_NAME" in
+            pull_request)
+              base_sha="$PR_BASE_SHA"
+              head_sha="$PR_HEAD_SHA"
+              pr_number="$PR_NUMBER"
+              head_repository_id="$PR_HEAD_REPOSITORY_ID"
+              ;;
+            push)
+              head_sha="$EVENT_HEAD_SHA"
+              base_sha="$PUSH_BEFORE_SHA"
+              if [[ "$base_sha" =~ ^0+$ ]]; then
+                base_sha="$(git -C "$corpus" rev-parse "${head_sha}^")"
+              fi
+              pr_number=""
+              head_repository_id="$CURRENT_REPOSITORY_ID"
+              ;;
+            schedule|workflow_dispatch)
+              head_sha="$(git -C "$corpus" rev-parse HEAD)"
+              base_sha="$(git -C "$corpus" rev-parse HEAD^)"
+              pr_number=""
+              head_repository_id="$CURRENT_REPOSITORY_ID"
+              ;;
+            *)
+              echo "::error::Unsupported event: $EVENT_NAME"
+              exit 1
+              ;;
+          esac
+          for value in "$base_sha" "$head_sha"; do
+            if [[ ! "$value" =~ ^[0-9a-f]{40}$ ]]; then
+              echo "::error::Expected a full lowercase commit SHA"
+              exit 1
+            fi
+            git -C "$corpus" cat-file -e "${value}^{commit}"
+          done
+          if [[ ! "$head_repository_id" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid head repository identity"
+            exit 1
+          fi
+          guarded=(
+            .github/graph-metrics.yml
+            .github/behavior-evidence.yml
+            .github/graph-metrics-requirements.lock
+            .github/scripts/graph_metrics_ci.py
+            .github/scripts/graph_metrics_publisher.py
+            .github/workflows/graph-metrics.yml
+            .github/workflows/graph-metrics-publish.yml
+          )
+          if git -C "$corpus" diff --quiet "$base_sha" "$head_sha" -- "${guarded[@]}"; then
+            configuration_changed=false
+          else
+            configuration_changed=true
+          fi
+          {
+            echo "base_sha=$base_sha"
+            echo "head_sha=$head_sha"
+            echo "pr_number=$pr_number"
+            echo "head_repository_id=$head_repository_id"
+            echo "configuration_changed=$configuration_changed"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Prepare detached data-only worktrees
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.revisions.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.revisions.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          corpus="$GITHUB_WORKSPACE/corpus"
+          worktrees="$RUNNER_TEMP/architecture-evidence-worktrees"
+          mkdir -p "$worktrees"
+          git -C "$corpus" worktree add --detach "$worktrees/base" "$BASE_SHA"
+          git -C "$corpus" worktree add --detach "$worktrees/head" "$HEAD_SHA"
+
+      - name: Collect two independent CRG passes
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.revisions.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.revisions.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          crg_bin="$(command -v code-review-graph)"
+          python_bin="$(command -v python)"
+          safe_path="$(dirname "$python_bin"):/usr/bin:/bin"
+          worktrees="$RUNNER_TEMP/architecture-evidence-worktrees"
+          raw_root="$RUNNER_TEMP/architecture-evidence-raw"
+
+          run_crg() {
+            local home="$1"
+            local data_dir="$2"
+            shift 2
+            mkdir -p "$home" "$home/xdg-cache" "$home/xdg-config" "$home/xdg-data" "$home/pycache" "$data_dir"
+            local environment=(
+              "HOME=$home"
+              "XDG_CACHE_HOME=$home/xdg-cache"
+              "XDG_CONFIG_HOME=$home/xdg-config"
+              "XDG_DATA_HOME=$home/xdg-data"
+              "PYTHONPYCACHEPREFIX=$home/pycache"
+              "PATH=$safe_path"
+              "LANG=C.UTF-8"
+              "LC_ALL=C.UTF-8"
+              "TZ=UTC"
+              "PYTHONHASHSEED=0"
+              "CRG_SERIAL_PARSE=1"
+              "CRG_LEIDEN_SEED=42"
+              "CRG_DATA_DIR=$data_dir"
+              "GIT_CONFIG_NOSYSTEM=1"
+              "GIT_CONFIG_GLOBAL=/dev/null"
+              "GIT_NO_REPLACE_OBJECTS=1"
+              "GIT_ALLOW_PROTOCOL=file"
+              "HTTP_PROXY=http://127.0.0.1:9"
+              "HTTPS_PROXY=http://127.0.0.1:9"
+              "ALL_PROXY=http://127.0.0.1:9"
+              "NO_PROXY="
+            )
+            env -i "${environment[@]}" "$crg_bin" "$@"
+          }
+
+          for pass in one two; do
+            pass_raw="$raw_root/$pass"
+            mkdir -p "$pass_raw"
+            for revision in base head; do
+              repo="$worktrees/$revision"
+              data_dir="$RUNNER_TEMP/architecture-evidence-crg/$pass/$revision"
+              home="$RUNNER_TEMP/architecture-evidence-home/$pass/$revision"
+              run_crg "$home" "$data_dir" build --repo "$repo" --data-dir "$data_dir" --skip-flows --skip-postprocess --quiet
+              run_crg "$home" "$data_dir" status --repo "$repo" --data-dir "$data_dir" --json > "$pass_raw/$revision-status.json"
+              run_crg "$home" "$data_dir" visualize --repo "$repo" --data-dir "$data_dir" --format json > "$pass_raw/$revision-export.log"
+              test -f "$data_dir/graph.json"
+              mv "$data_dir/graph.json" "$pass_raw/$revision-graph.json"
+            done
+            if ! run_crg "$RUNNER_TEMP/architecture-evidence-home/$pass/head" "$RUNNER_TEMP/architecture-evidence-crg/$pass/head" detect-changes --repo "$worktrees/head" --base "$BASE_SHA" > "$pass_raw/head-risk.json"; then
+              : > "$pass_raw/head-risk.json"
+            fi
+          done
+
+      - name: Verify the checked-in bounded CI evaluator
+        shell: bash
+        env:
+          EVALUATOR_PATH: ${{ github.workspace }}/corpus/.github/scripts/graph_metrics_ci.py
+        run: |
+          set -euo pipefail
+          test -f "$EVALUATOR_PATH"
+          test ! -L "$EVALUATOR_PATH"
+          expected_evaluator_digest="$(python -I -c 'import json; print(json.load(open("corpus/.github/graph-metrics.yml"))["ci_adapter"]["evaluator_sha256"])')"
+          test "$(sha256sum "$EVALUATOR_PATH" | cut -d ' ' -f 1)" = "$expected_evaluator_digest"
+          python -I "$EVALUATOR_PATH" --help
+
+      - name: Derive structured evidence twice
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.revisions.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.revisions.outputs.head_sha }}
+          PR_NUMBER: ${{ steps.revisions.outputs.pr_number }}
+          HEAD_REPOSITORY_ID: ${{ steps.revisions.outputs.head_repository_id }}
+          CONFIGURATION_CHANGED: ${{ steps.revisions.outputs.configuration_changed }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          EVALUATOR_PATH: ${{ github.workspace }}/corpus/.github/scripts/graph_metrics_ci.py
+        run: |
+          set -euo pipefail
+          for pass in one two; do
+            python -I "$EVALUATOR_PATH" --raw "$RUNNER_TEMP/architecture-evidence-raw/$pass" --output "$RUNNER_TEMP/architecture-evidence/run-$pass" --base-repo "$RUNNER_TEMP/architecture-evidence-worktrees/base" --head-repo "$RUNNER_TEMP/architecture-evidence-worktrees/head" --base "$BASE_SHA" --head "$HEAD_SHA" --policy "$GITHUB_WORKSPACE/corpus/.github/graph-metrics.yml" --behavior-policy "$GITHUB_WORKSPACE/corpus/.github/behavior-evidence.yml" --dependency-lock "$GITHUB_WORKSPACE/corpus/.github/graph-metrics-requirements.lock" --analyzer-identity "$RUNNER_TEMP/architecture-evidence-analyzer-identity.json" --evaluator "$EVALUATOR_PATH" --repository "$REPOSITORY" --repository-id "$REPOSITORY_ID" --head-repository-id "$HEAD_REPOSITORY_ID" --event-name "$EVENT_NAME" --run-id "$RUN_ID" --run-attempt "$RUN_ATTEMPT" --pr-number "$PR_NUMBER" --configuration-changed "$CONFIGURATION_CHANGED"
+          done
+
+      - name: Prove repeated-run determinism
+        shell: bash
+        run: |
+          set -euo pipefail
+          diff --recursive --brief "$RUNNER_TEMP/architecture-evidence/run-one" "$RUNNER_TEMP/architecture-evidence/run-two"
+          find "$RUNNER_TEMP/architecture-evidence/run-one" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum
+
+      - name: Write trusted default-branch and weekly summary
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          set -euo pipefail
+          report="$RUNNER_TEMP/architecture-evidence/run-one/report.md"
+          test -f "$report"
+          test ! -L "$report"
+          test "$(stat -c '%s' "$report")" -le 60000
+          python -I - "$report" <<'PY'
+          import sys
+          from pathlib import Path
+
+          text = Path(sys.argv[1]).read_text(encoding="utf-8")
+          if "\x00" in text or "<" in text or ">" in text:
+              raise SystemExit("refusing unsafe Markdown summary")
+          PY
+          sed -n '1,1200p' "$report" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload structured evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: architecture-evidence-v1-run-${{ github.run_id }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/architecture-evidence/run-one/
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 30
+          compression-level: 6

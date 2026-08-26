@@ -1,0 +1,375 @@
+name: Publish Architecture Evidence
+
+on:
+  workflow_run:
+    workflows: [Architecture Evidence]
+    types: [completed]
+
+# This workflow is trusted default-branch code. It never checks out the
+# pull-request head or executes files from the uploaded archive.
+permissions: {}
+
+concurrency:
+  group: architecture-evidence-publisher-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate hostile artifact and sanitize publication
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      should-publish: ${{ steps.preflight.outputs.should-publish }}
+      publish-kind: ${{ steps.preflight.outputs.publish-kind }}
+      pr-number: ${{ steps.preflight.outputs.pr-number }}
+      base-sha: ${{ steps.preflight.outputs.base-sha }}
+      head-sha: ${{ steps.preflight.outputs.head-sha }}
+      comment-b64: ${{ steps.validate-artifact.outputs.comment-b64 }}
+      comment-sha256: ${{ steps.validate-artifact.outputs.comment-sha256 }}
+
+    steps:
+      - name: Validate workflow-run, repository, commit, PR, and artifact identity
+        id: preflight
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PREFLIGHT_PATH: ${{ runner.temp }}/architecture-evidence-preflight.json
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const fs = require('fs');
+            const run = context.payload.workflow_run;
+            const repository = context.payload.repository;
+            const {owner, repo} = context.repo;
+            const allowedEvents = new Set(['pull_request', 'push', 'schedule', 'workflow_dispatch']);
+            const shaPattern = /^[0-9a-f]{40}$/;
+            const fail = (message) => { core.setFailed(message); return null; };
+
+            core.setOutput('should-publish', 'false');
+            if (!run || !repository || repository.id !== run.repository.id ||
+                repository.full_name !== `${owner}/${repo}`) {
+              return fail('Triggering run repository identity mismatch');
+            }
+            if (run.conclusion !== 'success' || !allowedEvents.has(run.event) ||
+                !Number.isInteger(run.id) || !Number.isInteger(run.run_attempt) ||
+                !shaPattern.test(run.head_sha || '')) {
+              return fail('Triggering run event, result, commit, or run identity is invalid');
+            }
+            const expectedWorkflow = await github.rest.actions.getWorkflow({
+              owner, repo, workflow_id: '.github/workflows/graph-metrics.yml'
+            });
+            const workflowPath = String(run.path || '').split('@', 1)[0];
+            const acceptedPaths = new Set([
+              '.github/workflows/graph-metrics.yml',
+              `${repository.full_name}/.github/workflows/graph-metrics.yml`,
+            ]);
+            if (run.workflow_id !== expectedWorkflow.data.id || !acceptedPaths.has(workflowPath)) {
+              return fail('Triggering workflow identity mismatch');
+            }
+            if (!run.head_repository || !Number.isInteger(run.head_repository.id)) {
+              return fail('Triggering head repository identity is unavailable');
+            }
+
+            let publishKind = 'summary';
+            let prNumber = null;
+            let baseSha = null;
+            let trustedRef = run.head_sha;
+            let configurationChanged = null;
+            if (run.event === 'pull_request') {
+              publishKind = 'pr';
+              const candidateNumbers = new Set(
+                (Array.isArray(run.pull_requests) ? run.pull_requests : [])
+                  .map((candidate) => candidate.number)
+                  .filter(Number.isInteger)
+              );
+              if (candidateNumbers.size === 0) {
+                const associated = await github.paginate(
+                  github.rest.repos.listPullRequestsAssociatedWithCommit,
+                  {owner, repo, commit_sha: run.head_sha, per_page: 100}
+                );
+                for (const candidate of associated) {
+                  if (Number.isInteger(candidate.number)) candidateNumbers.add(candidate.number);
+                }
+              }
+              const verified = [];
+              for (const number of candidateNumbers) {
+                const response = await github.rest.pulls.get({owner, repo, pull_number: number});
+                const pull = response.data;
+                if (pull.base.repo.id === repository.id && pull.base.ref === 'main' &&
+                    pull.head.repo && pull.head.repo.id === run.head_repository.id &&
+                    pull.head.sha === run.head_sha) {
+                  verified.push(pull);
+                }
+              }
+              if (verified.length !== 1) {
+                return fail(`Expected exactly one verified pull request, found ${verified.length}`);
+              }
+              const pull = verified[0];
+              prNumber = pull.number;
+              baseSha = pull.base.sha;
+              trustedRef = pull.base.sha;
+              if (pull.state !== 'open' || pull.head.sha !== run.head_sha) {
+                core.notice('Skipping stale or closed pull-request evidence');
+                core.setOutput('publish-kind', publishKind);
+                core.setOutput('pr-number', String(prNumber));
+                core.setOutput('head-sha', run.head_sha);
+                return;
+              }
+              const files = await github.paginate(
+                github.rest.pulls.listFiles,
+                {owner, repo, pull_number: prNumber, per_page: 100}
+              );
+              const guarded = new Set([
+                '.github/graph-metrics.yml',
+                '.github/behavior-evidence.yml',
+                '.github/graph-metrics-requirements.lock',
+                '.github/scripts/graph_metrics_ci.py',
+                '.github/scripts/graph_metrics_publisher.py',
+                '.github/workflows/graph-metrics.yml',
+                '.github/workflows/graph-metrics-publish.yml',
+              ]);
+              const touchesGuarded = (path) => typeof path === 'string' && guarded.has(path);
+              configurationChanged = files.length >= 3000 || files.some((file) =>
+                touchesGuarded(file.filename) || touchesGuarded(file.previous_filename)
+              );
+            } else {
+              if (run.head_repository.id !== repository.id || run.head_branch !== 'main') {
+                core.notice('Skipping a trusted-summary request outside main');
+                core.setOutput('publish-kind', publishKind);
+                core.setOutput('pr-number', '');
+                core.setOutput('head-sha', run.head_sha);
+                return;
+              }
+            }
+            if (!shaPattern.test(trustedRef || '') || (baseSha !== null && !shaPattern.test(baseSha))) {
+              return fail('Trusted checkout or base commit is invalid');
+            }
+
+            const expectedArtifactName =
+              `architecture-evidence-v1-run-${run.id}-attempt-${run.run_attempt}`;
+            const artifacts = await github.paginate(
+              github.rest.actions.listWorkflowRunArtifacts,
+              {owner, repo, run_id: run.id, per_page: 100}
+            );
+            const matches = artifacts.filter((artifact) =>
+              artifact.name === expectedArtifactName && !artifact.expired
+            );
+            if (matches.length !== 1) {
+              return fail(`Expected exactly one ${expectedArtifactName} artifact, found ${matches.length}`);
+            }
+            const artifact = matches[0];
+            if (!Number.isInteger(artifact.id) || !Number.isInteger(artifact.size_in_bytes) ||
+                artifact.size_in_bytes <= 0 || artifact.size_in_bytes > 52428800) {
+              return fail('Artifact identity or compressed size is outside policy');
+            }
+            if (artifact.workflow_run && artifact.workflow_run.id !== run.id) {
+              return fail('Artifact is not bound to the triggering workflow run');
+            }
+
+            const preflight = {
+              schema_version: 'architecture-evidence-workflow-run/1.0.0',
+              repository: repository.full_name,
+              repository_id: repository.id,
+              workflow_id: run.workflow_id,
+              run_id: run.id,
+              run_attempt: run.run_attempt,
+              event_name: run.event,
+              publish_kind: publishKind,
+              pr_number: prNumber,
+              base_sha: baseSha,
+              head_sha: run.head_sha,
+              head_repository_id: run.head_repository.id,
+              configuration_changed: configurationChanged,
+              artifact_id: artifact.id,
+              artifact_name: artifact.name,
+              artifact_size: artifact.size_in_bytes,
+              artifact_digest: artifact.digest || null,
+            };
+            fs.writeFileSync(process.env.PREFLIGHT_PATH, `${JSON.stringify(preflight)}\n`, {
+              encoding: 'utf8', mode: 0o600
+            });
+            core.setOutput('should-publish', 'true');
+            core.setOutput('publish-kind', publishKind);
+            core.setOutput('pr-number', prNumber === null ? '' : String(prNumber));
+            core.setOutput('base-sha', baseSha === null ? '' : baseSha);
+            core.setOutput('head-sha', run.head_sha);
+            core.setOutput('trusted-ref', trustedRef);
+            core.setOutput('artifact-id', String(artifact.id));
+
+      - name: Check out trusted publisher code only
+        if: steps.preflight.outputs.should-publish == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.preflight.outputs.trusted-ref }}
+          path: trusted-publisher
+          fetch-depth: 1
+          persist-credentials: false
+          submodules: false
+          lfs: false
+          sparse-checkout: |
+            .github/graph-metrics.yml
+            .github/behavior-evidence.yml
+            .github/graph-metrics-requirements.lock
+            .github/scripts/graph_metrics_ci.py
+            .github/scripts/graph_metrics_publisher.py
+            .github/workflows/graph-metrics.yml
+            .github/workflows/graph-metrics-publish.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Verify trusted checkout identity and scope
+        if: steps.preflight.outputs.should-publish == 'true'
+        shell: bash
+        env:
+          TRUSTED_REF: ${{ steps.preflight.outputs.trusted-ref }}
+        run: |
+          set -euo pipefail
+          trusted="$GITHUB_WORKSPACE/trusted-publisher"
+          test "$(git -C "$trusted" rev-parse HEAD)" = "$TRUSTED_REF"
+          test -f "$trusted/.github/scripts/graph_metrics_publisher.py"
+          test -f "$trusted/.github/scripts/graph_metrics_ci.py"
+          test -f "$trusted/.github/workflows/graph-metrics.yml"
+          test -f "$trusted/.github/workflows/graph-metrics-publish.yml"
+          test ! -e "$trusted/src"
+
+      - name: Set up pinned validation runtime
+        if: steps.preflight.outputs.should-publish == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12.14"
+
+      - name: Download source artifact without extracting it
+        if: steps.preflight.outputs.should-publish == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.preflight.outputs.artifact-id }}
+          path: ${{ runner.temp }}/architecture-evidence-incoming
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          skip-decompress: true
+          digest-mismatch: error
+
+      - name: Locate the single raw archive
+        if: steps.preflight.outputs.should-publish == 'true'
+        id: archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' archives < <(find "$RUNNER_TEMP/architecture-evidence-incoming" -maxdepth 1 -type f -print0)
+          if [[ "${#archives[@]}" -ne 1 ]]; then
+            echo "::error::Expected one downloaded archive, found ${#archives[@]}"
+            exit 1
+          fi
+          test ! -L "${archives[0]}"
+          test "$(stat -c '%s' "${archives[0]}")" -le 52428800
+          printf 'path=%s\n' "${archives[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate artifact and derive sanitized Markdown
+        if: steps.preflight.outputs.should-publish == 'true'
+        id: validate-artifact
+        shell: bash
+        env:
+          ARCHIVE_PATH: ${{ steps.archive.outputs.path }}
+          PREFLIGHT_PATH: ${{ runner.temp }}/architecture-evidence-preflight.json
+        run: |
+          set -euo pipefail
+          trusted="$GITHUB_WORKSPACE/trusted-publisher"
+          output="$RUNNER_TEMP/architecture-evidence-sanitized"
+          expected_publisher_digest="$(python -I -c 'import json,sys; print(json.load(open(sys.argv[1]))["publication"]["publisher_sha256"])' "$trusted/.github/graph-metrics.yml")"
+          test "$(sha256sum "$trusted/.github/scripts/graph_metrics_publisher.py" | cut -d ' ' -f 1)" = "$expected_publisher_digest"
+          python -I "$trusted/.github/scripts/graph_metrics_publisher.py" --archive "$ARCHIVE_PATH" --preflight "$PREFLIGHT_PATH" --policy "$trusted/.github/graph-metrics.yml" --behavior-policy "$trusted/.github/behavior-evidence.yml" --dependency-lock "$trusted/.github/graph-metrics-requirements.lock" --evaluator "$trusted/.github/scripts/graph_metrics_ci.py" --analysis-workflow "$trusted/.github/workflows/graph-metrics.yml" --publisher-workflow "$trusted/.github/workflows/graph-metrics-publish.yml" --output-dir "$output"
+          printf 'comment-b64=%s\n' "$(base64 -w 0 "$output/comment.md")" >> "$GITHUB_OUTPUT"
+          printf 'comment-sha256=%s\n' "$(sha256sum "$output/comment.md" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+
+  publish-pr:
+    name: Update the single pull-request evidence comment
+    needs: validate
+    if: needs.validate.outputs.should-publish == 'true' && needs.validate.outputs.publish-kind == 'pr'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Revalidate PR freshness and update the sticky comment
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.validate.outputs.pr-number }}
+          BASE_SHA: ${{ needs.validate.outputs.base-sha }}
+          HEAD_SHA: ${{ needs.validate.outputs.head-sha }}
+          COMMENT_B64: ${{ needs.validate.outputs.comment-b64 }}
+          COMMENT_SHA256: ${{ needs.validate.outputs.comment-sha256 }}
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const crypto = require('crypto');
+            const {owner, repo} = context.repo;
+            const number = Number(process.env.PR_NUMBER);
+            if (!Number.isInteger(number) ||
+                !/^[0-9a-f]{40}$/.test(process.env.BASE_SHA || '') ||
+                !/^[0-9a-f]{40}$/.test(process.env.HEAD_SHA || '')) {
+              core.setFailed('Invalid pull-request or commit identity');
+              return;
+            }
+            const pull = (await github.rest.pulls.get({owner, repo, pull_number: number})).data;
+            if (pull.state !== 'open' || pull.head.sha !== process.env.HEAD_SHA ||
+                pull.base.sha !== process.env.BASE_SHA ||
+                pull.base.repo.full_name !== `${owner}/${repo}` || pull.base.ref !== 'main') {
+              core.notice('Skipping stale or closed pull-request evidence');
+              return;
+            }
+            const bodyBuffer = Buffer.from(process.env.COMMENT_B64 || '', 'base64');
+            const digest = crypto.createHash('sha256').update(bodyBuffer).digest('hex');
+            if (digest !== process.env.COMMENT_SHA256 || bodyBuffer.length > 60000) {
+              core.setFailed('Sanitized comment digest or size mismatch');
+              return;
+            }
+            const body = bodyBuffer.toString('utf8');
+            const marker = '<!-- git-ai-architecture-evidence-v1 -->';
+            if (!body.startsWith(`${marker}\n`) || /[<>]/.test(body.slice(marker.length))) {
+              core.setFailed('Sanitized comment failed final Markdown validation');
+              return;
+            }
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {owner, repo, issue_number: number, per_page: 100}
+            );
+            const matches = comments.filter((comment) =>
+              comment.user && comment.user.login === 'github-actions[bot]' &&
+              typeof comment.body === 'string' && comment.body.includes(marker)
+            );
+            if (matches.length > 1) {
+              core.setFailed(`Found ${matches.length} architecture-evidence bot comments`);
+              return;
+            }
+            if (matches.length === 1) {
+              await github.rest.issues.updateComment({owner, repo, comment_id: matches[0].id, body});
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number: number, body});
+            }
+
+  publish-summary:
+    name: Publish trusted default-branch summary
+    needs: validate
+    if: needs.validate.outputs.should-publish == 'true' && needs.validate.outputs.publish-kind == 'summary'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Verify and write the sanitized summary
+        shell: bash
+        env:
+          COMMENT_B64: ${{ needs.validate.outputs.comment-b64 }}
+          COMMENT_SHA256: ${{ needs.validate.outputs.comment-sha256 }}
+        run: |
+          set -euo pipefail
+          summary="$RUNNER_TEMP/architecture-evidence-summary.md"
+          printf '%s' "$COMMENT_B64" | base64 --decode > "$summary"
+          test "$(sha256sum "$summary" | cut -d ' ' -f 1)" = "$COMMENT_SHA256"
+          test "$(stat -c '%s' "$summary")" -le 60000
+          sed -n '1,1200p' "$summary" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,238 @@
+{
+  "schema_version": "graph-evidence/1.0.0",
+  "mode": "report-only",
+  "default_branch": "main",
+  "analyzer": {
+    "name": "code-review-graph",
+    "version": "2.3.8",
+    "release_commit": "2c6dae32643572ee528eb9b77dbcc17f58f3a8c9",
+    "distribution": "code_review_graph-2.3.8-py3-none-any.whl",
+    "distribution_sha256": "013ae3c119cc7de337f9e88fe36daef82e2d4def942a014edcf97f126e208547",
+    "installed_code_sha256": "b14eb2ed706b208dd5c9ea5474161ba10a65081b4fdffa042cdbc1f87fe4ca15",
+    "schema_version": 9,
+    "official_action_adopted": false,
+    "official_action_source_sha256": "a851ad7200554000abb0b34d36944224037e0f15c743ba9cebe5c0715d787414"
+  },
+  "runtime": {
+    "os": "ubuntu-24.04",
+    "python": "3.12.14",
+    "python_implementation": "CPython",
+    "architecture": "x86_64",
+    "dependency_lock": ".github/graph-metrics-requirements.lock",
+    "dependency_lock_sha256": "d21852f298badee13c0f716b8352727680d4a76062af57e9238b45caea7ec20c",
+    "dependency_count": 76,
+    "environment": {
+      "CRG_SERIAL_PARSE": "1",
+      "CRG_LEIDEN_SEED": "42",
+      "PYTHONHASHSEED": "0",
+      "TZ": "UTC"
+    }
+  },
+  "comparability": {
+    "required_matching_digests": [
+      "analyzer",
+      "schema",
+      "policy",
+      "behavior_policy",
+      "normalizer",
+      "corpus",
+      "harness",
+      "environment",
+      "dependency_lock",
+      "evaluator",
+      "configuration",
+      "runtime"
+    ],
+    "mismatch_result": "not comparable; rebaseline required",
+    "configuration_change_result": "not comparable; rebaseline required"
+  },
+  "trust_review": {
+    "official_composite_action": "rejected",
+    "reasons": [
+      "nested Actions are referenced by mutable tags",
+      "the analyzer is installed from PyPI without an exact transitive hash lock",
+      "pinning the composite Action would not pin its package installation or nested Actions"
+    ],
+    "package_identity": "pinned wheel SHA-256 plus exact transitive hash lock",
+    "installed_code_identity": "all non-bytecode code_review_graph package files are RECORD-verified and folded into installed_code_sha256",
+    "parser_boundary": "attacker-controlled pull-request bytes are parsed only by a secretless read-only job",
+    "publication_boundary": "a trusted workflow_run publisher validates hostile archives and renders Markdown from allowlisted structured fields",
+    "target_execution": "disabled; the evidence job analyzes checkout bytes as data and never imports, builds, or executes the target project"
+  },
+  "corpus": {
+    "include": ["**"],
+    "exclude": [
+      ".git/**",
+      ".code-review-graph/**",
+      "target/**",
+      "node_modules/**",
+      "agent-support/intellij/.gradle/**",
+      "agent-support/intellij/build/**"
+    ],
+    "source_suffixes": [
+      ".bat",
+      ".bats",
+      ".c",
+      ".cc",
+      ".cpp",
+      ".cs",
+      ".go",
+      ".h",
+      ".js",
+      ".jsx",
+      ".kt",
+      ".kts",
+      ".mjs",
+      ".nix",
+      ".ps1",
+      ".py",
+      ".rs",
+      ".sh",
+      ".sql",
+      ".tf",
+      ".ts",
+      ".tsx"
+    ],
+    "template_suffixes": [".tpl"],
+    "coverage_contract": "Coverage is tracked over declared source-like Git files. Supported-but-unparsed and unsupported paths remain explicit limitations."
+  },
+  "boundaries": [
+    {"name": "binary-dispatch", "prefixes": ["src/main.rs", "src/cli/"]},
+    {"name": "command-interface", "prefixes": ["src/operations/commands/"]},
+    {"name": "daemon-orchestration", "prefixes": ["src/operations/daemon.rs", "src/operations/daemon/"]},
+    {"name": "git-adapter", "prefixes": ["src/operations/git/", "src/clients/git_cli/"]},
+    {"name": "authorship", "prefixes": ["src/operations/authorship/", "src/model/attribution", "src/model/authorship"]},
+    {"name": "persistence", "prefixes": ["src/model/repository/", "src/notes/"]},
+    {"name": "streams", "prefixes": ["src/operations/streams/", "src/model/stream"]},
+    {"name": "configuration", "prefixes": ["src/config/"]},
+    {"name": "api-clients", "prefixes": ["src/clients/api/", "src/clients/http.rs", "src/auth/"]},
+    {"name": "observability", "prefixes": ["src/observability/", "src/metrics/", "src/model/metrics/"]},
+    {"name": "model", "prefixes": ["src/model/"]},
+    {"name": "agent-integrations", "prefixes": ["src/operations/commands/checkpoint_agent/", "src/operations/mdm/", "agent-support/"]},
+    {"name": "tests", "prefixes": ["tests/"]},
+    {"name": "packaging", "prefixes": ["packaging/", "install.sh", "install.ps1"]},
+    {"name": "automation", "prefixes": [".github/", "scripts/", "Taskfile.yml"]},
+    {"name": "contracts-and-docs", "prefixes": ["docs/", "specs/"]}
+  ],
+  "projections": {
+    "all": ["CALLS", "CONTAINS", "DEPENDS_ON", "IMPLEMENTS", "IMPORTS_FROM", "INHERITS", "REFERENCES", "TESTED_BY"],
+    "imports": ["IMPORTS_FROM"],
+    "synchronous": ["CALLS", "IMPLEMENTS", "IMPORTS_FROM", "INHERITS", "REFERENCES"],
+    "tests": ["TESTED_BY"]
+  },
+  "normalizer": {
+    "schema_version": "graph-normalizer/1.1.0",
+    "path_policy": "repository-relative-posix",
+    "drop_fields": ["id", "last_updated", "community_id", "generated_at", "absolute_repository_path"],
+    "sort_nodes_by": ["file_path", "qualified_name", "kind"],
+    "sort_edges_by": ["source_file", "target_file"],
+    "file_edge_policy": "collapse selected mapped edges to distinct source-file target-file pairs; retain mapped edge multiplicity, kind, and confidence-tier counts separately"
+  },
+  "portable_evaluator": {
+    "normalizer_schema": "graph-normalizer/1.1.0",
+    "history_schema": "graph-history/1.2.0",
+    "schema_compatibility": "portable evaluator schemas and CI adapter schemas are distinct and not interchangeable"
+  },
+  "history": {
+    "execution": "interactive-portable-skill-only",
+    "seed": 6149,
+    "candidate_frame_count": 1500,
+    "discovery_frame_count": 1100,
+    "holdout_frame_count": 400,
+    "primary_case_count": 1000,
+    "pair_count": 500,
+    "discovery_signal_count": 350,
+    "discovery_control_count": 350,
+    "holdout_signal_count": 150,
+    "holdout_control_count": 150,
+    "discovery_cluster_cap": 7,
+    "holdout_cluster_cap": 4,
+    "snapshot_jobs": 4,
+    "split_order": "newer chronological cases form the holdout before outcomes are inspected",
+    "response_commits": 20,
+    "response_days": 60,
+    "selection_projection": "imports",
+    "selection_order": [
+      "new-cross-boundary-cycle-forming-edge",
+      "new-cross-boundary-scc",
+      "new-cycle-forming-edges",
+      "cross-boundary-cyclic-edge-growth",
+      "cycle-mass-growth",
+      "excess-cyclic-edge-growth",
+      "largest-scc-growth",
+      "cyclic-node-proportion-growth",
+      "fan-out-growth",
+      "fan-in-growth",
+      "commit-sha-tiebreak"
+    ],
+    "control_matching": [
+      "integration-time-band",
+      "component",
+      "language",
+      "repository-size-bucket",
+      "parser-coverage-band",
+      "change-type-from-paths",
+      "files-changed-bucket",
+      "diff-churn-bucket",
+      "seeded-sha256-tiebreak"
+    ],
+    "outcome_blinding": "freeze thresholds on discovery before revealing holdout outcomes"
+  },
+  "delphi": {
+    "execution": "interactive-portable-skill-only",
+    "panel_label": "Delphi-inspired correlated agent panel",
+    "minimum_panelists": 3,
+    "maximum_rounds": 3,
+    "round_one_blind": true,
+    "confidence_intervals_from_agent_count": false
+  },
+  "ci_adapter": {
+    "scope": "current and base/head machine evidence only",
+    "topology_level": "bounded file-level projection",
+    "configuration_schema": "architecture-ci-workflow-configuration/1.0.0",
+    "normalizer": {
+      "schema_version": "architecture-ci-normalizer/1.0.0",
+      "path_policy": "repository-relative-posix",
+      "drop_fields": ["id", "last_updated", "community_id", "generated_at", "absolute_repository_path"],
+      "sort_nodes_by": ["file_path", "qualified_name", "kind"],
+      "sort_edges_by": ["source_file", "target_file"],
+      "file_edge_policy": "collapse selected mapped edges to distinct source-file target-file pairs; retain mapped edge multiplicity, kind, and confidence-tier counts separately"
+    },
+    "snapshot_schema": "architecture-ci-snapshot/1.0.0",
+    "comparison_schema": "architecture-ci-comparison/1.0.0",
+    "behavior_schema": "behavior-evidence-ci-adapter/1.0.0",
+    "delphi_schema": "delphi-rounds-ci-adapter/1.0.0",
+    "schema_compatibility": "not interchangeable with portable evaluator artifacts",
+    "evaluator_sha256": "d4e534bcdac366310330349b6bcae7d0ab067a00a1ecfa3f29c5b32f022c2da7",
+    "behavior": "inconclusive; no frozen black-box observations execute in the parser job",
+    "history": "unavailable; the 1000-case study runs interactively through the portable skill",
+    "delphi": "unavailable; CI emits no model calls and no synthetic panel responses",
+    "full_evaluator_vendored": false
+  },
+  "configuration_paths": [
+    ".github/graph-metrics.yml",
+    ".github/behavior-evidence.yml",
+    ".github/graph-metrics-requirements.lock",
+    ".github/scripts/graph_metrics_ci.py",
+    ".github/scripts/graph_metrics_publisher.py",
+    ".github/workflows/graph-metrics.yml",
+    ".github/workflows/graph-metrics-publish.yml"
+  ],
+  "publication": {
+    "artifact_schema": "architecture-evidence-artifact/1.0.0",
+    "publisher_sha256": "b85023d7446f7615e28a9e2d3e965c69279ad09193f549766d8c0de2d69a8ac4",
+    "artifact_max_compressed_bytes": 52428800,
+    "artifact_max_uncompressed_bytes": 104857600,
+    "markdown_max_bytes": 60000,
+    "pull_request_comments": true,
+    "sticky_comment_marker": "<!-- git-ai-architecture-evidence-v1 -->",
+    "tracking_issue_comment": false
+  },
+  "interpretation": {
+    "composite_quality_score": false,
+    "merge_gate": false,
+    "automatic_refactor": false,
+    "crg_risk_is_heuristic": true,
+    "architecture_cannot_override_behavior": true
+  }
+}
