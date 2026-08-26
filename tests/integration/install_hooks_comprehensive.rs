@@ -375,6 +375,164 @@ fn install_hooks_wsl_dry_run_does_not_invoke_wsl() {
     );
 }
 
+// ==============================================================================
+// Author identity prompt tests
+// ==============================================================================
+
+fn git_ai_config_json(repo: &TestRepo) -> serde_json::Value {
+    let path = repo.test_home_path().join(".git-ai").join("config.json");
+    serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+}
+
+fn assert_install_hooks_skips_author_prompt(
+    output: &std::process::Output,
+    repo: &TestRepo,
+    context: &str,
+) {
+    assert!(
+        output.status.success(),
+        "install-hooks failed ({context}):\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("Author name"),
+        "author prompt must be skipped ({context}):\n{stdout}"
+    );
+    assert!(
+        git_ai_config_json(repo).get("author").is_none(),
+        "no author must be written to the config ({context})"
+    );
+}
+
+#[test]
+fn install_hooks_non_tty_skips_author_prompt() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let output = repo
+        .git_ai_command_without_pre_sync_for_test(
+            &["install-hooks"],
+            &[("GIT_AI_API_KEY", "test-key")],
+        )
+        .output()
+        .expect("run git-ai install-hooks");
+
+    assert_install_hooks_skips_author_prompt(&output, &repo, "non-tty stdin");
+}
+
+#[test]
+fn install_hooks_forced_tty_prompts_and_saves_author() {
+    use std::io::Write as _;
+
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            ("GIT_AI_TEST_FORCE_TTY", "1"),
+        ],
+    );
+    command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = command.spawn().expect("spawn git-ai install-hooks");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"Alice\nalice@example.com\n")
+        .unwrap();
+    let output = child.wait_with_output().expect("wait for install-hooks");
+
+    assert!(
+        output.status.success(),
+        "install-hooks failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Author name") && stdout.contains("Author email"),
+        "missing author prompt:\n{stdout}"
+    );
+
+    let config = git_ai_config_json(&repo);
+    assert_eq!(config["author"]["name"], "Alice");
+    assert_eq!(config["author"]["email"], "alice@example.com");
+}
+
+#[test]
+fn install_hooks_forced_tty_author_already_set_skips_prompt() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let config_path = repo.test_home_path().join(".git-ai").join("config.json");
+    let mut config = git_ai_config_json(&repo);
+    config["author"] = serde_json::json!({"name": "Preset Name"});
+    fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
+
+    let output = repo
+        .git_ai_command_without_pre_sync_for_test(
+            &["install-hooks"],
+            &[
+                ("GIT_AI_API_KEY", "test-key"),
+                ("GIT_AI_TEST_FORCE_TTY", "1"),
+            ],
+        )
+        .output()
+        .expect("run git-ai install-hooks");
+
+    assert!(
+        output.status.success(),
+        "install-hooks failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("Author name"),
+        "author prompt must be skipped when author.name is already set:\n{stdout}"
+    );
+    assert_eq!(
+        git_ai_config_json(&repo)["author"],
+        serde_json::json!({"name": "Preset Name"}),
+        "a partially-set author must be left untouched"
+    );
+}
+
+#[test]
+fn install_hooks_forced_tty_without_api_key_skips_prompt() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks"],
+        &[("GIT_AI_TEST_FORCE_TTY", "1")],
+    );
+    command.env_remove("GIT_AI_API_KEY").env_remove("API_KEY");
+    let output = command.output().expect("run git-ai install-hooks");
+
+    assert_install_hooks_skips_author_prompt(&output, &repo, "no api key");
+}
+
+#[test]
+fn install_hooks_dry_run_forced_tty_skips_prompt() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let output = repo
+        .git_ai_command_without_pre_sync_for_test(
+            &["install-hooks", "--dry-run"],
+            &[
+                ("GIT_AI_API_KEY", "test-key"),
+                ("GIT_AI_TEST_FORCE_TTY", "1"),
+            ],
+        )
+        .output()
+        .expect("run git-ai install-hooks --dry-run");
+
+    assert_install_hooks_skips_author_prompt(&output, &repo, "dry run");
+}
+
 #[test]
 #[cfg(not(windows))]
 fn install_hooks_detects_cline_from_vscode_server_extension_manifest() {
