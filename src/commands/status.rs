@@ -130,10 +130,11 @@ fn run_status(json: bool, diff_only: bool) -> Result<(), GitAiError> {
 
     let mut pathspecs: HashSet<String> = checkpoints
         .iter()
-        .flat_map(|cp| cp.entries.iter().map(|e| e.file.clone()))
+        .flat_map(|cp| cp.entries.iter().map(|e| normalize_status_path(&e.file)))
         .filter(|file| !should_ignore_file_with_matcher(file, &ignore_matcher))
         .collect();
     for file_path in working_va.files() {
+        let file_path = normalize_status_path(&file_path);
         if !should_ignore_file_with_matcher(&file_path, &ignore_matcher) {
             pathspecs.insert(file_path);
         }
@@ -296,7 +297,7 @@ fn parse_working_dir_numstat_stats(
         // Parse numstat format: "added\tdeleted\tfilename"
         let parts: Vec<&str> = line.split('\t').collect();
         if parts.len() >= 3 {
-            let file_path: String = crate::utils::unescape_git_path(parts[2]).nfc().collect();
+            let file_path = normalize_status_path(&crate::utils::unescape_git_path(parts[2]));
 
             // Post-filter by pathspec when we couldn't pass them as CLI args
             if needs_post_filter
@@ -325,6 +326,10 @@ fn parse_working_dir_numstat_stats(
     }
 
     (added_lines, deleted_lines)
+}
+
+fn normalize_status_path(path: &str) -> String {
+    path.nfc().collect()
 }
 
 /// Count AI-attributed lines from InitialAttributions (uncommitted changes)
@@ -397,7 +402,7 @@ mod tests {
     #[test]
     fn numstat_normalizes_decomposed_non_ascii_paths() {
         let mut pathspecs = HashSet::new();
-        pathspecs.insert("café.txt".to_string());
+        pathspecs.insert(normalize_status_path("cafe\u{301}.txt"));
         let ignore_matcher = build_ignore_matcher(&[]);
 
         let stats = parse_working_dir_numstat_stats(
