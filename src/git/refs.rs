@@ -447,6 +447,21 @@ pub fn copy_missing_notes_for_commits_from_ref(
     Ok(copied)
 }
 
+/// Write a batch of authorship notes directly to the git-notes backend
+/// (`refs/notes/ai`), bypassing `crate::git::notes_api`'s backend routing.
+///
+/// For external crates that embed this library and operate on repositories
+/// they manage themselves: they need a deterministic write that cannot be
+/// redirected by an ambient notes-backend configuration. Code inside this
+/// crate must keep going through `crate::git::notes_api` (see
+/// `git_backend_for_tests` below for why the raw functions stay private).
+pub fn notes_add_batch_direct(
+    repo: &Repository,
+    entries: &[(String, String)],
+) -> Result<(), GitAiError> {
+    notes_add_batch(repo, entries)
+}
+
 pub(in crate::git) fn notes_add_batch(
     repo: &Repository,
     entries: &[(String, String)],
