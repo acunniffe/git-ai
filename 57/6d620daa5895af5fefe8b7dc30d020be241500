@@ -1,0 +1,19 @@
+src/git/refs.rs
+  s_0891bc1b9a4303::t_acc07d35693f94 450-464
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "576d620daa5895af5fefe8b7dc30d020be241500",
+  "prompts": {},
+  "sessions": {
+    "s_0891bc1b9a4303": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "876b8f7b-5031-4e49-86af-acdb7f82fe6a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
