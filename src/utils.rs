@@ -108,6 +108,38 @@ pub fn is_interactive_terminal() -> bool {
     *IS_TERMINAL.get_or_init(|| std::io::stdin().is_terminal())
 }
 
+/// Read one line from stdin, giving up after `timeout`.
+///
+/// Returns `None` on timeout, EOF, or read error. Trailing newline characters
+/// (including `\r\n`) are stripped.
+///
+/// On timeout the reader thread is intentionally leaked, still blocked on
+/// stdin. Callers must not read stdin again after a `None` — the process is
+/// expected to finish its remaining work and exit shortly after.
+pub fn read_line_with_timeout(timeout: std::time::Duration) -> Option<String> {
+    read_line_with_timeout_impl(timeout, || {
+        let mut buf = String::new();
+        match std::io::stdin().read_line(&mut buf) {
+            Ok(0) | Err(_) => None,
+            Ok(_) => Some(buf),
+        }
+    })
+}
+
+fn read_line_with_timeout_impl(
+    timeout: std::time::Duration,
+    read: impl FnOnce() -> Option<String> + Send + 'static,
+) -> Option<String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(read());
+    });
+    rx.recv_timeout(timeout)
+        .ok()
+        .flatten()
+        .map(|line| line.trim_end_matches(['\n', '\r']).to_string())
+}
+
 /// Returns true if the process is running inside a background AI agent environment.
 pub fn is_in_background_agent() -> bool {
     !matches!(
@@ -1232,6 +1264,46 @@ mod tests {
     fn test_is_interactive_terminal() {
         // Just call it to ensure it doesn't panic
         let _ = is_interactive_terminal();
+    }
+
+    // =========================================================================
+    // read_line_with_timeout Tests
+    // =========================================================================
+
+    #[test]
+    fn test_read_line_with_timeout_returns_line_before_timeout() {
+        let result = read_line_with_timeout_impl(std::time::Duration::from_secs(5), || {
+            Some("Alice\n".to_string())
+        });
+        assert_eq!(result, Some("Alice".to_string()));
+    }
+
+    #[test]
+    fn test_read_line_with_timeout_trims_crlf() {
+        let result = read_line_with_timeout_impl(std::time::Duration::from_secs(5), || {
+            Some("Alice\r\n".to_string())
+        });
+        assert_eq!(result, Some("Alice".to_string()));
+    }
+
+    #[test]
+    fn test_read_line_with_timeout_times_out() {
+        let start = std::time::Instant::now();
+        let result = read_line_with_timeout_impl(std::time::Duration::from_millis(50), || {
+            std::thread::sleep(std::time::Duration::from_millis(2000));
+            Some("too late\n".to_string())
+        });
+        assert_eq!(result, None);
+        assert!(
+            start.elapsed() < std::time::Duration::from_millis(1500),
+            "must return at the timeout, not wait for the reader"
+        );
+    }
+
+    #[test]
+    fn test_read_line_with_timeout_returns_none_on_eof() {
+        let result = read_line_with_timeout_impl(std::time::Duration::from_secs(5), || None);
+        assert_eq!(result, None);
     }
 
     // =========================================================================
