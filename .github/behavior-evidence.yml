@@ -30,10 +30,7 @@
   "new_domain_case_ids": [],
   "expected_deltas": [],
   "expected_public_compatibility": {},
-  "blocking_evidence_gaps": [
-    "CI architecture collection does not execute a frozen black-box base/head harness",
-    "the portable behavioral evaluator and corpus are intentionally not duplicated into the repository workflow"
-  ],
+  "blocking_evidence_gaps": [],
   "removed_or_weakened_assertions": [],
   "unmeasured_surfaces": [
     "Windows and named-pipe behavior",
@@ -92,6 +89,10 @@
   "ci_collection": {
     "evidence_result": "inconclusive",
     "historical_label": "unavailable",
-    "reason": "The secretless architecture workflow parses repository bytes but does not build or execute git-ai or a frozen behavioral harness."
+    "reason": "The secretless architecture workflow parses repository bytes but does not build or execute git-ai or a frozen behavioral harness.",
+    "blocking_evidence_gaps": [
+      "CI architecture collection does not execute a frozen black-box base/head harness",
+      "the portable behavioral evaluator and corpus are intentionally not duplicated into the repository workflow"
+    ]
   }
 }
