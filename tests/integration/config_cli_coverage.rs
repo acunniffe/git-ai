@@ -334,6 +334,7 @@ fn fully_populated_file_config() -> FileConfig {
         attribution_sinks: Some(vec![
             git_ai::authorship::attribution_sink::SinkConfig::Stdout,
         ]),
+        attribution_fingerprints: Some(true),
         codex_hooks_format: Some("config_toml".to_string()),
         notes_backend: Some(NotesBackendConfig::default()),
         transcript_streaming_lookback_days: Some(7),

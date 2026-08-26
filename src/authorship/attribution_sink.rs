@@ -23,6 +23,20 @@ pub struct AttributionEvent {
     pub branch: String,
     pub is_default_branch: bool,
     pub note_content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attributions: Option<Vec<FileAttribution>>,
+}
+
+/// Per-file attribution with ordered fingerprints for squash-safe matching.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileAttribution {
+    pub file: String,
+    pub session_id: String,
+    pub model: String,
+    pub tool: String,
+    pub line_ranges: Vec<[u32; 2]>,
+    pub fingerprints: Vec<String>,
+    pub fingerprints_complete: bool,
 }
 
 /// Configuration for a single attribution sink.
@@ -186,6 +200,9 @@ pub fn events_from_hook_payload(payload: &[serde_json::Value]) -> Vec<Attributio
     payload
         .iter()
         .filter_map(|entry| {
+            let attributions = entry
+                .get("attributions")
+                .and_then(|value| serde_json::from_value(value.clone()).ok());
             Some(AttributionEvent {
                 schema_version: entry.get("schema_version")?.as_u64()? as u32,
                 commit_sha: entry.get("commit_sha")?.as_str()?.to_string(),
@@ -199,6 +216,7 @@ pub fn events_from_hook_payload(payload: &[serde_json::Value]) -> Vec<Attributio
                 branch: entry.get("branch")?.as_str()?.to_string(),
                 is_default_branch: entry.get("is_default_branch")?.as_bool()?,
                 note_content: entry.get("note_content")?.as_str()?.to_string(),
+                attributions,
             })
         })
         .collect()
@@ -231,6 +249,7 @@ mod tests {
             branch: "main".to_string(),
             is_default_branch: true,
             note_content: "test note".to_string(),
+            attributions: None,
         }
     }
 

@@ -65,7 +65,7 @@ pub(crate) fn post_notes_updated_refs<'a>(
     let git_dir = context.git_dir.to_string_lossy().into_owned();
     let branch = context.branch;
     let is_default_branch = context.is_default_branch;
-    let payload = notes
+    let mut payload = notes
         .map(|(commit_sha, note_content)| {
             let mut entry = serde_json::json!({
                 "schema_version": HOOK_SCHEMA_VERSION,
@@ -83,6 +83,9 @@ pub(crate) fn post_notes_updated_refs<'a>(
             entry
         })
         .collect::<Vec<_>>();
+    if config.attribution_fingerprints() {
+        enrich_payload_with_fingerprints(repo, &mut payload);
+    }
     let payload_json = match serde_json::to_string(&payload) {
         Ok(json) => json,
         Err(e) => {
@@ -140,6 +143,38 @@ pub(crate) fn post_notes_updated_refs<'a>(
         std::thread::spawn(move || {
             super::attribution_sink::dispatch_to_sinks(&events);
         });
+    }
+}
+
+fn enrich_payload_with_fingerprints(repo: &Repository, payload: &mut [serde_json::Value]) {
+    use super::fingerprint::{build_file_attributions, find_working_log_dir, read_checkpoints};
+
+    for entry in payload {
+        let Some(commit_sha) = entry.get("commit_sha").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let parent_sha = repo
+            .revparse_single(&format!("{commit_sha}^"))
+            .map(|object| object.id())
+            .unwrap_or_else(|_| "initial".to_string());
+        let Some(working_log_dir) = find_working_log_dir(repo.path(), &parent_sha) else {
+            continue;
+        };
+        let checkpoints = match read_checkpoints(&working_log_dir) {
+            Ok(checkpoints) => checkpoints,
+            Err(error) => {
+                tracing::debug!(
+                    "[git_ai_hooks] Failed to read checkpoints for {}: {}",
+                    commit_sha,
+                    error
+                );
+                continue;
+            }
+        };
+        let attributions = build_file_attributions(&working_log_dir, &checkpoints);
+        if !attributions.is_empty() {
+            entry["attributions"] = serde_json::json!(attributions);
+        }
     }
 }
 

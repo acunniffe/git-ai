@@ -32,6 +32,7 @@ Each entry has the following fields:
 | `branch` | `string` | Current branch name (or `"unknown"`). |
 | `is_default_branch` | `bool` | Whether `branch` matches the remote's default branch. |
 | `note_content` | `string` | The full content of the sealed attribution note. |
+| `attributions` | `array?` | Ordered per-line fingerprints, present when `attribution_fingerprints` is enabled. |
 
 **Example payload:**
 
@@ -88,6 +89,11 @@ sinks** configured in `~/.git-ai/config.json`:
 
 Sinks receive the same `AttributionEvent` payload as shell hooks, in
 structured form. Failures are logged, never blocking.
+
+Set `attribution_fingerprints` to `true` to enrich hook and sink events
+with squash-safe line fingerprints. See the
+[attribution cookbook](attribution-cookbook.md) for the payload and
+consumer matching contract.
 
 | Sink type | Behavior |
 |---|---|

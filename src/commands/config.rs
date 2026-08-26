@@ -126,6 +126,7 @@ fn print_config_help() {
     println!("  custom_attributes            Custom telemetry attributes, string->string (object)");
     println!("  git_ai_hooks                 Hook name -> shell commands map (object)");
     println!("  attribution_sinks            Attribution delivery sinks (array)");
+    println!("  attribution_fingerprints     Emit squash-safe content fingerprints (bool)");
     println!("  codex_hooks_format           Codex hook install format (config_toml/hooks_json)");
     println!("  notes_backend.kind           Notes backend kind (git_notes/http)");
     println!("  notes_backend.backend_url    Notes backend base URL. Required when kind=http.");
@@ -156,6 +157,7 @@ fn print_config_help() {
     println!("  git-ai config --add feature_flags.my_flag true");
     println!("  git-ai config --add git_ai_hooks.post_notes_updated \"./my-hook.sh\"");
     println!("  git-ai config set attribution_sinks '[{{\"type\":\"stdout\"}}]'");
+    println!("  git-ai config set attribution_fingerprints true");
     println!("  git-ai config set codex_hooks_format hooks_json");
     println!("  git-ai config set allow_superuser true");
     println!("  git-ai config set transcript_streaming_lookback_days 1");
@@ -368,6 +370,10 @@ fn show_all_config() -> Result<(), String> {
         serde_json::to_value(runtime_config.attribution_sinks())
             .unwrap_or_else(|_| Value::Array(Vec::new())),
     );
+    effective_config.insert(
+        "attribution_fingerprints".to_string(),
+        Value::Bool(runtime_config.attribution_fingerprints()),
+    );
 
     effective_config.insert(
         "codex_hooks_format".to_string(),
@@ -532,6 +538,7 @@ fn get_config_value(key: &str) -> Result<(), String> {
                 .unwrap_or_else(|_| Value::Object(serde_json::Map::new())),
             "attribution_sinks" => serde_json::to_value(runtime_config.attribution_sinks())
                 .unwrap_or_else(|_| Value::Array(Vec::new())),
+            "attribution_fingerprints" => Value::Bool(runtime_config.attribution_fingerprints()),
             "codex_hooks_format" => {
                 Value::String(runtime_config.codex_hooks_format().as_str().to_string())
             }
@@ -848,6 +855,12 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
                 file_config.attribution_sinks = Some(sinks);
                 crate::config::save_file_config(&file_config)?;
                 println!("[attribution_sinks]: {}", value);
+            }
+            "attribution_fingerprints" => {
+                let enabled = parse_bool(value)?;
+                file_config.attribution_fingerprints = Some(enabled);
+                crate::config::save_file_config(&file_config)?;
+                println!("[attribution_fingerprints]: {}", enabled);
             }
             "codex_hooks_format" => {
                 let format = parse_codex_hooks_format(value)?;
@@ -1245,6 +1258,13 @@ fn unset_config_value(key: &str) -> Result<(), String> {
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
                     println!("- [attribution_sinks]: {:?}", v);
+                }
+            }
+            "attribution_fingerprints" => {
+                let old_value = file_config.attribution_fingerprints.take();
+                crate::config::save_file_config(&file_config)?;
+                if let Some(v) = old_value {
+                    println!("- [attribution_fingerprints]: {}", v);
                 }
             }
             "codex_hooks_format" => {
