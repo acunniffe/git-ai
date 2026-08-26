@@ -841,11 +841,17 @@ fn codex_fork_rollout_checkpoint_tracks_one_stream_keyed_by_filename() {
         .join("internal")
         .join("transcripts-db");
     let db = StreamsDatabase::open(&db_path).unwrap();
+    // The daemon canonicalizes stream paths before storing them (macOS tmp
+    // dirs live under the /var -> /private/var symlink); comparing against
+    // the canonicalized path also pins that checkpoint registration and
+    // sweep discovery converge on the same key - the invariant that keeps
+    // one row per file.
+    let canonical_rollout = rollout.canonicalize().unwrap().display().to_string();
     let rows: Vec<StreamRecord> = db
         .all_streams()
         .unwrap()
         .into_iter()
-        .filter(|r| r.stream_path == rollout.display().to_string())
+        .filter(|r| r.stream_path == canonical_rollout)
         .collect();
     assert_eq!(
         rows.len(),
