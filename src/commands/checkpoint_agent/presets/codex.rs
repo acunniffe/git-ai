@@ -141,12 +141,25 @@ impl AgentPreset for CodexPreset {
             metadata,
         };
 
-        let stream_source = transcript_path.map(|tp| StreamSource {
-            path: PathBuf::from(tp),
-            format: StreamFormat::CodexJsonl,
-            session_id: generate_session_id(&context.external_session_id, "codex"),
-            external_session_id: context.external_session_id.clone(),
-            external_parent_session_id: None,
+        // Stream identity must come from the rollout FILENAME, exactly like
+        // sweep discovery (see CodexAgent::discover_sessions). Fork/subagent
+        // rollouts report the parent thread's id in hook payloads; keying the
+        // stream by that id would track the same file a second time under a
+        // different identity, re-ingesting and double counting every line.
+        let stream_source = transcript_path.map(|tp| {
+            let path = PathBuf::from(tp);
+            let external_session_id =
+                crate::streams::agents::CodexAgent::external_session_id_from_rollout_path(&path)
+                    .unwrap_or_else(|| context.external_session_id.clone());
+            let external_parent_session_id =
+                crate::streams::agents::CodexAgent::detect_subagent_parent(&path);
+            StreamSource {
+                path,
+                format: StreamFormat::CodexJsonl,
+                session_id: generate_session_id(&external_session_id, "codex"),
+                external_session_id,
+                external_parent_session_id,
+            }
         });
 
         let bash_command = parse::bash_command_from_hook_input(&data);
@@ -304,6 +317,97 @@ mod tests {
         match &events[0] {
             ParsedHookEvent::PostBashCall(e) => {
                 assert_eq!(e.context.agent_id.model, "gpt-5.3-codex");
+            }
+            _ => panic!("Expected PostBashCall"),
+        }
+    }
+
+    #[test]
+    fn test_codex_stream_identity_follows_rollout_filename() {
+        use std::io::Write;
+
+        // Subagent/fork rollouts report the PARENT thread id in hook
+        // payloads, but the stream identity must come from the child file's
+        // own UUID (matching sweep discovery) so the file isn't tracked and
+        // uploaded twice under two identities.
+        let parent_id = "01a00000-0000-7000-8000-000000000001";
+        let child_id = "01a00000-0000-7000-8000-000000000002";
+
+        let dir = tempfile::tempdir().unwrap();
+        let child_path = dir
+            .path()
+            .join(format!("rollout-2026-08-20T18-37-58-{}.jsonl", child_id));
+        let mut f = std::fs::File::create(&child_path).unwrap();
+        f.write_all(
+            format!(
+                r#"{{"type":"session_meta","payload":{{"id":"{}","session_id":"{}","forked_from_id":"{}","thread_source":"subagent","model":"gpt-5.1-codex"}}}}"#,
+                child_id, parent_id, parent_id
+            )
+            .as_bytes(),
+        )
+        .unwrap();
+        f.flush().unwrap();
+
+        let input = json!({
+            "cwd": "/home/user/project",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Bash",
+            "session_id": parent_id,
+            "tool_use_id": "tu-1",
+            "transcript_path": child_path.to_string_lossy()
+        })
+        .to_string();
+
+        let events = CodexPreset.parse(&input, "t_test123456789a").unwrap();
+        match &events[0] {
+            ParsedHookEvent::PostBashCall(e) => {
+                let source = e.stream_source.as_ref().expect("stream source");
+                assert_eq!(source.external_session_id, child_id);
+                assert_eq!(source.session_id, generate_session_id(child_id, "codex"));
+                assert_eq!(
+                    source.external_parent_session_id.as_deref(),
+                    Some(parent_id),
+                );
+                // Checkpoint attribution keeps the logical session id from
+                // the hook payload.
+                assert_eq!(e.context.external_session_id, parent_id);
+            }
+            _ => panic!("Expected PostBashCall"),
+        }
+    }
+
+    #[test]
+    fn test_codex_plain_session_stream_identity_matches_hook_id() {
+        // The common case: a plain session's hook id IS the rollout filename
+        // UUID, so the filename-derived identity must equal the hook id and
+        // carry no parent — one stream row, same as before the fix.
+        let session = "01a00000-0000-7000-8000-00000000000a";
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir
+            .path()
+            .join(format!("rollout-2026-02-06T20-35-49-{}.jsonl", session));
+        std::fs::write(
+            &path,
+            format!("{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{session}\"}}}}\n"),
+        )
+        .unwrap();
+
+        let input = json!({
+            "cwd": "/home/user/project",
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Bash",
+            "session_id": session,
+            "tool_use_id": "tu-1",
+            "transcript_path": path.to_string_lossy()
+        })
+        .to_string();
+
+        let events = CodexPreset.parse(&input, "t_test123456789a").unwrap();
+        match &events[0] {
+            ParsedHookEvent::PostBashCall(e) => {
+                let source = e.stream_source.as_ref().expect("stream source");
+                assert_eq!(source.external_session_id, session);
+                assert_eq!(source.external_parent_session_id, None);
             }
             _ => panic!("Expected PostBashCall"),
         }
