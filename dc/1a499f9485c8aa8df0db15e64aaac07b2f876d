@@ -1,0 +1,25 @@
+src/daemon.rs
+  71f132d171c301c4 1405-1421
+src/commands/hooks/revert_hooks.rs
+  71f132d171c301c4 135-138,140-147,152,162-168,173,188-189,201-204,210-217,219,258-278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "dc1a499f9485c8aa8df0db15e64aaac07b2f876d",
+  "prompts": {
+    "71f132d171c301c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5597a7ef-171b-4c73-b5b4-da83540f06d5",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 83,
+      "total_deletions": 16,
+      "accepted_lines": 78,
+      "overriden_lines": 0
+    }
+  }
+}

@@ -1,0 +1,117 @@
+tests/performance.rs
+  c4a54a1 149-154,156-158,160,163-167,171-175,178
+  4dc05d4 108,133-135
+  4a7cd76 84-89,91-93,96,98-99,102-103,106,109-132,136-139
+  ee5fb78 105
+  human 176-177
+  0c9f863 441-474
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "f8d9eff62b6fe52ddddf157df3968492b54897c1",
+  "prompts": {
+    "0c9f863": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2d0f4358-3286-423e-a3e2-e27c7124761b",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/performance.rs:393-395 fill this out with th esame logic we use in print_summary (they should always agree)\n\nTuple. @tests/performance.rs:393-394 0 = % overhead 1 = avg Duration overhead",
+          "timestamp": "2025-11-30T12:30:49.831Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll read the performance.rs file to understand the logic in `print_summary` and implement these functions accordingly.",
+          "timestamp": "2025-11-30T12:30:54.776Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I can see the logic in `print_summary`. I'll implement both functions to use the same calculations:",
+          "timestamp": "2025-11-30T12:31:03.585Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've implemented the `average_overhead()` function that returns a tuple of `(f64, Duration)` where:\n- The first element (f64) is the average percentage overhead\n- The second element (Duration) is the average absolute duration overhead\n\nThe logic is identical to what's used in `print_summary()`:\n1. Filters results where total_duration > git_duration (overhead cases)\n2. Returns (0.0, Duration::ZERO) if there are no overhead cases\n3. Calculates average absolute overhead as the sum of (total - git) durations divided by the number of overhead results\n4. Calculates average percentage overhead as the sum of ((total - git) / git * 100) divided by the number of overhead results\n\nThis ensures that `average_overhead()` and `print_summary()` will always agree on the calculations.",
+          "timestamp": "2025-11-30T12:31:13.724Z"
+        }
+      ],
+      "total_additions": 36,
+      "total_deletions": 1,
+      "accepted_lines": 34,
+      "overriden_lines": 0
+    },
+    "4a7cd76": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "380f7032-504e-4a01-93ca-25b3e5e038d8",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/performance.rs:25 now make another case called human_only edits_in_big_files_then_commit\n\n\n\nThat should use the big files list (not the 10 random files) for each test repo",
+          "timestamp": "2025-11-30T12:25:32.824Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll help you create a new test case that uses big files instead of random files. Let me first read the performance test file to understand the structure.",
+          "timestamp": "2025-11-30T12:25:38.507Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll create a new test case that uses the large files instead of random files. I can see the current test uses `random_files.random_files.iter().take(3)` for 3 random files. The new test should use `random_files.large_files` which contains 2 large files (5k-10k lines).",
+          "timestamp": "2025-11-30T12:25:45.647Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've created the new test case `test_human_only_edits_in_big_files_then_commit`. Here's what it does:\n\n**Key differences from the original test:**\n\n1. **Uses large files**: Instead of `random_files.random_files.iter().take(3)`, it now uses `random_files.large_files` which contains the 2 large files (5k-10k lines) found for each repo\n2. **Updated naming**: The test function name, commit message, and output messages all reflect that it's testing big files\n3. **Same benchmarking approach**: It still runs 10 iterations, edits the files, stages them, and benchmarks the commit operation\n\nThe test will run on all 4 repositories (chromium, react, node, chakracore) and measure the performance of committing changes to large files rather than random smaller files.",
+          "timestamp": "2025-11-30T12:26:11.329Z"
+        }
+      ],
+      "total_additions": 51,
+      "total_deletions": 32,
+      "accepted_lines": 43,
+      "overriden_lines": 0
+    },
+    "c4a54a1": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6eb7befd-9cc1-4fb5-8826-0d641351c539",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/performance.rs:84-147 Now add a test case where we reset each of these test repos HEAD~5 \n\n\n\nWe'll be benchmarking the result of the git reset line use --mixed (default)",
+          "timestamp": "2025-11-30T12:38:26.678Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll add a new test case that benchmarks `git reset HEAD~5` on the performance repos. Let me first read the file to understand the full context and then add the new test.",
+          "timestamp": "2025-11-30T12:38:32.721Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll add a new test case that benchmarks `git reset HEAD~5` on each performance repo:",
+          "timestamp": "2025-11-30T12:38:39.871Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Perfect! I've added the new test case `test_git_reset_head_5` that:\n\n1. **Parameterized with rstest**: Tests all four repos (chromium, react, node, chakracore)\n2. **Uses the Sampler**: Runs the benchmark 10 times for statistical accuracy\n3. **Benchmarks git reset**: Uses `benchmark_git(&[\"reset\", \"HEAD~5\"])` to measure the performance of resetting HEAD by 5 commits (using `--mixed` by default)\n4. **Reports results**: Prints a summary and asserts that the overhead is less than 10% or under 70ms\n\nThe test follows the exact same pattern as the existing performance tests and will measure the overhead introduced by your git wrapper when performing a `git reset HEAD~5` operation on large repositories.",
+          "timestamp": "2025-11-30T12:39:01.073Z"
+        }
+      ],
+      "total_additions": 32,
+      "total_deletions": 0,
+      "accepted_lines": 30,
+      "overriden_lines": 2
+    }
+  }
+}

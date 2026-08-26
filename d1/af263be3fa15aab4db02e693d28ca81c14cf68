@@ -1,0 +1,29 @@
+.github/workflows/release.yml
+  s_2740b0b2a8bdc6::t_94f02e3a56d7f8 21-23,25,29,36-37,43-44,46-48,209-210,212-214,281,283,285-289
+src/commands/git_ai_handlers.rs
+  s_2740b0b2a8bdc6::t_63b2385b8e9e43 55,172-182,385
+src/commands/install_hooks.rs
+  s_2740b0b2a8bdc6::t_0dcd9b21b6a5da 312-326,344,379-385,387-401,406-407,416,423
+src/commands/mod.rs
+  s_2740b0b2a8bdc6::t_e9f7f82b0b15dc 21
+src/commands/package_setup.rs
+  s_2740b0b2a8bdc6::t_98b73b493ca114 1-223
+src/main.rs
+  s_2740b0b2a8bdc6::t_1fd53d7a3e75de 30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "d1af263be3fa15aab4db02e693d28ca81c14cf68",
+  "prompts": {},
+  "sessions": {
+    "s_2740b0b2a8bdc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f6cfb-8eed-7430-8509-7cb0df96f1ba",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

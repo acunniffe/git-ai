@@ -1,0 +1,24 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/DocumentChangeTrackerService.kt
+  11d03b37dc3ad21b 47-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.8",
+  "base_commit_sha": "6490dc22c38f2c5c22fc5933d78c3e1795432fa7",
+  "prompts": {
+    "11d03b37dc3ad21b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9e7961-e2a3-4c64-9188-a3037cb57221",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 79,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/f7e6ca7fcae3b599bb19c14455a8696aedc1a10217c7d22b8dddbc8f436d3ae6"
+    }
+  }
+}

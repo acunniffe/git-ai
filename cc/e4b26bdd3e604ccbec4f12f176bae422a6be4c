@@ -1,0 +1,19 @@
+tests/commit_tree_update_ref.rs
+  s_18b694e06092e7::t_90f5acd82e44cb 1038-1041,1169-1172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "cce4b26bdd3e604ccbec4f12f176bae422a6be4c",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

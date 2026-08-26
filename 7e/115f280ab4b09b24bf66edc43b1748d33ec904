@@ -1,0 +1,21 @@
+tests/integration/sessions_cutover.rs
+  s_59875d04e5ebbf::t_1399a541b5352b 62-63,108-109,113-119,276,297,400,491-495,511-515,609,787,795-800,871,1039-1042,1167-1176,1316,1321-1322,1331-1334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "7e115f280ab4b09b24bf66edc43b1748d33ec904",
+  "prompts": {},
+  "sessions": {
+    "s_59875d04e5ebbf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6581f90a-0171-4534-b30b-ad5952501a1a",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/e551cf7e16a7685c3348373a2f2bc9273e9f1b9215d88037ed916656b0b37189"
+    }
+  }
+}

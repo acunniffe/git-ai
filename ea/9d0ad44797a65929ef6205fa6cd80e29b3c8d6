@@ -1,0 +1,26 @@
+src/mdm/utils.rs
+  d73d58e7273afc7a 211
+src/mdm/git_clients/fork_app.rs
+  d73d58e7273afc7a 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "ea9d0ad44797a65929ef6205fa6cd80e29b3c8d6",
+  "prompts": {
+    "d73d58e7273afc7a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9cc353a-64a8-4bcd-b4fc-372a7c6a18c8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/dfe485b9ca8642c5289086737d6b24b06c902a880605ae8fad618d4b5aa946c2"
+    }
+  }
+}

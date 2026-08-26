@@ -1,0 +1,23 @@
+src/commands/checkpoint_agent/agent_presets.rs
+  611224b62689eb06 22-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "cc4b4a445e72d36644d7b218ca3d0a1129cf292d",
+  "prompts": {
+    "611224b62689eb06": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ea1ea2ee-fd12-4ad7-913a-d73a4e98b54e",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

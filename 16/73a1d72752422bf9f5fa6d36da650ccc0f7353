@@ -1,0 +1,19 @@
+src/commands/checkpoint_agent/presets/codex.rs
+  s_a7abd7890479ef::t_dd3a9864ee7912 366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "1673a1d72752422bf9f5fa6d36da650ccc0f7353",
+  "prompts": {},
+  "sessions": {
+    "s_a7abd7890479ef": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "794639eb-c4b2-4294-b27d-ce8c82fd9c3c",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

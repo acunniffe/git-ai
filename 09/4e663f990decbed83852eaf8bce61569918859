@@ -1,0 +1,37 @@
+tests/integration/install_hooks_comprehensive.rs
+  s_308399384e171e::t_ead6740203adee 321-322
+  s_308399384e171e::t_af4d11b5f951a9 293,303-305,312-320
+  s_308399384e171e::t_57bc9f3bed3dfc 277-292,294-302,306-311,323-339
+  s_308399384e171e::t_5c6a18562c0cae 276
+src/mdm/agents/codex.rs
+  s_308399384e171e::t_7d0db88c5c8f6e 2
+  s_308399384e171e::t_66454280d351b9 273-275
+  s_308399384e171e::t_af4d11b5f951a9 242
+  s_308399384e171e::t_f31aa726551c8d 2012-2058
+  s_308399384e171e::t_90717a788894ff 3,236-241,243-272,276-299,776-778,792-794,840-842,883-885
+  s_66613148b4df44::t_e91d77a9477a35 2010-2011
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "094e663f990decbed83852eaf8bce61569918859",
+  "prompts": {},
+  "sessions": {
+    "s_308399384e171e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5c9-5bf9-7c53-9e95-a36b3e6eca3c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_66613148b4df44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5cd-5c09-7951-86b7-b151a4d0de90",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
