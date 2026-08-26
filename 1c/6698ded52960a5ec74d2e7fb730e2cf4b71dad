@@ -1,0 +1,25 @@
+docs/superpowers/specs/2026-04-20-agent-presets-rewrite-design.md
+  s_a5f4b12640a58f::t_4c9092287fc849 165-167
+  s_a5f4b12640a58f::t_a174dd1176e529 390
+  s_a5f4b12640a58f::t_58bc48a35e9e9f 172,175
+  s_a5f4b12640a58f::t_15441f5b498e9d 494
+  s_a5f4b12640a58f::t_4e1f2b3d4a399b 57-64,69-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "1c6698ded52960a5ec74d2e7fb730e2cf4b71dad",
+  "prompts": {},
+  "sessions": {
+    "s_a5f4b12640a58f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6cede33a-f5a5-4d2d-8694-f7b2f0278d54",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/55009d080fe27d45c8a79453810d6e34107fc217cc5306b21f4378972bf9ff2e"
+    }
+  }
+}

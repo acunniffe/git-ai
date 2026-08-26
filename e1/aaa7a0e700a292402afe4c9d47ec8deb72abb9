@@ -1,0 +1,22 @@
+src/authorship/rewrite_revert.rs
+  s_4d604bdd40c765::t_a7b45844c45be0 115-118,228-233
+  s_4d604bdd40c765::t_2214ccb72e76ba 234,340-353
+src/metrics/events.rs
+  s_4d604bdd40c765::t_5a45a98b8473d2 314-315,318-319
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "e1aaa7a0e700a292402afe4c9d47ec8deb72abb9",
+  "prompts": {},
+  "sessions": {
+    "s_4d604bdd40c765": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ee61a-3160-7480-af4b-dd94e5be48f4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

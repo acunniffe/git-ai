@@ -1,0 +1,58 @@
+agent-support/vscode/.vscode/launch.json
+  a92584e5e17f21b7 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "6831c8dfeadd50d23db8eb325d15c1340c63231f",
+  "prompts": {
+    "a92584e5e17f21b7": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ff49f457-c845-4433-9bdb-488f65e75e98",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "How do we make @.vscode/launch.json:1-22  open the current workspace?",
+          "timestamp": "2025-12-28T12:50:47.679Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Updating the launch configuration to open the current workspace in the extension host window.",
+          "timestamp": "2025-12-28T12:50:51.927Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "target_file": ".vscode/launch.json"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Adding the workspace folder to the args so the extension host opens the current workspace:",
+          "timestamp": "2025-12-28T12:50:53.256Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "search_replace",
+          "input": {
+            "file_path": ".vscode/launch.json"
+          }
+        },
+        {
+          "type": "assistant",
+          "text": "Updated the launch configuration to open the current workspace. Added `${workspaceFolder}` to the `args` array. When you debug the extension, the extension host window will open with the current workspace folder loaded.\n\nThe change adds the workspace folder path as an argument, which VS Code uses to open that folder in the extension host window.",
+          "timestamp": "2025-12-28T12:51:07.055Z"
+        }
+      ],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

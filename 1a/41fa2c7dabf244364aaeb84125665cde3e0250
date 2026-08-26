@@ -1,0 +1,31 @@
+src/commands/git_handlers.rs
+  682bebb 8,187-189,256-258
+src/commands/hooks/mod.rs
+  682bebb 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.22",
+  "base_commit_sha": "1a41fa2c7dabf244364aaeb84125665cde3e0250",
+  "prompts": {
+    "682bebb": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "e9b056f9-0315-401e-b047-d0b904e72345",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@src/commands/git_handlers.rs:1-412 add pre and post command handlers for git stash\n\n\n\nfor now just print debug_log (\"pre stash\") and \"post stash\"",
+          "timestamp": "2025-11-23T18:15:08.880Z"
+        }
+      ],
+      "total_additions": 31,
+      "total_deletions": 2,
+      "accepted_lines": 30,
+      "overriden_lines": 0
+    }
+  }
+}

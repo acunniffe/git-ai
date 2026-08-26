@@ -1,0 +1,29 @@
+RELEASE.md
+  63c42de935b6604b 147,149-152,155-168,171-193,196-221
+scripts/fix-rust-version.sh
+  63c42de935b6604b 1-52
+scripts/release-to-jfrog.sh
+  63c42de935b6604b 121,124-160,163-164,178-179
+Dockerfile.build
+  63c42de935b6604b 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.24",
+  "base_commit_sha": "3b3cedb6754ca3b8464397586d1a1de89b18193a",
+  "prompts": {
+    "63c42de935b6604b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "575ef473-9abd-4c53-84cc-584e06d05182",
+        "model": "unknown"
+      },
+      "human_author": "shawn.tian <shawn.tian@bkyo.io>",
+      "messages": [],
+      "total_additions": 190,
+      "total_deletions": 6,
+      "accepted_lines": 190,
+      "overriden_lines": 0
+    }
+  }
+}

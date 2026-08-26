@@ -1,0 +1,35 @@
+src/commands/git_ai_handlers.rs
+  s_308399384e171e::t_90c1dd4cc6b896 370
+src/commands/install_hooks.rs
+  s_308399384e171e::t_b35b44fc76c140 4,24,368,542,1083,1096,1105
+src/mdm/agents/codex.rs
+  s_66613148b4df44::t_1c2df95a8c556e 19-22,25-28,348-358,888,904,940-941,955,1003,1626,1676,1735,1781,1815,1871,1898,1971,2036,2106,2157-2199,2211,2281,2335,2428,2514,2573,2604,2662,2757,2805,2858,2899
+src/mdm/agents/mod.rs
+  s_66613148b4df44::t_4ff6019c286cca 39-43,47
+tests/integration/install_hooks_comprehensive.rs
+  s_66613148b4df44::t_d4d87f41b78f3e 278,303-337
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "6f1186b510b65ebd523cbdc8d25a7e114f4682d3",
+  "prompts": {},
+  "sessions": {
+    "s_308399384e171e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5c9-5bf9-7c53-9e95-a36b3e6eca3c",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_66613148b4df44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc5cd-5c09-7951-86b7-b151a4d0de90",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

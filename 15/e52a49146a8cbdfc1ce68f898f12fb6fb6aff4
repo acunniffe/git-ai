@@ -1,0 +1,31 @@
+src/commands/hooks/am_hooks.rs
+  71f132d171c301c4 1-244
+src/commands/git_handlers.rs
+  71f132d171c301c4 5,11,104-107,232-233,470-472,576,578-586,640-641
+tests/integration/am_attribution.rs
+  71f132d171c301c4 1-36,38-81,83-146,148-223,225-263
+src/commands/hooks/mod.rs
+  71f132d171c301c4 1,7
+src/commands/hooks/format_patch_hooks.rs
+  71f132d171c301c4 1-66,68-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "15e52a49146a8cbdfc1ce68f898f12fb6fb6aff4",
+  "prompts": {
+    "71f132d171c301c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5597a7ef-171b-4c73-b5b4-da83540f06d5",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 796,
+      "total_deletions": 41,
+      "accepted_lines": 706,
+      "overriden_lines": 6
+    }
+  }
+}

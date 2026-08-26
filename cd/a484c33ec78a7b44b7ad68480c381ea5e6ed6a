@@ -1,0 +1,57 @@
+src/commands/checkpoint_agent/presets/gemini.rs
+  dacf127c97d5a34b 3-4
+src/commands/checkpoint_agent/presets/firebender.rs
+  dacf127c97d5a34b 3-4
+src/commands/checkpoint_agent/presets/amp.rs
+  dacf127c97d5a34b 3-4
+src/commands/checkpoint_agent/presets/opencode.rs
+  dacf127c97d5a34b 2-3
+src/daemon.rs
+  dacf127c97d5a34b 68,7180-7190,7199-7218,7221-7229,7232-7246,7249-7254,7257-7261,8604-8605,8607-8620,8627,8633,8635
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  dacf127c97d5a34b 3-4
+src/daemon/bash_sessions.rs
+  dacf127c97d5a34b 1-45,48-61
+src/commands/checkpoint_agent/presets/droid.rs
+  dacf127c97d5a34b 3-4
+src/daemon/control_api.rs
+  dacf127c97d5a34b 1-2,8,35-41,43-49,51-55,91-105
+src/commands/checkpoint_agent/presets/pi.rs
+  dacf127c97d5a34b 2-3
+src/commands/checkpoint_agent/presets/windsurf.rs
+  dacf127c97d5a34b 3-4
+src/commands/status.rs
+  dacf127c97d5a34b 56
+src/commands/checkpoint_agent/orchestrator.rs
+  dacf127c97d5a34b 9,15-28,34,177,188,190-201,203-209,211-212,216-242,247
+src/commands/checkpoint_agent/presets/claude.rs
+  dacf127c97d5a34b 3-4
+src/commands/git_ai_handlers.rs
+  dacf127c97d5a34b 7,10,12,301,305,325,332,334-337,339,341,343,347-352,356-359,361,364-366,368,370,373-377,379,381-384,388-390,882-889,893,919-926,930-935,947,954-955
+src/commands/checkpoint_agent/presets/codex.rs
+  dacf127c97d5a34b 4-5
+src/commands/checkpoint_agent/presets/known_human.rs
+  dacf127c97d5a34b 10,46
+src/commands/checkpoint_agent/bash_tool.rs
+  dacf127c97d5a34b 192,256,258,816,819,821-822,828-831,838-839,841-842,847,849,852-853,855,858-862,869,877,879-881,885-886,890-891,895-896,898,900,903,905-908,911-916,954-966,969-978,980,983-997,1000-1001,1055-1059,1062,1064
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "cda484c33ec78a7b44b7ad68480c381ea5e6ed6a",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 120,
+      "total_deletions": 128,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    }
+  }
+}

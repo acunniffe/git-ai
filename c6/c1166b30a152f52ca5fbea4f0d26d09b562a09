@@ -1,0 +1,27 @@
+src/transcripts/model_extraction.rs
+  75b8b35dceb7e11d 23-24,27
+src/transcripts/agents/amp.rs
+  75b8b35dceb7e11d 242
+src/transcripts/agents/opencode.rs
+  75b8b35dceb7e11d 194-196,303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "c6c1166b30a152f52ca5fbea4f0d26d09b562a09",
+  "prompts": {
+    "75b8b35dceb7e11d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ffd64922-c64c-40e8-9619-70e9280abcfa",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 12,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}

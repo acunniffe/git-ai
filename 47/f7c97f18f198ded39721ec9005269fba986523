@@ -1,0 +1,24 @@
+src/daemon/trace_normalizer.rs
+  f7d298b540ab887f 1078-1085
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.1",
+  "base_commit_sha": "47f7c97f18f198ded39721ec9005269fba986523",
+  "prompts": {
+    "f7d298b540ab887f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aeb4828a-dc79-4e25-b262-f5f71032b4eb",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 1,
+      "accepted_lines": 8,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/86660190839ffceb4510d9c0c50c2f8958a79876dacb687afb9fcbdd44b828f8"
+    }
+  }
+}

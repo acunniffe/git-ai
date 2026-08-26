@@ -1,0 +1,57 @@
+src/git/repository.rs
+  s_17132eb1f3e626::t_93fec8e70bacd2 2676-2679,2689-2691
+  s_17132eb1f3e626::t_1b2561691e6aae 2747-2751,2754-2760,2763-2772,2813,2840
+  s_17132eb1f3e626::t_c7f24f7021dac6 2664-2675,2680-2688,2692-2722
+src/ci/ci_context.rs
+  s_17132eb1f3e626::t_13c822c2c0b195 123,410,641-653,708-713
+  s_17132eb1f3e626::t_3e0ddb6ab502ea 10,12,579-584,593,595,622
+  s_17132eb1f3e626::t_b804a2a3b8a7ca 714-715
+src/commands/fetch_notes.rs
+  s_17132eb1f3e626::t_39e94f17e1f069 97
+src/git/notes_api.rs
+  s_17132eb1f3e626::t_59bf307da78eb9 22,35,44-45,54,64,84-89,98,100-103,120,134-135,146,148-162,166-171,173,186,189,196
+  s_17132eb1f3e626::t_68936194ef14cc 114-115
+src/commands/notes_migrate.rs
+  s_17132eb1f3e626::t_20aea6983f8360 10-13
+src/git/authorship_traversal.rs
+  s_17132eb1f3e626::t_9a816d1bfb4bac 5,21-22,27-28
+src/bin/git-ai-test-git-shim.rs
+  s_17132eb1f3e626::t_81cf22262ad3e0 79,86-99,173,199
+src/commands/log.rs
+  s_17132eb1f3e626::t_39e94f17e1f069 234
+tests/integration/log.rs
+  s_17132eb1f3e626::t_53dd7e3299f7e8 257-258
+  s_17132eb1f3e626::t_9d71d6eb14e93f 267-268
+  s_17132eb1f3e626::t_f5b71393c59af2 5,200-205,208-240,244-256,259,262-266
+  s_17132eb1f3e626::t_c2873b3a672b0a 206-207,260-261
+  s_17132eb1f3e626::t_4d0c7075890137 241-243
+src/process_timeout.rs
+  s_17132eb1f3e626::t_c7f24f7021dac6 2-3,96-97,134-145
+  s_17132eb1f3e626::t_8d2a4086fcd713 285-314
+src/git/sync_authorship.rs
+  s_17132eb1f3e626::t_c7f24f7021dac6 148,152-157,160-161,227,231-232,262,264-265,336-344,374,407
+  s_17132eb1f3e626::t_93fec8e70bacd2 228-230,350-351
+  s_17132eb1f3e626::t_ffeb20641780dc 7
+  s_17132eb1f3e626::t_3e0ddb6ab502ea 335
+  s_17132eb1f3e626::t_2787ef6977d334 345
+src/git/refs.rs
+  s_17132eb1f3e626::t_649b9b5549205b 632,672-718
+  s_17132eb1f3e626::t_6cd8dc13cf20e5 1034
+  s_17132eb1f3e626::t_8c6440bc8c4c06 719-720
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "9b7f7c1beb63134f6dd136ac5fd68c11efeb2c72",
+  "prompts": {},
+  "sessions": {
+    "s_17132eb1f3e626": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf3b-df78-7ff2-9251-6b93b18db257",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

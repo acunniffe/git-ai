@@ -1,0 +1,121 @@
+README.md
+  s_ba7fca067445a1::t_f7a580c7dfaa8f 21,23-25,32
+  s_ba7fca067445a1::t_11bf8d12fa9881 17
+  s_12a13e84e6e8e4::t_3d4c73e8c67cb9 192,198,201-202,205
+  s_7d88cc0997ba3e::t_bdc308517a1717 177,179
+  s_c72dd2157b235c::t_634ee903bb6c71 233
+  s_bf0fecb29192b8::t_9bdc54e327e8c2 215
+  s_bf0fecb29192b8::t_0e7e1fbdf953d4 209
+  s_bf0fecb29192b8::t_05d64dc453990d 194
+  s_152624a4be48a6::t_2e6f9109f2379b 257
+  s_bf0fecb29192b8::t_7086ca59c8beb1 183
+  s_bf0fecb29192b8::t_5e3238ff4f9381 191
+  s_152624a4be48a6::t_bc354112555419 216
+  s_ba7fca067445a1::t_252808336bca16 8
+  s_c72dd2157b235c::t_923e1830d4f040 240-251
+  s_c72dd2157b235c::t_ebc3fe28d17743 252
+  s_bf0fecb29192b8::t_0ed0ddfdd2b37c 87
+  s_bf0fecb29192b8::t_94440fd47be510 197
+  s_c72dd2157b235c::t_aa64a420c40ca4 253-254
+  s_bf0fecb29192b8::t_1e7b5910d2b27b 206
+  s_c72dd2157b235c::t_acccf0abb890d8 222-223,225
+  s_152624a4be48a6::t_2f047f95b2ed49 261-262
+  s_a8b316eace3551::t_0a3d9a0597e6a1 79-83
+  s_bf0fecb29192b8::t_d606a9873d8776 200
+  s_c72dd2157b235c::t_2901b705e8babc 238-239,259-260
+  h_ea2010baa7a42b 26-27,43,49,51,77,85,91-97,146,185-186,189,195,204,210,218,220-221,224,226-231,236
+  s_affec37fa72c12::t_9a179146bc3d24 181
+  s_c72dd2157b235c::t_c9c165f69fe88d 232
+  s_bf0fecb29192b8::t_8ece6ba3eae1d6 212
+  s_7d88cc0997ba3e::t_ee5953fc188f51 153
+  s_c72dd2157b235c::t_b49ebe5ff00945 234
+  s_bf0fecb29192b8::t_d97a02f9eca0ec 203
+assets/docs/buttons/meet-the-maintainers.svg
+  s_152624a4be48a6::t_eb7d501e1744db 8
+  s_152624a4be48a6::t_2ffcf14991b987 1-7
+  s_28964dc73f5773::t_751e089919fca1 9
+assets/docs/buttons/get-early-access.svg
+  s_152624a4be48a6::t_3afc2695559f24 1-7
+  s_152624a4be48a6::t_1bbfe4cbf84022 8
+  s_28964dc73f5773::t_e109b9f3d5a1d4 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "c0e016d35371ae609e83f495e5ee489c5dbb41e7",
+  "prompts": {},
+  "sessions": {
+    "s_12a13e84e6e8e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6548404-3309-4905-9ea5-abaa6d7116e4",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_152624a4be48a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b60844b4-7c84-42c9-a68d-23fea798e06c",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_28964dc73f5773": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b7fc2c3-6c72-4214-a422-e0be9aab152b",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_7d88cc0997ba3e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a64a149f-0e5d-44d2-91d6-a79955e3192d",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_a8b316eace3551": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "facce936-7198-431a-9f34-edf878936e3e",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": null
+    },
+    "s_affec37fa72c12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e6aab93e-793b-4cf1-b05e-24e3dd784ff5",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_ba7fca067445a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff1157d4-3720-40e5-b539-9e1bcd65f41a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_bf0fecb29192b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e0ad58a0-aaf7-4bbc-bae8-41960b225915",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    },
+    "s_c72dd2157b235c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea7e1a22-6cde-4d9b-a6da-6b101d408310",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

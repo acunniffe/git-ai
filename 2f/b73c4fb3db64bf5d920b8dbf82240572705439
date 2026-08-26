@@ -1,0 +1,23 @@
+src/commands/checkpoint.rs
+  9bb3260abbc5101d 527,529-532,536
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.38",
+  "base_commit_sha": "2fb73c4fb3db64bf5d920b8dbf82240572705439",
+  "prompts": {
+    "9bb3260abbc5101d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "ca49ce20-a6d9-4aee-8478-e7a0a5d7b565",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 22,
+      "total_deletions": 11,
+      "accepted_lines": 6,
+      "overriden_lines": 1
+    }
+  }
+}

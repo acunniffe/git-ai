@@ -1,0 +1,23 @@
+src/commands/usage.rs
+  s_78c44450ea684f::t_69b2fa5d28daae 143,147
+  s_78c44450ea684f::t_0256fc8ced8452 553,563-566,580
+  s_78c44450ea684f::t_0c90afb77ca560 18-19,21-33,36,40-41,47-60,70-78
+  s_78c44450ea684f::t_013d419fa16913 20
+  s_78c44450ea684f::t_7b8cf684315aa7 546-552,554-562,567-579,581-587
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "5ea8eea318a1afcb03dcc4ad72762a334c983974",
+  "prompts": {},
+  "sessions": {
+    "s_78c44450ea684f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf4e0cad-ffa0-45f7-aabb-d48d330d72d1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ethan Hann <ethanhann@gmail.com>"
+    }
+  }
+}
