@@ -1,0 +1,26 @@
+src/daemon.rs
+  acaacb0abd2332ed 5762-5773,5779
+tests/daemon_mode.rs
+  acaacb0abd2332ed 4815-4816,4893-4894
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "1e20f1a801137e18119b3d64e2f78e5b98c77dcb",
+  "prompts": {
+    "acaacb0abd2332ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e8803e77-45ab-4067-a145-5b3f347826a4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 2,
+      "accepted_lines": 17,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/1747962d91ed4070c2308e9b3853a5bf5366a27231371d6dd14f0d62a3530761"
+    }
+  }
+}

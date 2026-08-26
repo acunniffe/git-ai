@@ -1,0 +1,38 @@
+tests/integration/git_am_attribution.rs
+  s_18b694e06092e7::t_91cee4f8242039 515
+  s_18b694e06092e7::t_2fabdb34f0ca7e 507
+  s_18b694e06092e7::t_0ab6890d8e9875 279
+  s_18b694e06092e7::t_e3cdfd040dee53 531
+  s_18b694e06092e7::t_5720aa08d9f4ba 237
+  s_18b694e06092e7::t_ca3da688d1354d 553
+  s_18b694e06092e7::t_a5814272d6058c 674
+  s_18b694e06092e7::t_9ec979162ad00c 598
+  s_18b694e06092e7::t_0f98c073151ab5 690
+  s_18b694e06092e7::t_3bb77de5e7bc1e 667
+  s_18b694e06092e7::t_11cbba7d0c24f4 714
+  s_18b694e06092e7::t_49f89a4b52619e 253
+  s_18b694e06092e7::t_108bcc70b17f18 540
+  s_18b694e06092e7::t_5438d6c83559d4 750
+  s_18b694e06092e7::t_2e4e5fe994314d 499
+  s_18b694e06092e7::t_f43237366a7c32 270
+  s_18b694e06092e7::t_84ac42830dd040 698
+  s_18b694e06092e7::t_ff31382cc61818 659
+  s_18b694e06092e7::t_735b5dc6e460e0 245
+  s_18b694e06092e7::t_64c87df63e869f 578
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "d4d5f758d31a4f950f92458a18eaf848ca4ea102",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

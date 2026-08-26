@@ -1,0 +1,28 @@
+install.ps1
+  s_a2be596689b277::t_079f669af88c5b 499-505
+  s_a2be596689b277::t_e099aec8f5d5af 577-581,583-587,590-591,593-598
+  s_a2be596689b277::t_8f152c45bfcd36 397-464
+  s_a2be596689b277::t_3e22753b7d7b17 625-628,636,638-639
+tests/windows_install_script.rs
+  s_a2be596689b277::t_591fcef9c99b2a 397-403,410-412
+  s_a2be596689b277::t_67e822c2ece89c 448-504
+install.sh
+  s_a2be596689b277::t_011270cd7346d1 279-294
+  s_a2be596689b277::t_3d200a832b9696 328-334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "5e43bc78edf48e24c7a19578f6fed489956466d7",
+  "prompts": {},
+  "sessions": {
+    "s_a2be596689b277": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6701ebd2-1093-45c8-b893-dfe78275e794",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

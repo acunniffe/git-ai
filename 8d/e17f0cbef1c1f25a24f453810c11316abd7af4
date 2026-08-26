@@ -1,0 +1,45 @@
+src/mdm/skills_installer.rs
+  0c4da895d56251a7 74,79
+src/utils.rs
+  0c4da895d56251a7 169
+src/mdm/utils.rs
+  0c4da895d56251a7 340,347-348,359
+  d73d58e7273afc7a 211
+src/mdm/jetbrains/detection.rs
+  0c4da895d56251a7 211,218,249,254,257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "8de17f0cbef1c1f25a24f453810c11316abd7af4",
+  "prompts": {
+    "0c4da895d56251a7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d97d299a-1155-4f6b-8eb1-fb05d92e0003",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 37,
+      "total_deletions": 39,
+      "accepted_lines": 12,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/e8efaf5fbd25b081932821e5f92a1c3bc33c6ec16022bfe79fd40b4549414d0b"
+    },
+    "d73d58e7273afc7a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c9cc353a-64a8-4bcd-b4fc-372a7c6a18c8",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/dfe485b9ca8642c5289086737d6b24b06c902a880605ae8fad618d4b5aa946c2"
+    }
+  }
+}

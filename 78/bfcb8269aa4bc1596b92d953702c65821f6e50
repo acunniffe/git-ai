@@ -1,0 +1,38 @@
+src/authorship/authorship_log.rs
+  601fa7cb531db267 190-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "78bfcb8269aa4bc1596b92d953702c65821f6e50",
+  "prompts": {
+    "2bc871390875adb2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b23ffaec-3ff2-46de-8d03-a183a63a46e7",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 23,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/b0127baf7fca1a22324192808eee80d24a5a22b4406c5d593eb9f56fdafb2133"
+    },
+    "601fa7cb531db267": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "535048a0-adb2-46f7-b663-5c12833c69ab",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 1,
+      "accepted_lines": 7,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/6258803c92ce4aa1d4348af594c5e129339441807a2ba7fc570b855375a671ca"
+    }
+  }
+}

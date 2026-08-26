@@ -1,0 +1,25 @@
+src/daemon.rs
+  52e0337472fe7d8f 1354-1361,1363-1365,1376,2540-2541,2589-2590,3646,5480,5638-5652,5655,5659,5721,5735-5736,7153,7155-7159,7161-7164,7166,7170-7174,7176-7187,7189-7190,7228,7231,7236,7242,7251,8364,8366,8672,8674-8675,8678-8691,8698,8704,8706
+src/daemon/test_sync.rs
+  52e0337472fe7d8f 57-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "9fa3e36a3e44d2310bb62f3bdd2919015df556ee",
+  "prompts": {
+    "52e0337472fe7d8f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3f9931c2-b988-437f-8537-64a1ed799b25",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 107,
+      "total_deletions": 187,
+      "accepted_lines": 93,
+      "overriden_lines": 0
+    }
+  }
+}

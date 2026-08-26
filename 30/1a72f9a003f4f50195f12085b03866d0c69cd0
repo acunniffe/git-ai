@@ -1,0 +1,19 @@
+specs/2026-08-14-dashboard-metrics-spec.md
+  s_41f36e456107b3::t_d427412de84054 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "301a72f9a003f4f50195f12085b03866d0c69cd0",
+  "prompts": {},
+  "sessions": {
+    "s_41f36e456107b3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a000b8-33af-74a2-ac4f-e0874615747d",
+        "model": "unknown"
+      },
+      "human_author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}

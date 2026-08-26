@@ -1,0 +1,60 @@
+src/metrics/db.rs
+  s_563ec768bd999c::t_e1a27ba12d146e 763-777,781,783-784,807-808
+  s_563ec768bd999c::t_fe867b83f04cc2 2861-2862,2864-2868
+  s_563ec768bd999c::t_4e3947f6f02757 2896
+  s_563ec768bd999c::t_06182f041993c1 2857-2860,2863,2869-2878,2880-2882,2889-2895,2897,2909-2916,2926-2931,2933,2940,2950-2953,2978-2981,2994,2997-2998
+  s_563ec768bd999c::t_7909fa817434f1 2899-2908,2917-2925,2935-2939,2942-2945
+  s_563ec768bd999c::t_5b7dc07bbad640 2934,2941
+src/daemon.rs
+  s_563ec768bd999c::t_5a9a87398ed663 7207-7214
+  s_563ec768bd999c::t_31cac0f16529f2 7206,7215-7219
+  s_563ec768bd999c::t_8db81350b18a75 7205,7220,9510
+src/daemon/telemetry_worker.rs
+  s_563ec768bd999c::t_6822e90b8e9115 1883
+  s_563ec768bd999c::t_5a9a87398ed663 577,699-701,790,1878
+  s_563ec768bd999c::t_8db81350b18a75 54-59,272,289,377-394,583,593-600,679,685,693-697,698,702-714,791-796
+  s_563ec768bd999c::t_b351e3da6a47dd 395-396,797
+  s_563ec768bd999c::t_9eb18a2d72240b 814,1928-1936,1941-1944
+  s_563ec768bd999c::t_3bdf93eed25f78 727,809-813
+  s_563ec768bd999c::t_6ee340572a68ca 815-816
+  s_563ec768bd999c::t_818e2417c3358f 1927
+src/daemon/control_api.rs
+  s_563ec768bd999c::t_8db81350b18a75 26-32
+  s_563ec768bd999c::t_987facaf96d11d 195-215
+src/commands/mod.rs
+  s_563ec768bd999c::t_b7fd7ab5c6fdd0 24
+src/commands/reingest.rs
+  s_563ec768bd999c::t_47c95878e27f19 230-231
+  s_563ec768bd999c::t_b7fd7ab5c6fdd0 197-229,232-279
+  s_563ec768bd999c::t_5e325ce70de815 1-19,24-165,169-196
+  s_563ec768bd999c::t_2908dc7d27d584 20-23,166-168
+tests/daemon_mode.rs
+  s_563ec768bd999c::t_8d9d3b7a458e7a 7927-8013
+  s_11c3e1cdda522c::t_8b4af2a307b92b 7926
+src/commands/git_ai_handlers.rs
+  s_563ec768bd999c::t_5e325ce70de815 193-195,387-390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "28cc324c2f14e594f2a7dbeea1e2a798f392224e",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_563ec768bd999c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0254b-8897-7641-a6f8-28f248f9e8f2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

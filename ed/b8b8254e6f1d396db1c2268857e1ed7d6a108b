@@ -1,0 +1,27 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  dacf127c97d5a34b 10-12,265,267,916,919,921-928,931-942,944-945,950-953,956-959,961-966,968-971,973,981,983-985,989-990,994-995,997,999-1000,1002,1004-1005,1007-1012,1015-1020,1058-1102,1105-1106,1125-1126,1159-1164,1167,1169
+src/commands/checkpoint_agent/orchestrator.rs
+  dacf127c97d5a34b 189-212,216-242,247
+src/authorship/pre_commit.rs
+  dacf127c97d5a34b 27-43,49-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "edb8b8254e6f1d396db1c2268857e1ed7d6a108b",
+  "prompts": {
+    "dacf127c97d5a34b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "73568fd6-810b-410c-80b7-8b19b027eee1",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 238,
+      "total_deletions": 920,
+      "accepted_lines": 236,
+      "overriden_lines": 0
+    }
+  }
+}

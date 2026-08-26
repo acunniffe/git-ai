@@ -1,0 +1,31 @@
+src/daemon/token_usage_worker.rs
+  s_cfe6a4847c079e::t_08dcc023c1c2ce 1734-1758,1764-1787,1791-1844,1851-1874,1880-1881,1884-1889,1894-1916,1922-1936,1941-1943,1946-1955
+  s_cfe6a4847c079e::t_db85532cd89197 355
+  s_cfe6a4847c079e::t_b97691cf4c3895 533
+  s_cfe6a4847c079e::t_3a6cbde03e5084 367,371
+  s_cfe6a4847c079e::t_b01fe3d3de01cd 559
+  s_cfe6a4847c079e::t_26580e91270f0c 202,1845-1850,1875-1879,1882-1883,1890-1893,1917-1921,1937-1940,1944-1945
+  s_cfe6a4847c079e::t_e0a8a37e119c7c 188-194,197-199,201,203-215,218
+  s_cfe6a4847c079e::t_ea1ca99bb6a2e2 1569-1570
+  s_cfe6a4847c079e::t_aaf05f9a1f12e3 1759-1763
+  s_cfe6a4847c079e::t_310b05c153cff1 1788-1790
+  s_cfe6a4847c079e::t_fba95c2b8d9f14 162-164
+  s_cfe6a4847c079e::t_4fae1bfae1d26a 577
+  s_cfe6a4847c079e::t_435a16b9003f47 1692
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "51c52a1fb3f176cb41c19ff8fb3993a543841feb",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
