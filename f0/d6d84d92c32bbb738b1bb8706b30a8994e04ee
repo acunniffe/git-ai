@@ -1,0 +1,19 @@
+AGENTS.md
+  s_46d6d46c37f9d8::t_e029ca6fe5e901 235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "f0d6d84d92c32bbb738b1bb8706b30a8994e04ee",
+  "prompts": {},
+  "sessions": {
+    "s_46d6d46c37f9d8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb967-bdb1-7410-b343-d56bebc142f0",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

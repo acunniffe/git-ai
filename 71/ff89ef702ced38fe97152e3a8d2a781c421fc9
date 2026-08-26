@@ -1,0 +1,26 @@
+src/http.rs
+  1869dfcc0dd7127e 2-3,10,13-14,17,20-69
+src/api/client.rs
+  1869dfcc0dd7127e 5,107-111,113,115-116,122-126,128,130-131,217,221-222,225,227,231,234-235,239,242,245,247,251,254-255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "71ff89ef702ced38fe97152e3a8d2a781c421fc9",
+  "prompts": {
+    "1869dfcc0dd7127e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa1bc3bc-c768-48d8-a4ed-35be4c4cc996",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 6,
+      "accepted_lines": 3,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/92e0a4aea7e2d696c5872e238ef8a2cab970da7ab579e949099f47e6d69b5f8e"
+    }
+  }
+}

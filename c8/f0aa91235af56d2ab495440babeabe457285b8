@@ -1,0 +1,26 @@
+agent-support/notepad-plus-plus/Plugin.cs
+  73a492d33da4b1eb 52-59,138-139,179-180,182
+src/mdm/agents/notepad_plus_plus.rs
+  73a492d33da4b1eb 47-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "c8f0aa91235af56d2ab495440babeabe457285b8",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 24,
+      "total_deletions": 4,
+      "accepted_lines": 24,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/3cb279e89c8c149108e20c6f30be3b08c4804946c255d4fa940fadf3eccdec3a"
+    }
+  }
+}

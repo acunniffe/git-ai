@@ -1,0 +1,19 @@
+src/commands/activity_tui.rs
+  s_86cae81fcd9c97::t_209151e2c25dd0 96-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "40d4690de19dc54f82922feebc117df779916ace",
+  "prompts": {},
+  "sessions": {
+    "s_86cae81fcd9c97": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5160589a-86c2-41a5-bdcd-5daee68d43ef",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

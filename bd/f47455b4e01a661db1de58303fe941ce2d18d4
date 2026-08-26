@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.29",
+  "base_commit_sha": "bdf47455b4e01a661db1de58303fe941ce2d18d4",
+  "prompts": {
+    "783fdb0e84b2ac6c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "3ef4e955-0d2b-41b6-b233-48e233cb1964",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 17,
+      "accepted_lines": 29,
+      "overriden_lines": 0
+    }
+  }
+}

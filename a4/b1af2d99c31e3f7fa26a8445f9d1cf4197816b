@@ -1,0 +1,33 @@
+tests/integration/non_utf8_files.rs
+  s_78c44450ea684f::t_1d7bb83e19813e 3
+tests/integration/status_ignore.rs
+  s_78c44450ea684f::t_ffe4cf94172231 2
+tests/integration/utf8_filenames.rs
+  s_78c44450ea684f::t_29f850b86d8d03 3
+tests/integration/commit_metric_metadata.rs
+  s_78c44450ea684f::t_87888d8afd5a40 3
+tests/integration/session_event_attribution.rs
+  s_78c44450ea684f::t_2ec29fe890d8fa 3
+tests/integration/e2e_user_scenarios.rs
+  s_78c44450ea684f::t_c8187fdeaa5c72 3
+tests/integration/status_unit.rs
+  s_78c44450ea684f::t_3e53a28e58eee1 2
+tests/integration/stats.rs
+  s_78c44450ea684f::t_9ab1db31537965 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.23",
+  "base_commit_sha": "a4b1af2d99c31e3f7fa26a8445f9d1cf4197816b",
+  "prompts": {},
+  "sessions": {
+    "s_78c44450ea684f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf4e0cad-ffa0-45f7-aabb-d48d330d72d1",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ethan Hann <ethanhann@gmail.com>"
+    }
+  }
+}

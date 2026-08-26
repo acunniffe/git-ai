@@ -1,0 +1,24 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/TelemetryService.kt
+  2c16a9ed56ac0ec6 96-101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "24346f2bb52a86e9634287b2df1640eb48c3e07b",
+  "prompts": {
+    "2c16a9ed56ac0ec6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af98be99-66d3-4884-9bba-88164283471a",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 1,
+      "accepted_lines": 6,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/ede36c816a7e8f472352d25515dd4d631ef036f6e0ccd68c188df0a5e8636928"
+    }
+  }
+}

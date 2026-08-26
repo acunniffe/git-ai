@@ -1,0 +1,24 @@
+src/daemon.rs
+  11d03b37dc3ad21b 1779,1797,3552,8248-8306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.9",
+  "base_commit_sha": "57d8027c7748a6d71d6add245bfa6f96a9f36099",
+  "prompts": {
+    "11d03b37dc3ad21b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9e7961-e2a3-4c64-9188-a3037cb57221",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 84,
+      "total_deletions": 23,
+      "accepted_lines": 62,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/9ad373fe9a4160049430d99d955dc585f046b13b729d19c886aec86db54186f0"
+    }
+  }
+}

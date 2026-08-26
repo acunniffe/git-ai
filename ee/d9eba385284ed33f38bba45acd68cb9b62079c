@@ -1,0 +1,28 @@
+agent-support/intellij/src/main/kotlin/org/jetbrains/plugins/template/services/TelemetryService.kt
+  s_f30ead1661fc20::t_0d40ffdb22882f 71-83
+  s_f30ead1661fc20::t_5295a90435a3d7 178-190
+  s_f30ead1661fc20::t_fd8d86ee64a8ce 20
+agent-support/intellij/gradle.properties
+  s_f30ead1661fc20::t_4ff7639c64ffb5 7
+agent-support/vscode/package.json
+  s_f30ead1661fc20::t_8da22145f909a4 5
+agent-support/vscode/src/extension.ts
+  s_f30ead1661fc20::t_810adbe52d3f68 23-33
+  s_f30ead1661fc20::t_8b97e92be914a6 41-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "eed9eba385284ed33f38bba45acd68cb9b62079c",
+  "prompts": {},
+  "sessions": {
+    "s_f30ead1661fc20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b8314b9-eb5f-48a9-9ca8-a461c9f43c71",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

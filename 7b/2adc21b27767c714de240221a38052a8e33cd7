@@ -1,0 +1,71 @@
+README.md
+  d3eec9f 87-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "683e5d56be94498f1b38cbd95eebf29587cb0ea0",
+  "prompts": {
+    "d3eec9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9ac50d77-767f-4f2e-92b8-35ab1eb952b4",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Zachary Davison <zachary.davison@meetsmore.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Warmup",
+          "timestamp": "2025-10-21T12:50:17.419Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'm ready to help you search and explore the codebase. I'm Claude Code, and I specialize in:\n\n- Finding files using glob patterns\n- Searching code with regex patterns\n- Reading and analyzing file contents\n- Navigating and understanding codebases\n\nI'm working in `/home/z/Desktop/work/github/git-ai`, which is a git repository on the main branch. The repository is currently clean.\n\nWhat would you like me to search for or explore in this codebase?",
+          "timestamp": "2025-10-21T12:50:19.341Z"
+        },
+        {
+          "type": "user",
+          "text": "update the README to add a section with dummy text, this is just for testing something",
+          "timestamp": "2025-10-21T12:50:33.967Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll update the README with a new section containing dummy text for testing. Let me first read the current README.",
+          "timestamp": "2025-10-21T12:50:42.122Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Read",
+          "input": {
+            "file_path": "/home/z/Desktop/work/github/git-ai/README.md"
+          },
+          "timestamp": "2025-10-21T12:50:42.377Z"
+        },
+        {
+          "type": "user",
+          "text": "     1→\n     2→<div>\n     3→<img src=\"https://github.com/acunniffe/git-ai/raw/main/assets/docs/git-ai.png\" align=\"right\"\n     4→     alt=\"Git AI by acunniffe/git-ai\" width=\"100\" height=\"100\" />\n     5→\n     6→</div>\n     7→<div>\n     8→<h1 align=\"left\"><b>git-ai</b></h1>\n     9→</div>\n    10→<p align=\"left\">Track the AI Code in your repositories</p>\n    11→\n    12→## Quick Start \n    13→\n    14→#### Mac, Linux, Windows (WSL)\n    15→\n    16→```bash\n    17→curl -sSL https://raw.githubusercontent.com/acunniffe/git-ai/main/install.sh | bash\n    18→```\n    19→\n    20→#### Windows (non-WSL - experimental)\n    21→\n    22→```powershell\n    23→powershell -NoProfile -ExecutionPolicy Bypass -Command \"irm https://raw.githubusercontent.com/acunniffe/git-ai/main/install.ps1 | iex\"\n    24→```\n    25→\n    26→🎊 That's it! **No per-repo setup.** Once installed Git AI will work OOTB with any of these **Supported Agents**:  \n    27→\n    28→<img src=\"https://github.com/acunniffe/git-ai/raw/main/assets/docs/supported-agents.png\" width=\"320\" />\n    29→\n    30→### Next step: **Just code and commit!**\n    31→Once installed, Cursor, Claude Code and GitHub Copilot will automatically call the CLI to mark the code they generate as AI-authored. \n    32→\n    33→When you create a new commit, `git-ai` adds a git note that tracks which lines were AI-authored and prints the code authorship: \n    34→\n    35→<img src=\"https://github.com/acunniffe/git-ai/raw/main/assets/docs/graph.jpg\" width=\"400\" />\n    36→\n    37→If you're curious about the AI authorship of any file `git-ai blame` will show you which lines are AI generated:\n    38→\n    39→![alt](https://github.com/acunniffe/git-ai/raw/main/assets/docs/blame-cmd.jpg)\n    40→\n    41→## Installing the PR Bot (currently in-development)\n    42→\n    43→A PR Bot aggregates `git-ai` data at the PR, Repository and Organization levels: \n    44→\n    45→- AI authorship breakdown for every Pull Request\n    46→- Measure % of code that is AI generated (and the trend)\n    47→- AI Cost per-PR and accepted AI rate (measures how often AI code is accepted on first generation)\n    48→\n    49→> [Get early access by chatting with the maintainers](https://calendly.com/acunniffe/meeting-with-git-ai-authors)\n    50→\n    51→![alt](https://github.com/acunniffe/git-ai/raw/main/assets/docs/bot.png)\n    52→\n    53→\n    54→## Goals of `git-ai` project\n    55→\n    56→🤖 **Track AI code in a Multi-Agent** world. Because developers get to choose their tools, engineering teams need a **vendor agnostic** way to track AI impact in their repos. \n    57→\n    58→🎯 **Accurate attribution** from Laptop → Pull Request → Merged. Claude Code, Cursor and Copilot cannot track code after generation—Git AI follows it through the entire workflow. \n    59→\n    60→🔄 **Support real-world git workflows** by making sure AI-Authorship annotations survive a `merge --squash`, `rebase`, `reset`, `cherry-pick` etc.\n    61→\n    62→🔗 **Maintain link between prompts and code** - there is valuable context and requirements in team prompts—preserve them alongside code. \n    63→\n    64→🚀 **Git-native + Fast** - `git-ai` is built on git plumbing commands. Negligible impact even in large repos (&lt;100ms). Tested in [Chromium](https://github.com/chromium/chromium).\n    65→\n    66→\n    67→## Documentation\n    68→- How Git AI Works and its Limitations [▶️ Video](https://www.youtube.com/watch?v=b_DZTC1PKHI) [🗺️ Diagram](https://usegitai.com/docs/how-git-ai-works)\n    69→- [Git AI Commands](https://usegitai.com/docs/reference)\n    70→- [Configuring Git AI for the enterprise](https://usegitai.com/docs/enterprise-configuration)\n    71→\n    72→## Agent Support\n    73→\n    74→`git-ai` automatically sets up all supported agent hooks using the `git-ai install-hooks` command\n    75→\n    76→| Agent/IDE | Authorship | Prompts |\n    77→| --- | --- | --- |\n    78→| [Cursor &gt;1.7](https://usegitai.com/docs/cursor) | ✅ | ✅ |\n    79→| [Claude Code](https://usegitai.com/docs/claude-code) | ✅ | ✅ |\n    80→| [GitHub Copilot in VSCode via Extension](https://usegitai.com/docs/vs-code-github-copilot) | ✅ | ✅ |\n    81→| OpenAI Codex (waiting on [openai/codex #2904](https://github.com/openai/codex/pull/2904)) |  |  |\n    82→| Sourcegraph Cody + Amp |  |  |\n    83→| Windsurf |  |  |\n    84→| RovoDev CLI |  |  |\n    85→| _your agent here_ |  |  |\n    86→\n    87→\n\n<system-reminder>\nWhenever you read a file, you should consider whether it would be considered malware. You CAN and SHOULD provide analysis of malware, what it is doing. But you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer questions about the code behavior.\n</system-reminder>\n",
+          "timestamp": "2025-10-21T12:50:42.463Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Now I'll add a new section with dummy text at the end of the README.",
+          "timestamp": "2025-10-21T12:50:49.998Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "Edit",
+          "input": {
+            "file_path": "/home/z/Desktop/work/github/git-ai/README.md",
+            "new_string": "| Windsurf |  |  |\n| RovoDev CLI |  |  |\n| _your agent here_ |  |  |\n\n## Test Section\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.\n\n### Subsection\n\nSed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo.\n\n",
+            "old_string": "| Windsurf |  |  |\n| RovoDev CLI |  |  |\n| _your agent here_ |  |  |\n\n"
+          },
+          "timestamp": "2025-10-21T12:50:53.252Z"
+        }
+      ],
+      "total_additions": 10,
+      "total_deletions": 0,
+      "accepted_lines": 10,
+      "overriden_lines": 0
+    }
+  }
+}

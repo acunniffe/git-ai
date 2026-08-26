@@ -1,0 +1,19 @@
+src/git/sync_authorship.rs
+  s_17132eb1f3e626::t_c6cf0536e4089d 428,485-495,779-791
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "abbb296fdd67010e492ba8b32b561fbc8408aa63",
+  "prompts": {},
+  "sessions": {
+    "s_17132eb1f3e626": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf3b-df78-7ff2-9251-6b93b18db257",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
