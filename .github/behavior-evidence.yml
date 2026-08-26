@@ -56,8 +56,8 @@
     "fixture_set_digest": "ff3053ea376be631effb9c13eeaf1a66edb4733895dfca8896fc683929fe70f8",
     "seed": 20260826,
     "corpus": {
-      "canonical_sha256": "de5d443861c3bcff999f6d998ec258668372d4183058fd9a3041fd4fc1190e9a",
-      "raw_sha256": "e41b4aa5d430f0c83ee62084b51ea022883b86bf72fa88a354be425638976cfe"
+      "canonical_sha256": "0980a215b4582d2de527b804c05bdd6cf52ad05db7492d93b3ba1dae0d37323b",
+      "raw_sha256": "1694e3dde775cf234c30656c8af23d8ffc632903f62e8940881e6adad5671a38"
     },
     "normalizer": {
       "schema_version": "behavior-normalizer/1.0.0",
