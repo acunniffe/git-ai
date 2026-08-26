@@ -1,0 +1,52 @@
+tests/integration/repos/test_repo.rs
+  s_8d9d36585aec71::t_0bacdd4d7dd13f 14-21
+  s_8d9d36585aec71::t_975690771b2772 1959-1960
+  s_8d9d36585aec71::t_d09391b2aa2776 58,67,72,80
+  s_8d9d36585aec71::t_8efe1f601c1a4b 380-381
+  s_8d9d36585aec71::t_b5761717e9a110 2847-2848
+  s_8d9d36585aec71::t_0890d4fe106586 2868,2875
+  s_8d9d36585aec71::t_30e07e98dbf321 2888
+tests/notes_sync_regression.rs
+  s_8d9d36585aec71::t_ac0593223f70da 446
+tests/daemon_mode.rs
+  s_a5f4b12640a58f::t_a7d8769cfb2fa9 5
+  s_a5f4b12640a58f::t_b9b672ee970589 11,587,589
+  s_8d9d36585aec71::t_12bed5555257ed 325-327
+  s_a5f4b12640a58f::t_d6264d0a1100f1 583,645,1430,1528,1607,1671
+  s_a5f4b12640a58f::t_3fbb32f5d176c2 588,590-591,603-605,608-609
+  s_e1beca86e01012::t_e2c9f36e3c564f 592,602
+  s_a5f4b12640a58f::t_db27d52f8f7dfb 606-607
+  617049f94f0d2a17 975-976,978-979,981,983-984,986-988,990-991
+  s_d46277b929576d::t_cf5cbf9fc51394 1087
+tests/integration/checkpoint_perf.rs
+  s_8d9d36585aec71::t_02fea89d1789e2 162
+tests/integration/performance.rs
+  s_8d9d36585aec71::t_3d9d766e25c6e4 11
+  s_8d9d36585aec71::t_86befdd6c0ab1f 34-35
+tests/integration/graphite.rs
+  s_8d9d36585aec71::t_8c6c518717f9ab 315-316
+  s_8d9d36585aec71::t_434170019cdfcf 336
+src/daemon/telemetry_handle.rs
+  s_8d9d36585aec71::t_322728a42b3391 3
+  s_8d9d36585aec71::t_c0cf6e331f866d 110
+tests/async_mode.rs
+  s_8d9d36585aec71::t_d1bdef7a6f5633 80,82,94,96
+  s_8d9d36585aec71::t_071d8d69d805e7 99
+  s_8d9d36585aec71::t_721af180b9fdb1 230-231,235
+  s_8d9d36585aec71::t_176a5f37bccbf2 252-253
+  s_8d9d36585aec71::t_b085495d5bae67 272-273
+  s_8d9d36585aec71::t_64a99fb244d0b2 309
+tests/integration/worktrees.rs
+  s_8d9d36585aec71::t_3c16a1f89fb975 2
+  s_8d9d36585aec71::t_47f5aa184583c6 235
+  s_8d9d36585aec71::t_3d899f035af44b 253
+  s_8d9d36585aec71::t_a41d55f2d748e1 277
+  s_8d9d36585aec71::t_9fd45157b71c54 296
+  s_430b337f892efe::t_1fdee17095715c 402-405
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "a7bc7441e1f5f1fe7a73e49fb7f90d5d2428f44f",
+  "prompts": {}
+}

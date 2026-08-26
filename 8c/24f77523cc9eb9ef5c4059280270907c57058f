@@ -1,0 +1,19 @@
+docs/superpowers/specs/2026-04-29-telemetry-streams-design.md
+  s_74a31c9b27ce26::t_4c405219d83615 1-616
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "8c24f77523cc9eb9ef5c4059280270907c57058f",
+  "prompts": {},
+  "sessions": {
+    "s_74a31c9b27ce26": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f769e90b-24f1-4f4b-92c3-236cbea1cee2",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "heapwolf <paolo@voltra.co>"
+    }
+  }
+}

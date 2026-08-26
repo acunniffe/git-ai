@@ -1,0 +1,24 @@
+agent-support/opencode/git-ai.ts
+  293268f972235922 45-48,229,252,282
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "265794182918f1a44a33dcf5df661b4d59a3af6f",
+  "prompts": {
+    "293268f972235922": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "34741536-abcc-42cf-89df-82f40cf18979",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 1,
+      "accepted_lines": 7,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/b3cb579004cd0cb4ec062948e59e07435b9c2706ad056f2c4e433badd94287f3"
+    }
+  }
+}

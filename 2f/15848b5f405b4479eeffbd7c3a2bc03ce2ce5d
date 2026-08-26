@@ -1,0 +1,27 @@
+src/authorship/attribution_recovery.rs
+  s_7f9961d8e5af88::t_a960b2972a016f 182,266,283-288,651,654,706,712,760-766
+  s_7f9961d8e5af88::t_148ae03f9f7d3a 609-610
+  s_7f9961d8e5af88::t_0026124af88278 197-201,267-270,278,549,555,563
+tests/integration/pull_rebase_ff.rs
+  s_7f9961d8e5af88::t_7b10f06759d9af 347,350,352-353,401-402,404-410
+  s_7f9961d8e5af88::t_acd1baede62aea 348-349,351,354-400,403,411-426
+  s_7f9961d8e5af88::t_8d033af58e921c 346
+tests/integration/session_event_attribution.rs
+  s_7f9961d8e5af88::t_d11cc4878ced87 956
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "2f15848b5f405b4479eeffbd7c3a2bc03ce2ce5d",
+  "prompts": {},
+  "sessions": {
+    "s_7f9961d8e5af88": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb893-24e9-7130-bf94-0e29f7a6daa5",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

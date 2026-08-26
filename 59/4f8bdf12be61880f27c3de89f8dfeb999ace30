@@ -1,0 +1,18 @@
+dash.py
+  h_4132837b09b7e7 17-18,26-28,32-40,199,263,285,313-317,334-337,339-343,346,358,366-369,395,444,491-493
+dash_metrics.py
+  h_4132837b09b7e7 465-466
+tests/test_dash_summary.py
+  h_4132837b09b7e7 360-375
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "594f8bdf12be61880f27c3de89f8dfeb999ace30",
+  "prompts": {},
+  "humans": {
+    "h_4132837b09b7e7": {
+      "author": "张艳华 <939593210@qq.com>"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+tests/integration/fuzzer/oracle.rs
+  s_af2d349a5e032c::t_460fab4968c0e3 1063-1066,1070-1071,1112,1126,1131-1136,1138-1139,1159-1160,1162,1174,1177,1179-1182
+  s_af2d349a5e032c::t_2ac11db9c32ace 1068-1069,1105-1111,1127-1130,1137,1140-1158,1161,1163-1173,1175-1176,1178,1183
+  s_af2d349a5e032c::t_96047c6f740d08 186-195,222-224,229,231-232,234,249,279,292
+  s_af2d349a5e032c::t_813f00a7c8607d 230,273
+  s_af2d349a5e032c::t_03ae61681b2270 851-861,863,865-869
+  s_af2d349a5e032c::t_b0928b15433422 862,864
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "9a9c15eb241d8b3a47b2c090c114ff5fd6a8b03d",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

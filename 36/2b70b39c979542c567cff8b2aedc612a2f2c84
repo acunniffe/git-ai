@@ -1,0 +1,28 @@
+tests/integration/repos/test_file.rs
+  s_98375d277b0190::t_d925790bee04fa 18
+src/mdm/agents/opencode.rs
+  s_98375d277b0190::t_9e962df9685ef9 321-335
+  s_98375d277b0190::t_5e6cc5607b9a24 302,305
+  s_98375d277b0190::t_dcb8b877b2f64b 320
+agent-support/opencode/git-ai.ts
+  s_98375d277b0190::t_e835e044a25940 20
+  s_98375d277b0190::t_4eccf1b2f86d89 515-524
+tests/integration/opencode.rs
+  s_98375d277b0190::t_27debeb8815e61 486-538
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "362b70b39c979542c567cff8b2aedc612a2f2c84",
+  "prompts": {},
+  "sessions": {
+    "s_98375d277b0190": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0507def0-6122-4e94-a178-9c789cd3ae47",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

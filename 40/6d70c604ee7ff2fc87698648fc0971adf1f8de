@@ -1,0 +1,16 @@
+src/git/refs.rs
+  h_938c77d52bff70 332,335,622,674
+src/git/sync_authorship.rs
+  h_938c77d52bff70 106,109,113,115-116,120,137,141,155,159,162-163,166,170,173,176,187,191,197,201,203,208,237,241,249,254,281,296,300,302,308,312
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "406d70c604ee7ff2fc87698648fc0971adf1f8de",
+  "prompts": {},
+  "humans": {
+    "h_938c77d52bff70": {
+      "author": "Andrew Churchill"
+    }
+  }
+}

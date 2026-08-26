@@ -1,0 +1,26 @@
+src/commands/git_ai_handlers.rs
+  acaacb0abd2332ed 1491-1495
+src/commands/checkpoint.rs
+  acaacb0abd2332ed 1025-1036,1043-1047,1050-1054,1073-1075
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.5",
+  "base_commit_sha": "0508dc1820f67a4a84722a098866fb4ca3ac3620",
+  "prompts": {
+    "acaacb0abd2332ed": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e8803e77-45ab-4067-a145-5b3f347826a4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 30,
+      "accepted_lines": 30,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/5dce4ffe51c2e8a5f00e0ca0109b93372d17a53b0e1744a3d271be52b41a0c72"
+    }
+  }
+}

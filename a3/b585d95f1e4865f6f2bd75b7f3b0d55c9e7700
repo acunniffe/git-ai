@@ -1,0 +1,42 @@
+tests/integration/daemon_snapshot_memory.rs
+  s_59382cac373d67::t_019a8c2de8a90b 26
+  s_59382cac373d67::t_17435d25b24b58 33
+  s_59382cac373d67::t_630aa6f1a83f75 37
+  s_59382cac373d67::t_447fb083719e99 21-23,25,27
+  s_59382cac373d67::t_bb1f6aafab0711 1-2
+  s_59382cac373d67::t_a5ce7eed2c7ca4 24
+  s_59382cac373d67::t_70fd1d7b2b6166 3-20,3-6,7-19,20,28-32,34-36,38-54
+src/daemon.rs
+  s_59382cac373d67::t_e426517114a5d5 2941-2942,2962-2963
+  s_59382cac373d67::t_14fff6f2aceacf 5142-5145,5151-5156,5159-5169,5171,5194-5201,5206,5237
+  s_59382cac373d67::t_b41ae0efbad55f 5182,5186
+  s_59382cac373d67::t_9d32dc5d89f40a 5183,5187-5190
+  s_59382cac373d67::t_70fd1d7b2b6166 5208-5215
+  s_59382cac373d67::t_68450f67a022bf 6177,8719
+  s_59382cac373d67::t_af3b427a44e0d7 8717-8718
+  s_59382cac373d67::t_5b751b60766111 5157-5158
+  s_59382cac373d67::t_1d13f59fedaa8f 5207
+  s_59382cac373d67::t_95eed125c0b411 8720-8725,8727-8730,8737,8740-8751
+  s_59382cac373d67::t_f175151e9d73a8 8726,8738,8752-8753
+  s_59382cac373d67::t_cc52d17195e652 111,2616-2625,2693,2781
+  s_59382cac373d67::t_70f3e0f152bcb1 5146-5150,8731-8736,8739
+  s_59382cac373d67::t_630aa6f1a83f75 5184-5185
+tests/integration/main.rs
+  s_59382cac373d67::t_70fd1d7b2b6166 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "a3b585d95f1e4865f6f2bd75b7f3b0d55c9e7700",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

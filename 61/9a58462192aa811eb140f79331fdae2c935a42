@@ -1,0 +1,20 @@
+src/authorship/rebase_types.rs
+  s_902a0f1d196d58::t_acf3d521ce2c08 67
+  s_902a0f1d196d58::t_66aafeeb883c02 1-66,68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.6",
+  "base_commit_sha": "619a58462192aa811eb140f79331fdae2c935a42",
+  "prompts": {},
+  "sessions": {
+    "s_902a0f1d196d58": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "27060e1d-e308-41df-8e3e-99989a51b65d",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "admin <admin@git-ai-project.com>"
+    }
+  }
+}

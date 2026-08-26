@@ -1,0 +1,54 @@
+tests/integration/sandboxed_checkpoints.rs
+  s_dae1e2a4e711cb::t_ce315c27134349 1-50,53-62,65-154,159-169,174-176,191
+  s_dae1e2a4e711cb::t_7c4bd831e59258 51-52,63-64
+  s_dae1e2a4e711cb::t_9f8cb325674679 177-179,181-190
+  s_dae1e2a4e711cb::t_5ecb16f3a5c959 155-158,170-173
+  s_dae1e2a4e711cb::t_0d6ee8210da49d 180
+tests/integration/main.rs
+  s_dae1e2a4e711cb::t_5ecb16f3a5c959 117-118
+src/sandboxed_checkpoints.rs
+  s_dae1e2a4e711cb::t_47893ef82526e1 2,6-10,14-19,21-73,95-97,102-103,140-190,142-190,192-199,201-203,205-209,211-221,230-233,230-239,247-249,262-323,264-323,333-334,346-376,346-378,391-439,393-439,442-446,449-466,469-499,501-520,524-528,524-527,619-620,620
+  s_dae1e2a4e711cb::t_1cf1a9efd1d8a4 332
+  s_dae1e2a4e711cb::t_89faf1ad87f266 531-553,560-562
+  s_dae1e2a4e711cb::t_e4ad86337df2eb 4
+  s_dae1e2a4e711cb::t_41aca8e1a5c8d9 324
+  s_dae1e2a4e711cb::t_3a3cefa31e324e 20,337-345,377-387,389-390
+  s_dae1e2a4e711cb::t_7b259e6e515ea9 122,125-129,335-336
+  s_dae1e2a4e711cb::t_57603126dd5b94 13,80-81,83,89-94,89-93,94,98-101,98-100,101,210,234-246,240-246,250-261
+  s_dae1e2a4e711cb::t_76e006ff49915c 467-468,528-529,529,530,562,564-574,607-618
+  s_dae1e2a4e711cb::t_71b7d0af6f9c79 3,5,74-79,82,84-88,102-121,123-124,130-139
+  s_dae1e2a4e711cb::t_b8412ea0af9746 554-559
+  s_dae1e2a4e711cb::t_fd67852c875398 563,575-606
+  s_dae1e2a4e711cb::t_79be803e999b76 388
+  s_dae1e2a4e711cb::t_ee050d11693d06 11-12,191,200,204,222-229
+  s_dae1e2a4e711cb::t_5ecb16f3a5c959 1,440-441,447-448
+  s_dae1e2a4e711cb::t_c3a52d9ef0c912 325-331,500,521-523
+  s_dae1e2a4e711cb::t_f93cca22730bdc 529
+src/lib.rs
+  s_dae1e2a4e711cb::t_47893ef82526e1 22-23
+src/daemon.rs
+  s_dae1e2a4e711cb::t_58b8ed2746a329 7406-7407
+src/commands/git_ai_handlers.rs
+  s_dae1e2a4e711cb::t_58b8ed2746a329 48,471,473-478,480-481,599-600,602-604,647,653,659-669,1209-1213,1229
+  s_dae1e2a4e711cb::t_12072b0e284a30 479,578-579,593-598,601,622-641,622-652,644,648-652
+  s_dae1e2a4e711cb::t_867fca88092f73 621
+  s_dae1e2a4e711cb::t_0281d03c7005d0 654-658
+  s_dae1e2a4e711cb::t_5ecb16f3a5c959 459-470,472
+  s_dae1e2a4e711cb::t_41aca8e1a5c8d9 577,642-643,645-646
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "40eea928ea0f09ccc30ec02223b043f3dd37cf98",
+  "prompts": {},
+  "sessions": {
+    "s_dae1e2a4e711cb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7b60-f79b-75e3-9141-dd54894b6481",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

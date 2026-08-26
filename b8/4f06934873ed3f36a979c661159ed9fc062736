@@ -1,0 +1,20 @@
+src/commands/activity_tui.rs
+  s_0db412aeb21ffe::t_bc17ab66282ceb 14
+  s_0db412aeb21ffe::t_b66f522c58b41b 412-429,431,434,445-453,455,458-475
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "b84f06934873ed3f36a979c661159ed9fc062736",
+  "prompts": {},
+  "sessions": {
+    "s_0db412aeb21ffe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bfef8749-d442-403d-b447-4d2895852996",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Lincoln de Sousa <lincoln@clarete.li>"
+    }
+  }
+}

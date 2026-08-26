@@ -1,0 +1,68 @@
+skills/ask/SKILL.md
+  5cdb541a68f544ad 16,18-25,27,29,31,110-111
+  22f99c63b573ad5a 33-34,36
+  b3613db36ea30b2b 10,12,14,38,40,42,44-48,50,54-55,57-59,65-67,69-96,99,104-106,114,117,120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.1",
+  "base_commit_sha": "9adf97aa9e39c31d5777954fa0a8cf61bb1c47b5",
+  "prompts": {
+    "22f99c63b573ad5a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a9f877c5-7750-4f21-8c7c-47e0238fb692",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 1,
+      "accepted_lines": 4,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/b3a10f9a9aa977f82bf4dd108030574c8ad6e94fce82b4642f8252688bae9a7f"
+    },
+    "5cdb541a68f544ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "481da4b9-6909-4d22-865b-fdf57f3765a6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 21,
+      "total_deletions": 6,
+      "accepted_lines": 20,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/79e47ccaecbdb8a5d2201f616fc56b6b5be0182ffb83426e260adb8dd63730e7"
+    },
+    "a1329ddb8a2219a4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "175099f6-c0ec-4ad0-baa7-f9723929db5e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 2,
+      "accepted_lines": 0,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/3824d8e39418e814c0e8fcd9db5200c5c6e14a7b90a8c808464280e9f4f08bba"
+    },
+    "b3613db36ea30b2b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5c232d22-2ff4-4fde-9016-1bbb22a463e5",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 64,
+      "total_deletions": 114,
+      "accepted_lines": 55,
+      "overriden_lines": 0,
+      "messages_url": "https://dev.usegitai.com/cas/8435d193dd981f55977992cc40996fda18ba72ecbe147b1b16c8fbf3ef7bb704"
+    }
+  }
+}

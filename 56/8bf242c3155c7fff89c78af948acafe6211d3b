@@ -1,0 +1,19 @@
+.github/workflows/build-binaries.yml
+  s_7b467eb49c5596::t_88e6e0b84f15ce 1-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "568bf242c3155c7fff89c78af948acafe6211d3b",
+  "prompts": {},
+  "sessions": {
+    "s_7b467eb49c5596": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19c1dc6f-32c5-4f7d-8bcf-fdff7e659590",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sachin Lubana <sachin.lubana@deliveryhero.com>"
+    }
+  }
+}

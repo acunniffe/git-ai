@@ -1,0 +1,30 @@
+agent-support/notepad-plus-plus/GitAiPlugin.csproj
+  73a492d33da4b1eb 1-14
+src/mdm/agents/mod.rs
+  73a492d33da4b1eb 10,24,46
+src/mdm/agents/notepad_plus_plus.rs
+  73a492d33da4b1eb 1-300
+agent-support/notepad-plus-plus/Plugin.cs
+  73a492d33da4b1eb 1-195
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "e863b6782d64240cfeffc7fefead365413d7a8a4",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 512,
+      "total_deletions": 0,
+      "accepted_lines": 512,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/7c056f9c237def819f9c3ca48623958047d2f5c03d8b81b0252dca19966e5625"
+    }
+  }
+}

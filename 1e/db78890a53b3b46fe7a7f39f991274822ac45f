@@ -1,0 +1,11 @@
+agent-support/vscode/src/ai-edit-manager.ts
+  cb7ea62ca17026c9 133-155,329-333,337,342-347
+agent-support/vscode/src/blame-service.ts
+  cb7ea62ca17026c9 70,74,79,82-105,256-257,259-260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.42",
+  "base_commit_sha": "1edb78890a53b3b46fe7a7f39f991274822ac45f",
+  "prompts": {}
+}

@@ -1,0 +1,22 @@
+tests/e2e/user-scenarios.bats
+  dfc79cc 1477-1483,1485-1486,1493-1501,1505-1516,1518,1520-1521,1556-1560,1562-1569,1573-1587,1589,1591-1592,1639,1647,1674,1689-1691,1693-1694
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "base_commit_sha": "ce16a6ff8793fcb6cadfd2f082b47992994d71a0",
+  "prompts": {
+    "dfc79cc": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "f4a8f344-85b1-4991-900e-fb887230cf7c",
+        "model": "default"
+      },
+      "human_author": "Atnes Ness <atnesness@gmail.com>",
+      "messages": [],
+      "total_additions": 115,
+      "total_deletions": 104,
+      "accepted_lines": 72,
+      "overriden_lines": 0
+    }
+  }
+}

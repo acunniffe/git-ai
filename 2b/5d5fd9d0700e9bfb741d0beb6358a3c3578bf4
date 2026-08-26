@@ -1,0 +1,19 @@
+agent-support/visualstudio/src/GitAiVS/GitAiVS.csproj
+  s_61bbcfe4478210::t_a2f0a72d85ac07 43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.3",
+  "base_commit_sha": "2b5d5fd9d0700e9bfb741d0beb6358a3c3578bf4",
+  "prompts": {},
+  "sessions": {
+    "s_61bbcfe4478210": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1fd1858d-9497-4a83-b6c4-aebbc8661cbb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sanjog Gururaj <sanjog@workweave.ai>"
+    }
+  }
+}

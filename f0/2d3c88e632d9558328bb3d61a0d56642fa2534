@@ -1,0 +1,23 @@
+scripts/dev.sh
+  03289bafe4628da6 1-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "f02d3c88e632d9558328bb3d61a0d56642fa2534",
+  "prompts": {
+    "03289bafe4628da6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bd8d647d-72e9-40be-bb4e-f19dbf3171df",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 0,
+      "accepted_lines": 33,
+      "overriden_lines": 0
+    }
+  }
+}
