@@ -26,6 +26,22 @@ impl CodexAgent {
         Self { batch_size }
     }
 
+    /// Derive the external session id from a rollout file path.
+    ///
+    /// Codex filenames end with the session UUID
+    /// (`rollout-2026-02-06T20-35-49-<uuid>.jsonl`). This is the canonical
+    /// stream identity: sweeps key streams by it, and the checkpoint path
+    /// must match, otherwise the same file gets tracked twice with separate
+    /// watermarks (fork/subagent files report the parent's id in hook
+    /// payloads) and every line is ingested and uploaded twice.
+    pub fn external_session_id_from_rollout_path(path: &Path) -> Option<String> {
+        let stem = path.file_stem().and_then(|s| s.to_str())?;
+        if stem.len() < 36 {
+            return None;
+        }
+        Some(stem[stem.len() - 36..].to_string())
+    }
+
     /// Search for a rollout file matching the given session ID in the Codex home directory.
     ///
     /// Looks in both `sessions` and `archived_sessions` subdirectories for files
@@ -166,14 +182,10 @@ impl Agent for CodexAgent {
 
         for path in paths {
             // Codex filename: rollout-2026-02-06T20-35-49-019c35bd-ad8e-7422-834c-3605bc4ee7ac
-            // The hook payload sends the UUID as session_id/thread_id (last 36 chars)
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            let Some(external_session_id) = Self::external_session_id_from_rollout_path(&path)
+            else {
                 continue;
             };
-            if stem.len() < 36 {
-                continue;
-            }
-            let external_session_id = stem[stem.len() - 36..].to_string();
             let session_id = generate_session_id(&external_session_id, "codex");
             let external_parent_session_id = Self::detect_subagent_parent(&path);
 
@@ -589,5 +601,31 @@ mod tests {
         let result =
             CodexAgent::detect_subagent_parent(Path::new("/nonexistent/path/rollout.jsonl"));
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_external_session_id_from_rollout_path() {
+        // Standard rollout filename: the trailing UUID is the identity.
+        assert_eq!(
+            CodexAgent::external_session_id_from_rollout_path(Path::new(
+                "/x/rollout-2026-02-06T20-35-49-01a00000-0000-7000-8000-000000000001.jsonl"
+            ))
+            .as_deref(),
+            Some("01a00000-0000-7000-8000-000000000001")
+        );
+        // A bare 36-char stem is accepted verbatim.
+        assert_eq!(
+            CodexAgent::external_session_id_from_rollout_path(Path::new(
+                "/x/01a00000-0000-7000-8000-000000000001.jsonl"
+            ))
+            .as_deref(),
+            Some("01a00000-0000-7000-8000-000000000001")
+        );
+        // Too short to hold a UUID: no identity (caller falls back to the
+        // hook-reported id).
+        assert_eq!(
+            CodexAgent::external_session_id_from_rollout_path(Path::new("/x/short.jsonl")),
+            None
+        );
     }
 }

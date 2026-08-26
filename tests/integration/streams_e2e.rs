@@ -786,3 +786,76 @@ fn test_copilot_agent_streams_otel_path_resolution() {
     assert_eq!(otel_stream.stream_kind, "otel_traces");
     assert!(otel_stream.shared);
 }
+
+#[test]
+fn codex_fork_rollout_checkpoint_tracks_one_stream_keyed_by_filename() {
+    use crate::repos::test_repo::TestRepo;
+    use serde_json::json;
+
+    // A fork/subagent rollout reports the PARENT thread id in hook payloads.
+    // The checkpoint path must key the stream by the rollout FILENAME (like
+    // sweep discovery); keying by the hook id would track the same file a
+    // second time under a different identity and ingest every line twice.
+    let repo = TestRepo::new();
+    let parent_id = "01a00000-0000-7000-8000-0000000000aa";
+    let child_id = "01a00000-0000-7000-8000-0000000000bb";
+
+    let rollout_dir = repo.path().join("rollouts");
+    fs::create_dir_all(&rollout_dir).unwrap();
+    let rollout = rollout_dir.join(format!("rollout-2026-02-06T20-35-49-{child_id}.jsonl"));
+    fs::write(
+        &rollout,
+        format!(
+            "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{child_id}\",\"forked_from_id\":\"{parent_id}\",\"thread_source\":\"subagent\",\"model\":\"gpt-5.1-codex\"}}}}\n"
+        ),
+    )
+    .unwrap();
+
+    // Real preset flow: pre/post apply_patch checkpoints carrying the
+    // PARENT id, exactly what codex hooks send from a subagent turn.
+    let file_path = repo.path().join("edited.txt");
+    for hook_event_name in ["PreToolUse", "PostToolUse"] {
+        let hook_input = json!({
+            "cwd": repo.canonical_path().to_string_lossy(),
+            "hook_event_name": hook_event_name,
+            "tool_name": "apply_patch",
+            "tool_use_id": "tu-fork-1",
+            "session_id": parent_id,
+            "transcript_path": rollout.to_string_lossy(),
+            "tool_input": { "patch": format!("*** Update File: {}\n", file_path.to_string_lossy()) }
+        })
+        .to_string();
+        repo.git_ai(&["checkpoint", "codex", "--hook-input", &hook_input])
+            .expect("checkpoint should succeed");
+        if hook_event_name == "PreToolUse" {
+            fs::write(&file_path, "edited\n").unwrap();
+        }
+    }
+    repo.sync_daemon();
+    repo.git_ai(&["await", "--timeout", "60"])
+        .expect("await should drain stream registration");
+
+    let db_path = repo
+        .daemon_home_path()
+        .join(".git-ai")
+        .join("internal")
+        .join("transcripts-db");
+    let db = StreamsDatabase::open(&db_path).unwrap();
+    let rows: Vec<StreamRecord> = db
+        .all_streams()
+        .unwrap()
+        .into_iter()
+        .filter(|r| r.stream_path == rollout.display().to_string())
+        .collect();
+    assert_eq!(
+        rows.len(),
+        1,
+        "the rollout must be tracked exactly once, not once per identity"
+    );
+    assert_eq!(rows[0].external_session_id, child_id, "keyed by filename");
+    assert_eq!(
+        rows[0].external_parent_session_id.as_deref(),
+        Some(parent_id),
+        "parent resolved from session_meta"
+    );
+}
