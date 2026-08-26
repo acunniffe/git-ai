@@ -1,5 +1,6 @@
 pub mod agent_detection;
 pub mod attribution_recovery;
+pub mod attribution_sink;
 pub mod attribution_tracker;
 pub mod authorship_log;
 pub mod authorship_log_serialization;
