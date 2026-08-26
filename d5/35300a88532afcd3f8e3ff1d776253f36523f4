@@ -1,0 +1,23 @@
+agent-support/intellij/build.gradle.kts
+  a454465916db8f55 154,165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "d535300a88532afcd3f8e3ff1d776253f36523f4",
+  "prompts": {
+    "a454465916db8f55": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84909159-3b46-45cd-8093-c022937afc02",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 3,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

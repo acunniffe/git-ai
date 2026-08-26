@@ -1,0 +1,25 @@
+agent-support/vscode/src/extension.ts
+  11d03b37dc3ad21b 53-55
+agent-support/vscode/src/known-human-checkpoint-manager.ts
+  11d03b37dc3ad21b 23-25,31-36,55-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.7",
+  "base_commit_sha": "bb6bcc5b00e9740aa6be50b08c3b37602816ef2f",
+  "prompts": {
+    "11d03b37dc3ad21b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa9e7961-e2a3-4c64-9188-a3037cb57221",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 17,
+      "total_deletions": 0,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}

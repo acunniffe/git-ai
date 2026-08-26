@@ -1,0 +1,20 @@
+src/git/rewrite_log.rs
+  s_218fc31e3ddd9a::t_32c13fc35a6b97 308
+  s_218fc31e3ddd9a::t_b854ed4235bcb2 421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.1",
+  "base_commit_sha": "559d2643a766f6b16e81ffe04c8478fa5e692ed2",
+  "prompts": {},
+  "sessions": {
+    "s_218fc31e3ddd9a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b1fdad75-0ada-417b-8f9c-3ed0c18eb119",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "John Wiegley <johnw@newartisans.com>"
+    }
+  }
+}

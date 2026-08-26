@@ -1,0 +1,19 @@
+tests/integration/bash_tool_provenance.rs
+  s_4fc8bc60fc3c56::t_9e9427e460e168 1251,1256-1259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.5",
+  "base_commit_sha": "a4a405fdbe968fc0f3dcaaa5faedea66f06d0f47",
+  "prompts": {},
+  "sessions": {
+    "s_4fc8bc60fc3c56": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbd15-693a-7153-af8b-b3d304655878",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Codex <codex@openai.com>"
+    }
+  }
+}

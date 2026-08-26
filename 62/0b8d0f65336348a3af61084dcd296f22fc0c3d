@@ -1,0 +1,28 @@
+tests/integration/rebase_control_attribution.rs
+  s_18b694e06092e7::t_fbf313afb0ad51 5-10,34,47,67
+tests/integration/merge_control_attribution.rs
+  s_18b694e06092e7::t_63849d0434d89f 121
+  s_18b694e06092e7::t_fbf313afb0ad51 5-10,66,82,101
+tests/integration/revert_control_attribution.rs
+  s_18b694e06092e7::t_fbf313afb0ad51 5-10,103,116,137
+  s_18b694e06092e7::t_00fccd5c994741 153,191
+tests/integration/cherry_pick_control_attribution.rs
+  s_18b694e06092e7::t_fbf313afb0ad51 5-10,35,56,72
+  s_18b694e06092e7::t_63849d0434d89f 245,280
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "620b8d0f65336348a3af61084dcd296f22fc0c3d",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

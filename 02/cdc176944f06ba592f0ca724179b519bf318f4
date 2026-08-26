@@ -1,0 +1,53 @@
+src/metrics/model_pricing.rs
+  s_728f84008e76fc::t_1900ed0a7f5068 274,535
+  s_728f84008e76fc::t_8375bbb87f5f6c 1-8,12-15,20-23,25,27,29-51,59-90,100-109,134-154,158,179-183,186-210,211-213,215,217-221,224,226-228,251,253,258-273,275-357,390-392,394,395-455,457-466,514-516,518-520,522,524-534,536-539
+  s_728f84008e76fc::t_12762a6732c708 9-11,16,18-19,24,26,28,52-58,91-96,110-112,118-121,124-125,155-157,159-178,184-185,214,216,222-223,225,229-250,252,254-257,358,360-361,364-365,368-371,373-377,384,387-389,393,456,467-513,517,521,523
+src/metrics/local_stats.rs
+  s_728f84008e76fc::t_67f90ea23b2c2c 11
+  s_728f84008e76fc::t_ca87c37e2fb7c3 614
+  s_728f84008e76fc::t_355feeb638dd3c 689
+  s_728f84008e76fc::t_77fc4b5a7c3e8b 745
+  s_728f84008e76fc::t_4eeacc1edaf2bb 1394-1433
+  s_728f84008e76fc::t_69953d15828508 651
+  s_728f84008e76fc::t_5a9f71310b94d2 1318-1326,1331
+src/commands/usage.rs
+  s_728f84008e76fc::t_6b8129b6489b72 38-41
+src/metrics/models_dev_pricing_snapshot.json
+  s_728f84008e76fc::t_9aba83917c7a93 1-938
+src/metrics/mod.rs
+  s_728f84008e76fc::t_6d4530ae8365ed 12
+src/utils.rs
+  s_728f84008e76fc::t_d73752eb3c4c4a 449-480,485-516
+  s_57cce68e8a6c88::t_1843dd3fc139d3 517
+src/commands/upgrade.rs
+  s_728f84008e76fc::t_1608957e674aac 12
+  s_728f84008e76fc::t_1f20b9ad744a1a 13
+  s_728f84008e76fc::t_3f2cd8dc746244 139,144,149
+.github/workflows/update-models-dev-pricing.yml
+  s_728f84008e76fc::t_0a92524a064038 71-77,83
+  s_728f84008e76fc::t_029c35bb0c704d 1-70,78-82,84-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "02cdc176944f06ba592f0ca724179b519bf318f4",
+  "prompts": {},
+  "sessions": {
+    "s_57cce68e8a6c88": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01f81-1ad4-7ef1-b10a-98b34b80994d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_728f84008e76fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b9c2fec-234c-43b0-aceb-0bb0ff75be4a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

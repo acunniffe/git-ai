@@ -1,0 +1,24 @@
+src/daemon.rs
+  s_2c8a703bb1fd71::t_d92697dfcc1b35 6476-6479,6484-6488,6490-6492
+  s_2c8a703bb1fd71::t_cafe0d045c5634 6480-6482,6489
+  s_2c8a703bb1fd71::t_9b557aab0699aa 2829-2830
+  s_2c8a703bb1fd71::t_9461ae6319178c 6445-6446,6450-6452,6456-6459
+  s_2c8a703bb1fd71::t_b6bc051c49a2bb 6447-6449,6453-6455
+  s_2c8a703bb1fd71::t_691ca7f5c8cd0b 2728-2734
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.17",
+  "base_commit_sha": "1cbf83faf4b8e9108ed68d9ca8bcd4fa50f09450",
+  "prompts": {},
+  "sessions": {
+    "s_2c8a703bb1fd71": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "aa2b7669-72a3-4ce8-8fbf-62fd9caee4f5",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}

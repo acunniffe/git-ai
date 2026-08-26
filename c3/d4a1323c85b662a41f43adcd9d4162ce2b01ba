@@ -1,0 +1,26 @@
+src/commands/install_hooks.rs
+  s_9ba5945f49d00a::t_efc8d57fde16e7 519-553,560-588,591-597,604-633
+  s_9ba5945f49d00a::t_1d4b06f4c9af8f 384-386
+  s_9ba5945f49d00a::t_6d6843c6f2e461 4,12
+  s_9ba5945f49d00a::t_fe941bb39228ef 554-559,589-590,598-603,1665,1687-1690,1698-1702,1704-1707
+  s_9ba5945f49d00a::t_9afb9b9ad29531 1588-1664,1666-1686,1691-1697,1703,1708-1712
+tests/integration/install_hooks_comprehensive.rs
+  s_9ba5945f49d00a::t_fe941bb39228ef 432-435,478-481,525-528
+  s_9ba5945f49d00a::t_0793226ccb225c 378-431,436-477,482-524,529-535
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "c3d4a1323c85b662a41f43adcd9d4162ce2b01ba",
+  "prompts": {},
+  "sessions": {
+    "s_9ba5945f49d00a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebec7a6-2ea8-4077-8a42-cf367c484cc3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

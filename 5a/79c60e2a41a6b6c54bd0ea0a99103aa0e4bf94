@@ -1,0 +1,35 @@
+tests/integration/install_hooks_comprehensive.rs
+  s_eae0725f606f1a::t_ab1d9f1909fd48 276-297,306-355
+  s_eae0725f606f1a::t_66d13b17a99398 298-305
+src/commands/mod.rs
+  s_eae0725f606f1a::t_359c7174781dec 16
+src/commands/git_ai_handlers.rs
+  s_eae0725f606f1a::t_66d13b17a99398 369-371
+src/commands/install_env.rs
+  s_eae0725f606f1a::t_ea72fd6007f396 22-25
+  s_eae0725f606f1a::t_222f60c3f451be 1-20,26-195,197-397,402-605
+  s_eae0725f606f1a::t_66d13b17a99398 196,398-401
+  s_eae0725f606f1a::t_a646adbbec1e81 21
+src/commands/install_hooks.rs
+  s_eae0725f606f1a::t_7a5690b195f160 1126-1157
+  s_eae0725f606f1a::t_275e48cbd557cd 316-331
+  s_eae0725f606f1a::t_b7bd6836f4b47c 25
+  s_eae0725f606f1a::t_394f9e28b32f14 364
+  s_eae0725f606f1a::t_7d2f6d1f405f8f 385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "5a79c60e2a41a6b6c54bd0ea0a99103aa0e4bf94",
+  "prompts": {},
+  "sessions": {
+    "s_eae0725f606f1a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3befad8-a14b-4826-a404-c35732238c0b",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}

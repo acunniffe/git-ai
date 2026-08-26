@@ -1,0 +1,9 @@
+docs/superpowers/specs/2026-05-03-checkpoint-rewrite-design.md
+  dacf127c97d5a34b 1-102,104-131,133-142,144,153-178,181-200,203-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "a7daed049bb2574c0be7286bf251775aee557e78",
+  "prompts": {}
+}

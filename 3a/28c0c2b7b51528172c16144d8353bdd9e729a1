@@ -1,0 +1,33 @@
+src/commands/install_env.rs
+  s_eae0725f606f1a::t_7f696150d323b7 617-620
+  s_eae0725f606f1a::t_6f921d5eb41195 12-14
+  s_eae0725f606f1a::t_69ac42d6dc2745 614-616
+  s_eae0725f606f1a::t_3d145bf06d80fa 621-623
+  s_11c3e1cdda522c::t_974a85b748aef6 609-613,624-970
+Cargo.toml
+  s_11c3e1cdda522c::t_12678df84aac26 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "3a28c0c2b7b51528172c16144d8353bdd9e729a1",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_eae0725f606f1a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e3befad8-a14b-4826-a404-c35732238c0b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

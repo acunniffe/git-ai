@@ -1,0 +1,106 @@
+src/daemon/stream_worker.rs
+  s_395f5898107085::t_c4d93b90e62b03 1-1045,1047-1311
+  s_395f5898107085::t_3c7251f9618599 1046
+src/commands/checkpoint_agent/presets/amp.rs
+  s_395f5898107085::t_5eb998e3894320 4,268,324,346,352,418-419
+src/commands/checkpoint_agent/orchestrator.rs
+  s_395f5898107085::t_5eb998e3894320 5,41,331,347,406,532
+src/streams/agents/codex.rs
+  s_395f5898107085::t_f16bbfd9f23206 299
+src/daemon/stream_worker_tests.rs
+  s_395f5898107085::t_fbb9ee9525825c 1-182
+tests/integration/gemini.rs
+  s_395f5898107085::t_6cc00822df7b00 133
+tests/integration/opencode.rs
+  s_395f5898107085::t_6cc00822df7b00 210,623
+src/streams/agents/copilot.rs
+  s_395f5898107085::t_f16bbfd9f23206 357
+src/streams/agents/pi.rs
+  s_395f5898107085::t_f16bbfd9f23206 150
+src/commands/checkpoint_agent/presets/mod.rs
+  s_395f5898107085::t_3a3b34abe7cd82 61,92,96
+src/streams/agents/opencode.rs
+  s_395f5898107085::t_f16bbfd9f23206 327
+tests/integration/amp.rs
+  s_395f5898107085::t_6cc00822df7b00 144,146
+src/streams/agents/amp.rs
+  s_395f5898107085::t_f16bbfd9f23206 216
+src/daemon.rs
+  s_395f5898107085::t_3c7251f9618599 78
+  s_395f5898107085::t_9dd7e41b80c3a9 1920,7469,7471,7487,7489-7490,8947
+  s_395f5898107085::t_613f9d6638a086 3905,4004,7468,8470,8476,8877
+tests/integration/event_timestamp_extraction.rs
+  s_395f5898107085::t_7e81f55078ee55 2
+src/commands/checkpoint_agent/presets/continue_cli.rs
+  s_395f5898107085::t_3a3b34abe7cd82 4,45,69,75,131-132
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_395f5898107085::t_3a3b34abe7cd82 4,123,135,249,304,326,535-536,616-617,880-881,954
+src/commands/checkpoint_agent/presets/mock_ai.rs
+  s_395f5898107085::t_9dd7e41b80c3a9 64
+src/commands/checkpoint_agent/presets/droid.rs
+  s_395f5898107085::t_5eb998e3894320 4,157,186,194,266-267,298-299
+src/commands/checkpoint_agent/presets/gemini.rs
+  s_395f5898107085::t_3a3b34abe7cd82 4,50,75,81,142-143
+tests/integration/codex.rs
+  s_395f5898107085::t_6cc00822df7b00 70,160
+tests/integration/windsurf.rs
+  s_395f5898107085::t_6cc00822df7b00 73,151
+src/streams/agents/copilot_cli.rs
+  s_395f5898107085::t_f16bbfd9f23206 122
+src/streams/agents/gemini.rs
+  s_395f5898107085::t_f16bbfd9f23206 218
+src/streams/agents/claude.rs
+  s_395f5898107085::t_f16bbfd9f23206 276
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_395f5898107085::t_3a3b34abe7cd82 3,147,159,292,316,332,338
+src/commands/checkpoint_agent/presets/firebender.rs
+  s_395f5898107085::t_5eb998e3894320 228,234,291,334
+src/commands/checkpoint_agent/presets/pi.rs
+  s_395f5898107085::t_5eb998e3894320 3,148,150,186,197,281-282,335-336
+tests/integration/checkpoint_unit.rs
+  s_395f5898107085::t_6cc00822df7b00 241,383,1303
+tests/integration/continue_cli.rs
+  s_395f5898107085::t_6cc00822df7b00 180,258
+tests/integration/test_utils_unit.rs
+  s_395f5898107085::t_6cc00822df7b00 39,151
+src/commands/checkpoint_agent/presets/windsurf.rs
+  s_395f5898107085::t_3a3b34abe7cd82 4,113,145,172,240-241
+tests/integration/sweep_e2e.rs
+  s_395f5898107085::t_5b6349cf2e9972 375,386,443
+src/streams/agents/droid.rs
+  s_395f5898107085::t_f16bbfd9f23206 253
+src/commands/checkpoint_agent/presets/agent_v1.rs
+  s_395f5898107085::t_5eb998e3894320 106,173
+src/commands/checkpoint_agent/presets/ai_tab.rs
+  s_395f5898107085::t_5eb998e3894320 82,154
+tests/integration/claude_code.rs
+  s_395f5898107085::t_6cc00822df7b00 329,370
+tests/integration/agent_v1.rs
+  s_395f5898107085::t_6cc00822df7b00 86
+src/commands/checkpoint_agent/presets/claude.rs
+  s_395f5898107085::t_5eb998e3894320 4,93,115,121,181-182
+src/commands/checkpoint_agent/presets/cursor.rs
+  s_395f5898107085::t_3a3b34abe7cd82 4,114,135,147,268-269,400
+src/commands/checkpoint_agent/presets/codex.rs
+  s_395f5898107085::t_3a3b34abe7cd82 5,133,167,182,252-253,277
+tests/integration/agent_presets_comprehensive.rs
+  s_395f5898107085::t_6cc00822df7b00 114,551,811
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_395f5898107085::t_5eb998e3894320 4,80,96,142,227,291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "0d79e2e445bb53952c27b8e2b66003776d2d38e9",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

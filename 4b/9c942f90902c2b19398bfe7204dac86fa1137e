@@ -1,0 +1,44 @@
+.github/workflows/build-binaries.yml
+  s_7b467eb49c5596::t_4ea553eed1d88b 18-19,22-23,25
+  s_019661bdd4815f::t_b8647b81991bc9 20,24
+  s_019661bdd4815f::t_6b19f2b5907472 41-46
+  h_9440633a297247 7
+  s_1f93bcb5fd13ff::t_db786e49c19018 1-6,8-17,21,26-40,47-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.11",
+  "base_commit_sha": "4b9c942f90902c2b19398bfe7204dac86fa1137e",
+  "prompts": {},
+  "humans": {
+    "h_9440633a297247": {
+      "author": "Sachin Lubana <sachin.lubana@deliveryhero.com>"
+    }
+  },
+  "sessions": {
+    "s_019661bdd4815f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "47923d8c-4f71-4ff8-8d9a-ae40df1ca15d",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": null
+    },
+    "s_1f93bcb5fd13ff": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a609ec90-e902-4741-a369-3db723f29f38",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Sachin Lubana <sachin.lubana@deliveryhero.com>"
+    },
+    "s_7b467eb49c5596": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19c1dc6f-32c5-4f7d-8bcf-fdff7e659590",
+        "model": "claude-haiku-4-5-20251001"
+      },
+      "human_author": null
+    }
+  }
+}

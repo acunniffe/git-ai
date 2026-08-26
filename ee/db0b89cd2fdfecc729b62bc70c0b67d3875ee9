@@ -1,0 +1,46 @@
+src/api/client.rs
+  78b996e39b4b2d3b 1,6-36,57,60-71,204,206
+src/auth/client.rs
+  78b996e39b4b2d3b 1-192
+Cargo.toml
+  78b996e39b4b2d3b 30
+src/auth/types.rs
+  78b996e39b4b2d3b 1-56
+src/auth/credentials.rs
+  78b996e39b4b2d3b 1-155
+src/commands/git_ai_handlers.rs
+  78b996e39b4b2d3b 135-140,210-211
+src/commands/login.rs
+  78b996e39b4b2d3b 1-100
+src/commands/logout.rs
+  78b996e39b4b2d3b 1-25
+src/lib.rs
+  78b996e39b4b2d3b 2
+src/auth/mod.rs
+  78b996e39b4b2d3b 1-7
+src/main.rs
+  78b996e39b4b2d3b 2
+src/commands/mod.rs
+  78b996e39b4b2d3b 14-15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.31",
+  "base_commit_sha": "eedb0b89cd2fdfecc729b62bc70c0b67d3875ee9",
+  "prompts": {
+    "78b996e39b4b2d3b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "096db0be-ede0-4292-8dee-251a94159623",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 613,
+      "total_deletions": 20,
+      "accepted_lines": 596,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/dab788adcf63ac87cd7b7cbace296be900f78ee6a99b61f0be5944cf22566617"
+    }
+  }
+}

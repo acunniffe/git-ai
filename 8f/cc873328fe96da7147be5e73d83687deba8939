@@ -1,0 +1,32 @@
+src/authorship/rewrite.rs
+  s_032cf4fb6d69d7::t_01a10062c233e5 94-98
+  s_032cf4fb6d69d7::t_ccc531e8788d84 46-50
+  s_032cf4fb6d69d7::t_1207b3a97a6f0c 186,317-318
+  s_032cf4fb6d69d7::t_88b25e85d892b6 227
+  s_032cf4fb6d69d7::t_66dd239c93d0fb 144-146,178-180
+  s_032cf4fb6d69d7::t_db19d77d204ac7 38-45,51-72,91-93,99,111-120,126,130-136,139-143,148-150,152-154,158,162-177,181-185,198,220-221,225-226,228-232,237-246,248-249,252,254-257,314-316,319,324,326,334,339,342-343,345,363
+tests/integration/squash_merge.rs
+  s_032cf4fb6d69d7::t_db19d77d204ac7 101-103,108,118-119,122,158-160,166,177-178,180,183,442-444,482-483,488,497-498,501,506-507,543-544,550,560-561,563,569-570
+tests/integration/merge_rebase.rs
+  s_032cf4fb6d69d7::t_db19d77d204ac7 329-331,335
+tests/integration/pull_rebase_ff.rs
+  s_032cf4fb6d69d7::t_db19d77d204ac7 894-896,899-900
+tests/integration/rebase_realworld.rs
+  s_032cf4fb6d69d7::t_db19d77d204ac7 8068,8070,8226,8228,8383,8385,8523,8525,9007,9009,9350,9352
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "8fcc873328fe96da7147be5e73d83687deba8939",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
