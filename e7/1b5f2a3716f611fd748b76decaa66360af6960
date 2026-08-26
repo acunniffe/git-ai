@@ -1,0 +1,23 @@
+tests/integration/am_attribution.rs
+  71f132d171c301c4 10-14,67-70,145-150,223-226
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "e71b5f2a3716f611fd748b76decaa66360af6960",
+  "prompts": {
+    "71f132d171c301c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5597a7ef-171b-4c73-b5b4-da83540f06d5",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 21,
+      "total_deletions": 0,
+      "accepted_lines": 21,
+      "overriden_lines": 0
+    }
+  }
+}

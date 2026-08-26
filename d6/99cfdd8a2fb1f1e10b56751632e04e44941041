@@ -1,0 +1,22 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "d699cfdd8a2fb1f1e10b56751632e04e44941041",
+  "prompts": {
+    "448b37b755585303": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "6a2ebe56-a4e3-4d5e-be88-387d8c71ba39",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 5,
+      "accepted_lines": 0,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/634a9eba2d33fbea3e92b23995df7e464bee704c158b4d90efc6202d6facc6cf"
+    }
+  }
+}

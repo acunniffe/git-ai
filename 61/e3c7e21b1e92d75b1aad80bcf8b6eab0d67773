@@ -1,0 +1,19 @@
+src/diagnostics.rs
+  s_567dab71b64423::t_3907e94fb3fe2d 28-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "61e3c7e21b1e92d75b1aad80bcf8b6eab0d67773",
+  "prompts": {},
+  "sessions": {
+    "s_567dab71b64423": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8f7c-ba9b-7112-8d11-3570848d66bb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

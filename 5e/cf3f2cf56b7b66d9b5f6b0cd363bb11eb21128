@@ -1,0 +1,41 @@
+src/daemon/git_backend.rs
+  s_7e719d19471fd9::t_7cc10aaf524c80 330,332-335,567,730-747
+  s_7e719d19471fd9::t_1cb10a3135128d 748-749
+tests/integration/tls_native_certs.rs
+  s_7e719d19471fd9::t_7cc10aaf524c80 15-31,35-41
+  s_7e719d19471fd9::t_cb556ee7003aaa 32-34
+src/commands/install_hooks.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 16
+src/diagnostics.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 21
+tests/daemon_mode.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 546,612
+tests/integration/repos/test_repo.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 394,1762
+tests/integration/repos/mod.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 95,206
+tests/integration/graphite.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 289
+tests/async_mode.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 256,376
+tests/integration/daemon_commit_carryover.rs
+  s_7e719d19471fd9::t_fb4295e9cc817c 30
+tests/commit_tree_update_ref.rs
+  s_7e719d19471fd9::t_20cccffa8d94f6 113,155,209,260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.9",
+  "base_commit_sha": "5ecf3f2cf56b7b66d9b5f6b0cd363bb11eb21128",
+  "prompts": {},
+  "sessions": {
+    "s_7e719d19471fd9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f38e7-aa09-72c3-b383-9aa431d64253",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

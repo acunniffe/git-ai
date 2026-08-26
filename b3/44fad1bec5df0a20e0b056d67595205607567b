@@ -1,0 +1,21 @@
+src/mdm/utils.rs
+  s_969d1ec2bc3012::t_80c7c9953ec375 757,773,776-779
+  s_969d1ec2bc3012::t_2755bd210f7596 960
+  s_969d1ec2bc3012::t_c22e6d4c0220b1 968-969
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "b344fad1bec5df0a20e0b056d67595205607567b",
+  "prompts": {},
+  "sessions": {
+    "s_969d1ec2bc3012": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7618-316d-7f43-aff9-53a14c601a9a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}

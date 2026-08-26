@@ -1,0 +1,19 @@
+src/metrics/events.rs
+  s_cfe6a4847c079e::t_5259d8367b45c0 2360,2367-2372,2387,2400,2461-2465,2521-2525,2541,2581-2582,2596
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "fd5060a4153257686d1d289cf4bed2147c8d380b",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

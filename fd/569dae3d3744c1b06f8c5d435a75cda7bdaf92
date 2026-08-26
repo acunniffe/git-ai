@@ -1,0 +1,59 @@
+tests/diff.rs
+  5ba6911becb3302d 372-373,517-520,697
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.25",
+  "base_commit_sha": "fd569dae3d3744c1b06f8c5d435a75cda7bdaf92",
+  "prompts": {
+    "5ba6911becb3302d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9ed8a1ae-8a70-4044-a63b-18ba7886b522",
+        "model": "default"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "@tests/diff.rs:673-674 these 3 tests are failing test_diff_exact_sequence_verification\n    test_diff_pure_deletions\n    test_diff_shows_human_attribution",
+          "timestamp": "2025-12-13T13:25:22.638Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Reviewing the failing tests to understand what they're testing, then running them to see the errors.",
+          "timestamp": "2025-12-13T13:25:27.326Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Running the failing tests to see the errors:",
+          "timestamp": "2025-12-13T13:25:30.059Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Deletions are missing attribution. Checking how the diff command adds attribution:",
+          "timestamp": "2025-12-13T13:25:53.380Z"
+        },
+        {
+          "type": "assistant",
+          "text": "The `overlay_diff_attributions` function only processes added lines, not deleted lines. Checking how to get attributions for deleted lines:",
+          "timestamp": "2025-12-13T13:25:57.700Z"
+        },
+        {
+          "type": "user",
+          "text": "get ris od assertions about deletion. we're done with those",
+          "timestamp": "2025-12-13T13:26:46.640Z"
+        },
+        {
+          "type": "assistant",
+          "text": "Removing deletion attribution assertions from the three failing tests.",
+          "timestamp": "2025-12-13T13:26:50.242Z"
+        }
+      ],
+      "total_additions": 8,
+      "total_deletions": 8,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}

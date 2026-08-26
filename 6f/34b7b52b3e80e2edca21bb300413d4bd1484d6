@@ -1,0 +1,24 @@
+.github/workflows/intellij-build.yml
+  3f981253f7b49257 172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "6f34b7b52b3e80e2edca21bb300413d4bd1484d6",
+  "prompts": {
+    "3f981253f7b49257": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "290aa841-3b33-4fc5-8d40-be95d08842f7",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0,
+      "messages_url": "http://localhost:4000/cas/81927051060313e1e44bd9c1de9397ac0e65ebc087940b5ad17b9d06eb0cfa5e"
+    }
+  }
+}

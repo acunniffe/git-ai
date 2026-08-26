@@ -1,0 +1,26 @@
+src/token_usage/codex.rs
+  s_cfe6a4847c079e::t_541b618591a7ee 203-211,214,220-245,248-253,255,258-259,263-267,275,279,283,288,290-314,318-333
+  s_cfe6a4847c079e::t_2777ede57e9edd 118-121,130-135
+  s_cfe6a4847c079e::t_ed463e7b52e2db 490,501-543,750
+  s_cfe6a4847c079e::t_a569c41b559383 53,57
+  s_cfe6a4847c079e::t_35d51e5885f297 63-68,71-76,78-83,85-90,92,94,98-115,335
+  s_cfe6a4847c079e::t_f2e3bf36c56164 718-739,744,746,748
+  s_cfe6a4847c079e::t_324613472f0a9c 19-23
+  s_cfe6a4847c079e::t_d7cd7f93a54d19 116,334,740-743,745,747,749,751
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "0049714fe9998b5773f4d39ca2e83f4ee806d658",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

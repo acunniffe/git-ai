@@ -1,0 +1,57 @@
+tests/integration/merge_control_attribution.rs
+  s_18b694e06092e7::t_3181649751e6c4 57-58
+  s_18b694e06092e7::t_2e3ce0670b96d0 1-56,59-113
+  s_18b694e06092e7::t_46e00f6a2b5c2a 114-165
+tests/integration/rewrite_ops_attribution.rs
+  s_18b694e06092e7::t_30874dae0c893b 244-247,261-264
+tests/integration/reset_merge_keep_attribution.rs
+  s_18b694e06092e7::t_d2bc437600e5c1 1-18,20-26,30-56,60-67,71-73
+  s_18b694e06092e7::t_429dd454cf9ff7 19,27-29,57-59,68-70
+tests/integration/cherry_pick_control_attribution.rs
+  s_18b694e06092e7::t_a31eb76c26ba30 1-38,42-99,226
+  s_18b694e06092e7::t_aa585e1750ad97 227-237,242-243,247-257,328
+  s_18b694e06092e7::t_f983d8686abc5c 175-176,186-187,258-327
+  s_18b694e06092e7::t_b3bf5a1e606b31 238-241,244-246
+  s_18b694e06092e7::t_84e3805d89f311 39-41,100-111,116-131
+  s_18b694e06092e7::t_5aad3d9e2ce81f 112-115,132-160,206-225
+  s_18b694e06092e7::t_8b660848eb5445 161-174,177-185,188-205
+tests/integration/squash_merge.rs
+  s_18b694e06092e7::t_9c2c7f811dc585 608
+  s_18b694e06092e7::t_490ead7aa0df88 568-600
+tests/integration/revert_control_attribution.rs
+  s_18b694e06092e7::t_3ff6a9f4b97b33 144-146,148-152,154,160-161
+  s_18b694e06092e7::t_b93ddb67249f29 33-36
+  s_18b694e06092e7::t_dbb17b84c43c8a 1-4,22-32,37-44
+  s_18b694e06092e7::t_8cce30de7de284 5-11,16-21,45-47,88-117,121-143,147,153,155-159,162-173,175-193
+  s_18b694e06092e7::t_015ba7eccf214a 48-87
+  s_18b694e06092e7::t_e6b33357d70a43 12-15,118-120,174
+tests/integration/main.rs
+  s_18b694e06092e7::t_dbb17b84c43c8a 133
+  s_18b694e06092e7::t_6455dd7bdb990f 122
+  s_18b694e06092e7::t_a31eb76c26ba30 36
+  s_18b694e06092e7::t_d2bc437600e5c1 132
+  s_18b694e06092e7::t_2e3ce0670b96d0 99
+tests/integration/merge_rebase.rs
+  s_18b694e06092e7::t_b5d629215a0df7 98,149
+  s_18b694e06092e7::t_8876bd0133f681 108,116,126
+tests/integration/rebase_control_attribution.rs
+  s_18b694e06092e7::t_6b2f6679724dbc 145-146
+  s_18b694e06092e7::t_06bfee983749b3 1-36,75-130,133-144
+  s_18b694e06092e7::t_74f0016d6a76fc 37-74,131-132
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "cd9ebb004a7b7e8f50f65b087909a86ee7247493",
+  "prompts": {},
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

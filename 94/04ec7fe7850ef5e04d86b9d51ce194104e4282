@@ -1,0 +1,23 @@
+src/commands/install_hooks.rs
+  s_6fedfcdbb3b82c::t_b11033f26d8848 1138,1155,1167,1172,1190,1203,1215,1225,1237-1250,1252-1273,1275-1283
+  s_6fedfcdbb3b82c::t_f355627c0361a1 1157,1227,1232,1251,1274
+  s_6fedfcdbb3b82c::t_79ce270ea6c7a6 330
+  s_6fedfcdbb3b82c::t_60fa1b05e7b1ea 345,351-353,355,374-383
+  s_6fedfcdbb3b82c::t_2d21ae8836f5f9 360-363,367-370
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.2",
+  "base_commit_sha": "9404ec7fe7850ef5e04d86b9d51ce194104e4282",
+  "prompts": {},
+  "sessions": {
+    "s_6fedfcdbb3b82c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2ff419aa-cdc0-4382-8e34-a6224067d3e2",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

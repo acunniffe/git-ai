@@ -1,0 +1,43 @@
+src/authorship/virtual_attribution.rs
+  4bcb8f6 1089-1091,1115-1117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.17",
+  "base_commit_sha": "c0586fc66b47bf9d1a3eca7dd6142c32ec75a644",
+  "prompts": {
+    "4bcb8f6": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7c6807b1-8e93-41a9-814e-9a7e57325d69",
+        "model": "claude-4.5-sonnet-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [
+        {
+          "type": "user",
+          "text": "Verify this issue exists and fix it:\n\nThe `filter_to_commits` method incorrectly retains AI attributions from filtered-out commits. After filtering `self.prompts`, the condition `!self.prompts.contains_key(&attr.author_id)` becomes true for AI prompts that were removed, causing them to be kept instead of discarded. The logic should check against the original prompt IDs before filtering, or directly compare with `valid_prompt_ids` and a human identifier, to properly distinguish between human attributions (which should be kept) and filtered AI attributions (which should be removed). @virtual_attribution.rs (1111-1117)",
+          "timestamp": "2025-11-09T15:32:53.910Z"
+        },
+        {
+          "type": "assistant",
+          "text": "I'll verify the issue by reading the relevant code section and then fix it.",
+          "timestamp": "2025-11-09T15:33:05.800Z"
+        },
+        {
+          "type": "tool_use",
+          "name": "read_file",
+          "input": {
+            "limit": 50,
+            "offset": 1084,
+            "target_file": "/Users/aidancunniffe/Desktop/git-ai/src/authorship/virtual_attribution.rs"
+          }
+        }
+      ],
+      "total_additions": 6,
+      "total_deletions": 4,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}

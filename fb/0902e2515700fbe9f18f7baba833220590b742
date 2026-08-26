@@ -1,0 +1,28 @@
+src/authorship/rewrite.rs
+  s_4b321b35f327bb::t_4ae8d7b6ec9b6b 1880-1881
+  s_4b321b35f327bb::t_06c3a4a547cc63 52-61,75-87,484-490,996,1100-1103,1127-1128,1130-1131,1134,1165-1166,1168
+  s_4b321b35f327bb::t_8625c9463c8b27 1869-1872,1925-1928,1932,1941,1946-1947,1951,1955,1958-1971
+  s_4b321b35f327bb::t_681c0a05799a84 1025-1026,1129,1167
+  s_4b321b35f327bb::t_753835791bb46a 1169
+tests/integration/rebase.rs
+  s_4b321b35f327bb::t_4458efda34ce0d 2959,2962-2963
+  s_4b321b35f327bb::t_3333ec3885e505 2989-2995
+  s_4b321b35f327bb::t_8fcbdc23bb7289 2862,2908,2911-2912,2918,2942-2956,2958,2960-2961,2964-2973,2975-2988,2998-3000
+  s_4b321b35f327bb::t_6f74bcf1312220 2870-2880,2930-2936,3002
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "fb0902e2515700fbe9f18f7baba833220590b742",
+  "prompts": {},
+  "sessions": {
+    "s_4b321b35f327bb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9c24-a345-7e63-9b58-4a48986ee55c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

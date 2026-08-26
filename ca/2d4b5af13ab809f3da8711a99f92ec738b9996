@@ -1,0 +1,28 @@
+install.ps1
+  s_567dab71b64423::t_bc521e38a1da17 451-452,454
+  s_567dab71b64423::t_8c778bf54787ee 453
+tests/integration/install_hooks_comprehensive.rs
+  s_567dab71b64423::t_42295c88b66327 442,447-458,464-475,477-478,482-483
+install.sh
+  s_567dab71b64423::t_bc521e38a1da17 281
+src/commands/install_hooks.rs
+  s_567dab71b64423::t_bc521e38a1da17 348-351,354
+src/commands/git_ai_handlers.rs
+  s_567dab71b64423::t_bd875bb95190cb 39-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.16",
+  "base_commit_sha": "ca2d4b5af13ab809f3da8711a99f92ec738b9996",
+  "prompts": {},
+  "sessions": {
+    "s_567dab71b64423": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f8f7c-ba9b-7112-8d11-3570848d66bb",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

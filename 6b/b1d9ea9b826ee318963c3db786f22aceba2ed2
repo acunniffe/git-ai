@@ -1,0 +1,25 @@
+tests/repos/test_repo.rs
+  f77269fac5df9d40 63-80
+tests/gix_config_tests.rs
+  f77269fac5df9d40 7,43,64,80,99,137,153,164,202,218-306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.39",
+  "base_commit_sha": "6bb1d9ea9b826ee318963c3db786f22aceba2ed2",
+  "prompts": {
+    "f77269fac5df9d40": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cd523ce3-1fe1-4fc0-8128-1fd6d17ec027",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 137,
+      "total_deletions": 30,
+      "accepted_lines": 116,
+      "overriden_lines": 0
+    }
+  }
+}
