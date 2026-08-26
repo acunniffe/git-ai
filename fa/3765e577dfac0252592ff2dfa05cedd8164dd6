@@ -1,0 +1,23 @@
+src/daemon/token_usage_worker.rs
+  s_42eaba3a87f367::t_7dc82adcbccec3 393,406-421
+tests/integration/token_usage.rs
+  s_42eaba3a87f367::t_4f93ce90af1827 908
+  s_42eaba3a87f367::t_ad80e3bd2c9ec5 13,15,77,876
+  s_42eaba3a87f367::t_ca5e1247d52bb0 14,16,78-92,874-875,877-907,909-929
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "fa3765e577dfac0252592ff2dfa05cedd8164dd6",
+  "prompts": {},
+  "sessions": {
+    "s_42eaba3a87f367": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03f83-1f00-7d10-85db-008d64cb74b4",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    }
+  }
+}
