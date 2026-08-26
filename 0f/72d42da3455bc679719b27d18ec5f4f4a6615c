@@ -1,0 +1,22 @@
+src/commands/install_hooks.rs
+  s_0ff51778e01eac::t_28a844ebcde222 8
+src/mdm/agents/vscode.rs
+  s_0ff51778e01eac::t_bc1a12ea6c16fa 184-187,189-198,200-208,210-215
+  s_0ff51778e01eac::t_8ac057d5710623 8-9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.11",
+  "base_commit_sha": "0f72d42da3455bc679719b27d18ec5f4f4a6615c",
+  "prompts": {},
+  "sessions": {
+    "s_0ff51778e01eac": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01067a8a-347e-4fb5-a6ef-e77af6998333",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>"
+    }
+  }
+}

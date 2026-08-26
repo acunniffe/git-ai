@@ -1,0 +1,26 @@
+src/commands/checkpoint_agent/bash_tool.rs
+  d85763f9dab5b79c 34,43,623-631,634
+tests/integration/gemini.rs
+  d85763f9dab5b79c 899-965,989
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.2.6",
+  "base_commit_sha": "518faaab1436e2dfc481e1eee94a58005d47d3de",
+  "prompts": {
+    "d85763f9dab5b79c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79131d5c-9f58-4b93-9c97-b5d930ee22ce",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 80,
+      "total_deletions": 8,
+      "accepted_lines": 80,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/2af5638573f251e564be641a19088cee31b729c268c237cfe089fe2358964b4d"
+    }
+  }
+}

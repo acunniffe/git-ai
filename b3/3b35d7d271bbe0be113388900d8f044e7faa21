@@ -1,0 +1,37 @@
+src/http.rs
+  s_59382cac373d67::t_0cc03dd4e1072c 116
+  s_59382cac373d67::t_a176bcf23b5b54 1,6,77-115,117,157-172
+  s_59382cac373d67::t_4fbaf70cf12f7d 75,138-156,173-174
+  s_59382cac373d67::t_70b16e97889d85 5,7,49-64,66,68-74
+  s_59382cac373d67::t_4325d5317a5cc2 76
+tests/integration/daemon_http_memory.rs
+  s_59382cac373d67::t_02a2726e7f910b 1-2,4-123,125-128,135-144,146-181,184-189
+  s_59382cac373d67::t_7144ba32db2ab7 145
+  s_59382cac373d67::t_b75b7894d4ee5b 3,124,129-134
+  s_59382cac373d67::t_d042293ca4183b 182
+  s_59382cac373d67::t_0cc03dd4e1072c 183
+src/api/client.rs
+  s_59382cac373d67::t_a176bcf23b5b54 313
+src/commands/analyze/cube.rs
+  s_59382cac373d67::t_a176bcf23b5b54 92-93
+docs/daemon-trace2-ingestion-spec.md
+  s_59382cac373d67::t_cee52489fd27f3 95-100,279-280
+tests/integration/main.rs
+  s_59382cac373d67::t_02a2726e7f910b 56
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.13",
+  "base_commit_sha": "b33b35d7d271bbe0be113388900d8f044e7faa21",
+  "prompts": {},
+  "sessions": {
+    "s_59382cac373d67": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f4d61-2b6b-7de2-aa3a-fabc29d38f19",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

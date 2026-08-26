@@ -1,0 +1,25 @@
+src/authorship/rewrite_stash.rs
+  s_032cf4fb6d69d7::t_5cd50730128416 100-107
+  s_032cf4fb6d69d7::t_f8daa6993ddcff 393-397,403-407,414-418
+  s_032cf4fb6d69d7::t_d10a1522356bd0 441-444,450-456
+src/daemon.rs
+  s_032cf4fb6d69d7::t_84d545ce4f132e 5504-5505,5509-5510
+  s_032cf4fb6d69d7::t_7b9573150cbb86 5506-5508,5518,5524-5526,5530
+  s_032cf4fb6d69d7::t_d7fd1c5fbaa89c 5519-5523,5527-5529,5531-5535
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "f5ba788cae6546fb07fe6b874d4d81004b9bdf86",
+  "prompts": {},
+  "sessions": {
+    "s_032cf4fb6d69d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "198ce817-84dc-4dd5-b6cf-b8d41b27e713",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

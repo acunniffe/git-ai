@@ -1,0 +1,38 @@
+src/token_usage/extractor.rs
+  s_cfe6a4847c079e::t_96cdac3d84b4e9 22-31
+src/token_usage/claude.rs
+  s_cfe6a4847c079e::t_b94192ff48833f 204-209
+  s_cfe6a4847c079e::t_0c812420788478 587-688,695-698
+  s_cfe6a4847c079e::t_2189b786f73c62 689-694
+src/token_usage/cost.rs
+  s_cfe6a4847c079e::t_ee277644aecf61 177
+  s_cfe6a4847c079e::t_64fb6c22cad6f4 43-46
+  s_cfe6a4847c079e::t_d202e6670eebe6 38-42,62
+  s_cfe6a4847c079e::t_0f7860a7d62391 146-176,178-182
+  s_cfe6a4847c079e::t_cf0252163c7699 3-10,20-30,51-55,60,65-67,69-72
+src/token_usage/codex.rs
+  s_cfe6a4847c079e::t_c135c72a1c3ef8 866-875,881-882,888-890,896-918,924-931,937-953,958-1000,1005-1045,1051-1052,1058-1112
+  s_cfe6a4847c079e::t_440941740931a0 439-440
+  s_cfe6a4847c079e::t_93f854c8697f7c 24-26,327-334,374-375,377-379,412,433-435,437
+  s_cfe6a4847c079e::t_96cdac3d84b4e9 191-201
+  s_cfe6a4847c079e::t_2a0f888a1a798a 811,828
+  s_cfe6a4847c079e::t_64fb6c22cad6f4 438,876-880,883-887,891-895,919-923,932-936,954-957,1001-1004,1046-1050,1053-1057
+src/token_usage/snapshots/git_ai__token_usage__claude__tests__golden_fixture_extraction_is_pinned.snap
+  s_cfe6a4847c079e::t_29b8f66f0b4dc2 1-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "979379351534f007ea5cfc063d667d6d348ed8ac",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

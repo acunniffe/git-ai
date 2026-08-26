@@ -1,0 +1,19 @@
+src/commands/checkpoint_agent/presets/opencode.rs
+  s_939eab6fa9b795::t_eaa3040c9cafc9 590
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "906267d995a3c11ee18a21f000ef7208884e22eb",
+  "prompts": {},
+  "sessions": {
+    "s_939eab6fa9b795": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fee29-e78c-75b2-9620-d66df24a5366",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

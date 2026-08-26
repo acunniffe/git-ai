@@ -1,0 +1,26 @@
+src/commands/status.rs
+  3174b3217c69691b 1-4,14,51-52,134,146,151,153,158,232,241-244,286-287,310-311,315-318,361,366,371,392,397,415,419,425-438,459,466,475-519,521-543
+src/commands/checkpoint.rs
+  3174b3217c69691b 6-8,138-140,263,536,561,603,606,609-610,612,644,670-672,697,699,719,1925-2001
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.4",
+  "base_commit_sha": "db2cf3558eefa80170723b9c3a883adca8418bb3",
+  "prompts": {
+    "3174b3217c69691b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019c6e14-7de5-7292-9e52-9e7da1302d1c",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 242,
+      "total_deletions": 111,
+      "accepted_lines": 233,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/ec3861069aa4bbf579f562f0cecbe448be2d668edca7cc8b6c03f324c536881e"
+    }
+  }
+}

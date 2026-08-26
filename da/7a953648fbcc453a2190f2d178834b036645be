@@ -1,0 +1,90 @@
+tests/integration/git_restore_attribution.rs
+  s_18b694e06092e7::t_9a311a4fe1a58e 84
+  s_18b694e06092e7::t_aa0d7d507bd67a 104-187
+  s_18b694e06092e7::t_aa29dcaec53b33 60-70,72-83,85-103
+  s_18b694e06092e7::t_6e2f201cbcdbd0 20
+  s_18b694e06092e7::t_26686702706a2f 1-19,21-59
+  s_18b694e06092e7::t_db89689ba9e8fc 71
+tests/integration/repos/test_repo.rs
+  s_18b694e06092e7::t_9e45addcc49393 2219,2222,2228,2231,2234,2323,2329,2634,2643,2647-2656,2668-2670,2719-2728
+  91a8a00bb6ab25b0 2054,2057,2218,2230,2624,2657-2665
+  107bc20d2ae424fb 2232,2326-2328,2621,2644-2645,2666-2667,2730-2779,2935-2938
+  5b8e5820a895f4f7 2637,3033,3052
+  s_18b694e06092e7::t_19b1aeed34c329 2617-2619
+  0240efbaf2bfce28 2224-2225,2236-2237,2620,2636,2641,2729
+  s_9d23a97fede30c::t_fef1a9068217ea 2638,3034
+  s_18b694e06092e7::t_4193ed4f85e392 2220-2221
+  s_18b694e06092e7::t_28ae5f96ea9660 2320-2322
+  s_18b694e06092e7::t_03259399402ca4 2330
+tests/integration/git_rm_attribution.rs
+  s_18b694e06092e7::t_66ab5b8f9ed786 1-96
+  s_18b694e06092e7::t_55357827bb881a 97-100
+tests/integration/git_add_attribution.rs
+  s_18b694e06092e7::t_fdb83dec8dab8f 1-80
+tests/integration/branch_modes_attribution.rs
+  s_18b694e06092e7::t_115f668e953ced 1-101
+tests/integration/main.rs
+  s_18b694e06092e7::t_69f0e87a69a76d 76
+  s_18b694e06092e7::t_424d7f0aace04d 28
+  s_18b694e06092e7::t_66ab5b8f9ed786 77
+  s_18b694e06092e7::t_4748a7b8a3bb65 72
+  s_18b694e06092e7::t_115f668e953ced 26
+tests/integration/checkout_switch_modes_attribution.rs
+  s_18b694e06092e7::t_ebc3c603aaab35 168
+  s_18b694e06092e7::t_520407566ebb23 135
+  s_18b694e06092e7::t_424d7f0aace04d 1,3-47,52-79,81-88,176
+  s_18b694e06092e7::t_fac9b92c2c7692 2,48-51,80,89-134,145-165,170-175
+  s_18b694e06092e7::t_637a637fc66ed4 136-138,140-142
+  s_18b694e06092e7::t_69b75a99a4d906 139,143
+  s_18b694e06092e7::t_25aa47632189c2 166-167,169
+  s_18b694e06092e7::t_747f95e62328fc 144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "da7a953648fbcc453a2190f2d178834b036645be",
+  "prompts": {
+    "0240efbaf2bfce28": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "1ffdd046-1b9a-4555-8bc1-f66b41211bd6",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "91a8a00bb6ab25b0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "9c8846d4-ad83-4d0a-a83f-5f1284813a26",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  },
+  "sessions": {
+    "s_18b694e06092e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fed54-de0a-7dc0-864e-2bb6230ff5ff",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_9d23a97fede30c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ae8ed383-0919-4f98-afe7-a846e5330d72",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+docs/token-usage-events-spec.md
+  s_cfe6a4847c079e::t_c8f99f1d3def07 150-154
+  s_cfe6a4847c079e::t_8922a16932ea86 162-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "a981487e13fe7681ad541ab03b2db8f4e9a4e1d6",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

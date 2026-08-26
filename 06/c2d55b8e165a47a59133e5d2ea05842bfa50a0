@@ -1,0 +1,73 @@
+tests/notes_sync_regression.rs
+  s_4d9a8a8cf0ead7::t_7a64f9d399fe4f 675
+  s_4d9a8a8cf0ead7::t_6b0a6a6afbc24b 8-9,616-674,677-703
+  s_4d9a8a8cf0ead7::t_6b86db3010b038 12
+  s_4d9a8a8cf0ead7::t_7555cf53ecedee 7,1397-1398,1401,1403-1408
+  s_4d9a8a8cf0ead7::t_b0011135b0bb14 676
+  s_4d9a8a8cf0ead7::t_1128774515fd15 704,1393-1396,1399-1400,1402,1409-1425,1428-1435,1439-1440,1455-1480,1482-1505,1508,1521-1549,1551,1557-1558
+  s_4d9a8a8cf0ead7::t_5a4b31ac927480 5,1426-1427,1441-1444,1509-1520,1552-1556
+  s_4d9a8a8cf0ead7::t_7bb460fc33a44b 1436-1438,1445-1449,1481
+  s_4d9a8a8cf0ead7::t_7eb9f346494c08 562,609-610
+  s_4d9a8a8cf0ead7::t_bae4a6847a51ff 1450-1454,1506-1507
+  s_4d9a8a8cf0ead7::t_41435cf429e3c7 6
+  s_4d9a8a8cf0ead7::t_04409d7f16fec6 1550
+  s_c73b26079bc93f::t_61b59f6d196322 705
+tests/integration/cherry_pick.rs
+  s_4d9a8a8cf0ead7::t_eeef718c0d35fd 822-823,825
+  s_4d9a8a8cf0ead7::t_33759653a687ab 842-843,933-934,1482
+  s_4d9a8a8cf0ead7::t_0f8fab50409875 12-17,824,1417
+  s_4d9a8a8cf0ead7::t_01166e8f0ed1c7 1415-1416,1418
+src/daemon.rs
+  s_4d9a8a8cf0ead7::t_b661d204ac9d71 1333-1340,1342-1348,1350-1354,1379-1381,1383,1398-1413,1417
+  s_4d9a8a8cf0ead7::t_6fd371a22d8923 5739-5740
+  s_4d9a8a8cf0ead7::t_acb3a6723de684 5729-5738,5741-5750,6456-6457,6459
+  s_4d9a8a8cf0ead7::t_e86d27798b94c6 1341,1349,1355-1378
+  s_4d9a8a8cf0ead7::t_12c553bb6213a3 1386,1389-1391
+  s_0ca8b5afd9749b::t_d30fef0d4678b0 1387,1396,1418
+  s_c73b26079bc93f::t_121fedea1f3b73 1388
+  s_0ca8b5afd9749b::t_f949a4dff07c15 1414
+  s_4d9a8a8cf0ead7::t_7d0393b729d89e 6458
+src/git/notes_api.rs
+  s_4d9a8a8cf0ead7::t_12c553bb6213a3 419,431,434-439
+  s_4d9a8a8cf0ead7::t_6fd371a22d8923 418
+  s_4d9a8a8cf0ead7::t_e4bc93da39c148 409-417,420-424,449,462,472
+  s_4d9a8a8cf0ead7::t_353cf9fe1165a7 440
+tests/integration/pull_rebase_ff.rs
+  s_4d9a8a8cf0ead7::t_257b1e21672e22 640
+  s_4d9a8a8cf0ead7::t_bbf95d6a2ee98e 665-668,674-675,748
+  s_4d9a8a8cf0ead7::t_7deca1d70d4894 704,725-733
+  s_4d9a8a8cf0ead7::t_d28bc4710907d2 641-664,669-673,676-703,705-724,734-747,749-750,2249
+  s_4d9a8a8cf0ead7::t_7eb9f346494c08 2248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.17",
+  "base_commit_sha": "06c2d55b8e165a47a59133e5d2ea05842bfa50a0",
+  "prompts": {},
+  "sessions": {
+    "s_0ca8b5afd9749b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019efb8d-b857-78a3-a254-fd6c514f1864",
+        "model": "gpt-5.5"
+      },
+      "human_author": null
+    },
+    "s_4d9a8a8cf0ead7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019faf99-b634-74a3-b57b-4b0b1be32e93",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": null
+    },
+    "s_c73b26079bc93f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fb43e-8c6c-72c0-8a58-e8dbe55331ee",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

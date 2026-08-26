@@ -1,0 +1,26 @@
+src/mdm/agents/vim.rs
+  73a492d33da4b1eb 21
+agent-support/vim/plugin/git_ai.vim
+  73a492d33da4b1eb 71,77-89,91,97-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.0",
+  "base_commit_sha": "213be00563a5f58b49a4718aea082c96d5b79580",
+  "prompts": {
+    "73a492d33da4b1eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7de515fd-cde9-403c-bee2-eccbd5f12ca8",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 19,
+      "total_deletions": 4,
+      "accepted_lines": 19,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/3cb279e89c8c149108e20c6f30be3b08c4804946c255d4fa940fadf3eccdec3a"
+    }
+  }
+}

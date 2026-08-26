@@ -1,0 +1,22 @@
+Cargo.toml
+  s_a2f58177a1dd18::t_3e8d1a00efd62c 50
+src/commands/daemon.rs
+  s_a2f58177a1dd18::t_a75c5b6c6a3955 444-457
+  s_a2f58177a1dd18::t_8eae7711211c73 344-404
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.10",
+  "base_commit_sha": "8e74cc0a9d5ee1c2d858a1370993e1538df35dec",
+  "prompts": {},
+  "sessions": {
+    "s_a2f58177a1dd18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a46d3fd3-40c3-4c7b-b507-ba58eb2fab83",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Ubuntu <ubuntu@ip-172-31-38-209.ap-south-1.compute.internal>"
+    }
+  }
+}

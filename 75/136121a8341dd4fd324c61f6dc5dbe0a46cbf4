@@ -1,0 +1,22 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.1.16",
+  "base_commit_sha": "75136121a8341dd4fd324c61f6dc5dbe0a46cbf4",
+  "prompts": {
+    "32e593d1edb9ac87": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ce3b9-e7df-7f52-bed0-2b00e00b352d",
+        "model": "gpt-5.3-codex"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 119,
+      "total_deletions": 0,
+      "accepted_lines": 119,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/c9bcf5b57b8a601574bef1aa19feb17b1625ec0da853fb61ad145b77a2d3f54f"
+    }
+  }
+}

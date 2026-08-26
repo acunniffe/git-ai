@@ -1,0 +1,20 @@
+src/commands/reingest.rs
+  s_563ec768bd999c::t_35cd0d4babb324 161-165
+  s_563ec768bd999c::t_ad9802ed0e785b 269
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "fc6965715a6156eecc3dfb8ad6ccf46453052a4a",
+  "prompts": {},
+  "sessions": {
+    "s_563ec768bd999c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0254b-8897-7641-a6f8-28f248f9e8f2",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

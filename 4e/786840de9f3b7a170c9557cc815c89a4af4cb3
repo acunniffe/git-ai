@@ -1,0 +1,45 @@
+src/authorship/background_agent.rs
+  h_670eaf8bab379b 1-2,16-20
+  d29058902e40905c 3-4,6-15,21-57,59-96
+  fca138e44b58c4d7 5,58
+src/authorship/mod.rs
+  d29058902e40905c 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "4e786840de9f3b7a170c9557cc815c89a4af4cb3",
+  "prompts": {
+    "d29058902e40905c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bc55219a-2725-4ada-8ab5-8b136b11cb64",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 444,
+      "total_deletions": 228,
+      "accepted_lines": 88,
+      "overriden_lines": 0
+    },
+    "fca138e44b58c4d7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1c9d90b3-3b0d-42dc-90a7-695ff87ffc9d",
+        "model": "claude-opus-4-7"
+      },
+      "human_author": "Aidan Cunniffe",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  },
+  "humans": {
+    "h_670eaf8bab379b": {
+      "author": "Aidan Cunniffe"
+    }
+  }
+}

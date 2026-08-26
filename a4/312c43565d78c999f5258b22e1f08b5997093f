@@ -1,0 +1,26 @@
+tests/integration/recovery_diff_memory_repro.rs
+  s_8e83c3b3c7c61d::t_b71c054155f0f1 103-106
+  s_8e83c3b3c7c61d::t_455d766ed971b3 24-25,27,29,35,38
+  s_8e83c3b3c7c61d::t_bb035349b4ab8a 133-138,140-145,148-149,154,169-171
+  s_8e83c3b3c7c61d::t_c9310af20292b6 155-156
+  s_8e83c3b3c7c61d::t_1610237d5a9b9d 168,172,174-176
+src/authorship/post_commit.rs
+  s_8e83c3b3c7c61d::t_5c96c73dd3d58c 348-355
+  s_8e83c3b3c7c61d::t_9193d039d5c5cf 358
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.5",
+  "base_commit_sha": "a4312c43565d78c999f5258b22e1f08b5997093f",
+  "prompts": {},
+  "sessions": {
+    "s_8e83c3b3c7c61d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca8fbe89-bde1-483e-a6c0-549cee63008a",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
