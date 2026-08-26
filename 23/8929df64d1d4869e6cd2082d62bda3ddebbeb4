@@ -1,0 +1,87 @@
+tests/fixtures/copilot_cli_session_no_model.jsonl
+  s_c948664c4dfc38::t_04b1fb765a7dc9 1-3
+src/transcripts/sweep.rs
+  s_c948664c4dfc38::t_0d60d104d387a9 87
+  s_c948664c4dfc38::t_64008683975095 105
+  s_c948664c4dfc38::t_53a34678989528 120-121
+tests/integration/github_copilot.rs
+  s_c948664c4dfc38::t_b4f8875e7a5a37 582-583,597-609,611
+  s_c948664c4dfc38::t_578c8769f72731 610,612-614
+src/transcripts/agents/mod.rs
+  s_c948664c4dfc38::t_c7c2162face9bc 6,19
+src/transcripts/agents/copilot_cli.rs
+  s_c948664c4dfc38::t_345f613de6b5b1 150-156
+  s_c948664c4dfc38::t_4b7c4f3d82960b 1-149,157-370
+tests/integration/github_copilot_tools.rs
+  s_c948664c4dfc38::t_38371cfc0ca6c0 109-201,275-315
+  s_c948664c4dfc38::t_e7e5fd7e95e925 202-274
+src/commands/checkpoint_agent/presets/mod.rs
+  s_c948664c4dfc38::t_52151d88b2f2c2 135-136
+  s_c948664c4dfc38::t_2f8fe70769d725 122
+src/transcripts/agents/copilot.rs
+  s_c948664c4dfc38::t_9f20c65e30368a 36,59-67,69-83,87-91,93-118
+  s_c948664c4dfc38::t_374c4917ad3c93 119
+  s_c948664c4dfc38::t_873cb7caefa3fd 259-260,265-270,272
+  s_c948664c4dfc38::t_90280b64c78a9c 233-246,250-255,261-264,271,273-277
+  s_c948664c4dfc38::t_b15b92ad2e99cb 11
+  s_c948664c4dfc38::t_0ea26db2f9db76 247-249
+  s_c948664c4dfc38::t_1020d6ae27cee4 132-137,145-151
+  s_c948664c4dfc38::t_ca2d67976ac07c 68,92,788-790
+  s_c948664c4dfc38::t_c4bc12f0f47f9a 138-144
+  s_c948664c4dfc38::t_e1cac5cce9e82f 771-787,791-852
+  s_c948664c4dfc38::t_ce5a6d4bef1d0d 256-258
+tests/fixtures/copilot_vscode_workspace/workspace.json
+  s_c948664c4dfc38::t_b8f5d1ceb85ae6 1
+src/transcripts/model_extraction.rs
+  s_c948664c4dfc38::t_3ae93ac275834e 376-388
+  s_c948664c4dfc38::t_9a7350c6b0723e 439-441
+  s_c948664c4dfc38::t_24fa8be9acf74f 436-438,442-451
+  s_c948664c4dfc38::t_38426f004d398e 196-231,234-236,239-244
+  s_c948664c4dfc38::t_8eb58f00ee0678 17
+  s_c948664c4dfc38::t_e46ec4998f2c46 95-144
+  s_c948664c4dfc38::t_0e106a9b24aad6 232-233,237-238
+tests/fixtures/copilot_cli_session_events.jsonl
+  s_c948664c4dfc38::t_7dc26e976fa041 1-6
+tests/fixtures/copilot_vscode_workspace/GitHub.copilot-chat/debug-logs/test-session-abc/models.json
+  s_c948664c4dfc38::t_c7e77a830ae426 1-5
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_c948664c4dfc38::t_12257727a1cc25 890-958
+  s_c948664c4dfc38::t_840a4615485aac 321
+  s_c948664c4dfc38::t_354567e12eabb3 315-316,320
+  s_c948664c4dfc38::t_ca2d67976ac07c 317-319
+  s_c948664c4dfc38::t_8b4edc97b3ec74 225,232,235-239
+src/commands/checkpoint_agent/presets/github_copilot/cli.rs
+  s_c948664c4dfc38::t_345f613de6b5b1 156
+  s_c948664c4dfc38::t_61637938fd2192 161-168
+  s_c948664c4dfc38::t_a5c9938fab4ae1 4,6,10
+  s_c948664c4dfc38::t_c0d6df0074b132 407,409-410,413-422,427
+  s_c948664c4dfc38::t_7be15c93f871c1 52-53,61-72,74,80-86
+  s_c948664c4dfc38::t_bbf29dd0a76ee0 150-155,157-158
+  s_c948664c4dfc38::t_deed0000d234f2 96
+  s_c948664c4dfc38::t_18624ccd871226 142
+src/commands/checkpoint_agent/presets/github_copilot/mod.rs
+  s_c948664c4dfc38::t_a889600c2701d9 26-37
+src/transcripts/agent.rs
+  s_c948664c4dfc38::t_65ed4e561dd942 68
+  s_c948664c4dfc38::t_2f0a525709b8e8 87-89
+tests/fixtures/copilot_vscode_event_stream.jsonl
+  s_c948664c4dfc38::t_f0109eb49c23d3 1-13
+tests/fixtures/copilot_vscode_workspace/GitHub.copilot-chat/transcripts/test-session-abc.jsonl
+  s_c948664c4dfc38::t_bcf8c4b94f4673 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.7",
+  "base_commit_sha": "238929df64d1d4869e6cd2082d62bda3ddebbeb4",
+  "prompts": {},
+  "sessions": {
+    "s_c948664c4dfc38": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ca3b6018-0bf4-4f44-96d5-67eff7d002f3",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

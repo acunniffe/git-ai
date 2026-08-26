@@ -1,0 +1,21 @@
+src/mdm/agents/vscode.rs
+  s_969d1ec2bc3012::t_c22e6d4c0220b1 182,197,207,216
+src/mdm/utils.rs
+  s_969d1ec2bc3012::t_c22e6d4c0220b1 727,729,944,949,959,995-997
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.15",
+  "base_commit_sha": "699798a3686f6bb2c78d1ebdb97ff225f7712907",
+  "prompts": {},
+  "sessions": {
+    "s_969d1ec2bc3012": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f7618-316d-7f43-aff9-53a14c601a9a",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

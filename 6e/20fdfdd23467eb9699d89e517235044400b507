@@ -1,0 +1,26 @@
+src/token_usage/db.rs
+  s_cfe6a4847c079e::t_214e35e4f7ffb7 538-541,712-723,813-814,833-836,839-841
+  s_cfe6a4847c079e::t_2dda23d397a7f7 630
+  s_cfe6a4847c079e::t_cf059b750f91f8 1-537,542-629,631-711,724-812,815-832,837-838,842-845
+src/token_usage/claude.rs
+  s_cfe6a4847c079e::t_55a7ec70fbab76 41-59,63,67-68,73-76
+  s_cfe6a4847c079e::t_e14efd355ad32d 77
+src/token_usage/mod.rs
+  s_cfe6a4847c079e::t_7a8d8fe5ce416f 15
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "6e20fdfdd23467eb9699d89e517235044400b507",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

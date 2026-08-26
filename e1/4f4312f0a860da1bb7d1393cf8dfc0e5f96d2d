@@ -1,0 +1,26 @@
+src/observability/mod.rs
+  e479624f2951b654 236-238,240-244,250-253,256
+src/commands/flush_metrics_db.rs
+  e479624f2951b654 13,26-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.4",
+  "base_commit_sha": "e14f4312f0a860da1bb7d1393cf8dfc0e5f96d2d",
+  "prompts": {
+    "e479624f2951b654": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4b26b3bd-a459-4c6a-bc89-1ea29eda80eb",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 36,
+      "total_deletions": 13,
+      "accepted_lines": 31,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/a069014f3e29a60b6b61f2f90908415b6ac6ee25fbe9e9c9c065632e1f8bbf1f"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+src/commands/share.rs
+  1b15fb70ec07e1c4 49-61
+src/commands/share_tui.rs
+  1b15fb70ec07e1c4 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "2e3d6ae84b16bf89561c3a63a2739cdacd488b67",
+  "prompts": {
+    "1b15fb70ec07e1c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1559bc02-b72d-40da-b3cc-16a8b77cbbcc",
+        "model": "claude-sonnet-4-5-20250929"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 10,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}

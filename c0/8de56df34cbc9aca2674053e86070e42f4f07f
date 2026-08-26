@@ -1,0 +1,69 @@
+.github/workflows/opencode-type-check.yml
+  s_728f84008e76fc::t_efdafee1db4e96 25-26
+.github/workflows/test-vscode-extension.yml
+  s_728f84008e76fc::t_efdafee1db4e96 25-26
+.github/workflows/nightly-agent-integration.yml
+  s_728f84008e76fc::t_d3aa87bead89d0 348-349
+  s_728f84008e76fc::t_efdafee1db4e96 155,273
+  s_728f84008e76fc::t_05d891fb643ebe 341
+  s_728f84008e76fc::t_638baf156463a9 181-183,185,189,193-195,197-198,228-230,233,236-237,242,299-301,303,307,352-353,356
+.github/workflows/lint-format.yml
+  s_728f84008e76fc::t_efdafee1db4e96 41-42,62-63,91-92
+.github/workflows/nightly-upgrade.yml
+  s_728f84008e76fc::t_efdafee1db4e96 24
+.github/workflows/update-changelog.yml
+  s_728f84008e76fc::t_856843ecdb49ef 113,117-119
+  s_728f84008e76fc::t_52329eab65f991 69-71
+  s_728f84008e76fc::t_cf266bc5ab9b9d 61-63
+.github/workflows/intellij-build.yml
+  s_728f84008e76fc::t_efdafee1db4e96 47-48,102-103,162,199-200
+.github/dependabot.yml
+  s_728f84008e76fc::t_182d03970a5e39 8-11,20-23,32-35,44-47,56-59
+.github/workflows/codeql.yml
+  s_728f84008e76fc::t_efdafee1db4e96 67-68
+.github/workflows/release-intellij-plugin.yml
+  s_728f84008e76fc::t_631a460a6a2133 88-89,93-95
+  s_728f84008e76fc::t_1f309110d45ce4 112-113,118-120
+  s_728f84008e76fc::t_3c3dcc2531629d 41-43
+.github/workflows/release.yml
+  s_728f84008e76fc::t_2030898137878b 869-872
+  s_728f84008e76fc::t_efdafee1db4e96 82-83,261-262,366-367,427-428,730
+  s_728f84008e76fc::t_01cbaa08007afc 859-861
+  s_728f84008e76fc::t_5986c00fc9f282 911-912,916-918
+.github/workflows/test.yml
+  s_728f84008e76fc::t_efdafee1db4e96 102,500
+  s_728f84008e76fc::t_a444748733719f 143,146,156-157,166-167,231,236-241,254,263-264,272-273,331,335-340
+.github/workflows/git-core-compat.yml
+  s_728f84008e76fc::t_efdafee1db4e96 46
+.github/workflows/github-integration-tests.yml
+  s_728f84008e76fc::t_efdafee1db4e96 24
+.github/workflows/performance-benchmarks.yml
+  s_728f84008e76fc::t_efdafee1db4e96 33,90
+.github/workflows/release-vscode-extension.yml
+  s_728f84008e76fc::t_d572962ebe178b 173-174,178-180
+  s_728f84008e76fc::t_efdafee1db4e96 31-32,76-77,109-110
+  s_728f84008e76fc::t_999406221406f4 161-163
+  s_728f84008e76fc::t_1c49155113b999 154-156
+.github/workflows/coverage.yml
+  s_728f84008e76fc::t_efdafee1db4e96 26
+.github/workflows/intellij-ui-tests.yml
+  s_728f84008e76fc::t_efdafee1db4e96 51-52
+.github/workflows/install-scripts-local.yml
+  s_728f84008e76fc::t_efdafee1db4e96 61,208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "c08de56df34cbc9aca2674053e86070e42f4f07f",
+  "prompts": {},
+  "sessions": {
+    "s_728f84008e76fc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b9c2fec-234c-43b0-aceb-0bb0ff75be4a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

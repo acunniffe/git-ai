@@ -1,0 +1,19 @@
+docs/superpowers/plans/2026-06-15-homebrew-tap.md
+  s_e51ba97f538c15::t_3222a3df312519 1-259
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.6",
+  "base_commit_sha": "cee993df2ca4098494c9856484111c8eb75a79b2",
+  "prompts": {},
+  "sessions": {
+    "s_e51ba97f538c15": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019ec5f7-d4d2-7633-a4aa-4450765e8c0a",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Jean-Michel Bouchard <jim@polarcoordinates.org>"
+    }
+  }
+}

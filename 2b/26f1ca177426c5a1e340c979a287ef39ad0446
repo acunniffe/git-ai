@@ -1,0 +1,24 @@
+src/commands/checkpoint_agent/presets/github_copilot/ide.rs
+  s_66b90f591e0a84::t_0d5a68e8d02131 11,107-109
+  s_66b90f591e0a84::t_d869d491af3ff6 473-479,483,495
+src/streams/model_extraction.rs
+  s_66b90f591e0a84::t_0d5a68e8d02131 331,336-338,698-712,718
+  s_66b90f591e0a84::t_266b74249c611a 1639-1683
+  s_66b90f591e0a84::t_be019c585382c9 720-721,728,1684-1685
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.22",
+  "base_commit_sha": "2b26f1ca177426c5a1e340c979a287ef39ad0446",
+  "prompts": {},
+  "sessions": {
+    "s_66b90f591e0a84": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fd9a5-78b2-75e3-9d03-2be4de358c59",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

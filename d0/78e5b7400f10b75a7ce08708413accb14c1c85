@@ -1,0 +1,9 @@
+src/synopsis/conversation.rs
+  3800fef055e223b0 1-8,11-13,15,17-53,57-208,214-240,242-270,272-289,291-295,297-351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "d078e5b7400f10b75a7ce08708413accb14c1c85",
+  "prompts": {}
+}

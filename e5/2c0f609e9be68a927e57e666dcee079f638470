@@ -1,0 +1,23 @@
+src/authorship/internal_db.rs
+  a929e8c2e3447b29 7,53,226,728-729,736-737,741-742,744,783,788-789,794-795,1118-1148,1154,1157,1160,1162,1170,1178-1179,1209-1211,1251,1257,1271,1316,1337,1343,1358,1414
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.26",
+  "base_commit_sha": "e52c0f609e9be68a927e57e666dcee079f638470",
+  "prompts": {
+    "a929e8c2e3447b29": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2377fefb-2086-4bcf-9354-52d138c66a09",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 84,
+      "total_deletions": 38,
+      "accepted_lines": 65,
+      "overriden_lines": 0
+    }
+  }
+}

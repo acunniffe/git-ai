@@ -1,0 +1,25 @@
+src/utils.rs
+  s_64e8f27d934849::t_f5e39217f7d047 249-251,258-265
+install.sh
+  s_64e8f27d934849::t_129de75d4cef96 185-186
+install.ps1
+  s_64e8f27d934849::t_3a3eb68f1cd751 359
+tests/integration/superuser_guard.rs
+  s_64e8f27d934849::t_6b5c024dc686e3 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.3",
+  "base_commit_sha": "cb72921deea720fca9c0f8d50097c1f07f7523f0",
+  "prompts": {},
+  "sessions": {
+    "s_64e8f27d934849": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "51f34527-8189-47ce-b809-a328bd6d1639",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

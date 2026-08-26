@@ -1,0 +1,31 @@
+src/git/sync_authorship.rs
+  s_f00ef7c0f45b07::t_14a5e320062cd1 78,123-124
+  s_f00ef7c0f45b07::t_b1ea99da727ca8 460-461
+tests/integration/main.rs
+  s_f00ef7c0f45b07::t_14a5122469a8c5 41
+  s_af2d349a5e032c::t_7c442b3fb8ab20 109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.7",
+  "base_commit_sha": "b899c56f47ba5da315b6603aebf17e8bbf71a2c2",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_f00ef7c0f45b07": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e8a16-5b53-7712-a050-7f3b646aa3e3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

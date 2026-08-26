@@ -1,0 +1,22 @@
+src/commands/install_wsl.rs
+  s_7cc0fd1254a715::t_3f4d24f78d5d39 256,258,270-279,288-292
+  s_7cc0fd1254a715::t_b92ea323d1c524 73-74,78,80-81,83,85-86,162-163,170-212,295
+  s_7cc0fd1254a715::t_4596d063fcb94d 280-287
+  s_7cc0fd1254a715::t_1e31edb22795bc 293-294,296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "3b3d01e481b2b600724482736f4da5a7e1952fac",
+  "prompts": {},
+  "sessions": {
+    "s_7cc0fd1254a715": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01fd2-00f6-7c42-959f-d3f5194babdc",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

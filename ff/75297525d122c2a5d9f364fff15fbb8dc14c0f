@@ -1,0 +1,21 @@
+src/git/notes_api.rs
+  s_17132eb1f3e626::t_495cc1b6baa3e8 89,561-563
+src/git/refs.rs
+  s_17132eb1f3e626::t_0f1f5c536ee236 756
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.20",
+  "base_commit_sha": "ff75297525d122c2a5d9f364fff15fbb8dc14c0f",
+  "prompts": {},
+  "sessions": {
+    "s_17132eb1f3e626": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fcf3b-df78-7ff2-9251-6b93b18db257",
+        "model": "unknown"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

@@ -1,0 +1,78 @@
+src/commands/blame.rs
+  03d4982cf9a29974 139-143,187,611,680,689-690,694-780,782-786,788-801,1075-1078,1082,1192-1195,1199,1281-1284,1288,1303
+tests/blame_flags.rs
+  240257ca92808517 3-8,11,1109-1111,1113-1123,1125-1132,1134-1144,1146-1153,1155-1165,1167-1171
+  c4b52bffa32ce30d 9,1173-1178,1190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.0.32",
+  "base_commit_sha": "8a7726443dd01618c708df02304c972d550ada72",
+  "prompts": {
+    "02ef4f91f2a67b3d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a04057a6-dd77-40a8-b0ea-4315560554d5",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 68,
+      "total_deletions": 33,
+      "accepted_lines": 40,
+      "overriden_lines": 0
+    },
+    "03d4982cf9a29974": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "47d610d1-439c-4692-a1ea-3044815f1236",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 186,
+      "total_deletions": 55,
+      "accepted_lines": 133,
+      "overriden_lines": 2
+    },
+    "240257ca92808517": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9f71a19d-efcf-4d4e-b07c-cd0e21df283a",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 70,
+      "total_deletions": 11,
+      "accepted_lines": 64,
+      "overriden_lines": 2
+    },
+    "c4b52bffa32ce30d": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "7d647512-be0e-4fd5-84eb-278bca0a3542",
+        "model": "claude-4.5-opus-high-thinking"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 0,
+      "accepted_lines": 8,
+      "overriden_lines": 2
+    },
+    "e0fdd3cc8106400f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8794c154-3c77-4248-9de3-5206fb8be8ed",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Aidan Cunniffe <acunniffe@gmail.com>",
+      "messages": [],
+      "total_additions": 84,
+      "total_deletions": 3,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    }
+  }
+}

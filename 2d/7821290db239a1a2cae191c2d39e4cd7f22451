@@ -1,0 +1,32 @@
+src/commands/install_hooks.rs
+  cf2d2c549ff8b7b6 1,62-65
+src/commands/personal_dashboard.rs
+  cf2d2c549ff8b7b6 1-46
+src/commands/login.rs
+  cf2d2c549ff8b7b6 2-3,67-72,77-80
+src/commands/mod.rs
+  cf2d2c549ff8b7b6 16
+src/commands/git_ai_handlers.rs
+  cf2d2c549ff8b7b6 151-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.41",
+  "base_commit_sha": "2d7821290db239a1a2cae191c2d39e4cd7f22451",
+  "prompts": {
+    "cf2d2c549ff8b7b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c5e45fa6-4316-45d1-a13e-e432333f7591",
+        "model": "claude-opus-4-5-20251101"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 71,
+      "total_deletions": 0,
+      "accepted_lines": 67,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/3bcfda56b03fcd3ff5be03793768811a1ea6a0058babf5d539a9b7f9ff8974c0"
+    }
+  }
+}

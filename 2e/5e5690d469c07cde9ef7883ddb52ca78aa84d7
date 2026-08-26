@@ -1,0 +1,41 @@
+tests/integration/main.rs
+  f4f2b364dfcacebb 73,99,102
+tests/integration/repository_unit.rs
+  f4f2b364dfcacebb 1,5-12,14-41,247-710
+src/git/repository.rs
+  f4f2b364dfcacebb 74,252,2558,2590,3336,3409
+  s_3d1be30355fcfb::t_75909f5f8392f5 3545
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.3.3",
+  "base_commit_sha": "2e5e5690d469c07cde9ef7883ddb52ca78aa84d7",
+  "prompts": {
+    "f4f2b364dfcacebb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f1dabdf3-31e0-4f0f-8a86-fa1776d1f2e4",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "total_additions": 717,
+      "total_deletions": 711,
+      "accepted_lines": 507,
+      "overriden_lines": 0,
+      "messages_url": "https://usegitai.com/cas/39b51837be0bb47d7a38dfa65894b561ca63a0acc48e602da17ac75972a79077"
+    }
+  },
+  "sessions": {
+    "s_3d1be30355fcfb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3ee5829-c959-4f89-9d4c-a0a6c2215db6",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov",
+      "messages": [],
+      "messages_url": "https://usegitai.com/cas/e6f37e9801cb0eb9b53b9309d365827989469ba5c303a52673947ebed5b31808"
+    }
+  }
+}

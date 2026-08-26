@@ -1,0 +1,25 @@
+agent-support/vscode/src/utils/config.ts
+  s_c9411826fad840::t_865fce4b2cfcef 23
+agent-support/vscode/src/blame-lens-manager.ts
+  s_c9411826fad840::t_865fce4b2cfcef 16
+agent-support/vscode/package.json
+  s_c9411826fad840::t_865fce4b2cfcef 44
+agent-support/vscode/src/test/extension.test.ts
+  s_c9411826fad840::t_babb9a81432391 15-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "fa9438c0590800e85247566e42691924a87ba9b1",
+  "prompts": {},
+  "sessions": {
+    "s_c9411826fad840": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a03a34-5f86-7e43-beee-361041eaa95c",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

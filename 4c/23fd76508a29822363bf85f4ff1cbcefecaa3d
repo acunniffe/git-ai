@@ -1,0 +1,29 @@
+agent-support/opencode/README.md
+  1000d9c519652d19 1-13,15,17-55
+agent-support/opencode/tsconfig.json
+  1000d9c519652d19 1-18
+.github/workflows/opencode-type-check.yml
+  1000d9c519652d19 1-35
+agent-support/opencode/package.json
+  1000d9c519652d19 1-6,8-9,11-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.0.23",
+  "base_commit_sha": "4c23fd76508a29822363bf85f4ff1cbcefecaa3d",
+  "prompts": {
+    "1000d9c519652d19": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2a95909d-dc61-483b-92fa-4271e8f47615",
+        "model": "composer-1"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>",
+      "messages": [],
+      "total_additions": 141,
+      "total_deletions": 0,
+      "accepted_lines": 121,
+      "overriden_lines": 4
+    }
+  }
+}

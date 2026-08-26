@@ -1,0 +1,25 @@
+tests/daemon_mode.rs
+  s_cfe6a4847c079e::t_44c9de233a8966 23-25
+  s_cfe6a4847c079e::t_a0448210d73292 7928-7994
+docs/token-usage-events-spec.md
+  s_cfe6a4847c079e::t_e42d8835a7c3dc 65-73
+  s_cfe6a4847c079e::t_82b52fd6f29ff4 20
+src/daemon/telemetry_worker.rs
+  s_cfe6a4847c079e::t_f39c1bc42bd3a5 1096-1100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "a5ff88d5b257b8dcc3d11013ed015c6883ceee00",
+  "prompts": {},
+  "sessions": {
+    "s_cfe6a4847c079e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9d2afee0-2f51-4327-b9eb-ea9b1cb4b629",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

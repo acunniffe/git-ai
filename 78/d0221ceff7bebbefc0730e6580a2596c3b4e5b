@@ -1,0 +1,26 @@
+tests/daemon_mode.rs
+  s_11c3e1cdda522c::t_6c84703bee896a 7456-7463
+  s_11c3e1cdda522c::t_b16b7dc3a01992 7417-7455,7464-7465
+src/daemon/telemetry_worker.rs
+  s_11c3e1cdda522c::t_26f840bbc4e7b2 1846-1866
+  s_11c3e1cdda522c::t_8c249beee441d0 924-927,930
+  s_11c3e1cdda522c::t_2d56fcfb3de27f 71,81
+  s_11c3e1cdda522c::t_dad66afc744b7c 37-70,72-80,82-83
+  s_11c3e1cdda522c::t_6df679ed6f8a0d 1568-1571,1574,1581-1582,1590,1593
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.24",
+  "base_commit_sha": "78d0221ceff7bebbefc0730e6580a2596c3b4e5b",
+  "prompts": {},
+  "sessions": {
+    "s_11c3e1cdda522c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c3235b29-c1ae-4376-a5d8-2f2bd098aace",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

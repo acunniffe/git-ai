@@ -1,0 +1,37 @@
+tests/integration/fuzzer/oracle.rs
+  s_af2d349a5e032c::t_5ab049a61daaf8 319
+  s_af2d349a5e032c::t_2baa08df3e99a8 307-318,320-388
+  s_af2d349a5e032c::t_e21a4ea70335d2 427-482
+  s_af2d349a5e032c::t_5b2751daeb88f7 55,60-62,72
+  s_af2d349a5e032c::t_ce7b2d13eca6e1 232
+  s_af2d349a5e032c::t_f862d088092b50 1
+tests/integration/fuzzer/engine.rs
+  s_af2d349a5e032c::t_452a7b56d35b4b 1120
+  s_af2d349a5e032c::t_c473742ab20980 1350
+  s_af2d349a5e032c::t_c0caab86dcaeb4 1462
+  s_af2d349a5e032c::t_cc5787be13a72f 791
+  s_af2d349a5e032c::t_edaa1ffdd5f996 1077
+  s_af2d349a5e032c::t_ddf206857fef5a 289,354,576,628,650,670,686,697,708,744,755,766,777,788,820,831,851,862,876,896,908,919,930,941,952,968,979,990,1002,1013,1063,1074,1086,1117,1129,1143,1163,1194,1205,1218,1229,1240,1251,1262,1273,1285,1316,1327,1359,1370,1381,1392,1403,1414,1425,1436,1450,1471,1482,1531
+  s_af2d349a5e032c::t_4da0ee8a080005 899
+  s_af2d349a5e032c::t_b0fabc9a2c4e32 993
+  s_af2d349a5e032c::t_5ab049a61daaf8 601-607,802-808,1026-1032,1099-1105,1176-1182,1298-1304,1340-1346
+  s_af2d349a5e032c::t_932a0ca052b5d9 357-359
+  s_af2d349a5e032c::t_510dc917165e18 1276
+  s_af2d349a5e032c::t_112108448a169e 1562,1576
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.4.10",
+  "base_commit_sha": "2cb9b5dbfc21660d5d8a9c7d955a93657cc6407d",
+  "prompts": {},
+  "sessions": {
+    "s_af2d349a5e032c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac381f5d-82d0-459b-b1f2-f85792a62a07",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}

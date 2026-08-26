@@ -1,0 +1,39 @@
+src/daemon/transcript_worker.rs
+  s_395f5898107085::t_c952a8277beacb 589
+  s_395f5898107085::t_bcbce5b133b48d 600
+  s_395f5898107085::t_1337ef8b0c6807 126
+  s_395f5898107085::t_7c7516ed2382b7 511
+  s_395f5898107085::t_5111aba167f5a0 209-210,212-235
+  s_395f5898107085::t_9efc5e51ba5a63 712-713,723-724
+  s_395f5898107085::t_441ea94404dcb5 628
+  s_395f5898107085::t_5b8567769507bb 681
+  s_395f5898107085::t_33428828253f5f 975
+  s_395f5898107085::t_72b5f4ec21ff25 427-428,441-442
+  s_395f5898107085::t_7b477c8fbddffb 246-259,263,267
+  s_395f5898107085::t_410984f35db378 53
+  s_395f5898107085::t_4355dbbda86d93 666
+  s_395f5898107085::t_a3fb3dca753c49 479
+  s_395f5898107085::t_a5db05ba389425 322-323,346
+  s_395f5898107085::t_3aa92cf3520819 537
+src/daemon/transcript_worker_tests.rs
+  s_395f5898107085::t_76187227609776 60,72,84
+  s_395f5898107085::t_b9c7ca4a644f4d 13,25
+  s_395f5898107085::t_e24429a9c40c06 161
+  s_395f5898107085::t_0a923dc0018fac 116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.5.1",
+  "base_commit_sha": "a30fc0872cdd41662d5579f9f97faefea37e74d1",
+  "prompts": {},
+  "sessions": {
+    "s_395f5898107085": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4349e36c-64eb-4ec7-8bd9-7ee125b24d2e",
+        "model": "claude-opus-4-6"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
