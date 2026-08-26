@@ -390,6 +390,7 @@ impl TokenUsageWorker {
     /// files changed since the last completed pass. The DB scans and per-file
     /// stats run in `spawn_blocking`, like all other I/O in this module.
     async fn enqueue_sweep_tasks(&mut self) {
+        tracing::info!("token-usage sweep started");
         let streams_db = self.streams_db.clone();
         let token_db = self.token_db.clone();
         let tasks =
@@ -402,6 +403,22 @@ impl TokenUsageWorker {
                     return;
                 }
             };
+        tracing::info!(discovered = tasks.len(), "token-usage sweep completed");
+        for (index, task) in tasks.iter().enumerate().take(10) {
+            tracing::info!(
+                index,
+                tool = %task.tool,
+                session_id = %task.session_id,
+                path = %task.stream_path,
+                "token-usage sweep item: session"
+            );
+        }
+        if tasks.len() > 10 {
+            tracing::info!(
+                remaining = tasks.len() - 10,
+                "... and more token-usage sweep items"
+            );
+        }
         for task in tasks {
             self.enqueue_sweep(task);
         }
