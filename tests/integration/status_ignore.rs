@@ -18,6 +18,18 @@ fn status_from_args(repo: &TestRepo, args: &[&str]) -> StatusOutput {
     serde_json::from_str(&json).expect("valid status json")
 }
 
+fn status_from_args_with_env(
+    repo: &TestRepo,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> StatusOutput {
+    let raw = repo
+        .git_ai_with_env(args, envs)
+        .expect("git-ai status should succeed");
+    let json = extract_json_object(&raw);
+    serde_json::from_str(&json).expect("valid status json")
+}
+
 fn write_file(repo: &TestRepo, path: &str, contents: &str) {
     let abs_path = repo.path().join(path);
     if let Some(parent) = abs_path.parent() {
@@ -366,6 +378,31 @@ fn test_status_numstat_is_stable_under_hostile_diff_config() {
     assert_eq!(status.stats.git_diff_deleted_lines, 0);
     assert_eq!(status.stats.ai_accepted, 1);
 }
+
+#[test]
+fn test_status_non_c_locale_ignores_non_ascii_numstat_path() {
+    let repo = TestRepo::new();
+
+    write_file(&repo, ".git-ai-ignore", "café.txt\n");
+    write_file(&repo, "café.txt", "ignored\n");
+    write_file(&repo, "app.txt", "kept\n");
+    repo.stage_all_and_commit("initial").unwrap();
+
+    write_file(&repo, "café.txt", "ignored\nignored addition\n");
+    write_file(&repo, "app.txt", "kept\nkept addition\n");
+    repo.git_ai(&["checkpoint", "mock_ai", "café.txt", "app.txt"])
+        .unwrap();
+
+    let status = status_from_args_with_env(
+        &repo,
+        &["status", "--json"],
+        &[("LC_ALL", "en_US.UTF-8"), ("LANG", "en_US.UTF-8")],
+    );
+
+    assert_eq!(status.stats.git_diff_added_lines, 1);
+    assert_eq!(status.stats.git_diff_deleted_lines, 0);
+    assert_eq!(status.stats.ai_accepted, 1);
+}
 crate::reuse_tests_in_worktree!(
     test_checkpoint_ignores_default_lockfiles_integration,
     test_checkpoint_honors_uncommitted_root_gitattributes_linguist_generated_integration,
@@ -377,4 +414,5 @@ crate::reuse_tests_in_worktree!(
     test_status_git_ai_ignore_union_with_gitattributes,
     test_status_ignores_repo_external_diff_helper_for_internal_numstat,
     test_status_numstat_is_stable_under_hostile_diff_config,
+    test_status_non_c_locale_ignores_non_ascii_numstat_path,
 );

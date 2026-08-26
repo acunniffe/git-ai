@@ -302,7 +302,7 @@ fn cat_file_batch(
     cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
-    crate::git::repository::apply_internal_git_env(&mut cmd);
+    crate::git::repository::apply_internal_git_machine_env(&mut cmd);
 
     let mut child = cmd
         .spawn()

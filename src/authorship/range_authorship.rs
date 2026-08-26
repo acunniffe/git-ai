@@ -3,9 +3,12 @@ use std::collections::HashSet;
 
 use serde::Deserialize;
 use serde::Serialize;
+use unicode_normalization::UnicodeNormalization;
 
 use crate::authorship::diff_ai_accepted::diff_ai_accepted_stats;
-use crate::authorship::ignore::{build_ignore_matcher, should_ignore_file_with_matcher};
+use crate::authorship::ignore::{
+    IgnoreMatcher, build_ignore_matcher, should_ignore_file_with_matcher,
+};
 use crate::authorship::stats::{
     CommitStats, accepted_lines_from_attestations, stats_for_commit_stats,
     stats_from_authorship_log,
@@ -359,9 +362,14 @@ fn get_git_diff_stats_for_range(
     let output = exec_git_with_profile(&args, InternalGitProfile::NumstatParse)?;
     let stdout = String::from_utf8_lossy(&output.stdout);
 
+    let ignore_matcher = build_ignore_matcher(ignore_patterns);
+
+    Ok(parse_numstat_stats(&stdout, &ignore_matcher))
+}
+
+fn parse_numstat_stats(stdout: &str, ignore_matcher: &IgnoreMatcher) -> (u32, u32) {
     let mut added_lines = 0u32;
     let mut deleted_lines = 0u32;
-    let ignore_matcher = build_ignore_matcher(ignore_patterns);
 
     // Parse numstat output
     for line in stdout.lines() {
@@ -373,8 +381,8 @@ fn get_git_diff_stats_for_range(
         let parts: Vec<&str> = line.split('\t').collect();
         if parts.len() >= 3 {
             // Check if this file should be ignored and skip it
-            let filename = parts[2];
-            if should_ignore_file_with_matcher(filename, &ignore_matcher) {
+            let filename: String = crate::utils::unescape_git_path(parts[2]).nfc().collect();
+            if should_ignore_file_with_matcher(&filename, ignore_matcher) {
                 continue;
             }
 
@@ -392,7 +400,7 @@ fn get_git_diff_stats_for_range(
         }
     }
 
-    Ok((added_lines, deleted_lines))
+    (added_lines, deleted_lines)
 }
 
 /// Calculate AI vs human line contributions for a commit range
@@ -481,5 +489,34 @@ pub fn print_range_authorship_stats(stats: &RangeAuthorshipStats) {
         {
             println!("    {} {}", &sha[0..7], author);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numstat_ignore_matcher_matches_c_quoted_non_ascii_paths() {
+        let ignore_matcher = build_ignore_matcher(&["café.txt".to_string()]);
+
+        let stats = parse_numstat_stats(
+            "3\t1\t\"caf\\303\\251.txt\"\n2\t0\tother.txt\n",
+            &ignore_matcher,
+        );
+
+        assert_eq!(stats, (2, 0));
+    }
+
+    #[test]
+    fn numstat_ignore_matcher_normalizes_decomposed_non_ascii_paths() {
+        let ignore_matcher = build_ignore_matcher(&["café.txt".to_string()]);
+
+        let stats = parse_numstat_stats(
+            "3\t1\t\"cafe\\314\\201.txt\"\n2\t0\tother.txt\n",
+            &ignore_matcher,
+        );
+
+        assert_eq!(stats, (2, 0));
     }
 }
