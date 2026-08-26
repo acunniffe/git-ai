@@ -10,6 +10,10 @@ use git_ai::metrics::{EventAttributes, PosEncoded};
 use serde_json::json;
 use std::fs;
 use std::path::Path;
+#[cfg(not(windows))]
+use std::thread;
+#[cfg(not(windows))]
+use std::time::{Duration, Instant};
 
 fn isolated_metrics_db_path() -> (tempfile::TempDir, String) {
     let dir = tempfile::tempdir().expect("failed to create isolated metrics db dir");
@@ -68,6 +72,22 @@ fn sync_token_usage_pipeline(repo: &TestRepo) {
     repo.sync_daemon();
     repo.git_ai(&["await", "--timeout", "60"])
         .expect("await should drain the token-usage pipeline");
+}
+
+#[cfg(not(windows))]
+fn wait_for_daemon_log(repo: &TestRepo, expected: &str) -> String {
+    let started = Instant::now();
+    loop {
+        let logs = repo.daemon_stderr_contents();
+        if logs.contains(expected) {
+            return logs;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "daemon logs did not contain {expected:?}:\n{logs}"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
 }
 
 /// Fire a pre+post checkpoint pair that carries the transcript path, editing
@@ -849,5 +869,61 @@ fn deleted_transcript_is_handled_quietly() {
     assert_eq!(
         value_u64(&events[0], token_usage_pos::TOTAL_TOKENS),
         Some(380)
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn startup_token_usage_sweep_logs_discovered_transcripts() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let mut repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+    let transcript_path = repo_root.join("claude-session.jsonl");
+    fs::write(
+        &transcript_path,
+        format!(
+            "{}\n",
+            claude_usage_line("m1", "r1", &recent_ts(1, 0), 50, None)
+        ),
+    )
+    .unwrap();
+    let file_path = repo_root.join("example.ts");
+    fs::write(&file_path, "const x = 1;\n").unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "claude",
+        "sess-token-sweep-log",
+        &transcript_path,
+        &file_path,
+        "const x = 1;\nconst y = 2;\n",
+    );
+    sync_token_usage_pipeline(&repo);
+
+    // Grow the known transcript without notifying the daemon. Restarting the
+    // worker makes its startup sweep discover the stale tracked file.
+    let mut content = fs::read_to_string(&transcript_path).unwrap();
+    content.push_str(&claude_usage_line("m2", "r2", &recent_ts(6, 0), 70, None));
+    content.push('\n');
+    fs::write(&transcript_path, content).unwrap();
+    repo.restart_dedicated_daemon_with_env_for_test(&[(
+        "GIT_AI_TEST_METRICS_DB_PATH",
+        metrics_db_path.as_str(),
+    )]);
+
+    let logs = wait_for_daemon_log(&repo, "token-usage sweep completed");
+    assert!(logs.contains("token-usage sweep started"), "{logs}");
+    assert!(logs.contains("discovered=1"), "{logs}");
+    assert!(logs.contains("token-usage sweep item: session"), "{logs}");
+    assert!(logs.contains("tool=claude"), "{logs}");
+    assert!(
+        logs.contains(&generate_session_id("sess-token-sweep-log", "claude")),
+        "{logs}"
+    );
+    assert!(
+        logs.contains(&transcript_path.to_string_lossy().to_string()),
+        "{logs}"
     );
 }
