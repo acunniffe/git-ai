@@ -127,7 +127,7 @@ fn print_config_help() {
     println!("  git_ai_hooks                 Hook name -> shell commands map (object)");
     println!("  codex_hooks_format           Codex hook install format (config_toml/hooks_json)");
     println!("  notes_backend.kind           Notes backend kind (git_notes/http)");
-    println!("  notes_backend.backend_url    Notes backend base URL. Required when kind=http.");
+    println!("  notes_backend.backend_url    Notes backend base URL (defaults to api_base_url)");
     println!(
         "                               May include a path prefix; endpoints are appended to it."
     );
