@@ -1,0 +1,71 @@
+src/token_usage/claude.rs
+  s_ecc10b55b372b3::t_6dea321640ad10 565
+  s_ecc10b55b372b3::t_7cb6e2551f045b 444-446
+  s_ecc10b55b372b3::t_60de1b1fc0fd78 105-106
+  s_ecc10b55b372b3::t_401cdb5cd23c99 581-582,585-587
+  s_ecc10b55b372b3::t_1b4041dcc86468 54
+  s_ecc10b55b372b3::t_3b40e5171b360a 225-227
+  s_ecc10b55b372b3::t_6788ceb76d1923 11,20
+src/token_usage/extractor.rs
+  s_ecc10b55b372b3::t_b291ed993b9548 3
+  s_ecc10b55b372b3::t_3c2f5ef251a663 16-21
+src/token_usage/db.rs
+  s_ecc10b55b372b3::t_175ebafe9a7279 982-984
+  s_ecc10b55b372b3::t_71ec5f14197266 1059,1062
+  s_ecc10b55b372b3::t_43a8d7cafc4c16 44
+  s_ecc10b55b372b3::t_cc87537ace9d36 133-206
+  s_ecc10b55b372b3::t_b7abeea3a5f6ee 1330-1334,1358-1361,1368
+  s_ecc10b55b372b3::t_1e3c6584bcacb4 827-829,843,847,849-850,867-868,870,882,886,888-889,899-903
+  s_ecc10b55b372b3::t_dfb165ab06efc8 927-928
+  s_ecc10b55b372b3::t_1ccab0cd28ba05 904-906
+src/streams/model_extraction.rs
+  s_ecc10b55b372b3::t_0c74d18b24e945 219-233
+  s_ecc10b55b372b3::t_4c6e8f30c7f1bf 208
+src/daemon/token_usage_worker.rs
+  s_ecc10b55b372b3::t_73ad9c9df27adb 1518-1557,1562,1564-1573
+  s_ecc10b55b372b3::t_e8f100be283224 732-741,745-763
+  s_ecc10b55b372b3::t_bbb80c6b5e4df2 58
+  s_ecc10b55b372b3::t_eec3fc0a2ad7ca 742-744
+  s_ecc10b55b372b3::t_2d607d9fa59bf5 1517
+  s_ecc10b55b372b3::t_b67e4fee559e32 1558
+  s_ecc10b55b372b3::t_11ae9641e79847 1559
+  s_ecc10b55b372b3::t_8e9758ef8cf11c 764-766,824-829,1560-1561,1563
+src/token_usage/cost.rs
+  s_ecc10b55b372b3::t_99713d82ad23ea 202-203
+src/token_usage/types.rs
+  s_ecc10b55b372b3::t_7305f55213eac2 28-47,69-77
+src/token_usage/mod.rs
+  s_ecc10b55b372b3::t_10a296d66a54c2 20
+src/token_usage/codex.rs
+  s_ecc10b55b372b3::t_78959a886959f7 50-53
+  s_ecc10b55b372b3::t_52ba62c53fe0f5 338-340,345-346
+  s_ecc10b55b372b3::t_eec3fc0a2ad7ca 463,758-761
+  s_ecc10b55b372b3::t_f372b41489093d 36
+  s_ecc10b55b372b3::t_e4a2a1196811f5 163-168,176
+  s_ecc10b55b372b3::t_83e7e82a663010 506-507,514-516
+  s_ecc10b55b372b3::t_a06c9430c7ceca 449-453,455-462,464-465
+  s_ecc10b55b372b3::t_f737d9aebf667a 639-757,762-799
+  s_ecc10b55b372b3::t_2172bbcbe6de7a 277-292
+  s_ecc10b55b372b3::t_61412ab41d984c 408-409,429-445,454,466,517
+  s_ecc10b55b372b3::t_59b416bda30d08 71-74
+  s_ecc10b55b372b3::t_869d1709de567d 806
+  s_ecc10b55b372b3::t_f58def75506fc0 224-227
+  s_ecc10b55b372b3::t_6e4146e83d42ad 12-18
+  s_ecc10b55b372b3::t_b404cb9b3129ec 467,518
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "17350cf17ea23517f0b16c079ae61dcad374b064",
+  "prompts": {},
+  "sessions": {
+    "s_ecc10b55b372b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "725da754-5eb5-4a7e-a504-a0badfb0707e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
