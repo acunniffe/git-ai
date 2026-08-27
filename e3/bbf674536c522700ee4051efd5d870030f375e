@@ -1,0 +1,57 @@
+src/token_usage/extractor.rs
+  s_ecc10b55b372b3::t_067af56597bcbb 45-59
+  s_ecc10b55b372b3::t_4a9c6b12ac7ba0 3-4,7-26
+  s_57cce68e8a6c88::t_bb523dae78bfaf 27
+src/token_usage/codex.rs
+  s_ecc10b55b372b3::t_59f98a598de356 19-28
+  s_ecc10b55b372b3::t_e065918a9a2ddb 391-395,402-444
+  s_ecc10b55b372b3::t_768d4f357af3a2 353,355
+  s_ecc10b55b372b3::t_94ff5138cba213 38-39,42
+  s_ecc10b55b372b3::t_3aba923a8db70a 252-279
+  s_ecc10b55b372b3::t_ad76567e664922 512-621
+  s_ecc10b55b372b3::t_4f3fb590170119 722-726,728-734,741
+  s_ecc10b55b372b3::t_46f31a2c02164e 140-143,150-165
+  s_ecc10b55b372b3::t_8d5730b59fc62d 1184-1425
+  s_ecc10b55b372b3::t_61fcde99e5bfa7 1432-1438
+  s_ecc10b55b372b3::t_01d4fc387269c6 206-210
+  s_57cce68e8a6c88::t_2c805562e2489e 445
+src/token_usage/db.rs
+  s_ecc10b55b372b3::t_9d257a69e65981 586-606
+src/daemon/token_usage_worker.rs
+  s_ecc10b55b372b3::t_1097fd00688a14 58
+  s_ecc10b55b372b3::t_32644472c21466 1711
+  s_ecc10b55b372b3::t_7b6b0f7dada94c 913-928
+  s_ecc10b55b372b3::t_e02a9f85c4f2bf 768-852
+  s_ecc10b55b372b3::t_65a0700f85849b 966,979
+  s_ecc10b55b372b3::t_10be4190884740 1707-1710,1712-1813
+docs/token-usage-events-spec.md
+  s_ecc10b55b372b3::t_4018b9c6c1527b 163-174,199-209
+tests/integration/token_usage.rs
+  s_ecc10b55b372b3::t_60dfedef4fc8f0 423-490,495-496,505-507
+  s_ecc10b55b372b3::t_32644472c21466 491-494,497-504
+  s_ecc10b55b372b3::t_e9189952a1ef26 422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "e3bbf674536c522700ee4051efd5d870030f375e",
+  "prompts": {},
+  "sessions": {
+    "s_57cce68e8a6c88": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a01f81-1ad4-7ef1-b10a-98b34b80994d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_ecc10b55b372b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "725da754-5eb5-4a7e-a504-a0badfb0707e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
