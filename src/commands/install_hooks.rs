@@ -566,9 +566,10 @@ fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_confi
     // GIT_COMMITTER_IDENT` fabricates a junk identity (user@hostname) on
     // machines with no user.name/user.email, and Enter would persist it.
     let default = global_git_config_committer_identity().unwrap_or_default();
+    let reader = crate::utils::TimedLineReader::from_stdin();
     let Some(author) = prompt_author_identity(
         &default,
-        || crate::utils::read_line_with_timeout(AUTHOR_PROMPT_TIMEOUT),
+        || reader.next_line(AUTHOR_PROMPT_TIMEOUT),
         &mut std::io::stdout(),
     ) else {
         return;

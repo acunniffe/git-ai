@@ -108,45 +108,99 @@ pub fn is_interactive_terminal() -> bool {
     *IS_TERMINAL.get_or_init(|| std::io::stdin().is_terminal())
 }
 
-/// Read one line from stdin, giving up after `timeout`.
-///
-/// Returns `None` on timeout, EOF, or read error. Trailing newline characters
-/// (including `\r\n`) are stripped.
-///
-/// On timeout the reader thread is intentionally leaked, still blocked on
-/// stdin. Callers must not read stdin again after a `None` — the process is
-/// expected to finish its remaining work and exit shortly after.
-pub fn read_line_with_timeout(timeout: std::time::Duration) -> Option<String> {
-    read_line_with_timeout_impl(timeout, || {
-        let mut buf = String::new();
-        match std::io::stdin().read_line(&mut buf) {
-            Ok(0) | Err(_) => None,
-            Ok(_) => Some(buf),
-        }
-    })
+/// Reads successive lines from a blocking source on one dedicated thread so
+/// that each read can be given a deadline.
+pub struct TimedLineReader {
+    rx: std::sync::mpsc::Receiver<Option<String>>,
 }
 
-fn read_line_with_timeout_impl(
-    timeout: std::time::Duration,
-    read: impl FnOnce() -> Option<String> + Send + 'static,
-) -> Option<String> {
-    let (tx, rx) = std::sync::mpsc::channel();
-    // Builder::spawn returns an error instead of panicking when the OS
-    // cannot create a thread: an interactive prompt must degrade to "no
-    // answer" under resource pressure, not abort the whole command.
-    if std::thread::Builder::new()
-        .name("git-ai-line-reader".to_string())
-        .spawn(move || {
-            let _ = tx.send(read());
-        })
-        .is_err()
-    {
-        return None;
+impl TimedLineReader {
+    /// `read_line` must return one raw line per call, or `None` on EOF/error.
+    pub fn spawn(mut read_line: impl FnMut() -> Option<String> + Send + 'static) -> Self {
+        let (tx, rx) = std::sync::mpsc::channel();
+        // Builder::spawn returns an error instead of panicking when the OS
+        // cannot create a thread: an interactive prompt must degrade to "no
+        // answer" under resource pressure, not abort the whole command.
+        // On failure the sender is dropped, so `next_line` sees a
+        // disconnected channel and returns `None`.
+        let _ = std::thread::Builder::new()
+            .name("git-ai-line-reader".to_string())
+            .spawn(move || {
+                loop {
+                    let line = read_line();
+                    let eof = line.is_none();
+                    if tx.send(line).is_err() || eof {
+                        break;
+                    }
+                }
+            });
+        Self { rx }
     }
-    rx.recv_timeout(timeout)
-        .ok()
-        .flatten()
-        .map(|line| line.trim_end_matches(['\n', '\r']).to_string())
+
+    pub fn from_stdin() -> Self {
+        Self::spawn(|| read_one_line(&mut std::io::stdin().lock()))
+    }
+
+    pub fn from_buf_read(mut source: impl std::io::BufRead + Send + 'static) -> Self {
+        Self::spawn(move || read_one_line(&mut source))
+    }
+
+    /// Returns `None` on timeout, EOF, or read error. Trailing newline
+    /// characters (including `\r\n`) are stripped.
+    ///
+    /// After a `None` the caller must stop reading: on timeout the reader
+    /// thread is intentionally leaked, still blocked on the source (the
+    /// process is expected to finish its remaining work and exit shortly
+    /// after), and a late line must not be misattributed to a later prompt.
+    pub fn next_line(&self, timeout: std::time::Duration) -> Option<String> {
+        self.rx
+            .recv_timeout(timeout)
+            .ok()
+            .flatten()
+            .map(|line| line.trim_end_matches(['\n', '\r']).to_string())
+    }
+}
+
+fn read_one_line(source: &mut impl std::io::BufRead) -> Option<String> {
+    let mut buf = String::new();
+    match source.read_line(&mut buf) {
+        Ok(0) | Err(_) => None,
+        Ok(_) => Some(buf),
+    }
+}
+
+/// git-credential-style terminal access for prompts when stdio is redirected:
+/// returns (input, output) handles on the controlling terminal, or `None`
+/// when the process has none (daemons, CI, detached children).
+#[cfg(unix)]
+pub fn open_controlling_terminal() -> Option<(std::fs::File, std::fs::File)> {
+    // /dev/tty always names the controlling terminal; the open fails when
+    // there is none. One read+write fd serves both directions.
+    let input = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/tty")
+        .ok()?;
+    let output = input.try_clone().ok()?;
+    Some((input, output))
+}
+
+#[cfg(windows)]
+pub fn open_controlling_terminal() -> Option<(std::fs::File, std::fs::File)> {
+    use std::os::windows::fs::OpenOptionsExt;
+    // Console pseudo-devices require GENERIC_READ|GENERIC_WRITE access and
+    // FILE_SHARE_READ|FILE_SHARE_WRITE; CreateFile fails when the process has
+    // no attached console.
+    const FILE_SHARE_READ_WRITE: u32 = 0x00000001 | 0x00000002;
+    let open = |name: &str| {
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(FILE_SHARE_READ_WRITE)
+            .open(name)
+            .ok()
+    };
+    Some((open("CONIN$")?, open("CONOUT$")?))
 }
 
 /// Returns true if the process is running inside a background AI agent environment.
@@ -1276,33 +1330,40 @@ mod tests {
     }
 
     // =========================================================================
-    // read_line_with_timeout Tests
+    // TimedLineReader Tests
     // =========================================================================
 
     #[test]
-    fn test_read_line_with_timeout_returns_line_before_timeout() {
-        let result = read_line_with_timeout_impl(std::time::Duration::from_secs(5), || {
-            Some("Alice\n".to_string())
-        });
-        assert_eq!(result, Some("Alice".to_string()));
+    fn timed_line_reader_returns_lines_in_order() {
+        let reader = TimedLineReader::from_buf_read(std::io::Cursor::new("a\nb\n"));
+        let timeout = std::time::Duration::from_secs(5);
+        assert_eq!(reader.next_line(timeout), Some("a".to_string()));
+        assert_eq!(reader.next_line(timeout), Some("b".to_string()));
+        assert_eq!(reader.next_line(timeout), None, "EOF must yield None");
+        assert_eq!(
+            reader.next_line(timeout),
+            None,
+            "reads after EOF must keep yielding None"
+        );
     }
 
     #[test]
-    fn test_read_line_with_timeout_trims_crlf() {
-        let result = read_line_with_timeout_impl(std::time::Duration::from_secs(5), || {
-            Some("Alice\r\n".to_string())
-        });
-        assert_eq!(result, Some("Alice".to_string()));
+    fn timed_line_reader_trims_crlf() {
+        let reader = TimedLineReader::from_buf_read(std::io::Cursor::new("Alice\r\n"));
+        assert_eq!(
+            reader.next_line(std::time::Duration::from_secs(5)),
+            Some("Alice".to_string())
+        );
     }
 
     #[test]
-    fn test_read_line_with_timeout_times_out() {
+    fn timed_line_reader_times_out() {
         let start = std::time::Instant::now();
-        let result = read_line_with_timeout_impl(std::time::Duration::from_millis(50), || {
+        let reader = TimedLineReader::spawn(|| {
             std::thread::sleep(std::time::Duration::from_millis(2000));
-            Some("too late\n".to_string())
+            None
         });
-        assert_eq!(result, None);
+        assert_eq!(reader.next_line(std::time::Duration::from_millis(50)), None);
         assert!(
             start.elapsed() < std::time::Duration::from_millis(1500),
             "must return at the timeout, not wait for the reader"
@@ -1310,9 +1371,9 @@ mod tests {
     }
 
     #[test]
-    fn test_read_line_with_timeout_returns_none_on_eof() {
-        let result = read_line_with_timeout_impl(std::time::Duration::from_secs(5), || None);
-        assert_eq!(result, None);
+    fn timed_line_reader_eof_returns_none() {
+        let reader = TimedLineReader::from_buf_read(std::io::Cursor::new(""));
+        assert_eq!(reader.next_line(std::time::Duration::from_secs(5)), None);
     }
 
     // =========================================================================
