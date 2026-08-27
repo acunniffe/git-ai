@@ -518,16 +518,9 @@ fn persist_install_config_with_values(
 
 const AUTHOR_PROMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
-/// Prompt only for interactive, non-dry-run installs where an API key exists
-/// (hosted usage) and no git-ai author override is configured yet.
-fn should_prompt_for_author(
-    dry_run: bool,
-    interactive: bool,
-    author_configured: bool,
-    api_key_present: bool,
-) -> bool {
-    !dry_run && interactive && !author_configured && api_key_present
-}
+/// Opt-out env var for the author identity prompt. Set by internal spawners
+/// of unattended installs (upgrades, WSL/pkg installers) and by users.
+pub(crate) const GIT_AI_NO_AUTHOR_PROMPT_ENV: &str = "GIT_AI_NO_AUTHOR_PROMPT";
 
 /// Where prompt I/O goes: process stdio (real TTYs, or forced by tests over
 /// piped stdio), or the controlling terminal when stdio is redirected (e.g.
@@ -542,7 +535,7 @@ enum PromptIo {
 /// silent upgrades, the background upgrade worker (runs in the user's session
 /// with an openable /dev/tty), and background AI-agent sandboxes.
 fn author_prompt_suppressed() -> bool {
-    let opted_out = std::env::var("GIT_AI_NO_AUTHOR_PROMPT")
+    let opted_out = std::env::var(GIT_AI_NO_AUTHOR_PROMPT_ENV)
         .is_ok_and(|v| !matches!(v.as_str(), "" | "0" | "false" | "False" | "FALSE"));
     opted_out
         || std::env::var_os(crate::commands::upgrade::GIT_AI_DAEMON_UPGRADE_ENV)
@@ -559,19 +552,32 @@ fn resolve_prompt_io() -> Option<PromptIo> {
         return Some(PromptIo::Stdio);
     }
     if crate::utils::is_interactive_terminal() && std::io::stdout().is_terminal() {
+        // A background job (`git-ai install-hooks &`) must not read the
+        // terminal: the kernel stops the whole process with SIGTTIN, and a
+        // stopped process cannot even run the prompt's timeout.
+        #[cfg(unix)]
+        if !crate::utils::is_terminal_foreground_process_group(&std::io::stdin()) {
+            return None;
+        }
         return Some(PromptIo::Stdio);
     }
-    crate::utils::open_controlling_terminal().map(|(input, output)| PromptIo::Tty(input, output))
+    let (input, output) = crate::utils::open_controlling_terminal()?;
+    // Same SIGTTIN hazard for /dev/tty reads (e.g. `nohup git-ai install-hooks &`
+    // keeps the controlling terminal even with stdio redirected).
+    #[cfg(unix)]
+    if !crate::utils::is_terminal_foreground_process_group(&input) {
+        return None;
+    }
+    Some(PromptIo::Tty(input, output))
 }
 
 /// Best-effort interactive confirmation of the author identity used for
 /// AI-authorship attribution. Never fails the install: any config error or
 /// prompt timeout just skips.
 fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_config: &InstallConfig) {
-    if author_prompt_suppressed() {
+    if options.dry_run || author_prompt_suppressed() {
         return;
     }
-    let prompt_io = resolve_prompt_io();
     let Ok(file_config) = crate::config::load_file_config_public() else {
         return;
     };
@@ -585,14 +591,16 @@ fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_confi
             .as_deref()
             .is_some_and(|key| !key.is_empty())
         || install_config.api_key.is_some();
-    if !should_prompt_for_author(
-        options.dry_run,
-        prompt_io.is_some(),
-        author_configured,
-        api_key_present,
-    ) {
+    // Prompt only where an API key exists (hosted usage) and no git-ai author
+    // override is configured yet.
+    if author_configured || !api_key_present {
         return;
     }
+    // Resolve the interactive channel only after the cheap gates pass: it
+    // opens /dev/tty (or CONIN$/CONOUT$), which skipped prompts never need.
+    let Some(prompt_io) = resolve_prompt_io() else {
+        return;
+    };
 
     // Default to the explicitly configured global git identity only: `git var
     // GIT_COMMITTER_IDENT` fabricates a junk identity (user@hostname) on
@@ -601,15 +609,14 @@ fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_confi
     // Build the reader only after the gate passes so a skipped prompt never
     // leaks a thread blocked on the terminal.
     let (reader, mut out): (crate::utils::TimedLineReader, Box<dyn Write>) = match prompt_io {
-        Some(PromptIo::Stdio) => (
+        PromptIo::Stdio => (
             crate::utils::TimedLineReader::from_stdin(),
             Box::new(std::io::stdout()),
         ),
-        Some(PromptIo::Tty(input, output)) => (
+        PromptIo::Tty(input, output) => (
             crate::utils::TimedLineReader::from_buf_read(std::io::BufReader::new(input)),
             Box::new(output),
         ),
-        None => return,
     };
     let Some(author) = prompt_author_identity(
         &default,
@@ -621,11 +628,20 @@ fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_confi
     // Re-load right before saving: the prompt blocks on human input, and saving
     // the pre-prompt snapshot would clobber any concurrent config change.
     let Ok(mut file_config) = crate::config::load_file_config_public() else {
+        // Route through the prompt channel: with a /dev/tty prompt, stderr may
+        // be redirected and the user must learn the typed identity was lost.
+        let _ = writeln!(
+            out,
+            "Warning: could not reload config; the author identity was not saved (non-fatal)."
+        );
         return;
     };
     file_config.author = Some(author);
     if let Err(e) = crate::config::save_file_config(&file_config) {
-        eprintln!("Warning: could not save author config (non-fatal): {e}");
+        let _ = writeln!(
+            out,
+            "Warning: could not save author config (non-fatal): {e}"
+        );
     }
 }
 
@@ -639,16 +655,24 @@ fn prompt_author_identity(
     let _ = writeln!(
         out,
         "Confirm the author identity git-ai will use for AI-authorship attribution\n\
-         (press Enter to accept, or type a new value; each prompt auto-skips after {}s):",
+         (press Enter to accept, or type a new value; setup is skipped entirely\n\
+         when a prompt gets no input within {}s):",
         AUTHOR_PROMPT_TIMEOUT.as_secs()
     );
+    // ASCII only: /dev/tty and CONOUT$ writes bypass any UTF-8 stdio handling
+    // (legacy Windows consoles render non-ASCII bytes as mojibake). Nothing is
+    // saved on a skip, so the message must not imply earlier fields were kept.
+    let skipped = |out: &mut dyn Write| {
+        let _ = writeln!(
+            out,
+            "  (no input - skipping author setup; set it later with \
+             `git-ai config set author.name ...` / `... author.email ...`)"
+        );
+    };
     let Some(name) =
         prompt_author_field("Author name", default.name.as_deref(), &mut read_line, out)
     else {
-        let _ = writeln!(
-            out,
-            "  (no input — skipping; set later with `git-ai config set author.name ...`)"
-        );
+        skipped(out);
         return None;
     };
     let Some(email) = prompt_author_field(
@@ -657,10 +681,7 @@ fn prompt_author_identity(
         &mut read_line,
         out,
     ) else {
-        let _ = writeln!(
-            out,
-            "  (no input — skipping; set later with `git-ai config set author.email ...`)"
-        );
+        skipped(out);
         return None;
     };
     let author = config::AuthorConfig { name, email }.normalized();
@@ -1663,15 +1684,6 @@ mod tests {
             name: name.map(str::to_string),
             email: email.map(str::to_string),
         }
-    }
-
-    #[test]
-    fn should_prompt_for_author_requires_all_conditions() {
-        assert!(should_prompt_for_author(false, true, false, true));
-        assert!(!should_prompt_for_author(true, true, false, true));
-        assert!(!should_prompt_for_author(false, false, false, true));
-        assert!(!should_prompt_for_author(false, true, true, true));
-        assert!(!should_prompt_for_author(false, true, false, false));
     }
 
     #[test]

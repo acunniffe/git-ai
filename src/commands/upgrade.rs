@@ -557,6 +557,13 @@ fn run_install_script(script_content: &str, tag: &str, silent: bool) -> Result<(
 
             // Hide the spawned console to prevent any host/UI bleed-through
             cmd.creation_flags(CREATE_NO_WINDOW);
+            // The hidden console still lets install-hooks open CONIN$, so its
+            // author prompt would block invisibly (and unanswerably) for its
+            // full timeout on every upgrade; suppress it.
+            cmd.env(
+                crate::commands::install_hooks::GIT_AI_NO_AUTHOR_PROMPT_ENV,
+                "1",
+            );
 
             if silent {
                 cmd.env(GIT_AI_RESTART_DAEMON_AFTER_INSTALL_ENV, "1");

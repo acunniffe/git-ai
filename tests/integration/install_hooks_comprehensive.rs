@@ -4,7 +4,8 @@
 //! which handle installation of git hooks for various IDEs and coding agents.
 
 use crate::repos::test_repo::{
-    DaemonTestScope, TestRepo, detach_from_controlling_terminal, get_binary_path,
+    DaemonTestScope, TestRepo, detach_from_controlling_terminal, ensure_isolated_process_home,
+    get_binary_path,
 };
 use git_ai::commands::install_hooks::{
     InstallResult, InstallStatus, run, run_uninstall, to_hashmap,
@@ -386,6 +387,26 @@ fn git_ai_config_json(repo: &TestRepo) -> serde_json::Value {
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
+/// Positive prompt tests must not inherit background-AI-agent markers from
+/// the harness environment: `author_prompt_suppressed()` consults
+/// `is_in_background_agent()`, so running the suite inside such a sandbox
+/// would suppress the prompt and fail the assertions for the wrong reason.
+fn remove_background_agent_env(command: &mut Command) {
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("CLOUD_AGENT_") {
+            command.env_remove(key);
+        }
+    }
+    for key in [
+        "CLAUDE_CODE_REMOTE",
+        "CURSOR_AGENT",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
+        "GIT_AI_CLOUD_AGENT",
+    ] {
+        command.env_remove(key);
+    }
+}
+
 fn assert_install_hooks_skips_author_prompt(
     output: &std::process::Output,
     repo: &TestRepo,
@@ -441,6 +462,7 @@ fn install_hooks_forced_tty_prompts_and_saves_author() {
             ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
         ],
     );
+    remove_background_agent_env(&mut command);
     command
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -594,28 +616,36 @@ fn install_hooks_background_agent_skips_author_prompt() {
 fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
     use std::io::Write as _;
 
-    if Command::new("script").arg("--version").output().is_err() {
-        eprintln!("skipping: script(1) not available");
-        return;
+    // A spawn error means no script(1) at all; a non-success exit means a
+    // non-util-linux implementation (e.g. BusyBox) without `-qec` support.
+    match Command::new("script").arg("--version").output() {
+        Ok(output) if output.status.success() => {}
+        _ => {
+            eprintln!("skipping: util-linux script(1) not available");
+            return;
+        }
     }
 
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
 
     // Build the normal test command purely to harvest the binary path and the
     // isolated environment, then re-run it under script's pty.
-    let inner = repo.git_ai_command_without_pre_sync_for_test(
+    let mut inner = repo.git_ai_command_without_pre_sync_for_test(
         &["install-hooks"],
         &[
             ("GIT_AI_API_KEY", "test-key"),
             ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
         ],
     );
+    remove_background_agent_env(&mut inner);
     let binary = inner.get_program().to_str().unwrap().to_string();
 
     let mut command = Command::new("script");
+    // The binary path travels via the environment so quotes/dollars/backticks
+    // in a workspace path cannot break (or inject into) the shell command.
     command
         .arg("-qec")
-        .arg(format!("\"{binary}\" install-hooks < /dev/null"))
+        .arg(r#""$GIT_AI_TEST_BINARY" install-hooks < /dev/null"#)
         .arg("/dev/null")
         .current_dir(repo.path());
     for (key, value) in inner.get_envs() {
@@ -624,6 +654,7 @@ fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
             None => command.env_remove(key),
         };
     }
+    command.env("GIT_AI_TEST_BINARY", &binary);
     command
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -702,6 +733,10 @@ fn install_hooks_detects_cline_from_vscode_server_extension_manifest() {
 
 #[test]
 fn test_run_install_hooks_no_args() {
+    // In-process `run()` bypasses the child-command env isolation: without
+    // this, the new author prompt could read the developer's real terminal
+    // and write their real ~/.git-ai/config.json.
+    ensure_isolated_process_home();
     // This will try to run against the actual system, but should not crash
     // It may fail if binary path cannot be determined, which is acceptable
     let result = run(&[]);
@@ -724,6 +759,7 @@ fn test_run_install_hooks_no_args() {
 
 #[test]
 fn test_run_install_hooks_with_dry_run_flag() {
+    ensure_isolated_process_home();
     let args = vec!["--dry-run".to_string()];
     let result = run(&args);
 
@@ -741,6 +777,7 @@ fn test_run_install_hooks_with_dry_run_flag() {
 
 #[test]
 fn test_run_install_hooks_with_dry_run_true() {
+    ensure_isolated_process_home();
     let args = vec!["--dry-run=true".to_string()];
     let result = run(&args);
 
@@ -756,6 +793,7 @@ fn test_run_install_hooks_with_dry_run_true() {
 
 #[test]
 fn test_run_install_hooks_with_verbose_flag() {
+    ensure_isolated_process_home();
     let args = vec!["--verbose".to_string()];
     let result = run(&args);
 
@@ -771,6 +809,7 @@ fn test_run_install_hooks_with_verbose_flag() {
 
 #[test]
 fn test_run_install_hooks_with_verbose_short_flag() {
+    ensure_isolated_process_home();
     let args = vec!["-v".to_string()];
     let result = run(&args);
 
@@ -786,6 +825,7 @@ fn test_run_install_hooks_with_verbose_short_flag() {
 
 #[test]
 fn test_run_install_hooks_with_multiple_flags() {
+    ensure_isolated_process_home();
     let args = vec!["--dry-run".to_string(), "--verbose".to_string()];
     let result = run(&args);
 
@@ -801,6 +841,7 @@ fn test_run_install_hooks_with_multiple_flags() {
 
 #[test]
 fn test_run_install_hooks_with_dry_run_false() {
+    ensure_isolated_process_home();
     // Note: This could actually install hooks on the system
     // In a real test environment, this should be run in isolation
     let args = vec!["--dry-run=false".to_string()];
@@ -818,6 +859,7 @@ fn test_run_install_hooks_with_dry_run_false() {
 
 #[test]
 fn test_run_install_hooks_ignores_unknown_args() {
+    ensure_isolated_process_home();
     // Unknown arguments should be ignored
     let args = vec![
         "--unknown-flag".to_string(),

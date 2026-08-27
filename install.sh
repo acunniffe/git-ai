@@ -125,23 +125,34 @@ verify_checksum() {
 }
 
 # ============================================================
+# Detect CI environments, MDM deployments (JAMF, etc.), and
+# daemon-triggered self-updates (GIT_AI_DAEMON_UPGRADE is set
+# internally by the upgrade command).
+# ============================================================
+IS_CI_OR_MDM=false
+if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${GITLAB_CI:-}" ] \
+    || [ -n "${JENKINS_URL:-}" ] || [ -n "${BUILDKITE:-}" ] || [ -n "${CIRCLECI:-}" ] \
+    || [ -n "${CODEBUILD_BUILD_ID:-}" ] || [ -n "${AGENT_OS:-}" ] \
+    || [ -n "${KUBERNETES_SERVICE_HOST:-}" ] || [ -n "${INSTALL_USER:-}" ] \
+    || [ -n "${GIT_AI_DAEMON_UPGRADE:-}" ] \
+    || [ -n "${container:-}" ] || [ -f "/.dockerenv" ]; then
+    IS_CI_OR_MDM=true
+fi
+
+# The install-hooks author prompt is interactive; CI/MDM/container runs can
+# still have an openable /dev/tty (e.g. pty-backed CI steps, `ssh -tt`), so
+# suppress it explicitly for unattended installs.
+if [ "$IS_CI_OR_MDM" = "true" ] && [ -z "${GIT_AI_NO_AUTHOR_PROMPT:-}" ]; then
+    export GIT_AI_NO_AUTHOR_PROMPT=1
+fi
+
+# ============================================================
 # Warn when installing as root/sudo (not recommended).
 # Running as root creates files that normal-user processes
 # cannot access, causing persistent daemon lock failures.
 # ============================================================
 if [ "$(id -u)" = "0" ] && [ "${GIT_AI_ALLOW_SUPERUSER:-}" != "1" ]; then
-    # Auto-allow in CI environments, MDM deployments (JAMF, etc.),
-    # and daemon-triggered self-updates (GIT_AI_DAEMON_UPGRADE is set internally by the upgrade command)
-    IS_CI_OR_MDM=false
-    if [ -n "${CI:-}" ] || [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${GITLAB_CI:-}" ] \
-        || [ -n "${JENKINS_URL:-}" ] || [ -n "${BUILDKITE:-}" ] || [ -n "${CIRCLECI:-}" ] \
-        || [ -n "${CODEBUILD_BUILD_ID:-}" ] || [ -n "${AGENT_OS:-}" ] \
-        || [ -n "${KUBERNETES_SERVICE_HOST:-}" ] || [ -n "${INSTALL_USER:-}" ] \
-        || [ -n "${GIT_AI_DAEMON_UPGRADE:-}" ] \
-        || [ -n "${container:-}" ] || [ -f "/.dockerenv" ]; then
-        IS_CI_OR_MDM=true
-    fi
-
+    # Auto-allow in CI environments and MDM deployments.
     if [ "$IS_CI_OR_MDM" = "false" ]; then
         echo ""
         echo -e "${YELLOW}Warning: installing git-ai as root/sudo is not recommended.${NC}"

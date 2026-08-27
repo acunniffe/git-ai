@@ -3572,7 +3572,11 @@ fn find_real_git_by_probe() -> String {
 ///   so no daemon auto-spawn from in-process Config::get() calls.
 /// - `~/.gitconfig` is a minimal stub so plain git subprocesses don't fail.
 /// - Developer's real `~/.git-ai/`, `~/.claude/`, `~/.gitconfig` are unreachable.
-fn ensure_isolated_process_home() {
+///
+/// Also public for tests that call git-ai library code (e.g.
+/// `install_hooks::run`) in-process: those calls bypass
+/// `configure_git_ai_env`, so this is their only isolation.
+pub(crate) fn ensure_isolated_process_home() {
     static PROCESS_HOME: OnceLock<std::path::PathBuf> = OnceLock::new();
     PROCESS_HOME.get_or_init(|| {
         let home = std::env::temp_dir().join(format!("git-ai-test-home-{}", std::process::id()));
@@ -3612,6 +3616,12 @@ fn ensure_isolated_process_home() {
         unsafe {
             std::env::set_var("HOME", &home);
             std::env::set_var("GIT_AI_TEST_DB_PATH", &process_test_db);
+            // In-process install-hooks calls must never reach the developer's
+            // real terminal via the author prompt (stdin/stdout TTYs or the
+            // /dev/tty fallback). Children still get an explicit value from
+            // `configure_git_ai_env` (or a per-test override), so this only
+            // hardens in-process library calls.
+            std::env::set_var("GIT_AI_NO_AUTHOR_PROMPT", "1");
             #[cfg(windows)]
             {
                 std::env::set_var("USERPROFILE", &home);

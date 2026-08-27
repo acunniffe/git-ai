@@ -36,7 +36,9 @@ GIT_AI_BIN="$GIT_AI_BIN_DIR/git-ai"
 /usr/bin/install -o "$CONSOLE_USER" -g "$USER_GROUP" -m 0755 "$SOURCE_BINARY" "$GIT_AI_BIN"
 # --env also adds ~/.git-ai/bin to the user's shell PATH configs. `su -`
 # gives a login environment, so HOME/SHELL are the console user's and any
-# created rc files are owned by them.
-/usr/bin/su - "$CONSOLE_USER" -c "\"$GIT_AI_BIN\" install-hooks --env"
+# created rc files are owned by them. GIT_AI_NO_AUTHOR_PROMPT: a pkg install
+# run from a terminal (sudo installer -pkg ...) keeps the controlling tty, and
+# the interactive author prompt must never block or read input mid-install.
+/usr/bin/su - "$CONSOLE_USER" -c "GIT_AI_NO_AUTHOR_PROMPT=1 \"$GIT_AI_BIN\" install-hooks --env"
 
 exit 0

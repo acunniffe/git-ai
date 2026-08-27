@@ -181,14 +181,18 @@ fn forwarded_env(
         ("API_BASE", api_base),
         ("API_KEY", api_key),
         ("GIT_AI_RELEASE_TAG", release_tag),
+        // The nested install-hooks runs on an invisible console's pty; its
+        // author prompt would block unanswerably for its full timeout in
+        // every distro, so suppress it.
+        (
+            crate::commands::install_hooks::GIT_AI_NO_AUTHOR_PROMPT_ENV,
+            Some("1"),
+        ),
     ];
     let mut env = values
         .into_iter()
         .filter_map(|(name, value)| value.map(|value| (name.to_owned(), value.to_owned())))
         .collect::<Vec<_>>();
-    if env.is_empty() {
-        return env;
-    }
 
     let mut wslenv = inherited_wslenv
         .filter(|value| !value.is_empty())
@@ -286,10 +290,25 @@ mod tests {
                     "key with spaces; untouched".to_owned()
                 ),
                 ("GIT_AI_RELEASE_TAG".to_owned(), "v1.2.3".to_owned()),
+                ("GIT_AI_NO_AUTHOR_PROMPT".to_owned(), "1".to_owned()),
                 (
                     "WSLENV".to_owned(),
-                    "EXISTING/p:API_KEY/u:API_BASE:GIT_AI_RELEASE_TAG".to_owned()
+                    "EXISTING/p:API_KEY/u:API_BASE:GIT_AI_RELEASE_TAG:GIT_AI_NO_AUTHOR_PROMPT"
+                        .to_owned()
                 ),
+            ]
+        );
+    }
+
+    #[test]
+    fn author_prompt_is_always_suppressed_in_wsl_installs() {
+        // Even with no api key/base/tag forwarded, the nested install-hooks
+        // must never block on its interactive author prompt.
+        assert_eq!(
+            forwarded_env(None, None, None, None),
+            [
+                ("GIT_AI_NO_AUTHOR_PROMPT".to_owned(), "1".to_owned()),
+                ("WSLENV".to_owned(), "GIT_AI_NO_AUTHOR_PROMPT".to_owned()),
             ]
         );
     }
