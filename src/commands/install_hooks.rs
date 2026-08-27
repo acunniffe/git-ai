@@ -529,17 +529,49 @@ fn should_prompt_for_author(
     !dry_run && interactive && !author_configured && api_key_present
 }
 
+/// Where prompt I/O goes: process stdio (real TTYs, or forced by tests over
+/// piped stdio), or the controlling terminal when stdio is redirected (e.g.
+/// `curl install.sh | bash`, where stdin is the script pipe).
+enum PromptIo {
+    Stdio,
+    Tty(std::fs::File, std::fs::File),
+}
+
+/// Environments where the author prompt must never fire even if a controlling
+/// terminal is technically openable: explicit opt-out, daemon-triggered
+/// silent upgrades, the background upgrade worker (runs in the user's session
+/// with an openable /dev/tty), and background AI-agent sandboxes.
+fn author_prompt_suppressed() -> bool {
+    let opted_out = std::env::var("GIT_AI_NO_AUTHOR_PROMPT")
+        .is_ok_and(|v| !matches!(v.as_str(), "" | "0" | "false" | "False" | "FALSE"));
+    opted_out
+        || std::env::var_os(crate::commands::upgrade::GIT_AI_DAEMON_UPGRADE_ENV)
+            .is_some_and(|v| !v.is_empty())
+        || std::env::var(crate::commands::upgrade::ENV_BACKGROUND_UPGRADE_WORKER).as_deref()
+            == Ok("1")
+        || crate::utils::is_in_background_agent()
+}
+
+/// git-credential-style prompt channel resolution. GIT_AI_TEST_FORCE_TTY
+/// keeps prompt I/O on piped stdio so tests can drive it.
+fn resolve_prompt_io() -> Option<PromptIo> {
+    if std::env::var_os("GIT_AI_TEST_FORCE_TTY").is_some() {
+        return Some(PromptIo::Stdio);
+    }
+    if crate::utils::is_interactive_terminal() && std::io::stdout().is_terminal() {
+        return Some(PromptIo::Stdio);
+    }
+    crate::utils::open_controlling_terminal().map(|(input, output)| PromptIo::Tty(input, output))
+}
+
 /// Best-effort interactive confirmation of the author identity used for
 /// AI-authorship attribution. Never fails the install: any config error or
 /// prompt timeout just skips.
 fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_config: &InstallConfig) {
-    let opted_out = std::env::var("GIT_AI_NO_AUTHOR_PROMPT")
-        .is_ok_and(|v| !matches!(v.as_str(), "" | "0" | "false" | "False" | "FALSE"));
-    if opted_out {
+    if author_prompt_suppressed() {
         return;
     }
-    let interactive = (crate::utils::is_interactive_terminal() && std::io::stdout().is_terminal())
-        || std::env::var_os("GIT_AI_TEST_FORCE_TTY").is_some();
+    let prompt_io = resolve_prompt_io();
     let Ok(file_config) = crate::config::load_file_config_public() else {
         return;
     };
@@ -555,7 +587,7 @@ fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_confi
         || install_config.api_key.is_some();
     if !should_prompt_for_author(
         options.dry_run,
-        interactive,
+        prompt_io.is_some(),
         author_configured,
         api_key_present,
     ) {
@@ -566,11 +598,23 @@ fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_confi
     // GIT_COMMITTER_IDENT` fabricates a junk identity (user@hostname) on
     // machines with no user.name/user.email, and Enter would persist it.
     let default = global_git_config_committer_identity().unwrap_or_default();
-    let reader = crate::utils::TimedLineReader::from_stdin();
+    // Build the reader only after the gate passes so a skipped prompt never
+    // leaks a thread blocked on the terminal.
+    let (reader, mut out): (crate::utils::TimedLineReader, Box<dyn Write>) = match prompt_io {
+        Some(PromptIo::Stdio) => (
+            crate::utils::TimedLineReader::from_stdin(),
+            Box::new(std::io::stdout()),
+        ),
+        Some(PromptIo::Tty(input, output)) => (
+            crate::utils::TimedLineReader::from_buf_read(std::io::BufReader::new(input)),
+            Box::new(output),
+        ),
+        None => return,
+    };
     let Some(author) = prompt_author_identity(
         &default,
         || reader.next_line(AUTHOR_PROMPT_TIMEOUT),
-        &mut std::io::stdout(),
+        &mut out,
     ) else {
         return;
     };

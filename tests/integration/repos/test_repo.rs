@@ -492,6 +492,31 @@ impl DaemonProcess {
     }
 }
 
+/// Detach the child from the controlling terminal so /dev/tty (Unix) or
+/// CONIN$ (Windows) cannot be opened. Needed by tests asserting that the
+/// install-hooks author prompt is skipped: without this, the developer's real
+/// terminal is openable even when the child's stdio is piped.
+pub fn detach_from_controlling_terminal(command: &mut Command) {
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::process::CommandExt;
+        command.pre_exec(|| {
+            // Never fails in a freshly forked child (not a process group leader).
+            libc::setsid();
+            Ok(())
+        });
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // DETACHED_PROCESS, not CREATE_NO_WINDOW: CREATE_NO_WINDOW still
+        // allocates an (invisible) console, so CONIN$ would open and the
+        // prompt would block until its timeout instead of skipping.
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        command.creation_flags(DETACHED_PROCESS);
+    }
+}
+
 fn configure_test_home_env(command: &mut Command, test_home: &Path) {
     command.env("HOME", test_home);
     if !command
@@ -2445,6 +2470,11 @@ impl TestRepo {
     fn configure_git_ai_env(&self, command: &mut Command) {
         // Isolate all git + git-ai config reads from developer machine settings.
         configure_test_home_env(command, &self.test_home);
+        // The install-hooks author prompt can reach the developer's real
+        // terminal via /dev/tty (or CONIN$) even when the child's stdio is
+        // piped. Default it off for every test child; prompt tests opt back
+        // in with GIT_AI_NO_AUTHOR_PROMPT=0.
+        command.env("GIT_AI_NO_AUTHOR_PROMPT", "1");
         command.env("GIT_AI_DAEMON_HOME", self.daemon_home_path());
         command.env(
             "GIT_AI_DAEMON_CONTROL_SOCKET",

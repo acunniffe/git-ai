@@ -3,7 +3,9 @@
 //! This module tests the git-ai install-hooks and uninstall-hooks commands,
 //! which handle installation of git hooks for various IDEs and coding agents.
 
-use crate::repos::test_repo::{DaemonTestScope, TestRepo, get_binary_path};
+use crate::repos::test_repo::{
+    DaemonTestScope, TestRepo, detach_from_controlling_terminal, get_binary_path,
+};
 use git_ai::commands::install_hooks::{
     InstallResult, InstallStatus, run, run_uninstall, to_hashmap,
 };
@@ -407,18 +409,22 @@ fn assert_install_hooks_skips_author_prompt(
 }
 
 #[test]
-fn install_hooks_non_tty_skips_author_prompt() {
+fn install_hooks_no_controlling_tty_skips_author_prompt() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
 
-    let output = repo
-        .git_ai_command_without_pre_sync_for_test(
-            &["install-hooks"],
-            &[("GIT_AI_API_KEY", "test-key")],
-        )
-        .output()
-        .expect("run git-ai install-hooks");
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+        ],
+    );
+    // Piped stdio alone is not enough: a test run from a real terminal still
+    // has an openable /dev/tty, which the prompt would fall back to.
+    detach_from_controlling_terminal(&mut command);
+    let output = command.output().expect("run git-ai install-hooks");
 
-    assert_install_hooks_skips_author_prompt(&output, &repo, "non-tty stdin");
+    assert_install_hooks_skips_author_prompt(&output, &repo, "no controlling terminal");
 }
 
 #[test]
@@ -432,6 +438,7 @@ fn install_hooks_forced_tty_prompts_and_saves_author() {
         &[
             ("GIT_AI_API_KEY", "test-key"),
             ("GIT_AI_TEST_FORCE_TTY", "1"),
+            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
         ],
     );
     command
@@ -478,6 +485,7 @@ fn install_hooks_forced_tty_author_already_set_skips_prompt() {
             &[
                 ("GIT_AI_API_KEY", "test-key"),
                 ("GIT_AI_TEST_FORCE_TTY", "1"),
+                ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
             ],
         )
         .output()
@@ -507,7 +515,10 @@ fn install_hooks_forced_tty_without_api_key_skips_prompt() {
 
     let mut command = repo.git_ai_command_without_pre_sync_for_test(
         &["install-hooks"],
-        &[("GIT_AI_TEST_FORCE_TTY", "1")],
+        &[
+            ("GIT_AI_TEST_FORCE_TTY", "1"),
+            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+        ],
     );
     command.env_remove("GIT_AI_API_KEY").env_remove("API_KEY");
     let output = command.output().expect("run git-ai install-hooks");
@@ -525,12 +536,125 @@ fn install_hooks_dry_run_forced_tty_skips_prompt() {
             &[
                 ("GIT_AI_API_KEY", "test-key"),
                 ("GIT_AI_TEST_FORCE_TTY", "1"),
+                ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
             ],
         )
         .output()
         .expect("run git-ai install-hooks --dry-run");
 
     assert_install_hooks_skips_author_prompt(&output, &repo, "dry run");
+}
+
+/// Environments where the prompt must never fire even though an interactive
+/// channel is available (GIT_AI_TEST_FORCE_TTY keeps the channel open, so
+/// only the suppression env under test can cause the skip).
+fn assert_suppression_env_skips_author_prompt(env: (&str, &str), context: &str) {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let output = repo
+        .git_ai_command_without_pre_sync_for_test(
+            &["install-hooks"],
+            &[
+                ("GIT_AI_API_KEY", "test-key"),
+                ("GIT_AI_TEST_FORCE_TTY", "1"),
+                ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+                env,
+            ],
+        )
+        .output()
+        .expect("run git-ai install-hooks");
+
+    assert_install_hooks_skips_author_prompt(&output, &repo, context);
+}
+
+#[test]
+fn install_hooks_daemon_upgrade_env_skips_author_prompt() {
+    assert_suppression_env_skips_author_prompt(("GIT_AI_DAEMON_UPGRADE", "1"), "daemon upgrade");
+}
+
+#[test]
+fn install_hooks_background_upgrade_worker_skips_author_prompt() {
+    assert_suppression_env_skips_author_prompt(
+        ("GIT_AI_BACKGROUND_UPGRADE_WORKER", "1"),
+        "background upgrade worker",
+    );
+}
+
+#[test]
+fn install_hooks_background_agent_skips_author_prompt() {
+    assert_suppression_env_skips_author_prompt(("GIT_AI_CLOUD_AGENT", "1"), "background agent");
+}
+
+/// End-to-end /dev/tty fallback: stdin is /dev/null (like `curl | bash`,
+/// where stdin is the script pipe), but the process has a controlling
+/// terminal — the pty allocated by script(1), which forwards our piped input
+/// to it.
+#[test]
+#[cfg(target_os = "linux")]
+fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
+    use std::io::Write as _;
+
+    if Command::new("script").arg("--version").output().is_err() {
+        eprintln!("skipping: script(1) not available");
+        return;
+    }
+
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    // Build the normal test command purely to harvest the binary path and the
+    // isolated environment, then re-run it under script's pty.
+    let inner = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+        ],
+    );
+    let binary = inner.get_program().to_str().unwrap().to_string();
+
+    let mut command = Command::new("script");
+    command
+        .arg("-qec")
+        .arg(format!("\"{binary}\" install-hooks < /dev/null"))
+        .arg("/dev/null")
+        .current_dir(repo.path());
+    for (key, value) in inner.get_envs() {
+        match value {
+            Some(value) => command.env(key, value),
+            None => command.env_remove(key),
+        };
+    }
+    command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = command.spawn().expect("spawn install-hooks under script");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"Bob\nbob@example.com\n")
+        .unwrap();
+    let output = child.wait_with_output().expect("wait for script");
+
+    assert!(
+        output.status.success(),
+        "install-hooks under script failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // The prompt reads and writes /dev/tty (the pty), which script mirrors to
+    // its stdout. Keep stdout assertions loose: pty echo and \r\n conversion
+    // garble exact matches.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Author name"),
+        "prompt must reach the controlling terminal:\n{stdout}"
+    );
+    let config = git_ai_config_json(&repo);
+    assert_eq!(config["author"]["name"], "Bob");
+    assert_eq!(config["author"]["email"], "bob@example.com");
 }
 
 #[test]
