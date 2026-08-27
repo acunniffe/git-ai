@@ -1,0 +1,28 @@
+src/daemon/token_usage_worker.rs
+  s_ecc10b55b372b3::t_f337fcba1f1d71 1004-1006
+  s_ecc10b55b372b3::t_a074bf58825b0a 1573-1574,1580-1581,1583-1587,1609
+docs/token-usage-events-spec.md
+  s_ecc10b55b372b3::t_a074bf58825b0a 123-128
+tests/integration/token_usage.rs
+  s_ecc10b55b372b3::t_a074bf58825b0a 424-425,428
+src/metrics/attrs.rs
+  s_ecc10b55b372b3::t_a4ca3bb2cac9bf 24,46,64-68,259-264,339-343,367
+src/token_usage/db.rs
+  s_ecc10b55b372b3::t_f337fcba1f1d71 209-212,214-216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "24069befb1baa56df9a86ce12a456eab854e11da",
+  "prompts": {},
+  "sessions": {
+    "s_ecc10b55b372b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "725da754-5eb5-4a7e-a504-a0badfb0707e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
