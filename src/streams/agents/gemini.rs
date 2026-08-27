@@ -1,7 +1,8 @@
 //! Gemini agent implementation with sweep discovery.
 
 use crate::authorship::authorship_log_serialization::generate_session_id;
-use crate::mdm::utils::gemini_config_dir;
+use crate::config::Config;
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots};
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
@@ -32,12 +33,21 @@ impl GeminiAgent {
     ///
     /// Searches `.gemini/tmp/*/chats/session-*.jsonl` under the configured Gemini CLI home.
     fn scan_session_files() -> Vec<PathBuf> {
+        let config = Config::fresh();
+        let roots = agent_profile_roots(AgentProfile::Gemini, &config);
+        Self::scan_session_files_in_roots(&roots)
+    }
+
+    fn scan_session_files_in_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        let gemini_tmp = gemini_config_dir().join("tmp");
-        if gemini_tmp.exists() {
+        for root in roots {
+            let gemini_tmp = root.join("tmp");
+            if !gemini_tmp.exists() {
+                continue;
+            }
             let Ok(project_dirs) = fs::read_dir(&gemini_tmp) else {
-                return paths;
+                continue;
             };
             for project_entry in project_dirs.flatten() {
                 let chats_dir = project_entry.path().join("chats");
@@ -238,6 +248,20 @@ impl Agent for GeminiAgent {
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    #[test]
+    fn configured_profile_roots_are_scanned() {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join(".gemini-work");
+        let transcript = profile.join("tmp/repo/chats/session-test.jsonl");
+        fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        fs::write(&transcript, "{}\n").unwrap();
+
+        assert_eq!(
+            GeminiAgent::scan_session_files_in_roots(&[profile]),
+            vec![transcript]
+        );
+    }
 
     #[test]
     fn test_sweep_strategy() {

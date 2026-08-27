@@ -2,7 +2,7 @@ use super::opencode::OpenCodePreset;
 use super::parse;
 use super::{
     AgentPreset, ParsedHookEvent, PostBashCall, PostFileEdit, PreBashCall, PreFileEdit,
-    PresetContext, StreamFormat, StreamSource,
+    PresetContext, PresetRuntimeContext, StreamFormat, StreamSource,
 };
 use crate::authorship::authorship_log_serialization::generate_session_id;
 use crate::authorship::working_log::AgentId;
@@ -15,6 +15,8 @@ use std::path::{Path, PathBuf};
 pub struct CodexPreset;
 
 impl CodexPreset {
+    const RUNTIME_PROFILE_ROOT_KEY: &'static str = "_git_ai_agent_profile_root";
+
     fn session_id_from_hook_data(data: &serde_json::Value) -> Result<String, GitAiError> {
         // Try session_id, thread_id (underscore), and thread-id (hyphen)
         parse::optional_str_multi(data, &["session_id", "thread_id"])
@@ -37,9 +39,12 @@ impl CodexPreset {
             return Some(tp.to_string());
         }
 
+        let profile_root = parse::optional_str(data, Self::RUNTIME_PROFILE_ROOT_KEY)
+            .map(PathBuf::from)
+            .unwrap_or_else(codex_home_dir);
         crate::streams::agents::CodexAgent::find_rollout_path_for_session_in_home(
             session_id,
-            &codex_home_dir(),
+            &profile_root,
         )
         .ok()
         .flatten()
@@ -225,6 +230,27 @@ impl AgentPreset for CodexPreset {
         };
 
         Ok(vec![event])
+    }
+
+    fn parse_with_context(
+        &self,
+        hook_input: &str,
+        trace_id: &str,
+        runtime_context: &PresetRuntimeContext,
+    ) -> Result<Vec<ParsedHookEvent>, GitAiError> {
+        let Some(profile_root) = runtime_context.agent_profile_root.as_ref() else {
+            return self.parse(hook_input, trace_id);
+        };
+        let mut data: serde_json::Value = serde_json::from_str(hook_input)
+            .map_err(|e| GitAiError::PresetError(format!("Invalid JSON in hook_input: {}", e)))?;
+        let object = data.as_object_mut().ok_or_else(|| {
+            GitAiError::PresetError("Codex hook_input must be a JSON object".to_string())
+        })?;
+        object.insert(
+            Self::RUNTIME_PROFILE_ROOT_KEY.to_string(),
+            serde_json::Value::String(profile_root.to_string_lossy().into_owned()),
+        );
+        self.parse(&data.to_string(), trace_id)
     }
 }
 
@@ -552,6 +578,55 @@ mod tests {
         .to_string();
         let result = CodexPreset.parse(&input, "t_test123456789a");
         assert!(result.is_err());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_codex_runtime_profile_root_resolves_transcript_before_environment_fallback() {
+        let temp = tempfile::tempdir().unwrap();
+        let profile_root = temp.path().join(".codex-personal2");
+        let session_id = "019f8d48-test-session";
+        let rollout = profile_root
+            .join("sessions/2026/07/23")
+            .join(format!("rollout-{session_id}.jsonl"));
+        std::fs::create_dir_all(rollout.parent().unwrap()).unwrap();
+        std::fs::write(&rollout, "").unwrap();
+
+        let previous_codex_home = std::env::var_os("CODEX_HOME");
+        unsafe {
+            std::env::set_var("CODEX_HOME", temp.path().join(".wrong-codex-home"));
+        }
+        let input = json!({
+            "cwd": temp.path(),
+            "hook_event_name": "PostToolUse",
+            "tool_name": "Bash",
+            "session_id": session_id,
+            "tool_use_id": "tu-1"
+        })
+        .to_string();
+        let events = CodexPreset
+            .parse_with_context(
+                &input,
+                "t_test123456789a",
+                &PresetRuntimeContext {
+                    agent_profile_root: Some(profile_root),
+                },
+            )
+            .unwrap();
+        match previous_codex_home {
+            Some(value) => unsafe { std::env::set_var("CODEX_HOME", value) },
+            None => unsafe { std::env::remove_var("CODEX_HOME") },
+        }
+
+        match &events[0] {
+            ParsedHookEvent::PostBashCall(event) => {
+                assert_eq!(
+                    event.stream_source.as_ref().map(|source| &source.path),
+                    Some(&rollout)
+                );
+            }
+            _ => panic!("Expected PostBashCall"),
+        }
     }
 
     #[test]

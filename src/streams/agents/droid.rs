@@ -1,6 +1,8 @@
 //! Droid agent implementation with sweep discovery.
 
 use crate::authorship::authorship_log_serialization::generate_session_id;
+use crate::config::Config;
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots};
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
@@ -26,15 +28,16 @@ impl DroidAgent {
 
     /// Scan for Droid conversation files in standard locations.
     fn scan_conversation_files() -> Vec<PathBuf> {
+        let config = Config::fresh();
+        let roots = agent_profile_roots(AgentProfile::Droid, &config);
+        Self::scan_conversation_files_in_roots(&roots)
+    }
+
+    fn scan_conversation_files_in_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
         let mut paths = Vec::new();
-
-        // Droid transcripts are stored in ~/.factory/sessions/<project-dir>/<uuid>.jsonl
-        let search_dirs = vec![dirs::home_dir().map(|p| p.join(".factory/sessions"))];
-
-        for dir_opt in search_dirs {
-            if let Some(sessions_dir) = dir_opt
-                && sessions_dir.exists()
-            {
+        for root in roots {
+            let sessions_dir = root.join("sessions");
+            if sessions_dir.exists() {
                 // Recursively scan all project directories under sessions/
                 Self::scan_jsonl_recursive(&sessions_dir, &mut paths);
             }
@@ -271,6 +274,20 @@ impl Agent for DroidAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_profile_roots_are_scanned() {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join(".factory-work");
+        let transcript = profile.join("sessions/repo/session.jsonl");
+        fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        fs::write(&transcript, "{}\n").unwrap();
+
+        assert_eq!(
+            DroidAgent::scan_conversation_files_in_roots(&[profile]),
+            vec![transcript]
+        );
+    }
 
     fn make_droid_line(i: usize) -> String {
         format!(

@@ -254,7 +254,9 @@ mod tests {
         .to_string();
 
         let requests = crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
-            "claude", &input,
+            "claude",
+            &input,
+            &Default::default(),
         )
         .unwrap();
         assert!(requests.is_empty());

@@ -329,6 +329,9 @@ fn print_help() {
     eprintln!(
         "    --hook-input <json|stdin>   JSON payload required by presets, or 'stdin' to read from stdin"
     );
+    eprintln!(
+        "    --agent-profile-root <path> Explicit agent profile for runtime transcript fallback"
+    );
     eprintln!("    human [pathspecs...]             Untracked/legacy human checkpoint");
     eprintln!("    mock_ai [pathspecs...]           Test preset accepting optional file pathspecs");
     eprintln!("    mock_known_human [pathspecs...]  Test preset for KnownHuman checkpoints");
@@ -408,6 +411,13 @@ fn print_help() {
 fn handle_checkpoint(args: &[String]) {
     let perf = std::env::var("GIT_AI_DEBUG_PERFORMANCE").is_ok_and(|v| !v.is_empty() && v != "0");
     let t0 = std::time::Instant::now();
+    let agent_profile_root = match parse_agent_profile_root(args) {
+        Ok(root) => root,
+        Err(error) => {
+            eprintln!("Error: {}", error);
+            std::process::exit(0);
+        }
+    };
 
     let mut hook_input = None;
     let mut i = 0;
@@ -484,6 +494,7 @@ fn handle_checkpoint(args: &[String]) {
     let requests = match crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
         preset_name,
         &effective_hook_input,
+        &crate::commands::checkpoint_agent::presets::PresetRuntimeContext { agent_profile_root },
     ) {
         Ok(r) => r,
         Err(e) => {
@@ -1129,9 +1140,52 @@ fn handle_git_hooks(args: &[String]) {
     }
 }
 
+fn parse_agent_profile_root(args: &[String]) -> Result<Option<std::path::PathBuf>, String> {
+    let mut root = None;
+    let mut index = 0;
+    while index < args.len() {
+        if args[index] != "--agent-profile-root" {
+            index += 1;
+            continue;
+        }
+        let value = args
+            .get(index + 1)
+            .ok_or_else(|| "--agent-profile-root requires an absolute path".to_string())?;
+        let path = std::path::PathBuf::from(value);
+        if !path.is_absolute() {
+            return Err(format!(
+                "--agent-profile-root requires an absolute path: {}",
+                path.display()
+            ));
+        }
+        if root.replace(path).is_some() {
+            return Err("--agent-profile-root may only be provided once".to_string());
+        }
+        index += 2;
+    }
+    Ok(root)
+}
+
 /// Synthesize JSON hook_input from CLI args for mock/test presets that can be
 /// invoked without --hook-input.
 fn synthesize_hook_input_from_cli_args(preset_name: &str, remaining_args: &[String]) -> String {
+    // 剥离已被 handle_checkpoint 消费的 --agent-profile-root 及其值（绝对路径），
+    // 防止该目录路径被 manual checkpoint preset 当作 file pathspec 错误快照。
+    let stripped: Vec<String> = {
+        let mut kept = Vec::with_capacity(remaining_args.len());
+        let mut index = 0;
+        while index < remaining_args.len() {
+            if remaining_args[index] == "--agent-profile-root" {
+                // 跳过 flag 及其值（parse_agent_profile_root 已校验值存在且为绝对路径）
+                index += 2;
+            } else {
+                kept.push(remaining_args[index].clone());
+                index += 1;
+            }
+        }
+        kept
+    };
+    let remaining_args = stripped.as_slice();
     match preset_name {
         "human" | "mock_ai" | "mock_known_human" => {
             let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -1275,4 +1329,60 @@ fn exit_with_log_status(status: std::process::ExitStatus) -> ! {
         }
     }
     std::process::exit(status.code().unwrap_or(1));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_agent_profile_root, synthesize_hook_input_from_cli_args};
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_parse_agent_profile_root_requires_an_absolute_path() {
+        let args = vec![
+            "codex".to_string(),
+            "--hook-input".to_string(),
+            "{}".to_string(),
+            "--agent-profile-root".to_string(),
+            "/Users/alice/.codex-personal2".to_string(),
+        ];
+        assert_eq!(
+            parse_agent_profile_root(&args).unwrap(),
+            Some(PathBuf::from("/Users/alice/.codex-personal2"))
+        );
+
+        let relative = vec![
+            "codex".to_string(),
+            "--agent-profile-root".to_string(),
+            ".codex-personal2".to_string(),
+        ];
+        assert!(parse_agent_profile_root(&relative).is_err());
+    }
+
+    #[test]
+    fn synthesize_hook_input_strips_agent_profile_root_value_from_file_paths() {
+        // --agent-profile-root 及其值已被 handle_checkpoint 消费，绝不能泄漏进 file_paths，
+        // 否则 profile-root 目录路径会被 manual checkpoint 当作要快照的文件，造成错误归因。
+        let args = vec![
+            "--agent-profile-root".to_string(),
+            "/Users/alice/.codex-personal2".to_string(),
+            "real_file.txt".to_string(),
+        ];
+        let json = synthesize_hook_input_from_cli_args("human", &args);
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let paths: Vec<String> = parsed["file_paths"]
+            .as_array()
+            .expect("file_paths should be an array")
+            .iter()
+            .map(|v| v.as_str().expect("paths are strings").to_string())
+            .collect();
+
+        assert!(
+            !paths.iter().any(|p| p.contains(".codex-personal2")),
+            "profile-root value must not leak into file_paths: {paths:?}"
+        );
+        assert!(
+            paths.iter().any(|p| p.ends_with("real_file.txt")),
+            "real pathspec must remain in file_paths: {paths:?}"
+        );
+    }
 }

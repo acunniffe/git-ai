@@ -183,6 +183,7 @@ pub struct Config {
     author: AuthorConfig,
     custom_attributes: HashMap<String, String>,
     git_ai_hooks: HashMap<String, Vec<String>>,
+    agent_profile_roots: HashMap<String, Vec<String>>,
     codex_hooks_format: CodexHooksFormat,
     notes_backend: NotesBackendConfig,
     transcript_streaming_lookback_days: Option<u32>,
@@ -266,6 +267,8 @@ pub struct FileConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_ai_hooks: Option<HashMap<String, Vec<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_profile_roots: Option<HashMap<String, Vec<String>>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_hooks_format: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes_backend: Option<NotesBackendConfig>,
@@ -336,6 +339,8 @@ pub struct ConfigPatch {
     pub feature_flags: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_hooks_format: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_profile_roots: Option<HashMap<String, Vec<String>>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes_backend: Option<NotesBackendConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -700,6 +705,10 @@ impl Config {
     /// Returns configured shell commands for a specific hook.
     pub fn git_ai_hook_commands(&self, hook_name: &str) -> Option<&Vec<String>> {
         self.git_ai_hooks.get(hook_name)
+    }
+
+    pub fn agent_profile_roots(&self) -> &HashMap<String, Vec<String>> {
+        &self.agent_profile_roots
     }
 
     pub fn codex_hooks_format(&self) -> CodexHooksFormat {
@@ -1151,6 +1160,11 @@ fn build_config() -> Config {
         })
         .collect::<HashMap<String, Vec<String>>>();
 
+    let agent_profile_roots = file_cfg
+        .as_ref()
+        .and_then(|c| c.agent_profile_roots.clone())
+        .unwrap_or_default();
+
     let codex_hooks_format = file_cfg
         .as_ref()
         .and_then(|c| c.codex_hooks_format.as_deref())
@@ -1263,6 +1277,7 @@ fn build_config() -> Config {
             author,
             custom_attributes: custom_attributes.clone(),
             git_ai_hooks: git_ai_hooks.clone(),
+            agent_profile_roots: agent_profile_roots.clone(),
             codex_hooks_format,
             notes_backend,
             transcript_streaming_lookback_days,
@@ -1297,6 +1312,7 @@ fn build_config() -> Config {
         author,
         custom_attributes,
         git_ai_hooks,
+        agent_profile_roots,
         codex_hooks_format,
         notes_backend,
         transcript_streaming_lookback_days,
@@ -1768,6 +1784,9 @@ fn apply_test_config_patch(config: &mut Config) {
                 );
             }
         }
+        if let Some(agent_profile_roots) = patch.agent_profile_roots {
+            config.agent_profile_roots = agent_profile_roots;
+        }
         if let Some(nb) = patch.notes_backend {
             config.notes_backend.kind = nb.kind;
             if let Some(url) = nb.backend_url {
@@ -1827,6 +1846,7 @@ mod tests {
             author: AuthorConfig::default(),
             custom_attributes: HashMap::new(),
             git_ai_hooks: HashMap::new(),
+            agent_profile_roots: HashMap::new(),
             codex_hooks_format: CodexHooksFormat::ConfigToml,
             notes_backend: NotesBackendConfig::default(),
             transcript_streaming_lookback_days: Some(7),
@@ -2073,6 +2093,7 @@ mod tests {
             author: AuthorConfig::default(),
             custom_attributes: HashMap::new(),
             git_ai_hooks: HashMap::new(),
+            agent_profile_roots: HashMap::new(),
             codex_hooks_format: CodexHooksFormat::ConfigToml,
             notes_backend: NotesBackendConfig::default(),
             transcript_streaming_lookback_days: Some(7),
@@ -2222,6 +2243,7 @@ mod tests {
             author: AuthorConfig::default(),
             custom_attributes: HashMap::new(),
             git_ai_hooks: HashMap::new(),
+            agent_profile_roots: HashMap::new(),
             codex_hooks_format: CodexHooksFormat::ConfigToml,
             notes_backend: NotesBackendConfig::default(),
             transcript_streaming_lookback_days: Some(7),
@@ -2568,6 +2590,69 @@ mod tests {
 
         let parsed = parse_file_config_bytes(data).expect("regular config should parse");
         assert_eq!(parsed.git_path.as_deref(), Some("/usr/bin/git"));
+    }
+
+    #[test]
+    fn test_agent_profile_roots_roundtrip_preserves_explicit_profiles() {
+        let data = br#"{
+            "agent_profile_roots": {
+                "codex": [
+                    "/Users/alice/.codex-work",
+                    "/Users/alice/.codex-personal"
+                ],
+                "claude": ["/Users/alice/.claude-work"]
+            }
+        }"#;
+
+        let parsed = parse_file_config_bytes(data).expect("agent profile roots should parse");
+        let serialized = serde_json::to_value(parsed).expect("file config should serialize");
+
+        assert_eq!(
+            serialized.get("agent_profile_roots"),
+            Some(&serde_json::json!({
+                "codex": [
+                    "/Users/alice/.codex-work",
+                    "/Users/alice/.codex-personal"
+                ],
+                "claude": ["/Users/alice/.claude-work"]
+            }))
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_agent_profile_roots_are_present_in_effective_config() {
+        let temp = tempfile::tempdir().unwrap();
+        let config_dir = temp.path().join(".git-ai");
+        fs::create_dir_all(&config_dir).unwrap();
+        fs::write(
+            config_dir.join("config.json"),
+            r#"{
+                "agent_profile_roots": {
+                    "codex": ["/Users/alice/.codex-work"]
+                }
+            }"#,
+        )
+        .unwrap();
+
+        let previous_home = std::env::var_os("HOME");
+        unsafe { std::env::set_var("HOME", temp.path()) };
+        let printable = Config::fresh()
+            .to_printable_json_pretty()
+            .expect("effective config should serialize");
+        match previous_home {
+            Some(value) => unsafe { std::env::set_var("HOME", value) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+
+        let effective: serde_json::Value =
+            serde_json::from_str(&printable).expect("effective config should be JSON");
+        assert_eq!(
+            effective.get("agent_profile_roots"),
+            Some(&serde_json::json!({
+                "codex": ["/Users/alice/.codex-work"]
+            }))
+        );
     }
 
     #[test]

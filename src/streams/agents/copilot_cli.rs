@@ -1,4 +1,6 @@
 use crate::authorship::authorship_log_serialization::generate_session_id;
+use crate::config::Config;
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots};
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
@@ -23,8 +25,29 @@ impl CopilotCliAgent {
         Self { batch_size }
     }
 
-    fn session_state_base_dir() -> Option<PathBuf> {
-        dirs::home_dir().map(|h| h.join(".copilot/session-state"))
+    fn scan_session_files_in_roots(roots: &[PathBuf]) -> Result<Vec<PathBuf>, StreamError> {
+        let mut paths = Vec::new();
+        for root in roots {
+            let base_dir = root.join("session-state");
+            if !base_dir.is_dir() {
+                continue;
+            }
+            let entries = fs::read_dir(&base_dir).map_err(|error| StreamError::Transient {
+                message: format!(
+                    "Failed to read copilot session-state dir {}: {}",
+                    base_dir.display(),
+                    error
+                ),
+                retry_after: Duration::from_secs(60),
+            })?;
+            for entry in entries.flatten() {
+                let events_path = entry.path().join("events.jsonl");
+                if events_path.is_file() {
+                    paths.push(events_path);
+                }
+            }
+        }
+        Ok(paths)
     }
 }
 
@@ -44,34 +67,14 @@ impl Agent for CopilotCliAgent {
     }
 
     fn discover_sessions(&self) -> Result<Vec<DiscoveredSession>, StreamError> {
-        let Some(base_dir) = Self::session_state_base_dir() else {
-            return Ok(Vec::new());
-        };
-
-        if !base_dir.exists() {
-            return Ok(Vec::new());
-        }
-
-        let entries = fs::read_dir(&base_dir).map_err(|e| StreamError::Transient {
-            message: format!("Failed to read copilot session-state dir: {}", e),
-            retry_after: Duration::from_secs(60),
-        })?;
-
+        let config = Config::fresh();
+        let roots = agent_profile_roots(AgentProfile::CopilotCli, &config);
         let mut sessions = Vec::new();
 
-        for entry in entries.flatten() {
-            let dir_path = entry.path();
-            if !dir_path.is_dir() {
-                continue;
-            }
-
-            let events_path = dir_path.join("events.jsonl");
-            if !events_path.exists() {
-                continue;
-            }
-
-            let Some(external_session_id) = dir_path
-                .file_name()
+        for events_path in Self::scan_session_files_in_roots(&roots)? {
+            let Some(external_session_id) = events_path
+                .parent()
+                .and_then(Path::file_name)
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_string())
             else {
@@ -167,6 +170,20 @@ impl Agent for CopilotCliAgent {
 mod tests {
     use super::*;
     use crate::streams::watermark::ByteOffsetWatermark;
+
+    #[test]
+    fn configured_profile_roots_are_scanned() {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join(".copilot-work");
+        let transcript = profile.join("session-state/session/events.jsonl");
+        fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        fs::write(&transcript, "{}\n").unwrap();
+
+        assert_eq!(
+            CopilotCliAgent::scan_session_files_in_roots(&[profile]).unwrap(),
+            vec![transcript]
+        );
+    }
 
     #[test]
     fn test_sweep_strategy() {

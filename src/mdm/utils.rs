@@ -714,6 +714,17 @@ pub fn normalize_windows_path_for_shell(path: &Path) -> String {
     s.into_owned()
 }
 
+pub fn shell_quote_path(path: &str) -> String {
+    if path
+        .chars()
+        .all(|character| character.is_ascii_alphanumeric() || "-_./:=@".contains(character))
+    {
+        path.to_string()
+    } else {
+        format!("'{}'", path.replace('\'', "'\\''"))
+    }
+}
+
 /// Get the absolute path to the currently running binary
 pub fn get_current_binary_path() -> Result<PathBuf, GitAiError> {
     let path = std::env::current_exe()?;
@@ -1270,6 +1281,16 @@ mod tests {
             result, "/usr/local/bin/git-ai",
             "should preserve unix paths unchanged"
         );
+    }
+
+    #[test]
+    fn test_shell_quote_path_quotes_spaces_and_single_quotes() {
+        assert_eq!(shell_quote_path("/tmp/profile root"), "'/tmp/profile root'");
+        assert_eq!(
+            shell_quote_path("/tmp/user's-profile"),
+            "'/tmp/user'\\''s-profile'"
+        );
+        assert_eq!(shell_quote_path("/tmp/profile"), "/tmp/profile");
     }
 
     #[test]

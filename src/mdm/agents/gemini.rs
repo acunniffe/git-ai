@@ -1,11 +1,13 @@
+use crate::config::Config;
 use crate::error::GitAiError;
 use crate::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
-use crate::mdm::utils::{
-    binary_exists, gemini_config_dir, generate_diff, is_git_ai_checkpoint_command, write_atomic,
-};
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots, install_profile_roots};
+use crate::mdm::utils::{binary_exists, generate_diff, is_git_ai_checkpoint_command, write_atomic};
 use serde_json::{Value, json};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 // Command patterns for hooks
 const GEMINI_BEFORE_TOOL_CMD: &str = "checkpoint gemini --hook-input stdin";
@@ -15,10 +17,6 @@ const GEMINI_CATCH_ALL_MATCHER: &str = "*";
 pub struct GeminiInstaller;
 
 impl GeminiInstaller {
-    fn settings_path() -> PathBuf {
-        gemini_config_dir().join("settings.json")
-    }
-
     /// Returns `(hooks_installed, hooks_up_to_date)` from a parsed settings value.
     /// `hooks_installed` = git-ai checkpoint command exists in ANY matcher block.
     /// `hooks_up_to_date` = git-ai checkpoint command exists in the `"*"` catch-all block.
@@ -325,9 +323,13 @@ impl HookInstaller for GeminiInstaller {
 
     fn check_hooks(&self, _params: &HookInstallerParams) -> Result<HookCheckResult, GitAiError> {
         let has_binary = binary_exists("gemini");
-        let has_dotfiles = gemini_config_dir().exists();
+        let config = Config::fresh();
+        let roots: Vec<_> = agent_profile_roots(AgentProfile::Gemini, &config)
+            .into_iter()
+            .filter(|root| root.is_dir())
+            .collect();
 
-        if !has_binary && !has_dotfiles {
+        if !has_binary && roots.is_empty() {
             return Ok(HookCheckResult {
                 tool_installed: false,
                 hooks_installed: false,
@@ -335,23 +337,23 @@ impl HookInstaller for GeminiInstaller {
             });
         }
 
-        let settings_path = Self::settings_path();
-        if !settings_path.exists() {
-            return Ok(HookCheckResult {
-                tool_installed: true,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+        let mut statuses = Vec::with_capacity(roots.len());
+        for root in roots {
+            let settings_path = root.join("settings.json");
+            let status = if settings_path.exists() {
+                let content = fs::read_to_string(settings_path)?;
+                let existing: Value = serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
+                Self::hook_status(&existing)
+            } else {
+                (false, false)
+            };
+            statuses.push(status);
         }
-
-        let content = fs::read_to_string(&settings_path)?;
-        let existing: Value = serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
-        let (hooks_installed, hooks_up_to_date) = Self::hook_status(&existing);
 
         Ok(HookCheckResult {
             tool_installed: true,
-            hooks_installed,
-            hooks_up_to_date,
+            hooks_installed: !statuses.is_empty() && statuses.iter().all(|status| status.0),
+            hooks_up_to_date: !statuses.is_empty() && statuses.iter().all(|status| status.1),
         })
     }
 
@@ -360,7 +362,16 @@ impl HookInstaller for GeminiInstaller {
         params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        Self::install_hooks_at(&Self::settings_path(), params, dry_run)
+        let config = Config::fresh();
+        let mut diffs = Vec::new();
+        for root in install_profile_roots(AgentProfile::Gemini, &config) {
+            if let Some(diff) =
+                Self::install_hooks_at(&root.join("settings.json"), params, dry_run)?
+            {
+                diffs.push(format!("{}:\n{}", root.display(), diff));
+            }
+        }
+        Ok((!diffs.is_empty()).then(|| diffs.join("\n")))
     }
 
     fn uninstall_hooks(
@@ -368,7 +379,17 @@ impl HookInstaller for GeminiInstaller {
         _params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        Self::uninstall_hooks_at(&Self::settings_path(), dry_run)
+        let config = Config::fresh();
+        let mut diffs = Vec::new();
+        for root in agent_profile_roots(AgentProfile::Gemini, &config)
+            .into_iter()
+            .filter(|root| root.is_dir())
+        {
+            if let Some(diff) = Self::uninstall_hooks_at(&root.join("settings.json"), dry_run)? {
+                diffs.push(format!("{}:\n{}", root.display(), diff));
+            }
+        }
+        Ok((!diffs.is_empty()).then(|| diffs.join("\n")))
     }
 }
 
@@ -418,6 +439,43 @@ mod tests {
                 None => std::env::remove_var("GEMINI_CLI_HOME"),
             }
         }
+    }
+
+    #[test]
+    #[serial]
+    fn install_hooks_updates_default_and_configured_profiles() {
+        with_temp_home(|home| {
+            let default_root = home.join(".gemini");
+            let extra_root = home.join(".gemini-work");
+            fs::create_dir_all(&default_root).unwrap();
+            fs::create_dir_all(&extra_root).unwrap();
+            fs::create_dir_all(home.join(".git-ai")).unwrap();
+            fs::write(
+                home.join(".git-ai/config.json"),
+                serde_json::json!({
+                    "agent_profile_roots": { "gemini": [extra_root] }
+                })
+                .to_string(),
+            )
+            .unwrap();
+
+            GeminiInstaller
+                .install_hooks(
+                    &HookInstallerParams {
+                        binary_path: PathBuf::from("/usr/local/bin/git-ai"),
+                    },
+                    false,
+                )
+                .unwrap();
+
+            for root in [default_root, extra_root] {
+                assert!(
+                    root.join("settings.json").exists(),
+                    "hooks missing in {}",
+                    root.display()
+                );
+            }
+        });
     }
 
     fn binary_path() -> PathBuf {
@@ -514,10 +572,13 @@ mod tests {
             let installer = GeminiInstaller;
             let result = installer.install_hooks(&params(), false).unwrap();
             assert!(result.is_some(), "install should report a settings diff");
+            let default_settings_path = default_gemini_dir.join("settings.json");
             assert!(
-                !default_gemini_dir.exists(),
-                "default ~/.gemini should not be touched when GEMINI_CLI_HOME is set"
+                default_settings_path.exists(),
+                "official default ~/.gemini must remain usable when GEMINI_CLI_HOME is set"
             );
+            let default_settings = read_settings(&default_settings_path);
+            assert_eq!(default_settings["tools"]["enableHooks"], true);
 
             let settings = read_settings(&settings_path);
             assert_eq!(settings["tools"]["enableHooks"], true);

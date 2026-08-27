@@ -1,12 +1,17 @@
+use crate::config::Config;
 use crate::error::GitAiError;
 use crate::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots, install_profile_roots};
 use crate::mdm::utils::{
-    binary_exists, generate_diff, home_dir, is_git_ai_checkpoint_command, write_atomic,
+    binary_exists, generate_diff, is_git_ai_checkpoint_command, normalize_windows_path_for_shell,
+    shell_quote_path, write_atomic,
 };
 use jsonc_parser::ParseOptions;
 use serde_json::{Value, json};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 /// Droid's settings.json uses JSONC (JSON with `//` line comments, `/* */` block
 /// comments, and trailing commas). Standard `serde_json` rejects these, so we
@@ -49,8 +54,11 @@ const DROID_CATCH_ALL_MATCHER: &str = "*";
 pub struct DroidInstaller;
 
 impl DroidInstaller {
+    #[cfg(test)]
     fn settings_path() -> PathBuf {
-        home_dir().join(".factory").join("settings.json")
+        crate::mdm::utils::home_dir()
+            .join(".factory")
+            .join("settings.json")
     }
 
     /// Returns `(hooks_installed, hooks_up_to_date)` from a parsed settings value.
@@ -100,9 +108,19 @@ impl DroidInstaller {
         (hooks_installed, hooks_up_to_date)
     }
 
+    #[cfg(test)]
     fn install_hooks_at(
         settings_path: &Path,
         params: &HookInstallerParams,
+        dry_run: bool,
+    ) -> Result<Option<String>, GitAiError> {
+        Self::install_hooks_at_with_profile(settings_path, params, None, dry_run)
+    }
+
+    fn install_hooks_at_with_profile(
+        settings_path: &Path,
+        params: &HookInstallerParams,
+        profile_root: Option<&Path>,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
         if let Some(dir) = settings_path.parent() {
@@ -121,9 +139,17 @@ impl DroidInstaller {
             parse_jsonc_settings(&existing_content)?
         };
 
-        let binary_path = params.binary_path.to_string_lossy().to_string();
-        let pre_tool_cmd = format!("{} {}", binary_path, DROID_PRE_TOOL_CMD);
-        let post_tool_cmd = format!("{} {}", binary_path, DROID_POST_TOOL_CMD);
+        let binary_path = shell_quote_path(&normalize_windows_path_for_shell(&params.binary_path));
+        let suffix = profile_root
+            .map(|root| {
+                format!(
+                    " --agent-profile-root {}",
+                    shell_quote_path(&normalize_windows_path_for_shell(root))
+                )
+            })
+            .unwrap_or_default();
+        let pre_tool_cmd = format!("{} {}{}", binary_path, DROID_PRE_TOOL_CMD, suffix);
+        let post_tool_cmd = format!("{} {}{}", binary_path, DROID_POST_TOOL_CMD, suffix);
 
         let mut merged = existing.clone();
         let mut hooks_obj = merged.get("hooks").cloned().unwrap_or_else(|| json!({}));
@@ -353,9 +379,13 @@ impl HookInstaller for DroidInstaller {
 
     fn check_hooks(&self, _params: &HookInstallerParams) -> Result<HookCheckResult, GitAiError> {
         let has_binary = binary_exists("droid");
-        let has_dotfiles = home_dir().join(".factory").exists();
+        let config = Config::fresh();
+        let roots: Vec<_> = agent_profile_roots(AgentProfile::Droid, &config)
+            .into_iter()
+            .filter(|root| root.is_dir())
+            .collect();
 
-        if !has_binary && !has_dotfiles {
+        if !has_binary && roots.is_empty() {
             return Ok(HookCheckResult {
                 tool_installed: false,
                 hooks_installed: false,
@@ -363,23 +393,23 @@ impl HookInstaller for DroidInstaller {
             });
         }
 
-        let settings_path = Self::settings_path();
-        if !settings_path.exists() {
-            return Ok(HookCheckResult {
-                tool_installed: true,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+        let mut statuses = Vec::with_capacity(roots.len());
+        for root in roots {
+            let settings_path = root.join("settings.json");
+            let status = if settings_path.exists() {
+                let content = fs::read_to_string(settings_path)?;
+                let existing = parse_jsonc_settings(&content).unwrap_or_else(|_| json!({}));
+                Self::hook_status(&existing)
+            } else {
+                (false, false)
+            };
+            statuses.push(status);
         }
-
-        let content = fs::read_to_string(&settings_path)?;
-        let existing: Value = parse_jsonc_settings(&content).unwrap_or_else(|_| json!({}));
-        let (hooks_installed, hooks_up_to_date) = Self::hook_status(&existing);
 
         Ok(HookCheckResult {
             tool_installed: true,
-            hooks_installed,
-            hooks_up_to_date,
+            hooks_installed: !statuses.is_empty() && statuses.iter().all(|status| status.0),
+            hooks_up_to_date: !statuses.is_empty() && statuses.iter().all(|status| status.1),
         })
     }
 
@@ -388,7 +418,19 @@ impl HookInstaller for DroidInstaller {
         params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        Self::install_hooks_at(&Self::settings_path(), params, dry_run)
+        let config = Config::fresh();
+        let mut diffs = Vec::new();
+        for root in install_profile_roots(AgentProfile::Droid, &config) {
+            if let Some(diff) = Self::install_hooks_at_with_profile(
+                &root.join("settings.json"),
+                params,
+                Some(&root),
+                dry_run,
+            )? {
+                diffs.push(format!("{}:\n{}", root.display(), diff));
+            }
+        }
+        Ok((!diffs.is_empty()).then(|| diffs.join("\n")))
     }
 
     fn uninstall_hooks(
@@ -396,7 +438,17 @@ impl HookInstaller for DroidInstaller {
         _params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        Self::uninstall_hooks_at(&Self::settings_path(), dry_run)
+        let config = Config::fresh();
+        let mut diffs = Vec::new();
+        for root in agent_profile_roots(AgentProfile::Droid, &config)
+            .into_iter()
+            .filter(|root| root.is_dir())
+        {
+            if let Some(diff) = Self::uninstall_hooks_at(&root.join("settings.json"), dry_run)? {
+                diffs.push(format!("{}:\n{}", root.display(), diff));
+            }
+        }
+        Ok((!diffs.is_empty()).then(|| diffs.join("\n")))
     }
 }
 
@@ -440,6 +492,51 @@ mod tests {
                 None => std::env::remove_var("USERPROFILE"),
             }
         }
+    }
+
+    #[test]
+    #[serial]
+    fn install_hooks_updates_default_and_configured_profiles() {
+        with_temp_home(|home| {
+            let default_root = home.join(".factory");
+            let extra_root = home.join(".factory-work");
+            fs::create_dir_all(&default_root).unwrap();
+            fs::create_dir_all(&extra_root).unwrap();
+            fs::create_dir_all(home.join(".git-ai")).unwrap();
+            fs::write(
+                home.join(".git-ai/config.json"),
+                serde_json::json!({
+                    "agent_profile_roots": { "droid": [extra_root] }
+                })
+                .to_string(),
+            )
+            .unwrap();
+
+            DroidInstaller
+                .install_hooks(
+                    &HookInstallerParams {
+                        binary_path: PathBuf::from("/usr/local/bin/git-ai"),
+                    },
+                    false,
+                )
+                .unwrap();
+
+            for root in [default_root, extra_root] {
+                let settings_path = root.join("settings.json");
+                assert!(
+                    settings_path.exists(),
+                    "hooks missing in {}",
+                    root.display()
+                );
+                let settings =
+                    parse_jsonc_settings(&fs::read_to_string(settings_path).unwrap()).unwrap();
+                let command = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+                    .as_str()
+                    .unwrap();
+                assert!(command.contains("--agent-profile-root"));
+                assert!(command.contains(&root.to_string_lossy().to_string()));
+            }
+        });
     }
 
     fn with_fake_binary_on_path<F: FnOnce(&Path)>(binary_name: &str, f: F) {

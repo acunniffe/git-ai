@@ -146,8 +146,22 @@ impl StreamFormat {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct PresetRuntimeContext {
+    pub agent_profile_root: Option<PathBuf>,
+}
+
 pub trait AgentPreset {
     fn parse(&self, hook_input: &str, trace_id: &str) -> Result<Vec<ParsedHookEvent>, GitAiError>;
+
+    fn parse_with_context(
+        &self,
+        hook_input: &str,
+        trace_id: &str,
+        _runtime_context: &PresetRuntimeContext,
+    ) -> Result<Vec<ParsedHookEvent>, GitAiError> {
+        self.parse(hook_input, trace_id)
+    }
 }
 
 pub fn resolve_preset(name: &str) -> Result<Box<dyn AgentPreset>, GitAiError> {

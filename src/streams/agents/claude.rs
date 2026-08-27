@@ -1,6 +1,8 @@
 //! Claude Code agent implementation with sweep discovery.
 
 use crate::authorship::authorship_log_serialization::generate_session_id;
+use crate::config::Config;
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots};
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
@@ -26,27 +28,21 @@ impl ClaudeAgent {
 
     /// Scan for Claude conversation files in standard locations.
     fn scan_conversation_files() -> Vec<PathBuf> {
+        let config = Config::fresh();
+        let mut roots = agent_profile_roots(AgentProfile::Claude, &config);
+        if let Some(config_root) = dirs::config_dir().map(|path| path.join("claude"))
+            && !roots.contains(&config_root)
+        {
+            roots.push(config_root);
+        }
+        Self::scan_conversation_files_in_roots(&roots)
+    }
+
+    fn scan_conversation_files_in_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
         let mut paths = Vec::new();
-
-        // Check CLAUDE_CONFIG_DIR override first
-        let base_dir = if let Ok(config_dir) = std::env::var("CLAUDE_CONFIG_DIR") {
-            Some(PathBuf::from(config_dir))
-        } else {
-            dirs::home_dir().map(|p| p.join(".claude"))
-        };
-
-        // Search paths:
-        // 1. ~/.claude/projects/**/*.jsonl (or $CLAUDE_CONFIG_DIR/projects/**/*.jsonl)
-        // 2. ~/.config/claude/projects/**/*.jsonl
-        let search_dirs = vec![
-            base_dir.as_ref().map(|p| p.join("projects")),
-            dirs::config_dir().map(|p| p.join("claude/projects")),
-        ];
-
-        for dir_opt in search_dirs {
-            if let Some(dir) = dir_opt
-                && dir.exists()
-            {
+        for root in roots {
+            let dir = root.join("projects");
+            if dir.exists() {
                 // Recursively scan for *.jsonl files
                 Self::scan_jsonl_recursive(&dir, &mut paths);
             }
@@ -317,6 +313,20 @@ impl Agent for ClaudeAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_profile_roots_are_scanned() {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join(".claude-work");
+        let transcript = profile.join("projects/repo/session.jsonl");
+        fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        fs::write(&transcript, "{}\n").unwrap();
+
+        assert_eq!(
+            ClaudeAgent::scan_conversation_files_in_roots(&[profile]),
+            vec![transcript]
+        );
+    }
 
     #[test]
     fn test_detect_subagent_parent() {

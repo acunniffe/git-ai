@@ -1,13 +1,17 @@
+use crate::config::Config;
 use crate::error::GitAiError;
 use crate::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerParams};
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots, install_profile_roots};
 use crate::mdm::utils::{
-    MIN_CLAUDE_VERSION, binary_exists, claude_config_dir, generate_diff, get_binary_version,
+    MIN_CLAUDE_VERSION, binary_exists, generate_diff, get_binary_version,
     is_git_ai_checkpoint_command, normalize_windows_path_for_shell, parse_version,
     version_meets_requirement, write_atomic,
 };
 use serde_json::{Value, json};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 
 // Command patterns for hooks
 const CLAUDE_PRE_TOOL_CMD: &str = "checkpoint claude --hook-input stdin";
@@ -17,10 +21,6 @@ const CLAUDE_CATCH_ALL_MATCHER: &str = "*";
 pub struct ClaudeCodeInstaller;
 
 impl ClaudeCodeInstaller {
-    fn settings_path() -> PathBuf {
-        claude_config_dir().join("settings.json")
-    }
-
     /// Returns `(hooks_installed, hooks_up_to_date)` from a parsed settings value.
     /// `hooks_installed` = git-ai checkpoint command exists in ANY matcher block.
     /// `hooks_up_to_date` = git-ai checkpoint command exists in the `"*"` catch-all block.
@@ -311,9 +311,13 @@ impl HookInstaller for ClaudeCodeInstaller {
 
     fn check_hooks(&self, _params: &HookInstallerParams) -> Result<HookCheckResult, GitAiError> {
         let has_binary = binary_exists("claude");
-        let has_dotfiles = claude_config_dir().exists();
+        let config = Config::fresh();
+        let roots: Vec<_> = agent_profile_roots(AgentProfile::Claude, &config)
+            .into_iter()
+            .filter(|root| root.is_dir())
+            .collect();
 
-        if !has_binary && !has_dotfiles {
+        if !has_binary && roots.is_empty() {
             return Ok(HookCheckResult {
                 tool_installed: false,
                 hooks_installed: false,
@@ -332,23 +336,23 @@ impl HookInstaller for ClaudeCodeInstaller {
             )));
         }
 
-        let settings_path = Self::settings_path();
-        if !settings_path.exists() {
-            return Ok(HookCheckResult {
-                tool_installed: true,
-                hooks_installed: false,
-                hooks_up_to_date: false,
-            });
+        let mut statuses = Vec::with_capacity(roots.len());
+        for root in roots {
+            let settings_path = root.join("settings.json");
+            let status = if settings_path.exists() {
+                let content = fs::read_to_string(settings_path)?;
+                let existing: Value = serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
+                Self::hook_status(&existing)
+            } else {
+                (false, false)
+            };
+            statuses.push(status);
         }
-
-        let content = fs::read_to_string(&settings_path)?;
-        let existing: Value = serde_json::from_str(&content).unwrap_or_else(|_| json!({}));
-        let (hooks_installed, hooks_up_to_date) = Self::hook_status(&existing);
 
         Ok(HookCheckResult {
             tool_installed: true,
-            hooks_installed,
-            hooks_up_to_date,
+            hooks_installed: !statuses.is_empty() && statuses.iter().all(|status| status.0),
+            hooks_up_to_date: !statuses.is_empty() && statuses.iter().all(|status| status.1),
         })
     }
 
@@ -361,7 +365,16 @@ impl HookInstaller for ClaudeCodeInstaller {
         params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        Self::install_hooks_at(&Self::settings_path(), params, dry_run)
+        let config = Config::fresh();
+        let mut diffs = Vec::new();
+        for root in install_profile_roots(AgentProfile::Claude, &config) {
+            if let Some(diff) =
+                Self::install_hooks_at(&root.join("settings.json"), params, dry_run)?
+            {
+                diffs.push(format!("{}:\n{}", root.display(), diff));
+            }
+        }
+        Ok((!diffs.is_empty()).then(|| diffs.join("\n")))
     }
 
     fn uninstall_hooks(
@@ -369,7 +382,17 @@ impl HookInstaller for ClaudeCodeInstaller {
         _params: &HookInstallerParams,
         dry_run: bool,
     ) -> Result<Option<String>, GitAiError> {
-        Self::uninstall_hooks_at(&Self::settings_path(), dry_run)
+        let config = Config::fresh();
+        let mut diffs = Vec::new();
+        for root in agent_profile_roots(AgentProfile::Claude, &config)
+            .into_iter()
+            .filter(|root| root.is_dir())
+        {
+            if let Some(diff) = Self::uninstall_hooks_at(&root.join("settings.json"), dry_run)? {
+                diffs.push(format!("{}:\n{}", root.display(), diff));
+            }
+        }
+        Ok((!diffs.is_empty()).then(|| diffs.join("\n")))
     }
 }
 
@@ -377,6 +400,7 @@ impl HookInstaller for ClaudeCodeInstaller {
 mod tests {
     use super::*;
     use crate::mdm::utils::{clean_path, normalize_windows_path_for_shell};
+    use serial_test::serial;
     use std::fs;
     use tempfile::TempDir;
 
@@ -403,6 +427,50 @@ mod tests {
 
     fn read_settings(path: &Path) -> Value {
         serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    #[serial]
+    fn install_hooks_updates_default_and_configured_profiles() {
+        let temp = TempDir::new().unwrap();
+        let home = temp.path();
+        let default_root = home.join(".claude");
+        let extra_root = home.join(".claude-work");
+        fs::create_dir_all(&default_root).unwrap();
+        fs::create_dir_all(&extra_root).unwrap();
+        fs::create_dir_all(home.join(".git-ai")).unwrap();
+        fs::write(
+            home.join(".git-ai/config.json"),
+            serde_json::json!({
+                "agent_profile_roots": { "claude": [extra_root] }
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let previous_home = std::env::var_os("HOME");
+        let previous_override = std::env::var_os("CLAUDE_CONFIG_DIR");
+        unsafe {
+            std::env::set_var("HOME", home);
+            std::env::remove_var("CLAUDE_CONFIG_DIR");
+        }
+
+        ClaudeCodeInstaller.install_hooks(&params(), false).unwrap();
+
+        match previous_home {
+            Some(value) => unsafe { std::env::set_var("HOME", value) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        match previous_override {
+            Some(value) => unsafe { std::env::set_var("CLAUDE_CONFIG_DIR", value) },
+            None => unsafe { std::env::remove_var("CLAUDE_CONFIG_DIR") },
+        }
+        for root in [default_root, extra_root] {
+            assert!(
+                root.join("settings.json").exists(),
+                "hooks missing in {}",
+                root.display()
+            );
+        }
     }
 
     fn git_ai_blocks_in(hook_type_array: &[Value]) -> Vec<&Value> {

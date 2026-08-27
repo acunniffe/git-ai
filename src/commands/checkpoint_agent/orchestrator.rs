@@ -186,13 +186,14 @@ fn build_checkpoint_files(file_paths: &[PathBuf]) -> Result<Vec<CheckpointFile>,
 pub fn execute_preset_checkpoint(
     preset_name: &str,
     hook_input: &str,
+    runtime_context: &super::presets::PresetRuntimeContext,
 ) -> Result<Vec<CheckpointRequest>, GitAiError> {
     let perf = std::env::var("GIT_AI_DEBUG_PERFORMANCE").is_ok_and(|v| !v.is_empty() && v != "0");
     let t0 = std::time::Instant::now();
 
     let trace_id = generate_trace_id();
     let preset = super::presets::resolve_preset(preset_name)?;
-    let events = preset.parse(hook_input, &trace_id)?;
+    let events = preset.parse_with_context(hook_input, &trace_id, runtime_context)?;
     let events_len = events.len();
 
     if perf {

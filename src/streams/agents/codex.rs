@@ -1,7 +1,8 @@
 //! Codex agent implementation with sweep discovery.
 
 use crate::authorship::authorship_log_serialization::generate_session_id;
-use crate::mdm::utils::codex_home_dir;
+use crate::config::Config;
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots};
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
@@ -94,13 +95,14 @@ impl CodexAgent {
 
     fn scan_session_files() -> Vec<PathBuf> {
         let mut paths = Vec::new();
+        let config = Config::fresh();
 
-        let codex_home = codex_home_dir();
-
-        for subdir in &["sessions", "archived_sessions"] {
-            let search_dir = codex_home.join(subdir);
-            if search_dir.exists() {
-                Self::scan_rollout_recursive(&search_dir, &mut paths);
+        for codex_home in agent_profile_roots(AgentProfile::Codex, &config) {
+            for subdir in &["sessions", "archived_sessions"] {
+                let search_dir = codex_home.join(subdir);
+                if search_dir.exists() {
+                    Self::scan_rollout_recursive(&search_dir, &mut paths);
+                }
             }
         }
 
@@ -363,6 +365,57 @@ mod tests {
             agent.sweep_strategy(),
             SweepStrategy::Periodic(Duration::from_secs(30 * 60))
         );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_scan_session_files_uses_configured_and_default_profiles() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path();
+        let default_home = home.join(".codex");
+        let extra_home = home.join(".codex-personal2");
+        let default_session = default_home
+            .join("sessions/2026/07/23")
+            .join("rollout-default.jsonl");
+        let extra_session = extra_home
+            .join("sessions/2026/07/23")
+            .join("rollout-extra.jsonl");
+        for path in [&default_session, &extra_session] {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, "").unwrap();
+        }
+        fs::create_dir_all(home.join(".git-ai")).unwrap();
+        fs::write(
+            home.join(".git-ai/config.json"),
+            serde_json::json!({
+                "agent_profile_roots": {
+                    "codex": [extra_home]
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let previous_home = std::env::var_os("HOME");
+        let previous_codex_home = std::env::var_os("CODEX_HOME");
+        unsafe {
+            std::env::set_var("HOME", home);
+            std::env::remove_var("CODEX_HOME");
+        }
+        let mut paths = CodexAgent::scan_session_files();
+        match previous_home {
+            Some(value) => unsafe { std::env::set_var("HOME", value) },
+            None => unsafe { std::env::remove_var("HOME") },
+        }
+        match previous_codex_home {
+            Some(value) => unsafe { std::env::set_var("CODEX_HOME", value) },
+            None => unsafe { std::env::remove_var("CODEX_HOME") },
+        }
+
+        paths.sort();
+        let mut expected = vec![default_session, extra_session];
+        expected.sort();
+        assert_eq!(paths, expected);
     }
 
     fn make_jsonl_line(i: usize) -> String {

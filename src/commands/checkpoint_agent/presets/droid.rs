@@ -1,7 +1,7 @@
 use super::parse;
 use super::{
     AgentPreset, ParsedHookEvent, PostBashCall, PostFileEdit, PreBashCall, PreFileEdit,
-    PresetContext, StreamFormat, StreamSource,
+    PresetContext, PresetRuntimeContext, StreamFormat, StreamSource,
 };
 use crate::authorship::authorship_log_serialization::generate_session_id;
 use crate::authorship::working_log::AgentId;
@@ -11,6 +11,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub struct DroidPreset;
+
+const RUNTIME_PROFILE_ROOT_KEY: &str = "_git_ai_agent_profile_root";
 
 impl AgentPreset for DroidPreset {
     fn parse(&self, hook_input: &str, trace_id: &str) -> Result<Vec<ParsedHookEvent>, GitAiError> {
@@ -108,7 +110,8 @@ impl AgentPreset for DroidPreset {
             let settings = tp.replace(".jsonl", ".settings.json");
             (tp.to_string(), settings)
         } else {
-            let (jsonl_p, settings_p) = droid_session_paths(&session_id, cwd);
+            let profile_root = parse::optional_str(&data, RUNTIME_PROFILE_ROOT_KEY).map(Path::new);
+            let (jsonl_p, settings_p) = droid_session_paths_at(profile_root, &session_id, cwd);
             (
                 crate::utils::normalize_to_posix(&jsonl_p.to_string_lossy()),
                 crate::utils::normalize_to_posix(&settings_p.to_string_lossy()),
@@ -197,18 +200,49 @@ impl AgentPreset for DroidPreset {
             tool_use_id: Some(tool_use_id.clone()),
         })])
     }
+
+    fn parse_with_context(
+        &self,
+        hook_input: &str,
+        trace_id: &str,
+        runtime_context: &PresetRuntimeContext,
+    ) -> Result<Vec<ParsedHookEvent>, GitAiError> {
+        let Some(profile_root) = runtime_context.agent_profile_root.as_ref() else {
+            return self.parse(hook_input, trace_id);
+        };
+        let mut data: serde_json::Value = serde_json::from_str(hook_input)
+            .map_err(|e| GitAiError::PresetError(format!("Invalid JSON in hook_input: {}", e)))?;
+        let object = data.as_object_mut().ok_or_else(|| {
+            GitAiError::PresetError("Droid hook_input must be a JSON object".to_string())
+        })?;
+        object.insert(
+            RUNTIME_PROFILE_ROOT_KEY.to_string(),
+            serde_json::Value::String(profile_root.to_string_lossy().into_owned()),
+        );
+        self.parse(&data.to_string(), trace_id)
+    }
 }
 
 /// Derive JSONL and settings.json paths from a session_id and cwd.
 /// Droid stores sessions at ~/.factory/sessions/{encoded_cwd}/{session_id}.jsonl
 /// where encoded_cwd replaces '/' with '-'.
+#[cfg(test)]
 fn droid_session_paths(session_id: &str, cwd: &str) -> (PathBuf, PathBuf) {
+    droid_session_paths_at(None, session_id, cwd)
+}
+
+fn droid_session_paths_at(
+    profile_root: Option<&Path>,
+    session_id: &str,
+    cwd: &str,
+) -> (PathBuf, PathBuf) {
     let encoded_cwd = cwd.replace('/', "-");
-    let base = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("~"))
-        .join(".factory")
-        .join("sessions")
-        .join(&encoded_cwd);
+    let profile_root = profile_root.map(Path::to_path_buf).unwrap_or_else(|| {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("~"))
+            .join(".factory")
+    });
+    let base = profile_root.join("sessions").join(&encoded_cwd);
     let jsonl_path = base.join(format!("{}.jsonl", session_id));
     let settings_path = base.join(format!("{}.settings.json", session_id));
     (jsonl_path, settings_path)
@@ -324,7 +358,9 @@ mod tests {
     fn test_ignored_droid_hook_produces_no_checkpoint_requests() {
         let input = make_droid_hook_input("PostToolUse", "Read");
         let requests = crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
-            "droid", &input,
+            "droid",
+            &input,
+            &Default::default(),
         )
         .unwrap();
         assert!(requests.is_empty());
@@ -543,6 +579,37 @@ mod tests {
                 let sp = e.context.metadata.get("settings_path").unwrap();
                 assert!(sp.ends_with("my-session.settings.json"));
             }
+            _ => panic!("Expected PostFileEdit"),
+        }
+    }
+
+    #[test]
+    fn test_droid_runtime_profile_root_controls_derived_session_path() {
+        let profile_root = PathBuf::from("/profiles/factory-work");
+        let input = json!({
+            "cwd": "/home/user/project",
+            "hookEventName": "PostToolUse",
+            "tool_name": "Write",
+            "session_id": "my-session",
+            "tool_input": {"file_path": "src/main.rs"}
+        })
+        .to_string();
+
+        let events = DroidPreset
+            .parse_with_context(
+                &input,
+                "t_test123456789a",
+                &PresetRuntimeContext {
+                    agent_profile_root: Some(profile_root.clone()),
+                },
+            )
+            .unwrap();
+
+        match &events[0] {
+            ParsedHookEvent::PostFileEdit(event) => assert!(
+                Path::new(event.context.metadata.get("transcript_path").unwrap())
+                    .starts_with(profile_root)
+            ),
             _ => panic!("Expected PostFileEdit"),
         }
     }

@@ -3,8 +3,8 @@ use crate::mdm::hook_installer::{HookCheckResult, HookInstaller, HookInstallerPa
 use crate::mdm::utils::{
     MIN_CODE_VERSION, generate_diff, get_editor_version, home_dir,
     normalize_windows_path_for_shell, parse_version, resolve_editor_cli,
-    settings_paths_for_products, should_process_settings_target, version_meets_requirement,
-    write_atomic,
+    settings_paths_for_products, shell_quote_path, should_process_settings_target,
+    version_meets_requirement, write_atomic,
 };
 use serde_json::{Value, json};
 use std::fs;
@@ -45,20 +45,9 @@ impl GitHubCopilotInstaller {
             .any(Self::is_github_copilot_checkpoint_command)
     }
 
-    fn shell_quote_path(path: &str) -> String {
-        if path
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || "-_./:=@".contains(character))
-        {
-            path.to_string()
-        } else {
-            format!("'{}'", path.replace('\'', "'\\''"))
-        }
-    }
-
     fn checkpoint_hook(binary_path: &Path, checkpoint_command: &str) -> Value {
         let binary_path = normalize_windows_path_for_shell(binary_path);
-        let shell_path = Self::shell_quote_path(&binary_path);
+        let shell_path = shell_quote_path(&binary_path);
         let powershell_path = format!("'{}'", binary_path.replace('\'', "''"));
 
         json!({

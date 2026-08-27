@@ -1,6 +1,8 @@
 //! Continue CLI agent implementation with sweep discovery.
 
 use crate::authorship::authorship_log_serialization::generate_session_id;
+use crate::config::Config;
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots};
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
@@ -29,11 +31,17 @@ impl ContinueAgent {
 
     /// Scan for Continue session files in `~/.continue/sessions/**/*.json`.
     fn scan_session_files() -> Vec<PathBuf> {
+        let config = Config::fresh();
+        let roots = agent_profile_roots(AgentProfile::ContinueCli, &config);
+        Self::scan_session_files_in_roots(&roots)
+    }
+
+    fn scan_session_files_in_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        if let Some(home) = dirs::home_dir() {
-            let pattern = home
-                .join(".continue/sessions/**/*.json")
+        for root in roots {
+            let pattern = root
+                .join("sessions/**/*.json")
                 .to_string_lossy()
                 .to_string();
 
@@ -193,6 +201,20 @@ impl Agent for ContinueAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_profile_roots_are_scanned() {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join(".continue-work");
+        let transcript = profile.join("sessions/repo/session.json");
+        std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        std::fs::write(&transcript, "{}").unwrap();
+
+        assert_eq!(
+            ContinueAgent::scan_session_files_in_roots(&[profile]),
+            vec![transcript]
+        );
+    }
 
     #[test]
     fn test_sweep_strategy() {

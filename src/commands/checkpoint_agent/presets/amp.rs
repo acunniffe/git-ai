@@ -488,7 +488,9 @@ mod tests {
     fn test_ignored_amp_hook_produces_no_checkpoint_requests() {
         let input = make_amp_input("PostToolUse", "Read");
         let requests = crate::commands::checkpoint_agent::orchestrator::execute_preset_checkpoint(
-            "amp", &input,
+            "amp",
+            &input,
+            &Default::default(),
         )
         .unwrap();
         assert!(requests.is_empty());

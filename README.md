@@ -48,6 +48,56 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://usegitai.com
 
 **No per-repo setup or git hooks required.** Commit with the Agent, git, or your favorite git client. Attribution will be linked to commits automatically.
 
+### Configure agent profile directories
+
+Git AI always uses each agent's official default profile directory. If you run
+an agent with additional profiles or custom home directories, add each one
+explicitly:
+
+```bash
+git-ai config --add agent_profile_roots.codex ~/.codex-personal
+git-ai config --add agent_profile_roots.codex ~/.codex-personal2
+git-ai install
+```
+
+For example, the commands above make Git AI use `~/.codex`,
+`~/.codex-personal`, and `~/.codex-personal2`. Adding custom directories never
+disables the official default. `git-ai install` installs or updates Git AI's
+hooks in every configured, existing profile supported by that agent; restart
+any running agent after installation so it reloads its hook configuration.
+
+Use the following keys for other supported agent profiles:
+
+| Agent | Config key | Official default | Official environment override |
+| --- | --- | --- | --- |
+| Claude Code | `claude` | `~/.claude` | `CLAUDE_CONFIG_DIR` |
+| Codex | `codex` | `~/.codex` | `CODEX_HOME` |
+| Cursor | `cursor` | `~/.cursor` | `CURSOR_CONFIG_DIR` |
+| Droid / Factory | `droid` | `~/.factory` | — |
+| Gemini CLI | `gemini` | `~/.gemini` | `GEMINI_CLI_HOME` (Git AI uses its `.gemini` child) |
+| Continue CLI | `continue_cli` | `~/.continue` | — |
+| GitHub Copilot CLI | `copilot_cli` | `~/.copilot` | — |
+| Amp | `amp` | the platform data directory's `amp` folder | `GIT_AI_AMP_THREADS_PATH` (points to the `threads` folder) |
+
+Profile roots must be absolute paths; a leading `~` is supported and expanded
+to the current user's home directory. Relative paths are ignored. Git AI does
+not scan sibling directories or infer profile names, so every additional
+profile must be listed manually.
+
+```bash
+# Show configured Codex profile roots
+git-ai config agent_profile_roots.codex
+
+# Remove all manually configured Codex profile roots
+git-ai config unset agent_profile_roots.codex
+```
+
+The configuration is stored in `~/.git-ai/config.json`; every successful
+profile-root update prints the resolved file path. Repeating the same `--add`
+command does not create duplicate entries. Existing official environment
+overrides continue to work and are combined with manually configured roots and
+the official default.
+
 **The [Git AI standard](https://github.com/git-ai-project/git-ai/blob/main/specs/git_ai_standard_v3.0.0.md) is supported by:**
 <table>
 <tr>

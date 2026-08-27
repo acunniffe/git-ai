@@ -1513,6 +1513,88 @@ fn test_codex_e2e_multi_tool_use_parallel_wrapper() {
     tracked_file.assert_lines_and_blame(crate::lines!["fn new_func() {}".ai(),]);
 }
 
+#[test]
+fn test_codex_non_default_profile_runtime_context_preserves_ai_attribution() {
+    use crate::repos::test_repo::TestRepo;
+
+    let repo = TestRepo::new();
+    let repo_root = repo.canonical_path();
+    let file_path = repo_root.join("main.rs");
+    fs::write(&file_path, "fn main() {}\n").unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+    let mut tracked_file = repo.filename("main.rs");
+    tracked_file.assert_committed_lines(crate::lines!["fn main() {}".unattributed_human(),]);
+
+    let session_id = "codex-non-default-profile-session";
+    let profile_root = repo_root.join(".codex-personal2");
+    let rollout_path = profile_root
+        .join("sessions/2026/07/23")
+        .join(format!("rollout-{session_id}.jsonl"));
+    fs::create_dir_all(rollout_path.parent().unwrap()).unwrap();
+    fs::copy(fixture_path("codex-session-simple.jsonl"), &rollout_path).unwrap();
+
+    let pre_hook_input = json!({
+        "session_id": session_id,
+        "cwd": repo_root,
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "bash-non-default-profile",
+        "tool_input": {"command": "apply edit"}
+    })
+    .to_string();
+    repo.git_ai(&[
+        "checkpoint",
+        "codex",
+        "--agent-profile-root",
+        profile_root.to_str().unwrap(),
+        "--hook-input",
+        &pre_hook_input,
+    ])
+    .expect("pre-hook checkpoint should resolve the explicit profile");
+
+    fs::write(
+        &file_path,
+        "fn greet() { println!(\"hello\"); }\nfn main() { greet(); }\n",
+    )
+    .unwrap();
+
+    let post_hook_input = json!({
+        "session_id": session_id,
+        "cwd": repo_root,
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Bash",
+        "tool_use_id": "bash-non-default-profile",
+        "tool_input": {"command": "apply edit"}
+    })
+    .to_string();
+    repo.git_ai(&[
+        "checkpoint",
+        "codex",
+        "--agent-profile-root",
+        profile_root.to_str().unwrap(),
+        "--hook-input",
+        &post_hook_input,
+    ])
+    .expect("post-hook checkpoint should resolve the explicit profile");
+
+    let commit = repo
+        .stage_all_and_commit("Codex edit from non-default profile")
+        .expect("commit should succeed");
+    let session = commit
+        .authorship_log
+        .metadata
+        .sessions
+        .values()
+        .next()
+        .expect("session record should exist");
+    assert_eq!(session.agent_id.id, session_id);
+
+    tracked_file.assert_committed_lines(crate::lines![
+        "fn greet() { println!(\"hello\"); }".ai(),
+        "fn main() { greet(); }".ai(),
+    ]);
+}
+
 crate::reuse_tests_in_worktree!(
     test_codex_raw_event_fidelity,
     test_codex_preset_structured_hook_input,

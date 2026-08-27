@@ -1,10 +1,13 @@
 //! Amp agent implementation with sweep discovery.
 
 use crate::authorship::authorship_log_serialization::generate_session_id;
+use crate::config::Config;
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots};
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
 use crate::streams::watermark::{RecordIndexWatermark, WatermarkStrategy};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -67,6 +70,58 @@ impl AmpAgent {
             message: "Could not determine Amp threads path".to_string(),
         })
     }
+
+    #[cfg(test)]
+    fn scan_thread_files_in_roots(roots: &[PathBuf]) -> Result<Vec<PathBuf>, StreamError> {
+        let directories: Vec<PathBuf> = roots.iter().map(|root| root.join("threads")).collect();
+        Self::scan_thread_files_in_directories(&directories)
+    }
+
+    fn selected_thread_directories(roots: &[PathBuf]) -> Vec<PathBuf> {
+        let primary = Self::amp_threads_path()
+            .ok()
+            .filter(|path| !path.as_os_str().is_empty());
+        let mut directories = Vec::new();
+        let mut seen = HashSet::new();
+
+        for directory in primary
+            .into_iter()
+            .chain(roots.iter().map(|root| root.join("threads")))
+        {
+            let identity = fs::canonicalize(&directory).unwrap_or_else(|_| directory.clone());
+            if seen.insert(identity) {
+                directories.push(directory);
+            }
+        }
+
+        directories
+    }
+
+    fn scan_thread_files_in_directories(
+        directories: &[PathBuf],
+    ) -> Result<Vec<PathBuf>, StreamError> {
+        let mut paths = Vec::new();
+        for threads_dir in directories {
+            if !threads_dir.is_dir() {
+                continue;
+            }
+            let entries = fs::read_dir(threads_dir).map_err(|error| StreamError::Transient {
+                message: format!(
+                    "Failed to read Amp threads directory {}: {}",
+                    threads_dir.display(),
+                    error
+                ),
+                retry_after: Duration::from_secs(30),
+            })?;
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some("json") {
+                    paths.push(path);
+                }
+            }
+        }
+        Ok(paths)
+    }
 }
 
 impl Default for AmpAgent {
@@ -85,28 +140,12 @@ impl Agent for AmpAgent {
     }
 
     fn discover_sessions(&self) -> Result<Vec<DiscoveredSession>, StreamError> {
-        let threads_dir = match Self::amp_threads_path() {
-            Ok(p) => p,
-            Err(_) => return Ok(Vec::new()),
-        };
-
-        if !threads_dir.exists() {
-            return Ok(Vec::new());
-        }
-
-        let entries = fs::read_dir(&threads_dir).map_err(|e| StreamError::Transient {
-            message: format!("Failed to read Amp threads directory: {}", e),
-            retry_after: Duration::from_secs(30),
-        })?;
-
+        let config = Config::fresh();
+        let roots = agent_profile_roots(AgentProfile::Amp, &config);
+        let directories = Self::selected_thread_directories(&roots);
         let mut sessions = Vec::new();
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_file() || path.extension().and_then(|e| e.to_str()) != Some("json") {
-                continue;
-            }
-
+        for path in Self::scan_thread_files_in_directories(&directories)? {
             let Some(file_stem) = path
                 .file_stem()
                 .and_then(|s| s.to_str())
@@ -234,6 +273,57 @@ impl Agent for AmpAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_profile_roots_are_scanned() {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join("amp-work");
+        let transcript = profile.join("threads/thread.json");
+        fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        fs::write(&transcript, "{}").unwrap();
+
+        assert_eq!(
+            AmpAgent::scan_thread_files_in_roots(&[profile]).unwrap(),
+            vec![transcript]
+        );
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn custom_environment_threads_directory_is_scanned_verbatim() {
+        let temp = tempfile::tempdir().unwrap();
+        let threads_dir = temp.path().join("amp-sessions");
+        let transcript = threads_dir.join("thread.json");
+        fs::create_dir_all(&threads_dir).unwrap();
+        fs::write(&transcript, "{}").unwrap();
+        let incorrectly_reconstructed = temp.path().join("threads/wrong.json");
+        fs::create_dir_all(incorrectly_reconstructed.parent().unwrap()).unwrap();
+        fs::write(&incorrectly_reconstructed, "{}").unwrap();
+
+        let previous = std::env::var_os("GIT_AI_AMP_THREADS_PATH");
+        unsafe {
+            std::env::set_var("GIT_AI_AMP_THREADS_PATH", &threads_dir);
+        }
+        let result = AmpAgent::new().discover_sessions();
+        match previous {
+            Some(value) => unsafe { std::env::set_var("GIT_AI_AMP_THREADS_PATH", value) },
+            None => unsafe { std::env::remove_var("GIT_AI_AMP_THREADS_PATH") },
+        }
+
+        let sessions = result.unwrap();
+        assert!(
+            sessions
+                .iter()
+                .any(|session| session.stream_path == transcript),
+            "Amp must scan the exact GIT_AI_AMP_THREADS_PATH directory"
+        );
+        assert!(
+            sessions
+                .iter()
+                .all(|session| session.stream_path != incorrectly_reconstructed),
+            "Amp must not replace the configured directory name with `threads`"
+        );
+    }
 
     #[test]
     fn test_sweep_strategy() {

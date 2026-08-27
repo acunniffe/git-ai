@@ -1,6 +1,8 @@
 //! Cursor agent implementation with sweep discovery.
 
 use crate::authorship::authorship_log_serialization::generate_session_id;
+use crate::config::Config;
+use crate::mdm::profile_roots::{AgentProfile, agent_profile_roots};
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
@@ -26,20 +28,16 @@ impl CursorAgent {
 
     /// Scan for Cursor conversation files in standard locations.
     fn scan_conversation_files() -> Vec<PathBuf> {
+        let config = Config::fresh();
+        let roots = agent_profile_roots(AgentProfile::Cursor, &config);
+        Self::scan_conversation_files_in_roots(&roots)
+    }
+
+    fn scan_conversation_files_in_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
         let mut paths = Vec::new();
-
-        let base_dir = if let Ok(config_dir) = std::env::var("CURSOR_CONFIG_DIR") {
-            Some(PathBuf::from(config_dir))
-        } else {
-            dirs::home_dir().map(|p| p.join(".cursor"))
-        };
-
-        let search_dirs = vec![base_dir.as_ref().map(|p| p.join("projects"))];
-
-        for dir_opt in search_dirs {
-            if let Some(dir) = dir_opt
-                && dir.exists()
-            {
+        for root in roots {
+            let dir = root.join("projects");
+            if dir.exists() {
                 Self::scan_jsonl_recursive(&dir, &mut paths);
             }
         }
@@ -234,6 +232,20 @@ impl Agent for CursorAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn configured_profile_roots_are_scanned() {
+        let temp = tempfile::tempdir().unwrap();
+        let profile = temp.path().join(".cursor-work");
+        let transcript = profile.join("projects/repo/session.jsonl");
+        fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        fs::write(&transcript, "{}\n").unwrap();
+
+        assert_eq!(
+            CursorAgent::scan_conversation_files_in_roots(&[profile]),
+            vec![transcript]
+        );
+    }
 
     #[test]
     fn test_sweep_strategy() {
