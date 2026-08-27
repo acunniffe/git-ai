@@ -41,6 +41,24 @@ pub struct CheckpointRequest {
     pub metadata: HashMap<String, String>,
 }
 
+const CHECKPOINT_ORIGIN_METADATA_KEY: &str = "checkpoint_origin";
+const BASH_CHECKPOINT_ORIGIN: &str = "bash";
+
+impl CheckpointRequest {
+    pub fn is_bash(&self) -> bool {
+        self.metadata
+            .get(CHECKPOINT_ORIGIN_METADATA_KEY)
+            .is_some_and(|origin| origin == BASH_CHECKPOINT_ORIGIN)
+    }
+}
+
+fn mark_bash_checkpoint(metadata: &mut HashMap<String, String>) {
+    metadata.insert(
+        CHECKPOINT_ORIGIN_METADATA_KEY.to_string(),
+        BASH_CHECKPOINT_ORIGIN.to_string(),
+    );
+}
+
 #[derive(Serialize)]
 struct CheckpointDebugLogEntry<'a> {
     timestamp: String,
@@ -509,6 +527,7 @@ fn execute_pre_bash_call(e: PreBashCall) -> Result<Vec<CheckpointRequest>, GitAi
     metadata
         .entry("tool_use_id".to_string())
         .or_insert(e.tool_use_id);
+    mark_bash_checkpoint(&mut metadata);
     Ok(split_files_into_requests(
         files,
         e.context.trace_id,
@@ -611,6 +630,7 @@ fn execute_post_bash_call(e: PostBashCall) -> Result<Vec<CheckpointRequest>, Git
     metadata
         .entry("edit_kind".to_string())
         .or_insert_with(|| "bash".to_string());
+    mark_bash_checkpoint(&mut metadata);
     Ok(split_files_into_requests(
         files,
         e.context.trace_id,
@@ -620,4 +640,41 @@ fn execute_post_bash_call(e: PostBashCall) -> Result<Vec<CheckpointRequest>, Git
         e.stream_source,
         metadata,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn checkpoint_request_with_metadata(metadata: HashMap<String, String>) -> CheckpointRequest {
+        CheckpointRequest {
+            trace_id: "test-trace".to_string(),
+            checkpoint_kind: CheckpointKind::Human,
+            agent_id: None,
+            files: Vec::new(),
+            path_role: PreparedPathRole::WillEdit,
+            stream_source: None,
+            metadata,
+        }
+    }
+
+    #[test]
+    fn checkpoint_request_detects_bash_origin() {
+        let request = checkpoint_request_with_metadata(HashMap::from([(
+            "checkpoint_origin".to_string(),
+            "bash".to_string(),
+        )]));
+
+        assert!(request.is_bash());
+    }
+
+    #[test]
+    fn checkpoint_request_does_not_treat_edit_kind_as_origin() {
+        let request = checkpoint_request_with_metadata(HashMap::from([(
+            "edit_kind".to_string(),
+            "bash".to_string(),
+        )]));
+
+        assert!(!request.is_bash());
+    }
 }
