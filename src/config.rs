@@ -1388,10 +1388,13 @@ fn build_feature_flags(file_cfg: &Option<FileConfig>) -> FeatureFlags {
 }
 
 fn resolve_git_path(file_cfg: &Option<FileConfig>) -> String {
-    // 1) From config file
-    if let Some(cfg) = file_cfg
-        && let Some(path) = cfg.git_path.as_ref()
-    {
+    // 1) From the environment or config file. Nix wrappers use the environment
+    // so they do not need to create mutable user configuration.
+    let configured_paths = [
+        env::var("GIT_AI_GIT_PATH").ok(),
+        file_cfg.as_ref().and_then(|cfg| cfg.git_path.clone()),
+    ];
+    for path in configured_paths.into_iter().flatten() {
         let trimmed = path.trim();
         if !trimmed.is_empty() {
             let p = Path::new(trimmed);

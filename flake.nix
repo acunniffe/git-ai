@@ -80,46 +80,17 @@
           };
         };
 
-        # Wrapped version that sets up the git-ai environment properly
+        # Wrapped version that supplies the Nix store Git without mutating user config.
         git-ai-wrapped = pkgs.writeShellScriptBin "git-ai" ''
-          # Ensure config directory exists
-          mkdir -p "$HOME/.git-ai"
-
-          # Create config.json if it doesn't exist
-          if [ ! -f "$HOME/.git-ai/config.json" ]; then
-            # Find the system git (not our wrapper)
-            GIT_PATH="${pkgs.git}/bin/git"
-            cat > "$HOME/.git-ai/config.json" <<EOF
-          {
-            "git_path": "$GIT_PATH"
-          }
-          EOF
-          fi
-
-          # Execute git-ai with all arguments
+          export GIT_AI_GIT_PATH="${pkgs.git}/bin/git"
           exec ${git-ai-unwrapped}/bin/git-ai "$@"
         '';
 
-        # Wrapper for git command that preserves argv[0] as "git"
-        # This is critical: when symlinked as "git", the wrapper must set argv[0]
-        # to "git" so the Rust binary routes to handle_git() instead of handle_git_ai()
+        # Wrapper for git command that preserves argv[0] as "git".
+        # This is critical: when invoked as "git", the Rust binary routes to
+        # handle_git() instead of handle_git_ai().
         git-wrapper = pkgs.writeShellScriptBin "git" ''
-          # Ensure config directory exists
-          mkdir -p "$HOME/.git-ai"
-
-          # Create config.json if it doesn't exist
-          if [ ! -f "$HOME/.git-ai/config.json" ]; then
-            # Find the system git (not our wrapper)
-            GIT_PATH="${pkgs.git}/bin/git"
-            cat > "$HOME/.git-ai/config.json" <<EOF
-          {
-            "git_path": "$GIT_PATH"
-          }
-          EOF
-          fi
-
-          # Execute git-ai with argv[0] set to "git" to trigger passthrough mode
-          # The -a flag ensures argv[0] is "git" regardless of the actual binary path
+          export GIT_AI_GIT_PATH="${pkgs.git}/bin/git"
           exec -a git ${git-ai-unwrapped}/bin/git-ai "$@"
         '';
 
@@ -320,6 +291,21 @@ GITOGEOF
           {
             # Build check - ensures the package builds
             build = git-ai-unwrapped;
+
+            wrapper-config = pkgs.runCommand "git-ai-wrapper-config-check" { } ''
+              export HOME="$TMPDIR/home"
+              mkdir -p "$HOME"
+
+              ${git-ai-wrapped}/bin/git-ai --version
+              ${git-wrapper}/bin/git --version
+
+              if [ -e "$HOME/.git-ai/config.json" ]; then
+                echo "git-ai wrappers created a mutable config file" >&2
+                exit 1
+              fi
+
+              touch "$out"
+            '';
 
             # Clippy lint check with warnings as errors
             clippy = mkCheck {
@@ -1012,6 +998,8 @@ GITOGEOF
             # Config file contains no secrets; served directly from the Nix store.
             home.file.".git-ai/config.json" = {
               source = jsonFormat.generate "git-ai-config.json" configFile;
+              # Replace config files created by wrappers from earlier releases.
+              force = true;
             };
 
             # Set GIT_AI_API_KEY at shell startup. Precedence: command > file > key.
