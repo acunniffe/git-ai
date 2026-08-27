@@ -111,22 +111,28 @@ pub fn is_interactive_terminal() -> bool {
 /// Reads successive lines from a blocking source on one dedicated thread so
 /// that each read can be given a deadline.
 pub struct TimedLineReader {
+    request_tx: std::sync::mpsc::Sender<()>,
     rx: std::sync::mpsc::Receiver<Option<String>>,
 }
 
 impl TimedLineReader {
     /// `read_line` must return one raw line per call, or `None` on EOF/error.
     pub fn spawn(mut read_line: impl FnMut() -> Option<String> + Send + 'static) -> Self {
+        let (request_tx, request_rx) = std::sync::mpsc::channel::<()>();
         let (tx, rx) = std::sync::mpsc::channel();
         // Builder::spawn returns an error instead of panicking when the OS
         // cannot create a thread: an interactive prompt must degrade to "no
-        // answer" under resource pressure, not abort the whole command.
-        // On failure the sender is dropped, so `next_line` sees a
+        // answer" under resource pressure, not abort the whole command. On
+        // failure both channel ends are dropped, so `next_line` sees a
         // disconnected channel and returns `None`.
         let _ = std::thread::Builder::new()
             .name("git-ai-line-reader".to_string())
             .spawn(move || {
-                loop {
+                // Read strictly on demand: reading ahead would consume input typed
+                // after the last prompt (e.g. the user's next shell command while
+                // the install finishes), and demand-driven reads let the thread
+                // exit cleanly when the reader is dropped after a delivered line.
+                while request_rx.recv().is_ok() {
                     let line = read_line();
                     let eof = line.is_none();
                     if tx.send(line).is_err() || eof {
@@ -134,7 +140,7 @@ impl TimedLineReader {
                     }
                 }
             });
-        Self { rx }
+        Self { request_tx, rx }
     }
 
     pub fn from_stdin() -> Self {
@@ -152,7 +158,10 @@ impl TimedLineReader {
     /// thread is intentionally leaked, still blocked on the source (the
     /// process is expected to finish its remaining work and exit shortly
     /// after), and a late line must not be misattributed to a later prompt.
+    /// When every requested line is delivered in time, no extra read is ever
+    /// issued and the thread exits as soon as the reader is dropped.
     pub fn next_line(&self, timeout: std::time::Duration) -> Option<String> {
+        let _ = self.request_tx.send(());
         self.rx
             .recv_timeout(timeout)
             .ok()
@@ -201,6 +210,17 @@ pub fn open_controlling_terminal() -> Option<(std::fs::File, std::fs::File)> {
             .ok()
     };
     Some((open("CONIN$")?, open("CONOUT$")?))
+}
+
+/// True when this process is in the foreground process group of `fd`'s
+/// terminal, i.e. it may read the terminal without the kernel stopping the
+/// whole process with SIGTTIN. A backgrounded install (`git-ai install-hooks &`,
+/// `nohup ... &`) must never prompt: a stopped process cannot even run the
+/// prompt's timeout, so the command would hang suspended until foregrounded.
+#[cfg(unix)]
+pub fn is_terminal_foreground_process_group(fd: &impl std::os::fd::AsRawFd) -> bool {
+    // tcgetpgrp returns -1 for non-terminals, which never equals our pgid.
+    unsafe { libc::tcgetpgrp(fd.as_raw_fd()) == libc::getpgrp() }
 }
 
 /// Returns true if the process is running inside a background AI agent environment.
@@ -1374,6 +1394,29 @@ mod tests {
     fn timed_line_reader_eof_returns_none() {
         let reader = TimedLineReader::from_buf_read(std::io::Cursor::new(""));
         assert_eq!(reader.next_line(std::time::Duration::from_secs(5)), None);
+    }
+
+    #[test]
+    fn timed_line_reader_never_reads_ahead_of_demand() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        // Input typed after the last prompt (e.g. the user's next shell
+        // command) must stay in the source, not be consumed and discarded.
+        let reads = Arc::new(AtomicUsize::new(0));
+        let reader = {
+            let reads = Arc::clone(&reads);
+            TimedLineReader::spawn(move || {
+                reads.fetch_add(1, Ordering::SeqCst);
+                Some("line".to_string())
+            })
+        };
+        let timeout = std::time::Duration::from_secs(5);
+        assert_eq!(reader.next_line(timeout), Some("line".to_string()));
+        assert_eq!(reader.next_line(timeout), Some("line".to_string()));
+        // Give an eager reader thread time to (incorrectly) issue another read.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        assert_eq!(reads.load(Ordering::SeqCst), 2, "read past demand");
     }
 
     // =========================================================================
