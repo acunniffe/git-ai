@@ -667,8 +667,8 @@ fn process_task_blocking(
         throttle,
     );
     if let Err(e) = &result {
-        // Keyed by the rollup session id (subagent transcripts track under
-        // their parent), matching the row ensure_file created.
+        // Keyed by the transcript's own session id (leaf attribution),
+        // matching the row ensure_file created.
         let _ = token_db.record_error(
             &identity.session_id,
             &task.stream_path,
