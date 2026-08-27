@@ -1,0 +1,40 @@
+tests/windows_install_script.rs
+  s_9ba5945f49d00a::t_8d04ee73e23ecd 145-148
+tests/integration/install_hooks_comprehensive.rs
+  s_9ba5945f49d00a::t_ecec7c8c93b0db 7-8
+  s_9ba5945f49d00a::t_3bc2ea0a4a3814 390-409,465,619-626,633,640,644-645,648,657
+  s_9ba5945f49d00a::t_1d50d28fd7ec56 736-739,762,780,796,812,828,844,862
+install.sh
+  s_9ba5945f49d00a::t_04a95ca4aae1de 127-148,155
+src/commands/install_hooks.rs
+  s_9ba5945f49d00a::t_7cddd3827401c9 658-659,662-665,668-669,671-675,684
+  s_9ba5945f49d00a::t_91a41dd7368d90 521-523,538,555-561,564-571
+  s_9ba5945f49d00a::t_0267f618380033 578,594-596,599-603,612,616,631-636,641-644
+src/commands/install_wsl.rs
+  s_9ba5945f49d00a::t_610d6bbe15edf9 184-190
+  s_9ba5945f49d00a::t_cde2c8f096d79f 293,296-297,303-311
+  s_9ba5945f49d00a::t_ace3629334515f 312-315
+tests/integration/repos/test_repo.rs
+  s_9ba5945f49d00a::t_18c183d0cfcf27 3523-3527
+  s_9ba5945f49d00a::t_ce9edb77b4fc83 3567-3572
+src/commands/upgrade.rs
+  s_9ba5945f49d00a::t_d46ede1adf13da 560-566
+packaging/macos/scripts/postinstall
+  s_9ba5945f49d00a::t_935c1c4e7397f6 39-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "9e5183318c48a24f5d220d7942ef8fa90a0d12f5",
+  "prompts": {},
+  "sessions": {
+    "s_9ba5945f49d00a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebec7a6-2ea8-4077-8a42-cf367c484cc3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
