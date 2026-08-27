@@ -17,4 +17,4 @@ pub mod extractor;
 pub mod types;
 
 pub use extractor::{UsageExtractor, extractor_for_tool};
-pub use types::{TokenCounts, UsageEntry, bucket_ts};
+pub use types::{PricingShape, Speed, TokenCounts, UsageEntry, bucket_ts};

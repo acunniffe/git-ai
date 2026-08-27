@@ -1,6 +1,6 @@
 //! Per-agent usage extraction trait.
 
-use super::types::UsageEntry;
+use super::types::{Speed, UsageEntry};
 
 /// Incremental, line-oriented extractor of token-usage entries from an agent
 /// transcript. Fed complete JSONL lines in file order; may keep per-session
@@ -12,6 +12,12 @@ pub trait UsageExtractor: Send {
 
     /// Consume one raw JSONL line, returning any usage entries it completes.
     fn extract_line(&mut self, line: &str) -> Vec<UsageEntry>;
+
+    /// Inject the configuration-derived speed for entries whose transcript
+    /// records no service tier (Codex `~/.codex/config.toml`). Resolved by
+    /// the worker once per pass, before any line is fed. No-op for agents
+    /// without the concept.
+    fn set_fallback_speed(&mut self, _speed: Option<Speed>) {}
 
     /// Serialized parser state to persist between incremental runs. `None`
     /// for stateless extractors.

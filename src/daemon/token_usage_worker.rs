@@ -55,7 +55,7 @@ use crate::error::GitAiError;
 use crate::metrics::{EventAttributes, MetricEvent, PosEncoded, TokenUsageValues};
 use crate::streams::db::{StreamRecord, StreamsDatabase};
 use crate::token_usage::db::{BatchCommit, TokenUsageDatabase, TrackedFile};
-use crate::token_usage::extractor_for_tool;
+use crate::token_usage::{Speed, extractor_for_tool};
 
 /// One raw JSONL line read as bytes: unlike UTF-8-strict `read_line`, a
 /// single invalid byte cannot wedge the cursor forever (the line decodes
@@ -732,6 +732,38 @@ fn reconcile_flagged_sessions(
 /// Incrementally read one transcript file, persist deduplicated entries, and
 /// emit changed buckets through `sink`. Split out (with injectable repo
 /// resolution and sink) for direct testing without a daemon.
+/// Speed fallback from the rollout's codex-home `config.toml` (recorded
+/// service tiers win; this covers unmarked entries). Cached by config mtime:
+/// a pass over many rollouts stats the file once per rollout but reads and
+/// parses it only when it changed — never per line.
+fn codex_config_fallback_speed(stream_path: &Path) -> Option<Speed> {
+    use std::sync::{Mutex, OnceLock};
+    use std::time::SystemTime;
+    type Cache = HashMap<PathBuf, (Option<SystemTime>, Option<Speed>)>;
+    static CACHE: OnceLock<Mutex<Cache>> = OnceLock::new();
+
+    let config_path =
+        crate::streams::model_extraction::codex_home_from_transcript_path(stream_path)?
+            .join("config.toml");
+    let modified = std::fs::metadata(&config_path)
+        .ok()
+        .and_then(|meta| meta.modified().ok());
+    let cache = CACHE.get_or_init(Default::default);
+    if let Ok(cache) = cache.lock()
+        && let Some((cached_modified, speed)) = cache.get(&config_path)
+        && *cached_modified == modified
+    {
+        return *speed;
+    }
+    let speed = crate::streams::model_extraction::read_codex_config(&config_path)
+        .as_deref()
+        .and_then(crate::token_usage::codex::config_fallback_speed);
+    if let Ok(mut cache) = cache.lock() {
+        cache.insert(config_path, (modified, speed));
+    }
+    speed
+}
+
 fn process_file(
     token_db: &TokenUsageDatabase,
     identity: &SessionIdentity,
@@ -765,6 +797,9 @@ fn process_file(
     let Some(mut extractor) = extractor_for_tool(&identity.tool) else {
         return Ok(());
     };
+    if identity.tool == "codex" {
+        extractor.set_fallback_speed(codex_config_fallback_speed(Path::new(stream_path)));
+    }
     // A shrunken file was rewritten, and unreadable persisted state (corrupt
     // or cross-version) means the cursor position is meaningless for the
     // fresh extractor: both restart from scratch. Entry-level dedup keeps
@@ -1474,6 +1509,62 @@ mod tests {
             value_u64(&events[0], token_usage_pos::INPUT_TOKENS),
             Some(10)
         );
+    }
+
+    #[test]
+    fn codex_config_service_tier_is_the_fallback_for_unmarked_entries() {
+        // A rollout under a codex home whose config.toml requests the fast
+        // tier: unmarked entries resolve to fast (inferred), while a recorded
+        // tier still wins.
+        let (dir, db, _) = setup();
+        let codex_home = dir.path().join(".codex");
+        fs::create_dir_all(codex_home.join("sessions")).unwrap();
+        fs::write(
+            codex_home.join("config.toml"),
+            "model = \"gpt-5.1\"\nservice_tier = \"fast\" # priority lane\n",
+        )
+        .unwrap();
+        let transcript = codex_home.join("sessions").join("rollout-test.jsonl");
+        let usage = |minute: u32, totals: (u64, u64, u64, u64, u64)| {
+            format!(
+                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":{},"cached_input_tokens":{},"output_tokens":{},"reasoning_output_tokens":{},"total_tokens":{}}}}}}}}}"#,
+                recent_ts(minute, 0),
+                totals.0,
+                totals.1,
+                totals.2,
+                totals.3,
+                totals.4
+            )
+        };
+        fs::write(
+            &transcript,
+            format!(
+                "{}\n{}\n{}\n",
+                usage(1, (100, 40, 50, 10, 150)),
+                r#"{"timestamp":"2026-01-01T00:02:00Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"standard"}}}"#,
+                usage(3, (300, 140, 90, 30, 390)),
+            ),
+        )
+        .unwrap();
+        let identity = SessionIdentity {
+            tool: "codex".to_string(),
+            ..identity()
+        };
+        run_as(&db, &identity, &transcript).unwrap();
+
+        let conn = rusqlite::Connection::open(dir.path().join("token-usage-db")).unwrap();
+        let rows: Vec<(u64, i64, bool)> = conn
+            .prepare(
+                "SELECT input_tokens, speed, speed_inferred FROM usage_entries ORDER BY bucket_ts",
+            )
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        // First turn: unmarked -> config fast, inferred. Second: recorded
+        // standard wins, not inferred.
+        assert_eq!(rows, vec![(60, 1, true), (100, 0, false)]);
     }
 
     #[test]

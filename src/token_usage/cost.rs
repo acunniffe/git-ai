@@ -76,7 +76,9 @@ mod tests {
             cache_write_1h: 0,
             transcript_cost_micro_usd: None,
             is_sidechain: false,
-            has_speed: false,
+            speed: None,
+            speed_inferred: false,
+            pricing_shape: crate::token_usage::PricingShape::Claude,
         }
     }
 

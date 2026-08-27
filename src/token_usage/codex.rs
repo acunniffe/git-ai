@@ -9,8 +9,13 @@
 //! - Session rollout format only (`event_msg`/`token_count`, `turn_context`,
 //!   `session_meta`); the headless `codex exec` log format is not tracked by
 //!   git-ai's streams and is not parsed.
-//! - No service-tier / fast pricing multipliers and no `codex-auto-review`
-//!   release-date fallback table; model ids price through git-ai's catalog.
+//! - The service tier is resolved per entry at extraction time (recorded
+//!   `thread_settings_applied` tier, else the injected config fallback, else
+//!   standard) and stored on the entry; ccusage's auto mode instead applies
+//!   the config in force at *report* time to unmarked usage, retroactively
+//!   repricing history when `~/.codex/config.toml` changes.
+//! - No `codex-auto-review` release-date fallback table; model ids price
+//!   through git-ai's catalog.
 //! - Fork replay: ccusage matches a forked session's leading usage against
 //!   the parent log's usage prefix, which requires reading other files. That
 //!   is not possible incrementally, so forks always take ccusage's fallback
@@ -28,7 +33,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::extractor::UsageExtractor;
-use super::types::{TokenCounts, UsageEntry};
+use super::types::{PricingShape, Speed, TokenCounts, UsageEntry};
 
 /// ccusage `CODEX_REWRITTEN_BURST_PAUSE_MS`: the longest pause tolerated
 /// inside a burst of replayed usage. Codex rewrites replayed history to the
@@ -42,6 +47,10 @@ const FALLBACK_MODEL: &str = "gpt-5";
 #[derive(Default)]
 pub struct CodexUsageExtractor {
     state: CodexState,
+    /// Speed for entries whose transcript records no service tier, resolved
+    /// from `~/.codex/config.toml` and injected per pass by the worker (not
+    /// persisted — the config in force when an entry is extracted decides).
+    fallback_speed: Option<Speed>,
 }
 
 /// Parser state persisted between incremental runs.
@@ -59,6 +68,10 @@ struct CodexState {
     /// subtraction.
     #[serde(default)]
     prev_totals: Option<CodexTotals>,
+    /// Sticky service tier recorded by the last `thread_settings_applied`
+    /// event that carried one (ccusage `current_service_tier`).
+    #[serde(default)]
+    service_tier: Option<Speed>,
     #[serde(default)]
     replay: ReplayState,
 }
@@ -147,6 +160,12 @@ struct PendingEvent {
     ts_ms: i64,
     model: String,
     delta: CodexTotals,
+    /// Resolved speed at event time (defaults keep pre-speed persisted state
+    /// readable).
+    #[serde(default)]
+    speed: Speed,
+    #[serde(default)]
+    speed_inferred: bool,
 }
 
 impl UsageExtractor for CodexUsageExtractor {
@@ -154,6 +173,7 @@ impl UsageExtractor for CodexUsageExtractor {
         line.contains("token_count")
             || line.contains("turn_context")
             || line.contains("session_meta")
+            || line.contains("thread_settings_applied")
     }
 
     fn extract_line(&mut self, line: &str) -> Vec<UsageEntry> {
@@ -199,6 +219,10 @@ impl UsageExtractor for CodexUsageExtractor {
                 false
             }
         }
+    }
+
+    fn set_fallback_speed(&mut self, speed: Option<Speed>) {
+        self.fallback_speed = speed;
     }
 
     fn has_pending(&self) -> bool {
@@ -250,6 +274,22 @@ impl CodexUsageExtractor {
         let Some(payload) = raw.payload.as_ref() else {
             return Vec::new();
         };
+        if payload.payload_type.as_deref() == Some("thread_settings_applied") {
+            // A settings event that carries no `service_tier` at all says
+            // nothing about the tier, so the previous one stands (Codex emits
+            // such events for auto-review threads). A tier that is present
+            // but unrecognized is different: it means the tier changed to
+            // something unknown, so the stale value must not be inherited
+            // (ccusage `visit_codex_session_entry`).
+            if let Some(recorded) = payload
+                .thread_settings
+                .as_ref()
+                .and_then(|settings| settings.service_tier.as_deref())
+            {
+                self.state.service_tier = service_tier_speed(recorded);
+            }
+            return Vec::new();
+        }
         if payload.payload_type.as_deref() != Some("token_count") {
             return Vec::new();
         }
@@ -295,10 +335,15 @@ impl CodexUsageExtractor {
                 .model
                 .clone()
                 .unwrap_or_else(|| FALLBACK_MODEL.to_string());
+            // Recorded tier wins, else the config fallback, else standard
+            // (ccusage's auto speed policy, resolved at event time).
+            let recorded = self.state.service_tier;
             PendingEvent {
                 ts_ms,
                 model,
                 delta,
+                speed: recorded.or(self.fallback_speed).unwrap_or_default(),
+                speed_inferred: recorded.is_none(),
             }
         });
         // The replay filter sees every usage-carrying event, including
@@ -360,6 +405,8 @@ fn make_entry(event: PendingEvent) -> UsageEntry {
         ts_ms,
         model,
         delta,
+        speed,
+        speed_inferred,
     } = event;
     // ccusage clamps cached to input; normalized input excludes cache.
     let cached = delta.cached_input_tokens.min(delta.input_tokens);
@@ -379,8 +426,43 @@ fn make_entry(event: PendingEvent) -> UsageEntry {
         cache_write_1h: 0,
         transcript_cost_micro_usd: None,
         is_sidechain: false,
-        has_speed: false,
+        speed: Some(speed),
+        speed_inferred,
+        pricing_shape: PricingShape::Codex,
     }
+}
+
+/// The speed a recorded or configured service-tier value maps to (ccusage
+/// `codex_service_tier`): exact strings, no case-folding. Unknown values map
+/// to `None`.
+fn service_tier_speed(value: &str) -> Option<Speed> {
+    match value {
+        // Both spellings mean non-priority pricing and occur in the same
+        // Codex version on the same day; which one is written depends on the
+        // client (Codex Desktop writes "standard"), not on the CLI version.
+        "default" | "standard" => Some(Speed::Standard),
+        "fast" | "priority" => Some(Speed::Fast),
+        _ => None,
+    }
+}
+
+/// Speed fallback implied by a Codex `config.toml`: `Some(Fast)` when any
+/// `service_tier` key holds `fast`/`priority`, comment-stripped and
+/// quote-trimmed (ccusage `codex_config_requests_fast_service_tier`). A
+/// configured `standard` resolves like an absent key — the auto policy
+/// already defaults to standard.
+pub fn config_fallback_speed(config_toml: &str) -> Option<Speed> {
+    config_toml
+        .lines()
+        .any(|line| {
+            let setting = line.split('#').next().unwrap_or_default().trim();
+            let Some((key, value)) = setting.split_once('=') else {
+                return false;
+            };
+            key.trim() == "service_tier"
+                && service_tier_speed(value.trim().trim_matches(['"', '\''])) == Some(Speed::Fast)
+        })
+        .then_some(Speed::Fast)
 }
 
 /// Content-derived dedup key over the event's full identity (timestamp,
@@ -421,10 +503,17 @@ struct RawPayload {
     #[serde(alias = "modelId")]
     model_id: Option<String>,
     metadata: Option<RawMetadata>,
+    // thread_settings_applied fields:
+    thread_settings: Option<RawThreadSettings>,
     // session_meta fields:
     id: Option<String>,
     forked_from_id: Option<String>,
     source: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct RawThreadSettings {
+    service_tier: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -547,12 +636,174 @@ mod tests {
         )
     }
 
+    fn thread_settings_line(service_tier: Option<&str>) -> String {
+        let settings = match service_tier {
+            Some(tier) => format!(r#"{{"service_tier":"{tier}"}}"#),
+            None => "{}".to_string(),
+        };
+        format!(
+            r#"{{"timestamp":"2026-01-01T00:00:00Z","type":"event_msg","payload":{{"type":"thread_settings_applied","thread_settings":{settings}}}}}"#
+        )
+    }
+
+    #[test]
+    fn service_tier_is_sticky_and_maps_all_spellings() {
+        // "default"/"standard" and "fast"/"priority" are spelling pairs; the
+        // recorded tier applies to every following usage event until changed.
+        for (tier, speed) in [
+            ("default", Speed::Standard),
+            ("standard", Speed::Standard),
+            ("fast", Speed::Fast),
+            ("priority", Speed::Fast),
+        ] {
+            let mut e = CodexUsageExtractor::default();
+            e.extract_line(&thread_settings_line(Some(tier)));
+            let entries = e.extract_line(&token_count_line(
+                "2026-01-01T00:00:10Z",
+                (100, 40, 50, 10, 150),
+            ));
+            assert_eq!(entries[0].speed, Some(speed), "tier {tier}");
+            assert!(!entries[0].speed_inferred, "tier {tier} is recorded");
+        }
+
+        // Sticky across turns, and a later settings event switches it.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(&thread_settings_line(Some("fast")));
+        let first = e.extract_line(&token_count_line(
+            "2026-01-01T00:00:10Z",
+            (100, 40, 50, 10, 150),
+        ));
+        assert_eq!(first[0].speed, Some(Speed::Fast));
+        e.extract_line(&thread_settings_line(Some("standard")));
+        let second = e.extract_line(&token_count_line(
+            "2026-01-01T00:01:10Z",
+            (300, 140, 90, 30, 390),
+        ));
+        assert_eq!(second[0].speed, Some(Speed::Standard));
+        assert!(!second[0].speed_inferred);
+    }
+
+    #[test]
+    fn unknown_tier_resets_but_an_absent_tier_says_nothing() {
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(&thread_settings_line(Some("fast")));
+        // No `service_tier` at all (Codex writes such events for auto-review
+        // threads): the previous tier stands.
+        e.extract_line(&thread_settings_line(None));
+        let kept = e.extract_line(&token_count_line(
+            "2026-01-01T00:00:10Z",
+            (100, 40, 50, 10, 150),
+        ));
+        assert_eq!(kept[0].speed, Some(Speed::Fast));
+        assert!(!kept[0].speed_inferred);
+
+        // A present but unrecognized tier means it changed to something
+        // unknown; the stale value must not be inherited.
+        e.extract_line(&thread_settings_line(Some("turbo")));
+        let reset = e.extract_line(&token_count_line(
+            "2026-01-01T00:01:10Z",
+            (300, 140, 90, 30, 390),
+        ));
+        assert_eq!(reset[0].speed, Some(Speed::Standard));
+        assert!(reset[0].speed_inferred, "falls back to the default");
+    }
+
+    #[test]
+    fn fallback_speed_covers_unmarked_entries_only() {
+        let mut e = CodexUsageExtractor::default();
+        e.set_fallback_speed(Some(Speed::Fast));
+        let unmarked = e.extract_line(&token_count_line(
+            "2026-01-01T00:00:10Z",
+            (100, 40, 50, 10, 150),
+        ));
+        assert_eq!(unmarked[0].speed, Some(Speed::Fast));
+        assert!(unmarked[0].speed_inferred);
+
+        // A recorded tier wins over the config fallback.
+        e.extract_line(&thread_settings_line(Some("standard")));
+        let recorded = e.extract_line(&token_count_line(
+            "2026-01-01T00:01:10Z",
+            (300, 140, 90, 30, 390),
+        ));
+        assert_eq!(recorded[0].speed, Some(Speed::Standard));
+        assert!(!recorded[0].speed_inferred);
+
+        // No fallback and no recorded tier: standard, inferred.
+        let mut bare = CodexUsageExtractor::default();
+        let entries = bare.extract_line(&token_count_line(
+            "2026-01-01T00:00:10Z",
+            (100, 40, 50, 10, 150),
+        ));
+        assert_eq!(entries[0].speed, Some(Speed::Standard));
+        assert!(entries[0].speed_inferred);
+    }
+
+    #[test]
+    fn config_fallback_detects_explicit_fast_service_tier_values() {
+        // ccusage `detects_explicit_fast_service_tier_values`.
+        assert_eq!(
+            config_fallback_speed(r#"service_tier = "fast""#),
+            Some(Speed::Fast)
+        );
+        assert_eq!(
+            config_fallback_speed(r#"service_tier = 'priority' # use higher tier"#),
+            Some(Speed::Fast)
+        );
+    }
+
+    #[test]
+    fn config_fallback_ignores_unrelated_or_substring_service_tier_values() {
+        // ccusage `ignores_unrelated_or_substring_service_tier_values`; a
+        // configured "standard" resolves like an absent key.
+        assert_eq!(
+            config_fallback_speed(r#"service_tier_override = "fast""#),
+            None
+        );
+        assert_eq!(config_fallback_speed(r#"service_tier = "breakfast""#), None);
+        assert_eq!(config_fallback_speed(r#"service_tier = "standard""#), None);
+        assert_eq!(config_fallback_speed(""), None);
+    }
+
+    #[test]
+    fn service_tier_roundtrips_through_persisted_state() {
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(&thread_settings_line(Some("fast")));
+        let state = e.state_json().unwrap();
+
+        let mut restored = CodexUsageExtractor::default();
+        assert!(restored.restore_state(&state));
+        let entries = restored.extract_line(&token_count_line(
+            "2026-01-01T00:00:10Z",
+            (100, 40, 50, 10, 150),
+        ));
+        assert_eq!(entries[0].speed, Some(Speed::Fast));
+        assert!(!entries[0].speed_inferred);
+    }
+
+    #[test]
+    fn pre_speed_persisted_state_still_restores() {
+        // State written before the service-tier fields existed must restore
+        // (serde defaults), not reset the cursor.
+        let mut e = CodexUsageExtractor::default();
+        assert!(e.restore_state(
+            r#"{"model":"gpt-5.1","prev_totals":{"input_tokens":100,"cached_input_tokens":40,"output_tokens":50,"reasoning_output_tokens":10,"total_tokens":150},"replay":{"kind":"done"}}"#
+        ));
+        let entries = e.extract_line(&token_count_line(
+            "2026-01-01T00:01:10Z",
+            (300, 140, 90, 30, 390),
+        ));
+        assert_eq!(entries[0].tokens.input, 100);
+        assert_eq!(entries[0].speed, Some(Speed::Standard));
+        assert!(entries[0].speed_inferred);
+    }
+
     #[test]
     fn prefilter_matches_relevant_lines() {
         let e = CodexUsageExtractor::default();
         assert!(e.wants_line(&token_count_line("2026-01-01T00:00:00Z", (1, 0, 1, 0, 2))));
         assert!(e.wants_line(&turn_context_line("gpt-5.1")));
         assert!(e.wants_line(r#"{"type":"session_meta","payload":{"id":"x"}}"#));
+        assert!(e.wants_line(&thread_settings_line(Some("fast"))));
         assert!(!e.wants_line(r#"{"type":"response_item","payload":{"type":"message"}}"#));
     }
 

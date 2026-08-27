@@ -41,7 +41,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::claude::{ReplacementCandidate, should_replace};
 use super::cost::entry_cost_micro_usd;
-use super::types::{UsageEntry, bucket_ts};
+use super::types::{Speed, UsageEntry, bucket_ts};
 use crate::error::GitAiError;
 
 /// Schema migrations - each entry is SQL to apply for that version.
@@ -129,6 +129,80 @@ const MIGRATIONS: &[&str] = &[
         ON usage_entries(message_id) WHERE message_id IS NOT NULL;
 
     INSERT INTO schema_version (version) VALUES (2);
+    "#,
+    // Version 3: per-entry pricing dimensions (speed/service tier, tier
+    // inference, 1h cache-write split, transcript-vs-catalog cost provenance,
+    // long-context tier decision, pricing catalog id). Pre-release reset: v2
+    // rows carry neither the new extraction facts nor tier-aware costs, so
+    // the tables are rebuilt and the dropped cursors make the next pass
+    // re-extract every transcript under the new pricing rules (entry-level
+    // dedup keeps that idempotent; emission reconciles by fingerprint).
+    r#"
+    DROP TABLE IF EXISTS tracked_files;
+    DROP TABLE IF EXISTS usage_entries;
+    DROP TABLE IF EXISTS bucket_state;
+
+    CREATE TABLE tracked_files (
+        session_id  TEXT NOT NULL,
+        stream_path TEXT NOT NULL,
+        tool        TEXT NOT NULL,
+        byte_offset INTEGER NOT NULL DEFAULT 0,
+        state_json  TEXT,
+        last_known_size INTEGER NOT NULL DEFAULT 0,
+        last_modified INTEGER,
+        processing_errors INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        pending_flush INTEGER NOT NULL DEFAULT 0,
+        last_error_at INTEGER,
+        external_session_id TEXT NOT NULL DEFAULT '',
+        needs_reconcile INTEGER NOT NULL DEFAULT 0,
+        repo_url TEXT,
+        PRIMARY KEY (session_id, stream_path)
+    );
+
+    CREATE TABLE usage_entries (
+        session_id TEXT NOT NULL,
+        entry_key  TEXT NOT NULL,
+        message_id TEXT,
+        model      TEXT NOT NULL,
+        bucket_ts  INTEGER NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_1h_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_output_tokens INTEGER,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_micro_usd INTEGER,
+        transcript_cost_micro_usd INTEGER,
+        is_sidechain INTEGER NOT NULL DEFAULT 0,
+        speed INTEGER,
+        speed_inferred INTEGER NOT NULL DEFAULT 0,
+        long_context INTEGER NOT NULL DEFAULT 0,
+        pricing_catalog TEXT,
+        PRIMARY KEY (session_id, entry_key)
+    );
+
+    CREATE INDEX idx_usage_entries_bucket
+        ON usage_entries(session_id, model, bucket_ts);
+    CREATE INDEX idx_usage_entries_message
+        ON usage_entries(session_id, message_id) WHERE message_id IS NOT NULL;
+    CREATE UNIQUE INDEX idx_usage_entries_key
+        ON usage_entries(entry_key);
+    CREATE INDEX idx_usage_entries_message_global
+        ON usage_entries(message_id) WHERE message_id IS NOT NULL;
+
+    CREATE TABLE bucket_state (
+        session_id TEXT NOT NULL,
+        model      TEXT NOT NULL,
+        bucket_ts  INTEGER NOT NULL,
+        emitted_fingerprint TEXT NOT NULL,
+        last_emitted_at INTEGER NOT NULL,
+        emit_seq INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (session_id, model, bucket_ts)
+    );
+
+    INSERT INTO schema_version (version) VALUES (3);
     "#,
 ];
 
@@ -749,9 +823,11 @@ fn upsert_entry(
                         session_id = ?1, entry_key = ?2, message_id = ?3, model = ?4,
                         bucket_ts = ?5, input_tokens = ?6, output_tokens = ?7,
                         cache_read_tokens = ?8, cache_write_tokens = ?9,
-                        reasoning_output_tokens = ?10, total_tokens = ?11,
-                        cost_micro_usd = ?12, is_sidechain = ?13, has_speed = ?14
-                     WHERE rowid = ?15",
+                        cache_write_1h_tokens = ?10, reasoning_output_tokens = ?11,
+                        total_tokens = ?12, cost_micro_usd = ?13,
+                        transcript_cost_micro_usd = ?14, is_sidechain = ?15,
+                        speed = ?16, speed_inferred = ?17
+                     WHERE rowid = ?18",
                     params![
                         session_id,
                         entry.entry_key,
@@ -762,11 +838,14 @@ fn upsert_entry(
                         to_db_i64(entry.tokens.output),
                         to_db_i64(entry.tokens.cache_read),
                         to_db_i64(entry.tokens.cache_write),
+                        to_db_i64(entry.cache_write_1h),
                         entry.tokens.reasoning_output.map(to_db_i64),
                         to_db_i64(entry.tokens.total),
                         entry_cost_micro_usd(entry).map(to_db_i64),
+                        entry.transcript_cost_micro_usd.map(to_db_i64),
                         entry.is_sidechain,
-                        entry.has_speed,
+                        entry.speed.map(speed_to_db),
+                        entry.speed_inferred,
                         row.rowid,
                     ],
                 )?;
@@ -781,9 +860,11 @@ fn upsert_entry(
                 "INSERT INTO usage_entries (
                     session_id, entry_key, message_id, model, bucket_ts,
                     input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                    reasoning_output_tokens, total_tokens, cost_micro_usd,
-                    is_sidechain, has_speed
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    cache_write_1h_tokens, reasoning_output_tokens, total_tokens,
+                    cost_micro_usd, transcript_cost_micro_usd, is_sidechain,
+                    speed, speed_inferred
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
+                           ?15, ?16, ?17)",
                 params![
                     session_id,
                     entry.entry_key,
@@ -794,15 +875,26 @@ fn upsert_entry(
                     to_db_i64(entry.tokens.output),
                     to_db_i64(entry.tokens.cache_read),
                     to_db_i64(entry.tokens.cache_write),
+                    to_db_i64(entry.cache_write_1h),
                     entry.tokens.reasoning_output.map(to_db_i64),
                     to_db_i64(entry.tokens.total),
                     entry_cost_micro_usd(entry).map(to_db_i64),
+                    entry.transcript_cost_micro_usd.map(to_db_i64),
                     entry.is_sidechain,
-                    entry.has_speed,
+                    entry.speed.map(speed_to_db),
+                    entry.speed_inferred,
                 ],
             )?;
             Ok(None)
         }
+    }
+}
+
+/// Column encoding of a recorded speed (NULL = the transcript carried none).
+fn speed_to_db(speed: Speed) -> i64 {
+    match speed {
+        Speed::Standard => 0,
+        Speed::Fast => 1,
     }
 }
 
@@ -826,7 +918,8 @@ fn find_dedupe_target(
         })
     };
     const ROW_COLUMNS: &str = "rowid, session_id, input_tokens, output_tokens, \
-                               cache_read_tokens, cache_write_tokens, is_sidechain, has_speed";
+                               cache_read_tokens, cache_write_tokens, is_sidechain, \
+                               speed IS NOT NULL";
 
     let exact = tx
         .query_row(
@@ -880,7 +973,9 @@ mod tests {
             cache_write_1h: 0,
             transcript_cost_micro_usd: Some(1_000),
             is_sidechain: false,
-            has_speed: false,
+            speed: None,
+            speed_inferred: false,
+            pricing_shape: crate::token_usage::PricingShape::Claude,
         }
     }
 
@@ -918,10 +1013,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("token-usage-db");
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), 3);
         drop(db);
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
+        assert_eq!(db.schema_version().unwrap(), 3);
     }
 
     #[test]
@@ -1189,10 +1284,11 @@ mod tests {
     #[test]
     fn v1_databases_with_legacy_cross_session_duplicates_upgrade_cleanly() {
         // A v1 database (session-scoped dedup) can hold the same entry_key
-        // under several sessions. The v2 migration keeps the first-seen row
-        // and enforces global uniqueness, so a later cross-session
-        // replacement can never collide on the (session_id, entry_key)
-        // primary key and poison the transcript.
+        // under several sessions; the intermediate v2 migration must still
+        // purge those so its unique index can be created, and the v3
+        // pre-release rebuild then drops everything: cursors reset so the
+        // next pass re-extracts every transcript under the pricing-aware
+        // schema.
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("token-usage-db");
         {
@@ -1216,31 +1312,17 @@ mod tests {
         }
 
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 2);
-        // Sessions whose rows were purged are flagged so their (now lower)
-        // aggregates re-emit; the surviving session is not.
-        let flagged: Vec<String> = db
-            .sessions_needing_reconcile()
-            .unwrap()
-            .into_iter()
-            .map(|session| session.session_id)
-            .collect();
-        assert_eq!(flagged, vec!["s2".to_string(), "s3".to_string()]);
-        // First-seen row (s1) survives; the duplicates are gone.
+        assert_eq!(db.schema_version().unwrap(), 3);
+        // Rebuilt empty: no legacy rows, cursors, or reconcile flags survive.
+        assert!(db.all_files().unwrap().is_empty());
+        assert!(db.sessions_needing_reconcile().unwrap().is_empty());
         assert_eq!(
             db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
                 .unwrap()
                 .message_count,
-            1
-        );
-        assert_eq!(
-            db.aggregate_bucket("s2", "claude-sonnet-4-20250514", 600)
-                .unwrap()
-                .message_count,
             0
         );
-        // A cross-session replacement over the legacy key works (this used
-        // to violate the primary key when a duplicate existed).
+        // The rebuilt schema accepts fresh commits, including a legacy key.
         commit_for(
             &db,
             "s2",

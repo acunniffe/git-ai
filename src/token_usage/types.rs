@@ -25,6 +25,26 @@ pub struct TokenCounts {
     pub total: u64,
 }
 
+/// Request speed / service tier (ccusage `Speed`): fast/priority requests
+/// bill at the model's fast multiplier over the whole request cost.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Speed {
+    #[default]
+    Standard,
+    Fast,
+}
+
+/// Which of ccusage's two cost formulas prices an entry — the producing
+/// extractor's shape, not the model's (the paths differ in how the
+/// long-context tier is selected and how unpublished cache-read rates
+/// default).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PricingShape {
+    Claude,
+    Codex,
+}
+
 /// One usage entry extracted from a transcript, before deduplication.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UsageEntry {
@@ -46,9 +66,15 @@ pub struct UsageEntry {
     pub transcript_cost_micro_usd: Option<u64>,
     /// Claude sidechain (subagent) entry; loses to non-sidechain duplicates.
     pub is_sidechain: bool,
-    /// Entry carried an explicit `usage.speed` marker; wins ties on
-    /// replacement.
-    pub has_speed: bool,
+    /// Request speed. `None` when the transcript carried no marker (Claude
+    /// without `usage.speed`); a present marker wins ties on replacement.
+    pub speed: Option<Speed>,
+    /// The speed was not recorded in the transcript but resolved from
+    /// configuration or the standard default (Codex entries without a
+    /// recorded service tier).
+    pub speed_inferred: bool,
+    /// Cost formula for this entry (see [`PricingShape`]).
+    pub pricing_shape: PricingShape,
 }
 
 impl UsageEntry {

@@ -205,15 +205,7 @@ fn extract_model_from_codex_jsonl_line(line: &str) -> Option<String> {
 
 fn extract_model_from_codex_config(path: &Path) -> Option<String> {
     let codex_home = codex_home_from_transcript_path(path)?;
-    let config_path = codex_home.join("config.toml");
-    let file = File::open(config_path).ok()?;
-    let mut content = String::new();
-    file.take(MAX_CODEX_CONFIG_BYTES + 1)
-        .read_to_string(&mut content)
-        .ok()?;
-    if content.len() as u64 > MAX_CODEX_CONFIG_BYTES {
-        return None;
-    }
+    let content = read_codex_config(&codex_home.join("config.toml"))?;
     let config: toml::Value = toml::from_str(&content).ok()?;
 
     config
@@ -224,7 +216,21 @@ fn extract_model_from_codex_config(path: &Path) -> Option<String> {
         .or_else(|| toml_string_candidate(config.get("model")))
 }
 
-fn codex_home_from_transcript_path(path: &Path) -> Option<PathBuf> {
+/// Read a codex `config.toml`, size-capped so an absurd file can't balloon
+/// memory. `None` when missing, unreadable, or over the cap.
+pub(crate) fn read_codex_config(config_path: &Path) -> Option<String> {
+    let file = File::open(config_path).ok()?;
+    let mut content = String::new();
+    file.take(MAX_CODEX_CONFIG_BYTES + 1)
+        .read_to_string(&mut content)
+        .ok()?;
+    if content.len() as u64 > MAX_CODEX_CONFIG_BYTES {
+        return None;
+    }
+    Some(content)
+}
+
+pub(crate) fn codex_home_from_transcript_path(path: &Path) -> Option<PathBuf> {
     let configured_home = crate::mdm::utils::codex_home_dir();
     if path.starts_with(&configured_home) {
         return Some(configured_home);
