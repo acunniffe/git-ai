@@ -812,7 +812,8 @@ fn records_session_id(path: &Path, session_id: &str) -> bool {
 }
 
 /// Fallback parent discovery for rollouts the token database has not tracked
-/// (yet): walk the child's enclosing codex `sessions` tree for a filename
+/// (yet): walk the child's enclosing codex `sessions` tree — and its sibling
+/// `archived_sessions`, where Codex moves archived rollouts — for a filename
 /// carrying the parent id (codex rollout filenames embed the session uuid),
 /// confirming by the recorded `session_meta` id.
 fn scan_sessions_tree(child_path: &Path, parent_id: &str) -> Option<PathBuf> {
@@ -820,6 +821,9 @@ fn scan_sessions_tree(child_path: &Path, parent_id: &str) -> Option<PathBuf> {
         .ancestors()
         .find(|dir| dir.file_name().and_then(|name| name.to_str()) == Some("sessions"))?;
     let mut pending = vec![sessions_root.to_path_buf()];
+    if let Some(codex_home) = sessions_root.parent() {
+        pending.push(codex_home.join("archived_sessions"));
+    }
     let mut visited = 0usize;
     while let Some(dir) = pending.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -831,7 +835,9 @@ fn scan_sessions_tree(child_path: &Path, parent_id: &str) -> Option<PathBuf> {
                 return None;
             }
             let path = entry.path();
-            if path.is_dir() {
+            // file_type() is free on the readdir result, unlike a stat per
+            // entry; symlinked directories are deliberately not followed.
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
                 pending.push(path);
             } else if path
                 .file_name()
@@ -1826,6 +1832,51 @@ mod tests {
     }
 
     #[test]
+    fn forked_codex_parent_is_found_under_archived_sessions() {
+        // Codex moves archived rollouts to `archived_sessions`, a sibling of
+        // `sessions`: a fork whose parent was archived must still resolve
+        // instead of falling back to the burst heuristic.
+        let (dir, db, _) = setup();
+        let archived_dir = dir.path().join("archived_sessions/2026/01/08");
+        fs::create_dir_all(&archived_dir).unwrap();
+        fs::write(
+            archived_dir.join("rollout-parent-ext.jsonl"),
+            format!(
+                "{}\n{}\n",
+                codex_meta_line("parent-ext", None, &recent_ts(0, 30)),
+                codex_usage_line(&recent_ts(1, 0), (100, 40, 50, 10, 150)),
+            ),
+        )
+        .unwrap();
+        let day_dir = dir.path().join("sessions/2026/01/09");
+        fs::create_dir_all(&day_dir).unwrap();
+        let child_path = day_dir.join("rollout-child-ext.jsonl");
+        fs::write(
+            &child_path,
+            format!(
+                "{}\n{}\n{}\n",
+                codex_meta_line("child-ext", Some("parent-ext"), &recent_ts(2, 0)),
+                codex_usage_line(&recent_ts(2, 0), (100, 40, 50, 10, 150)),
+                codex_usage_line(&recent_ts(2, 30), (300, 140, 90, 30, 390)),
+            ),
+        )
+        .unwrap();
+
+        let identity = SessionIdentity {
+            tool: "codex".to_string(),
+            external_session_id: "parent-ext".to_string(),
+            ..identity()
+        };
+        let events = run_as(&db, &identity, &child_path).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::INPUT_TOKENS),
+            Some(100),
+            "only the child's own delta counts"
+        );
+    }
+
+    #[test]
     fn codex_config_service_tier_is_the_fallback_for_unmarked_entries() {
         // A rollout under a codex home whose config.toml requests the fast
         // tier: unmarked entries resolve to fast (inferred), while a recorded
@@ -1839,24 +1890,13 @@ mod tests {
         )
         .unwrap();
         let transcript = codex_home.join("sessions").join("rollout-test.jsonl");
-        let usage = |minute: u32, totals: (u64, u64, u64, u64, u64)| {
-            format!(
-                r#"{{"timestamp":"{}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":{},"cached_input_tokens":{},"output_tokens":{},"reasoning_output_tokens":{},"total_tokens":{}}}}}}}}}"#,
-                recent_ts(minute, 0),
-                totals.0,
-                totals.1,
-                totals.2,
-                totals.3,
-                totals.4
-            )
-        };
         fs::write(
             &transcript,
             format!(
                 "{}\n{}\n{}\n",
-                usage(1, (100, 40, 50, 10, 150)),
+                codex_usage_line(&recent_ts(1, 0), (100, 40, 50, 10, 150)),
                 r#"{"timestamp":"2026-01-01T00:02:00Z","type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":"standard"}}}"#,
-                usage(3, (300, 140, 90, 30, 390)),
+                codex_usage_line(&recent_ts(3, 0), (300, 140, 90, 30, 390)),
             ),
         )
         .unwrap();

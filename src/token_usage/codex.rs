@@ -559,10 +559,13 @@ fn signature_of(delta: &CodexTotals) -> UsageSignature {
 /// Runs the same delta pipeline as extraction over a fresh cursor — with no
 /// replay filtering, so a prefix the parent itself replayed from *its*
 /// parent stays included, exactly as the child's copy contains it. Events
-/// whose timestamps don't parse are dropped (extraction drops them on the
-/// child side too, so they can never need matching); collection stops at
-/// the first usage event past `fork_ts_ms` (usage the parent recorded after
-/// the fork was never replayed).
+/// whose timestamps don't parse are dropped, mirroring extraction (Codex
+/// never emits such lines; ccusage keeps a present-but-malformed timestamp's
+/// usage in the prefix — a deviation only reachable through corruption, and
+/// note the child's replayed *copy* of such an event is rewritten to the
+/// fork instant, so its delta would go unmatched either way here);
+/// collection stops at the first usage event past `fork_ts_ms` (usage the
+/// parent recorded after the fork was never replayed).
 pub fn collect_parent_prefix(
     mut reader: impl std::io::BufRead,
     fork_ts_ms: i64,
