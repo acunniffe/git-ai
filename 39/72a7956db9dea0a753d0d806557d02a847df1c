@@ -1,0 +1,22 @@
+src/commands/install_hooks.rs
+  s_9ba5945f49d00a::t_2ada50195172ee 569,572
+src/utils.rs
+  s_9ba5945f49d00a::t_d854bbf0b50e8f 1326,1330-1340,1344-1349,1353,1355,1357,1359,1367-1369
+  s_9ba5945f49d00a::t_43d230e4e52974 111-114,117-196
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "3972a7956db9dea0a753d0d806557d02a847df1c",
+  "prompts": {},
+  "sessions": {
+    "s_9ba5945f49d00a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebec7a6-2ea8-4077-8a42-cf367c484cc3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
