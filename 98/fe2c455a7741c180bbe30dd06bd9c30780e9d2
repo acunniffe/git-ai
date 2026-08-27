@@ -1,0 +1,35 @@
+src/token_usage/db.rs
+  s_ecc10b55b372b3::t_fec44072e3874e 1192,1262,1278,1503,1751,1757,1772,1802,1807
+  s_ecc10b55b372b3::t_2039c50a909c05 1345
+  s_ecc10b55b372b3::t_c0420d77b42f77 1252,1255,1554
+  s_ecc10b55b372b3::t_2a45ebf165d6e8 226-303,308,325,328-330,352-354,443,560-562,570,574-576,583-588,651-652,659-661,682-684
+src/token_usage/claude.rs
+  s_ecc10b55b372b3::t_423e36bdec1cdc 16-19
+tests/integration/token_usage.rs
+  s_ecc10b55b372b3::t_dad80a0343ff9f 702,760-763,778-781,784-787
+src/daemon/token_usage_worker.rs
+  s_ecc10b55b372b3::t_423e36bdec1cdc 2272-2278
+  s_ecc10b55b372b3::t_fea4bab540e016 26-31,552-558,562,569-571,724,772-773,873,1111-1120
+  s_ecc10b55b372b3::t_eb064b8d7a71f7 2509,2537
+  s_ecc10b55b372b3::t_56e277590b9231 2242-2245,2286-2289,2294-2295,2297-2298,2304
+  s_ecc10b55b372b3::t_2a1bba553e7465 1158,1589,1951,2008,2055,2178
+  s_ecc10b55b372b3::t_8bb383b91a039d 1121
+docs/token-usage-events-spec.md
+  s_ecc10b55b372b3::t_423e36bdec1cdc 163-173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "98fe2c455a7741c180bbe30dd06bd9c30780e9d2",
+  "prompts": {},
+  "sessions": {
+    "s_ecc10b55b372b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "725da754-5eb5-4a7e-a504-a0badfb0707e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
