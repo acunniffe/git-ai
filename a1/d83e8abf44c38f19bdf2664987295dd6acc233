@@ -1,0 +1,21 @@
+src/metrics/events.rs
+  s_ecc10b55b372b3::t_99c6583b930205 2382
+src/metrics/attrs.rs
+  s_ecc10b55b372b3::t_c2c86cca326b7c 65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "a1d83e8abf44c38f19bdf2664987295dd6acc233",
+  "prompts": {},
+  "sessions": {
+    "s_ecc10b55b372b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "725da754-5eb5-4a7e-a504-a0badfb0707e",
+        "model": "claude-fable-5"
+      },
+      "human_author": null
+    }
+  }
+}
