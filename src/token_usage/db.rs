@@ -825,11 +825,11 @@ fn upsert_entry(
     entry: &UsageEntry,
 ) -> Result<Option<String>, GitAiError> {
     let bucket = bucket_ts(entry.ts);
-    let priced = price_entry(entry);
     let existing = find_dedupe_target(tx, entry)?;
     match existing {
         Some(row) => {
             if should_replace(entry.into(), row.replacement) {
+                let priced = price_entry(entry);
                 tx.execute(
                     "UPDATE usage_entries SET
                         session_id = ?1, entry_key = ?2, message_id = ?3, model = ?4,
@@ -871,6 +871,7 @@ fn upsert_entry(
             Ok(None)
         }
         None => {
+            let priced = price_entry(entry);
             tx.execute(
                 "INSERT INTO usage_entries (
                     session_id, entry_key, message_id, model, bucket_ts,
