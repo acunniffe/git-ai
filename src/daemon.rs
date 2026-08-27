@@ -2747,9 +2747,13 @@ pub struct ActorDaemonCoordinator {
     backend: Arc<crate::daemon::git_backend::SystemGitBackend>,
     coordinator:
         Arc<crate::daemon::coordinator::Coordinator<crate::daemon::git_backend::SystemGitBackend>>,
-    normalizer: AsyncMutex<
-        crate::daemon::trace_normalizer::TraceNormalizer<
-            crate::daemon::git_backend::SystemGitBackend,
+    // std Mutex (not AsyncMutex) so the normalizer can move into
+    // spawn_blocking closures; it is only ever locked from blocking context.
+    normalizer: Arc<
+        Mutex<
+            crate::daemon::trace_normalizer::TraceNormalizer<
+                crate::daemon::git_backend::SystemGitBackend,
+            >,
         >,
     >,
     pending_rebase_original_head_by_worktree: Mutex<HashMap<String, PendingRebase>>,
@@ -2876,8 +2880,8 @@ impl ActorDaemonCoordinator {
             coordinator: Arc::new(crate::daemon::coordinator::Coordinator::new(
                 backend.clone(),
             )),
-            normalizer: AsyncMutex::new(crate::daemon::trace_normalizer::TraceNormalizer::new(
-                backend.clone(),
+            normalizer: Arc::new(Mutex::new(
+                crate::daemon::trace_normalizer::TraceNormalizer::new(backend.clone()),
             )),
             backend,
             pending_rebase_original_head_by_worktree: Mutex::new(HashMap::new()),
@@ -6744,13 +6748,34 @@ impl ActorDaemonCoordinator {
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_string();
+        let terminal_root_event = is_terminal_root_trace_event(
+            &event,
+            payload
+                .get("sid")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            payload_root_sid.as_deref().unwrap_or_default(),
+        );
         if event == TRACE_CONNECTION_CLOSED_EVENT {
             let Some(root_sid) = payload_root_sid.as_deref() else {
                 return Ok(TracePayloadApplyOutcome::None);
             };
             {
-                let mut normalizer = self.normalizer.lock().await;
-                let _ = normalizer.sweep_orphans_for_roots(&[root_sid.to_string()]);
+                // Orphan sweeps read reflogs and repo state; run them on a
+                // blocking worker so filesystem I/O does not block a Tokio worker.
+                // Recover from poisoning: the ingest worker catches per-payload
+                // panics and continues, so a poisoned lock must not disable
+                // normalization for the daemon's remaining lifetime.
+                let normalizer = Arc::clone(&self.normalizer);
+                let root_sid_owned = root_sid.to_string();
+                crate::tokio_runtime::spawn_blocking_result(move || {
+                    let mut normalizer = normalizer
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner());
+                    let _ = normalizer.sweep_orphans_for_roots(&[root_sid_owned]);
+                    Ok(())
+                })
+                .await?;
             }
             let replaced_family = self
                 .replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)
@@ -6767,19 +6792,27 @@ impl ActorDaemonCoordinator {
         }
 
         self.maybe_append_pending_root_from_trace_payload(&payload)?;
+        // Normalization can touch the filesystem (alias resolution reads git
+        // config files on exit events); run it on a blocking worker so a slow
+        // disk or cold cache does not block a Tokio worker. The ingest task
+        // still awaits each result to preserve trace ordering.
+        // Recover from poisoning: the ingest worker catches per-payload panics
+        // and continues, so a poisoned lock must not disable normalization for
+        // the daemon's remaining lifetime.
         let emitted = {
-            let mut normalizer = self.normalizer.lock().await;
-            normalizer.ingest_payload(&payload)?
+            let normalizer = Arc::clone(&self.normalizer);
+            let payload_for_ingest = payload;
+            crate::tokio_runtime::spawn_blocking_result(move || {
+                normalizer
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .ingest_payload(&payload_for_ingest)
+            })
+            .await?
         };
         let Some(command) = emitted else {
-            if is_terminal_root_trace_event(
-                &event,
-                payload
-                    .get("sid")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default(),
-                payload_root_sid.as_deref().unwrap_or_default(),
-            ) && let Some(root_sid) = payload_root_sid.as_deref()
+            if terminal_root_event
+                && let Some(root_sid) = payload_root_sid.as_deref()
                 && let Some(family) = self
                     .replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)
                     .await?

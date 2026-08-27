@@ -36,6 +36,8 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+#[cfg(not(windows))]
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -3108,6 +3110,155 @@ fn daemon_trace_connection_close_without_atexit_does_not_block_later_trace() {
     }
 
     panic!("daemon did not process a later trace after a mutating root closed before atexit");
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_trace_normalization_offload_keeps_single_worker_runtime_responsive() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_DAEMON_RUNTIME_WORKER_THREADS", "1"),
+            ("GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL", "86400"),
+            ("GIT_AI_DAEMON_MAX_UPTIME_SECS", "86400"),
+        ],
+    );
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let control_socket = daemon_control_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    // A FIFO-backed repository config gives the real SystemGitBackend a
+    // deterministic blocking read on the first alias lookup, without adding a
+    // delay hook to the latency-sensitive ingestion path.
+    let repo_config_path = repo.path().join(".git/config");
+    let original_config =
+        fs::read_to_string(&repo_config_path).expect("failed to read original repository config");
+    fs::remove_file(&repo_config_path).expect("failed to replace repository config with FIFO");
+    let mkfifo = Command::new("mkfifo")
+        .arg(&repo_config_path)
+        .status()
+        .expect("failed to invoke mkfifo");
+    assert!(mkfifo.success(), "mkfifo failed: {mkfifo}");
+
+    let sid = "blocking-alias-normalization";
+    let mut trace_stream =
+        open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+            .expect("failed to connect to trace socket");
+    write_trace_frames_to_stream(
+        &mut trace_stream,
+        &[
+            json!({
+                "event": "start",
+                "sid": sid,
+                "argv": ["git", "ci", "-m", "synthetic"],
+                "time_ns": 11_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": sid,
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 11_001u64,
+            }),
+        ],
+    );
+    thread::sleep(Duration::from_millis(150));
+
+    let response = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::StatusFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_millis(500),
+    )
+    .expect("blocking trace normalization must not occupy the only Tokio worker");
+    assert!(response.ok, "status.family failed: {response:?}");
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let mut alias_writer = loop {
+        match fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&repo_config_path)
+        {
+            Ok(writer) => break writer,
+            Err(error)
+                if error.raw_os_error() == Some(libc::ENXIO)
+                    && std::time::Instant::now() < deadline =>
+            {
+                thread::sleep(Duration::from_millis(10));
+            }
+            Err(error) => panic!("failed to open blocking alias config: {error}"),
+        }
+    };
+    alias_writer
+        .write_all(format!("{original_config}\n[alias]\n\tci = commit\n").as_bytes())
+        .expect("failed to release blocking alias config read");
+    drop(alias_writer);
+    fs::remove_file(&repo_config_path).expect("failed to remove blocking repository config FIFO");
+    fs::write(
+        &repo_config_path,
+        format!("{original_config}\n[alias]\n\tci = commit\n"),
+    )
+    .expect("failed to restore repository config");
+
+    let session = repos::test_repo::new_daemon_test_sync_session_id();
+    let session_arg = format!("git-ai.testSyncSession={session}");
+    let followup_sid = "trace-after-blocking-alias-normalization";
+    write_trace_frames_to_stream(
+        &mut trace_stream,
+        &[
+            json!({
+                "event": "exit",
+                "sid": sid,
+                "code": 0,
+                "time_ns": 11_100u64,
+            }),
+            trace_atexit_frame(sid, 0, 11_101u64),
+            json!({
+                "event": "start",
+                "sid": followup_sid,
+                "argv": ["git", "-c", session_arg, "commit", "-m", "followup"],
+                "time_ns": 12_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": followup_sid,
+                "worktree": repo_workdir_string(&repo),
+                "repo": repo.path().join(".git").to_string_lossy().to_string(),
+                "time_ns": 12_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": followup_sid,
+                "code": 0,
+                "time_ns": 12_100u64,
+            }),
+            trace_atexit_frame(followup_sid, 0, 12_101u64),
+        ],
+    );
+    let sync = send_control_request_with_timeout(
+        &control_socket,
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(2),
+    )
+    .expect("sync.family should complete after the blocking config read is released");
+    assert!(sync.ok, "sync.family failed: {sync:?}");
+    let matching_completions = repo
+        .daemon_completion_entries()
+        .into_iter()
+        .filter(|entry| entry.test_sync_session.as_deref() == Some(session.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        matching_completions.len(),
+        1,
+        "a later trace must normalize and complete after the blocking read"
+    );
+    daemon.shutdown();
 }
 
 #[test]
