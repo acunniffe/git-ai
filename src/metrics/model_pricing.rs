@@ -17,9 +17,13 @@
 //! catalog id at token boundaries, then by family fallback (see
 //! [`PricingCatalog::pricing_for`]).
 //!
-//! Tiered pricing (e.g. higher rates above 200k context) is intentionally
-//! ignored: recorded token usage carries no per-request context size, and the
-//! resulting figures are estimates either way.
+//! Beyond flat rates, entries carry the model's long-context pricing tier
+//! (models.dev `cost.tiers` with a `context` bound: every token of a request
+//! whose context exceeds the threshold bills at the above-threshold rates)
+//! and a fast/priority speed multiplier. Neither vendors nor models.dev
+//! publish fast-tier pricing, and models.dev's first-party Anthropic entries
+//! omit their long-context tiers, so both are hand-tracked in override
+//! tables below, applied when the catalog is trimmed.
 
 use crate::utils::{read_json_file, unix_timestamp_now, write_json_file};
 use serde::{Deserialize, Serialize};
@@ -56,16 +60,137 @@ const PROVIDER_ALLOWLIST: [&str; 8] = [
 const FAMILY_FALLBACK_TOKENS: [&str; 7] =
     ["opus", "sonnet", "haiku", "fable", "gpt", "gemini", "grok"];
 
-/// Per-million-token pricing for a model (USD). Cache fields default to 0 —
-/// models.dev omits them for models without prompt caching.
+/// Fast/priority speed multipliers over a request's whole cost, ported from
+/// ccusage's fast-multiplier-overrides.json (MIT License, Copyright (c) 2025
+/// @ryoppippi). No machine-readable source publishes these (OpenAI's Codex
+/// "fast" tier is not its API priority pricing), so they are hand-tracked
+/// against vendor price sheets. Exact entries apply to that catalog id only —
+/// "gpt-5.5-pro" must not inherit gpt-5.5's multiplier.
+const FAST_MULTIPLIER_EXACT: [(&str, f64); 6] = [
+    ("gpt-5.6-sol", 2.0),
+    ("gpt-5.6-terra", 2.0),
+    ("gpt-5.6-luna", 2.0),
+    ("gpt-5.5", 2.5),
+    ("gpt-5.4", 2.0),
+    ("gpt-5.3-codex", 2.0),
+];
+
+/// Prefix entries also cover the base model's date-suffixed and tier-variant
+/// catalog ids (ccusage's `normalized_prefix` section).
+const FAST_MULTIPLIER_PREFIX: [(&str, f64); 3] = [
+    ("claude-opus-4-6", 6.0),
+    ("claude-opus-4-7", 6.0),
+    ("claude-opus-4-8", 2.0),
+];
+
+/// Anthropic's published long-context premium: every token of a request whose
+/// context exceeds 200K bills at these rates on 1M-context models. models.dev
+/// only records these tiers under gateway spellings (google-vertex, azure)
+/// that the provider allowlist drops, so they are hand-tracked here and
+/// stamped onto first-party entries that carry no tiers of their own. Prefix
+/// semantics like [`FAST_MULTIPLIER_PREFIX`].
+const CLAUDE_LONG_CONTEXT_PREFIX: [(&str, LongContextRates); 6] = [
+    ("claude-sonnet-4", SONNET_LONG_CONTEXT),
+    ("claude-sonnet-4-5", SONNET_LONG_CONTEXT),
+    ("claude-sonnet-4-6", SONNET_LONG_CONTEXT),
+    ("claude-opus-4-6", OPUS_LONG_CONTEXT),
+    ("claude-opus-4-7", OPUS_LONG_CONTEXT),
+    ("claude-opus-4-8", OPUS_LONG_CONTEXT),
+];
+
+const SONNET_LONG_CONTEXT: LongContextRates = LongContextRates {
+    threshold: 200_000,
+    input: Some(6.0),
+    output: Some(22.5),
+    cache_read: Some(0.6),
+    cache_write: Some(7.5),
+};
+
+const OPUS_LONG_CONTEXT: LongContextRates = LongContextRates {
+    threshold: 200_000,
+    input: Some(10.0),
+    output: Some(37.5),
+    cache_read: Some(1.0),
+    cache_write: Some(12.5),
+};
+
+/// One above-threshold pricing band (per-million-token USD).
+#[derive(Debug, Clone, Copy)]
+struct LongContextRates {
+    threshold: u64,
+    input: Option<f64>,
+    output: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+}
+
+/// Per-million-token pricing for a model (USD). Cache rates are `None` when
+/// the catalog doesn't publish them — consumers distinguish published rates
+/// from the derived defaults of [`ModelPricing::cache_read_rate`] /
+/// [`ModelPricing::cache_write_rate`]. The `*_above` rates and threshold
+/// describe the model's long-context tier: a request whose context exceeds
+/// the threshold bills every token at the above rate (whole-request, not
+/// marginal), falling back per-rate to the base rate when unpublished.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ModelPricing {
     pub input: f64,
     pub output: f64,
-    #[serde(default)]
-    pub cache_read: f64,
-    #[serde(default)]
-    pub cache_write: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub long_context_threshold: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_above: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_above: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_read_above: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_above: Option<f64>,
+    #[serde(default = "one", skip_serializing_if = "is_one")]
+    pub fast_multiplier: f64,
+}
+
+fn one() -> f64 {
+    1.0
+}
+
+fn is_one(value: &f64) -> bool {
+    *value == 1.0
+}
+
+impl Default for ModelPricing {
+    fn default() -> Self {
+        Self {
+            input: 0.0,
+            output: 0.0,
+            cache_read: None,
+            cache_write: None,
+            long_context_threshold: None,
+            input_above: None,
+            output_above: None,
+            cache_read_above: None,
+            cache_write_above: None,
+            fast_multiplier: 1.0,
+        }
+    }
+}
+
+impl ModelPricing {
+    /// Published cache-read rate, or ccusage's models.dev-loader default of a
+    /// tenth of the input rate (cache reads dominate Codex usage; $0 would
+    /// badly undercount).
+    pub fn cache_read_rate(&self) -> f64 {
+        self.cache_read.unwrap_or(self.input * 0.1)
+    }
+
+    /// Published cache-write rate, or ccusage's models.dev-loader default of
+    /// 1.25x the input rate.
+    pub fn cache_write_rate(&self) -> f64 {
+        self.cache_write.unwrap_or(self.input * 1.25)
+    }
 }
 
 /// A set of model pricing entries keyed by lowercased model id.
@@ -267,9 +392,85 @@ fn fetch_and_trim_catalog() -> Result<BTreeMap<String, ModelPricing>, String> {
     trim_catalog(body)
 }
 
+/// A model's `cost` object as models.dev publishes it. Unlike [`ModelPricing`]
+/// it may lack input/output (skipped) and carries tier bands verbatim.
+#[derive(Deserialize)]
+struct ModelsDevCost {
+    input: Option<f64>,
+    output: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+    #[serde(default)]
+    tiers: Vec<ModelsDevTier>,
+}
+
+#[derive(Deserialize)]
+struct ModelsDevTier {
+    input: Option<f64>,
+    output: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+    tier: Option<ModelsDevTierBound>,
+}
+
+#[derive(Deserialize)]
+struct ModelsDevTierBound {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    size: Option<u64>,
+}
+
+impl ModelsDevCost {
+    /// The model's long-context band: the `context`-bound tier with the
+    /// lowest threshold. [`ModelPricing`] holds one above-base band, so the
+    /// lowest threshold wins — a higher one would price everything between
+    /// the two thresholds at the base rate (ccusage `long_context_tier`).
+    fn long_context_rates(&self) -> Option<LongContextRates> {
+        self.tiers
+            .iter()
+            .filter_map(|tier| {
+                let bound = tier.tier.as_ref()?;
+                if bound.kind.as_deref() != Some("context") {
+                    return None;
+                }
+                Some(LongContextRates {
+                    threshold: bound.size.filter(|size| *size > 0)?,
+                    input: tier.input,
+                    output: tier.output,
+                    cache_read: tier.cache_read,
+                    cache_write: tier.cache_write,
+                })
+            })
+            .min_by_key(|rates| rates.threshold)
+    }
+}
+
+/// The override value whose key matches `model_id` exactly or as a
+/// token-boundary prefix ("claude-opus-4-6" also covers
+/// "claude-opus-4-6-20260205"). Catalog ids carry no provider prefixes, so
+/// the boundary-containment helper is an exact-or-prefix match here.
+fn prefix_override<T: Copy>(overrides: &[(&str, T)], model_id: &str) -> Option<T> {
+    overrides
+        .iter()
+        .find(|(base, _)| contains_at_token_boundary(model_id, base))
+        .map(|(_, value)| *value)
+}
+
+fn fast_multiplier_override(model_id: &str) -> f64 {
+    FAST_MULTIPLIER_EXACT
+        .iter()
+        .find(|(id, _)| *id == model_id)
+        .map(|(_, multiplier)| *multiplier)
+        .or_else(|| prefix_override(&FAST_MULTIPLIER_PREFIX, model_id))
+        .unwrap_or(1.0)
+}
+
 /// Reduce a full models.dev `api.json` document to a flat model-id → pricing
-/// map over the provider allowlist. Models without a parseable cost entry
-/// (missing, or lacking input/output rates) are skipped.
+/// map over the provider allowlist, keeping each model's long-context tier
+/// and stamping the hand-tracked overrides (fast multipliers always; Claude
+/// long-context rates only when the entry publishes no tiers of its own).
+/// Models without a parseable cost entry (missing, or lacking input/output
+/// rates) are skipped.
 fn trim_catalog(api_json: &str) -> Result<BTreeMap<String, ModelPricing>, String> {
     let providers: serde_json::Value = serde_json::from_str(api_json).map_err(|e| e.to_string())?;
     let mut entries = BTreeMap::new();
@@ -285,9 +486,31 @@ fn trim_catalog(api_json: &str) -> Result<BTreeMap<String, ModelPricing>, String
             let Some(cost) = model.get("cost") else {
                 continue;
             };
-            if let Ok(pricing) = serde_json::from_value::<ModelPricing>(cost.clone()) {
-                entries.insert(model_id.to_lowercase(), pricing);
-            }
+            let Ok(cost) = serde_json::from_value::<ModelsDevCost>(cost.clone()) else {
+                continue;
+            };
+            let (Some(input), Some(output)) = (cost.input, cost.output) else {
+                continue;
+            };
+            let model_id = model_id.to_lowercase();
+            let long_context = cost
+                .long_context_rates()
+                .or_else(|| prefix_override(&CLAUDE_LONG_CONTEXT_PREFIX, &model_id));
+            entries.insert(
+                model_id.clone(),
+                ModelPricing {
+                    input,
+                    output,
+                    cache_read: cost.cache_read,
+                    cache_write: cost.cache_write,
+                    long_context_threshold: long_context.map(|rates| rates.threshold),
+                    input_above: long_context.and_then(|rates| rates.input),
+                    output_above: long_context.and_then(|rates| rates.output),
+                    cache_read_above: long_context.and_then(|rates| rates.cache_read),
+                    cache_write_above: long_context.and_then(|rates| rates.cache_write),
+                    fast_multiplier: fast_multiplier_override(&model_id),
+                },
+            );
         }
     }
     if entries.is_empty() {
@@ -368,7 +591,7 @@ mod tests {
         );
         assert_eq!(
             catalog.pricing_for("claude-opus-4-1"),
-            catalog.pricing_for("claude-opus-5"),
+            catalog.pricing_for("claude-opus-4-7"),
             "uncataloged opus ids price at the median opus rate"
         );
         assert!(
@@ -425,12 +648,12 @@ mod tests {
         let pricing = &entries["claude-test-1"];
         assert_eq!(pricing.input, 1.0);
         assert_eq!(pricing.output, 2.0);
-        assert_eq!(pricing.cache_read, 0.1);
-        assert_eq!(pricing.cache_write, 1.25);
+        assert_eq!(pricing.cache_read, Some(0.1));
+        assert_eq!(pricing.cache_write, Some(1.25));
     }
 
     #[test]
-    fn trim_catalog_defaults_missing_cache_rates_to_zero() {
+    fn trim_catalog_keeps_unpublished_cache_rates_distinguishable() {
         let api_json = serde_json::json!({
             "openai": {
                 "models": {
@@ -442,8 +665,154 @@ mod tests {
 
         let entries = trim_catalog(&api_json).unwrap();
         let pricing = &entries["gpt-test-pro"];
-        assert_eq!(pricing.cache_read, 0.0);
-        assert_eq!(pricing.cache_write, 0.0);
+        // None (unpublished) must stay distinguishable from an explicit 0 —
+        // the Codex cost path bills unpublished cache reads at the full input
+        // rate but explicit rates as published.
+        assert_eq!(pricing.cache_read, None);
+        assert_eq!(pricing.cache_write, None);
+        assert_eq!(pricing.cache_read_rate(), 1.5);
+        assert_eq!(pricing.cache_write_rate(), 18.75);
+        let explicit_zero = ModelPricing {
+            input: 15.0,
+            cache_read: Some(0.0),
+            cache_write: Some(0.0),
+            ..Default::default()
+        };
+        assert_eq!(explicit_zero.cache_read_rate(), 0.0);
+        assert_eq!(explicit_zero.cache_write_rate(), 0.0);
+    }
+
+    #[test]
+    fn trim_catalog_keeps_the_lowest_context_tier() {
+        let api_json = serde_json::json!({
+            "openai": {
+                "models": {
+                    "gpt-test": {"cost": {
+                        "input": 4.0, "output": 20.0, "cache_read": 0.4,
+                        "tiers": [
+                            {"input": 16.0, "output": 60.0, "tier": {"type": "context", "size": 544000}},
+                            {"input": 8.0, "output": 30.0, "cache_read": 0.8, "tier": {"type": "context", "size": 272000}},
+                            {"input": 99.0, "output": 99.0, "tier": {"type": "tokens", "size": 100}},
+                            {"input": 99.0, "output": 99.0, "tier": {"type": "context", "size": 0}}
+                        ]
+                    }}
+                }
+            }
+        })
+        .to_string();
+
+        let pricing = &trim_catalog(&api_json).unwrap()["gpt-test"];
+        // Two context bands: the lowest threshold wins (one above-base band —
+        // keeping the higher one would price everything between the two
+        // thresholds at the base rate). Non-context and zero-size bounds are
+        // not usable as a token threshold.
+        assert_eq!(pricing.long_context_threshold, Some(272_000));
+        assert_eq!(pricing.input_above, Some(8.0));
+        assert_eq!(pricing.output_above, Some(30.0));
+        assert_eq!(pricing.cache_read_above, Some(0.8));
+        assert_eq!(pricing.cache_write_above, None);
+    }
+
+    #[test]
+    fn fast_multipliers_attach_exactly_and_by_prefix() {
+        let api_json = serde_json::json!({
+            "openai": {
+                "models": {
+                    "gpt-5.5": {"cost": {"input": 5.0, "output": 30.0}},
+                    "gpt-5.5-pro": {"cost": {"input": 30.0, "output": 180.0}}
+                }
+            },
+            "anthropic": {
+                "models": {
+                    "claude-opus-4-6": {"cost": {"input": 5.0, "output": 25.0}},
+                    "claude-opus-4-6-20260205": {"cost": {"input": 5.0, "output": 25.0}},
+                    "claude-fable-5": {"cost": {"input": 10.0, "output": 50.0}}
+                }
+            }
+        })
+        .to_string();
+
+        let entries = trim_catalog(&api_json).unwrap();
+        assert_eq!(entries["gpt-5.5"].fast_multiplier, 2.5);
+        // gpt entries are exact-only: the pro variant has its own pricing and
+        // no published fast tier.
+        assert_eq!(entries["gpt-5.5-pro"].fast_multiplier, 1.0);
+        assert_eq!(entries["claude-opus-4-6"].fast_multiplier, 6.0);
+        // Prefix entries cover date-suffixed spellings of the base model.
+        assert_eq!(entries["claude-opus-4-6-20260205"].fast_multiplier, 6.0);
+        assert_eq!(entries["claude-fable-5"].fast_multiplier, 1.0);
+    }
+
+    #[test]
+    fn claude_long_context_premium_is_stamped_when_models_dev_lacks_tiers() {
+        let api_json = serde_json::json!({
+            "anthropic": {
+                "models": {
+                    "claude-sonnet-4-6": {"cost": {
+                        "input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75
+                    }},
+                    "claude-sonnet-4-6-20260115": {"cost": {"input": 3.0, "output": 15.0}},
+                    // A published tier must win over the hand-tracked one.
+                    "claude-opus-4-8": {"cost": {
+                        "input": 5.0, "output": 25.0,
+                        "tiers": [{"input": 11.0, "output": 40.0, "tier": {"type": "context", "size": 250000}}]
+                    }},
+                    "claude-fable-5": {"cost": {"input": 10.0, "output": 50.0}}
+                }
+            }
+        })
+        .to_string();
+
+        let entries = trim_catalog(&api_json).unwrap();
+        let sonnet = &entries["claude-sonnet-4-6"];
+        assert_eq!(sonnet.long_context_threshold, Some(200_000));
+        assert_eq!(sonnet.input_above, Some(6.0));
+        assert_eq!(sonnet.output_above, Some(22.5));
+        assert_eq!(sonnet.cache_read_above, Some(0.6));
+        assert_eq!(sonnet.cache_write_above, Some(7.5));
+        assert_eq!(
+            entries["claude-sonnet-4-6-20260115"].long_context_threshold,
+            Some(200_000),
+            "date-suffixed spellings inherit the premium"
+        );
+        let opus = &entries["claude-opus-4-8"];
+        assert_eq!(opus.long_context_threshold, Some(250_000));
+        assert_eq!(opus.input_above, Some(11.0));
+        assert_eq!(
+            entries["claude-fable-5"].long_context_threshold, None,
+            "models without a tracked premium stay flat"
+        );
+    }
+
+    #[test]
+    fn flat_snapshot_json_without_tier_fields_still_parses() {
+        // The pre-tier snapshot/cache format: plain rates, no tier fields.
+        let catalog = PricingCatalog::from_snapshot_json(
+            r#"{"claude-test-1": {"input": 1.0, "output": 2.0, "cache_read": 0.1, "cache_write": 1.25}}"#,
+        )
+        .unwrap();
+        let pricing = catalog.pricing_for("claude-test-1").unwrap();
+        assert_eq!(pricing.cache_read, Some(0.1));
+        assert_eq!(pricing.long_context_threshold, None);
+        assert_eq!(pricing.fast_multiplier, 1.0);
+    }
+
+    #[test]
+    fn embedded_snapshot_carries_tiers_and_fast_multipliers() {
+        let catalog = embedded_catalog();
+        let sol = catalog.pricing_for("gpt-5.6-sol").unwrap();
+        assert_eq!(sol.long_context_threshold, Some(272_000));
+        assert!(sol.input_above.is_some());
+        assert_eq!(sol.fast_multiplier, 2.0);
+        let sonnet = catalog.pricing_for("claude-sonnet-4-6").unwrap();
+        assert_eq!(sonnet.long_context_threshold, Some(200_000));
+        assert_eq!(sonnet.input_above, Some(6.0));
+        let opus = catalog.pricing_for("claude-opus-4-8").unwrap();
+        assert_eq!(opus.fast_multiplier, 2.0);
+        assert_eq!(opus.long_context_threshold, Some(200_000));
+        let fable = catalog.pricing_for("claude-fable-5").unwrap();
+        assert_eq!(fable.fast_multiplier, 1.0);
+        assert_eq!(fable.long_context_threshold, None);
     }
 
     #[test]
@@ -460,8 +829,9 @@ mod tests {
             ModelPricing {
                 input: 10.0,
                 output: 50.0,
-                cache_read: 1.0,
-                cache_write: 12.5,
+                cache_read: Some(1.0),
+                cache_write: Some(12.5),
+                ..Default::default()
             },
         );
         models

@@ -582,8 +582,8 @@ impl CodexSessionAccum {
 fn estimate_cost(acc: &TokenAccum, pricing: &ModelPricing) -> f64 {
     (acc.input as f64 * pricing.input
         + acc.output as f64 * pricing.output
-        + acc.cache_creation as f64 * pricing.cache_write
-        + acc.cache_read as f64 * pricing.cache_read)
+        + acc.cache_creation as f64 * pricing.cache_write_rate()
+        + acc.cache_read as f64 * pricing.cache_read_rate())
         / 1_000_000.0
 }
 
@@ -1419,8 +1419,8 @@ mod tests {
         // 20 cache read, 10 cache creation.
         let expected = (100.0 * pricing.input
             + 50.0 * pricing.output
-            + 20.0 * pricing.cache_read
-            + 10.0 * pricing.cache_write)
+            + 20.0 * pricing.cache_read_rate()
+            + 10.0 * pricing.cache_write_rate())
             / 1_000_000.0;
         assert!(expected > 0.0);
         assert!((stats.tokens.estimated_cost_usd - expected).abs() < 1e-12);

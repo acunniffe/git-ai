@@ -17,12 +17,6 @@ use crate::metrics::model_pricing::pricing_for;
 /// the 5-minute TTL.
 const CACHE_WRITE_1H_INPUT_MULTIPLIER: f64 = 2.0;
 
-/// Catalog entries that omit a cache-read rate deserialize as 0.0; ccusage
-/// defaults missing cache-read pricing to a tenth of the input rate, and
-/// cache reads are the dominant Codex token class, so $0 would badly
-/// undercount.
-const CACHE_READ_INPUT_RATE_FALLBACK: f64 = 0.1;
-
 /// Sanity ceiling for a single entry's cost: $10,000. Transcript `costUSD`
 /// is attacker/corruption-controlled input; one garbled line must not
 /// inflate a bucket by millions of dollars.
@@ -48,16 +42,11 @@ fn cost_from_pricing(
         .tokens
         .cache_write
         .saturating_sub(entry.cache_write_1h);
-    let cache_read_rate = if pricing.cache_read > 0.0 {
-        pricing.cache_read
-    } else {
-        pricing.input * CACHE_READ_INPUT_RATE_FALLBACK
-    };
     let usd = (entry.tokens.input as f64 * pricing.input
         + entry.tokens.output as f64 * pricing.output
-        + cache_write_5m as f64 * pricing.cache_write
+        + cache_write_5m as f64 * pricing.cache_write_rate()
         + entry.cache_write_1h as f64 * pricing.input * CACHE_WRITE_1H_INPUT_MULTIPLIER
-        + entry.tokens.cache_read as f64 * cache_read_rate)
+        + entry.tokens.cache_read as f64 * pricing.cache_read_rate())
         / 1_000_000.0;
     micro_usd(usd)
 }
@@ -122,8 +111,8 @@ mod tests {
         let expected = micro_usd(
             pricing.input
                 + 2.0 * pricing.output
-                + 0.5 * pricing.cache_read
-                + 0.25 * pricing.cache_write,
+                + 0.5 * pricing.cache_read_rate()
+                + 0.25 * pricing.cache_write_rate(),
         );
         assert_eq!(entry_cost_micro_usd(&e), Some(expected));
     }
@@ -139,12 +128,12 @@ mod tests {
             },
         );
         e.cache_write_1h = 400_000;
-        let expected = micro_usd(0.6 * pricing.cache_write + 0.4 * pricing.input * 2.0);
+        let expected = micro_usd(0.6 * pricing.cache_write_rate() + 0.4 * pricing.input * 2.0);
         assert_eq!(entry_cost_micro_usd(&e), Some(expected));
     }
 
     #[test]
-    fn missing_cache_read_rate_falls_back_to_a_tenth_of_input() {
+    fn unpublished_cache_rates_fall_back_to_input_derived_defaults() {
         use crate::metrics::model_pricing::ModelPricing;
         let mut e = entry(
             "any-model",
@@ -154,20 +143,26 @@ mod tests {
             },
         );
         e.transcript_cost_micro_usd = None;
-        let no_cache_rate = ModelPricing {
+        let no_cache_rates = ModelPricing {
             input: 2.0,
             output: 10.0,
-            cache_read: 0.0,
-            cache_write: 0.0,
+            ..Default::default()
         };
-        // ccusage defaults missing cache-read pricing to input * 0.1; $0
+        // ccusage defaults unpublished cache-read pricing to input * 0.1; $0
         // would badly undercount cache-heavy sessions.
-        assert_eq!(cost_from_pricing(&e, &no_cache_rate), micro_usd(0.2));
+        assert_eq!(cost_from_pricing(&e, &no_cache_rates), micro_usd(0.2));
         let explicit = ModelPricing {
-            cache_read: 0.5,
-            ..no_cache_rate
+            cache_read: Some(0.5),
+            ..no_cache_rates.clone()
         };
         assert_eq!(cost_from_pricing(&e, &explicit), micro_usd(0.5));
+        // An explicitly published zero rate really is free, unlike an
+        // unpublished one.
+        let explicit_zero = ModelPricing {
+            cache_read: Some(0.0),
+            ..no_cache_rates
+        };
+        assert_eq!(cost_from_pricing(&e, &explicit_zero), 0);
     }
 
     #[test]
