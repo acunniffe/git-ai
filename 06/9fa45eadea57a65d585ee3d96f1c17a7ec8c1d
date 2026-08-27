@@ -1,0 +1,41 @@
+src/metrics/model_pricing.rs
+  s_ecc10b55b372b3::t_0e70acdffb0811 307-319,325-326,328-334,338-344
+  s_ecc10b55b372b3::t_5b4563b1cb9eb2 345
+src/token_usage/claude.rs
+  s_ecc10b55b372b3::t_9485f4f5ca2f59 657-662,664-665
+src/token_usage/codex.rs
+  s_ecc10b55b372b3::t_6fc181b6361696 29-31
+src/token_usage/cost.rs
+  s_ecc10b55b372b3::t_42165239e3740d 2-3,5-11,13-14,26-46,48-52,54-93,98-117,122-174,204-228,260-261,263-266,282-286,290-436,452-454,470-484,486,488,490-567
+  s_ecc10b55b372b3::t_eb9743eb5f4a1e 485,487,489
+  s_ecc10b55b372b3::t_6e8735ff86ecde 568
+src/token_usage/db.rs
+  s_ecc10b55b372b3::t_731cdecd14f50d 43
+  s_ecc10b55b372b3::t_837576d69b1c80 817,830-832,846,851-852,869,871,885,890-891
+  s_ecc10b55b372b3::t_a76f92cab5303c 1018-1053
+  s_9ba5945f49d00a::t_5f29a216e9469d 1017
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "069fa45eadea57a65d585ee3d96f1c17a7ec8c1d",
+  "prompts": {},
+  "sessions": {
+    "s_9ba5945f49d00a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebec7a6-2ea8-4077-8a42-cf367c484cc3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    },
+    "s_ecc10b55b372b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "725da754-5eb5-4a7e-a504-a0badfb0707e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
