@@ -1552,7 +1552,8 @@ mod tests {
         };
         run_as(&db, &identity, &transcript).unwrap();
 
-        let conn = rusqlite::Connection::open(dir.path().join("token-usage-db")).unwrap();
+        let conn =
+            crate::sqlite::open_with_memory_limits(dir.path().join("token-usage-db")).unwrap();
         let rows: Vec<(u64, i64, bool)> = conn
             .prepare(
                 "SELECT input_tokens, speed, speed_inferred FROM usage_entries ORDER BY bucket_ts",
