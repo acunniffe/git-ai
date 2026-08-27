@@ -204,6 +204,25 @@ const MIGRATIONS: &[&str] = &[
 
     INSERT INTO schema_version (version) VALUES (3);
     "#,
+    // Version 4: buckets gain the speed dimension (fast and standard usage
+    // of one model bill at different rates, so they must never share a
+    // bucket identity on the server). Pre-release reset like v3.
+    r#"
+    DROP TABLE bucket_state;
+
+    CREATE TABLE bucket_state (
+        session_id TEXT NOT NULL,
+        model      TEXT NOT NULL,
+        speed      INTEGER NOT NULL DEFAULT 0,
+        bucket_ts  INTEGER NOT NULL,
+        emitted_fingerprint TEXT NOT NULL,
+        last_emitted_at INTEGER NOT NULL,
+        emit_seq INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (session_id, model, speed, bucket_ts)
+    );
+
+    INSERT INTO schema_version (version) VALUES (4);
+    "#,
 ];
 
 const TRACKED_FILE_COLUMNS: &str = "session_id, stream_path, tool, byte_offset, state_json, \
@@ -254,19 +273,38 @@ fn read_tracked_file(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackedFile> {
     })
 }
 
-/// The aggregate of one `(session_id, model, bucket_ts)` bucket, i.e. exactly
-/// the values a TokenUsage event carries.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// The aggregate of one `(session_id, model, speed, bucket_ts)` bucket, i.e.
+/// exactly the values a TokenUsage event carries. The long-context sums are
+/// the tokens of entries whose request selected the model's long-context
+/// tier (whole-request selection at pricing time), so a different pricing
+/// sheet can rebill the bucket: base tokens are the totals minus these.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct BucketAggregate {
     pub input: u64,
     pub output: u64,
     pub cache_read: u64,
     pub cache_write: u64,
+    /// Portion of `cache_write` written with a 1-hour TTL (billed at 2x the
+    /// input rate of the entry's tier).
+    pub cache_write_1h: u64,
     /// `Some` iff any entry in the bucket reported reasoning tokens.
     pub reasoning_output: Option<u64>,
     pub total: u64,
     pub cost_micro_usd: u64,
+    /// Portion of `cost_micro_usd` that came from transcript `costUSD`
+    /// fields — fixed under repricing (its tokens are still in the totals).
+    pub transcript_cost_micro_usd: u64,
     pub message_count: u32,
+    /// Any entry's speed was inferred from configuration rather than
+    /// recorded in the transcript.
+    pub speed_inferred: bool,
+    pub long_context_input: u64,
+    pub long_context_output: u64,
+    pub long_context_cache_read: u64,
+    pub long_context_cache_write: u64,
+    pub long_context_cache_write_1h: u64,
+    /// Latest pricing-catalog id among the bucket's catalog-priced entries.
+    pub pricing_catalog: Option<String>,
 }
 
 impl BucketAggregate {
@@ -274,16 +312,24 @@ impl BucketAggregate {
     /// drop to zero - changes the fingerprint.
     pub fn fingerprint(&self) -> String {
         format!(
-            "{}:{}:{}:{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}:{}",
             self.input,
             self.output,
             self.cache_read,
             self.cache_write,
+            self.cache_write_1h,
             self.reasoning_output
                 .map_or_else(|| "-".to_string(), |v| v.to_string()),
             self.total,
             self.cost_micro_usd,
-            self.message_count
+            self.transcript_cost_micro_usd,
+            self.message_count,
+            self.speed_inferred,
+            self.long_context_input,
+            self.long_context_output,
+            self.long_context_cache_read,
+            self.long_context_cache_write,
+            self.long_context_cache_write_1h,
         )
     }
 }
@@ -293,6 +339,9 @@ impl BucketAggregate {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChangedBucket {
     pub model: String,
+    /// Bucket speed dimension: 0 standard (including entries with no
+    /// recorded marker), 1 fast.
+    pub speed: u8,
     pub bucket_ts: u32,
     pub aggregate: BucketAggregate,
     /// Revision of the last emission for this bucket (0 when never emitted).
@@ -561,65 +610,55 @@ impl TokenUsageDatabase {
     pub fn changed_buckets(&self, session_id: &str) -> Result<Vec<ChangedBucket>, GitAiError> {
         let conn = self.lock();
 
-        // (model, bucket_ts) -> (fingerprint, emit_seq) of the last emission.
+        // (model, speed, bucket_ts) -> (fingerprint, emit_seq) of the last
+        // emission.
         let mut stmt = conn.prepare(
-            "SELECT model, bucket_ts, emitted_fingerprint, emit_seq
+            "SELECT model, speed, bucket_ts, emitted_fingerprint, emit_seq
              FROM bucket_state WHERE session_id = ?1",
         )?;
-        let emitted: Vec<(String, u32, String, i64)> = stmt
+        let emitted: Vec<(String, u8, u32, String, i64)> = stmt
             .query_map(params![session_id], |row| {
-                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        let mut emitted: std::collections::HashMap<(String, u32), (String, u64)> = emitted
-            .into_iter()
-            .map(|(model, bucket, fp, seq)| ((model, bucket), (fp, seq.max(0) as u64)))
-            .collect();
-
-        let mut stmt = conn.prepare(
-            "SELECT model, bucket_ts,
-                    COALESCE(SUM(input_tokens), 0),
-                    COALESCE(SUM(output_tokens), 0),
-                    COALESCE(SUM(cache_read_tokens), 0),
-                    COALESCE(SUM(cache_write_tokens), 0),
-                    COUNT(reasoning_output_tokens),
-                    COALESCE(SUM(reasoning_output_tokens), 0),
-                    COALESCE(SUM(total_tokens), 0),
-                    COALESCE(SUM(cost_micro_usd), 0),
-                    COUNT(*)
-             FROM usage_entries
-             WHERE session_id = ?1
-             GROUP BY model, bucket_ts",
-        )?;
-        let aggregates: Vec<(String, u32, BucketAggregate)> = stmt
-            .query_map(params![session_id], |row| {
-                let reasoning_entries: i64 = row.get(6)?;
                 Ok((
                     row.get(0)?,
                     row.get(1)?,
-                    BucketAggregate {
-                        input: row.get::<_, i64>(2)? as u64,
-                        output: row.get::<_, i64>(3)? as u64,
-                        cache_read: row.get::<_, i64>(4)? as u64,
-                        cache_write: row.get::<_, i64>(5)? as u64,
-                        reasoning_output: (reasoning_entries > 0)
-                            .then(|| row.get::<_, i64>(7).map(|v| v as u64))
-                            .transpose()?,
-                        total: row.get::<_, i64>(8)? as u64,
-                        cost_micro_usd: row.get::<_, i64>(9)? as u64,
-                        message_count: row.get::<_, i64>(10)? as u32,
-                    },
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut emitted: std::collections::HashMap<(String, u8, u32), (String, u64)> = emitted
+            .into_iter()
+            .map(|(model, speed, bucket, fp, seq)| {
+                ((model, speed, bucket), (fp, seq.max(0) as u64))
+            })
+            .collect();
+
+        let mut stmt = conn.prepare(&format!(
+            "SELECT model, COALESCE(speed, 0), bucket_ts, {AGGREGATE_COLUMNS}
+             FROM usage_entries
+             WHERE session_id = ?1
+             GROUP BY model, COALESCE(speed, 0), bucket_ts",
+        ))?;
+        let aggregates: Vec<(String, u8, u32, BucketAggregate)> = stmt
+            .query_map(params![session_id], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    read_aggregate(row, 3)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
 
         let mut changed = Vec::new();
-        for (model, bucket, aggregate) in aggregates {
-            let last = emitted.remove(&(model.clone(), bucket));
+        for (model, speed, bucket, aggregate) in aggregates {
+            let last = emitted.remove(&(model.clone(), speed, bucket));
             let emit_seq = last.as_ref().map_or(0, |(_, seq)| *seq);
             if last.map(|(fp, _)| fp).as_deref() != Some(aggregate.fingerprint().as_str()) {
                 changed.push(ChangedBucket {
                     model,
+                    speed,
                     bucket_ts: bucket,
                     aggregate,
                     emit_seq,
@@ -628,11 +667,12 @@ impl TokenUsageDatabase {
         }
         // Buckets with emission state but no remaining entries: emptied, and
         // re-emitted as zero unless zero was already emitted.
-        for ((model, bucket), (fingerprint, emit_seq)) in emitted {
+        for ((model, speed, bucket), (fingerprint, emit_seq)) in emitted {
             let aggregate = BucketAggregate::default();
             if fingerprint != aggregate.fingerprint() {
                 changed.push(ChangedBucket {
                     model,
+                    speed,
                     bucket_ts: bucket,
                     aggregate,
                     emit_seq,
@@ -680,36 +720,18 @@ impl TokenUsageDatabase {
         &self,
         session_id: &str,
         model: &str,
+        speed: u8,
         bucket: u32,
     ) -> Result<BucketAggregate, GitAiError> {
         Ok(self.lock().query_row(
-            "SELECT COALESCE(SUM(input_tokens), 0),
-                    COALESCE(SUM(output_tokens), 0),
-                    COALESCE(SUM(cache_read_tokens), 0),
-                    COALESCE(SUM(cache_write_tokens), 0),
-                    COUNT(reasoning_output_tokens),
-                    COALESCE(SUM(reasoning_output_tokens), 0),
-                    COALESCE(SUM(total_tokens), 0),
-                    COALESCE(SUM(cost_micro_usd), 0),
-                    COUNT(*)
-             FROM usage_entries
-             WHERE session_id = ?1 AND model = ?2 AND bucket_ts = ?3",
-            params![session_id, model, bucket],
-            |row| {
-                let reasoning_entries: i64 = row.get(4)?;
-                Ok(BucketAggregate {
-                    input: row.get::<_, i64>(0)? as u64,
-                    output: row.get::<_, i64>(1)? as u64,
-                    cache_read: row.get::<_, i64>(2)? as u64,
-                    cache_write: row.get::<_, i64>(3)? as u64,
-                    reasoning_output: (reasoning_entries > 0)
-                        .then(|| row.get::<_, i64>(5).map(|v| v as u64))
-                        .transpose()?,
-                    total: row.get::<_, i64>(6)? as u64,
-                    cost_micro_usd: row.get::<_, i64>(7)? as u64,
-                    message_count: row.get::<_, i64>(8)? as u32,
-                })
-            },
+            &format!(
+                "SELECT {AGGREGATE_COLUMNS}
+                 FROM usage_entries
+                 WHERE session_id = ?1 AND model = ?2 AND COALESCE(speed, 0) = ?3
+                   AND bucket_ts = ?4"
+            ),
+            params![session_id, model, speed, bucket],
+            |row| read_aggregate(row, 0),
         )?)
     }
 
@@ -718,14 +740,15 @@ impl TokenUsageDatabase {
         &self,
         session_id: &str,
         model: &str,
+        speed: u8,
         bucket: u32,
     ) -> Result<Option<String>, GitAiError> {
         Ok(self
             .lock()
             .query_row(
                 "SELECT emitted_fingerprint FROM bucket_state
-                 WHERE session_id = ?1 AND model = ?2 AND bucket_ts = ?3",
-                params![session_id, model, bucket],
+                 WHERE session_id = ?1 AND model = ?2 AND speed = ?3 AND bucket_ts = ?4",
+                params![session_id, model, speed, bucket],
                 |row| row.get(0),
             )
             .optional()?)
@@ -741,17 +764,17 @@ impl TokenUsageDatabase {
     pub fn reserve_emit_seqs(
         &self,
         session_id: &str,
-        reservations: &[(String, u32, u64)],
+        reservations: &[(String, u8, u32, u64)],
     ) -> Result<(), GitAiError> {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
-        for (model, bucket, emit_seq) in reservations {
+        for (model, speed, bucket, emit_seq) in reservations {
             tx.execute(
-                "INSERT INTO bucket_state (session_id, model, bucket_ts, emitted_fingerprint, emit_seq, last_emitted_at)
-                 VALUES (?1, ?2, ?3, '', ?4, 0)
-                 ON CONFLICT(session_id, model, bucket_ts)
-                 DO UPDATE SET emit_seq = ?4",
-                params![session_id, model, bucket, to_db_i64(*emit_seq)],
+                "INSERT INTO bucket_state (session_id, model, speed, bucket_ts, emitted_fingerprint, emit_seq, last_emitted_at)
+                 VALUES (?1, ?2, ?3, ?4, '', ?5, 0)
+                 ON CONFLICT(session_id, model, speed, bucket_ts)
+                 DO UPDATE SET emit_seq = ?5",
+                params![session_id, model, speed, bucket, to_db_i64(*emit_seq)],
             )?;
         }
         tx.commit()?;
@@ -760,23 +783,26 @@ impl TokenUsageDatabase {
 
     /// Record that the bucket's current aggregate was handed to the metrics
     /// pipeline as revision `emit_seq`.
+    #[allow(clippy::too_many_arguments)]
     pub fn mark_emitted(
         &self,
         session_id: &str,
         model: &str,
+        speed: u8,
         bucket: u32,
         fingerprint: &str,
         emit_seq: u64,
         now_ts: i64,
     ) -> Result<(), GitAiError> {
         self.lock().execute(
-            "INSERT INTO bucket_state (session_id, model, bucket_ts, emitted_fingerprint, emit_seq, last_emitted_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-             ON CONFLICT(session_id, model, bucket_ts)
-             DO UPDATE SET emitted_fingerprint = ?4, emit_seq = ?5, last_emitted_at = ?6",
+            "INSERT INTO bucket_state (session_id, model, speed, bucket_ts, emitted_fingerprint, emit_seq, last_emitted_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(session_id, model, speed, bucket_ts)
+             DO UPDATE SET emitted_fingerprint = ?5, emit_seq = ?6, last_emitted_at = ?7",
             params![
                 session_id,
                 model,
+                speed,
                 bucket,
                 fingerprint,
                 to_db_i64(emit_seq),
@@ -804,6 +830,57 @@ impl TokenUsageDatabase {
         tx.commit()?;
         Ok(entries)
     }
+}
+
+/// The SELECT list producing one [`BucketAggregate`], shared by the
+/// reconciliation sweep and the single-bucket lookup so the two can never
+/// disagree on a fingerprint. `long_context` marks entries whose request
+/// selected the long-context tier, so the CASE sums split every token class
+/// by billing tier.
+const AGGREGATE_COLUMNS: &str = "
+    COALESCE(SUM(input_tokens), 0),
+    COALESCE(SUM(output_tokens), 0),
+    COALESCE(SUM(cache_read_tokens), 0),
+    COALESCE(SUM(cache_write_tokens), 0),
+    COALESCE(SUM(cache_write_1h_tokens), 0),
+    COUNT(reasoning_output_tokens),
+    COALESCE(SUM(reasoning_output_tokens), 0),
+    COALESCE(SUM(total_tokens), 0),
+    COALESCE(SUM(cost_micro_usd), 0),
+    COALESCE(SUM(transcript_cost_micro_usd), 0),
+    COUNT(*),
+    COALESCE(MAX(speed_inferred), 0),
+    COALESCE(SUM(CASE WHEN long_context THEN input_tokens ELSE 0 END), 0),
+    COALESCE(SUM(CASE WHEN long_context THEN output_tokens ELSE 0 END), 0),
+    COALESCE(SUM(CASE WHEN long_context THEN cache_read_tokens ELSE 0 END), 0),
+    COALESCE(SUM(CASE WHEN long_context THEN cache_write_tokens ELSE 0 END), 0),
+    COALESCE(SUM(CASE WHEN long_context THEN cache_write_1h_tokens ELSE 0 END), 0),
+    MAX(pricing_catalog)";
+
+/// Read the [`AGGREGATE_COLUMNS`] starting at column `base`.
+fn read_aggregate(row: &rusqlite::Row<'_>, base: usize) -> rusqlite::Result<BucketAggregate> {
+    let reasoning_entries: i64 = row.get(base + 5)?;
+    Ok(BucketAggregate {
+        input: row.get::<_, i64>(base)? as u64,
+        output: row.get::<_, i64>(base + 1)? as u64,
+        cache_read: row.get::<_, i64>(base + 2)? as u64,
+        cache_write: row.get::<_, i64>(base + 3)? as u64,
+        cache_write_1h: row.get::<_, i64>(base + 4)? as u64,
+        reasoning_output: (reasoning_entries > 0)
+            .then(|| row.get::<_, i64>(base + 6).map(|v| v as u64))
+            .transpose()?,
+        total: row.get::<_, i64>(base + 7)? as u64,
+        cost_micro_usd: row.get::<_, i64>(base + 8)? as u64,
+        transcript_cost_micro_usd: row.get::<_, i64>(base + 9)? as u64,
+        message_count: row.get::<_, i64>(base + 10)? as u32,
+        speed_inferred: row.get(base + 11)?,
+        long_context_input: row.get::<_, i64>(base + 12)? as u64,
+        long_context_output: row.get::<_, i64>(base + 13)? as u64,
+        long_context_cache_read: row.get::<_, i64>(base + 14)? as u64,
+        long_context_cache_write: row.get::<_, i64>(base + 15)? as u64,
+        long_context_cache_write_1h: row.get::<_, i64>(base + 16)? as u64,
+        pricing_catalog: row.get(base + 17)?,
+    })
 }
 
 /// A stored entry's dedup-relevant fields.
@@ -1068,10 +1145,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("token-usage-db");
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 3);
+        assert_eq!(db.schema_version().unwrap(), 4);
         drop(db);
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 3);
+        assert_eq!(db.schema_version().unwrap(), 4);
     }
 
     #[test]
@@ -1132,7 +1209,7 @@ mod tests {
         assert_eq!(changed[0].model, "claude-sonnet-4-5-20250929");
         assert_eq!(changed[0].bucket_ts, 600);
         assert_eq!(changed[0].emit_seq, 0);
-        let agg = changed[0].aggregate;
+        let agg = changed[0].aggregate.clone();
         assert_eq!(agg.input, 10);
         assert_eq!(agg.output, 5);
         assert_eq!(agg.message_count, 1);
@@ -1151,13 +1228,13 @@ mod tests {
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
         // The entry stays attributed to the first-seen session.
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
                 .unwrap()
                 .message_count,
             1
         );
         assert_eq!(
-            db.aggregate_bucket("s2", "claude-sonnet-4-5-20250929", 600)
+            db.aggregate_bucket("s2", "claude-sonnet-4-5-20250929", 0, 600)
                 .unwrap()
                 .message_count,
             0
@@ -1190,13 +1267,13 @@ mod tests {
         db.clear_needs_reconcile("s1").unwrap();
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
                 .unwrap()
                 .message_count,
             0
         );
         assert_eq!(
-            db.aggregate_bucket("s2", "claude-sonnet-4-5-20250929", 600)
+            db.aggregate_bucket("s2", "claude-sonnet-4-5-20250929", 0, 600)
                 .unwrap()
                 .output,
             50
@@ -1209,11 +1286,11 @@ mod tests {
         let e = entry("m1|r1", Some("m1"), 600, tokens(10, 5));
         commit(&db, std::slice::from_ref(&e));
         let model = "claude-sonnet-4-5-20250929";
-        let before = db.aggregate_bucket("s1", model, 600).unwrap();
+        let before = db.aggregate_bucket("s1", model, 0, 600).unwrap();
         // Identical replay: policy keeps the existing row, aggregate (and
         // therefore the emission fingerprint) is unchanged.
         commit(&db, &[e]);
-        assert_eq!(db.aggregate_bucket("s1", model, 600).unwrap(), before);
+        assert_eq!(db.aggregate_bucket("s1", model, 0, 600).unwrap(), before);
         assert_eq!(before.message_count, 1);
     }
 
@@ -1223,14 +1300,14 @@ mod tests {
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))]);
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
             .unwrap();
         assert_eq!(agg.output, 50);
         assert_eq!(agg.message_count, 1);
         // Smaller totals never replace.
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(1, 1))]);
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
                 .unwrap(),
             agg
         );
@@ -1246,7 +1323,7 @@ mod tests {
         // loses to it despite larger totals.
         commit(&db, &[replay]);
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
             .unwrap();
         assert_eq!(agg.input, 10);
         assert_eq!(agg.message_count, 1);
@@ -1260,7 +1337,7 @@ mod tests {
         commit(&db, &[replay]);
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
             .unwrap();
         assert_eq!(agg.input, 10);
         assert_eq!(agg.message_count, 1);
@@ -1268,7 +1345,7 @@ mod tests {
         // parent entry again leaves the aggregate untouched.
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
                 .unwrap(),
             agg
         );
@@ -1282,7 +1359,7 @@ mod tests {
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         commit(&db, &[entry("m1|r2", Some("m1"), 600, tokens(7, 3))]);
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
             .unwrap();
         assert_eq!(agg.message_count, 2);
         assert_eq!(agg.input, 17);
@@ -1298,6 +1375,7 @@ mod tests {
         db.mark_emitted(
             "s1",
             model,
+            0,
             600,
             &changed[0].aggregate.fingerprint(),
             changed[0].emit_seq + 1,
@@ -1324,6 +1402,7 @@ mod tests {
         db.mark_emitted(
             "s1",
             model,
+            0,
             600,
             &BucketAggregate::default().fingerprint(),
             2,
@@ -1389,12 +1468,12 @@ mod tests {
         }
 
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 3);
+        assert_eq!(db.schema_version().unwrap(), 4);
         // Rebuilt empty: no legacy rows, cursors, or reconcile flags survive.
         assert!(db.all_files().unwrap().is_empty());
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
                 .unwrap()
                 .message_count,
             0
@@ -1406,7 +1485,7 @@ mod tests {
             &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))],
         );
         assert_eq!(
-            db.aggregate_bucket("s2", "claude-sonnet-4-5-20250929", 600)
+            db.aggregate_bucket("s2", "claude-sonnet-4-5-20250929", 0, 600)
                 .unwrap()
                 .output,
             50
@@ -1423,7 +1502,7 @@ mod tests {
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         let changed = db.changed_buckets("s1").unwrap();
         assert_eq!(changed[0].emit_seq, 0);
-        db.reserve_emit_seqs("s1", &[(model.to_string(), 600, 1)])
+        db.reserve_emit_seqs("s1", &[(model.to_string(), 0, 600, 1)])
             .unwrap();
 
         // Fingerprint untouched by the reservation: the bucket still
@@ -1433,24 +1512,95 @@ mod tests {
         assert_eq!(changed[0].emit_seq, 1);
 
         // Success path completes the emission; nothing left to reconcile.
-        db.reserve_emit_seqs("s1", &[(model.to_string(), 600, 2)])
+        db.reserve_emit_seqs("s1", &[(model.to_string(), 0, 600, 2)])
             .unwrap();
-        db.mark_emitted("s1", model, 600, &changed[0].aggregate.fingerprint(), 2, 9)
-            .unwrap();
+        db.mark_emitted(
+            "s1",
+            model,
+            0,
+            600,
+            &changed[0].aggregate.fingerprint(),
+            2,
+            9,
+        )
+        .unwrap();
         assert!(db.changed_buckets("s1").unwrap().is_empty());
     }
 
     #[test]
+    fn buckets_split_by_speed_and_carry_the_tier_sums() {
+        let (_dir, db) = db();
+        let mut fast = entry("k1", None, 600, tokens(10, 5));
+        fast.speed = Some(Speed::Fast);
+        let standard = entry("k2", None, 630, tokens(20, 5));
+        // Unmarked and catalog-priced, over the sonnet 200K threshold: joins
+        // the standard bucket and fills the long-context sums.
+        let mut unmarked_long = entry(
+            "k3",
+            None,
+            660,
+            TokenCounts {
+                input: 300_000,
+                output: 1,
+                total: 300_001,
+                ..Default::default()
+            },
+        );
+        unmarked_long.transcript_cost_micro_usd = None;
+        commit_for(&db, "s1", &[fast, standard, unmarked_long.clone()]);
+
+        let mut changed = db.changed_buckets("s1").unwrap();
+        changed.sort_by_key(|bucket| bucket.speed);
+        assert_eq!(changed.len(), 2, "one bucket per speed, same model+ts");
+        let standard_bucket = &changed[0];
+        assert_eq!(standard_bucket.speed, 0);
+        assert_eq!(standard_bucket.aggregate.input, 300_020);
+        assert_eq!(standard_bucket.aggregate.message_count, 2);
+        assert_eq!(standard_bucket.aggregate.long_context_input, 300_000);
+        assert_eq!(standard_bucket.aggregate.long_context_output, 1);
+        // Only k2's cost came from the transcript; k3 was catalog-priced.
+        assert_eq!(standard_bucket.aggregate.transcript_cost_micro_usd, 1_000);
+        assert_eq!(
+            standard_bucket.aggregate.cost_micro_usd,
+            1_000 + price_entry(&unmarked_long).cost_micro_usd.unwrap()
+        );
+        assert_eq!(
+            standard_bucket.aggregate.pricing_catalog.as_deref(),
+            Some(crate::metrics::model_pricing::pricing_catalog_id())
+        );
+        let fast_bucket = &changed[1];
+        assert_eq!(fast_bucket.speed, 1);
+        assert_eq!(fast_bucket.aggregate.input, 10);
+        assert_eq!(fast_bucket.aggregate.message_count, 1);
+        assert_eq!(fast_bucket.aggregate.long_context_input, 0);
+        assert_eq!(fast_bucket.aggregate.pricing_catalog, None);
+        assert_eq!(fast_bucket.bucket_ts, standard_bucket.bucket_ts);
+        assert_eq!(fast_bucket.model, standard_bucket.model);
+    }
+
+    #[test]
     fn fingerprint_covers_every_emitted_field() {
+        // Every emitted *value* must reach the fingerprint (pricing_catalog
+        // rides the attributes and is deliberately excluded: a catalog-id
+        // change without any numeric change means identical rates).
         let base = BucketAggregate {
             input: 1,
             output: 2,
             cache_read: 3,
             cache_write: 4,
+            cache_write_1h: 2,
             reasoning_output: None,
             total: 10,
             cost_micro_usd: 5,
+            transcript_cost_micro_usd: 2,
             message_count: 6,
+            speed_inferred: false,
+            long_context_input: 1,
+            long_context_output: 1,
+            long_context_cache_read: 1,
+            long_context_cache_write: 1,
+            long_context_cache_write_1h: 1,
+            pricing_catalog: None,
         };
         let mut seen = HashSet::from([base.fingerprint()]);
         for mutate in [
@@ -1458,12 +1608,20 @@ mod tests {
             |a| a.output += 1,
             |a| a.cache_read += 1,
             |a| a.cache_write += 1,
+            |a| a.cache_write_1h += 1,
             |a| a.reasoning_output = Some(0),
             |a| a.total += 1,
             |a| a.cost_micro_usd += 1,
+            |a| a.transcript_cost_micro_usd += 1,
             |a| a.message_count += 1,
+            |a| a.speed_inferred = true,
+            |a| a.long_context_input += 1,
+            |a| a.long_context_output += 1,
+            |a| a.long_context_cache_read += 1,
+            |a| a.long_context_cache_write += 1,
+            |a| a.long_context_cache_write_1h += 1,
         ] {
-            let mut variant = base;
+            let mut variant = base.clone();
             mutate(&mut variant);
             assert!(seen.insert(variant.fingerprint()), "fingerprint collision");
         }
@@ -1477,7 +1635,7 @@ mod tests {
         codex.transcript_cost_micro_usd = None;
         codex.model = "gpt-5".to_string();
         commit(&db, &[codex]);
-        let agg = db.aggregate_bucket("s1", "gpt-5", 600).unwrap();
+        let agg = db.aggregate_bucket("s1", "gpt-5", 0, 600).unwrap();
         assert_eq!(agg.reasoning_output, Some(4));
         // Cost falls back to the pricing catalog (gpt-5 is in the snapshot).
         assert!(agg.cost_micro_usd > 0);
@@ -1497,7 +1655,7 @@ mod tests {
             commit(&db, &[e]);
         }
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-5-20250929", 0, 600)
             .unwrap();
         assert_eq!(agg.input, 2 * TOKEN_VALUE_CEILING);
         assert_eq!(agg.total, 2 * TOKEN_VALUE_CEILING);
@@ -1580,13 +1738,15 @@ mod tests {
             ],
         );
         let model = "claude-sonnet-4-5-20250929";
-        db.mark_emitted("s1", model, 600, "fp", 1, 1).unwrap();
+        db.mark_emitted("s1", model, 0, 600, "fp", 1, 1).unwrap();
         assert_eq!(db.prune_buckets_before(999_000).unwrap(), 1);
         assert_eq!(
-            db.aggregate_bucket("s1", model, 600).unwrap().message_count,
+            db.aggregate_bucket("s1", model, 0, 600)
+                .unwrap()
+                .message_count,
             0
         );
-        assert_eq!(db.emitted_fingerprint("s1", model, 600).unwrap(), None);
+        assert_eq!(db.emitted_fingerprint("s1", model, 0, 600).unwrap(), None);
         // No orphan bucket_state row: the emptied old bucket is NOT a
         // reconciliation candidate after the prune.
         let changed = db.changed_buckets("s1").unwrap();

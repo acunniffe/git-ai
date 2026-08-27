@@ -950,9 +950,16 @@ fn emit_changed_buckets(
             (bucket, next_seq)
         })
         .collect();
-    let reservations: Vec<(String, u32, u64)> = changed
+    let reservations: Vec<(String, u8, u32, u64)> = changed
         .iter()
-        .map(|(bucket, next_seq)| (bucket.model.clone(), bucket.bucket_ts, *next_seq))
+        .map(|(bucket, next_seq)| {
+            (
+                bucket.model.clone(),
+                bucket.speed,
+                bucket.bucket_ts,
+                *next_seq,
+            )
+        })
         .collect();
     token_db.reserve_emit_seqs(&identity.session_id, &reservations)?;
     let repo_url = resolve_repo_url();
@@ -971,7 +978,16 @@ fn emit_changed_buckets(
             .message_count(aggregate.message_count)
             // Strictly increasing per bucket: the server keeps the highest
             // revision, so same-second re-emissions cannot tie.
-            .emitted_seq(*next_seq);
+            .emitted_seq(*next_seq)
+            .speed(bucket.speed as u32)
+            .speed_inferred(aggregate.speed_inferred)
+            .cache_write_1h_tokens(aggregate.cache_write_1h)
+            .long_context_input_tokens(aggregate.long_context_input)
+            .long_context_output_tokens(aggregate.long_context_output)
+            .long_context_cache_read_tokens(aggregate.long_context_cache_read)
+            .long_context_cache_write_tokens(aggregate.long_context_cache_write)
+            .long_context_cache_write_1h_tokens(aggregate.long_context_cache_write_1h)
+            .transcript_cost_micro_usd(aggregate.transcript_cost_micro_usd);
         let mut attrs = EventAttributes::with_version(env!("CARGO_PKG_VERSION"))
             .session_id(identity.session_id.clone())
             .tool(&identity.tool)
@@ -984,6 +1000,10 @@ fn emit_changed_buckets(
         if let Some(url) = &repo_url {
             attrs = attrs.repo_url(url.clone());
         }
+        if let Some(catalog) = &aggregate.pricing_catalog {
+            attrs = attrs
+                .custom_attributes(serde_json::json!({ "pricing_catalog": catalog }).to_string());
+        }
         events.push(MetricEvent::new(&values, attrs.to_sparse()));
     }
     sink(&events)?;
@@ -992,6 +1012,7 @@ fn emit_changed_buckets(
         token_db.mark_emitted(
             &identity.session_id,
             &bucket.model,
+            bucket.speed,
             bucket.bucket_ts,
             &bucket.aggregate.fingerprint(),
             next_seq,
@@ -1356,7 +1377,7 @@ mod tests {
             Some(50)
         );
         let first_bucket = db
-            .aggregate_bucket(&identity.session_id, "gpt-5", bucket_of(1, 0) as u32)
+            .aggregate_bucket(&identity.session_id, "gpt-5", 0, bucket_of(1, 0) as u32)
             .unwrap();
         assert_eq!(first_bucket.message_count, 1, "no double count");
     }
@@ -1378,7 +1399,12 @@ mod tests {
         let events = run(&db, &transcript).unwrap();
         assert!(events.is_empty(), "no aggregate change from the re-read");
         let agg = db
-            .aggregate_bucket("s_test", "claude-sonnet-4-20250514", bucket_of(1, 0) as u32)
+            .aggregate_bucket(
+                "s_test",
+                "claude-sonnet-4-20250514",
+                0,
+                bucket_of(1, 0) as u32,
+            )
             .unwrap();
         assert_eq!(agg.message_count, 2);
     }
@@ -1512,6 +1538,69 @@ mod tests {
             value_u64(&events[0], token_usage_pos::INPUT_TOKENS),
             Some(10)
         );
+    }
+
+    #[test]
+    fn fast_and_standard_usage_emit_separate_bucket_events() {
+        let (_dir, db, transcript) = setup();
+        let fast_line = format!(
+            r#"{{"timestamp":"{}","sessionId":"ext-test","requestId":"r1","costUSD":0.5,"message":{{"id":"m1","model":"claude-sonnet-4-20250514","usage":{{"input_tokens":100,"output_tokens":50,"speed":"fast","cache_creation":{{"ephemeral_5m_input_tokens":10,"ephemeral_1h_input_tokens":20}}}}}}}}"#,
+            recent_ts(1, 0)
+        );
+        fs::write(
+            &transcript,
+            format!(
+                "{fast_line}\n{}\n",
+                claude_line("m2", "r2", &recent_ts(1, 30), 50)
+            ),
+        )
+        .unwrap();
+
+        let mut events = run(&db, &transcript).unwrap();
+        events.sort_by_key(|e| value_u64(e, token_usage_pos::SPEED));
+        assert_eq!(events.len(), 2, "one event per speed, same model+bucket");
+        for event in &events {
+            assert_eq!(
+                value_u64(event, token_usage_pos::BUCKET_TS),
+                Some(bucket_of(1, 0))
+            );
+        }
+        let standard = &events[0];
+        assert_eq!(value_u64(standard, token_usage_pos::SPEED), Some(0));
+        assert_eq!(
+            value_u64(standard, token_usage_pos::SPEED_INFERRED),
+            Some(0)
+        );
+        assert_eq!(
+            value_u64(standard, token_usage_pos::TRANSCRIPT_COST_MICRO_USD),
+            Some(0)
+        );
+        // Catalog-priced: the pricing catalog id rides custom_attributes.
+        let attrs = EventAttributes::from_sparse(&standard.attrs);
+        let custom = attrs.custom_attributes.unwrap().unwrap();
+        assert!(custom.contains("pricing_catalog"), "{custom}");
+
+        let fast = &events[1];
+        assert_eq!(value_u64(fast, token_usage_pos::SPEED), Some(1));
+        assert_eq!(
+            value_u64(fast, token_usage_pos::CACHE_WRITE_TOKENS),
+            Some(30)
+        );
+        assert_eq!(
+            value_u64(fast, token_usage_pos::CACHE_WRITE_1H_TOKENS),
+            Some(20)
+        );
+        // costUSD 0.5 -> the whole cost is transcript-provided; no catalog.
+        assert_eq!(
+            value_u64(fast, token_usage_pos::TRANSCRIPT_COST_MICRO_USD),
+            Some(500_000)
+        );
+        assert_eq!(
+            value_u64(fast, token_usage_pos::EST_COST_MICRO_USD),
+            Some(500_000)
+        );
+        let attrs = EventAttributes::from_sparse(&fast.attrs);
+        assert!(attrs.custom_attributes.flatten().is_none());
     }
 
     #[test]

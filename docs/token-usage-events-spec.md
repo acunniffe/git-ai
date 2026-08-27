@@ -1,8 +1,10 @@
 # TokenUsage Events
 
-Token usage and estimated cost per `(session_id, model, bucket_ts)` in
-5-minute UTC buckets, computed from local agent transcripts and emitted as
-metric event id 9 (`TokenUsageValues`, `src/metrics/events.rs`).
+Token usage and estimated cost per `(session_id, model, speed, bucket_ts)`
+in 5-minute UTC buckets, computed from local agent transcripts and emitted as
+metric event id 9 (`TokenUsageValues`, `src/metrics/events.rs`). Fast and
+standard usage of one model bill at different rates, so speed (0 standard,
+1 fast) is part of the bucket identity.
 
 The parsing/deduplication logic is ported from
 [ccusage](https://github.com/ccusage/ccusage) (MIT) and adapted to git-ai's
@@ -83,7 +85,7 @@ state (which would corrupt Codex's cumulative-delta computation).
 
 ## Emission semantics
 
-The server upserts on `(session_id, model, bucket_ts)` keeping the **highest
+The server upserts on `(session_id, model, speed, bucket_ts)` keeping the **highest
 `emitted_seq`** — a strictly increasing per-bucket revision, reserved in the
 state database *before* events reach the telemetry queue so a crash between
 sink and bookkeeping can never produce two payloads with equal revisions —
@@ -109,20 +111,48 @@ Values (`token_usage_pos`): `bucket_ts`, `input_tokens`, `output_tokens`,
 `cache_read_tokens`, `cache_write_tokens`, `total_tokens`,
 `reasoning_output_tokens` (optional; Codex reports it as a subset of output),
 `est_cost_micro_usd` (u64 micro-USD), `credits` (f64, reserved),
-`message_count`, and `emitted_seq`. Standard `EventAttributes` carry tool,
-model, session ids, and repo_url (no git spawn).
+`message_count`, `emitted_seq`, `speed` (0/1, the bucket-key dimension),
+`speed_inferred` (any entry's tier came from configuration rather than the
+transcript), `cache_write_1h_tokens` (the 1h-TTL portion of
+`cache_write_tokens`), `long_context_{input,output,cache_read,cache_write,
+cache_write_1h}_tokens` (tokens of requests that selected their model's
+long-context tier; base-tier tokens are the totals minus these), and
+`transcript_cost_micro_usd` (the portion of `est_cost_micro_usd` that came
+from transcript `costUSD` fields). Standard `EventAttributes` carry tool,
+model, session ids, and repo_url (no git spawn); `custom_attributes` carries
+the id of the pricing catalog that priced the bucket's latest catalog-priced
+entry (`pricing_catalog`: `embedded:<version>` or `modelsdev:<hash>`).
 
 Cost follows ccusage's "auto" mode per entry: the transcript's own `costUSD`
 wins (negative/non-finite values are treated as absent, and every per-entry
 cost clamps to a $10k sanity ceiling); otherwise cost is computed from the
-models.dev pricing catalog (`src/metrics/model_pricing.rs`), including the
-2x-input rate for 1-hour ephemeral cache writes and a cache-read fallback of
-a tenth of the input rate when the catalog omits one. Pricing snapshot
-refreshes do not retroactively rewrite already-emitted buckets (only changed
-buckets recompute) - intended. Documented pricing deviations from ccusage
-(all from pricing via models.dev only): no long-context tiers, no fast-speed
-multipliers, no `codex-auto-review` model mapping; `git-ai usage`
-approximates from the same catalog without the 1h/fallback refinements, so
+models.dev pricing catalog (`src/metrics/model_pricing.rs`) with ccusage's
+two per-agent formulas (`src/token_usage/cost.rs`): whole-request
+long-context tier selection (Claude: uncached input + cache reads + cache
+writes vs the model's threshold; Codex: raw per-turn input only), 2x-input
+1h-cache-write pricing at the selected tier, per-shape unpublished-cache-rate
+defaults, and the model's fast multiplier over the whole request for
+fast-speed entries. Codex service tiers come from `thread_settings_applied`
+(sticky), falling back to the `service_tier` in the rollout's codex-home
+`config.toml`, else standard; unlike ccusage, the fallback is resolved and
+stored at extraction time, so a config change never retroactively reprices
+history. Fast multipliers and the Anthropic 200K long-context premium are
+hand-tracked override tables in `model_pricing.rs` (no machine-readable
+source publishes them; the latter appears in models.dev only under gateway
+spellings the provider allowlist drops).
+
+Costs are event-time: pricing snapshot refreshes do not retroactively
+rewrite already-emitted buckets (only changed buckets recompute) - intended.
+The emitted splits are the repricing contract: a different pricing sheet can
+recompute a bucket as `base tokens x base rates + long-context tokens x
+above rates` (whole-request selection already applied client-side), with 1h
+cache writes at 2x the tier's input rate, times the fast multiplier when
+`speed = 1`, plus `transcript_cost_micro_usd` as a fixed term (its tokens
+are included in the totals, so such buckets reprice approximately).
+Remaining pricing deviations from ccusage: no `codex-auto-review` model
+mapping, and no marginal-at-200K arm for above-rates-without-threshold data
+(unreachable with a models.dev-sourced catalog); `git-ai usage` approximates
+from the same catalog without tiering/multiplier/1h refinements, so
 TokenUsage events are the authoritative dollars.
 
 ## Session identity

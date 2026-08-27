@@ -330,6 +330,96 @@ fn codex_transcript_emits_deltas_with_reasoning_tokens() {
 }
 
 #[test]
+fn fast_long_context_codex_usage_emits_tier_and_speed_fields() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+
+    // A recorded fast tier and one turn whose raw input (300K, cached
+    // included) crosses gpt-5.6-sol's 272K long-context threshold.
+    let transcript_path = repo_root.join("codex-fast-session.jsonl");
+    fs::write(
+        &transcript_path,
+        format!(
+            "{}\n{}\n{}\n{}\n",
+            json!({"timestamp": "2026-01-01T00:00:00Z", "type": "session_meta", "payload": {"id": "sess-fast-codex"}}),
+            json!({"timestamp": "2026-01-01T00:00:10Z", "type": "turn_context", "payload": {"model": "gpt-5.6-sol"}}),
+            json!({"timestamp": "2026-01-01T00:00:20Z", "type": "event_msg", "payload": {"type": "thread_settings_applied", "thread_settings": {"service_tier": "fast"}}}),
+            json!({
+                "timestamp": recent_ts(1, 0),
+                "type": "event_msg",
+                "payload": {"type": "token_count", "info": {"total_token_usage": {
+                    "input_tokens": 300_000u64,
+                    "cached_input_tokens": 20_000u64,
+                    "output_tokens": 1_000u64,
+                    "reasoning_output_tokens": 100u64,
+                    "total_tokens": 301_000u64
+                }}}
+            }),
+        ),
+    )
+    .unwrap();
+
+    let file_path = repo_root.join("main.rs");
+    fs::write(&file_path, "fn main() {}\n").unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "codex",
+        "sess-fast-codex",
+        &transcript_path,
+        &file_path,
+        "fn main() {}\nfn added() {}\n",
+    );
+    sync_token_usage_pipeline(&repo);
+
+    let events = token_usage_events(&metrics_db_path);
+    assert_eq!(events.len(), 1);
+    let event = &events[0];
+    assert_eq!(value_u64(event, token_usage_pos::SPEED), Some(1));
+    assert_eq!(
+        value_u64(event, token_usage_pos::SPEED_INFERRED),
+        Some(0),
+        "the tier was recorded in the transcript"
+    );
+    assert_eq!(
+        value_u64(event, token_usage_pos::INPUT_TOKENS),
+        Some(280_000)
+    );
+    assert_eq!(
+        value_u64(event, token_usage_pos::LONG_CONTEXT_INPUT_TOKENS),
+        Some(280_000)
+    );
+    assert_eq!(
+        value_u64(event, token_usage_pos::LONG_CONTEXT_CACHE_READ_TOKENS),
+        Some(20_000)
+    );
+    assert_eq!(
+        value_u64(event, token_usage_pos::LONG_CONTEXT_OUTPUT_TOKENS),
+        Some(1_000)
+    );
+    assert_eq!(
+        value_u64(event, token_usage_pos::TRANSCRIPT_COST_MICRO_USD),
+        Some(0)
+    );
+    // Whole request at the 272K+ rates (8/30 input/output, 0.8 cache read
+    // per million), doubled by the fast multiplier:
+    // (0.28*8 + 0.02*0.8 + 0.001*30) * 2 = $4.572.
+    assert_eq!(
+        value_u64(event, token_usage_pos::EST_COST_MICRO_USD),
+        Some(4_572_000)
+    );
+    let attrs = EventAttributes::from_sparse(&event.attrs);
+    let custom = attrs
+        .custom_attributes
+        .flatten()
+        .expect("catalog-priced buckets carry the pricing catalog id");
+    assert!(custom.contains("pricing_catalog"), "{custom}");
+}
+
+#[test]
 fn appended_transcript_lines_update_existing_buckets() {
     let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
     let repo =
