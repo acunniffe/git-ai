@@ -421,11 +421,11 @@ fn fast_long_context_codex_usage_emits_tier_and_speed_fields() {
         Some((expected_usd * 1_000_000.0).round() as u64)
     );
     let attrs = EventAttributes::from_sparse(&event.attrs);
-    let custom = attrs
-        .custom_attributes
+    let catalog = attrs
+        .pricing_catalog
         .flatten()
         .expect("catalog-priced buckets carry the pricing catalog id");
-    assert!(custom.contains("pricing_catalog"), "{custom}");
+    assert!(catalog.starts_with("embedded:"), "{catalog}");
 }
 
 #[test]

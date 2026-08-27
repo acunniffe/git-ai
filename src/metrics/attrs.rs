@@ -21,6 +21,7 @@ pub mod attr_pos {
     pub const PARENT_SESSION_ID: usize = 26;
     pub const EXTERNAL_PARENT_SESSION_ID: usize = 27;
     pub const CUSTOM_ATTRIBUTES: usize = 30;
+    pub const PRICING_CATALOG: usize = 31;
 }
 
 /// Common attributes for all events.
@@ -42,6 +43,7 @@ pub mod attr_pos {
 /// | 26 | parent_session_id | String | No (nullable) |
 /// | 27 | external_parent_session_id | String | No (nullable) |
 /// | 30 | custom_attributes | String (JSON) | No (nullable) |
+/// | 31 | pricing_catalog | String | No (nullable) |
 #[derive(Debug, Clone, Default)]
 pub struct EventAttributes {
     pub git_ai_version: PosField<String>,
@@ -59,6 +61,11 @@ pub struct EventAttributes {
     pub external_session_id: PosField<String>,
     pub external_parent_session_id: PosField<String>,
     pub custom_attributes: PosField<String>,
+    /// Pricing catalog that priced a TokenUsage bucket's catalog-priced
+    /// entries (e.g. "embedded:<version>", "modelsdev:<hash>"). A dedicated
+    /// slot: custom_attributes stays reserved for the org-configured
+    /// attribute map every event type carries.
+    pub pricing_catalog: PosField<String>,
 }
 
 impl EventAttributes {
@@ -249,6 +256,12 @@ impl EventAttributes {
         }
     }
 
+    // Builder methods for pricing_catalog
+    pub fn pricing_catalog(mut self, value: impl Into<String>) -> Self {
+        self.pricing_catalog = Some(Some(value.into()));
+        self
+    }
+
     // Builder methods for custom_attributes
     pub fn custom_attributes(mut self, value: impl Into<String>) -> Self {
         self.custom_attributes = Some(Some(value.into()));
@@ -323,6 +336,11 @@ impl PosEncoded for EventAttributes {
             attr_pos::CUSTOM_ATTRIBUTES,
             string_to_json(&self.custom_attributes),
         );
+        sparse_set(
+            &mut map,
+            attr_pos::PRICING_CATALOG,
+            string_to_json(&self.pricing_catalog),
+        );
         map
     }
 
@@ -346,6 +364,7 @@ impl PosEncoded for EventAttributes {
                 attr_pos::EXTERNAL_PARENT_SESSION_ID,
             ),
             custom_attributes: sparse_get_string(arr, attr_pos::CUSTOM_ATTRIBUTES),
+            pricing_catalog: sparse_get_string(arr, attr_pos::PRICING_CATALOG),
         }
     }
 }

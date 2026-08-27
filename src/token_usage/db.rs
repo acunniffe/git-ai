@@ -206,8 +206,14 @@ const MIGRATIONS: &[&str] = &[
     "#,
     // Version 4: buckets gain the speed dimension (fast and standard usage
     // of one model bill at different rates, so they must never share a
-    // bucket identity on the server). Pre-release reset like v3.
+    // bucket identity on the server). Pre-release reset like v3. The
+    // expression index matches the reconciliation GROUP BY exactly —
+    // grouping by COALESCE(speed, 0) over the plain bucket index would
+    // otherwise sort every session aggregate through a temp B-tree.
     r#"
+    CREATE INDEX idx_usage_entries_bucket_speed
+        ON usage_entries(session_id, model, COALESCE(speed, 0), bucket_ts);
+
     DROP TABLE bucket_state;
 
     CREATE TABLE bucket_state (

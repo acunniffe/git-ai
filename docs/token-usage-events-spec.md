@@ -120,11 +120,12 @@ cache_write_1h}_tokens` (tokens of requests that selected their model's
 long-context tier; base-tier tokens are the totals minus these), and
 `transcript_cost_micro_usd` (the portion of `est_cost_micro_usd` that came
 from transcript `costUSD` fields). Standard `EventAttributes` carry tool,
-model, session ids, and repo_url (no git spawn); `custom_attributes` carries
-the id of the pricing catalog that priced the bucket's catalog-priced entries
-(`pricing_catalog`: `embedded:<version>` or `modelsdev:<hash>`; a bucket that
-mixes catalogs — a refresh plus daemon restart mid-bucket — reports the
-greatest id, an approximation).
+model, session ids, and repo_url (no git spawn); the dedicated
+`pricing_catalog` attribute carries the id of the catalog that priced the
+bucket's catalog-priced entries (`embedded:<version>` or `modelsdev:<hash>`;
+a bucket that mixes catalogs — a refresh plus daemon restart mid-bucket —
+reports the greatest id, an approximation). `custom_attributes` stays
+reserved for the org-configured attribute map every event type carries.
 
 Cost follows ccusage's "auto" mode per entry: the transcript's own `costUSD`
 wins (negative/non-finite values are treated as absent, and every per-entry

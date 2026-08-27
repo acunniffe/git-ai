@@ -1001,8 +1001,9 @@ fn emit_changed_buckets(
             attrs = attrs.repo_url(url.clone());
         }
         if let Some(catalog) = &aggregate.pricing_catalog {
-            attrs = attrs
-                .custom_attributes(serde_json::json!({ "pricing_catalog": catalog }).to_string());
+            // A dedicated attribute: custom_attributes stays reserved for
+            // the org-configured map every event type carries.
+            attrs = attrs.pricing_catalog(catalog.clone());
         }
         events.push(MetricEvent::new(&values, attrs.to_sparse()));
     }
@@ -1569,16 +1570,21 @@ mod tests {
         assert_eq!(value_u64(standard, token_usage_pos::SPEED), Some(0));
         assert_eq!(
             value_u64(standard, token_usage_pos::SPEED_INFERRED),
-            Some(0)
+            Some(1),
+            "no usage.speed marker was recorded on the standard entry"
         );
         assert_eq!(
             value_u64(standard, token_usage_pos::TRANSCRIPT_COST_MICRO_USD),
             Some(0)
         );
-        // Catalog-priced: the pricing catalog id rides custom_attributes.
+        // Catalog-priced: the pricing catalog id rides its dedicated
+        // attribute (custom_attributes stays free for the org map).
         let attrs = EventAttributes::from_sparse(&standard.attrs);
-        let custom = attrs.custom_attributes.unwrap().unwrap();
-        assert!(custom.contains("pricing_catalog"), "{custom}");
+        assert_eq!(
+            attrs.pricing_catalog.flatten().as_deref(),
+            Some(crate::metrics::model_pricing::pricing_catalog_id())
+        );
+        assert_eq!(attrs.custom_attributes, None);
 
         let fast = &events[1];
         assert_eq!(value_u64(fast, token_usage_pos::SPEED), Some(1));
@@ -1600,7 +1606,7 @@ mod tests {
             Some(500_000)
         );
         let attrs = EventAttributes::from_sparse(&fast.attrs);
-        assert!(attrs.custom_attributes.flatten().is_none());
+        assert!(attrs.pricing_catalog.flatten().is_none());
     }
 
     #[test]
