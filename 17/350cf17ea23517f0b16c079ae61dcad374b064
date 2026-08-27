@@ -6,6 +6,7 @@ src/token_usage/claude.rs
   s_ecc10b55b372b3::t_1b4041dcc86468 54
   s_ecc10b55b372b3::t_3b40e5171b360a 225-227
   s_ecc10b55b372b3::t_6788ceb76d1923 11,20
+  s_ecc10b55b372b3::t_b365e275d87420 12-13,657-662,664-665
 src/token_usage/extractor.rs
   s_ecc10b55b372b3::t_b291ed993b9548 3
   s_ecc10b55b372b3::t_3c2f5ef251a663 16-21
@@ -18,6 +19,7 @@ src/token_usage/db.rs
   s_ecc10b55b372b3::t_1e3c6584bcacb4 827-829,843,847,849-850,867-868,870,882,886,888-889,899-903
   s_ecc10b55b372b3::t_dfb165ab06efc8 927-928
   s_ecc10b55b372b3::t_1ccab0cd28ba05 904-906
+  s_ecc10b55b372b3::t_b365e275d87420 43,817,830-832,846,851-852,869,871,885,890-891,1017-1051
 src/streams/model_extraction.rs
   s_ecc10b55b372b3::t_0c74d18b24e945 219-233
   s_ecc10b55b372b3::t_4c6e8f30c7f1bf 208
@@ -32,6 +34,8 @@ src/daemon/token_usage_worker.rs
   s_ecc10b55b372b3::t_8e9758ef8cf11c 764-766,824-829,1560-1561,1563
 src/token_usage/cost.rs
   s_ecc10b55b372b3::t_99713d82ad23ea 202-203
+  s_ecc10b55b372b3::t_0c1c9fb5aa86b5 46,62
+  s_ecc10b55b372b3::t_b365e275d87420 2-3,5-11,13-14,26-45,48-52,54-61,63-93,98-117,122-174,204-228,260-261,263-266,282-286,290-436,452-454,470-567
 src/token_usage/types.rs
   s_ecc10b55b372b3::t_7305f55213eac2 28-47,69-77
 src/token_usage/mod.rs
@@ -52,6 +56,9 @@ src/token_usage/codex.rs
   s_ecc10b55b372b3::t_f58def75506fc0 224-227
   s_ecc10b55b372b3::t_6e4146e83d42ad 12-18
   s_ecc10b55b372b3::t_b404cb9b3129ec 467,518
+  s_ecc10b55b372b3::t_b365e275d87420 29-31
+src/metrics/model_pricing.rs
+  s_ecc10b55b372b3::t_b365e275d87420 336-348,355-356,358-364,368-374
 ---
 {
   "schema_version": "authorship/3.0.0",
