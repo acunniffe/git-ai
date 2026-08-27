@@ -1,0 +1,21 @@
+src/token_usage/db.rs
+  s_ecc10b55b372b3::t_fea292db216183 989,1110,1132,1138,1171,1177,1189,1204,1211,1227,1241,1249,1263,1272,1375,1387,1400,1478,1560
+src/token_usage/cost.rs
+  s_ecc10b55b372b3::t_cdb95dd96e76b7 62-65,100-102,104-107,109-110,126,156,158,243,256,258,281,283,540
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "a1d3cf67eeda55ce3686cc9cd704288de1ccc9b1",
+  "prompts": {},
+  "sessions": {
+    "s_ecc10b55b372b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "725da754-5eb5-4a7e-a504-a0badfb0707e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
