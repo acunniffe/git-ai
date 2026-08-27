@@ -531,15 +531,16 @@ enum PromptIo {
 }
 
 /// Environments where the author prompt must never fire even if a controlling
-/// terminal is technically openable: explicit opt-out, daemon-triggered
-/// silent upgrades, the background upgrade worker (runs in the user's session
-/// with an openable /dev/tty), and background AI-agent sandboxes.
+/// terminal is technically openable: explicit opt-out, unattended
+/// environments (CI, containers, MDM, and daemon-triggered silent upgrades —
+/// all detected in-binary so installer scripts and older upgrading binaries
+/// need no cooperation), the background upgrade worker (runs in the user's
+/// session with an openable /dev/tty), and background AI-agent sandboxes.
 fn author_prompt_suppressed() -> bool {
     let opted_out = std::env::var(GIT_AI_NO_AUTHOR_PROMPT_ENV)
         .is_ok_and(|v| !matches!(v.as_str(), "" | "0" | "false" | "False" | "FALSE"));
     opted_out
-        || std::env::var_os(crate::commands::upgrade::GIT_AI_DAEMON_UPGRADE_ENV)
-            .is_some_and(|v| !v.is_empty())
+        || crate::utils::is_superuser_expected_environment()
         || std::env::var(crate::commands::upgrade::ENV_BACKGROUND_UPGRADE_WORKER).as_deref()
             == Ok("1")
         || crate::utils::is_in_background_agent()
