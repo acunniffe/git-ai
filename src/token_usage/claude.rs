@@ -9,8 +9,7 @@
 //!   (entries stream in across runs), via [`should_replace_entry`] and the
 //!   `message_id` fallback; ccusage dedups in memory over whole files.
 //! - Fast-speed entries keep their base model name (no "-fast" suffix);
-//!   `usage.speed` carries the fast pricing multiplier and remains the
-//!   replacement tie-breaker.
+//!   `usage.speed` remains the replacement tie-breaker.
 //! - Entries whose model is missing or `<synthetic>` are attributed to
 //!   [`UNKNOWN_MODEL`] instead of carrying no model, so tokens aren't lost.
 
