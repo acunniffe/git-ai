@@ -40,7 +40,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::claude::{ReplacementCandidate, should_replace};
-use super::cost::entry_cost_micro_usd;
+use super::cost::price_entry;
 use super::types::{Speed, UsageEntry, bucket_ts};
 use crate::error::GitAiError;
 
@@ -825,6 +825,7 @@ fn upsert_entry(
     entry: &UsageEntry,
 ) -> Result<Option<String>, GitAiError> {
     let bucket = bucket_ts(entry.ts);
+    let priced = price_entry(entry);
     let existing = find_dedupe_target(tx, entry)?;
     match existing {
         Some(row) => {
@@ -837,8 +838,9 @@ fn upsert_entry(
                         cache_write_1h_tokens = ?10, reasoning_output_tokens = ?11,
                         total_tokens = ?12, cost_micro_usd = ?13,
                         transcript_cost_micro_usd = ?14, is_sidechain = ?15,
-                        speed = ?16, speed_inferred = ?17
-                     WHERE rowid = ?18",
+                        speed = ?16, speed_inferred = ?17, long_context = ?18,
+                        pricing_catalog = ?19
+                     WHERE rowid = ?20",
                     params![
                         session_id,
                         entry.entry_key,
@@ -852,11 +854,13 @@ fn upsert_entry(
                         to_db_i64(entry.cache_write_1h),
                         entry.tokens.reasoning_output.map(to_db_i64),
                         to_db_i64(entry.tokens.total),
-                        entry_cost_micro_usd(entry).map(to_db_i64),
+                        priced.cost_micro_usd.map(to_db_i64),
                         entry.transcript_cost_micro_usd.map(to_db_i64),
                         entry.is_sidechain,
                         entry.speed.map(speed_to_db),
                         entry.speed_inferred,
+                        priced.long_context,
+                        priced.pricing_catalog,
                         row.rowid,
                     ],
                 )?;
@@ -873,9 +877,9 @@ fn upsert_entry(
                     input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
                     cache_write_1h_tokens, reasoning_output_tokens, total_tokens,
                     cost_micro_usd, transcript_cost_micro_usd, is_sidechain,
-                    speed, speed_inferred
+                    speed, speed_inferred, long_context, pricing_catalog
                  ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14,
-                           ?15, ?16, ?17)",
+                           ?15, ?16, ?17, ?18, ?19)",
                 params![
                     session_id,
                     entry.entry_key,
@@ -889,11 +893,13 @@ fn upsert_entry(
                     to_db_i64(entry.cache_write_1h),
                     entry.tokens.reasoning_output.map(to_db_i64),
                     to_db_i64(entry.tokens.total),
-                    entry_cost_micro_usd(entry).map(to_db_i64),
+                    priced.cost_micro_usd.map(to_db_i64),
                     entry.transcript_cost_micro_usd.map(to_db_i64),
                     entry.is_sidechain,
                     entry.speed.map(speed_to_db),
                     entry.speed_inferred,
+                    priced.long_context,
+                    priced.pricing_catalog,
                 ],
             )?;
             Ok(None)
@@ -1017,6 +1023,43 @@ mod tests {
 
     fn commit(db: &TokenUsageDatabase, entries: &[UsageEntry]) {
         commit_for(db, "s1", entries);
+    }
+
+    #[test]
+    fn upsert_stores_the_pricing_dimensions() {
+        let (_dir, db) = db();
+        let mut e = entry(
+            "k1",
+            None,
+            600,
+            TokenCounts {
+                input: 300_000,
+                output: 10,
+                total: 300_010,
+                ..Default::default()
+            },
+        );
+        // Catalog-priced (no transcript cost), fast, and over the sonnet
+        // 200K long-context threshold.
+        e.transcript_cost_micro_usd = None;
+        e.speed = Some(Speed::Fast);
+        commit_for(&db, "s1", &[e.clone()]);
+
+        let conn = db.conn.lock().unwrap();
+        let (cost, speed, long_context, catalog): (u64, i64, bool, Option<String>) = conn
+            .query_row(
+                "SELECT cost_micro_usd, speed, long_context, pricing_catalog FROM usage_entries",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(Some(cost), price_entry(&e).cost_micro_usd);
+        assert_eq!(speed, 1);
+        assert!(long_context);
+        assert_eq!(
+            catalog.as_deref(),
+            Some(crate::metrics::model_pricing::pricing_catalog_id())
+        );
     }
 
     #[test]

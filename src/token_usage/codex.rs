@@ -26,9 +26,9 @@
 //!   scalar where an object belongs) is skipped whole, where ccusage's lossy
 //!   deserializers would still process it. Timestamp parsing is slightly
 //!   more lenient than ccusage's fixed-width RFC3339 forms.
-//! - Cost: no long-context tiered pricing and no `codex-auto-review` model
-//!   mapping (that model prices at $0 unless the catalog learns it); see
-//!   `cost.rs` for the shared pricing deviations.
+//! - Cost: no `codex-auto-review` model mapping (that model prices at $0
+//!   unless the catalog learns it); see `cost.rs` for the shared pricing
+//!   rules and deviations.
 
 use serde::{Deserialize, Serialize};
 

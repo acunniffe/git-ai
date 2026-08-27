@@ -334,17 +334,44 @@ fn use_embedded_only() -> bool {
 }
 
 fn catalog() -> &'static PricingCatalog {
-    static CATALOG: OnceLock<PricingCatalog> = OnceLock::new();
+    &catalog_with_id().0
+}
+
+/// Identity of the catalog in effect, stored per priced entry so emitted
+/// costs stay attributable to the rates that produced them: the running
+/// binary's version for the embedded snapshot, a content hash for a fetched
+/// cache (the cache file carries no version of its own).
+pub fn pricing_catalog_id() -> &'static str {
+    &catalog_with_id().1
+}
+
+fn catalog_with_id() -> &'static (PricingCatalog, String) {
+    static CATALOG: OnceLock<(PricingCatalog, String)> = OnceLock::new();
     CATALOG.get_or_init(|| {
         if !use_embedded_only()
             && let Some(cache) = cache_path().and_then(|path| read_json_file::<PricingCache>(&path))
             && cache.is_current_format()
             && !cache.models.is_empty()
         {
-            return PricingCatalog::from_entries(cache.models);
+            let id = format!("modelsdev:{}", catalog_hash(&cache.models));
+            return (PricingCatalog::from_entries(cache.models), id);
         }
-        embedded_catalog()
+        (
+            embedded_catalog(),
+            format!(
+                "embedded:{}",
+                crate::authorship::authorship_log_serialization::GIT_AI_VERSION
+            ),
+        )
     })
+}
+
+/// Short content hash of a fetched catalog (12 hex chars of SHA-256 over its
+/// canonical JSON — BTreeMap keys serialize in stable order).
+fn catalog_hash(models: &BTreeMap<String, ModelPricing>) -> String {
+    use sha2::{Digest, Sha256};
+    let json = serde_json::to_string(models).unwrap_or_default();
+    format!("{:x}", Sha256::digest(json.as_bytes()))[..12].to_string()
 }
 
 fn embedded_catalog() -> PricingCatalog {

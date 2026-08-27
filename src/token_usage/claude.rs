@@ -9,7 +9,8 @@
 //!   (entries stream in across runs), via [`should_replace_entry`] and the
 //!   `message_id` fallback; ccusage dedups in memory over whole files.
 //! - Fast-speed entries keep their base model name (no "-fast" suffix);
-//!   `usage.speed` remains the replacement tie-breaker.
+//!   `usage.speed` carries the fast pricing multiplier (see `cost.rs`) and
+//!   remains the replacement tie-breaker.
 //! - Entries whose model is missing or `<synthetic>` are attributed to
 //!   [`UNKNOWN_MODEL`] instead of carrying no model, so tokens aren't lost.
 
@@ -656,15 +657,15 @@ mod tests {
     }
 
     #[test]
-    fn fast_speed_entries_price_at_the_base_rate() {
-        // Documented deviation: no fast-speed multiplier (the models.dev
-        // catalog has no fast rates). Pin that has_speed does not change the
-        // computed cost.
-        let base = r#"{"timestamp":"2026-01-01T00:00:00Z","message":{"id":"m","model":"claude-sonnet-4-20250514","usage":{"input_tokens":1000000,"output_tokens":0}},"requestId":"r"}"#;
-        let fast = r#"{"timestamp":"2026-01-01T00:00:00Z","message":{"id":"m","model":"claude-sonnet-4-20250514","usage":{"input_tokens":1000000,"output_tokens":0,"speed":"fast"}},"requestId":"r"}"#;
+    fn fast_speed_entries_price_at_the_fast_multiplier() {
+        // claude-opus-4-8 carries a 2x fast multiplier in the catalog; a
+        // fast-speed entry bills its whole request at it, while the base
+        // model name is unchanged.
+        let base = r#"{"timestamp":"2026-01-01T00:00:00Z","message":{"id":"m","model":"claude-opus-4-8-20260601","usage":{"input_tokens":1000000,"output_tokens":0}},"requestId":"r"}"#;
+        let fast = r#"{"timestamp":"2026-01-01T00:00:00Z","message":{"id":"m","model":"claude-opus-4-8-20260601","usage":{"input_tokens":1000000,"output_tokens":0,"speed":"fast"}},"requestId":"r"}"#;
         assert_eq!(
-            super::super::cost::entry_cost_micro_usd(&extract(base)[0]),
-            super::super::cost::entry_cost_micro_usd(&extract(fast)[0]),
+            super::super::cost::entry_cost_micro_usd(&extract(fast)[0]).unwrap(),
+            2 * super::super::cost::entry_cost_micro_usd(&extract(base)[0]).unwrap(),
         );
     }
 
