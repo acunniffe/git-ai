@@ -1,362 +1,55 @@
-/// Graphite (`gt` CLI) test suite for git-ai attribution preservation.
-///
-/// These tests verify that git-ai attribution (line-level blame tracking of AI vs human authorship)
-/// is correctly preserved across all local Graphite CLI operations.
-///
-/// ## Requirements
-/// - The `gt` CLI must be installed and available in PATH
-/// - When the `CI` environment variable is set, tests will FAIL if `gt` is not available
-/// - When not in CI, tests will be SKIPPED if `gt` is not available
-///
-/// ## Graphite's `commit-tree` + `update-ref` plumbing path
-///
-/// Graphite's restack/move/absorb/split operations internally use `git commit-tree` +
-/// `git update-ref` (low-level plumbing commands) instead of `git rebase`.
-///
-/// git-ai receives Graphite's `update-ref` trace2 events, detects the
-/// non-fast-forward rewrite, and remaps authorship notes to the new commit SHAs.
-/// This covers the core operations: restack, move, modify (with child restacking),
-/// and full stack workflows.
-///
-/// Remaining known issues (still `#[ignore]`):
-///   - `gt absorb` and `gt split --by-file` lose attribution (update-ref hook cannot
-///     reconstruct the mapping for these more complex rewrite patterns)
-///   - `gt delete --force` and `gt undo` require interactive mode even with `--no-interactive`
-///
-/// ## Commands NOT tested (require GitHub authentication / remote):
-/// - `gt submit` - Pushes to GitHub, creates/updates PRs
-/// - `gt sync` - Syncs branches with remote
-/// - `gt get` - Syncs branches from remote
-/// - `gt merge` - Merges PRs via Graphite
-/// - `gt pr` - Opens PR page in browser
-/// - `gt dash` - Opens Graphite dashboard
-/// - `gt auth` - Authentication
-/// - `gt feedback` - Sends feedback to Graphite team
-/// - `gt freeze` / `gt unfreeze` - Primarily useful with remote sync
-/// - `gt reorder` - Requires interactive editor
-/// - `gt revert` - Experimental, requires specific trunk commit setup
-/// - `gt split --by-commit` / `gt split --by-hunk` - Requires interactive input
-///
-/// ## Commands NOT tested (require interactive terminal):
-/// - `gt undo` - Requires interactive mode even with `--no-interactive` flag
-///
-/// ## Commands tested:
-/// - `gt init` - Initialize Graphite in a repo
-/// - `gt create` - Create new branch with commit
-/// - `gt modify` - Amend/new commit with automatic restack
-/// - `gt squash` - Squash all commits in branch into one
-/// - `gt restack` - Rebase stack to ensure parent lineage
-/// - `gt fold` - Fold branch into parent
-/// - `gt move` - Move branch to new parent
-/// - `gt split --by-file` - Split branch by file (KNOWN_ISSUE: loses attribution)
-/// - `gt absorb` - Absorb staged changes into stack (KNOWN_ISSUE: loses attribution)
-/// - `gt checkout` / `gt up` / `gt down` / `gt top` / `gt bottom` - Navigation
-/// - `gt delete` - Delete branch, restack children (KNOWN_ISSUE: requires interactive mode)
-/// - `gt pop` - Delete branch, retain working tree
-/// - `gt rename` - Rename branch
-/// - `gt track` / `gt untrack` - Metadata tracking
+//! Local-only Graphite (`gt`) operations — no remote or GitHub auth required.
+//!
+//! These tests verify that git-ai attribution (line-level blame tracking of AI vs human
+//! authorship) is correctly preserved across Graphite CLI operations that run entirely
+//! against the local repository. Remote-backed operations (`gt submit`, `gt sync`,
+//! `gt get`, `gt merge`) live in `super::remote_ops`.
+//!
+//! ## Requirements
+//! - The `gt` CLI must be installed and available in PATH
+//! - When the `CI` environment variable is set, tests will FAIL if `gt` is not available
+//! - When not in CI, tests will be SKIPPED if `gt` is not available
+//!
+//! ## Graphite's `commit-tree` + `update-ref` plumbing path
+//!
+//! Graphite's restack/move/absorb/split operations internally use `git commit-tree` +
+//! `git update-ref` (low-level plumbing commands) instead of `git rebase`.
+//!
+//! git-ai receives Graphite's `update-ref` trace2 events, detects the
+//! non-fast-forward rewrite, and remaps authorship notes to the new commit SHAs.
+//! This covers the core operations: restack, move, modify (with child restacking),
+//! and full stack workflows.
+//!
+//! Remaining known issues (still `#[ignore]`):
+//!   - `gt absorb` and `gt split --by-file` lose attribution (update-ref hook cannot
+//!     reconstruct the mapping for these more complex rewrite patterns)
+//!   - `gt delete --force` and `gt undo` require interactive mode even with `--no-interactive`
+//!
+//! ## Commands NOT tested here (require interactive terminal):
+//! - `gt undo` - Requires interactive mode even with `--no-interactive` flag
+//! - `gt reorder` - Requires interactive editor
+//! - `gt split --by-commit` / `gt split --by-hunk` - Requires interactive input
+//!
+//! ## Commands tested:
+//! - `gt init` - Initialize Graphite in a repo
+//! - `gt create` - Create new branch with commit
+//! - `gt modify` - Amend/new commit with automatic restack
+//! - `gt squash` - Squash all commits in branch into one
+//! - `gt restack` - Rebase stack to ensure parent lineage
+//! - `gt fold` - Fold branch into parent
+//! - `gt move` - Move branch to new parent
+//! - `gt split --by-file` - Split branch by file (KNOWN_ISSUE: loses attribution)
+//! - `gt absorb` - Absorb staged changes into stack (KNOWN_ISSUE: loses attribution)
+//! - `gt checkout` / `gt up` / `gt down` / `gt top` / `gt bottom` - Navigation
+//! - `gt delete` - Delete branch, restack children (KNOWN_ISSUE: requires interactive mode)
+//! - `gt pop` - Delete branch, retain working tree
+//! - `gt rename` - Rename branch
+//! - `gt track` / `gt untrack` - Metadata tracking
+use super::graphite_test_harness::{
+    assert_head_branch, assert_worktree_clean, gt, gt_init, require_gt, setup_initial_commit,
+};
 use crate::repos::test_file::ExpectedLineExt;
-use crate::repos::test_repo::{TestRepo, real_git_executable};
-
-use serde::Deserialize;
-use std::path::PathBuf;
-use std::process::Command;
-use std::sync::OnceLock;
-
-const DETERMINISTIC_GIT_NAME: &str = "Graphite Test";
-const DETERMINISTIC_GIT_EMAIL: &str = "graphite-test@example.com";
-const DETERMINISTIC_GIT_DATE: &str = "2000-01-01T00:00:00+00:00";
-
-// ---------------------------------------------------------------------------
-// Helper utilities
-// ---------------------------------------------------------------------------
-
-/// Resolve and cache the absolute path to the `gt` CLI binary.
-/// On Windows, npm installs `gt` as `gt.cmd` (a batch wrapper), which Rust's
-/// `Command::new("gt")` cannot find because it only searches for `.exe` files.
-/// By resolving the full path once via `where`/`which`, we can use the absolute
-/// path in all subsequent Command invocations.
-static GT_BINARY_PATH: OnceLock<Option<String>> = OnceLock::new();
-
-fn find_gt_binary() -> Option<&'static str> {
-    GT_BINARY_PATH
-        .get_or_init(|| {
-            #[cfg(windows)]
-            let which_cmd = "where";
-            #[cfg(not(windows))]
-            let which_cmd = "which";
-
-            let output = Command::new(which_cmd).arg("gt").output().ok()?;
-            if output.status.success() {
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                // `where` on Windows may return multiple lines; take the first.
-                let first = path.lines().next().unwrap_or(&path).to_string();
-                if first.is_empty() { None } else { Some(first) }
-            } else {
-                None
-            }
-        })
-        .as_deref()
-}
-
-/// Guard that skips the test when `gt` is not installed (local dev),
-/// or panics when running in CI (where `gt` MUST be available).
-macro_rules! require_gt {
-    () => {{
-        if find_gt_binary().is_none() {
-            if std::env::var("CI").is_ok() {
-                panic!(
-                    "Graphite CLI (`gt`) is required in CI but was not found. \
-                     Install it with: npm install -g @withgraphite/graphite-cli@stable"
-                );
-            } else {
-                eprintln!("SKIP: `gt` CLI not found — skipping Graphite test");
-                return;
-            }
-        }
-    }};
-}
-
-/// Create a shim directory containing a `git` symlink (or copy on Windows)
-/// that points to the test-only git shim binary. The shim logs tracked git
-/// invocations for external tools like Graphite, then delegates to real git.
-static GT_GIT_SHIM_DIR: OnceLock<PathBuf> = OnceLock::new();
-
-fn gt_git_shim_dir() -> &'static PathBuf {
-    GT_GIT_SHIM_DIR.get_or_init(|| {
-        let shim_binary = PathBuf::from(env!("CARGO_BIN_EXE_git-ai-test-git-shim"));
-        let shim_dir =
-            std::env::temp_dir().join(format!("git-ai-gt-git-shim-{}", std::process::id()));
-        std::fs::create_dir_all(&shim_dir).expect("create shim dir");
-
-        #[cfg(unix)]
-        {
-            let link_path = shim_dir.join("git");
-            // Remove stale symlink if it exists
-            let _ = std::fs::remove_file(&link_path);
-            std::os::unix::fs::symlink(shim_binary, &link_path).expect("create git symlink");
-        }
-
-        #[cfg(windows)]
-        {
-            let link_path = shim_dir.join("git.exe");
-            let _ = std::fs::remove_file(&link_path);
-            std::fs::copy(shim_binary, &link_path).expect("copy shim as git.exe");
-        }
-
-        shim_dir
-    })
-}
-
-/// Build a PATH string that has the shim directory first,
-/// followed by the original system PATH.
-fn gt_git_path() -> String {
-    let shim_dir = gt_git_shim_dir();
-    let original_path = std::env::var("PATH").unwrap_or_default();
-    let sep = if cfg!(windows) { ";" } else { ":" };
-    format!("{}{}{}", shim_dir.display(), sep, original_path)
-}
-
-fn gt_git_target() -> String {
-    real_git_executable().to_string()
-}
-
-fn new_gt_started_log_path() -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "git-ai-gt-started-{}-{}.jsonl",
-        std::process::id(),
-        git_ai::uuid::generate_v4()
-    ))
-}
-
-#[derive(Deserialize)]
-struct GtStartedLogEntry {
-    #[serde(default)]
-    test_sync_session: Option<String>,
-}
-
-fn gt_started_sessions(log_path: &PathBuf) -> Vec<String> {
-    let Ok(content) = std::fs::read_to_string(log_path) else {
-        return Vec::new();
-    };
-
-    let mut sessions = Vec::new();
-    for (idx, line) in content.lines().enumerate() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let entry: GtStartedLogEntry = serde_json::from_str(line).unwrap_or_else(|error| {
-            panic!(
-                "failed to parse Graphite shim start log entry {} in {}: {}",
-                idx + 1,
-                log_path.display(),
-                error
-            )
-        });
-        if let Some(session) = entry.test_sync_session {
-            sessions.push(session);
-        }
-    }
-
-    sessions
-}
-
-fn apply_deterministic_git_env(command: &mut Command, repo: &TestRepo) {
-    command.env("HOME", repo.test_home_path());
-    command.env(
-        "GIT_CONFIG_GLOBAL",
-        repo.test_home_path().join(".gitconfig"),
-    );
-    command.env("XDG_CONFIG_HOME", repo.test_home_path().join(".config"));
-
-    command.env("GIT_AUTHOR_NAME", DETERMINISTIC_GIT_NAME);
-    command.env("GIT_AUTHOR_EMAIL", DETERMINISTIC_GIT_EMAIL);
-    command.env("GIT_AUTHOR_DATE", DETERMINISTIC_GIT_DATE);
-    command.env("GIT_COMMITTER_NAME", DETERMINISTIC_GIT_NAME);
-    command.env("GIT_COMMITTER_EMAIL", DETERMINISTIC_GIT_EMAIL);
-    command.env("GIT_COMMITTER_DATE", DETERMINISTIC_GIT_DATE);
-    command.env("TZ", "UTC");
-    command.env("LC_ALL", "C");
-    command.env("LANG", "C");
-    command.env("GIT_CONFIG_NOSYSTEM", "1");
-    command.env("GIT_TERMINAL_PROMPT", "0");
-}
-
-fn assert_head_branch(repo: &TestRepo, expected_branch: &str) {
-    let current = repo.current_branch();
-    assert_eq!(
-        current, expected_branch,
-        "expected HEAD branch {expected_branch}, found {current}"
-    );
-}
-
-fn assert_worktree_clean(repo: &TestRepo) {
-    let status = repo
-        .git(&["status", "--porcelain"])
-        .expect("git status should succeed");
-    assert!(
-        status.trim().is_empty(),
-        "expected clean worktree, found:\n{}",
-        status
-    );
-}
-
-/// Execute a `gt` command inside the given TestRepo directory.
-///
-/// The key insight: `gt` calls `git` internally for commits, rebases, etc.
-/// By prepending a shim directory to PATH, all of `gt`'s git operations emit
-/// trace2 metadata to the daemon and can be synchronized by the test harness.
-///
-/// Passes `--no-interactive` to avoid prompts.
-/// Returns Ok(stdout+stderr) on success, Err(stderr) on failure.
-fn gt(repo: &TestRepo, args: &[&str]) -> Result<String, String> {
-    let gt_path =
-        find_gt_binary().expect("gt binary not found; require_gt! should have been called");
-
-    // On Windows, npm installs `gt` as `gt.cmd` (a batch wrapper). Rust's
-    // Command cannot execute `.cmd` files directly — they must be run through
-    // `cmd.exe /C`. On Unix, we invoke the binary directly.
-    #[cfg(windows)]
-    let mut command = {
-        let mut c = Command::new("cmd");
-        c.args(["/C", gt_path]);
-        c
-    };
-    #[cfg(not(windows))]
-    let mut command = Command::new(gt_path);
-
-    command
-        .current_dir(repo.path())
-        .args(args)
-        .arg("--no-interactive");
-
-    let started_log_path = new_gt_started_log_path();
-
-    // Put the test shim first in PATH so `gt` calls it instead of raw git. The
-    // shim logs tracked git invocations and then delegates to real git.
-    command.env("PATH", gt_git_path());
-    command.env("GIT_AI_TEST_GIT_SHIM_TARGET", gt_git_target());
-    command.env(
-        "GIT_AI_TEST_GIT_SHIM_FALLBACK_TARGET",
-        real_git_executable(),
-    );
-    command.env("GIT_AI_TEST_SYNC_START_LOG", &started_log_path);
-
-    // Set deterministic git metadata + isolated config/locale across all gt invocations.
-    apply_deterministic_git_env(&mut command, repo);
-
-    let trace_socket = repo.daemon_trace_socket_path();
-    let nesting = std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string());
-    command.env(
-        "GIT_TRACE2_EVENT",
-        git_ai::daemon::DaemonConfig::trace2_event_target_for_path(&trace_socket),
-    );
-    command.env("GIT_TRACE2_EVENT_NESTING", nesting);
-    command.env("GIT_AI_TEST_DB_PATH", repo.test_db_path().to_str().unwrap());
-    command.env("GITAI_TEST_DB_PATH", repo.test_db_path().to_str().unwrap());
-
-    if let Some(patch) = repo.config_patch_json() {
-        command.env("GIT_AI_TEST_CONFIG_PATCH", patch);
-    }
-
-    // Isolate Graphite's config and data directories per test to prevent
-    // parallel test corruption of config files and the nuxes SQLite database
-    // (race condition in CI).
-    command.env("XDG_CONFIG_HOME", repo.test_home_path().join(".config"));
-    command.env(
-        "XDG_DATA_HOME",
-        repo.test_home_path().join(".local").join("share"),
-    );
-    // Windows equivalents for Graphite config and data isolation.
-    // USERPROFILE is read by Node.js os.homedir() on Windows (not HOME).
-    command.env("USERPROFILE", repo.test_home_path());
-    command.env(
-        "LOCALAPPDATA",
-        repo.test_home_path().join("AppData").join("Local"),
-    );
-    command.env(
-        "APPDATA",
-        repo.test_home_path().join("AppData").join("Roaming"),
-    );
-
-    let output = command
-        .output()
-        .unwrap_or_else(|e| panic!("Failed to execute gt {:?}: {}", args, e));
-
-    let sessions = gt_started_sessions(&started_log_path);
-    repo.sync_daemon_external_completion_sessions(&sessions);
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    if output.status.success() {
-        let combined = if stdout.is_empty() {
-            stderr
-        } else if stderr.is_empty() {
-            stdout
-        } else {
-            format!("{}{}", stdout, stderr)
-        };
-        Ok(combined)
-    } else {
-        let combined_err = format!("{}{}", stderr, stdout);
-        Err(combined_err)
-    }
-}
-
-/// Initialize Graphite in a TestRepo (sets trunk to "main").
-fn gt_init(repo: &TestRepo) {
-    gt(repo, &["init", "--trunk", "main"]).expect("gt init should succeed");
-}
-
-/// Create an initial commit so the repo is not empty (required for most gt operations).
-fn setup_initial_commit(repo: &TestRepo) {
-    let mut readme = repo.filename("README.md");
-    readme.set_contents(crate::lines!["# Test Repo"]);
-    repo.stage_all_and_commit("initial commit")
-        .expect("initial commit should succeed");
-}
-
+use crate::repos::test_repo::TestRepo;
 // ===========================================================================
 // Group 1: gt create — Branch creation with attribution
 // ===========================================================================
