@@ -2646,7 +2646,9 @@ fn read_checkpoint_body<R: BufRead>(
 
 #[derive(Debug)]
 enum FamilySequencerEntry {
-    PendingRoot,
+    PendingRoot {
+        root_sid: String,
+    },
     ReadyCommand(Box<crate::daemon::domain::NormalizedCommand>),
     Checkpoint {
         request: Box<CheckpointRequest>,
@@ -2737,6 +2739,14 @@ struct TraceIngressState {
     /// Roots whose start event was identified as definitely read-only. All
     /// subsequent events for these roots (including exit) take the fast path.
     root_definitely_read_only: HashSet<String>,
+    /// Commit roots currently blocked inside their commit-message editor.
+    /// `git commit` cannot update refs until this child returns, so completed
+    /// commands may safely pass this root in the family sequencer meanwhile.
+    root_commit_editor_child_ids: HashMap<String, u64>,
+    /// Roots that have run a nested mutating Git command. Their reflog ranges
+    /// may already contain mutations, so they must remain ordering barriers
+    /// even if the parent later opens a commit-message editor.
+    root_saw_nested_mutation: HashSet<String>,
     root_open_connections: HashMap<String, usize>,
     unidentified_open_connections: usize,
     root_close_markers_enqueued: HashSet<String>,
@@ -3449,9 +3459,12 @@ impl ActorDaemonCoordinator {
                 ordinal: state.next_ordinal,
             };
             state.next_ordinal = state.next_ordinal.saturating_add(1);
-            state
-                .entries
-                .insert(order, FamilySequencerEntry::PendingRoot);
+            state.entries.insert(
+                order,
+                FamilySequencerEntry::PendingRoot {
+                    root_sid: root_sid.to_string(),
+                },
+            );
             order
         };
 
@@ -3625,7 +3638,7 @@ impl ActorDaemonCoordinator {
                 )));
             };
             match entry {
-                FamilySequencerEntry::PendingRoot => {
+                FamilySequencerEntry::PendingRoot { .. } => {
                     *entry = replacement;
                 }
                 _ => {
@@ -3657,6 +3670,9 @@ impl ActorDaemonCoordinator {
                 continue;
             }
             if ingress.root_definitely_read_only.contains(root_sid) {
+                continue;
+            }
+            if ingress.root_commit_editor_child_ids.contains_key(root_sid) {
                 continue;
             }
             if !ingress.root_mutating.get(root_sid).copied().unwrap_or(true) {
@@ -3831,6 +3847,8 @@ impl ActorDaemonCoordinator {
         ingress.root_target_repo_only.remove(root_sid);
         ingress.root_last_activity_ns.remove(root_sid);
         ingress.root_definitely_read_only.remove(root_sid);
+        ingress.root_commit_editor_child_ids.remove(root_sid);
+        ingress.root_saw_nested_mutation.remove(root_sid);
         ingress.root_open_connections.remove(root_sid);
         ingress.root_close_markers_enqueued.remove(root_sid);
     }
@@ -3960,6 +3978,7 @@ impl ActorDaemonCoordinator {
         ingress.root_open_connections.iter().any(|(root, count)| {
             *count > 0
                 && !ingress.root_definitely_read_only.contains(root)
+                && !ingress.root_commit_editor_child_ids.contains_key(root)
                 && ingress.root_mutating.get(root).copied().unwrap_or(true)
         })
     }
@@ -3975,6 +3994,7 @@ impl ActorDaemonCoordinator {
         ingress.root_open_connections.iter().any(|(root, count)| {
             *count > 0
                 && !ingress.root_definitely_read_only.contains(root)
+                && !ingress.root_commit_editor_child_ids.contains_key(root)
                 && ingress.root_mutating.get(root).copied().unwrap_or(true)
                 && ingress
                     .root_families
@@ -4806,6 +4826,14 @@ impl ActorDaemonCoordinator {
             .clone())
     }
 
+    fn trace_root_is_waiting_for_commit_editor(&self, root_sid: &str) -> Result<bool, GitAiError> {
+        let ingress = self
+            .trace_ingress_state
+            .lock()
+            .map_err(|_| GitAiError::Generic("trace ingress state lock poisoned".to_string()))?;
+        Ok(ingress.root_commit_editor_child_ids.contains_key(root_sid))
+    }
+
     async fn drain_ready_family_sequencer_entries_locked(
         &self,
         family: &str,
@@ -4822,24 +4850,34 @@ impl ActorDaemonCoordinator {
             let Some(state) = map.get_mut(family) else {
                 return Ok(());
             };
-            while let Some(first_entry) = state.entries.first_entry() {
-                if matches!(first_entry.get(), FamilySequencerEntry::PendingRoot) {
+            let mut removable_orders = Vec::new();
+            for (order, entry) in &state.entries {
+                if let FamilySequencerEntry::PendingRoot { root_sid } = entry {
+                    if self.trace_root_is_waiting_for_commit_editor(root_sid)? {
+                        continue;
+                    }
                     break;
                 }
-                let entry_root_sid = match first_entry.get() {
+                let entry_root_sid = match entry {
                     FamilySequencerEntry::ReadyCommand(command) => Some(command.root_sid.as_str()),
                     _ => None,
                 };
                 if self.family_entry_blocked_by_prior_open_trace_root(
                     family,
-                    first_entry.key().started_at_ns,
+                    order.started_at_ns,
                     entry_root_sid,
                 )? {
                     break;
                 }
-                let (order, entry) = first_entry.remove_entry();
+                removable_orders.push(*order);
+            }
+            for order in removable_orders {
+                let entry = state
+                    .entries
+                    .remove(&order)
+                    .expect("selected family sequencer entry should still exist");
                 match entry {
-                    FamilySequencerEntry::PendingRoot => {
+                    FamilySequencerEntry::PendingRoot { .. } => {
                         unreachable!("pending root should not be removed from sequencer front");
                     }
                     other => {
@@ -5229,7 +5267,7 @@ impl ActorDaemonCoordinator {
                     );
                 }
                 FamilySequencerEntry::Canceled => {}
-                FamilySequencerEntry::PendingRoot => {}
+                FamilySequencerEntry::PendingRoot { .. } => {}
             }
         }
         let _ = self.end_family_effect(family);
@@ -6734,6 +6772,102 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    /// Applies the only trace2 wait state that is safe to pass in a family:
+    /// a `git commit` parent blocked in its commit-message editor. Git cannot
+    /// update the target ref until that child exits. Other editor-using
+    /// commands (notably rebase) remain barriers because they may already have
+    /// moved refs before opening an editor.
+    ///
+    /// Returns the root's family when it newly starts yielding so any entries
+    /// already queued behind it can be drained immediately.
+    fn update_commit_editor_wait_state(
+        &self,
+        payload: &Value,
+    ) -> Result<Option<String>, GitAiError> {
+        let event = payload
+            .get("event")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let Some(sid) = payload.get("sid").and_then(Value::as_str) else {
+            return Ok(None);
+        };
+        let root_sid = trace_root_sid(sid);
+        let child_id = payload.get("child_id").and_then(Value::as_u64);
+
+        if event == "start" && sid != root_sid {
+            let argv = trace_payload_argv(payload);
+            let primary = trace_argv_primary_command(&argv);
+            if trace_invocation_may_mutate_refs(primary.as_deref(), &argv) {
+                let mut ingress = self.trace_ingress_state.lock().map_err(|_| {
+                    GitAiError::Generic("trace ingress state lock poisoned".to_string())
+                })?;
+                ingress
+                    .root_saw_nested_mutation
+                    .insert(root_sid.to_string());
+                ingress.root_commit_editor_child_ids.remove(root_sid);
+                self.trace_ingest_progress_notify.notify_waiters();
+            }
+            return Ok(None);
+        }
+
+        if event == "child_start"
+            && sid == root_sid
+            && payload.get("child_class").and_then(Value::as_str) == Some("editor")
+        {
+            // A child_start event's own argv belongs to the editor, not Git.
+            // Classify the parent from the root argv retained at its start.
+            let mut ingress = self.trace_ingress_state.lock().map_err(|_| {
+                GitAiError::Generic("trace ingress state lock poisoned".to_string())
+            })?;
+            let primary = ingress
+                .root_argv
+                .get(root_sid)
+                .and_then(|argv| trace_argv_primary_command(argv));
+            if primary.as_deref() != Some("commit")
+                || ingress.root_saw_nested_mutation.contains(root_sid)
+            {
+                return Ok(None);
+            }
+            let Some(child_id) = child_id else {
+                return Ok(None);
+            };
+            ingress
+                .root_commit_editor_child_ids
+                .insert(root_sid.to_string(), child_id);
+            drop(ingress);
+            let family = self
+                .pending_root_slots_by_root
+                .lock()
+                .map_err(|_| {
+                    GitAiError::Generic("pending root slots map lock poisoned".to_string())
+                })?
+                .get(root_sid)
+                .map(|slot| slot.family.clone());
+            self.trace_ingest_progress_notify.notify_waiters();
+            return Ok(family);
+        }
+
+        if event == "child_exit" && sid == root_sid {
+            let mut ingress = self.trace_ingress_state.lock().map_err(|_| {
+                GitAiError::Generic("trace ingress state lock poisoned".to_string())
+            })?;
+            if child_id.is_some_and(|child_id| {
+                ingress.root_commit_editor_child_ids.get(root_sid).copied() == Some(child_id)
+            }) {
+                ingress.root_commit_editor_child_ids.remove(root_sid);
+                self.trace_ingest_progress_notify.notify_waiters();
+            }
+        } else if is_terminal_root_trace_event(event, sid, root_sid) {
+            let mut ingress = self.trace_ingress_state.lock().map_err(|_| {
+                GitAiError::Generic("trace ingress state lock poisoned".to_string())
+            })?;
+            ingress.root_commit_editor_child_ids.remove(root_sid);
+            ingress.root_saw_nested_mutation.remove(root_sid);
+        }
+
+        Ok(None)
+    }
+
     async fn apply_trace_payload_to_state(
         &self,
         payload: Value,
@@ -6766,6 +6900,7 @@ impl ActorDaemonCoordinator {
             return Ok(outcome);
         }
 
+        let family_yielded_by_commit_editor = self.update_commit_editor_wait_state(&payload)?;
         self.maybe_append_pending_root_from_trace_payload(&payload)?;
         let emitted = {
             let mut normalizer = self.normalizer.lock().await;
@@ -6787,6 +6922,10 @@ impl ActorDaemonCoordinator {
                 self.clear_trace_root_tracking(root_sid)?;
                 self.drain_ready_family_sequencers_after_root_cleared(Some(family))
                     .await?;
+                return Ok(TracePayloadApplyOutcome::QueuedFamily);
+            }
+            if let Some(family) = family_yielded_by_commit_editor {
+                self.drain_ready_family_sequencer_entries(&family).await?;
                 return Ok(TracePayloadApplyOutcome::QueuedFamily);
             }
             return Ok(TracePayloadApplyOutcome::None);

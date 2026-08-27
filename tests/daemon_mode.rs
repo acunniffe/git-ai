@@ -2539,6 +2539,255 @@ fn daemon_sync_family_ignores_open_mutating_root_from_other_family() {
 
 #[test]
 #[cfg(not(windows))]
+fn daemon_commit_waiting_for_editor_does_not_block_later_commit() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let control_socket = daemon_control_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+    let waiting_sid = "commit-waiting-for-editor";
+
+    let mut waiting_trace =
+        open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+            .expect("failed to connect waiting commit trace socket");
+    write_trace_frames_to_stream(
+        &mut waiting_trace,
+        &[
+            json!({
+                "event": "start",
+                "sid": waiting_sid,
+                "argv": ["git", "commit"],
+                "time_ns": 1_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": waiting_sid,
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 1_001u64,
+            }),
+            json!({
+                "event": "cmd_name",
+                "sid": waiting_sid,
+                "name": "commit",
+                "hierarchy": "commit",
+                "time_ns": 1_002u64,
+            }),
+            json!({
+                "event": "child_start",
+                "sid": waiting_sid,
+                "child_id": 0,
+                "child_class": "editor",
+                "argv": ["vim", ".git/COMMIT_EDITMSG"],
+                "time_ns": 1_003u64,
+            }),
+            json!({
+                "event": "start",
+                "sid": format!("{waiting_sid}/nested"),
+                "argv": ["git", "status"],
+                "time_ns": 1_004u64,
+            }),
+            json!({
+                "event": "child_start",
+                "sid": format!("{waiting_sid}/nested"),
+                "child_id": 0,
+                "child_class": "pager",
+                "argv": ["less"],
+                "time_ns": 1_005u64,
+            }),
+            json!({
+                "event": "child_exit",
+                "sid": format!("{waiting_sid}/nested"),
+                "child_id": 0,
+                "code": 0,
+                "time_ns": 1_006u64,
+            }),
+        ],
+    );
+
+    let later_session = repos::test_repo::new_daemon_test_sync_session_id();
+    let session_arg = format!("git-ai.testSyncSession={later_session}");
+    send_trace_frames(
+        &trace_socket,
+        &[
+            json!({
+                "event": "start",
+                "sid": "later-completed-commit",
+                "argv": ["git", "-c", session_arg, "commit", "-m", "later commit"],
+                "time_ns": 2_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "later-completed-commit",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 2_001u64,
+            }),
+            json!({
+                "event": "cmd_name",
+                "sid": "later-completed-commit",
+                "name": "commit",
+                "hierarchy": "commit",
+                "time_ns": 2_002u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "later-completed-commit",
+                "code": 0,
+                "time_ns": 2_100u64,
+            }),
+            trace_atexit_frame("later-completed-commit", 0, 2_101u64),
+        ],
+    );
+
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(2) {
+        if repo
+            .daemon_completion_entries()
+            .iter()
+            .any(|entry| entry.test_sync_session.as_deref() == Some(later_session.as_str()))
+        {
+            let sync = send_control_request_with_timeout(
+                &control_socket,
+                &ControlRequest::SyncFamily {
+                    repo_working_dir: repo_workdir_string(&repo),
+                },
+                Duration::from_secs(1),
+            )
+            .expect("sync.family should ignore a commit blocked in its editor");
+            assert!(sync.ok, "sync.family failed: {sync:?}");
+
+            write_trace_frames_to_stream(
+                &mut waiting_trace,
+                &[
+                    json!({
+                        "event": "child_exit",
+                        "sid": waiting_sid,
+                        "child_id": 0,
+                        "code": 1,
+                        "time_ns": 3_000u64,
+                    }),
+                    trace_atexit_frame(waiting_sid, 1, 3_001u64),
+                ],
+            );
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+
+    panic!(
+        "daemon did not process a later commit while an earlier commit waited for its editor; entries={:?}; logs={}",
+        repo.daemon_completion_entries(),
+        repo.daemon_stderr_contents()
+    );
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_rebase_waiting_for_editor_still_blocks_later_commit() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let trace_socket = daemon_trace_socket_path(&repo);
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+    let rebase_sid = "rebase-waiting-for-editor";
+
+    let mut rebase_trace =
+        open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
+            .expect("failed to connect waiting rebase trace socket");
+    write_trace_frames_to_stream(
+        &mut rebase_trace,
+        &[
+            json!({
+                "event": "start",
+                "sid": rebase_sid,
+                "argv": ["git", "rebase", "--interactive", "HEAD~2"],
+                "time_ns": 1_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": rebase_sid,
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 1_001u64,
+            }),
+            json!({
+                "event": "child_start",
+                "sid": rebase_sid,
+                "child_id": 0,
+                "child_class": "editor",
+                "argv": ["vim", ".git/rebase-merge/git-rebase-todo"],
+                "time_ns": 1_002u64,
+            }),
+        ],
+    );
+
+    let later_session = repos::test_repo::new_daemon_test_sync_session_id();
+    let session_arg = format!("git-ai.testSyncSession={later_session}");
+    send_trace_frames(
+        &trace_socket,
+        &[
+            json!({
+                "event": "start",
+                "sid": "commit-behind-open-rebase",
+                "argv": ["git", "-c", session_arg, "commit", "-m", "later commit"],
+                "time_ns": 2_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "commit-behind-open-rebase",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 2_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "commit-behind-open-rebase",
+                "code": 0,
+                "time_ns": 2_100u64,
+            }),
+            trace_atexit_frame("commit-behind-open-rebase", 0, 2_101u64),
+        ],
+    );
+
+    thread::sleep(Duration::from_millis(250));
+    assert!(
+        !repo
+            .daemon_completion_entries()
+            .iter()
+            .any(|entry| entry.test_sync_session.as_deref() == Some(later_session.as_str())),
+        "a rebase editor may open after refs have moved and must remain an ordering barrier"
+    );
+
+    write_trace_frames_to_stream(
+        &mut rebase_trace,
+        &[
+            json!({
+                "event": "child_exit",
+                "sid": rebase_sid,
+                "child_id": 0,
+                "code": 1,
+                "time_ns": 3_000u64,
+            }),
+            trace_atexit_frame(rebase_sid, 1, 3_001u64),
+        ],
+    );
+
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(2) {
+        if repo
+            .daemon_completion_entries()
+            .iter()
+            .any(|entry| entry.test_sync_session.as_deref() == Some(later_session.as_str()))
+        {
+            return;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("later commit did not drain after the rebase root completed");
+}
+
+#[test]
+#[cfg(not(windows))]
 fn daemon_partial_trace_line_does_not_block_checkpoint_control_request() {
     let repo = TestRepo::new_dedicated_daemon();
     let trace_socket = daemon_trace_socket_path(&repo);
