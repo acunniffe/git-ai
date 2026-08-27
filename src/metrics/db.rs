@@ -6,8 +6,8 @@
 
 use crate::error::GitAiError;
 use crate::metrics::attrs::attr_pos;
-use crate::metrics::events::{checkpoint_pos, otel_trace_pos, session_event_pos};
-use crate::metrics::pos_encoded::sparse_get_string;
+use crate::metrics::events::{CheckpointValues, checkpoint_pos, otel_trace_pos, session_event_pos};
+use crate::metrics::pos_encoded::{PosEncoded, sparse_get_string};
 use crate::metrics::types::{MetricEvent, MetricEventId};
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
 use serde_json::{Map, Value};
@@ -34,6 +34,31 @@ const RETRYABLE_METRIC_IDS_SQL: &str = "SELECT id FROM metrics \
        AND attempts < 6 \
      ORDER BY next_retry_at ASC, id DESC \
      LIMIT ?2";
+
+// Consumed by the attribution-recovery child PR in this Graphite stack.
+#[allow(dead_code)]
+const AI_CHECKPOINT_RECOVERY_CANDIDATES_SQL: &str = r#"
+    SELECT
+        id,
+        event_json,
+        event_ts,
+        session_id,
+        trace_id,
+        tool,
+        external_session_id,
+        external_tool_use_id
+    FROM metrics
+    WHERE event_kind = ?1
+      AND event_ts >= ?2
+      AND event_ts <= ?3
+      AND session_id IS NOT NULL
+      AND session_id != ''
+      AND tool IS NOT NULL
+      AND tool != ''
+      AND tool != 'mock_ai'
+      AND external_session_id IS NOT NULL
+      AND external_session_id != ''
+"#;
 
 /// Database migrations - each migration upgrades the schema by one version
 const MIGRATIONS: &[&str] = &[
@@ -124,6 +149,24 @@ pub(crate) struct SessionEventRecoveryCandidate {
     pub external_session_id: String,
     pub external_tool_use_id: Option<String>,
     pub repo_url: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AiCheckpointRecoveryCandidate {
+    pub row_id: i64,
+    pub event_ts: u32,
+    pub checkpoint_ts: u64,
+    pub kind: String,
+    pub file_path: String,
+    pub session_id: String,
+    pub trace_id: Option<String>,
+    pub tool: String,
+    pub model: Option<String>,
+    pub external_session_id: String,
+    pub external_tool_use_id: Option<String>,
+    pub repo_url: Option<String>,
+    pub base_commit: Option<String>,
 }
 
 /// Point-in-time status summary for local metric delivery.
@@ -1140,6 +1183,92 @@ impl MetricsDatabase {
         Ok(candidates)
     }
 
+    #[allow(dead_code)]
+    pub(crate) fn ai_checkpoint_candidates_near_timestamps(
+        &self,
+        timestamps_ns: &[u128],
+        window_ns: u128,
+    ) -> Result<Vec<AiCheckpointRecoveryCandidate>, GitAiError> {
+        if timestamps_ns.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let Some((min_event_ts, max_event_ts)) =
+            event_ts_bounds_for_ns_windows(timestamps_ns, window_ns)
+        else {
+            return Ok(Vec::new());
+        };
+
+        let mut stmt = self.conn.prepare(AI_CHECKPOINT_RECOVERY_CANDIDATES_SQL)?;
+        let rows = stmt.query_map(
+            params![
+                MetricEventId::Checkpoint as i64,
+                min_event_ts as i64,
+                max_event_ts as i64
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                ))
+            },
+        )?;
+
+        let mut candidates = Vec::new();
+        for row in rows {
+            let (
+                row_id,
+                event_json,
+                event_ts,
+                session_id,
+                trace_id,
+                tool,
+                external_session_id,
+                external_tool_use_id,
+            ) = row?;
+            if event_ts < 0 || event_ts > u32::MAX as i64 {
+                continue;
+            }
+
+            let Some(parsed) = parse_ai_checkpoint_recovery_values(&event_json) else {
+                continue;
+            };
+            let Ok(checkpoint_ts_seconds) = u32::try_from(parsed.checkpoint_ts) else {
+                continue;
+            };
+            if min_distance_to_event_ts(timestamps_ns, checkpoint_ts_seconds)
+                .is_none_or(|distance| distance > window_ns)
+            {
+                continue;
+            }
+
+            candidates.push(AiCheckpointRecoveryCandidate {
+                row_id,
+                event_ts: event_ts as u32,
+                checkpoint_ts: parsed.checkpoint_ts,
+                kind: parsed.kind,
+                file_path: parsed.file_path,
+                session_id,
+                trace_id,
+                tool,
+                model: parsed.model,
+                external_session_id,
+                external_tool_use_id,
+                repo_url: parsed.repo_url,
+                base_commit: parsed.base_commit,
+            });
+        }
+        candidates.sort_by_key(|candidate| candidate.row_id);
+
+        Ok(candidates)
+    }
+
     pub(crate) fn latest_session_event_candidates_for_tools(
         &self,
         tools: &[&str],
@@ -1471,6 +1600,42 @@ fn recovery_attrs_from_event_json(event_json: &str) -> (Option<String>, Option<S
         sparse_object_string(attrs, attr_pos::REPO_URL),
         sparse_object_string(attrs, attr_pos::MODEL),
     )
+}
+
+#[allow(dead_code)]
+struct AiCheckpointRecoveryValues {
+    checkpoint_ts: u64,
+    kind: String,
+    file_path: String,
+    model: Option<String>,
+    repo_url: Option<String>,
+    base_commit: Option<String>,
+}
+
+#[allow(dead_code)]
+fn parse_ai_checkpoint_recovery_values(event_json: &str) -> Option<AiCheckpointRecoveryValues> {
+    let event: MetricEvent = serde_json::from_str(event_json).ok()?;
+    if event.event_id != MetricEventId::Checkpoint as u16 {
+        return None;
+    }
+
+    let values = CheckpointValues::from_sparse(&event.values);
+    let checkpoint_ts = values.checkpoint_ts.flatten()?;
+    let kind = values.kind.flatten()?;
+    if !matches!(kind.as_str(), "ai_agent" | "ai_tab") || values.checkpoint_type.flatten().is_some()
+    {
+        return None;
+    }
+    let file_path = values.file_path.flatten().filter(|path| !path.is_empty())?;
+
+    Some(AiCheckpointRecoveryValues {
+        checkpoint_ts,
+        kind,
+        file_path,
+        model: sparse_get_string(&event.attrs, attr_pos::MODEL).flatten(),
+        repo_url: sparse_get_string(&event.attrs, attr_pos::REPO_URL).flatten(),
+        base_commit: sparse_get_string(&event.attrs, attr_pos::BASE_COMMIT_SHA).flatten(),
+    })
 }
 
 fn metric_row_is_older_than_cutoff(
@@ -2248,6 +2413,198 @@ mod tests {
                 }}
             }}"#
         )
+    }
+
+    fn checkpoint_event_json(
+        event_ts: u32,
+        kind: &str,
+        file_path: &str,
+        session_id: &str,
+        tool: &str,
+        checkpoint_type: Option<&str>,
+    ) -> String {
+        let checkpoint_type_value = checkpoint_type
+            .map(|value| format!(r#","{}":"{}""#, checkpoint_pos::CHECKPOINT_TYPE, value))
+            .unwrap_or_default();
+        format!(
+            r#"{{
+                "t":{event_ts},
+                "e":4,
+                "v":{{
+                    "0":{event_ts},
+                    "1":"{kind}",
+                    "2":"{file_path}",
+                    "3":0,
+                    "7":"tool-use-{session_id}"
+                    {checkpoint_type_value}
+                }},
+                "a":{{
+                    "20":"{tool}",
+                    "21":"gpt-5",
+                    "23":"external-{session_id}",
+                    "24":"{session_id}",
+                    "25":"trace-{session_id}",
+                    "1":"https://github.com/acme/repo",
+                    "4":"parent-sha"
+                }}
+            }}"#
+        )
+    }
+
+    #[test]
+    fn test_ai_checkpoint_candidates_near_timestamps_filters_kind_window_and_recoveries() {
+        let (mut db, _temp_dir) = create_test_db();
+        let base_ts = seconds_ago(60);
+        let events = vec![
+            checkpoint_event_json(
+                base_ts,
+                "ai_agent",
+                "src/agent.rs",
+                "session-agent",
+                "codex",
+                None,
+            ),
+            checkpoint_event_json(
+                base_ts,
+                "ai_tab",
+                "src/tab.rs",
+                "session-tab",
+                "cursor",
+                None,
+            ),
+            checkpoint_event_json(
+                base_ts,
+                "known_human",
+                "src/human.rs",
+                "session-human",
+                "vscode",
+                None,
+            ),
+            checkpoint_event_json(
+                base_ts,
+                "ai_agent",
+                "src/recovered.rs",
+                "session-recovered",
+                "codex",
+                Some("recovered_bash"),
+            ),
+            checkpoint_event_json(
+                base_ts,
+                "ai_agent",
+                "src/mock.rs",
+                "session-mock",
+                "mock_ai",
+                None,
+            ),
+            checkpoint_event_json(
+                base_ts + 10,
+                "ai_agent",
+                "src/far.rs",
+                "session-far",
+                "codex",
+                None,
+            ),
+            format!(
+                r#"{{
+                    "t":{base_ts},
+                    "e":4,
+                    "v":{{"0":{base_ts},"1":"ai_agent"}},
+                    "a":{{
+                        "20":"codex",
+                        "23":"external-malformed",
+                        "24":"session-malformed"
+                    }}
+                }}"#
+            ),
+            session_event_json(
+                base_ts,
+                "session-event",
+                "external-event",
+                "codex",
+                Some("https://github.com/acme/repo"),
+            ),
+        ];
+        db.insert_events(&events).unwrap();
+
+        let timestamp_ns = (base_ts as u128 * NS_PER_SECOND) + 500_000_000;
+        let candidates = db
+            .ai_checkpoint_candidates_near_timestamps(&[timestamp_ns], 3_000_000_000)
+            .unwrap();
+
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].kind, "ai_agent");
+        assert_eq!(candidates[0].file_path, "src/agent.rs");
+        assert_eq!(candidates[1].kind, "ai_tab");
+        assert_eq!(candidates[1].file_path, "src/tab.rs");
+    }
+
+    #[test]
+    fn test_ai_checkpoint_candidates_parse_recovery_metadata() {
+        let (mut db, _temp_dir) = create_test_db();
+        let ts = seconds_ago(30);
+        db.insert_events(&[checkpoint_event_json(
+            ts,
+            "ai_agent",
+            "src/lib.rs",
+            "session-complete",
+            "claude-code",
+            None,
+        )])
+        .unwrap();
+
+        let candidates = db
+            .ai_checkpoint_candidates_near_timestamps(&[ts as u128 * NS_PER_SECOND], 3_000_000_000)
+            .unwrap();
+
+        assert_eq!(candidates.len(), 1);
+        let candidate = &candidates[0];
+        assert_eq!(candidate.event_ts, ts);
+        assert_eq!(candidate.checkpoint_ts, u64::from(ts));
+        assert_eq!(candidate.session_id, "session-complete");
+        assert_eq!(
+            candidate.trace_id.as_deref(),
+            Some("trace-session-complete")
+        );
+        assert_eq!(candidate.tool, "claude-code");
+        assert_eq!(candidate.model.as_deref(), Some("gpt-5"));
+        assert_eq!(candidate.external_session_id, "external-session-complete");
+        assert_eq!(
+            candidate.external_tool_use_id.as_deref(),
+            Some("tool-use-session-complete")
+        );
+        assert_eq!(
+            candidate.repo_url.as_deref(),
+            Some("https://github.com/acme/repo")
+        );
+        assert_eq!(candidate.base_commit.as_deref(), Some("parent-sha"));
+    }
+
+    #[test]
+    fn test_ai_checkpoint_candidate_query_uses_event_timestamp_index() {
+        let (db, _temp_dir) = create_test_db();
+        let plan = db
+            .conn
+            .prepare(&format!(
+                "EXPLAIN QUERY PLAN {AI_CHECKPOINT_RECOVERY_CANDIDATES_SQL}"
+            ))
+            .unwrap()
+            .query_map(
+                params![MetricEventId::Checkpoint as i64, 100_i64, 110_i64],
+                |row| row.get::<_, String>(3),
+            )
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert!(
+            plan.iter()
+                .any(|detail| detail.contains("metrics_event_ts_kind")),
+            "expected indexed recovery query plan, got {plan:?}"
+        );
+        assert!(
+            plan.iter().all(|detail| !detail.contains("SCAN metrics")),
+            "recovery query must not scan the metrics table: {plan:?}"
+        );
     }
 
     #[test]
