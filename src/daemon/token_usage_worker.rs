@@ -729,9 +729,6 @@ fn reconcile_flagged_sessions(
     Ok(())
 }
 
-/// Incrementally read one transcript file, persist deduplicated entries, and
-/// emit changed buckets through `sink`. Split out (with injectable repo
-/// resolution and sink) for direct testing without a daemon.
 /// Speed fallback from the rollout's codex-home `config.toml` (recorded
 /// service tiers win; this covers unmarked entries). Cached by config mtime:
 /// a pass over many rollouts stats the file once per rollout but reads and
@@ -764,6 +761,9 @@ fn codex_config_fallback_speed(stream_path: &Path) -> Option<Speed> {
     speed
 }
 
+/// Incrementally read one transcript file, persist deduplicated entries, and
+/// emit changed buckets through `sink`. Split out (with injectable repo
+/// resolution and sink) for direct testing without a daemon.
 fn process_file(
     token_db: &TokenUsageDatabase,
     identity: &SessionIdentity,
@@ -797,9 +797,6 @@ fn process_file(
     let Some(mut extractor) = extractor_for_tool(&identity.tool) else {
         return Ok(());
     };
-    if identity.tool == "codex" {
-        extractor.set_fallback_speed(codex_config_fallback_speed(Path::new(stream_path)));
-    }
     // A shrunken file was rewritten, and unreadable persisted state (corrupt
     // or cross-version) means the cursor position is meaningless for the
     // fresh extractor: both restart from scratch. Entry-level dedup keeps
@@ -822,6 +819,12 @@ fn process_file(
         && !extractor.has_pending()
     {
         return Ok(());
+    }
+
+    // Only lines fed below consume the fallback speed, so quiet-skipped
+    // passes never pay the config lookup.
+    if identity.tool == "codex" {
+        extractor.set_fallback_speed(codex_config_fallback_speed(Path::new(stream_path)));
     }
 
     let file = std::fs::File::open(stream_path)?;
@@ -1554,10 +1557,10 @@ mod tests {
 
         let conn =
             crate::sqlite::open_with_memory_limits(dir.path().join("token-usage-db")).unwrap();
+        // Both turns land in the same 5-minute bucket, so order by insertion
+        // (file) order rather than the tying bucket_ts.
         let rows: Vec<(u64, i64, bool)> = conn
-            .prepare(
-                "SELECT input_tokens, speed, speed_inferred FROM usage_entries ORDER BY bucket_ts",
-            )
+            .prepare("SELECT input_tokens, speed, speed_inferred FROM usage_entries ORDER BY rowid")
             .unwrap()
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
             .unwrap()
