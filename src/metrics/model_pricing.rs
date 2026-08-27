@@ -95,7 +95,10 @@ const FAST_MULTIPLIER_PREFIX: [(&str, f64); 3] = [
 /// only records these tiers under gateway spellings (google-vertex, azure)
 /// that the provider allowlist drops, so they are hand-tracked here and
 /// stamped onto first-party entries that carry no tiers of their own. Prefix
-/// semantics like [`FAST_MULTIPLIER_PREFIX`].
+/// semantics like [`FAST_MULTIPLIER_PREFIX`]. Both override tables are
+/// applied when a catalog is *loaded* (not when it is fetched/trimmed), so
+/// editing them takes effect on upgrade even against a previously fetched
+/// on-disk cache.
 const CLAUDE_LONG_CONTEXT_PREFIX: [(&str, LongContextRates); 6] = [
     ("claude-sonnet-4", SONNET_LONG_CONTEXT),
     ("claude-sonnet-4-5", SONNET_LONG_CONTEXT),
@@ -138,7 +141,7 @@ struct LongContextRates {
 /// describe the model's long-context tier: a request whose context exceeds
 /// the threshold bills every token at the above rate (whole-request, not
 /// marginal), falling back per-rate to the base rate when unpublished.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct ModelPricing {
     pub input: f64,
     pub output: f64,
@@ -206,7 +209,8 @@ pub struct PricingCatalog {
 }
 
 impl PricingCatalog {
-    fn from_entries(entries: BTreeMap<String, ModelPricing>) -> Self {
+    fn from_entries(mut entries: BTreeMap<String, ModelPricing>) -> Self {
+        apply_overrides(&mut entries);
         Self { entries }
     }
 
@@ -229,16 +233,20 @@ impl PricingCatalog {
     /// 3. Family fallback: ids the catalog doesn't know at all (legacy or
     ///    too new) are priced like the median-priced model of their family,
     ///    so they estimate at family rates instead of silently costing $0.
-    pub fn pricing_for(&self, model: &str) -> Option<&ModelPricing> {
+    pub fn pricing_for(&self, model: &str) -> Option<ModelPricing> {
         let model = model.to_lowercase();
         if let Some(pricing) = self.entries.get(&model) {
-            return Some(pricing);
+            return Some(*pricing);
         }
+        // A token-boundary match returns the catalog entry verbatim,
+        // including its multiplier/tier — that's how date-suffixed and
+        // variant spellings inherit their base model's data, and it matches
+        // ccusage's fuzzy lookup, which also returns full entries.
         self.entries
             .iter()
             .filter(|(id, _)| contains_at_token_boundary(&model, id))
             .max_by_key(|(id, _)| id.len())
-            .map(|(_, pricing)| pricing)
+            .map(|(_, pricing)| *pricing)
             .or_else(|| self.family_fallback(&model))
     }
 
@@ -247,7 +255,7 @@ impl PricingCatalog {
     /// gives a representative family rate that's robust to outliers in either
     /// direction — legacy expensive entries (gpt-4 at ~24x gpt-5's input
     /// rate) as much as nano/mini variants — without parsing version numbers.
-    fn family_fallback(&self, model: &str) -> Option<&ModelPricing> {
+    fn family_fallback(&self, model: &str) -> Option<ModelPricing> {
         let token = FAMILY_FALLBACK_TOKENS
             .iter()
             .find(|token| contains_at_token_boundary(model, token))?;
@@ -262,7 +270,21 @@ impl PricingCatalog {
                 .then(a.output.total_cmp(&b.output))
                 .then(id_a.cmp(id_b))
         });
-        family.get(family.len() / 2).map(|(_, pricing)| *pricing)
+        // A family-median ESTIMATE must not inherit one specific model's
+        // hand-tracked fast multiplier or long-context tier: an unknown
+        // fast-tier model would otherwise bill at up to 6x the median rate
+        // and corrupt the emitted long-context splits.
+        family
+            .get(family.len() / 2)
+            .map(|(_, pricing)| ModelPricing {
+                long_context_threshold: None,
+                input_above: None,
+                output_above: None,
+                cache_read_above: None,
+                cache_write_above: None,
+                fast_multiplier: 1.0,
+                ..**pricing
+            })
     }
 }
 
@@ -287,8 +309,8 @@ fn contains_at_token_boundary(haystack: &str, needle: &str) -> bool {
 /// present, embedded snapshot otherwise). Memoized per distinct id: misses of
 /// the exact-match fast path scan the catalog linearly, and callers invoke
 /// this once per recorded message.
-pub fn pricing_for(model: &str) -> Option<&'static ModelPricing> {
-    static MEMO: OnceLock<Mutex<HashMap<String, Option<&'static ModelPricing>>>> = OnceLock::new();
+pub fn pricing_for(model: &str) -> Option<ModelPricing> {
+    static MEMO: OnceLock<Mutex<HashMap<String, Option<ModelPricing>>>> = OnceLock::new();
     let memo = MEMO.get_or_init(|| Mutex::new(HashMap::new()));
     if let Ok(cache) = memo.lock()
         && let Some(cached) = cache.get(model)
@@ -415,7 +437,10 @@ fn fetch_and_trim_catalog() -> Result<BTreeMap<String, ModelPricing>, String> {
 }
 
 /// A model's `cost` object as models.dev publishes it. Unlike [`ModelPricing`]
-/// it may lack input/output (skipped) and carries tier bands verbatim.
+/// it may lack input/output (skipped) and carries tier bands verbatim. Tiers
+/// are held as raw JSON and parsed per band, so one novel-shaped band (or a
+/// non-array `tiers`) degrades that model to its flat rates instead of
+/// silently dropping it from the catalog.
 #[derive(Deserialize)]
 struct ModelsDevCost {
     input: Option<f64>,
@@ -423,7 +448,7 @@ struct ModelsDevCost {
     cache_read: Option<f64>,
     cache_write: Option<f64>,
     #[serde(default)]
-    tiers: Vec<ModelsDevTier>,
+    tiers: serde_json::Value,
 }
 
 #[derive(Deserialize)]
@@ -449,7 +474,10 @@ impl ModelsDevCost {
     /// the two thresholds at the base rate (ccusage `long_context_tier`).
     fn long_context_rates(&self) -> Option<LongContextRates> {
         self.tiers
-            .iter()
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|band| serde_json::from_value::<ModelsDevTier>(band.clone()).ok())
             .filter_map(|tier| {
                 let bound = tier.tier.as_ref()?;
                 if bound.kind.as_deref() != Some("context") {
@@ -478,6 +506,26 @@ fn prefix_override<T: Copy>(overrides: &[(&str, T)], model_id: &str) -> Option<T
         .map(|(_, value)| *value)
 }
 
+/// Stamp the hand-tracked overrides onto a loaded catalog: fast multipliers
+/// always, the Claude long-context premium only where the entry publishes no
+/// tiers of its own. Runs at load time so an override edit shipped in a new
+/// binary applies even to a previously fetched cache (idempotent over caches
+/// written before this moved out of the trim step).
+fn apply_overrides(entries: &mut BTreeMap<String, ModelPricing>) {
+    for (model_id, pricing) in entries.iter_mut() {
+        pricing.fast_multiplier = fast_multiplier_override(model_id);
+        if pricing.long_context_threshold.is_none()
+            && let Some(rates) = prefix_override(&CLAUDE_LONG_CONTEXT_PREFIX, model_id)
+        {
+            pricing.long_context_threshold = Some(rates.threshold);
+            pricing.input_above = rates.input;
+            pricing.output_above = rates.output;
+            pricing.cache_read_above = rates.cache_read;
+            pricing.cache_write_above = rates.cache_write;
+        }
+    }
+}
+
 fn fast_multiplier_override(model_id: &str) -> f64 {
     FAST_MULTIPLIER_EXACT
         .iter()
@@ -488,11 +536,10 @@ fn fast_multiplier_override(model_id: &str) -> f64 {
 }
 
 /// Reduce a full models.dev `api.json` document to a flat model-id → pricing
-/// map over the provider allowlist, keeping each model's long-context tier
-/// and stamping the hand-tracked overrides (fast multipliers always; Claude
-/// long-context rates only when the entry publishes no tiers of its own).
-/// Models without a parseable cost entry (missing, or lacking input/output
-/// rates) are skipped.
+/// map over the provider allowlist, keeping each model's long-context tier.
+/// Pure models.dev data — the hand-tracked override tables are applied at
+/// load time by [`apply_overrides`]. Models without a parseable cost entry
+/// (missing, or lacking input/output rates) are skipped.
 fn trim_catalog(api_json: &str) -> Result<BTreeMap<String, ModelPricing>, String> {
     let providers: serde_json::Value = serde_json::from_str(api_json).map_err(|e| e.to_string())?;
     let mut entries = BTreeMap::new();
@@ -514,12 +561,9 @@ fn trim_catalog(api_json: &str) -> Result<BTreeMap<String, ModelPricing>, String
             let (Some(input), Some(output)) = (cost.input, cost.output) else {
                 continue;
             };
-            let model_id = model_id.to_lowercase();
-            let long_context = cost
-                .long_context_rates()
-                .or_else(|| prefix_override(&CLAUDE_LONG_CONTEXT_PREFIX, &model_id));
+            let long_context = cost.long_context_rates();
             entries.insert(
-                model_id.clone(),
+                model_id.to_lowercase(),
                 ModelPricing {
                     input,
                     output,
@@ -530,7 +574,7 @@ fn trim_catalog(api_json: &str) -> Result<BTreeMap<String, ModelPricing>, String
                     output_above: long_context.and_then(|rates| rates.output),
                     cache_read_above: long_context.and_then(|rates| rates.cache_read),
                     cache_write_above: long_context.and_then(|rates| rates.cache_write),
-                    fast_multiplier: fast_multiplier_override(&model_id),
+                    fast_multiplier: 1.0,
                 },
             );
         }
@@ -606,14 +650,20 @@ mod tests {
         // These ids are absent from the catalog (legacy, or newer than the
         // snapshot) but must estimate at family rates rather than $0. The
         // equality assertions pin the current family medians.
+        // Family fallbacks estimate at the median member's BASE rates with
+        // multipliers/tiers neutralized (see
+        // family_fallback_never_inherits_multipliers_or_tiers).
         assert_eq!(
-            catalog.pricing_for("claude-3-5-sonnet-20241022"),
-            catalog.pricing_for("claude-sonnet-4-6"),
+            catalog
+                .pricing_for("claude-3-5-sonnet-20241022")
+                .unwrap()
+                .input,
+            catalog.pricing_for("claude-sonnet-4-6").unwrap().input,
             "legacy sonnet ids price at the median sonnet rate"
         );
         assert_eq!(
-            catalog.pricing_for("claude-opus-4-1"),
-            catalog.pricing_for("claude-opus-4-7"),
+            catalog.pricing_for("claude-opus-4-1").unwrap().input,
+            catalog.pricing_for("claude-opus-4-7").unwrap().input,
             "uncataloged opus ids price at the median opus rate"
         );
         assert!(
@@ -755,14 +805,39 @@ mod tests {
         .to_string();
 
         let entries = trim_catalog(&api_json).unwrap();
-        assert_eq!(entries["gpt-5.5"].fast_multiplier, 2.5);
+        // Trim output is pure models.dev data; the override tables apply at
+        // load time so editing them takes effect against fetched caches.
+        assert_eq!(entries["gpt-5.5"].fast_multiplier, 1.0);
+        let catalog = PricingCatalog::from_entries(entries);
+        assert_eq!(catalog.pricing_for("gpt-5.5").unwrap().fast_multiplier, 2.5);
         // gpt entries are exact-only: the pro variant has its own pricing and
         // no published fast tier.
-        assert_eq!(entries["gpt-5.5-pro"].fast_multiplier, 1.0);
-        assert_eq!(entries["claude-opus-4-6"].fast_multiplier, 6.0);
+        assert_eq!(
+            catalog.pricing_for("gpt-5.5-pro").unwrap().fast_multiplier,
+            1.0
+        );
+        assert_eq!(
+            catalog
+                .pricing_for("claude-opus-4-6")
+                .unwrap()
+                .fast_multiplier,
+            6.0
+        );
         // Prefix entries cover date-suffixed spellings of the base model.
-        assert_eq!(entries["claude-opus-4-6-20260205"].fast_multiplier, 6.0);
-        assert_eq!(entries["claude-fable-5"].fast_multiplier, 1.0);
+        assert_eq!(
+            catalog
+                .pricing_for("claude-opus-4-6-20260205")
+                .unwrap()
+                .fast_multiplier,
+            6.0
+        );
+        assert_eq!(
+            catalog
+                .pricing_for("claude-fable-5")
+                .unwrap()
+                .fast_multiplier,
+            1.0
+        );
     }
 
     #[test]
@@ -786,23 +861,104 @@ mod tests {
         .to_string();
 
         let entries = trim_catalog(&api_json).unwrap();
-        let sonnet = &entries["claude-sonnet-4-6"];
+        assert_eq!(
+            entries["claude-sonnet-4-6"].long_context_threshold, None,
+            "trim output is pure models.dev data"
+        );
+        let catalog = PricingCatalog::from_entries(entries);
+        let sonnet = catalog.pricing_for("claude-sonnet-4-6").unwrap();
         assert_eq!(sonnet.long_context_threshold, Some(200_000));
         assert_eq!(sonnet.input_above, Some(6.0));
         assert_eq!(sonnet.output_above, Some(22.5));
         assert_eq!(sonnet.cache_read_above, Some(0.6));
         assert_eq!(sonnet.cache_write_above, Some(7.5));
         assert_eq!(
-            entries["claude-sonnet-4-6-20260115"].long_context_threshold,
+            catalog
+                .pricing_for("claude-sonnet-4-6-20260115")
+                .unwrap()
+                .long_context_threshold,
             Some(200_000),
             "date-suffixed spellings inherit the premium"
         );
-        let opus = &entries["claude-opus-4-8"];
-        assert_eq!(opus.long_context_threshold, Some(250_000));
+        let opus = catalog.pricing_for("claude-opus-4-8").unwrap();
+        assert_eq!(
+            opus.long_context_threshold,
+            Some(250_000),
+            "published tier wins"
+        );
         assert_eq!(opus.input_above, Some(11.0));
         assert_eq!(
-            entries["claude-fable-5"].long_context_threshold, None,
+            catalog
+                .pricing_for("claude-fable-5")
+                .unwrap()
+                .long_context_threshold,
+            None,
             "models without a tracked premium stay flat"
+        );
+    }
+
+    #[test]
+    fn family_fallback_never_inherits_multipliers_or_tiers() {
+        // A family-median ESTIMATE must not carry a specific model's
+        // hand-tracked fast multiplier or long-context tier: an unknown
+        // fast-tier opus id would otherwise bill 6x and flip the
+        // long-context split.
+        let catalog = embedded_catalog();
+        let fallback = catalog.pricing_for("claude-opus-4-1").unwrap();
+        assert_eq!(fallback.fast_multiplier, 1.0);
+        assert_eq!(fallback.long_context_threshold, None);
+        assert_eq!(fallback.input_above, None);
+        let median = catalog.pricing_for("claude-opus-4-7").unwrap();
+        assert_eq!(fallback.input, median.input);
+        assert_eq!(fallback.output, median.output);
+    }
+
+    #[test]
+    fn overrides_apply_idempotently_over_pre_split_caches() {
+        // A current-format cache written before overrides moved to load time
+        // carries them baked in; re-applying at load must be a no-op, and an
+        // override-table edit must win over the baked value.
+        let mut baked = BTreeMap::new();
+        baked.insert(
+            "claude-opus-4-8".to_string(),
+            ModelPricing {
+                input: 5.0,
+                output: 25.0,
+                long_context_threshold: Some(200_000),
+                input_above: Some(10.0),
+                fast_multiplier: 2.0,
+                ..Default::default()
+            },
+        );
+        let catalog = PricingCatalog::from_entries(baked);
+        let pricing = catalog.pricing_for("claude-opus-4-8").unwrap();
+        assert_eq!(pricing.fast_multiplier, 2.0);
+        assert_eq!(pricing.long_context_threshold, Some(200_000));
+        assert_eq!(pricing.input_above, Some(10.0), "baked tier kept as-is");
+    }
+
+    #[test]
+    fn one_malformed_tier_band_degrades_to_flat_rates_not_a_dropped_model() {
+        let api_json = serde_json::json!({
+            "openai": {
+                "models": {
+                    "gpt-null-tiers": {"cost": {"input": 4.0, "output": 20.0, "tiers": null}},
+                    "gpt-odd-band": {"cost": {
+                        "input": 4.0, "output": 20.0,
+                        "tiers": ["surprise", {"input": 8.0, "output": 30.0, "tier": {"type": "context", "size": 272000}}]
+                    }}
+                }
+            }
+        })
+        .to_string();
+        let entries = trim_catalog(&api_json).unwrap();
+        // Novel-shaped tier data must not drop the model (flat rates parse),
+        // and parseable bands next to a malformed one still apply.
+        assert_eq!(entries["gpt-null-tiers"].input, 4.0);
+        assert_eq!(entries["gpt-null-tiers"].long_context_threshold, None);
+        assert_eq!(
+            entries["gpt-odd-band"].long_context_threshold,
+            Some(272_000)
         );
     }
 

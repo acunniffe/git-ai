@@ -33,37 +33,19 @@
     "input": 5.0,
     "output": 25.0,
     "cache_read": 0.5,
-    "cache_write": 6.25,
-    "long_context_threshold": 200000,
-    "input_above": 10.0,
-    "output_above": 37.5,
-    "cache_read_above": 1.0,
-    "cache_write_above": 12.5,
-    "fast_multiplier": 6.0
+    "cache_write": 6.25
   },
   "claude-opus-4-7": {
     "input": 5.0,
     "output": 25.0,
     "cache_read": 0.5,
-    "cache_write": 6.25,
-    "long_context_threshold": 200000,
-    "input_above": 10.0,
-    "output_above": 37.5,
-    "cache_read_above": 1.0,
-    "cache_write_above": 12.5,
-    "fast_multiplier": 6.0
+    "cache_write": 6.25
   },
   "claude-opus-4-8": {
     "input": 5.0,
     "output": 25.0,
     "cache_read": 0.5,
-    "cache_write": 6.25,
-    "long_context_threshold": 200000,
-    "input_above": 10.0,
-    "output_above": 37.5,
-    "cache_read_above": 1.0,
-    "cache_write_above": 12.5,
-    "fast_multiplier": 2.0
+    "cache_write": 6.25
   },
   "claude-opus-5": {
     "input": 5.0,
@@ -75,34 +57,19 @@
     "input": 3.0,
     "output": 15.0,
     "cache_read": 0.3,
-    "cache_write": 3.75,
-    "long_context_threshold": 200000,
-    "input_above": 6.0,
-    "output_above": 22.5,
-    "cache_read_above": 0.6,
-    "cache_write_above": 7.5
+    "cache_write": 3.75
   },
   "claude-sonnet-4-5-20250929": {
     "input": 3.0,
     "output": 15.0,
     "cache_read": 0.3,
-    "cache_write": 3.75,
-    "long_context_threshold": 200000,
-    "input_above": 6.0,
-    "output_above": 22.5,
-    "cache_read_above": 0.6,
-    "cache_write_above": 7.5
+    "cache_write": 3.75
   },
   "claude-sonnet-4-6": {
     "input": 3.0,
     "output": 15.0,
     "cache_read": 0.3,
-    "cache_write": 3.75,
-    "long_context_threshold": 200000,
-    "input_above": 6.0,
-    "output_above": 22.5,
-    "cache_read_above": 0.6,
-    "cache_write_above": 7.5
+    "cache_write": 3.75
   },
   "claude-sonnet-5": {
     "input": 2.0,
@@ -511,8 +478,7 @@
   "gpt-5.3-codex": {
     "input": 1.75,
     "output": 14.0,
-    "cache_read": 0.175,
-    "fast_multiplier": 2.0
+    "cache_read": 0.175
   },
   "gpt-5.3-codex-spark": {
     "input": 1.75,
@@ -526,8 +492,7 @@
     "long_context_threshold": 272000,
     "input_above": 5.0,
     "output_above": 22.5,
-    "cache_read_above": 0.5,
-    "fast_multiplier": 2.0
+    "cache_read_above": 0.5
   },
   "gpt-5.4-mini": {
     "input": 0.75,
@@ -553,8 +518,7 @@
     "long_context_threshold": 272000,
     "input_above": 10.0,
     "output_above": 45.0,
-    "cache_read_above": 1.0,
-    "fast_multiplier": 2.5
+    "cache_read_above": 1.0
   },
   "gpt-5.5-pro": {
     "input": 30.0,
@@ -583,8 +547,7 @@
     "input_above": 0.4,
     "output_above": 1.8,
     "cache_read_above": 0.04,
-    "cache_write_above": 0.5,
-    "fast_multiplier": 2.0
+    "cache_write_above": 0.5
   },
   "gpt-5.6-sol": {
     "input": 4.0,
@@ -595,8 +558,7 @@
     "input_above": 8.0,
     "output_above": 30.0,
     "cache_read_above": 0.8,
-    "cache_write_above": 10.0,
-    "fast_multiplier": 2.0
+    "cache_write_above": 10.0
   },
   "gpt-5.6-terra": {
     "input": 2.0,
@@ -607,8 +569,7 @@
     "input_above": 4.0,
     "output_above": 18.0,
     "cache_read_above": 0.4,
-    "cache_write_above": 5.0,
-    "fast_multiplier": 2.0
+    "cache_write_above": 5.0
   },
   "gpt-image-2": {
     "input": 5.0,

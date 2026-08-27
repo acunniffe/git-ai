@@ -29,7 +29,7 @@ pub fn entry_cost_micro_usd(entry: &UsageEntry) -> Option<u64> {
     if let Some(cost) = entry.transcript_cost_micro_usd {
         return Some(cost);
     }
-    Some(cost_from_pricing(entry, pricing_for(&entry.model)?))
+    Some(cost_from_pricing(entry, &pricing_for(&entry.model)?))
 }
 
 /// The catalog-pricing arm of ccusage's "auto" mode, split out so the rate
@@ -153,7 +153,7 @@ mod tests {
         assert_eq!(cost_from_pricing(&e, &no_cache_rates), micro_usd(0.2));
         let explicit = ModelPricing {
             cache_read: Some(0.5),
-            ..no_cache_rates.clone()
+            ..no_cache_rates
         };
         assert_eq!(cost_from_pricing(&e, &explicit), micro_usd(0.5));
         // An explicitly published zero rate really is free, unlike an

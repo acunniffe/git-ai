@@ -611,7 +611,7 @@ fn cost_for_message_slice(entries: impl Iterator<Item = (String, TokenAccum)>) -
     }
     model_totals
         .iter()
-        .filter_map(|(model, acc)| pricing_for(model).map(|p| estimate_cost(acc, p)))
+        .filter_map(|(model, acc)| pricing_for(model).map(|p| estimate_cost(acc, &p)))
         .sum()
 }
 
@@ -648,7 +648,7 @@ fn build_token_summary(
         if let Some(pricing) = pricing_for(&short) {
             *cost_by_day
                 .entry(ts_to_local(ts).date_naive())
-                .or_insert(0.0) += estimate_cost(&acc, pricing);
+                .or_insert(0.0) += estimate_cost(&acc, &pricing);
         }
 
         let entry = model_tokens.entry(short.clone()).or_default();
@@ -686,7 +686,7 @@ fn build_token_summary(
         if let Some(pricing) = pricing_for(&short) {
             *cost_by_day
                 .entry(ts_to_local(acc.last_usage_ts).date_naive())
-                .or_insert(0.0) += estimate_cost(&mapped, pricing);
+                .or_insert(0.0) += estimate_cost(&mapped, &pricing);
         }
 
         let entry = model_tokens.entry(short.clone()).or_default();
@@ -742,7 +742,7 @@ fn build_token_summary(
         summary.cache_read += acc.cache_read;
         summary.cache_creation += acc.cache_creation;
 
-        let cost = pricing_for(&model).map(|p| estimate_cost(&acc, p));
+        let cost = pricing_for(&model).map(|p| estimate_cost(&acc, &p));
         if let Some(c) = cost {
             summary.estimated_cost_usd += c;
         }
