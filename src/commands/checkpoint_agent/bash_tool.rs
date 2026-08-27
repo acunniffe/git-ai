@@ -387,6 +387,17 @@ pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
                 _ => ToolClass::Skip,
             }
         }
+        // Qoder Desktop accepts both Claude Code-compatible tool names
+        // (Bash/Write/Edit) and its own native names (run_in_terminal/
+        // create_file/search_replace/delete_file). See
+        // https://docs.qoder.com/zh/extensions/hooks
+        Agent::Qoder => match tool_name {
+            "Write" | "Edit" | "create_file" | "search_replace" | "delete_file" => {
+                ToolClass::FileEdit
+            }
+            "Bash" | "run_in_terminal" => ToolClass::Bash,
+            _ => ToolClass::Skip,
+        },
     }
 }
 
@@ -405,6 +416,7 @@ pub enum Agent {
     Windsurf,
     Cursor,
     Cline,
+    Qoder,
 }
 
 // ---------------------------------------------------------------------------
@@ -1553,6 +1565,30 @@ mod tests {
         );
         assert_eq!(classify_tool(Agent::Cursor, "Shell"), ToolClass::Bash);
         assert_eq!(classify_tool(Agent::Cursor, "Read"), ToolClass::Skip);
+
+        // Qoder (Claude Code-compatible names + Qoder native names)
+        assert_eq!(classify_tool(Agent::Qoder, "Write"), ToolClass::FileEdit);
+        assert_eq!(classify_tool(Agent::Qoder, "Edit"), ToolClass::FileEdit);
+        assert_eq!(
+            classify_tool(Agent::Qoder, "create_file"),
+            ToolClass::FileEdit
+        );
+        assert_eq!(
+            classify_tool(Agent::Qoder, "search_replace"),
+            ToolClass::FileEdit
+        );
+        assert_eq!(
+            classify_tool(Agent::Qoder, "delete_file"),
+            ToolClass::FileEdit
+        );
+        assert_eq!(classify_tool(Agent::Qoder, "Bash"), ToolClass::Bash);
+        assert_eq!(
+            classify_tool(Agent::Qoder, "run_in_terminal"),
+            ToolClass::Bash
+        );
+        assert_eq!(classify_tool(Agent::Qoder, "Read"), ToolClass::Skip);
+        assert_eq!(classify_tool(Agent::Qoder, "Grep"), ToolClass::Skip);
+        assert_eq!(classify_tool(Agent::Qoder, "list_dir"), ToolClass::Skip);
     }
 
     #[test]
