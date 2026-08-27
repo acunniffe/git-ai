@@ -23,10 +23,12 @@
 //!   error backoff so a permanently failing transcript is not re-read on
 //!   every trigger. The size/mtime quiet-skip snapshot is written only after
 //!   a fully successful pass.
-//! - Claude subagent transcripts roll up to their parent session (matching
-//!   ccusage), which also lets sidechain replays dedup against the parent's
-//!   entries. Entry dedup itself is global across sessions (resume/fork
-//!   copies); when a replacement moves an entry between sessions, the
+//! - Usage is leaf-attributed: subagent/fork transcripts own their usage
+//!   under their own session (like SessionEvents), carrying the parent as
+//!   the parent_session_id/external_parent_session_id attributes. Entry
+//!   dedup is global across sessions (resume/fork copies; sidechain replays
+//!   of parent messages dedup against the parent's entries wherever they
+//!   live); when a replacement moves an entry between sessions, the
 //!   previous owner's files are invalidated so its buckets re-reconcile on
 //!   the next pass with their own attributes.
 //! - The `token_usage_metrics` feature flag gates the worker at daemon
@@ -547,29 +549,26 @@ fn sweep_candidates(
     tasks
 }
 
-/// Rollup identity of the session a transcript belongs to: subagent
-/// transcripts attribute to their parent session (matching ccusage).
+/// Identity of the session a transcript belongs to: every agent execution
+/// owns its own usage, so subagent/fork transcripts attribute to their own
+/// session and carry the parent as a relationship — the same leaf identity
+/// SessionEvents use. (Deviation from ccusage, which rolls Claude sidechains
+/// into the parent session: totals still match, but git-ai groups every
+/// tool the same way and keeps the per-agent view; the parent-inclusive
+/// total stays derivable through the parent attributes.)
 struct SessionIdentity {
     session_id: String,
     external_session_id: String,
+    external_parent_session_id: Option<String>,
     tool: String,
 }
 
 impl SessionIdentity {
     fn from_stream(stream: &StreamRecord) -> Self {
-        let (session_id, external_session_id) = match &stream.external_parent_session_id {
-            Some(parent_ext) => (
-                generate_session_id(parent_ext, &stream.tool),
-                parent_ext.clone(),
-            ),
-            None => (
-                stream.session_id.clone(),
-                stream.external_session_id.clone(),
-            ),
-        };
         Self {
-            session_id,
-            external_session_id,
+            session_id: stream.session_id.clone(),
+            external_session_id: stream.external_session_id.clone(),
+            external_parent_session_id: stream.external_parent_session_id.clone(),
             tool: stream.tool.clone(),
         }
     }
@@ -722,6 +721,7 @@ fn reconcile_flagged_sessions(
         let identity = SessionIdentity {
             session_id: session.session_id.clone(),
             external_session_id: session.external_session_id,
+            external_parent_session_id: session.external_parent_session_id,
             tool: session.tool,
         };
         emit_changed_buckets(token_db, &identity, || session.repo_url, sink)?;
@@ -769,8 +769,8 @@ const PARENT_SCAN_MAX_ENTRIES: usize = 50_000;
 
 /// Locate and read a forked child's parent rollout, returning its pre-fork
 /// usage prefix. Candidates come from the token database (files tracked
-/// under the parent's external session id — which, for rolled-up children,
-/// includes the child itself) and a bounded scan of the codex sessions tree
+/// under the parent's own external session id) and a bounded scan of the
+/// codex sessions tree
 /// for filenames carrying the parent id; a candidate counts only when its
 /// first line is a `session_meta` recording that id (ccusage locates parents
 /// by recorded id, never by filename). `None` — the parent is unresolvable —
@@ -904,6 +904,7 @@ fn process_file(
         stream_path,
         &identity.tool,
         &identity.external_session_id,
+        identity.external_parent_session_id.as_deref(),
     )?;
     let now = now_secs();
 
@@ -1146,6 +1147,17 @@ fn emit_changed_buckets(
         if !identity.external_session_id.is_empty() {
             attrs = attrs.external_session_id(identity.external_session_id.clone());
         }
+        // Subagent/fork sessions carry their parent as a relationship (leaf
+        // attribution), exactly like SessionEvents.
+        if let Some(parent_ext) = identity
+            .external_parent_session_id
+            .as_deref()
+            .filter(|parent_ext| !parent_ext.is_empty())
+        {
+            attrs = attrs
+                .external_parent_session_id(parent_ext.to_string())
+                .parent_session_id(generate_session_id(parent_ext, &identity.tool));
+        }
         if let Some(url) = &repo_url {
             attrs = attrs.repo_url(url.clone());
         }
@@ -1183,6 +1195,7 @@ mod tests {
         SessionIdentity {
             session_id: "s_test".to_string(),
             external_session_id: "ext-test".to_string(),
+            external_parent_session_id: None,
             tool: "claude".to_string(),
         }
     }
@@ -1613,7 +1626,7 @@ mod tests {
         let events = run_as(&db, &identity, &transcript).unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(
-            db.ensure_file(&identity.session_id, &path, "claude", "ext-test")
+            db.ensure_file(&identity.session_id, &path, "claude", "ext-test", None)
                 .unwrap()
                 .processing_errors,
             0
@@ -1980,6 +1993,7 @@ mod tests {
         let identity_b = SessionIdentity {
             session_id: "s_resumed".to_string(),
             external_session_id: "ext-resumed".to_string(),
+            external_parent_session_id: None,
             tool: "claude".to_string(),
         };
         let transcript_b = dir.path().join("resumed.jsonl");
@@ -2036,6 +2050,7 @@ mod tests {
         let identity_b = SessionIdentity {
             session_id: "s_resumed".to_string(),
             external_session_id: "ext-resumed".to_string(),
+            external_parent_session_id: None,
             tool: "claude".to_string(),
         };
         let transcript_b = dir.path().join("resumed.jsonl");
@@ -2082,6 +2097,7 @@ mod tests {
         let identity_b = SessionIdentity {
             session_id: "s_resumed".to_string(),
             external_session_id: "ext-resumed".to_string(),
+            external_parent_session_id: None,
             tool: "claude".to_string(),
         };
         let transcript_b = dir.path().join("resumed.jsonl");
@@ -2204,7 +2220,7 @@ mod tests {
         // The settled file's snapshot matches its current metadata.
         let metadata = fs::metadata(&settled_path).unwrap();
         token_db
-            .ensure_file("s_settled", &settled_path, "claude", "s_settled-ext")
+            .ensure_file("s_settled", &settled_path, "claude", "s_settled-ext", None)
             .unwrap();
         token_db
             .update_file_metadata(
@@ -2268,9 +2284,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn processing_errors_are_recorded_under_the_rollup_session() {
-        // Subagent transcripts track under their parent session id, so error
-        // recording must use the same key or the UPDATE matches no row.
+    async fn processing_errors_are_recorded_under_the_leaf_session() {
+        // Subagent transcripts track under their own session id (leaf
+        // attribution), so error recording must use the same key or the
+        // UPDATE matches no row.
         let dir = tempfile::tempdir().unwrap();
         let streams_db =
             Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
@@ -2296,9 +2313,14 @@ mod tests {
         );
         assert!(result.is_err());
 
-        let parent_session = generate_session_id("parent-ext", "claude");
         let tracked = token_db
-            .ensure_file(&parent_session, &missing, "claude", "parent-ext")
+            .ensure_file(
+                "s_child",
+                &missing,
+                "claude",
+                "child-ext",
+                Some("parent-ext"),
+            )
             .unwrap();
         assert_eq!(tracked.processing_errors, 1);
         assert!(tracked.last_error_at.is_some());
@@ -2306,21 +2328,25 @@ mod tests {
     }
 
     #[test]
-    fn subagent_stream_rolls_up_to_parent_session() {
+    fn subagent_stream_owns_its_usage_and_carries_the_parent() {
+        // Leaf attribution: the transcript's own session owns the usage;
+        // the parent is a relationship, not the owner (same identity model
+        // as SessionEvents).
         let mut stream = stream_record("s_child", "claude", "/tmp/child.jsonl");
         stream.external_session_id = "child-ext".to_string();
         stream.external_parent_session_id = Some("parent-ext".to_string());
         let identity = SessionIdentity::from_stream(&stream);
+        assert_eq!(identity.session_id, "s_child");
+        assert_eq!(identity.external_session_id, "child-ext");
         assert_eq!(
-            identity.session_id,
-            generate_session_id("parent-ext", "claude")
+            identity.external_parent_session_id.as_deref(),
+            Some("parent-ext")
         );
-        assert_eq!(identity.external_session_id, "parent-ext");
 
         stream.external_parent_session_id = None;
         let identity = SessionIdentity::from_stream(&stream);
         assert_eq!(identity.session_id, "s_child");
-        assert_eq!(identity.external_session_id, "child-ext");
+        assert_eq!(identity.external_parent_session_id, None);
     }
 
     #[test]
@@ -2525,7 +2551,7 @@ mod tests {
         .unwrap();
         assert!(collected.lock().unwrap().is_empty(), "turn stays parked");
         let tracked = token_db
-            .ensure_file("s_fork", &path_str, "codex", "s_fork-ext")
+            .ensure_file("s_fork", &path_str, "codex", "s_fork-ext", None)
             .unwrap();
         assert!(tracked.pending_flush);
         // The bytes have not changed, but the pending flush alone keeps the
@@ -2553,7 +2579,7 @@ mod tests {
             Some(15)
         );
         let tracked = token_db
-            .ensure_file("s_fork", &path_str, "codex", "s_fork-ext")
+            .ensure_file("s_fork", &path_str, "codex", "s_fork-ext", None)
             .unwrap();
         assert!(!tracked.pending_flush);
         assert!(sweep_candidates(&streams_db, &token_db).is_empty());

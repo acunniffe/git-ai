@@ -232,11 +232,89 @@ const MIGRATIONS: &[&str] = &[
 
     INSERT INTO schema_version (version) VALUES (4);
     "#,
+    // Version 5: leaf session attribution. Usage is owned by the transcript's
+    // own session — subagent/fork transcripts no longer roll up into their
+    // parent — with the parent carried as a relationship
+    // (tracked_files.external_parent_session_id, emitted as the
+    // parent_session_id/external_parent_session_id attributes, matching
+    // SessionEvents). Pre-release reset like v3: existing rows are keyed by
+    // the rolled-up parent session and cannot be reassigned (they don't
+    // record their source rollout), so the tables are rebuilt and the next
+    // pass re-extracts everything under leaf identities.
+    r#"
+    DROP TABLE IF EXISTS tracked_files;
+    DROP TABLE IF EXISTS usage_entries;
+    DROP TABLE IF EXISTS bucket_state;
+
+    CREATE TABLE tracked_files (
+        session_id  TEXT NOT NULL,
+        stream_path TEXT NOT NULL,
+        tool        TEXT NOT NULL,
+        byte_offset INTEGER NOT NULL DEFAULT 0,
+        state_json  TEXT,
+        last_known_size INTEGER NOT NULL DEFAULT 0,
+        last_modified INTEGER,
+        processing_errors INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        pending_flush INTEGER NOT NULL DEFAULT 0,
+        last_error_at INTEGER,
+        external_session_id TEXT NOT NULL DEFAULT '',
+        external_parent_session_id TEXT,
+        needs_reconcile INTEGER NOT NULL DEFAULT 0,
+        repo_url TEXT,
+        PRIMARY KEY (session_id, stream_path)
+    );
+
+    CREATE TABLE usage_entries (
+        session_id TEXT NOT NULL,
+        entry_key  TEXT NOT NULL,
+        message_id TEXT,
+        model      TEXT NOT NULL,
+        bucket_ts  INTEGER NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_write_1h_tokens INTEGER NOT NULL DEFAULT 0,
+        reasoning_output_tokens INTEGER,
+        total_tokens INTEGER NOT NULL DEFAULT 0,
+        cost_micro_usd INTEGER,
+        transcript_cost_micro_usd INTEGER,
+        is_sidechain INTEGER NOT NULL DEFAULT 0,
+        speed INTEGER,
+        speed_inferred INTEGER NOT NULL DEFAULT 0,
+        long_context INTEGER NOT NULL DEFAULT 0,
+        pricing_catalog TEXT,
+        PRIMARY KEY (session_id, entry_key)
+    );
+
+    CREATE INDEX idx_usage_entries_bucket
+        ON usage_entries(session_id, model, bucket_ts);
+    CREATE INDEX idx_usage_entries_message
+        ON usage_entries(session_id, message_id) WHERE message_id IS NOT NULL;
+    CREATE UNIQUE INDEX idx_usage_entries_key
+        ON usage_entries(entry_key);
+    CREATE INDEX idx_usage_entries_message_global
+        ON usage_entries(message_id) WHERE message_id IS NOT NULL;
+
+    CREATE TABLE bucket_state (
+        session_id TEXT NOT NULL,
+        model      TEXT NOT NULL,
+        speed      INTEGER NOT NULL DEFAULT 0,
+        bucket_ts  INTEGER NOT NULL,
+        emitted_fingerprint TEXT NOT NULL,
+        last_emitted_at INTEGER NOT NULL,
+        emit_seq INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (session_id, model, speed, bucket_ts)
+    );
+
+    INSERT INTO schema_version (version) VALUES (5);
+    "#,
 ];
 
 const TRACKED_FILE_COLUMNS: &str = "session_id, stream_path, tool, byte_offset, state_json, \
      last_known_size, last_modified, processing_errors, last_error_at, pending_flush, \
-     external_session_id, needs_reconcile, repo_url";
+     external_session_id, external_parent_session_id, needs_reconcile, repo_url";
 
 /// A tracked transcript file: read cursor plus extractor state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -253,9 +331,12 @@ pub struct TrackedFile {
     /// The extractor reported buffered entries at the end of the last pass;
     /// the file must be re-processed even if its bytes have not changed.
     pub pending_flush: bool,
-    /// External id of the rollup session (for emission attributes when the
+    /// The session's own external id (for emission attributes when the
     /// session is reconciled without reading any file).
     pub external_session_id: String,
+    /// External id of the parent session for subagent/fork transcripts;
+    /// emitted as the parent-relationship attributes.
+    pub external_parent_session_id: Option<String>,
     /// A cross-session replacement changed this session's buckets; it must
     /// be re-reconciled even if none of its files change (or still exist).
     pub needs_reconcile: bool,
@@ -277,8 +358,9 @@ fn read_tracked_file(row: &rusqlite::Row<'_>) -> rusqlite::Result<TrackedFile> {
         last_error_at: row.get(8)?,
         pending_flush: row.get(9)?,
         external_session_id: row.get(10)?,
-        needs_reconcile: row.get(11)?,
-        repo_url: row.get(12)?,
+        external_parent_session_id: row.get(11)?,
+        needs_reconcile: row.get(12)?,
+        repo_url: row.get(13)?,
     })
 }
 
@@ -367,6 +449,7 @@ pub struct ChangedBucket {
 pub struct ReconcileSession {
     pub session_id: String,
     pub external_session_id: String,
+    pub external_parent_session_id: Option<String>,
     pub tool: String,
     pub repo_url: Option<String>,
 }
@@ -494,8 +577,9 @@ impl TokenUsageDatabase {
     }
 
     /// Fetch the tracked file row, creating it with a zero cursor when new.
-    /// The rollup session's external id is recorded (or backfilled on rows
-    /// from before it was tracked) so the session can later be reconciled
+    /// The session's external identity (own id, and the parent id for
+    /// subagent/fork transcripts) is recorded — or backfilled on rows from
+    /// before it was tracked — so the session can later be reconciled
     /// without reading any file.
     pub fn ensure_file(
         &self,
@@ -503,17 +587,24 @@ impl TokenUsageDatabase {
         stream_path: &str,
         tool: &str,
         external_session_id: &str,
+        external_parent_session_id: Option<&str>,
     ) -> Result<TrackedFile, GitAiError> {
         let conn = self.lock();
         conn.execute(
-            "INSERT OR IGNORE INTO tracked_files (session_id, stream_path, tool, external_session_id)
-             VALUES (?1, ?2, ?3, ?4)",
-            params![session_id, stream_path, tool, external_session_id],
+            "INSERT OR IGNORE INTO tracked_files (session_id, stream_path, tool, external_session_id, external_parent_session_id)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![session_id, stream_path, tool, external_session_id, external_parent_session_id],
         )?;
         conn.execute(
             "UPDATE tracked_files SET external_session_id = ?3
              WHERE session_id = ?1 AND stream_path = ?2 AND external_session_id = ''",
             params![session_id, stream_path, external_session_id],
+        )?;
+        conn.execute(
+            "UPDATE tracked_files SET external_parent_session_id = ?3
+             WHERE session_id = ?1 AND stream_path = ?2 AND external_parent_session_id IS NULL
+               AND ?3 IS NOT NULL",
+            params![session_id, stream_path, external_parent_session_id],
         )?;
         Ok(conn.query_row(
             &format!(
@@ -577,15 +668,17 @@ impl TokenUsageDatabase {
     pub fn sessions_needing_reconcile(&self) -> Result<Vec<ReconcileSession>, GitAiError> {
         let conn = self.lock();
         let mut stmt = conn.prepare(
-            "SELECT session_id, MAX(external_session_id), MAX(tool), MAX(repo_url)
+            "SELECT session_id, MAX(external_session_id), MAX(external_parent_session_id),
+                    MAX(tool), MAX(repo_url)
              FROM tracked_files WHERE needs_reconcile = 1 GROUP BY session_id",
         )?;
         let rows = stmt.query_map([], |row| {
             Ok(ReconcileSession {
                 session_id: row.get(0)?,
                 external_session_id: row.get(1)?,
-                tool: row.get(2)?,
-                repo_url: row.get(3)?,
+                external_parent_session_id: row.get(2)?,
+                tool: row.get(3)?,
+                repo_url: row.get(4)?,
             })
         })?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -606,11 +699,9 @@ impl TokenUsageDatabase {
         Ok(())
     }
 
-    /// Stream paths tracked under an external session id. The id is the
-    /// rollup root's (forked/subagent files roll up to their parent), so the
-    /// root's own rollout is among the results — alongside any rolled-up
-    /// children, which callers must tell apart by each file's recorded
-    /// `session_meta` id.
+    /// Stream paths tracked under a session's own external id (usage is
+    /// leaf-attributed, so a parent id maps to the parent's own rollout);
+    /// callers still confirm by each file's recorded `session_meta` id.
     pub fn stream_paths_for_external_session(
         &self,
         external_session_id: &str,
@@ -1118,7 +1209,7 @@ mod tests {
 
     fn commit_for(db: &TokenUsageDatabase, session: &str, entries: &[UsageEntry]) {
         let path = format!("/{session}.jsonl");
-        db.ensure_file(session, &path, "claude", &format!("{session}-ext"))
+        db.ensure_file(session, &path, "claude", &format!("{session}-ext"), None)
             .unwrap();
         db.commit_batch(&BatchCommit {
             session_id: session,
@@ -1178,10 +1269,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("token-usage-db");
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 4);
+        assert_eq!(db.schema_version().unwrap(), 5);
         drop(db);
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 4);
+        assert_eq!(db.schema_version().unwrap(), 5);
     }
 
     #[test]
@@ -1210,7 +1301,7 @@ mod tests {
     fn ensure_file_creates_zero_cursor_and_is_stable() {
         let (_dir, db) = db();
         let file = db
-            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext", None)
             .unwrap();
         assert_eq!(file.byte_offset, 0);
         assert_eq!(file.state_json, None);
@@ -1226,7 +1317,7 @@ mod tests {
         })
         .unwrap();
         let file = db
-            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext", None)
             .unwrap();
         assert_eq!(file.byte_offset, 42);
         assert_eq!(file.state_json.as_deref(), Some("{\"x\":1}"));
@@ -1293,6 +1384,7 @@ mod tests {
             vec![ReconcileSession {
                 session_id: "s1".to_string(),
                 external_session_id: "s1-ext".to_string(),
+                external_parent_session_id: None,
                 tool: "claude".to_string(),
                 repo_url: None,
             }]
@@ -1450,7 +1542,7 @@ mod tests {
     #[test]
     fn entries_before_the_retention_cutoff_are_dropped_at_insert() {
         let (_dir, db) = db();
-        db.ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+        db.ensure_file("s1", "/t.jsonl", "claude", "s1-ext", None)
             .unwrap();
         db.commit_batch(&BatchCommit {
             session_id: "s1",
@@ -1501,7 +1593,7 @@ mod tests {
         }
 
         let db = TokenUsageDatabase::open(&path).unwrap();
-        assert_eq!(db.schema_version().unwrap(), 4);
+        assert_eq!(db.schema_version().unwrap(), 5);
         // Rebuilt empty: no legacy rows, cursors, or reconcile flags survive.
         assert!(db.all_files().unwrap().is_empty());
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
@@ -1698,13 +1790,13 @@ mod tests {
     #[test]
     fn record_error_tracks_and_commit_clears() {
         let (_dir, db) = db();
-        db.ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+        db.ensure_file("s1", "/t.jsonl", "claude", "s1-ext", None)
             .unwrap();
         db.record_error("s1", "/t.jsonl", "boom", 100).unwrap();
         db.record_error("s1", "/t.jsonl", "boom again", 200)
             .unwrap();
         let file = db
-            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext", None)
             .unwrap();
         assert_eq!(file.processing_errors, 2);
         assert_eq!(file.last_error_at, Some(200));
@@ -1719,7 +1811,7 @@ mod tests {
         })
         .unwrap();
         let file = db
-            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext", None)
             .unwrap();
         assert_eq!(file.processing_errors, 0);
         assert_eq!(file.last_error_at, None);
@@ -1749,12 +1841,12 @@ mod tests {
     #[test]
     fn file_metadata_roundtrip() {
         let (_dir, db) = db();
-        db.ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+        db.ensure_file("s1", "/t.jsonl", "claude", "s1-ext", None)
             .unwrap();
         db.update_file_metadata("s1", "/t.jsonl", 1234, Some(99))
             .unwrap();
         let file = db
-            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext")
+            .ensure_file("s1", "/t.jsonl", "claude", "s1-ext", None)
             .unwrap();
         assert_eq!(file.last_known_size, 1234);
         assert_eq!(file.last_modified, Some(99));

@@ -164,10 +164,17 @@ TokenUsage events are the authoritative dollars.
 
 ## Session identity
 
-Claude subagent transcripts roll up to their parent session (matching
-ccusage's session semantics), which also lets sidechain replays of parent
-messages deduplicate against the parent's entries across files. Codex
-sessions are per rollout file; forked rollouts skip their replayed prefix by
+Usage is leaf-attributed: every agent execution owns its own usage under its
+own session — Claude subagent (sidechain) transcripts and Codex fork/subagent
+rollouts included — with the parent carried as the
+`parent_session_id`/`external_parent_session_id` attributes, exactly like
+SessionEvents. The parent-inclusive total is a derived rollup over the parent
+relationship, never the stored identity, so per-agent cost stays visible.
+(Documented deviation from ccusage, which rolls Claude sidechains into the
+parent session: per-session Claude groupings differ, aggregate totals match.)
+Sidechain replays of parent messages still deduplicate against the parent's
+entries across files because entry dedup is global, not session-scoped.
+Forked Codex rollouts skip their replayed prefix by
 matching it against the parent rollout's pre-fork usage signatures (ccusage's
 parent-prefix matching): the worker resolves the parent — tracked files under
 the parent's external session id, else a bounded scan of the codex sessions

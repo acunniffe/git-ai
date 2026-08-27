@@ -13,6 +13,10 @@
 //!   remains the replacement tie-breaker.
 //! - Entries whose model is missing or `<synthetic>` are attributed to
 //!   [`UNKNOWN_MODEL`] instead of carrying no model, so tokens aren't lost.
+//! - Sidechain (subagent) usage is attributed to the sidechain's own session
+//!   with the parent as a relationship (leaf attribution, standardized
+//!   across tools); ccusage rolls it into the parent session. Cross-file
+//!   dedup of replayed parent messages is unaffected — it is global.
 
 use serde::Deserialize;
 

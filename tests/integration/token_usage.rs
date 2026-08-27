@@ -711,7 +711,7 @@ fn resumed_session_through_the_daemon_does_not_double_count() {
 /// parent session through the real daemon, and a sidechain replay of a
 /// parent message dedups across the two files.
 #[test]
-fn subagent_transcript_rolls_up_to_the_parent_session() {
+fn subagent_transcript_owns_its_usage_and_links_to_the_parent() {
     let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
     let repo =
         TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
@@ -769,9 +769,10 @@ fn subagent_transcript_rolls_up_to_the_parent_session() {
     sync_token_usage_pipeline(&repo);
 
     let events = token_usage_events(&metrics_db_path);
-    // The sidechain replay deduped against the parent's entry (no inflated
-    // re-emission of the first bucket); only the subagent's own turn emits,
-    // attributed to the PARENT session.
+    // The sidechain replay deduped against the parent's entry across files
+    // (dedup is global, not session-scoped); only the subagent's own turn
+    // emits, attributed to the SUBAGENT session with the parent carried as a
+    // relationship (leaf attribution, matching SessionEvents).
     assert_eq!(events.len(), 2);
     let subagent_event = &events[1];
     assert_eq!(
@@ -786,7 +787,15 @@ fn subagent_transcript_rolls_up_to_the_parent_session() {
     let attrs = EventAttributes::from_sparse(&subagent_event.attrs);
     assert_eq!(
         attrs.session_id,
+        Some(Some(generate_session_id("agent-1", "claude")))
+    );
+    assert_eq!(
+        attrs.parent_session_id,
         Some(Some(generate_session_id("sess-parent", "claude")))
+    );
+    assert_eq!(
+        attrs.external_parent_session_id,
+        Some(Some("sess-parent".to_string()))
     );
 }
 
