@@ -3434,6 +3434,9 @@ fn compute_attributions_for_file(
         ai_blame_opts.newest_commit = Some(base_commit.to_string());
         ai_blame_opts.oldest_commit = blame_start_commit;
         ai_blame_opts.oldest_date = Some(*OLDEST_AI_BLAME_DATE);
+        // Only the per-line blame authors are consumed below; the hunks are discarded,
+        // so skip the ai_human_author population pass (a redundant per-commit note read).
+        ai_blame_opts.skip_human_author_population = true;
     }
 
     // Run blame at the base commit

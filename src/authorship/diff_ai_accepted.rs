@@ -48,6 +48,9 @@ pub fn diff_ai_accepted_stats(
             options.line_ranges = line_ranges;
             options.no_output = true;
             options.use_prompt_hashes_as_names = true;
+            // Only the per-line authors are used below; the blame hunks are discarded,
+            // so skip the ai_human_author population pass (a redundant per-commit note read).
+            options.skip_human_author_population = true;
         }
 
         let blame_result = repo.blame(file_path, &options);

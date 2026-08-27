@@ -1357,3 +1357,166 @@ fn test_range_authorship_with_glob_patterns() {
     assert_eq!(stats.range_stats.git_diff_added_lines, 1);
     assert_eq!(stats.range_stats.ai_additions, 1);
 }
+
+/// Regression guard for the `git-ai stats` range-mode speedup: the batched
+/// `read_authorship_v3_batch` (which resolves many commits' authorship notes in one
+/// `cat-file --batch` instead of a `git notes show` per commit) MUST return exactly
+/// what the per-commit `read_authorship_v3(..).ok()` path returns for every commit —
+/// including commits with a note, commits without one, and non-existent commits.
+#[test]
+fn test_read_authorship_v3_batch_matches_per_commit() {
+    use git_ai::git::notes_api::{read_authorship_v3, read_authorship_v3_batch};
+
+    let repo = TestRepo::new();
+
+    // Commit 1: AI work -> gets an authorship note.
+    std::fs::write(repo.path().join("a.txt"), "AI line 1\n").unwrap();
+    repo.git(&["add", "a.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "a.txt"]).unwrap();
+    repo.stage_all_and_commit("AI commit").unwrap();
+
+    // Commit 2: known-human work -> gets an authorship note.
+    std::fs::write(repo.path().join("a.txt"), "AI line 1\nHuman line 2\n").unwrap();
+    repo.git(&["add", "a.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "a.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("Human commit").unwrap();
+
+    // Commit 3: untracked edit with NO checkpoint -> no authorship note.
+    std::fs::write(
+        repo.path().join("a.txt"),
+        "AI line 1\nHuman line 2\nUntracked line 3\n",
+    )
+    .unwrap();
+    repo.stage_all_and_commit("Untracked commit").unwrap();
+
+    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+
+    // Every commit in history, plus a well-formed but non-existent SHA to force the
+    // "no note" path even though all real commits here happen to have content.
+    let mut shas: Vec<String> = repo
+        .git_og(&["rev-list", "HEAD"])
+        .unwrap()
+        .lines()
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect();
+    shas.push("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef".to_string());
+
+    let batch = read_authorship_v3_batch(&gitai_repo, &shas);
+
+    // The map must contain an entry for every requested commit.
+    assert_eq!(
+        batch.len(),
+        shas.len(),
+        "batch must return an entry per requested commit"
+    );
+
+    let mut with_note = 0usize;
+    let mut without_note = 0usize;
+    for sha in &shas {
+        let per_commit = read_authorship_v3(&gitai_repo, sha).ok();
+        let batched = batch.get(sha).cloned().flatten();
+        assert_eq!(
+            batched, per_commit,
+            "batched read diverged from per-commit read for {sha}"
+        );
+        match per_commit {
+            Some(_) => with_note += 1,
+            None => without_note += 1,
+        }
+    }
+
+    // Make sure the test actually exercised both branches; otherwise it could pass
+    // trivially if, say, no notes were ever written.
+    assert!(
+        with_note >= 2,
+        "expected >=2 commits with notes, got {with_note}"
+    );
+    assert!(
+        without_note >= 1,
+        "expected >=1 commit without a note, got {without_note}"
+    );
+
+    // Coverage note: this exercises the GitNotes-batched path, the only path that does
+    // anything different from the per-commit read. The `Http` arm and the batched-read
+    // error fallback both delegate per commit to `read_authorship_v3(repo, sha).ok()`,
+    // so they equal the reference by construction.
+}
+
+/// The empty-commit-list fast path returns an empty map (and spawns no git).
+#[test]
+fn test_read_authorship_v3_batch_empty_input() {
+    use git_ai::git::notes_api::read_authorship_v3_batch;
+
+    let repo = TestRepo::new();
+    std::fs::write(repo.path().join("a.txt"), "x\n").unwrap();
+    repo.git(&["add", "a.txt"]).unwrap();
+    repo.stage_all_and_commit("init").unwrap();
+
+    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let out = read_authorship_v3_batch(&gitai_repo, &[]);
+    assert!(out.is_empty(), "empty input must yield an empty map");
+}
+
+/// Direct regression guard for the `skip_human_author_population` gate: a `blame()`
+/// over the stats path must return identical `line_authors` and `prompt_records`
+/// whether or not the `populate_ai_human_authors` pass runs. This is the automated
+/// proof of the "skipping the dead pass is output-invariant" claim.
+#[test]
+fn test_skip_human_author_population_preserves_blame_output() {
+    use git_ai::commands::blame::GitAiBlameOptions;
+    use std::collections::BTreeSet;
+
+    let repo = TestRepo::new();
+
+    // A file whose final state blends human and AI lines across several commits, so
+    // blame attributes multiple commits/authors to it.
+    std::fs::write(repo.path().join("f.txt"), "human 1\n").unwrap();
+    repo.git(&["add", "f.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "f.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("c1 human").unwrap();
+
+    std::fs::write(repo.path().join("f.txt"), "human 1\nai 2\nai 3\n").unwrap();
+    repo.git(&["add", "f.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "f.txt"]).unwrap();
+    repo.stage_all_and_commit("c2 ai").unwrap();
+
+    std::fs::write(repo.path().join("f.txt"), "human 1\nai 2\nai 3\nhuman 4\n").unwrap();
+    repo.git(&["add", "f.txt"]).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", "f.txt"])
+        .unwrap();
+    repo.stage_all_and_commit("c3 human").unwrap();
+
+    let gitai_repo = find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+
+    // Whole-file blame (empty line_ranges => whole file) on the no_output programmatic
+    // path the stats callers use.
+    let opts_off = GitAiBlameOptions {
+        no_output: true,
+        use_prompt_hashes_as_names: true,
+        ..Default::default()
+    };
+    let opts_on = GitAiBlameOptions {
+        skip_human_author_population: true,
+        ..opts_off.clone()
+    };
+
+    let (authors_off, prompts_off) = gitai_repo.blame("f.txt", &opts_off).unwrap();
+    let (authors_on, prompts_on) = gitai_repo.blame("f.txt", &opts_on).unwrap();
+
+    assert!(
+        !authors_off.is_empty(),
+        "expected blame to attribute at least one line"
+    );
+    assert_eq!(
+        authors_off, authors_on,
+        "skip_human_author_population changed blame line authors"
+    );
+    assert_eq!(
+        prompts_off.keys().collect::<BTreeSet<_>>(),
+        prompts_on.keys().collect::<BTreeSet<_>>(),
+        "skip_human_author_population changed the blame prompt records"
+    );
+}

@@ -778,8 +778,23 @@ pub(in crate::git) fn get_reference_as_authorship_log_v3(
     let content = show_authorship_note(repo, commit_sha)
         .ok_or_else(|| GitAiError::Generic("No authorship note found".to_string()))?;
 
+    parse_reference_as_authorship_log_v3(&content, commit_sha)
+}
+
+/// Parse raw authorship-note content into a v3 `AuthorshipLog`.
+///
+/// This is the parsing half of [`get_reference_as_authorship_log_v3`], split out so
+/// that batched note readers (which fetch many note blobs in a single `cat-file
+/// --batch` instead of one `git notes show` per commit) can produce results that are
+/// byte-for-byte identical to the per-commit path. Any change to deserialization,
+/// version checking, or `base_commit_sha` normalization MUST stay in this one place
+/// so the batched and per-commit paths cannot drift.
+pub fn parse_reference_as_authorship_log_v3(
+    content: &str,
+    commit_sha: &str,
+) -> Result<AuthorshipLog, GitAiError> {
     // Try to deserialize as AuthorshipLog
-    let mut authorship_log = match AuthorshipLog::deserialize_from_string(&content) {
+    let mut authorship_log = match AuthorshipLog::deserialize_from_string(content) {
         Ok(log) => log,
         Err(_) => {
             return Err(GitAiError::Generic(

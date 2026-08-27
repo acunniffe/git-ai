@@ -170,6 +170,15 @@ pub struct GitAiBlameOptions {
     // When true, a single git blame hunk may be split into multiple hunks
     // if different lines were authored by different humans working with AI
     pub split_hunks_by_ai_author: bool,
+
+    // Skip populating `ai_human_author` on blame hunks (the `populate_ai_human_authors`
+    // pass). That pass reads each blamed commit's authorship note and runs per-line
+    // attribution purely to annotate hunks. Callers that consume only `line_authors` /
+    // `prompt_records` from `blame()` (e.g. range stats via `diff_ai_accepted_stats`
+    // and `VirtualAttributions`) discard the hunks, so for them the pass is dead work.
+    // It is output-invariant to skip because `overlay_ai_authorship` derives
+    // `line_authors` per line independently of hunk grouping/`ai_human_author`.
+    pub skip_human_author_population: bool,
 }
 
 impl Default for GitAiBlameOptions {
@@ -216,6 +225,7 @@ impl Default for GitAiBlameOptions {
             mark_unknown: false,
             show_prompt: false,
             split_hunks_by_ai_author: true,
+            skip_human_author_population: false,
         }
     }
 }
@@ -929,8 +939,24 @@ impl Repository {
 
         self.populate_hunk_abbrev_shas(&mut hunks, options);
 
-        // Post-process hunks to populate ai_human_author from authorship logs
-        let hunks = self.populate_ai_human_authors(hunks, file_path, options)?;
+        // Post-process hunks to populate ai_human_author from authorship logs.
+        // Callers that consume only line_authors/prompt_records and discard the hunks
+        // (range stats) opt out of this pass — it is dead work for them and skipping it
+        // avoids a second per-commit authorship-note read over every blamed commit.
+        //
+        // Guard the safe-use contract: skipping drops `ai_human_author` and hunk
+        // splitting, which only stays output-invariant for callers that discard the
+        // hunks. Every current opt-in (diff_ai_accepted_stats, VirtualAttributions) is a
+        // `no_output` path, so assert that here to catch future misuse in debug builds.
+        debug_assert!(
+            !options.skip_human_author_population || options.no_output,
+            "skip_human_author_population is only safe on hunk-discarding (no_output) blame paths"
+        );
+        let hunks = if options.skip_human_author_population {
+            hunks
+        } else {
+            self.populate_ai_human_authors(hunks, file_path, options)?
+        };
 
         Ok(hunks)
     }
@@ -952,6 +978,21 @@ impl Repository {
         let mut foreign_prompts_cache: HashMap<String, Option<PromptRecord>> = HashMap::new();
 
         let mut result_hunks: Vec<BlameHunk> = Vec::new();
+
+        // Batch-resolve all blamed commits' authorship notes up front (one `cat-file
+        // --batch` instead of a `git notes show` per unique commit), then read from the
+        // cache in the loop below. Identical results to the per-commit lazy path.
+        let unique_commit_shas: Vec<String> = hunks
+            .iter()
+            .map(|hunk| hunk.commit_sha.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        for (sha, authorship) in
+            crate::git::notes_api::read_authorship_v3_batch(self, &unique_commit_shas)
+        {
+            commit_authorship_cache.entry(sha).or_insert(authorship);
+        }
 
         for hunk in hunks {
             // Get or fetch the authorship log for this commit
@@ -1076,6 +1117,23 @@ fn overlay_ai_authorship(
     let mut simulated_authorship_logs: HashMap<String, AuthorshipLog> = HashMap::new();
     // Cache for foreign prompts to avoid repeated grepping
     let mut foreign_prompts_cache: HashMap<String, Option<PromptRecord>> = HashMap::new();
+
+    // Resolve every blamed commit's authorship note in a single batched read instead of
+    // one `git notes show` subprocess per unique commit. This is the dominant cost of
+    // `git-ai stats` over a range; the per-hunk loop below then only reads from the cache.
+    // The batch produces values identical to the per-commit get_reference_as_authorship_log_v3.
+    let unique_commit_shas: Vec<String> = blame_hunks
+        .iter()
+        .map(|hunk| hunk.commit_sha.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    for (sha, authorship) in
+        crate::git::notes_api::read_authorship_v3_batch(repo, &unique_commit_shas)
+    {
+        commit_authorship_cache.entry(sha).or_insert(authorship);
+    }
+
     for hunk in blame_hunks {
         // Check if we've already looked up this commit's authorship
         let authorship_log = if let Some(cached) = commit_authorship_cache.get(&hunk.commit_sha) {

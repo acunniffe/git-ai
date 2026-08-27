@@ -128,6 +128,76 @@ pub fn read_authorship_v3(
     }
 }
 
+/// Batch-resolve v3 authorship logs for many commits at once.
+///
+/// For every requested commit SHA the returned map contains the SAME value that
+/// `read_authorship_v3(repo, sha).ok()` would produce — `Some(log)` when the commit
+/// has a parseable, version-compatible note and `None` otherwise. The difference is
+/// purely in cost: on the `GitNotes` backend this resolves all note blobs with a
+/// couple of batched `git ls-tree` calls plus a single `git cat-file --batch`,
+/// instead of spawning one `git notes show` per commit. That fan-out is the dominant
+/// cost of `git-ai stats` over a commit range, where blame attributes lines to many
+/// distinct commits and each one's note was previously re-read in its own subprocess.
+///
+/// The `Http` backend already serves notes from a fast local cache (no subprocess
+/// per commit), and its cache-hit path intentionally skips the version check that the
+/// git path applies; to preserve those exact semantics we delegate per commit there.
+///
+/// Parity boundary (intentional): on `GitNotes` the batched read decodes each note
+/// blob with `from_utf8_lossy` (the same decode the existing `CommitAuthorship` note
+/// path uses), whereas the per-commit `show_authorship_note` decodes strictly and
+/// treats a non-UTF8 blob as absent. git-ai always serializes notes as valid UTF-8
+/// JSON, and a blob that is invalid UTF-8 cannot lossily decode into a schema-valid
+/// v3 `AuthorshipLog`, so the two paths agree for every real note; the only theoretical
+/// divergence is a corrupt/hand-crafted non-UTF8 blob, which neither path can render as
+/// usable authorship data. Duplicate SHAs are tolerated — the result holds one entry
+/// per unique commit — though both current callers already pass a deduplicated set.
+pub fn read_authorship_v3_batch(
+    repo: &Repository,
+    commit_shas: &[String],
+) -> HashMap<String, Option<AuthorshipLog>> {
+    let mut out: HashMap<String, Option<AuthorshipLog>> = HashMap::with_capacity(commit_shas.len());
+    if commit_shas.is_empty() {
+        return out;
+    }
+
+    match Config::get().notes_backend_kind() {
+        NotesBackendKind::GitNotes => {
+            // GitNotes: read_authorship_v3 == refs::get_reference_as_authorship_log_v3
+            // (deserialize + version check + base_commit_sha). Batch the note-content
+            // reads, then parse each through the exact same helper so results are
+            // byte-for-byte identical to the per-commit path.
+            match crate::git::refs::notes_for_commits(repo, commit_shas) {
+                Ok(contents) => {
+                    for sha in commit_shas {
+                        let parsed = contents.get(sha).and_then(|content| {
+                            crate::git::refs::parse_reference_as_authorship_log_v3(content, sha)
+                                .ok()
+                        });
+                        out.entry(sha.clone()).or_insert(parsed);
+                    }
+                }
+                Err(_) => {
+                    // Rare: a batched read failure (e.g. a missing referenced blob).
+                    // Fall back to the per-commit path so behavior never changes.
+                    for sha in commit_shas {
+                        out.entry(sha.clone())
+                            .or_insert_with(|| read_authorship_v3(repo, sha).ok());
+                    }
+                }
+            }
+        }
+        NotesBackendKind::Http => {
+            for sha in commit_shas {
+                out.entry(sha.clone())
+                    .or_insert_with(|| read_authorship_v3(repo, sha).ok());
+            }
+        }
+    }
+
+    out
+}
+
 /// Return a map of commit SHA → note-blob OID for the given commits.
 ///
 /// # Audit results (Phase 2)
