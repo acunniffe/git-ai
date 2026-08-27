@@ -2890,6 +2890,110 @@ impl TestRepo {
         Err("git_with_env failed after retries".to_string())
     }
 
+    /// Run a traced git command with data provided on stdin (e.g.
+    /// `update-ref --stdin`, `hash-object -w --stdin`). Mirrors the daemon
+    /// test-sync bookkeeping of `git_with_env` for tracked commands.
+    pub fn git_with_stdin(&self, args: &[&str], stdin_data: &[u8]) -> Result<String, String> {
+        let tracked_invocation =
+            self.parsed_git_invocation_for_tracking(args, Some(self.path.as_path()));
+        let command_affects_daemon = self.has_active_daemon()
+            && git_ai::daemon::test_sync::tracks_parsed_git_invocation_for_test_sync(
+                &tracked_invocation,
+            );
+        let daemon_test_sync_session = command_affects_daemon.then(new_daemon_test_sync_session_id);
+
+        let mut command = Command::new(real_git_executable());
+        let mut command_args = Vec::<String>::new();
+        if let Some(session) = daemon_test_sync_session.as_deref() {
+            self.append_daemon_test_sync_session_args(&mut command_args, session);
+        }
+        command_args.push("-C".to_string());
+        command_args.push(self.path.to_str().unwrap().to_string());
+        command_args.extend(args.iter().map(|arg| (*arg).to_string()));
+        command.args(&command_args);
+        self.configure_command_env(&mut command);
+
+        if let Some(patch) = &self.config_patch
+            && let Ok(patch_json) = serde_json::to_string(patch)
+        {
+            command.env("GIT_AI_TEST_CONFIG_PATCH", patch_json);
+        }
+        command.env("GIT_AI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+        command.env("GITAI_TEST_DB_PATH", self.test_db_path.to_str().unwrap());
+
+        let output = run_command_output_with_stdin(
+            &mut command,
+            &format!("git stdin {:?}", args),
+            stdin_data,
+        )?;
+
+        if let Some(session) = daemon_test_sync_session.as_deref() {
+            self.record_daemon_family_expected_completion_session(session);
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if output.status.success() {
+            let combined = if stdout.is_empty() {
+                stderr
+            } else if stderr.is_empty() {
+                stdout
+            } else {
+                format!("{}{}", stdout, stderr)
+            };
+            Ok(combined)
+        } else {
+            Err(format!("{}{}", stdout, stderr))
+        }
+    }
+
+    /// Run a raw git command (hooks disabled, no trace2 wiring) with data
+    /// provided on stdin. The blind twin of `git_og_with_env`; callers must not
+    /// pass env vars that enable trace2, since no daemon sync is recorded.
+    pub fn git_og_with_stdin_and_env(
+        &self,
+        args: &[&str],
+        envs: &[(&str, &str)],
+        stdin_data: &[u8],
+    ) -> Result<String, String> {
+        #[cfg(windows)]
+        let null_hooks = "NUL";
+        #[cfg(not(windows))]
+        let null_hooks = "/dev/null";
+
+        let mut command = Command::new(real_git_executable());
+        command.arg("-C").arg(&self.path);
+        command
+            .arg("-c")
+            .arg(format!("core.hooksPath={}", null_hooks));
+        command.args(args);
+        configure_test_home_env(&mut command, &self.test_home);
+        for (key, value) in envs {
+            command.env(key, value);
+        }
+
+        let output = run_command_output_with_stdin(
+            &mut command,
+            &format!("git_og stdin {:?}", args),
+            stdin_data,
+        )?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        if output.status.success() {
+            let combined = if stdout.is_empty() {
+                stderr
+            } else if stderr.is_empty() {
+                stdout
+            } else {
+                format!("{}{}", stdout, stderr)
+            };
+            Ok(combined)
+        } else {
+            Err(format!("{}{}", stdout, stderr))
+        }
+    }
+
     pub fn git_ai_from_working_dir(
         &self,
         working_dir: &std::path::Path,
