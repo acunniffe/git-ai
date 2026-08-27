@@ -34,6 +34,13 @@ use std::sync::{Mutex, OnceLock};
 const EMBEDDED_SNAPSHOT: &str = include_str!("models_dev_pricing_snapshot.json");
 const MODELS_DEV_API_URL: &str = "https://models.dev/api.json";
 const CACHE_FILE_NAME: &str = "models_dev_pricing.json";
+/// Format version of the on-disk cache. Bump whenever `ModelPricing`'s
+/// serialized shape changes meaning: caches written under another format are
+/// ignored (the embedded snapshot applies) until a refresh rewrites them,
+/// never reinterpreted — a pre-tier cache stored explicit 0.0 for unpublished
+/// cache rates, which the optional-rate schema would read as published-free
+/// pricing, and it carries no tiers or fast multipliers.
+const PRICING_CACHE_VERSION: u32 = 2;
 /// Minimum interval between refresh *attempts* (successful or not), so
 /// offline machines don't stall on the fetch timeout at every invocation.
 const REFRESH_INTERVAL_SECS: u64 = 24 * 3600;
@@ -308,6 +315,7 @@ fn catalog() -> &'static PricingCatalog {
     CATALOG.get_or_init(|| {
         if !use_embedded_only()
             && let Some(cache) = cache_path().and_then(|path| read_json_file::<PricingCache>(&path))
+            && cache.is_current_format()
             && !cache.models.is_empty()
         {
             return PricingCatalog::from_entries(cache.models);
@@ -325,8 +333,17 @@ fn embedded_catalog() -> PricingCatalog {
 /// attempt (used for throttling, so failed attempts are also spaced out).
 #[derive(Serialize, Deserialize)]
 struct PricingCache {
+    /// See [`PRICING_CACHE_VERSION`]; pre-version files default to 0.
+    #[serde(default)]
+    version: u32,
     last_attempt_at: u64,
     models: BTreeMap<String, ModelPricing>,
+}
+
+impl PricingCache {
+    fn is_current_format(&self) -> bool {
+        self.version == PRICING_CACHE_VERSION
+    }
 }
 
 fn cache_path() -> Option<PathBuf> {
@@ -363,10 +380,11 @@ fn is_fresh(last_attempt_at: u64, now: u64) -> bool {
 }
 
 /// Fold a fetch result into the next cache state. On failure the previously
-/// fetched models are kept, but the embedded snapshot is never copied into
-/// the cache: an empty cache keeps falling through to the (possibly newer)
-/// snapshot shipped with the running binary, while the bumped attempt
-/// timestamp still throttles the next fetch.
+/// fetched models are kept — unless they were written under another format,
+/// which must not be relabeled as current — but the embedded snapshot is
+/// never copied into the cache: an empty cache keeps falling through to the
+/// (possibly newer) snapshot shipped with the running binary, while the
+/// bumped attempt timestamp still throttles the next fetch.
 fn next_cache(
     existing: Option<PricingCache>,
     fetched: Result<BTreeMap<String, ModelPricing>, String>,
@@ -374,9 +392,13 @@ fn next_cache(
 ) -> PricingCache {
     let models = match fetched {
         Ok(models) => models,
-        Err(_) => existing.map(|cache| cache.models).unwrap_or_default(),
+        Err(_) => existing
+            .filter(PricingCache::is_current_format)
+            .map(|cache| cache.models)
+            .unwrap_or_default(),
     };
     PricingCache {
+        version: PRICING_CACHE_VERSION,
         last_attempt_at: now,
         models,
     }
@@ -847,6 +869,7 @@ mod tests {
 
         // A later failure keeps previously *fetched* models.
         let existing = PricingCache {
+            version: PRICING_CACHE_VERSION,
             last_attempt_at: 100,
             models: fetched_models(),
         };
@@ -856,12 +879,32 @@ mod tests {
 
         // Success replaces the models outright.
         let existing = PricingCache {
+            version: PRICING_CACHE_VERSION,
             last_attempt_at: 200,
             models: BTreeMap::new(),
         };
         let cache = next_cache(Some(existing), Ok(fetched_models()), 300);
         assert_eq!(cache.last_attempt_at, 300);
         assert_eq!(cache.models, fetched_models());
+    }
+
+    #[test]
+    fn other_format_cache_files_are_ignored_not_reinterpreted() {
+        // A cache written before cache rates became optional stores explicit
+        // 0.0 for unpublished rates, which the optional-rate schema would
+        // read as published-free pricing (and it carries no tiers or fast
+        // multipliers). Such files must be discarded — the embedded snapshot
+        // applies — never reinterpreted.
+        let old: PricingCache = serde_json::from_str(
+            r#"{"last_attempt_at":100,"models":{"gpt-5-pro":{"input":15.0,"output":120.0,"cache_read":0.0,"cache_write":0.0}}}"#,
+        )
+        .unwrap();
+        assert!(!old.is_current_format(), "pre-version files default to 0");
+        // A failed refresh drops the other-format models rather than
+        // relabeling them as current.
+        let next = next_cache(Some(old), Err("offline".to_string()), 200);
+        assert!(next.models.is_empty());
+        assert_eq!(next.version, PRICING_CACHE_VERSION);
     }
 
     #[test]
@@ -883,12 +926,14 @@ mod tests {
         write_json_file(
             &path,
             &PricingCache {
+                version: PRICING_CACHE_VERSION,
                 last_attempt_at: 1234567890,
                 models: fetched_models(),
             },
         );
 
         let cache: PricingCache = read_json_file(&path).unwrap();
+        assert!(cache.is_current_format());
         assert_eq!(cache.last_attempt_at, 1234567890);
         assert_eq!(cache.models, fetched_models());
     }
