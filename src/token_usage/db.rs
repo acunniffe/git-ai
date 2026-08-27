@@ -397,6 +397,17 @@ impl TokenUsageDatabase {
         } else {
             0
         };
+        // A database from a NEWER binary must fail closed here: migrations
+        // are destructive from v3 on (columns renamed/dropped), so a
+        // downgraded daemon would otherwise open fine and then fail every
+        // pass at runtime on missing columns, churning error backoff.
+        if current_version > MIGRATIONS.len() as u32 {
+            return Err(GitAiError::Generic(format!(
+                "token-usage database schema v{current_version} is newer than this binary \
+                 (supports up to v{}); upgrade git-ai or delete the database",
+                MIGRATIONS.len()
+            )));
+        }
         for (version, migration_sql) in MIGRATIONS.iter().enumerate() {
             if current_version < (version + 1) as u32 {
                 // Each migration commits atomically: a crash between the

@@ -446,23 +446,23 @@ fn service_tier_speed(value: &str) -> Option<Speed> {
     }
 }
 
-/// Speed fallback implied by a Codex `config.toml`: `Some(Fast)` when any
-/// `service_tier` key holds `fast`/`priority`, comment-stripped and
-/// quote-trimmed (ccusage `codex_config_requests_fast_service_tier`). A
-/// configured `standard` resolves like an absent key — the auto policy
-/// already defaults to standard.
+/// Speed fallback implied by a Codex `config.toml`: the `service_tier` of
+/// the active profile (`profiles.<profile>.service_tier`, matching Codex's
+/// own config resolution and `streams::model_extraction`'s model lookup),
+/// falling back to the top-level key. Only `fast`/`priority` produce a
+/// fallback — a configured `standard` resolves like an absent key, since
+/// the auto policy already defaults to standard. Deviation from ccusage,
+/// whose table-blind line scan would mark the whole home fast for a
+/// `service_tier = "fast"` inside an *inactive* profile table.
 pub fn config_fallback_speed(config_toml: &str) -> Option<Speed> {
-    config_toml
-        .lines()
-        .any(|line| {
-            let setting = line.split('#').next().unwrap_or_default().trim();
-            let Some((key, value)) = setting.split_once('=') else {
-                return false;
-            };
-            key.trim() == "service_tier"
-                && service_tier_speed(value.trim().trim_matches(['"', '\''])) == Some(Speed::Fast)
-        })
-        .then_some(Speed::Fast)
+    let config: toml::Value = toml::from_str(config_toml).ok()?;
+    let tier = config
+        .get("profile")
+        .and_then(toml::Value::as_str)
+        .and_then(|profile| config.get("profiles")?.get(profile)?.get("service_tier"))
+        .or_else(|| config.get("service_tier"))
+        .and_then(toml::Value::as_str)?;
+    service_tier_speed(tier).filter(|speed| *speed == Speed::Fast)
 }
 
 /// Content-derived dedup key over the event's full identity (timestamp,
@@ -762,6 +762,38 @@ mod tests {
         assert_eq!(config_fallback_speed(r#"service_tier = "breakfast""#), None);
         assert_eq!(config_fallback_speed(r#"service_tier = "standard""#), None);
         assert_eq!(config_fallback_speed(""), None);
+        assert_eq!(config_fallback_speed("not [valid toml"), None);
+    }
+
+    #[test]
+    fn config_fallback_respects_profile_scoping() {
+        // A fast tier inside an INACTIVE profile table must not mark the
+        // whole codex home fast (deviation from ccusage's line scan), while
+        // the active profile's tier wins over the top-level key.
+        assert_eq!(
+            config_fallback_speed(
+                "profile = \"work\"\n[profiles.turbo]\nservice_tier = \"fast\"\n"
+            ),
+            None
+        );
+        assert_eq!(
+            config_fallback_speed(
+                "profile = \"turbo\"\n[profiles.turbo]\nservice_tier = \"fast\"\n"
+            ),
+            Some(Speed::Fast)
+        );
+        assert_eq!(
+            config_fallback_speed(
+                "profile = \"calm\"\nservice_tier = \"fast\"\n[profiles.calm]\nservice_tier = \"standard\"\n"
+            ),
+            None,
+            "the active profile's standard tier wins over the top-level fast"
+        );
+        assert_eq!(
+            config_fallback_speed("service_tier = \"priority\"\n[profiles.idle]\nmodel = \"x\"\n"),
+            Some(Speed::Fast),
+            "top-level tier applies when no profile is selected"
+        );
     }
 
     #[test]

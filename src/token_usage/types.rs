@@ -70,8 +70,7 @@ pub struct UsageEntry {
     /// without `usage.speed`); a present marker wins ties on replacement.
     pub speed: Option<Speed>,
     /// The speed was not recorded in the transcript but resolved from
-    /// configuration or the standard default (Codex entries without a
-    /// recorded service tier).
+    /// configuration or the standard default (unmarked entries of any tool).
     pub speed_inferred: bool,
     /// Cost formula for this entry (see [`PricingShape`]).
     pub pricing_shape: PricingShape,

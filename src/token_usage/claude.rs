@@ -222,7 +222,10 @@ fn usage_entry(
             .map(super::cost::micro_usd),
         is_sidechain,
         speed: usage.speed,
-        speed_inferred: false,
+        // The wire flag means "tier not recorded in the transcript" — an
+        // unmarked Claude entry lands in the standard bucket by default,
+        // exactly like an unmarked Codex entry, and must report the same.
+        speed_inferred: usage.speed.is_none(),
         pricing_shape: PricingShape::Claude,
     }
 }
@@ -441,7 +444,7 @@ mod tests {
         assert_eq!(e.transcript_cost_micro_usd, None);
         assert!(!e.is_sidechain);
         assert_eq!(e.speed, None);
-        assert!(!e.speed_inferred);
+        assert!(e.speed_inferred, "no usage.speed marker was recorded");
         assert_eq!(e.pricing_shape, PricingShape::Claude);
     }
 
