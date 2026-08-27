@@ -17,7 +17,7 @@
  * @see https://opencode.ai/docs/plugins/
  */
 
-import type { Plugin } from "@opencode-ai/plugin"
+import type { Plugin, PluginModule } from "@opencode-ai/plugin"
 import { spawn } from "child_process"
 import { readFile, stat } from "fs/promises"
 import { dirname, isAbsolute, join, resolve } from "path"
@@ -512,4 +512,13 @@ const createGitAiPlugin = (ctx: Parameters<Plugin>[0]): Awaited<ReturnType<Plugi
   }
 }
 
-export default GitAiPlugin
+// OpenCode reads a file-based plugin's display name from the `id` of a
+// default-exported plugin module; without it the UI falls back to the plugin's
+// file:// path. The named GitAiPlugin export above must stay: older OpenCode
+// loaders call every export as a function and register the plugin through it.
+const GitAiPluginModule: PluginModule = {
+  id: "git-ai",
+  server: GitAiPlugin,
+}
+
+export default GitAiPluginModule
