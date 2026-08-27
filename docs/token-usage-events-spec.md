@@ -112,16 +112,19 @@ Values (`token_usage_pos`): `bucket_ts`, `input_tokens`, `output_tokens`,
 `reasoning_output_tokens` (optional; Codex reports it as a subset of output),
 `est_cost_micro_usd` (u64 micro-USD), `credits` (f64, reserved),
 `message_count`, `emitted_seq`, `speed` (0/1, the bucket-key dimension),
-`speed_inferred` (any entry's tier came from configuration rather than the
-transcript), `cache_write_1h_tokens` (the 1h-TTL portion of
-`cache_write_tokens`), `long_context_{input,output,cache_read,cache_write,
+`speed_inferred` (any entry's tier was not recorded in the transcript —
+resolved from configuration or the standard default), `cache_write_1h_tokens`
+(the 1h-TTL portion of `cache_write_tokens`),
+`long_context_{input,output,cache_read,cache_write,
 cache_write_1h}_tokens` (tokens of requests that selected their model's
 long-context tier; base-tier tokens are the totals minus these), and
 `transcript_cost_micro_usd` (the portion of `est_cost_micro_usd` that came
 from transcript `costUSD` fields). Standard `EventAttributes` carry tool,
 model, session ids, and repo_url (no git spawn); `custom_attributes` carries
-the id of the pricing catalog that priced the bucket's latest catalog-priced
-entry (`pricing_catalog`: `embedded:<version>` or `modelsdev:<hash>`).
+the id of the pricing catalog that priced the bucket's catalog-priced entries
+(`pricing_catalog`: `embedded:<version>` or `modelsdev:<hash>`; a bucket that
+mixes catalogs — a refresh plus daemon restart mid-bucket — reports the
+greatest id, an approximation).
 
 Cost follows ccusage's "auto" mode per entry: the transcript's own `costUSD`
 wins (negative/non-finite values are treated as absent, and every per-entry

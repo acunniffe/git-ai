@@ -404,12 +404,21 @@ fn fast_long_context_codex_usage_emits_tier_and_speed_fields() {
         value_u64(event, token_usage_pos::TRANSCRIPT_COST_MICRO_USD),
         Some(0)
     );
-    // Whole request at the 272K+ rates (8/30 input/output, 0.8 cache read
-    // per million), doubled by the fast multiplier:
-    // (0.28*8 + 0.02*0.8 + 0.001*30) * 2 = $4.572.
+    // Whole request at the above-threshold rates times the fast multiplier.
+    // Derived from the embedded snapshot (the daemon subprocess and this
+    // process both run with GIT_AI_TEST_DB_PATH set, pinning it) so the
+    // weekly snapshot refresh cannot break this assertion; e.g. at 8/30
+    // input/output and 0.8 cache read: (0.28*8 + 0.02*0.8 + 0.001*30) * 2 =
+    // $4.572.
+    let pricing = git_ai::metrics::model_pricing::pricing_for("gpt-5.6-sol")
+        .expect("gpt-5.6-sol must be in the embedded snapshot");
+    let expected_usd = (0.28 * pricing.input_above.unwrap()
+        + 0.02 * pricing.cache_read_above.unwrap()
+        + 0.001 * pricing.output_above.unwrap())
+        * pricing.fast_multiplier;
     assert_eq!(
         value_u64(event, token_usage_pos::EST_COST_MICRO_USD),
-        Some(4_572_000)
+        Some((expected_usd * 1_000_000.0).round() as u64)
     );
     let attrs = EventAttributes::from_sparse(&event.attrs);
     let custom = attrs

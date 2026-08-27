@@ -2359,7 +2359,7 @@ pub mod token_usage_pos {
     pub const MESSAGE_COUNT: usize = 9; // u32 - deduplicated entries in the bucket
     pub const EMITTED_SEQ: usize = 10; // u64 - per-bucket emission revision
     pub const SPEED: usize = 11; // u32 - bucket key dimension: 0 standard, 1 fast
-    pub const SPEED_INFERRED: usize = 12; // u32 0/1 - any entry's tier inferred from config
+    pub const SPEED_INFERRED: usize = 12; // u32 0/1 - any entry's tier unrecorded (config/default)
     pub const CACHE_WRITE_1H_TOKENS: usize = 13; // u64 - 1h-TTL portion of cache_write_tokens
     pub const LONG_CONTEXT_INPUT_TOKENS: usize = 14; // u64 - portion billed at long-context rates
     pub const LONG_CONTEXT_OUTPUT_TOKENS: usize = 15; // u64

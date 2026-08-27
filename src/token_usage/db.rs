@@ -295,15 +295,18 @@ pub struct BucketAggregate {
     /// fields — fixed under repricing (its tokens are still in the totals).
     pub transcript_cost_micro_usd: u64,
     pub message_count: u32,
-    /// Any entry's speed was inferred from configuration rather than
-    /// recorded in the transcript.
+    /// Any entry's speed was not recorded in the transcript (resolved from
+    /// configuration or the standard default instead).
     pub speed_inferred: bool,
     pub long_context_input: u64,
     pub long_context_output: u64,
     pub long_context_cache_read: u64,
     pub long_context_cache_write: u64,
     pub long_context_cache_write_1h: u64,
-    /// Latest pricing-catalog id among the bucket's catalog-priced entries.
+    /// Greatest (SQL `MAX`, i.e. lexicographic — not most recent) pricing-
+    /// catalog id among the bucket's catalog-priced entries. Buckets price
+    /// under one catalog in practice; one that mixes catalogs (a refresh
+    /// plus daemon restart mid-bucket) is identified approximately.
     pub pricing_catalog: Option<String>,
 }
 
