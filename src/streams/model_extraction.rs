@@ -54,6 +54,128 @@ pub fn extract_model_from_droid_settings(
     Ok(json.get("model").and_then(|v| v.as_str()).map(String::from))
 }
 
+/// Backward-scan granularity and total budget used to locate the start of the
+/// newest rollout record. zcode model-io records embed the whole conversation
+/// and grow monotonically, so the newest record's start can sit many
+/// megabytes from EOF; past the budget it is unreachable and extraction falls
+/// back to the session's opening records.
+const ZCODE_BACKWARD_SCAN_CHUNK_BYTES: u64 = 256 * 1024;
+const MAX_ZCODE_BACKWARD_SCAN_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Bytes read from the head of a rollout record when pulling the model. The
+/// `model` object sits near the record start, before the large request body.
+const ZCODE_RECORD_HEAD_BYTES: u64 = 64 * 1024;
+
+fn extract_model_from_zcode_rollout_line(line: &str) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+    json.get("model")?
+        .get("modelId")?
+        .as_str()
+        .map(String::from)
+}
+
+/// Find the byte offset where the newest complete record starts, scanning
+/// backwards from EOF in bounded chunks. A trailing newline is skipped so the
+/// last record's terminator is not mistaken for a separator. Returns
+/// `Some(0)` when the whole file is a single line within the budget.
+fn find_start_of_last_record(file: &mut File, size: u64) -> Option<u64> {
+    use std::io::Read as _;
+
+    if size == 0 {
+        return None;
+    }
+    let scan_len = MAX_ZCODE_BACKWARD_SCAN_BYTES.min(size);
+    let mut scanned: u64 = 0;
+    while scanned < scan_len {
+        let chunk_len = ZCODE_BACKWARD_SCAN_CHUNK_BYTES.min(scan_len - scanned);
+        let chunk_start = size - scanned - chunk_len;
+        let mut buf = vec![0u8; chunk_len as usize];
+        file.seek(SeekFrom::Start(chunk_start)).ok()?;
+        file.read_exact(&mut buf).ok()?;
+        let mut from = buf.len();
+        if scanned == 0 && buf.last() == Some(&b'\n') {
+            from -= 1;
+        }
+        if let Some(pos) = buf[..from].iter().rposition(|&b| b == b'\n') {
+            return Some(chunk_start + pos as u64 + 1);
+        }
+        scanned += chunk_len;
+    }
+    if scan_len == size { Some(0) } else { None }
+}
+
+/// Pull `model.modelId` from the head of the record starting at `start`.
+/// Full-line JSON parses cost megabytes for records that embed the whole
+/// conversation, while the model object sits within the first bytes — and
+/// JSON string contents escape their quotes, so a raw `"modelId":"` match
+/// only occurs at a real key position.
+fn scan_model_id_in_record_head(file: &mut File, start: u64, size: u64) -> Option<String> {
+    use std::io::Read as _;
+
+    let len = ZCODE_RECORD_HEAD_BYTES.min(size.saturating_sub(start));
+    if len == 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; len as usize];
+    file.seek(SeekFrom::Start(start)).ok()?;
+    file.read_exact(&mut buf).ok()?;
+    let head = String::from_utf8_lossy(&buf);
+    let key = "\"modelId\":\"";
+    let value_start = head.find(key)? + key.len();
+    let rest = &head[value_start..];
+    let end = rest.find('"')?;
+    let value = &rest[..end];
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+/// Extract the model from a ZCode rollout transcript
+/// (`~/.zcode/cli/rollout/model-io-sess_<session_id>.jsonl`).
+///
+/// Each line is one model-io record shaped like
+/// `{"model":{"modelId":"GLM-5.3",...},"request":{...}}`. Newest-record
+/// probes come first so mid-session model switches are attributed correctly:
+/// the shared bounded tail scanner for records that fit its window, then a
+/// bounded backward scan that locates the newest record's start and reads
+/// only its head (records embed the whole conversation, so their lines are
+/// routinely far larger than any full-parse window). Only once no recent
+/// record yields a model do the oldest-record fallbacks run (shared head
+/// scanner, then the opening record's head). Missing or unreadable files
+/// yield `Ok(None)`.
+pub fn extract_model_from_zcode_rollout(path: &Path) -> Result<Option<String>, StreamError> {
+    let (model, _) =
+        extract_model_from_jsonl_tail_with(path, extract_model_from_zcode_rollout_line)?;
+    if model.is_some() {
+        return Ok(model);
+    }
+
+    if let Ok(mut file) = File::open(path)
+        && let Ok(size) = file.metadata().map(|m| m.len())
+        && size > 0
+        && let Some(start) = find_start_of_last_record(&mut file, size)
+        && let Some(model) = scan_model_id_in_record_head(&mut file, start, size)
+    {
+        return Ok(Some(model));
+    }
+
+    if let Some(model) =
+        extract_model_from_jsonl_head_with(path, extract_model_from_zcode_rollout_line)
+    {
+        return Ok(Some(model));
+    }
+
+    // Opening records larger than the head scanner's per-line cap (a single
+    // huge first record) are still covered by scanning that record's head.
+    if let Ok(mut file) = File::open(path)
+        && let Ok(size) = file.metadata().map(|m| m.len())
+        && size > 0
+        && let Some(model) = scan_model_id_in_record_head(&mut file, 0, size)
+    {
+        return Ok(Some(model));
+    }
+
+    Ok(None)
+}
+
 fn extract_model_from_jsonl_tail(path: &Path) -> Result<Option<String>, StreamError> {
     let (model, tail_was_truncated) =
         extract_model_from_jsonl_tail_with(path, extract_model_from_jsonl_line)?;
@@ -1164,6 +1286,124 @@ mod tests {
         let path = fixture_path("gemini-session-simple.jsonl");
         let result = extract_model(&path, StreamFormat::GeminiJsonl, None).unwrap();
         assert_eq!(result, Some("gemini-2.5-flash".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_from_fixture() {
+        let path = fixture_path("zcode-rollout-simple.jsonl");
+        let result = extract_model_from_zcode_rollout(&path).unwrap();
+        assert_eq!(result, Some("GLM-5.3".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_missing_file() {
+        let result = extract_model_from_zcode_rollout(Path::new("/nonexistent/zcode.jsonl"));
+        assert_eq!(result.unwrap(), None);
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_prefers_latest_record() {
+        // Mid-session model switches must be attributed to the newest model.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(
+            &mut file,
+            b"{\"model\":{\"modelId\":\"model-a\"}}\n{\"model\":{\"modelId\":\"model-b\"}}\n{\"model\":{\"modelId\":\"model-c\"}}\n",
+        )
+        .unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("model-c".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_skips_invalid_last_line() {
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(
+            &mut file,
+            b"not json at all\n{\"model\":{\"modelId\":\"GLM-5.3\"}}\nalso not json\n",
+        )
+        .unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("GLM-5.3".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_all_lines_invalid() {
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(&mut file, b"not json\nalso not json\n").unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_switch_after_growth_prefers_latest() {
+        // Sessions start with small records (parsable by the shared head
+        // scanner) and grow past its per-line cap. A model switch in the grown
+        // records must still win over the small opening record.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(&mut file, b"{\"model\":{\"modelId\":\"model-a\"}}\n").unwrap();
+        let padding = "x".repeat(100 * 1024);
+        let switched = format!("{{\"model\":{{\"modelId\":\"model-b\"}},\"pad\":\"{padding}\"}}\n");
+        std::io::Write::write_all(&mut file, switched.as_bytes()).unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("model-b".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_single_large_record() {
+        // A log holding one record larger than the first-line fallback cap
+        // must still yield its model: the whole file fits the wide window, so
+        // its only line is complete rather than truncated prior-line garbage.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let padding = "x".repeat(1536 * 1024);
+        let record = format!("{{\"model\":{{\"modelId\":\"GLM-5.3\"}},\"pad\":\"{padding}\"}}\n");
+        std::io::Write::write_all(&mut file, record.as_bytes()).unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("GLM-5.3".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_oversized_last_record_resolved_from_record_head() {
+        // The last record embeds the whole conversation and can exceed the
+        // shared scan windows; the backward scan must still reach its start so
+        // the model is read from the newest record's head, not the opening one.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let first = b"{\"model\":{\"modelId\":\"model-a\"}}\n";
+        let padding = "x".repeat(5 * 1024 * 1024);
+        let last = format!("{{\"model\":{{\"modelId\":\"model-b\"}},\"pad\":\"{padding}\"}}\n");
+        std::io::Write::write_all(&mut file, first).unwrap();
+        std::io::Write::write_all(&mut file, last.as_bytes()).unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("model-b".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_beyond_backward_budget_falls_back_to_first() {
+        // A last record larger than the whole backward-scan budget cannot be
+        // reached at all; extraction then falls back to the opening record.
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let first = b"{\"model\":{\"modelId\":\"model-a\"}}\n";
+        let padding = "x".repeat(17 * 1024 * 1024);
+        let last = format!("{{\"model\":{{\"modelId\":\"model-b\"}},\"pad\":\"{padding}\"}}\n");
+        std::io::Write::write_all(&mut file, first).unwrap();
+        std::io::Write::write_all(&mut file, last.as_bytes()).unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, Some("model-a".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_empty_file() {
+        let file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_extract_model_zcode_rollout_model_id_missing() {
+        let mut file = tempfile::NamedTempFile::with_suffix(".jsonl").unwrap();
+        std::io::Write::write_all(&mut file, br#"{"request":{"body":{"model":"GLM-5.3"}}}"#)
+            .unwrap();
+        let result = extract_model_from_zcode_rollout(file.path()).unwrap();
+        assert_eq!(result, None);
     }
 
     #[test]

@@ -1030,6 +1030,7 @@ fn is_known_checkpoint_preset(arg: &str) -> bool {
             | "known_human"
             | "droid"
             | "agent-v1"
+            | "zcode"
     )
 }
 
