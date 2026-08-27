@@ -167,11 +167,18 @@ TokenUsage events are the authoritative dollars.
 Claude subagent transcripts roll up to their parent session (matching
 ccusage's session semantics), which also lets sidechain replays of parent
 messages deduplicate against the parent's entries across files. Codex
-sessions are per rollout file; forked rollouts skip their replayed prefix via
-the rewritten-burst heuristic, and a fork whose transcript ends with its
-first usage event still parked is released by an end-of-file flush once the
-burst window has passed in wall-clock time (see `src/token_usage/codex.rs`
-for the deviations from ccusage's parent-prefix matching).
+sessions are per rollout file; forked rollouts skip their replayed prefix by
+matching it against the parent rollout's pre-fork usage signatures (ccusage's
+parent-prefix matching): the worker resolves the parent — tracked files under
+the parent's external session id, else a bounded scan of the codex sessions
+tree, always confirmed against the candidate's recorded `session_meta` id —
+and the unmatched remainder persists in the extractor state, so the parent is
+read once per fork, never per pass. A parent that cannot be resolved falls
+back (without retry, like ccusage with an unavailable parent log) to the
+rewritten-burst heuristic: leading usage events spaced <= 1s apart are
+replayed history, and a fork whose transcript ends with its first usage event
+still parked is released by an end-of-file flush once the burst window has
+passed in wall-clock time.
 
 ## Accepted limitations
 
@@ -196,13 +203,14 @@ Reviewed decisions, accepted rather than accidental:
   replay.
 - **Sweep-discovered work sits outside the `git-ai await` drain barrier**
   (see Pipeline): backfill is eventual, matching stream-worker semantics.
-- **A fork burst split across passes can over-count one event.** The
-  end-of-file flush releases a parked first turn after the burst window
-  passes in wall clock. If Codex writes the replayed burst lines more than a
-  second apart (buffered/laggy serialization carrying sub-second recorded
-  timestamps) and a pass lands in the gap, the parked replay is released as
-  own usage. The flush leaves the skip machine armed at the released event's
-  timestamp, so the late-arriving remainder of the burst is still skipped —
-  the over-count is bounded to that single released event per fork, and the
-  race requires write lag upstream's post-hoc whole-file reads never
-  observe.
+- **A fork burst split across passes can over-count one event — on the
+  unresolvable-parent fallback path only.** With parent-prefix matching the
+  replayed history is identified by content, so this race is gone for any
+  fork whose parent rollout is resolvable. When it is not, the end-of-file
+  flush releases a parked first turn after the burst window passes in wall
+  clock; if Codex writes the replayed burst lines more than a second apart
+  (buffered/laggy serialization carrying sub-second recorded timestamps) and
+  a pass lands in the gap, the parked replay is released as own usage. The
+  flush leaves the skip machine armed at the released event's timestamp, so
+  the late-arriving remainder of the burst is still skipped — the over-count
+  is bounded to that single released event per fork.

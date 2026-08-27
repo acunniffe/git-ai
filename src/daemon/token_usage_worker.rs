@@ -55,6 +55,7 @@ use crate::error::GitAiError;
 use crate::metrics::{EventAttributes, MetricEvent, PosEncoded, TokenUsageValues};
 use crate::streams::db::{StreamRecord, StreamsDatabase};
 use crate::token_usage::db::{BatchCommit, TokenUsageDatabase, TrackedFile};
+use crate::token_usage::extractor::{ParentPrefixRequest, UsageSignature};
 use crate::token_usage::{Speed, extractor_for_tool};
 
 /// One raw JSONL line read as bytes: unlike UTF-8-strict `read_line`, a
@@ -761,6 +762,91 @@ fn codex_config_fallback_speed(stream_path: &Path) -> Option<Speed> {
     speed
 }
 
+/// Cap on directory entries visited when scanning the codex sessions tree
+/// for a fork's parent rollout — far above a real `sessions/YYYY/MM/DD`
+/// layout, so pathological trees can't wedge a pass.
+const PARENT_SCAN_MAX_ENTRIES: usize = 50_000;
+
+/// Locate and read a forked child's parent rollout, returning its pre-fork
+/// usage prefix. Candidates come from the token database (files tracked
+/// under the parent's external session id — which, for rolled-up children,
+/// includes the child itself) and a bounded scan of the codex sessions tree
+/// for filenames carrying the parent id; a candidate counts only when its
+/// first line is a `session_meta` recording that id (ccusage locates parents
+/// by recorded id, never by filename). `None` — the parent is unresolvable —
+/// sends the extractor to its rewritten-burst fallback, like ccusage with an
+/// unavailable parent log, and is not retried.
+fn resolve_parent_prefix(
+    token_db: &TokenUsageDatabase,
+    tool: &str,
+    child_path: &str,
+    request: &ParentPrefixRequest,
+) -> Option<Vec<UsageSignature>> {
+    let tracked = token_db
+        .stream_paths_for_external_session(&request.parent_id, tool)
+        .unwrap_or_default();
+    let parent = tracked
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|path| path != Path::new(child_path))
+        .find(|path| records_session_id(path, &request.parent_id))
+        .or_else(|| scan_sessions_tree(Path::new(child_path), &request.parent_id))?;
+    let file = std::fs::File::open(&parent).ok()?;
+    Some(crate::token_usage::codex::collect_parent_prefix(
+        BufReader::with_capacity(128 * 1024, file),
+        request.fork_ts_ms,
+    ))
+}
+
+/// Whether the rollout's first line records `session_id` as its own id.
+fn records_session_id(path: &Path, session_id: &str) -> bool {
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut line = Vec::new();
+    if read_line_bytes(&mut BufReader::new(file), &mut line).is_err() {
+        return false;
+    }
+    crate::token_usage::codex::session_meta_id(&String::from_utf8_lossy(&line)).as_deref()
+        == Some(session_id)
+}
+
+/// Fallback parent discovery for rollouts the token database has not tracked
+/// (yet): walk the child's enclosing codex `sessions` tree for a filename
+/// carrying the parent id (codex rollout filenames embed the session uuid),
+/// confirming by the recorded `session_meta` id.
+fn scan_sessions_tree(child_path: &Path, parent_id: &str) -> Option<PathBuf> {
+    let sessions_root = child_path
+        .ancestors()
+        .find(|dir| dir.file_name().and_then(|name| name.to_str()) == Some("sessions"))?;
+    let mut pending = vec![sessions_root.to_path_buf()];
+    let mut visited = 0usize;
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            visited += 1;
+            if visited > PARENT_SCAN_MAX_ENTRIES {
+                return None;
+            }
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.contains(parent_id))
+                && path != child_path
+                && records_session_id(&path, parent_id)
+            {
+                return Some(path);
+            }
+        }
+    }
+    None
+}
+
 /// Incrementally read one transcript file, persist deduplicated entries, and
 /// emit changed buckets through `sink`. Split out (with injectable repo
 /// resolution and sink) for direct testing without a daemon.
@@ -827,6 +913,22 @@ fn process_file(
         extractor.set_fallback_speed(codex_config_fallback_speed(Path::new(stream_path)));
     }
 
+    // Serve a fork's parent-prefix request as soon as it appears — after
+    // restoring persisted state here, and after every consumed line below —
+    // so the parent's replayed history is known before the next usage event
+    // is judged. A cheap no-op for everything but a freshly detected fork.
+    let serve_parent_request = |extractor: &mut Box<dyn crate::token_usage::UsageExtractor>| {
+        if let Some(request) = extractor.parent_request() {
+            extractor.provide_parent_prefix(resolve_parent_prefix(
+                token_db,
+                &identity.tool,
+                stream_path,
+                &request,
+            ));
+        }
+    };
+    serve_parent_request(&mut extractor);
+
     let file = std::fs::File::open(stream_path)?;
     let mut reader = BufReader::with_capacity(128 * 1024, file);
     reader.seek(SeekFrom::Start(offset))?;
@@ -864,6 +966,7 @@ fn process_file(
                         offset += bytes as u64;
                         if extractor.wants_line(trimmed) {
                             entries.extend(extractor.extract_line(trimmed));
+                            serve_parent_request(&mut extractor);
                         }
                     }
                     reached_end = true;
@@ -876,6 +979,7 @@ fn process_file(
                     let trimmed = text.trim_end();
                     if extractor.wants_line(trimmed) {
                         entries.extend(extractor.extract_line(trimmed));
+                        serve_parent_request(&mut extractor);
                     }
                     if entries.len() >= BATCH_MAX_ENTRIES || consumed >= BATCH_MAX_BYTES {
                         break;
@@ -1612,6 +1716,113 @@ mod tests {
         );
         let attrs = EventAttributes::from_sparse(&fast.attrs);
         assert!(attrs.pricing_catalog.flatten().is_none());
+    }
+
+    fn codex_meta_line(id: &str, forked_from: Option<&str>, ts: &str) -> String {
+        let fork = forked_from
+            .map(|parent| format!(r#","forked_from_id":"{parent}""#))
+            .unwrap_or_default();
+        format!(r#"{{"timestamp":"{ts}","type":"session_meta","payload":{{"id":"{id}"{fork}}}}}"#)
+    }
+
+    fn codex_usage_line(ts: &str, totals: (u64, u64, u64, u64, u64)) -> String {
+        format!(
+            r#"{{"timestamp":"{ts}","type":"event_msg","payload":{{"type":"token_count","info":{{"total_token_usage":{{"input_tokens":{},"cached_input_tokens":{},"output_tokens":{},"reasoning_output_tokens":{},"total_tokens":{}}}}}}}}}"#,
+            totals.0, totals.1, totals.2, totals.3, totals.4
+        )
+    }
+
+    #[test]
+    fn forked_codex_replay_is_skipped_via_the_tracked_parent() {
+        // The child's leading event replays the parent's history with a
+        // rewritten timestamp and its own turn follows 30s later — far past
+        // the burst window, so only parent-prefix matching can tell the
+        // replay apart (and the rewritten timestamp gives it a fresh
+        // content-derived key, so dedup alone would double count).
+        let (dir, db, _) = setup();
+        let identity = SessionIdentity {
+            tool: "codex".to_string(),
+            external_session_id: "parent-ext".to_string(),
+            ..identity()
+        };
+        let parent_path = dir.path().join("parent.jsonl");
+        fs::write(
+            &parent_path,
+            format!(
+                "{}\n{}\n",
+                codex_meta_line("parent-ext", None, &recent_ts(0, 30)),
+                codex_usage_line(&recent_ts(1, 0), (100, 40, 50, 10, 150)),
+            ),
+        )
+        .unwrap();
+        assert_eq!(run_as(&db, &identity, &parent_path).unwrap().len(), 1);
+
+        let child_path = dir.path().join("child.jsonl");
+        fs::write(
+            &child_path,
+            format!(
+                "{}\n{}\n{}\n",
+                codex_meta_line("child-ext", Some("parent-ext"), &recent_ts(2, 0)),
+                codex_usage_line(&recent_ts(2, 0), (100, 40, 50, 10, 150)),
+                codex_usage_line(&recent_ts(2, 30), (300, 140, 90, 30, 390)),
+            ),
+        )
+        .unwrap();
+        let events = run_as(&db, &identity, &child_path).unwrap();
+        assert_eq!(events.len(), 1);
+        // Parent's 60 + the child's own 100 — without the 60 the replayed
+        // copy would have re-added.
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::INPUT_TOKENS),
+            Some(160)
+        );
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::MESSAGE_COUNT),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn forked_codex_parent_is_found_by_scanning_the_sessions_tree() {
+        // The parent rollout exists on disk but was never tracked (the child
+        // is processed first): resolution falls back to scanning the codex
+        // sessions tree and confirming the recorded session id.
+        let (dir, db, _) = setup();
+        let day_dir = dir.path().join("sessions/2026/01/09");
+        fs::create_dir_all(&day_dir).unwrap();
+        fs::write(
+            day_dir.join("rollout-parent-ext.jsonl"),
+            format!(
+                "{}\n{}\n",
+                codex_meta_line("parent-ext", None, &recent_ts(0, 30)),
+                codex_usage_line(&recent_ts(1, 0), (100, 40, 50, 10, 150)),
+            ),
+        )
+        .unwrap();
+        let child_path = day_dir.join("rollout-child-ext.jsonl");
+        fs::write(
+            &child_path,
+            format!(
+                "{}\n{}\n{}\n",
+                codex_meta_line("child-ext", Some("parent-ext"), &recent_ts(2, 0)),
+                codex_usage_line(&recent_ts(2, 0), (100, 40, 50, 10, 150)),
+                codex_usage_line(&recent_ts(2, 30), (300, 140, 90, 30, 390)),
+            ),
+        )
+        .unwrap();
+
+        let identity = SessionIdentity {
+            tool: "codex".to_string(),
+            external_session_id: "parent-ext".to_string(),
+            ..identity()
+        };
+        let events = run_as(&db, &identity, &child_path).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            value_u64(&events[0], token_usage_pos::INPUT_TOKENS),
+            Some(100),
+            "only the child's own delta counts"
+        );
     }
 
     #[test]

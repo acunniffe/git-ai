@@ -16,11 +16,16 @@
 //!   repricing history when `~/.codex/config.toml` changes.
 //! - No `codex-auto-review` release-date fallback table; model ids price
 //!   through git-ai's catalog.
-//! - Fork replay: ccusage matches a forked session's leading usage against
-//!   the parent log's usage prefix, which requires reading other files. That
-//!   is not possible incrementally, so forks always take ccusage's fallback
-//!   for an unavailable parent log: the "rewritten burst" heuristic (leading
-//!   usage events spaced <= 1s apart are replayed history and are skipped).
+//! - Fork replay matches ccusage: a forked session's leading usage is
+//!   matched against the parent log's pre-fork usage prefix and skipped. The
+//!   whole-file read happens in the worker (the extractor can't read other
+//!   files incrementally): a fork parks in `AwaitingParent` until the worker
+//!   answers with the prefix, and the unmatched remainder persists in the
+//!   extractor state so the parent is never rescanned across passes or
+//!   restarts. A parent that cannot be resolved falls back — like ccusage
+//!   with an unavailable parent log — to the "rewritten burst" heuristic
+//!   (leading usage events spaced <= 1s apart are replayed history), and is
+//!   not retried.
 //! - Numeric token fields accept ccusage's aliases and string-encoded
 //!   numbers, but a line whose payload/info has an unexpected *shape* (e.g. a
 //!   scalar where an object belongs) is skipped whole, where ccusage's lossy
@@ -30,9 +35,11 @@
 //!   unless the catalog learns it); see `cost.rs` for the shared pricing
 //!   rules and deviations.
 
+use std::collections::VecDeque;
+
 use serde::{Deserialize, Serialize};
 
-use super::extractor::UsageExtractor;
+use super::extractor::{ParentPrefixRequest, UsageExtractor, UsageSignature};
 use super::types::{PricingShape, Speed, TokenCounts, UsageEntry};
 
 /// ccusage `CODEX_REWRITTEN_BURST_PAUSE_MS`: the longest pause tolerated
@@ -130,18 +137,32 @@ fn lossy_u64<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D
         .unwrap_or(0))
 }
 
-/// Fork-replay filter state (ccusage `CodexReplayState`, minus the
-/// parent-prefix arm — see the module docs). Tracks every usage-carrying
-/// event's timestamp, matching ccusage's `detect_rewritten_burst`, which
-/// anchors on raw usage events even when they are cumulative repeats that
-/// produce no delta.
+/// Fork-replay filter state (ccusage `CodexReplayState`). The burst arms
+/// track every usage-carrying event's timestamp, matching ccusage's
+/// `detect_rewritten_burst`, which anchors on raw usage events even when
+/// they are cumulative repeats that produce no delta.
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 enum ReplayState {
     /// Not a fork, or past the replayed history.
     #[default]
     Done,
-    /// Fork detected; no usage event seen yet.
+    /// Fork detected; waiting for the worker to resolve the parent's
+    /// pre-fork usage prefix (see `UsageExtractor::parent_request`).
+    /// `fork_ts_ms` is `i64::MAX` when the `session_meta` carried no usable
+    /// timestamp — ccusage then treats the parent's whole stream as replayed.
+    AwaitingParent { parent_id: String, fork_ts_ms: i64 },
+    /// Matching the child's leading usage against the parent's remaining
+    /// pre-fork signatures (ccusage `MatchingParent`); the front is consumed
+    /// as it matches, so persisted state shrinks with the replayed burst.
+    MatchingParent {
+        remaining: VecDeque<UsageSignature>,
+        /// At least one event matched: a later mismatch means the replayed
+        /// history ended (count from there) rather than that the parent
+        /// stream cannot anchor the replay (burst-heuristic fallback).
+        matched: bool,
+    },
+    /// Unavailable-parent fallback: fork detected, no usage event seen yet.
     AwaitingFirst,
     /// One usage event seen (its delta, if any, is buffered): whether it was
     /// replayed history depends on how soon the next one follows.
@@ -182,8 +203,11 @@ impl UsageExtractor for CodexUsageExtractor {
         };
         match raw.entry_type.as_deref() {
             Some("session_meta") => {
-                if raw.payload.as_ref().is_some_and(is_forked_session) {
-                    self.state.replay = ReplayState::AwaitingFirst;
+                if let Some(parent_id) = raw.payload.as_ref().and_then(fork_parent_id) {
+                    self.state.replay = ReplayState::AwaitingParent {
+                        parent_id,
+                        fork_ts_ms: timestamp_millis(raw.timestamp.as_ref()).unwrap_or(i64::MAX),
+                    };
                 }
                 // session_meta names the model too (matching
                 // streams::model_extraction, so usage prices under the same
@@ -223,6 +247,34 @@ impl UsageExtractor for CodexUsageExtractor {
 
     fn set_fallback_speed(&mut self, speed: Option<Speed>) {
         self.fallback_speed = speed;
+    }
+
+    fn parent_request(&self) -> Option<ParentPrefixRequest> {
+        match &self.state.replay {
+            ReplayState::AwaitingParent {
+                parent_id,
+                fork_ts_ms,
+            } => Some(ParentPrefixRequest {
+                parent_id: parent_id.clone(),
+                fork_ts_ms: *fork_ts_ms,
+            }),
+            _ => None,
+        }
+    }
+
+    fn provide_parent_prefix(&mut self, prefix: Option<Vec<UsageSignature>>) {
+        if !matches!(self.state.replay, ReplayState::AwaitingParent { .. }) {
+            return;
+        }
+        self.state.replay = match prefix {
+            // An empty prefix behaves like ccusage's: the first event
+            // mismatches with nothing matched and takes the burst fallback.
+            Some(prefix) => ReplayState::MatchingParent {
+                remaining: prefix.into(),
+                matched: false,
+            },
+            None => ReplayState::AwaitingFirst,
+        };
     }
 
     fn has_pending(&self) -> bool {
@@ -297,33 +349,10 @@ impl CodexUsageExtractor {
             return Vec::new();
         };
 
-        // Delta computation (ccusage `visit_codex_session_entry`): skip
-        // repeats of an unchanged cumulative total, prefer the recorded
-        // per-turn usage, else subtract the previous cumulative total.
         let info = payload.info.as_ref();
-        let total_usage = info
-            .and_then(|info| info.total_token_usage)
-            .map(CodexTotals::normalized);
-        let last_usage = info
-            .and_then(|info| info.last_token_usage)
-            .map(CodexTotals::normalized);
-        if total_usage.is_none() && last_usage.is_none() {
+        let Some(delta) = usage_delta(info, &mut self.state.prev_totals) else {
             return Vec::new();
-        }
-        let cumulative_advanced =
-            total_usage.is_none_or(|totals| self.state.prev_totals != Some(totals));
-        let delta = last_usage
-            .filter(|_| cumulative_advanced)
-            .or_else(|| total_usage.map(|totals| subtract_totals(totals, self.state.prev_totals)));
-        if let Some(totals) = total_usage {
-            self.state.prev_totals = Some(totals);
-        }
-        let delta = delta.filter(|delta| {
-            delta.input_tokens != 0
-                || delta.cached_input_tokens != 0
-                || delta.output_tokens != 0
-                || delta.reasoning_output_tokens != 0
-        });
+        };
 
         let event = delta.map(|delta| {
             let parsed_model = payload_model(payload).or_else(|| info.and_then(info_model));
@@ -359,12 +388,60 @@ impl CodexUsageExtractor {
             |anchor_ts_ms: i64| (0..=REWRITTEN_BURST_PAUSE_MS).contains(&(ts_ms - anchor_ts_ms));
         match std::mem::take(&mut self.state.replay) {
             ReplayState::Done => event.map(|e| vec![make_entry(e)]).unwrap_or_default(),
-            ReplayState::AwaitingFirst => {
+            // A usage event while the parent request is still unanswered can
+            // only mean no worker resolution ran (direct extractor use):
+            // take the unavailable-parent fallback, parking this event as
+            // the burst heuristic's first.
+            ReplayState::AwaitingParent { .. } | ReplayState::AwaitingFirst => {
                 self.state.replay = ReplayState::AwaitingSecond {
                     first_ts_ms: ts_ms,
                     pending: event,
                 };
                 Vec::new()
+            }
+            ReplayState::MatchingParent {
+                mut remaining,
+                matched,
+            } => {
+                let Some(event) = event else {
+                    // Zero-delta repeats carry no identity to match, and the
+                    // prefix holds only delta-producing events: pass through
+                    // without consuming anything (ccusage's replay filter
+                    // never sees them).
+                    self.state.replay = ReplayState::MatchingParent { remaining, matched };
+                    return Vec::new();
+                };
+                if remaining.front() == Some(&signature_of(&event.delta)) {
+                    remaining.pop_front();
+                    // A fully consumed prefix is done: ccusage reaches the
+                    // same outcome one event later (the next event mismatches
+                    // past the prefix end with matched history behind it).
+                    self.state.replay = if remaining.is_empty() {
+                        ReplayState::Done
+                    } else {
+                        ReplayState::MatchingParent {
+                            remaining,
+                            matched: true,
+                        }
+                    };
+                    return Vec::new();
+                }
+                if matched {
+                    // Past the replayed history: this and everything after
+                    // is the child's own usage.
+                    self.state.replay = ReplayState::Done;
+                    vec![make_entry(event)]
+                } else {
+                    // Nothing matched, so the parent stream cannot anchor
+                    // this replay (the log rewrote the copied history). Fall
+                    // back to the rewritten-burst heuristic with this event
+                    // as its first (ccusage `detect_rewritten_burst`).
+                    self.state.replay = ReplayState::AwaitingSecond {
+                        first_ts_ms: ts_ms,
+                        pending: Some(event),
+                    };
+                    Vec::new()
+                }
             }
             ReplayState::AwaitingSecond {
                 first_ts_ms,
@@ -430,6 +507,116 @@ fn make_entry(event: PendingEvent) -> UsageEntry {
         speed_inferred,
         pricing_shape: PricingShape::Codex,
     }
+}
+
+/// Delta computation for one `token_count` payload (ccusage
+/// `visit_codex_session_entry`): skip repeats of an unchanged cumulative
+/// total, prefer the recorded per-turn usage, else subtract the previous
+/// cumulative total. `None` when the payload carries no usage at all;
+/// `Some(None)` for a usage event whose delta is zero (it still marks
+/// activity for the replay filter's burst arms).
+fn usage_delta(
+    info: Option<&RawInfo>,
+    prev_totals: &mut Option<CodexTotals>,
+) -> Option<Option<CodexTotals>> {
+    let total_usage = info
+        .and_then(|info| info.total_token_usage)
+        .map(CodexTotals::normalized);
+    let last_usage = info
+        .and_then(|info| info.last_token_usage)
+        .map(CodexTotals::normalized);
+    if total_usage.is_none() && last_usage.is_none() {
+        return None;
+    }
+    let cumulative_advanced = total_usage.is_none_or(|totals| *prev_totals != Some(totals));
+    let delta = last_usage
+        .filter(|_| cumulative_advanced)
+        .or_else(|| total_usage.map(|totals| subtract_totals(totals, *prev_totals)));
+    if let Some(totals) = total_usage {
+        *prev_totals = Some(totals);
+    }
+    Some(delta.filter(|delta| {
+        delta.input_tokens != 0
+            || delta.cached_input_tokens != 0
+            || delta.output_tokens != 0
+            || delta.reasoning_output_tokens != 0
+    }))
+}
+
+/// The matching identity of one usage delta (see [`UsageSignature`]).
+fn signature_of(delta: &CodexTotals) -> UsageSignature {
+    UsageSignature {
+        input: delta.input_tokens,
+        cached_input: delta.cached_input_tokens,
+        output: delta.output_tokens,
+        reasoning_output: delta.reasoning_output_tokens,
+        total: delta.total_tokens,
+    }
+}
+
+/// The parent rollout's non-zero usage deltas up to the fork instant, in
+/// file order (ccusage `read_parent_usage` with its `forked_at` truncation).
+/// Runs the same delta pipeline as extraction over a fresh cursor — with no
+/// replay filtering, so a prefix the parent itself replayed from *its*
+/// parent stays included, exactly as the child's copy contains it. Events
+/// whose timestamps don't parse are dropped (extraction drops them on the
+/// child side too, so they can never need matching); collection stops at
+/// the first usage event past `fork_ts_ms` (usage the parent recorded after
+/// the fork was never replayed).
+pub fn collect_parent_prefix(
+    mut reader: impl std::io::BufRead,
+    fork_ts_ms: i64,
+) -> Vec<UsageSignature> {
+    let mut prefix = Vec::new();
+    let mut prev_totals: Option<CodexTotals> = None;
+    let mut line: Vec<u8> = Vec::new();
+    loop {
+        line.clear();
+        let Ok(bytes) = reader.read_until(b'\n', &mut line) else {
+            return prefix;
+        };
+        if bytes == 0 {
+            return prefix;
+        }
+        let text = String::from_utf8_lossy(&line);
+        let trimmed = text.trim();
+        if !trimmed.contains("token_count") {
+            continue;
+        }
+        let Ok(raw) = serde_json::from_str::<RawLine>(trimmed) else {
+            continue;
+        };
+        if raw.entry_type.as_deref() != Some("event_msg") {
+            continue;
+        }
+        let Some(payload) = raw.payload.as_ref() else {
+            continue;
+        };
+        if payload.payload_type.as_deref() != Some("token_count") {
+            continue;
+        }
+        let Some(ts_ms) = timestamp_millis(raw.timestamp.as_ref()) else {
+            continue;
+        };
+        if ts_ms > fork_ts_ms {
+            return prefix;
+        }
+        if let Some(Some(delta)) = usage_delta(payload.info.as_ref(), &mut prev_totals) {
+            prefix.push(signature_of(&delta));
+        }
+    }
+}
+
+/// The `session_meta` id recorded on a rollout's first line, used to confirm
+/// a parent candidate really is the session the fork names (ccusage
+/// `read_codex_session_metadata` locates parents by recorded id, never by
+/// filename).
+pub fn session_meta_id(first_line: &str) -> Option<String> {
+    let raw = serde_json::from_str::<RawLine>(first_line.trim()).ok()?;
+    if raw.entry_type.as_deref() != Some("session_meta") {
+        return None;
+    }
+    raw.payload?.id
 }
 
 /// The speed a recorded or configured service-tier value maps to (ccusage
@@ -532,20 +719,26 @@ struct RawMetadata {
     model: Option<String>,
 }
 
-/// Fork markers from ccusage `read_codex_session_metadata`. A session that
-/// lists itself as its own parent is not a fork (ccusage guards this too: it
-/// would match the whole stream and drop every event).
-fn is_forked_session(payload: &RawPayload) -> bool {
+/// Fork markers from ccusage `read_codex_session_metadata`, returning the
+/// parent session id. A session that lists itself as its own parent is not a
+/// fork (ccusage guards this too: it would match the whole stream and drop
+/// every event).
+fn fork_parent_id(payload: &RawPayload) -> Option<String> {
     let own_id = payload.id.as_deref();
-    let is_parent = |value: Option<&str>| value.is_some_and(|v| !v.is_empty() && Some(v) != own_id);
-    is_parent(payload.forked_from_id.as_deref())
-        || is_parent(
+    let parent = |value: Option<&str>| {
+        value
+            .filter(|v| !v.is_empty() && Some(*v) != own_id)
+            .map(str::to_string)
+    };
+    parent(payload.forked_from_id.as_deref()).or_else(|| {
+        parent(
             payload
                 .source
                 .as_ref()
                 .and_then(|source| source.pointer("/subagent/thread_spawn/parent_thread_id"))
                 .and_then(|value| value.as_str()),
         )
+    })
 }
 
 fn payload_model(payload: &RawPayload) -> Option<String> {
@@ -1020,13 +1213,261 @@ mod tests {
         assert_eq!(entries[1].tokens.input, 10);
     }
 
+    fn sig(input: u64, cached: u64, output: u64, reasoning: u64, total: u64) -> UsageSignature {
+        UsageSignature {
+            input,
+            cached_input: cached,
+            output,
+            reasoning_output: reasoning,
+            total,
+        }
+    }
+
+    fn forked_child_line() -> &'static str {
+        r#"{"timestamp":"2026-01-09T02:16:38Z","type":"session_meta","payload":{"id":"child","forked_from_id":"parent"}}"#
+    }
+
+    #[test]
+    fn parent_prefix_matching_skips_the_replayed_history() {
+        // The real-world incident this exists for: the child's first event
+        // replays the parent's 16,508-token history with a rewritten
+        // timestamp, and its own first turn follows 6.975s later — far past
+        // the burst window, so the heuristic alone counts the replay.
+        let replayed = token_count_line("2026-01-09T02:16:38.209Z", (16262, 9984, 246, 86, 16508));
+        let own = token_count_line("2026-01-09T02:16:45.184Z", (16385, 10084, 266, 92, 16651));
+
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(forked_child_line());
+        e.provide_parent_prefix(Some(vec![sig(16262, 9984, 246, 86, 16508)]));
+        assert!(e.extract_line(&replayed).is_empty(), "replayed history");
+        let entries = e.extract_line(&own);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].tokens.input, 23); // (16385-16262) - (10084-9984)
+        assert_eq!(entries[0].tokens.cache_read, 100);
+        assert_eq!(entries[0].tokens.total, 143);
+
+        // Companion: with the parent unavailable, the burst heuristic has to
+        // release the parked replay after the real pause — the overcount the
+        // prefix matching eliminates.
+        let mut fallback = CodexUsageExtractor::default();
+        fallback.extract_line(forked_child_line());
+        fallback.provide_parent_prefix(None);
+        assert!(fallback.extract_line(&replayed).is_empty());
+        let entries = fallback.extract_line(&own);
+        assert_eq!(entries.len(), 2, "heuristic counts the replayed event");
+        assert_eq!(entries[0].tokens.total, 16508);
+    }
+
+    #[test]
+    fn mid_prefix_mismatch_means_the_replayed_history_ended() {
+        // A fork taken mid-conversation replays only part of the parent's
+        // stream; the first non-matching event is the child's own turn even
+        // when signatures further down the prefix would match it.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(forked_child_line());
+        e.provide_parent_prefix(Some(vec![
+            sig(100, 40, 50, 10, 150),
+            sig(200, 100, 40, 20, 240),
+        ]));
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-09T02:16:38.209Z",
+                (100, 40, 50, 10, 150)
+            ))
+            .is_empty()
+        );
+        // Cumulative totals diverge from the parent's second event.
+        let entries = e.extract_line(&token_count_line(
+            "2026-01-09T02:16:38.220Z",
+            (150, 60, 70, 15, 220),
+        ));
+        assert_eq!(entries.len(), 1, "counted despite the sub-second spacing");
+        assert_eq!(entries[0].tokens.total, 70);
+        // And everything after is plainly the child's own usage.
+        let entries = e.extract_line(&token_count_line(
+            "2026-01-09T02:16:38.230Z",
+            (250, 100, 90, 20, 340),
+        ));
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn exhausted_prefix_counts_subsequent_events_even_within_the_burst_window() {
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(forked_child_line());
+        e.provide_parent_prefix(Some(vec![sig(100, 40, 50, 10, 150)]));
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-09T02:16:38.209Z",
+                (100, 40, 50, 10, 150)
+            ))
+            .is_empty()
+        );
+        // 11ms later — inside what the burst heuristic would skip.
+        let entries = e.extract_line(&token_count_line(
+            "2026-01-09T02:16:38.220Z",
+            (300, 140, 90, 30, 390),
+        ));
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].tokens.total, 240);
+    }
+
+    #[test]
+    fn unanchored_prefix_falls_back_to_the_burst_heuristic() {
+        // Nothing matches at index 0: the parent stream cannot anchor the
+        // replay, so the leading burst is skipped by timing instead — and a
+        // real pause before the first event means real usage, exactly as if
+        // the parent log were unavailable.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(forked_child_line());
+        e.provide_parent_prefix(Some(vec![sig(999, 0, 999, 0, 1998)]));
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-09T02:16:38.209Z",
+                (100, 40, 50, 10, 150)
+            ))
+            .is_empty(),
+            "parked as the burst heuristic's first event"
+        );
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-09T02:16:38.230Z",
+                (300, 140, 90, 30, 390)
+            ))
+            .is_empty(),
+            "back-to-back events form a rewritten burst"
+        );
+        let entries = e.extract_line(&token_count_line(
+            "2026-01-09T02:16:45.184Z",
+            (400, 180, 120, 40, 520),
+        ));
+        assert_eq!(entries.len(), 1, "the pause ends the burst");
+    }
+
+    #[test]
+    fn zero_delta_repeats_do_not_consume_the_prefix() {
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(forked_child_line());
+        e.provide_parent_prefix(Some(vec![sig(100, 40, 50, 10, 150)]));
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-09T02:16:38.209Z",
+                (100, 40, 50, 10, 150)
+            ))
+            .is_empty()
+        );
+        // A cumulative repeat produces no delta and must not disturb the
+        // exhausted prefix's outcome (nor would it consume one mid-prefix).
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-09T02:16:38.215Z",
+                (100, 40, 50, 10, 150)
+            ))
+            .is_empty()
+        );
+        let entries = e.extract_line(&token_count_line(
+            "2026-01-09T02:16:38.230Z",
+            (300, 140, 90, 30, 390),
+        ));
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn matching_parent_state_roundtrips_and_shrinks() {
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(forked_child_line());
+        e.provide_parent_prefix(Some(vec![
+            sig(100, 40, 50, 10, 150),
+            sig(200, 100, 40, 20, 240),
+        ]));
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-09T02:16:38.209Z",
+                (100, 40, 50, 10, 150)
+            ))
+            .is_empty()
+        );
+
+        // Pass boundary: the remaining (shrunken) prefix persists, so the
+        // parent is never rescanned.
+        let state = e.state_json().unwrap();
+        assert!(state.contains("matching_parent"), "{state}");
+        let mut restored = CodexUsageExtractor::default();
+        assert!(restored.restore_state(&state));
+        assert!(restored.parent_request().is_none(), "no re-resolution");
+        assert!(
+            restored
+                .extract_line(&token_count_line(
+                    "2026-01-09T02:16:38.220Z",
+                    (300, 140, 90, 30, 390)
+                ))
+                .is_empty(),
+            "second prefix entry still matches after the roundtrip"
+        );
+        let entries = restored.extract_line(&token_count_line(
+            "2026-01-09T02:16:45.184Z",
+            (400, 180, 120, 40, 520),
+        ));
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn provide_parent_prefix_applies_only_while_awaiting() {
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(&token_count_line("2026-01-09T02:16:38Z", (10, 0, 5, 0, 15)));
+        e.provide_parent_prefix(Some(vec![sig(1, 0, 1, 0, 2)]));
+        assert!(matches!(e.state.replay, ReplayState::Done));
+    }
+
+    #[test]
+    fn collect_parent_prefix_keeps_pre_fork_deltas_only() {
+        let parent = format!(
+            "{}\n{}\n{}\n{}\n{}\nnot json\n{}\n",
+            r#"{"timestamp":"2026-01-09T02:00:00Z","type":"session_meta","payload":{"id":"parent"}}"#,
+            token_count_line("2026-01-09T02:10:00Z", (100, 40, 50, 10, 150)),
+            // Cumulative repeat: no delta, not part of the prefix.
+            token_count_line("2026-01-09T02:10:01Z", (100, 40, 50, 10, 150)),
+            token_count_line("2026-01-09T02:16:35Z", (300, 140, 90, 30, 390)),
+            // Recorded after the fork instant: never replayed.
+            token_count_line("2026-01-09T02:20:00Z", (400, 180, 120, 40, 520)),
+            token_count_line("2026-01-09T02:21:00Z", (500, 220, 150, 50, 650)),
+        );
+        let prefix = collect_parent_prefix(parent.as_bytes(), 1_767_925_000_000);
+        assert_eq!(
+            prefix,
+            vec![sig(100, 40, 50, 10, 150), sig(200, 100, 40, 20, 240)]
+        );
+    }
+
+    #[test]
+    fn session_meta_id_reads_the_first_line() {
+        assert_eq!(
+            session_meta_id(
+                r#"{"timestamp":"2026-01-09T02:00:00Z","type":"session_meta","payload":{"id":"parent"}}"#
+            )
+            .as_deref(),
+            Some("parent")
+        );
+        assert_eq!(
+            session_meta_id(r#"{"type":"turn_context","payload":{"model":"gpt-5.1"}}"#),
+            None
+        );
+        assert_eq!(session_meta_id("not json"), None);
+    }
+
     #[test]
     fn subagent_thread_spawn_counts_as_fork() {
         let mut e = CodexUsageExtractor::default();
         e.extract_line(
             r#"{"timestamp":"2026-01-01T00:00:00Z","type":"session_meta","payload":{"id":"child","source":{"subagent":{"thread_spawn":{"parent_thread_id":"parent"}}}}}"#,
         );
-        assert!(matches!(e.state.replay, ReplayState::AwaitingFirst));
+        assert_eq!(
+            e.parent_request(),
+            Some(ParentPrefixRequest {
+                parent_id: "parent".to_string(),
+                fork_ts_ms: 1_767_225_600_000,
+            })
+        );
     }
 
     #[test]

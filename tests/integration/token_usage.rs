@@ -441,6 +441,92 @@ fn fast_long_context_codex_usage_emits_tier_and_speed_fields() {
 }
 
 #[test]
+fn forked_codex_session_counts_only_its_own_usage() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial commit should succeed");
+    let repo_root = repo.canonical_path();
+
+    // Codex-style sessions tree: the parent rollout is on disk but only the
+    // child is checkpointed, so the daemon resolves the parent by scanning.
+    let day_dir = repo_root.join("sessions/2026/01/09");
+    fs::create_dir_all(&day_dir).unwrap();
+    let usage = |ts: &str, input: u64, cached: u64, output: u64, total: u64| {
+        json!({
+            "timestamp": ts,
+            "type": "event_msg",
+            "payload": {"type": "token_count", "info": {"total_token_usage": {
+                "input_tokens": input,
+                "cached_input_tokens": cached,
+                "output_tokens": output,
+                "reasoning_output_tokens": 0,
+                "total_tokens": total
+            }}}
+        })
+        .to_string()
+    };
+    fs::write(
+        day_dir.join("rollout-fork-parent.jsonl"),
+        format!(
+            "{}\n{}\n{}\n",
+            json!({"timestamp": recent_ts(0, 30), "type": "session_meta", "payload": {"id": "fork-parent"}}),
+            json!({"timestamp": recent_ts(0, 40), "type": "turn_context", "payload": {"model": "gpt-5.1"}}),
+            usage(&recent_ts(1, 0), 16_262, 9_984, 246, 16_508),
+        ),
+    )
+    .unwrap();
+    // The child replays the parent's history with a rewritten timestamp; its
+    // own first turn follows ~7s later — past the burst window, so only
+    // parent-prefix matching keeps the replay out.
+    let child_path = day_dir.join("rollout-fork-child.jsonl");
+    fs::write(
+        &child_path,
+        format!(
+            "{}\n{}\n{}\n{}\n",
+            json!({"timestamp": recent_ts(2, 0), "type": "session_meta", "payload": {"id": "fork-child", "forked_from_id": "fork-parent"}}),
+            json!({"timestamp": recent_ts(2, 0), "type": "turn_context", "payload": {"model": "gpt-5.1"}}),
+            usage(&recent_ts(2, 0), 16_262, 9_984, 246, 16_508),
+            usage(&recent_ts(2, 7), 16_385, 10_084, 266, 16_651),
+        ),
+    )
+    .unwrap();
+
+    let file_path = repo_root.join("main.rs");
+    fs::write(&file_path, "fn main() {}\n").unwrap();
+    checkpoint_with_transcript(
+        &repo,
+        "codex",
+        "fork-child",
+        &child_path,
+        &file_path,
+        "fn main() {}\nfn added() {}\n",
+    );
+    sync_token_usage_pipeline(&repo);
+
+    let events = token_usage_events(&metrics_db_path);
+    assert_eq!(events.len(), 1);
+    // Only the child's own delta: (16385-16262) - (10084-9984) = 23 input.
+    assert_eq!(
+        value_u64(&events[0], token_usage_pos::INPUT_TOKENS),
+        Some(23)
+    );
+    assert_eq!(
+        value_u64(&events[0], token_usage_pos::CACHE_READ_TOKENS),
+        Some(100)
+    );
+    assert_eq!(
+        value_u64(&events[0], token_usage_pos::TOTAL_TOKENS),
+        Some(143)
+    );
+    assert_eq!(
+        value_u64(&events[0], token_usage_pos::MESSAGE_COUNT),
+        Some(1)
+    );
+}
+
+#[test]
 fn appended_transcript_lines_update_existing_buckets() {
     let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
     let repo =

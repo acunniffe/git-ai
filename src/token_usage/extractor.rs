@@ -1,6 +1,29 @@
 //! Per-agent usage extraction trait.
 
+use serde::{Deserialize, Serialize};
+
 use super::types::{Speed, UsageEntry};
+
+/// A forked session's request for its parent's pre-fork usage history: the
+/// parent's external session id, and the fork instant (the child's
+/// `session_meta` timestamp; parent usage past it was never replayed).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParentPrefixRequest {
+    pub parent_id: String,
+    pub fork_ts_ms: i64,
+}
+
+/// Raw per-event usage identity used to match a forked session's replayed
+/// leading events against its parent's history. Timestamps are excluded —
+/// Codex rewrites replayed history to the fork instant.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UsageSignature {
+    pub input: u64,
+    pub cached_input: u64,
+    pub output: u64,
+    pub reasoning_output: u64,
+    pub total: u64,
+}
 
 /// Incremental, line-oriented extractor of token-usage entries from an agent
 /// transcript. Fed complete JSONL lines in file order; may keep per-session
@@ -18,6 +41,21 @@ pub trait UsageExtractor: Send {
     /// the worker once per pass, before any line is fed. No-op for agents
     /// without the concept.
     fn set_fallback_speed(&mut self, _speed: Option<Speed>) {}
+
+    /// The extractor found a fork and needs its parent's pre-fork usage
+    /// prefix before it can judge usage events (Codex). The worker answers
+    /// via [`UsageExtractor::provide_parent_prefix`] after every consumed
+    /// line and after restoring state, so the request is served before the
+    /// next usage event. `None` for extractors without the concept.
+    fn parent_request(&self) -> Option<ParentPrefixRequest> {
+        None
+    }
+
+    /// Answer a [`UsageExtractor::parent_request`]: `Some` carries the
+    /// parent's pre-fork usage signatures in file order; `None` means the
+    /// parent could not be resolved, and the extractor takes its
+    /// unavailable-parent fallback (never retried).
+    fn provide_parent_prefix(&mut self, _prefix: Option<Vec<UsageSignature>>) {}
 
     /// Serialized parser state to persist between incremental runs. `None`
     /// for stateless extractors.

@@ -606,6 +606,27 @@ impl TokenUsageDatabase {
         Ok(())
     }
 
+    /// Stream paths tracked under an external session id. The id is the
+    /// rollup root's (forked/subagent files roll up to their parent), so the
+    /// root's own rollout is among the results — alongside any rolled-up
+    /// children, which callers must tell apart by each file's recorded
+    /// `session_meta` id.
+    pub fn stream_paths_for_external_session(
+        &self,
+        external_session_id: &str,
+        tool: &str,
+    ) -> Result<Vec<String>, GitAiError> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT stream_path FROM tracked_files
+             WHERE external_session_id = ?1 AND tool = ?2",
+        )?;
+        let paths = stmt
+            .query_map(params![external_session_id, tool], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        Ok(paths)
+    }
+
     /// Clear the reconcile flag after the session's buckets were reconciled.
     pub fn clear_needs_reconcile(&self, session_id: &str) -> Result<(), GitAiError> {
         self.lock().execute(
