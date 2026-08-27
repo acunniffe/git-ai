@@ -792,10 +792,10 @@ fn resolve_parent_prefix(
         .find(|path| records_session_id(path, &request.parent_id))
         .or_else(|| scan_sessions_tree(Path::new(child_path), &request.parent_id))?;
     let file = std::fs::File::open(&parent).ok()?;
-    Some(crate::token_usage::codex::collect_parent_prefix(
+    crate::token_usage::codex::collect_parent_prefix(
         BufReader::with_capacity(128 * 1024, file),
         request.fork_ts_ms,
-    ))
+    )
 }
 
 /// Whether the rollout's first line records `session_id` as its own id.
@@ -812,18 +812,35 @@ fn records_session_id(path: &Path, session_id: &str) -> bool {
 }
 
 /// Fallback parent discovery for rollouts the token database has not tracked
-/// (yet): walk the child's enclosing codex `sessions` tree — and its sibling
-/// `archived_sessions`, where Codex moves archived rollouts — for a filename
-/// carrying the parent id (codex rollout filenames embed the session uuid),
-/// confirming by the recorded `session_meta` id.
+/// (yet): walk the codex home's `sessions` and `archived_sessions` trees for
+/// a filename carrying the parent id (codex rollout filenames embed the
+/// session uuid), confirming by the recorded `session_meta` id. The home is
+/// resolved like `streams::model_extraction` (configured home, else the
+/// nearest `.codex` ancestor) so archived or custom-layout children resolve
+/// too; a `sessions`/`archived_sessions` ancestor is the fallback anchor.
 fn scan_sessions_tree(child_path: &Path, parent_id: &str) -> Option<PathBuf> {
-    let sessions_root = child_path
-        .ancestors()
-        .find(|dir| dir.file_name().and_then(|name| name.to_str()) == Some("sessions"))?;
-    let mut pending = vec![sessions_root.to_path_buf()];
-    if let Some(codex_home) = sessions_root.parent() {
-        pending.push(codex_home.join("archived_sessions"));
-    }
+    let roots: Vec<PathBuf> =
+        match crate::streams::model_extraction::codex_home_from_transcript_path(child_path) {
+            Some(home) => vec![home.join("sessions"), home.join("archived_sessions")],
+            None => {
+                let anchor = child_path.ancestors().find(|dir| {
+                    matches!(
+                        dir.file_name().and_then(|name| name.to_str()),
+                        Some("sessions" | "archived_sessions")
+                    )
+                })?;
+                let parent = anchor.parent();
+                vec![
+                    anchor.to_path_buf(),
+                    match parent {
+                        Some(dir) if anchor.ends_with("sessions") => dir.join("archived_sessions"),
+                        Some(dir) => dir.join("sessions"),
+                        None => return None,
+                    },
+                ]
+            }
+        };
+    let mut pending = roots;
     let mut visited = 0usize;
     while let Some(dir) = pending.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {

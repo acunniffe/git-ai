@@ -267,8 +267,12 @@ impl UsageExtractor for CodexUsageExtractor {
             return;
         }
         self.state.replay = match prefix {
-            // An empty prefix behaves like ccusage's: the first event
-            // mismatches with nothing matched and takes the burst fallback.
+            // A successfully read parent with zero pre-fork usage proves
+            // nothing was replayed: every child event is its own. (Deviation
+            // from ccusage, whose empty prefix falls through to the burst
+            // heuristic and can park — and drop — a child's real first turns
+            // when they arrive within a second of each other.)
+            Some(prefix) if prefix.is_empty() => ReplayState::Done,
             Some(prefix) => ReplayState::MatchingParent {
                 remaining: prefix.into(),
                 matched: false,
@@ -554,8 +558,16 @@ fn signature_of(delta: &CodexTotals) -> UsageSignature {
     }
 }
 
+/// Longest parent prefix worth matching: forks replay the parent's whole
+/// history, so a cap this size is only reachable for pathological rollouts —
+/// and the unmatched remainder persists in the extractor state per batch, so
+/// an unbounded prefix would bloat every state_json write. Over the cap the
+/// parent counts as unresolvable (burst-heuristic fallback).
+pub const MAX_PARENT_PREFIX_EVENTS: usize = 50_000;
+
 /// The parent rollout's non-zero usage deltas up to the fork instant, in
-/// file order (ccusage `read_parent_usage` with its `forked_at` truncation).
+/// file order (ccusage `read_parent_usage` with its `forked_at` truncation),
+/// or `None` when the prefix exceeds [`MAX_PARENT_PREFIX_EVENTS`].
 /// Runs the same delta pipeline as extraction over a fresh cursor — with no
 /// replay filtering, so a prefix the parent itself replayed from *its*
 /// parent stays included, exactly as the child's copy contains it. Events
@@ -569,17 +581,17 @@ fn signature_of(delta: &CodexTotals) -> UsageSignature {
 pub fn collect_parent_prefix(
     mut reader: impl std::io::BufRead,
     fork_ts_ms: i64,
-) -> Vec<UsageSignature> {
+) -> Option<Vec<UsageSignature>> {
     let mut prefix = Vec::new();
     let mut prev_totals: Option<CodexTotals> = None;
     let mut line: Vec<u8> = Vec::new();
     loop {
         line.clear();
         let Ok(bytes) = reader.read_until(b'\n', &mut line) else {
-            return prefix;
+            return Some(prefix);
         };
         if bytes == 0 {
-            return prefix;
+            return Some(prefix);
         }
         let text = String::from_utf8_lossy(&line);
         let trimmed = text.trim();
@@ -602,9 +614,12 @@ pub fn collect_parent_prefix(
             continue;
         };
         if ts_ms > fork_ts_ms {
-            return prefix;
+            return Some(prefix);
         }
         if let Some(Some(delta)) = usage_delta(payload.info.as_ref(), &mut prev_totals) {
+            if prefix.len() >= MAX_PARENT_PREFIX_EVENTS {
+                return None;
+            }
             prefix.push(signature_of(&delta));
         }
     }
@@ -1438,8 +1453,28 @@ mod tests {
         let prefix = collect_parent_prefix(parent.as_bytes(), 1_767_925_000_000);
         assert_eq!(
             prefix,
-            vec![sig(100, 40, 50, 10, 150), sig(200, 100, 40, 20, 240)]
+            Some(vec![sig(100, 40, 50, 10, 150), sig(200, 100, 40, 20, 240)])
         );
+    }
+
+    #[test]
+    fn a_verified_empty_parent_prefix_means_nothing_was_replayed() {
+        // The parent was read successfully and had no pre-fork usage: every
+        // child event is its own, even back-to-back ones the burst heuristic
+        // would have parked and dropped.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(forked_child_line());
+        e.provide_parent_prefix(Some(Vec::new()));
+        let first = e.extract_line(&token_count_line(
+            "2026-01-09T02:16:38.209Z",
+            (100, 40, 50, 10, 150),
+        ));
+        assert_eq!(first.len(), 1, "counted despite sub-second spacing");
+        let second = e.extract_line(&token_count_line(
+            "2026-01-09T02:16:38.230Z",
+            (300, 140, 90, 30, 390),
+        ));
+        assert_eq!(second.len(), 1);
     }
 
     #[test]
