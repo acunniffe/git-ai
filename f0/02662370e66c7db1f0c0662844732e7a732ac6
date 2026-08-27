@@ -1,0 +1,19 @@
+src/metrics/model_pricing.rs
+  s_ecc10b55b372b3::t_35233a68d1e2e6 37-43,318,336-338,343-348,383-387,395-398,401,872,882,891-909,929,936
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "f002662370e66c7db1f0c0662844732e7a732ac6",
+  "prompts": {},
+  "sessions": {
+    "s_ecc10b55b372b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "725da754-5eb5-4a7e-a504-a0badfb0707e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
