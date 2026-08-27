@@ -166,9 +166,12 @@ TokenUsage events are the authoritative dollars.
 
 Usage is leaf-attributed: every agent execution owns its own usage under its
 own session — Claude subagent (sidechain) transcripts and Codex fork/subagent
-rollouts included — with the parent carried as the
+rollouts included — with subagent spawns carrying their parent as the
 `parent_session_id`/`external_parent_session_id` attributes, exactly like
-SessionEvents. The parent-inclusive total is a derived rollup over the parent
+SessionEvents. A plain user-initiated Codex fork (`forked_from_id` without a
+subagent `thread_source`) is a new top-level conversation, not a sub-task: it
+owns its usage with no parent linkage, so it stays visible in default session
+listings (its replayed prefix is still removed). The parent-inclusive total is a derived rollup over the parent
 relationship, never the stored identity, so per-agent cost stays visible.
 (Documented deviation from ccusage, which rolls Claude sidechains into the
 parent session: per-session Claude groupings differ, aggregate totals match.)

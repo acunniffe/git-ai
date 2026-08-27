@@ -288,8 +288,8 @@ const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (session_id, entry_key)
     );
 
-    CREATE INDEX idx_usage_entries_bucket
-        ON usage_entries(session_id, model, bucket_ts);
+    CREATE INDEX idx_usage_entries_bucket_speed
+        ON usage_entries(session_id, model, COALESCE(speed, 0), bucket_ts);
     CREATE INDEX idx_usage_entries_message
         ON usage_entries(session_id, message_id) WHERE message_id IS NOT NULL;
     CREATE UNIQUE INDEX idx_usage_entries_key
