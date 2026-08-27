@@ -2379,7 +2379,7 @@ pub mod token_usage_pos {
 /// same-second re-emissions cannot tie on the u32-second event_ts. Uses
 /// EventAttributes for standard metadata (repo_url, tool, model, session
 /// ids, etc.); the model attribute is the bucket's model, and the pricing
-/// catalog id rides custom_attributes.
+/// catalog id rides its dedicated `pricing_catalog` attribute.
 ///
 /// Positions 11-19 carry what a different pricing sheet needs to recompute
 /// the cost: the speed dimension and inference flag, the 1h cache-write

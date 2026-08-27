@@ -62,7 +62,7 @@ pub struct EventAttributes {
     pub external_parent_session_id: PosField<String>,
     pub custom_attributes: PosField<String>,
     /// Pricing catalog that priced a TokenUsage bucket's catalog-priced
-    /// entries (e.g. "embedded:<version>", "modelsdev:<hash>"). A dedicated
+    /// entries (e.g. `embedded:1.7.1`, `modelsdev:<hash>`). A dedicated
     /// slot: custom_attributes stays reserved for the org-configured
     /// attribute map every event type carries.
     pub pricing_catalog: PosField<String>,
