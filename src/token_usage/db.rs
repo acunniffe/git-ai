@@ -986,7 +986,7 @@ mod tests {
             entry_key: key.to_string(),
             message_id: message_id.map(str::to_string),
             ts,
-            model: "claude-sonnet-4-20250514".to_string(),
+            model: "claude-sonnet-4-6-20260115".to_string(),
             tokens,
             cache_write_1h: 0,
             transcript_cost_micro_usd: Some(1_000),
@@ -1129,7 +1129,7 @@ mod tests {
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         let changed = db.changed_buckets("s1").unwrap();
         assert_eq!(changed.len(), 1);
-        assert_eq!(changed[0].model, "claude-sonnet-4-20250514");
+        assert_eq!(changed[0].model, "claude-sonnet-4-6-20260115");
         assert_eq!(changed[0].bucket_ts, 600);
         assert_eq!(changed[0].emit_seq, 0);
         let agg = changed[0].aggregate;
@@ -1151,13 +1151,13 @@ mod tests {
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
         // The entry stays attributed to the first-seen session.
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
                 .unwrap()
                 .message_count,
             1
         );
         assert_eq!(
-            db.aggregate_bucket("s2", "claude-sonnet-4-20250514", 600)
+            db.aggregate_bucket("s2", "claude-sonnet-4-6-20260115", 600)
                 .unwrap()
                 .message_count,
             0
@@ -1190,13 +1190,13 @@ mod tests {
         db.clear_needs_reconcile("s1").unwrap();
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
                 .unwrap()
                 .message_count,
             0
         );
         assert_eq!(
-            db.aggregate_bucket("s2", "claude-sonnet-4-20250514", 600)
+            db.aggregate_bucket("s2", "claude-sonnet-4-6-20260115", 600)
                 .unwrap()
                 .output,
             50
@@ -1208,7 +1208,7 @@ mod tests {
         let (_dir, db) = db();
         let e = entry("m1|r1", Some("m1"), 600, tokens(10, 5));
         commit(&db, std::slice::from_ref(&e));
-        let model = "claude-sonnet-4-20250514";
+        let model = "claude-sonnet-4-6-20260115";
         let before = db.aggregate_bucket("s1", model, 600).unwrap();
         // Identical replay: policy keeps the existing row, aggregate (and
         // therefore the emission fingerprint) is unchanged.
@@ -1223,14 +1223,14 @@ mod tests {
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))]);
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
             .unwrap();
         assert_eq!(agg.output, 50);
         assert_eq!(agg.message_count, 1);
         // Smaller totals never replace.
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(1, 1))]);
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
                 .unwrap(),
             agg
         );
@@ -1246,7 +1246,7 @@ mod tests {
         // loses to it despite larger totals.
         commit(&db, &[replay]);
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
             .unwrap();
         assert_eq!(agg.input, 10);
         assert_eq!(agg.message_count, 1);
@@ -1260,7 +1260,7 @@ mod tests {
         commit(&db, &[replay]);
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
             .unwrap();
         assert_eq!(agg.input, 10);
         assert_eq!(agg.message_count, 1);
@@ -1268,7 +1268,7 @@ mod tests {
         // parent entry again leaves the aggregate untouched.
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
                 .unwrap(),
             agg
         );
@@ -1282,7 +1282,7 @@ mod tests {
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         commit(&db, &[entry("m1|r2", Some("m1"), 600, tokens(7, 3))]);
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
             .unwrap();
         assert_eq!(agg.message_count, 2);
         assert_eq!(agg.input, 17);
@@ -1291,7 +1291,7 @@ mod tests {
     #[test]
     fn changed_buckets_skips_unchanged_and_reports_emptied() {
         let (_dir, db) = db();
-        let model = "claude-sonnet-4-20250514";
+        let model = "claude-sonnet-4-6-20260115";
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         let changed = db.changed_buckets("s1").unwrap();
         assert_eq!(changed.len(), 1);
@@ -1394,7 +1394,7 @@ mod tests {
         assert!(db.all_files().unwrap().is_empty());
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
         assert_eq!(
-            db.aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            db.aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
                 .unwrap()
                 .message_count,
             0
@@ -1406,7 +1406,7 @@ mod tests {
             &[entry("m1|r1", Some("m1"), 600, tokens(10, 50))],
         );
         assert_eq!(
-            db.aggregate_bucket("s2", "claude-sonnet-4-20250514", 600)
+            db.aggregate_bucket("s2", "claude-sonnet-4-6-20260115", 600)
                 .unwrap()
                 .output,
             50
@@ -1419,7 +1419,7 @@ mod tests {
         // fingerprint write must not lead to a second payload with an equal
         // revision.
         let (_dir, db) = db();
-        let model = "claude-sonnet-4-20250514";
+        let model = "claude-sonnet-4-6-20260115";
         commit(&db, &[entry("m1|r1", Some("m1"), 600, tokens(10, 5))]);
         let changed = db.changed_buckets("s1").unwrap();
         assert_eq!(changed[0].emit_seq, 0);
@@ -1497,7 +1497,7 @@ mod tests {
             commit(&db, &[e]);
         }
         let agg = db
-            .aggregate_bucket("s1", "claude-sonnet-4-20250514", 600)
+            .aggregate_bucket("s1", "claude-sonnet-4-6-20260115", 600)
             .unwrap();
         assert_eq!(agg.input, 2 * TOKEN_VALUE_CEILING);
         assert_eq!(agg.total, 2 * TOKEN_VALUE_CEILING);
@@ -1579,7 +1579,7 @@ mod tests {
                 entry("m2|r2", Some("m2"), 999_900, tokens(1, 1)),
             ],
         );
-        let model = "claude-sonnet-4-20250514";
+        let model = "claude-sonnet-4-6-20260115";
         db.mark_emitted("s1", model, 600, "fp", 1, 1).unwrap();
         assert_eq!(db.prune_buckets_before(999_000).unwrap(), 1);
         assert_eq!(

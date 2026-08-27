@@ -59,7 +59,10 @@ pub fn price_entry(entry: &UsageEntry) -> EntryPricing {
         };
     };
     EntryPricing {
-        cost_micro_usd: Some(cost_from_pricing(entry, &pricing)),
+        // The same tier decision selects the billed rates AND lands in the
+        // recorded long_context column the wire splits are built from, so
+        // the two can never diverge.
+        cost_micro_usd: Some(tiered_cost_from_pricing(entry, &pricing, long_context)),
         long_context,
         pricing_catalog: Some(pricing_catalog_id()),
     }
@@ -94,11 +97,18 @@ fn is_long_context(entry: &UsageEntry, pricing: &ModelPricing) -> bool {
 }
 
 /// The catalog-pricing arm of ccusage's "auto" mode, split out so the rate
-/// fallbacks are unit-testable with synthetic pricing.
+/// fallbacks are unit-testable with synthetic pricing (computes the tier
+/// decision itself; production goes through [`price_entry`], which computes
+/// it once for both the cost and the recorded flag).
+#[cfg(test)]
 fn cost_from_pricing(entry: &UsageEntry, pricing: &ModelPricing) -> u64 {
+    tiered_cost_from_pricing(entry, pricing, is_long_context(entry, pricing))
+}
+
+fn tiered_cost_from_pricing(entry: &UsageEntry, pricing: &ModelPricing, long_context: bool) -> u64 {
     let usd = match entry.pricing_shape {
-        PricingShape::Claude => claude_cost_usd(entry, pricing),
-        PricingShape::Codex => codex_cost_usd(entry, pricing),
+        PricingShape::Claude => claude_cost_usd(entry, pricing, long_context),
+        PricingShape::Codex => codex_cost_usd(entry, pricing, long_context),
     } / 1_000_000.0;
     // Fast-speed requests bill the whole request at the model's multiplier
     // (ccusage prices the fast bucket once at standard rates plus
@@ -114,12 +124,11 @@ fn cost_from_pricing(entry: &UsageEntry, pricing: &ModelPricing) -> u64 {
 /// ccusage `calculate_cost_from_pricing`: in a long-context request every
 /// rate switches to its above-threshold value, falling back per rate to the
 /// base; 1h cache writes bill at 2x the selected tier's input rate.
-fn claude_cost_usd(entry: &UsageEntry, pricing: &ModelPricing) -> f64 {
+fn claude_cost_usd(entry: &UsageEntry, pricing: &ModelPricing, long_context: bool) -> f64 {
     let cache_write_5m = entry
         .tokens
         .cache_write
         .saturating_sub(entry.cache_write_1h);
-    let long_context = is_long_context(entry, pricing);
     let rate = |base: f64, above: Option<f64>| {
         if long_context {
             above.unwrap_or(base)
@@ -145,9 +154,9 @@ fn claude_cost_usd(entry: &UsageEntry, pricing: &ModelPricing) -> f64 {
 /// unpublished cache-read rate bills at the FULL input rate of the selected
 /// tier — not the Claude path's 0.1x default — and Codex reports no cache
 /// writes, so there are no write terms.
-fn codex_cost_usd(entry: &UsageEntry, pricing: &ModelPricing) -> f64 {
+fn codex_cost_usd(entry: &UsageEntry, pricing: &ModelPricing, long_context: bool) -> f64 {
     let explicit = pricing.cache_read.is_some();
-    let (input_rate, output_rate, cache_read_rate) = if is_long_context(entry, pricing) {
+    let (input_rate, output_rate, cache_read_rate) = if long_context {
         let long_input = pricing.input_above.unwrap_or(pricing.input);
         let long_cache_read = if explicit {
             pricing
@@ -232,7 +241,7 @@ mod tests {
     #[test]
     fn transcript_cost_takes_precedence_over_computed() {
         let mut e = entry(
-            "claude-sonnet-4-20250514",
+            "claude-sonnet-4-6-20260115",
             TokenCounts {
                 input: 1_000_000,
                 ..Default::default()
@@ -245,9 +254,9 @@ mod tests {
     #[test]
     fn computes_cost_from_pricing_catalog() {
         // claude-sonnet-4 is in the embedded models.dev snapshot.
-        let pricing = pricing_for("claude-sonnet-4-20250514").expect("snapshot pricing");
+        let pricing = pricing_for("claude-sonnet-4-6-20260115").expect("snapshot pricing");
         let e = entry(
-            "claude-sonnet-4-20250514",
+            "claude-sonnet-4-6-20260115",
             TokenCounts {
                 input: 1_000_000,
                 output: 2_000_000,
@@ -270,9 +279,9 @@ mod tests {
 
     #[test]
     fn one_hour_cache_writes_cost_double_the_input_rate() {
-        let pricing = pricing_for("claude-sonnet-4-20250514").expect("snapshot pricing");
+        let pricing = pricing_for("claude-sonnet-4-6-20260115").expect("snapshot pricing");
         let mut e = entry(
-            "claude-sonnet-4-20250514",
+            "claude-sonnet-4-6-20260115",
             TokenCounts {
                 cache_write: 1_000_000,
                 ..Default::default()
@@ -529,7 +538,7 @@ mod tests {
     #[test]
     fn price_entry_records_the_tier_decision_and_catalog() {
         let long = entry(
-            "claude-sonnet-4-20250514",
+            "claude-sonnet-4-6-20260115",
             TokenCounts {
                 input: 300_000,
                 ..Default::default()
