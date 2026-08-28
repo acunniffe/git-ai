@@ -152,7 +152,9 @@ recompute a bucket as `base tokens x base rates + long-context tokens x
 above rates` (whole-request selection already applied client-side), with 1h
 cache writes at 2x the tier's input rate, times the fast multiplier when
 `speed = 1`, plus `transcript_cost_micro_usd` as a fixed term (its tokens
-are included in the totals, so such buckets reprice approximately).
+are included in the totals, so such buckets reprice approximately; the same
+holds for buckets containing entries clamped at the $10k per-entry ceiling,
+whose token counts are not clamped).
 Remaining pricing deviations from ccusage: no `codex-auto-review` model
 mapping, and no marginal-at-200K arm for above-rates-without-threshold data
 (unreachable with a models.dev-sourced catalog); `git-ai usage` approximates
