@@ -1,0 +1,51 @@
+tests/integration/install_hooks_comprehensive.rs
+  s_9ba5945f49d00a::t_7534c7985f69c7 671-675
+  s_9ba5945f49d00a::t_513ec2e49a920f 458,486,533,565,584,607,653,694
+  s_9ba5945f49d00a::t_acbb11d8f155bb 394-395,402-408,413-421,423-425
+  s_9ba5945f49d00a::t_3c8a6e83e8697f 422
+  s_9ba5945f49d00a::t_e1e225cb21cda8 11
+  s_9ba5945f49d00a::t_4d3be07f2ada88 474-478
+  s_9ba5945f49d00a::t_3feb0bcb300d0c 426,642-652,654-661
+  s_9ba5945f49d00a::t_77a5cee97f1246 427
+src/authorship/background_agent.rs
+  s_9ba5945f49d00a::t_aa5b072285bac1 18-30
+src/commands/upgrade.rs
+  s_9ba5945f49d00a::t_df9673853d5cd3 58
+tests/windows_install_script.rs
+  s_9ba5945f49d00a::t_875ee21325caed 148-151
+tests/integration/repos/test_repo.rs
+  s_9ba5945f49d00a::t_201db88877c583 2464-2467
+  s_9ba5945f49d00a::t_81dcf0b85b4162 3575-3578
+src/utils.rs
+  s_9ba5945f49d00a::t_cc00f3fe195347 294-312,316-319
+  s_9ba5945f49d00a::t_eb625088b5f18c 1360-1361,1363,1368
+src/commands/install_hooks.rs
+  s_9ba5945f49d00a::t_7a446c53a74103 547,552-557,561-565
+  s_9ba5945f49d00a::t_3b308a391f898e 597-598,608-613
+  s_9ba5945f49d00a::t_1a01095e9d6933 389
+  s_9ba5945f49d00a::t_bc3fa061261e40 526-528
+  s_9ba5945f49d00a::t_3573b7ae9a973f 558-560
+  s_9ba5945f49d00a::t_3c3e7f9101018d 412
+  s_9ba5945f49d00a::t_aa065f258bf78f 1772,1774,1784-1787,1789-1795
+  s_9ba5945f49d00a::t_64dff3bcb789ec 1778
+  s_9ba5945f49d00a::t_51860828886613 705-711
+  s_9ba5945f49d00a::t_0411229dbe0627 1788
+  s_9ba5945f49d00a::t_a48e4a2faed59b 29-31
+  s_9ba5945f49d00a::t_2bf4753acca1df 601-604,606
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "dc44e390eaf1c6e3503be0d348e4dd6bb0aebf6c",
+  "prompts": {},
+  "sessions": {
+    "s_9ba5945f49d00a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6ebec7a6-2ea8-4077-8a42-cf367c484cc3",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
