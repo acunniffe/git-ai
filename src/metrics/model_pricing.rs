@@ -23,7 +23,7 @@
 //! and a fast/priority speed multiplier. Neither vendors nor models.dev
 //! publish fast-tier pricing, and models.dev's first-party Anthropic entries
 //! omit their long-context tiers, so both are hand-tracked in override
-//! tables below, applied when the catalog is trimmed.
+//! tables below, applied when a catalog is loaded.
 
 use crate::utils::{read_json_file, unix_timestamp_now, write_json_file};
 use serde::{Deserialize, Serialize};
@@ -477,7 +477,7 @@ impl ModelsDevCost {
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|band| serde_json::from_value::<ModelsDevTier>(band.clone()).ok())
+            .filter_map(|band| ModelsDevTier::deserialize(band).ok())
             .filter_map(|tier| {
                 let bound = tier.tier.as_ref()?;
                 if bound.kind.as_deref() != Some("context") {
@@ -498,11 +498,15 @@ impl ModelsDevCost {
 /// The override value whose key matches `model_id` exactly or as a
 /// token-boundary prefix ("claude-opus-4-6" also covers
 /// "claude-opus-4-6-20260205"). Catalog ids carry no provider prefixes, so
-/// the boundary-containment helper is an exact-or-prefix match here.
+/// the boundary-containment helper is an exact-or-prefix match here. The
+/// longest matching key wins (like [`PricingCatalog::pricing_for`]'s fuzzy
+/// arm): "claude-sonnet-4" also prefixes "claude-sonnet-4-5", so first-match
+/// would silently shadow the more specific row.
 fn prefix_override<T: Copy>(overrides: &[(&str, T)], model_id: &str) -> Option<T> {
     overrides
         .iter()
-        .find(|(base, _)| contains_at_token_boundary(model_id, base))
+        .filter(|(base, _)| contains_at_token_boundary(model_id, base))
+        .max_by_key(|(base, _)| base.len())
         .map(|(_, value)| *value)
 }
 
@@ -838,6 +842,21 @@ mod tests {
                 .fast_multiplier,
             1.0
         );
+    }
+
+    #[test]
+    fn prefix_override_prefers_the_longest_matching_key() {
+        // "claude-sonnet-4" also token-boundary-prefixes "claude-sonnet-4-5":
+        // a more specific row must win regardless of table order, or edits to
+        // it are silently shadowed (CLAUDE_LONG_CONTEXT_PREFIX lists both).
+        let overrides = [("claude-sonnet-4", 1.0), ("claude-sonnet-4-5", 2.0)];
+        assert_eq!(prefix_override(&overrides, "claude-sonnet-4-5"), Some(2.0));
+        assert_eq!(
+            prefix_override(&overrides, "claude-sonnet-4-5-20260601"),
+            Some(2.0)
+        );
+        assert_eq!(prefix_override(&overrides, "claude-sonnet-4"), Some(1.0));
+        assert_eq!(prefix_override(&overrides, "claude-opus-4"), None);
     }
 
     #[test]
