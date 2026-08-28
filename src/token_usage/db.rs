@@ -1031,6 +1031,28 @@ mod tests {
     }
 
     #[test]
+    fn newer_schema_versions_fail_closed_on_open() {
+        // Migrations are destructive from v3 on, so a downgraded binary must
+        // refuse a database written by a newer one instead of failing every
+        // pass at runtime on missing columns.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token-usage-db");
+        drop(TokenUsageDatabase::open(&path).unwrap());
+        crate::sqlite::open_with_memory_limits(&path)
+            .unwrap()
+            .execute("INSERT INTO schema_version (version) VALUES (99)", [])
+            .unwrap();
+
+        let Err(err) = TokenUsageDatabase::open(&path) else {
+            panic!("opening a newer-schema database must fail closed");
+        };
+        assert!(
+            err.to_string().contains("newer than this binary"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
     fn ensure_file_creates_zero_cursor_and_is_stable() {
         let (_dir, db) = db();
         let file = db
