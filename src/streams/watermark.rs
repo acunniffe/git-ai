@@ -57,6 +57,10 @@ impl FromStr for WatermarkType {
     }
 }
 
+/// Cap on how much of a first-seen stream file is backfilled (see
+/// [`WatermarkType::create_initial_watermark_for_file`]).
+pub(crate) const MAX_INITIAL_BACKFILL_BYTES: u64 = 32 * 1024 * 1024;
+
 impl WatermarkType {
     /// Deserialize a watermark value based on the strategy type.
     pub fn deserialize(&self, s: &str) -> Result<Box<dyn WatermarkStrategy>, StreamError> {
@@ -79,6 +83,36 @@ impl WatermarkType {
             WatermarkType::Hybrid => Box::new(HybridWatermark::new(0, 0, None)),
             WatermarkType::TimestampCursor => Box::new(TimestampCursorWatermark::initial()),
         }
+    }
+
+    /// Initial watermark for a newly-registered stream backed by `path`.
+    ///
+    /// Byte-offset streams clamp the initial backfill: a first-seen transcript
+    /// is otherwise ingested from byte 0, and a multi-hundred-MB historical
+    /// file (long agent sessions embed file contents in every event) forces a
+    /// full re-ingest whose memory cost tripped the memory watchdog in
+    /// production (#2244). Only the newest [`MAX_INITIAL_BACKFILL_BYTES`] are
+    /// ingested; older history is skipped — these streams feed best-effort
+    /// diagnostics, not authorship data. Starting mid-file can land mid-line;
+    /// the reader skips that first fragment as one malformed line.
+    pub fn create_initial_watermark_for_file(
+        &self,
+        path: &std::path::Path,
+    ) -> Box<dyn WatermarkStrategy> {
+        if matches!(self, WatermarkType::ByteOffset)
+            && let Ok(meta) = std::fs::metadata(path)
+            && meta.len() > MAX_INITIAL_BACKFILL_BYTES
+        {
+            let start = meta.len() - MAX_INITIAL_BACKFILL_BYTES;
+            tracing::warn!(
+                path = %path.display(),
+                file_bytes = meta.len(),
+                start_offset = start,
+                "large first-seen stream: skipping historical backfill beyond cap"
+            );
+            return Box::new(ByteOffsetWatermark::new(start));
+        }
+        self.create_initial_watermark()
     }
 }
 

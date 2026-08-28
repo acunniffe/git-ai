@@ -14,7 +14,7 @@ use crate::metrics::{
 use crate::streams::agent::{SHARED_STREAM_SESSION_ID, StreamDescriptor};
 use crate::streams::db::{StreamRecord, StreamsDatabase};
 use crate::streams::types::StreamError;
-use crate::streams::watermark::{WatermarkStrategy, WatermarkType};
+use crate::streams::watermark::WatermarkType;
 use chrono::{TimeZone, Utc};
 use std::collections::{BinaryHeap, HashSet};
 use std::path::{Path, PathBuf};
@@ -864,9 +864,8 @@ impl StreamWorker {
             return Ok(());
         }
 
-        use crate::streams::watermark::ByteOffsetWatermark;
-
-        let initial_watermark = ByteOffsetWatermark::new(0);
+        let initial_watermark = crate::streams::watermark::WatermarkType::ByteOffset
+            .create_initial_watermark_for_file(path);
         let record = StreamRecord {
             session_id: session_id.to_string(),
             stream_kind: "transcript".to_string(),
@@ -910,7 +909,7 @@ impl StreamWorker {
         }
 
         let effective_wm_type = stream.effective_watermark_type(stream_path);
-        let initial_watermark = effective_wm_type.create_initial_watermark();
+        let initial_watermark = effective_wm_type.create_initial_watermark_for_file(stream_path);
 
         // For shared streams, external_session_id/parent/repo_work_dir are meaningless
         // since the resource serves all sessions — use empty/None to avoid stale first-caller data
@@ -1095,13 +1094,13 @@ impl StreamWorker {
         }
 
         let file_meta = std::fs::metadata(&path).ok();
-        let watermark_type_str = &stream.watermark_type;
-        let is_initial_watermark = stream.watermark_value.is_empty()
-            || watermark_type_str
-                .parse::<crate::streams::watermark::WatermarkType>()
-                .ok()
-                .map(|wt| wt.create_initial_watermark().serialize() == stream.watermark_value)
-                .unwrap_or(false);
+        // "Never processed" rather than "watermark equals the zero value":
+        // capped first-seen streams start at a non-zero byte offset (see
+        // create_initial_watermark_for_file), so comparing against the
+        // serialized zero watermark would misclassify exactly those streams.
+        // update_watermark stamps last_processed_at on every batch.
+        let is_initial_watermark =
+            stream.watermark_value.is_empty() || stream.last_processed_at == 0;
 
         loop {
             if shutdown_flag.load(Ordering::Relaxed) {
