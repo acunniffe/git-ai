@@ -145,7 +145,10 @@ fn configure_install_env(command: &mut Command, repo: &TestRepo) {
     // install-hooks runs without --dry-run here; its author prompt could
     // otherwise reach the developer's real console via CONIN$ when an API
     // key is present in the inherited environment.
-    command.env("GIT_AI_NO_AUTHOR_PROMPT", "1");
+    command.env(
+        git_ai::commands::install_hooks::GIT_AI_NO_AUTHOR_PROMPT_ENV,
+        "1",
+    );
     command.env("PATH", path_with_git);
     command.env("HOME", repo.test_home_path());
     command.env("USERPROFILE", repo.test_home_path());

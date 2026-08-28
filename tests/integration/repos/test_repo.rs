@@ -2474,7 +2474,10 @@ impl TestRepo {
         // terminal via /dev/tty (or CONIN$) even when the child's stdio is
         // piped. Default it off for every test child; prompt tests opt back
         // in with GIT_AI_NO_AUTHOR_PROMPT=0.
-        command.env("GIT_AI_NO_AUTHOR_PROMPT", "1");
+        command.env(
+            git_ai::commands::install_hooks::GIT_AI_NO_AUTHOR_PROMPT_ENV,
+            "1",
+        );
         command.env("GIT_AI_DAEMON_HOME", self.daemon_home_path());
         command.env(
             "GIT_AI_DAEMON_CONTROL_SOCKET",
@@ -3621,7 +3624,10 @@ pub(crate) fn ensure_isolated_process_home() {
             // /dev/tty fallback). Children still get an explicit value from
             // `configure_git_ai_env` (or a per-test override), so this only
             // hardens in-process library calls.
-            std::env::set_var("GIT_AI_NO_AUTHOR_PROMPT", "1");
+            std::env::set_var(
+                git_ai::commands::install_hooks::GIT_AI_NO_AUTHOR_PROMPT_ENV,
+                "1",
+            );
             #[cfg(windows)]
             {
                 std::env::set_var("USERPROFILE", &home);

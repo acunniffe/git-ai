@@ -298,50 +298,35 @@ pub fn is_running_as_superuser() -> bool {
     }
 }
 
+/// Environment markers whose presence indicates a CI system, container, or
+/// automated/unattended context. Exported so tests that must scrub ambient
+/// markers stay in lockstep with [`is_superuser_expected_environment`].
+pub const UNATTENDED_ENV_MARKERS: &[&str] = &[
+    "CI",
+    "GITHUB_ACTIONS",
+    "GITLAB_CI",
+    "JENKINS_URL",
+    "BUILDKITE",
+    "CIRCLECI",
+    "CODEBUILD_BUILD_ID",
+    "AGENT_OS",
+    "KUBERNETES_SERVICE_HOST",
+    // `container` is set by podman, systemd-nspawn, and other runtimes
+    "container",
+    // Daemon-triggered silent upgrades
+    "GIT_AI_DAEMON_UPGRADE",
+];
+
 /// Returns true if the environment indicates a CI system or automated agent
 /// sandbox where running as superuser is expected and acceptable.
 pub fn is_superuser_expected_environment() -> bool {
-    if std::env::var_os("CI").is_some() {
-        return true;
-    }
-    if std::env::var_os("GITHUB_ACTIONS").is_some() {
-        return true;
-    }
-    if std::env::var_os("GITLAB_CI").is_some() {
-        return true;
-    }
-    if std::env::var_os("JENKINS_URL").is_some() {
-        return true;
-    }
-    if std::env::var_os("BUILDKITE").is_some() {
-        return true;
-    }
-    if std::env::var_os("CIRCLECI").is_some() {
-        return true;
-    }
-    if std::env::var_os("CODEBUILD_BUILD_ID").is_some() {
-        return true;
-    }
-    if std::env::var_os("AGENT_OS").is_some() {
-        return true;
-    }
-    if std::env::var_os("KUBERNETES_SERVICE_HOST").is_some() {
-        return true;
-    }
-    if is_inside_container() {
-        return true;
-    }
-    if std::env::var_os("GIT_AI_DAEMON_UPGRADE").is_some() {
-        return true;
-    }
-    false
+    UNATTENDED_ENV_MARKERS
+        .iter()
+        .any(|marker| std::env::var_os(marker).is_some())
+        || is_inside_container()
 }
 
 fn is_inside_container() -> bool {
-    // `container` env var is set by podman, systemd-nspawn, and other runtimes
-    if std::env::var_os("container").is_some() {
-        return true;
-    }
     // Docker creates /.dockerenv in every container
     #[cfg(unix)]
     if std::path::Path::new("/.dockerenv").exists() {
@@ -1379,13 +1364,15 @@ mod tests {
     #[test]
     fn timed_line_reader_times_out() {
         let start = std::time::Instant::now();
+        // The reader blocks far longer than the generous assertion bound so a
+        // loaded CI scheduler stall cannot flake the test in either direction.
         let reader = TimedLineReader::spawn(|| {
-            std::thread::sleep(std::time::Duration::from_millis(2000));
+            std::thread::sleep(std::time::Duration::from_secs(60));
             None
         });
         assert_eq!(reader.next_line(std::time::Duration::from_millis(50)), None);
         assert!(
-            start.elapsed() < std::time::Duration::from_millis(1500),
+            start.elapsed() < std::time::Duration::from_secs(30),
             "must return at the timeout, not wait for the reader"
         );
     }

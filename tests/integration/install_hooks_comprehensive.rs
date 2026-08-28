@@ -8,7 +8,7 @@ use crate::repos::test_repo::{
     get_binary_path,
 };
 use git_ai::commands::install_hooks::{
-    InstallResult, InstallStatus, run, run_uninstall, to_hashmap,
+    GIT_AI_NO_AUTHOR_PROMPT_ENV, InstallResult, InstallStatus, run, run_uninstall, to_hashmap,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -391,36 +391,38 @@ fn git_ai_config_json(repo: &TestRepo) -> serde_json::Value {
 /// harness environment: `author_prompt_suppressed()` consults
 /// `is_in_background_agent()` and `is_superuser_expected_environment()`, so
 /// running the suite in CI or an AI-agent sandbox would suppress the prompt
-/// and make the assertions pass or fail for the wrong reason. (The
-/// `/.dockerenv` container marker cannot be scrubbed; GitHub-hosted runners
-/// are VMs, so it is absent there.)
+/// and make the assertions pass or fail for the wrong reason. The marker
+/// lists are imported from the production detectors so they cannot drift.
 fn remove_ambient_prompt_suppression_env(command: &mut Command) {
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("CLOUD_AGENT_") {
             command.env_remove(key);
         }
     }
-    for key in [
-        "CLAUDE_CODE_REMOTE",
-        "CURSOR_AGENT",
-        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
-        "GIT_AI_CLOUD_AGENT",
-        // is_superuser_expected_environment() markers
-        "CI",
-        "GITHUB_ACTIONS",
-        "GITLAB_CI",
-        "JENKINS_URL",
-        "BUILDKITE",
-        "CIRCLECI",
-        "CODEBUILD_BUILD_ID",
-        "AGENT_OS",
-        "KUBERNETES_SERVICE_HOST",
-        "container",
-        "GIT_AI_DAEMON_UPGRADE",
-        "GIT_AI_BACKGROUND_UPGRADE_WORKER",
-    ] {
+    for key in git_ai::utils::UNATTENDED_ENV_MARKERS
+        .iter()
+        .chain(git_ai::authorship::background_agent::BACKGROUND_AGENT_ENV_MARKERS)
+        .chain(std::iter::once(
+            &git_ai::commands::upgrade::ENV_BACKGROUND_UPGRADE_WORKER,
+        ))
+    {
         command.env_remove(key);
     }
+}
+
+/// Suppression the prompt tests cannot scrub from a child's environment: the
+/// `/.dockerenv` container marker (GitHub-hosted runners are VMs, so it is
+/// absent there) and running the suite as root. Prompt-firing tests skip
+/// instead of failing spuriously in such environments.
+fn ambient_unscrubbable_prompt_suppression() -> Option<&'static str> {
+    if std::path::Path::new("/.dockerenv").exists() {
+        return Some("/.dockerenv container marker");
+    }
+    #[cfg(unix)]
+    if git_ai::utils::is_running_as_superuser() {
+        return Some("running as root");
+    }
+    None
 }
 
 fn assert_install_hooks_skips_author_prompt(
@@ -453,7 +455,7 @@ fn install_hooks_no_controlling_tty_skips_author_prompt() {
         &["install-hooks"],
         &[
             ("GIT_AI_API_KEY", "test-key"),
-            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
         ],
     );
     remove_ambient_prompt_suppression_env(&mut command);
@@ -469,6 +471,11 @@ fn install_hooks_no_controlling_tty_skips_author_prompt() {
 fn install_hooks_forced_tty_prompts_and_saves_author() {
     use std::io::Write as _;
 
+    if let Some(reason) = ambient_unscrubbable_prompt_suppression() {
+        eprintln!("skipping: {reason} suppresses the author prompt");
+        return;
+    }
+
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
 
     let mut command = repo.git_ai_command_without_pre_sync_for_test(
@@ -476,7 +483,7 @@ fn install_hooks_forced_tty_prompts_and_saves_author() {
         &[
             ("GIT_AI_API_KEY", "test-key"),
             ("GIT_AI_TEST_FORCE_TTY", "1"),
-            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
         ],
     );
     remove_ambient_prompt_suppression_env(&mut command);
@@ -523,7 +530,7 @@ fn install_hooks_forced_tty_author_already_set_skips_prompt() {
         &[
             ("GIT_AI_API_KEY", "test-key"),
             ("GIT_AI_TEST_FORCE_TTY", "1"),
-            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
         ],
     );
     remove_ambient_prompt_suppression_env(&mut command);
@@ -555,7 +562,7 @@ fn install_hooks_forced_tty_without_api_key_skips_prompt() {
         &["install-hooks"],
         &[
             ("GIT_AI_TEST_FORCE_TTY", "1"),
-            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
         ],
     );
     remove_ambient_prompt_suppression_env(&mut command);
@@ -574,7 +581,7 @@ fn install_hooks_dry_run_forced_tty_skips_prompt() {
         &[
             ("GIT_AI_API_KEY", "test-key"),
             ("GIT_AI_TEST_FORCE_TTY", "1"),
-            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
         ],
     );
     remove_ambient_prompt_suppression_env(&mut command);
@@ -597,7 +604,7 @@ fn assert_suppression_env_skips_author_prompt(env: (&str, &str), context: &str) 
         &[
             ("GIT_AI_API_KEY", "test-key"),
             ("GIT_AI_TEST_FORCE_TTY", "1"),
-            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
         ],
     );
     remove_ambient_prompt_suppression_env(&mut command);
@@ -632,6 +639,26 @@ fn install_hooks_ci_environment_skips_author_prompt() {
     assert_suppression_env_skips_author_prompt(("CI", "true"), "ci environment");
 }
 
+#[test]
+fn install_hooks_no_author_prompt_flag_skips_prompt() {
+    // Spawners that cannot set env vars (the MSI custom action command line)
+    // suppress via the CLI flag instead.
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks", "--no-author-prompt"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            ("GIT_AI_TEST_FORCE_TTY", "1"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
+        ],
+    );
+    remove_ambient_prompt_suppression_env(&mut command);
+    let output = command.output().expect("run git-ai install-hooks");
+
+    assert_install_hooks_skips_author_prompt(&output, &repo, "--no-author-prompt flag");
+}
+
 /// End-to-end /dev/tty fallback: stdin is /dev/null (like `curl | bash`,
 /// where stdin is the script pipe), but the process has a controlling
 /// terminal — the pty allocated by script(1), which forwards our piped input
@@ -640,6 +667,11 @@ fn install_hooks_ci_environment_skips_author_prompt() {
 #[cfg(target_os = "linux")]
 fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
     use std::io::Write as _;
+
+    if let Some(reason) = ambient_unscrubbable_prompt_suppression() {
+        eprintln!("skipping: {reason} suppresses the author prompt");
+        return;
+    }
 
     // A spawn error means no script(1) at all; a non-success exit means a
     // non-util-linux implementation (e.g. BusyBox) without `-qec` support.
@@ -659,7 +691,7 @@ fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
         &["install-hooks"],
         &[
             ("GIT_AI_API_KEY", "test-key"),
-            ("GIT_AI_NO_AUTHOR_PROMPT", "0"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
         ],
     );
     remove_ambient_prompt_suppression_env(&mut inner);

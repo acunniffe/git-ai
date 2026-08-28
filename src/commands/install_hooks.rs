@@ -26,6 +26,9 @@ struct InstallOptions {
     include_visual_studio_extension: bool,
     configure_env: bool,
     configure_wsl: bool,
+    /// Skip the interactive author prompt. For spawners that cannot set
+    /// environment variables (e.g. the MSI custom action command line).
+    no_author_prompt: bool,
     api_base: Option<String>,
     api_key: Option<String>,
 }
@@ -383,7 +386,7 @@ fn run_hooks_install(options: &InstallOptions) -> Result<HashMap<String, String>
     persist_install_config_with_values(&binary_path, options.dry_run, &install_config)?;
     // Prompt before async_run_install so the interactive read never interleaves
     // with spinner output.
-    maybe_prompt_and_save_author_identity(options, &install_config);
+    maybe_prompt_and_save_author_identity(options);
     let params = HookInstallerParams { binary_path };
 
     // Run async operations and convert result.
@@ -406,6 +409,7 @@ fn parse_install_options(args: &[String]) -> Result<InstallOptions, GitAiError> 
         match arg.as_str() {
             "--dry-run" | "--dry-run=true" => options.dry_run = true,
             "--verbose" | "-v" => options.verbose = true,
+            "--no-author-prompt" => options.no_author_prompt = true,
             "--skills" => options.install_skills = true,
             "--visual-studio-extension" => options.include_visual_studio_extension = true,
             "--env" | "--env=true" => options.configure_env = true,
@@ -519,8 +523,9 @@ fn persist_install_config_with_values(
 const AUTHOR_PROMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Opt-out env var for the author identity prompt. Set by internal spawners
-/// of unattended installs (upgrades, WSL/pkg installers) and by users.
-pub(crate) const GIT_AI_NO_AUTHOR_PROMPT_ENV: &str = "GIT_AI_NO_AUTHOR_PROMPT";
+/// of unattended installs (upgrades, WSL/pkg installers), by the test
+/// harness, and by users.
+pub const GIT_AI_NO_AUTHOR_PROMPT_ENV: &str = "GIT_AI_NO_AUTHOR_PROMPT";
 
 /// Where prompt I/O goes: process stdio (real TTYs, or forced by tests over
 /// piped stdio), or the controlling terminal when stdio is redirected (e.g.
@@ -539,11 +544,25 @@ enum PromptIo {
 fn author_prompt_suppressed() -> bool {
     let opted_out = std::env::var(GIT_AI_NO_AUTHOR_PROMPT_ENV)
         .is_ok_and(|v| !matches!(v.as_str(), "" | "0" | "false" | "False" | "FALSE"));
-    opted_out
+    if opted_out
         || crate::utils::is_superuser_expected_environment()
         || std::env::var(crate::commands::upgrade::ENV_BACKGROUND_UPGRADE_WORKER).as_deref()
             == Ok("1")
         || crate::utils::is_in_background_agent()
+    {
+        return true;
+    }
+    // A root-run install (`curl install.sh | sudo bash`, `ssh -tt root@...`
+    // provisioning) must not capture a personal author identity: HOME resolves
+    // to root's, so the typed answer would be saved to a config.json the real
+    // user's git-ai never reads. Deliberately ignores the
+    // GIT_AI_ALLOW_SUPERUSER opt-in: install.sh exports it for every root run,
+    // so it cannot distinguish an attended root operator from a sudo install.
+    #[cfg(unix)]
+    if crate::utils::is_running_as_superuser() {
+        return true;
+    }
+    false
 }
 
 /// git-credential-style prompt channel resolution. GIT_AI_TEST_FORCE_TTY
@@ -575,26 +594,23 @@ fn resolve_prompt_io() -> Option<PromptIo> {
 /// Best-effort interactive confirmation of the author identity used for
 /// AI-authorship attribution. Never fails the install: any config error or
 /// prompt timeout just skips.
-fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_config: &InstallConfig) {
-    if options.dry_run || author_prompt_suppressed() {
+fn maybe_prompt_and_save_author_identity(options: &InstallOptions) {
+    if options.dry_run || options.no_author_prompt || author_prompt_suppressed() {
         return;
     }
-    let Ok(file_config) = crate::config::load_file_config_public() else {
+    // A corrupt config file would make the post-prompt save fail, discarding
+    // the typed identity; skip up-front (the save path re-loads this file
+    // right before writing).
+    if crate::config::load_file_config_public().is_err() {
         return;
-    };
-    let author_configured = file_config
-        .author
-        .clone()
-        .is_some_and(|author| !author.normalized().is_empty());
-    let api_key_present = std::env::var("GIT_AI_API_KEY").is_ok_and(|key| !key.is_empty())
-        || file_config
-            .api_key
-            .as_deref()
-            .is_some_and(|key| !key.is_empty())
-        || install_config.api_key.is_some();
+    }
     // Prompt only where an API key exists (hosted usage) and no git-ai author
-    // override is configured yet.
-    if author_configured || !api_key_present {
+    // override is configured yet. `Config::fresh()` is the canonical
+    // resolution (env > file, non-empty-filtered, already normalized), and it
+    // sees the install-config api key too: `persist_install_config_with_values`
+    // has already saved it (any error there aborts the install before this).
+    let config = crate::config::Config::fresh();
+    if !config.author().is_empty() || config.api_key().is_none() {
         return;
     }
     // Resolve the interactive channel only after the cheap gates pass: it
@@ -686,7 +702,13 @@ fn prompt_author_identity(
         return None;
     };
     let author = config::AuthorConfig { name, email }.normalized();
-    (!author.is_empty()).then_some(author)
+    if author.is_empty() {
+        // Enter was pressed through empty defaults: tell the user nothing was
+        // saved, exactly like the timeout/EOF paths do.
+        skipped(out);
+        return None;
+    }
+    Some(author)
 }
 
 /// Returns `None` on timeout/EOF (abort the prompt entirely — no further stdin
@@ -1747,17 +1769,30 @@ mod tests {
     }
 
     #[test]
-    fn prompt_author_identity_all_empty_returns_none() {
+    fn prompt_author_identity_all_empty_returns_none_and_says_so() {
         let default = git_identity(None, None);
+        let mut out = Vec::new();
         let author = prompt_author_identity(
             &default,
             scripted_reader(vec![Some(""), Some("")]),
-            &mut Vec::new(),
+            &mut out,
         );
         assert_eq!(
             author, None,
             "nothing to save when defaults and input are empty"
         );
+        let out = String::from_utf8(out).unwrap();
+        assert!(
+            out.contains("skipping author setup"),
+            "confirming empty defaults must tell the user nothing was saved:\n{out}"
+        );
+    }
+
+    #[test]
+    fn parse_install_options_no_author_prompt_flag() {
+        let options = parse_install_options(&["--no-author-prompt".to_string()]).unwrap();
+        assert!(options.no_author_prompt);
+        assert!(!parse_install_options(&[]).unwrap().no_author_prompt);
     }
 
     #[test]

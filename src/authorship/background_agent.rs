@@ -15,6 +15,19 @@ pub enum BackgroundAgent {
     None,
 }
 
+/// Environment variables whose presence can mark a background agent in
+/// [`detect`]. Exported so tests that must scrub ambient agent markers stay
+/// in lockstep with `detect` — keep this list in sync when adding markers.
+/// (`CLOUD_AGENT_*` is a prefix scan such tests handle separately; the
+/// `HOSTNAME == "cursor"` conjunction is covered by `CURSOR_AGENT`; Devin
+/// detection is directory-based and disabled under GIT_AI_TEST_DB_PATH.)
+pub const BACKGROUND_AGENT_ENV_MARKERS: &[&str] = &[
+    "CLAUDE_CODE_REMOTE",
+    "CURSOR_AGENT",
+    "CODEX_INTERNAL_ORIGINATOR_OVERRIDE",
+    "GIT_AI_CLOUD_AGENT",
+];
+
 pub fn detect() -> BackgroundAgent {
     // With-hooks agents are explicitly declared and take precedence over
     // directory-based no-hooks detection.
