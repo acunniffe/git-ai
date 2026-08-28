@@ -1128,7 +1128,11 @@ impl StreamWorker {
             let batch_count = batch.events.len();
 
             let is_otel_stream = task.stream_kind == "otel_traces";
-            let metric_events: Vec<MetricEvent> = batch
+            // Serialize each event as it is built and let the MetricEvent
+            // (which still holds the redacted JSON tree) drop before the next
+            // one is constructed. Collecting Vec<MetricEvent> and serializing
+            // afterwards kept two full copies of the batch alive at once (#2244).
+            let metric_event_jsons: Vec<String> = batch
                 .events
                 .into_iter()
                 .enumerate()
@@ -1164,7 +1168,7 @@ impl StreamWorker {
 
                     let attrs_sparse = event_attrs.to_sparse();
                     let raw_event = redact_json_secrets(raw_event);
-                    Some(if is_otel_stream {
+                    let metric_event = if is_otel_stream {
                         MetricEvent::from_values_with_timestamp(
                             OtelTraceValues::with_ids(raw_event, eid, pid, tid),
                             attrs_sparse,
@@ -1176,11 +1180,18 @@ impl StreamWorker {
                             attrs_sparse,
                             Some(event_ts),
                         )
-                    })
+                    };
+                    match serde_json::to_string(&metric_event) {
+                        Ok(json) => Some(json),
+                        Err(e) => {
+                            tracing::warn!(%e, "telemetry: failed to serialize transcript metric event; dropping");
+                            None
+                        }
+                    }
                 })
                 .collect();
 
-            if let Err(e) = telemetry.persist_metrics_blocking(&metric_events) {
+            if let Err(e) = telemetry.persist_metric_jsons_blocking(&metric_event_jsons) {
                 tracing::warn!(%e, "telemetry: failed to persist transcript metrics locally");
             }
 
