@@ -527,6 +527,7 @@ pub(super) fn read_event_stream(
         })?;
 
     let mut events = Vec::with_capacity(batch_limit);
+    let mut batch_bytes: usize = 0;
     let mut current_offset = start_offset;
     let mut line_number = 0;
 
@@ -544,6 +545,17 @@ pub(super) fn read_event_stream(
             crate::streams::types::JsonlLineState::Complete(bytes_read) => {
                 line_number += 1;
                 current_offset += bytes_read as u64;
+            }
+            crate::streams::types::JsonlLineState::Oversized(bytes_read) => {
+                line_number += 1;
+                current_offset += bytes_read as u64;
+                tracing::warn!(
+                    line = line_number,
+                    path = %path.display(),
+                    max_bytes = crate::streams::types::MAX_JSONL_LINE_BYTES,
+                    "skipping oversized transcript line"
+                );
+                continue;
             }
         }
 
@@ -564,8 +576,9 @@ pub(super) fn read_event_stream(
             }
         };
 
+        batch_bytes += line.len();
         events.push(entry);
-        if events.len() >= batch_limit {
+        if events.len() >= batch_limit || batch_bytes >= crate::streams::types::MAX_BATCH_BYTES {
             break;
         }
     }
