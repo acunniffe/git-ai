@@ -69,6 +69,10 @@ pub fn price_entry(entry: &UsageEntry) -> EntryPricing {
 }
 
 /// Estimated cost of one entry in micro-USD ([`price_entry`]'s cost alone).
+/// Test-only convenience: production stores the full [`EntryPricing`], so a
+/// second entry point must not invite callers to drop the recorded
+/// long-context/catalog facts.
+#[cfg(test)]
 pub fn entry_cost_micro_usd(entry: &UsageEntry) -> Option<u64> {
     price_entry(entry).cost_micro_usd
 }
@@ -121,6 +125,17 @@ fn tiered_cost_from_pricing(entry: &UsageEntry, pricing: &ModelPricing, long_con
     micro_usd(usd * multiplier)
 }
 
+/// The billed rate for one token class: the above-threshold rate in a
+/// long-context request (falling back per rate to the base), the base rate
+/// otherwise. Shared by both cost shapes so the fallback rule cannot drift.
+fn tier_rate(long_context: bool, base: f64, above: Option<f64>) -> f64 {
+    if long_context {
+        above.unwrap_or(base)
+    } else {
+        base
+    }
+}
+
 /// ccusage `calculate_cost_from_pricing`: in a long-context request every
 /// rate switches to its above-threshold value, falling back per rate to the
 /// base; 1h cache writes bill at 2x the selected tier's input rate.
@@ -129,13 +144,7 @@ fn claude_cost_usd(entry: &UsageEntry, pricing: &ModelPricing, long_context: boo
         .tokens
         .cache_write
         .saturating_sub(entry.cache_write_1h);
-    let rate = |base: f64, above: Option<f64>| {
-        if long_context {
-            above.unwrap_or(base)
-        } else {
-            base
-        }
-    };
+    let rate = |base: f64, above: Option<f64>| tier_rate(long_context, base, above);
     entry.tokens.input as f64 * rate(pricing.input, pricing.input_above)
         + entry.tokens.output as f64 * rate(pricing.output, pricing.output_above)
         + cache_write_5m as f64 * rate(pricing.cache_write_rate(), pricing.cache_write_above)
@@ -155,32 +164,17 @@ fn claude_cost_usd(entry: &UsageEntry, pricing: &ModelPricing, long_context: boo
 /// tier — not the Claude path's 0.1x default — and Codex reports no cache
 /// writes, so there are no write terms.
 fn codex_cost_usd(entry: &UsageEntry, pricing: &ModelPricing, long_context: bool) -> f64 {
-    let explicit = pricing.cache_read.is_some();
-    let (input_rate, output_rate, cache_read_rate) = if long_context {
-        let long_input = pricing.input_above.unwrap_or(pricing.input);
-        let long_cache_read = if explicit {
-            pricing
-                .cache_read_above
-                .unwrap_or_else(|| pricing.cache_read_rate())
-        } else {
-            long_input
-        };
-        (
-            long_input,
-            pricing.output_above.unwrap_or(pricing.output),
-            long_cache_read,
-        )
+    let rate = |base: f64, above: Option<f64>| tier_rate(long_context, base, above);
+    // An unpublished cache-read rate bills like uncached input at the
+    // selected tier; a published one switches to its own above rate.
+    let cache_read_rate = if pricing.cache_read.is_some() {
+        rate(pricing.cache_read_rate(), pricing.cache_read_above)
     } else {
-        let cache_read = if explicit {
-            pricing.cache_read_rate()
-        } else {
-            pricing.input
-        };
-        (pricing.input, pricing.output, cache_read)
+        rate(pricing.input, pricing.input_above)
     };
-    entry.tokens.input as f64 * input_rate
+    entry.tokens.input as f64 * rate(pricing.input, pricing.input_above)
         + entry.tokens.cache_read as f64 * cache_read_rate
-        + entry.tokens.output as f64 * output_rate
+        + entry.tokens.output as f64 * rate(pricing.output, pricing.output_above)
 }
 
 /// Convert a USD amount to micro-USD (1e-6 USD), rounding to nearest and

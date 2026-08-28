@@ -340,7 +340,10 @@ fn catalog() -> &'static PricingCatalog {
 /// Identity of the catalog in effect, stored per priced entry so emitted
 /// costs stay attributable to the rates that produced them: the running
 /// binary's version for the embedded snapshot, a content hash for a fetched
-/// cache (the cache file carries no version of its own).
+/// cache (the cache file carries no version of its own). The hash covers the
+/// fetched data only — the hand-tracked override tables applied at load time
+/// are compile-time constants, so the effective rates are pinned by this id
+/// *together with* the `git_ai_version` attribute every event carries.
 pub fn pricing_catalog_id() -> &'static str {
     &catalog_with_id().1
 }
