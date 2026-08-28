@@ -2607,13 +2607,53 @@ fn process_alive(pid: u32) -> bool {
     unsafe { libc::kill(pid as libc::pid_t, 0) == 0 }
 }
 
-fn read_json_line<R: BufRead>(reader: &mut R) -> Result<Option<String>, GitAiError> {
-    let mut line = String::new();
-    let read = reader.read_line(&mut line)?;
+/// Upper bound on a single control/trace socket line. Both sockets speak
+/// line-delimited JSON with bounded frames (trace2 events, control request
+/// headers; checkpoint bodies travel separately after the header line), but
+/// `read_line` is otherwise unbounded, so one runaway client line can
+/// balloon daemon RSS past the memory watchdog (#2244).
+const MAX_SOCKET_LINE_BYTES: u64 = 4 * 1024 * 1024;
+
+/// A line read from a daemon socket.
+enum SocketLine {
+    Line(String),
+    /// Line exceeded [`MAX_SOCKET_LINE_BYTES`]; the content was discarded and
+    /// the reader advanced past its newline. The control loop answers these
+    /// with an error response (a silently-eaten request would stall the
+    /// client until its socket timeout and then be resent forever); the trace
+    /// loop just keeps reading.
+    Oversized,
+}
+
+fn read_json_line<R: BufRead>(reader: &mut R) -> Result<Option<SocketLine>, GitAiError> {
+    // Byte-based read, not read_line: the cap can slice a multi-byte
+    // character, and read_line's UTF-8 validation would turn that into an
+    // InvalidData error (dropping the connection) instead of an Oversized
+    // classification.
+    let mut buf = Vec::new();
+    let read = reader
+        .by_ref()
+        .take(MAX_SOCKET_LINE_BYTES)
+        .read_until(b'\n', &mut buf)?;
     if read == 0 {
         return Ok(None);
     }
-    Ok(Some(line))
+    if buf.last() != Some(&b'\n') && read as u64 == MAX_SOCKET_LINE_BYTES {
+        drop(buf);
+        let skipped = reader.skip_until(b'\n')?;
+        tracing::warn!(
+            component = "daemon",
+            phase = "socket_read",
+            consumed_bytes = read as u64 + skipped as u64,
+            max_bytes = MAX_SOCKET_LINE_BYTES,
+            "skipping oversized socket line"
+        );
+        return Ok(Some(SocketLine::Oversized));
+    }
+    let line = String::from_utf8(buf).map_err(|error| {
+        GitAiError::IoError(std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    })?;
+    Ok(Some(SocketLine::Line(line)))
 }
 
 fn read_checkpoint_body<R: BufRead>(
@@ -7862,7 +7902,20 @@ fn handle_control_connection_actor_reader<R: ControlConnection>(
     let mut uses_idle_timeout = false;
     loop {
         let line = match read_json_line(reader) {
-            Ok(Some(line)) => line,
+            Ok(Some(SocketLine::Line(line))) => line,
+            Ok(Some(SocketLine::Oversized)) => {
+                // Answer instead of silently eating the request: an
+                // unanswered client blocks until its socket timeout, then
+                // reconnects and resends the same oversized request forever.
+                if let Err(error) = write_control_response(
+                    reader.get_mut(),
+                    &ControlResponse::err("control request exceeds the maximum line size"),
+                ) {
+                    tracing::warn!(%error, "failed responding to an oversized control request");
+                    break;
+                }
+                continue;
+            }
             Ok(None) => break,
             Err(error) if control_receive_timed_out(&error) => break,
             Err(error) => return Err(error),
@@ -8471,7 +8524,11 @@ fn handle_trace_connection_actor_reader<R: Read>(
     mut observed_roots: std::collections::BTreeSet<String>,
 ) -> Result<(), GitAiError> {
     let read_result = (|| {
-        while let Some(line) = read_json_line(&mut reader)? {
+        while let Some(socket_line) = read_json_line(&mut reader)? {
+            let line = match socket_line {
+                SocketLine::Line(line) => line,
+                SocketLine::Oversized => continue,
+            };
             if process_trace_connection_line(&line, coordinator.clone(), &mut observed_roots)?
                 .is_some_and(|outcome| !outcome.continue_reading)
             {
@@ -8905,8 +8962,11 @@ fn daemon_socket_health_check_loop(
             }
             let (outstanding_checkpoints, retained_checkpoint_bytes) =
                 coordinator.outstanding_checkpoint_state();
-            if should_defer_restart_for_checkpoints(outstanding_checkpoints, consecutive_deferrals)
-            {
+            if should_defer_restart_for_checkpoints(
+                outstanding_checkpoints,
+                consecutive_deferrals,
+                processing_stalled,
+            ) {
                 consecutive_deferrals += 1;
                 tracing::error!(
                     component = "daemon",
@@ -8960,11 +9020,21 @@ fn daemon_socket_health_check_loop(
 /// checkpoints are still retained. Deferral is bounded: checkpoints drain
 /// through the same machinery a stalled daemon cannot run, so unbounded
 /// deferral would leave blocked git writers hanging forever.
+///
+/// Never defer when processing is stalled: a stalled ingest pipeline means
+/// traced git clients may be blocked on the socket RIGHT NOW, and each
+/// deferral extends a user-visible hang by a full health-check interval.
+/// The retained checkpoints cannot drain through a stalled pipeline anyway,
+/// so deferral buys nothing there (#2244). Deferral remains for pure
+/// socket-probe failures, where the pipeline is still moving.
 fn should_defer_restart_for_checkpoints(
     outstanding_checkpoints: usize,
     consecutive_deferrals: usize,
+    processing_stalled: bool,
 ) -> bool {
-    outstanding_checkpoints > 0 && consecutive_deferrals < SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS
+    !processing_stalled
+        && outstanding_checkpoints > 0
+        && consecutive_deferrals < SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS
 }
 
 /// Snapshot of the ingest-loss counters for delta reporting.
@@ -11333,15 +11403,29 @@ mod tests {
 
     #[test]
     fn deferral_for_checkpoints_is_bounded() {
-        assert!(!should_defer_restart_for_checkpoints(0, 0));
-        assert!(should_defer_restart_for_checkpoints(1, 0));
+        assert!(!should_defer_restart_for_checkpoints(0, 0, false));
+        assert!(should_defer_restart_for_checkpoints(1, 0, false));
         assert!(should_defer_restart_for_checkpoints(
             1,
-            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS - 1
+            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS - 1,
+            false
         ));
         assert!(!should_defer_restart_for_checkpoints(
             1,
-            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS
+            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS,
+            false
+        ));
+    }
+
+    #[test]
+    fn deferral_never_applies_while_processing_is_stalled() {
+        // A stalled pipeline can block traced git clients; restart urgency
+        // outweighs checkpoint retention (#2244).
+        assert!(!should_defer_restart_for_checkpoints(1, 0, true));
+        assert!(!should_defer_restart_for_checkpoints(
+            10,
+            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS - 1,
+            true
         ));
     }
 

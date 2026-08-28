@@ -50,7 +50,7 @@ pub(super) fn start(coordinator: Arc<ActorDaemonCoordinator>, limit_bytes: u64) 
 }
 
 fn run_watchdog(coordinator: Arc<ActorDaemonCoordinator>, thresholds: MemoryThresholds) {
-    let mut sampler = PeakRssSampler::new();
+    let mut sampler = RssSampler::new();
     let mut measurement_failed = false;
     let poll_interval = watchdog_poll_interval();
 
@@ -67,55 +67,60 @@ fn run_watchdog(coordinator: Arc<ActorDaemonCoordinator>, thresholds: MemoryThre
             return;
         }
 
-        let peak_rss_bytes = match sampler.sample() {
+        let rss_bytes = match sampler.sample() {
             Ok(bytes) => {
                 if measurement_failed {
-                    tracing::info!("daemon peak-RSS measurement recovered");
+                    tracing::info!("daemon RSS measurement recovered");
                     measurement_failed = false;
                 }
                 bytes
             }
             Err(error) => {
                 if !measurement_failed {
-                    tracing::warn!(%error, "failed measuring daemon peak RSS; watchdog will retry");
+                    tracing::warn!(%error, "failed measuring daemon RSS; watchdog will retry");
                     measurement_failed = true;
                 }
                 continue;
             }
         };
 
-        match decision_for_peak_rss(peak_rss_bytes, thresholds) {
+        match decision_for_rss(rss_bytes, thresholds) {
             MemoryWatchdogDecision::Continue => {}
             MemoryWatchdogDecision::Abort => {
-                record_memory_emergency(peak_rss_bytes, thresholds, "abort");
+                record_memory_emergency(rss_bytes, thresholds, "abort");
                 std::process::abort();
             }
         }
     }
 }
 
-fn record_memory_emergency(
-    peak_rss_bytes: u64,
-    thresholds: MemoryThresholds,
-    action: &'static str,
-) {
+fn record_memory_emergency(rss_bytes: u64, thresholds: MemoryThresholds, action: &'static str) {
+    // Lifetime high-water mark for context; the DECISION is made on current
+    // RSS. Deciding on the peak condemned the process after one transient
+    // spike even when the memory had already been freed (#2244).
+    let peak_rss = peak_rss_bytes().unwrap_or(rss_bytes);
     tracing::error!(
-        peak_rss_bytes,
+        rss_bytes,
+        peak_rss_bytes = peak_rss,
         memory_emergency_threshold_bytes = thresholds.emergency_bytes,
         memory_limit_bytes = thresholds.limit_bytes,
         action,
         "daemon memory emergency threshold reached"
     );
     eprintln!(
-        "[git-ai] daemon memory emergency threshold reached (peak RSS {peak_rss_bytes} bytes, emergency threshold {} bytes, hard limit {} bytes); {action}ing immediately without draining",
+        "[git-ai] daemon memory emergency threshold reached (current RSS {rss_bytes} bytes, peak RSS {peak_rss} bytes, emergency threshold {} bytes, hard limit {} bytes); {action}ing immediately without draining",
         thresholds.emergency_bytes, thresholds.limit_bytes
     );
     let _ = io::stderr().flush();
 
     let mut fields = BTreeMap::new();
     fields.insert(
+        "rss_bytes".to_string(),
+        DaemonLogFieldValue::from(rss_bytes),
+    );
+    fields.insert(
         "peak_rss_bytes".to_string(),
-        DaemonLogFieldValue::from(peak_rss_bytes),
+        DaemonLogFieldValue::from(peak_rss),
     );
     fields.insert(
         "memory_emergency_threshold_bytes".to_string(),
@@ -161,14 +166,14 @@ fn watchdog_poll_interval() -> Duration {
     WATCHDOG_POLL_INTERVAL
 }
 
-struct PeakRssSampler {
+struct RssSampler {
     #[cfg(feature = "test-support")]
     test_samples: Option<std::collections::VecDeque<u64>>,
     #[cfg(feature = "test-support")]
     last_test_sample: Option<u64>,
 }
 
-impl PeakRssSampler {
+impl RssSampler {
     fn new() -> Self {
         #[cfg(feature = "test-support")]
         {
@@ -200,21 +205,64 @@ impl PeakRssSampler {
             self.last_test_sample = Some(sample_mb);
             return sample_mb
                 .checked_mul(crate::config::MEBIBYTE_BYTES)
-                .ok_or_else(|| io::Error::other("test peak RSS sample overflowed bytes"));
+                .ok_or_else(|| io::Error::other("test RSS sample overflowed bytes"));
         }
 
-        peak_rss_bytes()
+        current_rss_bytes()
     }
 }
 
-pub(super) fn decision_for_peak_rss(
-    peak_rss_bytes: u64,
+pub(super) fn decision_for_rss(
+    rss_bytes: u64,
     thresholds: MemoryThresholds,
 ) -> MemoryWatchdogDecision {
-    if peak_rss_bytes >= thresholds.emergency_bytes {
+    if rss_bytes >= thresholds.emergency_bytes {
         return MemoryWatchdogDecision::Abort;
     }
     MemoryWatchdogDecision::Continue
+}
+
+/// Current resident set size. The watchdog decides on THIS, not on
+/// [`peak_rss_bytes`]: `getrusage`'s `ru_maxrss` is a monotonic lifetime
+/// high-water mark, so one transient allocation spike would otherwise
+/// condemn the process on every later poll even after the memory was
+/// freed (#2244).
+#[cfg(target_os = "macos")]
+pub(super) fn current_rss_bytes() -> io::Result<u64> {
+    let mut info = std::mem::MaybeUninit::<libc::proc_taskinfo>::zeroed();
+    let size = std::mem::size_of::<libc::proc_taskinfo>() as libc::c_int;
+    let written = unsafe {
+        libc::proc_pidinfo(
+            std::process::id() as libc::c_int,
+            libc::PROC_PIDTASKINFO,
+            0,
+            info.as_mut_ptr().cast(),
+            size,
+        )
+    };
+    if written <= 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if written != size {
+        return Err(io::Error::other("short proc_pidinfo read"));
+    }
+    Ok(unsafe { info.assume_init() }.pti_resident_size)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+pub(super) fn current_rss_bytes() -> io::Result<u64> {
+    // /proc/self/statm: second field is resident pages.
+    let statm = std::fs::read_to_string("/proc/self/statm")?;
+    let resident_pages: u64 = statm
+        .split_whitespace()
+        .nth(1)
+        .and_then(|v| v.parse().ok())
+        .ok_or_else(|| io::Error::other("unparseable /proc/self/statm"))?;
+    let page_size = u64::try_from(unsafe { libc::sysconf(libc::_SC_PAGESIZE) })
+        .map_err(|_| io::Error::other("negative page size"))?;
+    resident_pages
+        .checked_mul(page_size)
+        .ok_or_else(|| io::Error::other("current RSS overflowed bytes"))
 }
 
 #[cfg(unix)]
@@ -238,22 +286,38 @@ pub(super) fn peak_rss_bytes() -> io::Result<u64> {
 }
 
 #[cfg(windows)]
-pub(super) fn peak_rss_bytes() -> io::Result<u64> {
-    type Handle = *mut std::ffi::c_void;
+#[repr(C)]
+struct ProcessMemoryCounters {
+    cb: u32,
+    page_fault_count: u32,
+    peak_working_set_size: usize,
+    working_set_size: usize,
+    quota_peak_paged_pool_usage: usize,
+    quota_paged_pool_usage: usize,
+    quota_peak_non_paged_pool_usage: usize,
+    quota_non_paged_pool_usage: usize,
+    pagefile_usage: usize,
+    peak_pagefile_usage: usize,
+}
 
-    #[repr(C)]
-    struct ProcessMemoryCounters {
-        cb: u32,
-        page_fault_count: u32,
-        peak_working_set_size: usize,
-        working_set_size: usize,
-        quota_peak_paged_pool_usage: usize,
-        quota_paged_pool_usage: usize,
-        quota_peak_non_paged_pool_usage: usize,
-        quota_non_paged_pool_usage: usize,
-        pagefile_usage: usize,
-        peak_pagefile_usage: usize,
-    }
+#[cfg(windows)]
+pub(super) fn peak_rss_bytes() -> io::Result<u64> {
+    let counters = process_memory_counters()?;
+    u64::try_from(counters.peak_working_set_size)
+        .map_err(|_| io::Error::other("peak working set does not fit in u64"))
+}
+
+/// See the unix variant for why the watchdog decides on current RSS (#2244).
+#[cfg(windows)]
+pub(super) fn current_rss_bytes() -> io::Result<u64> {
+    let counters = process_memory_counters()?;
+    u64::try_from(counters.working_set_size)
+        .map_err(|_| io::Error::other("working set does not fit in u64"))
+}
+
+#[cfg(windows)]
+fn process_memory_counters() -> io::Result<ProcessMemoryCounters> {
+    type Handle = *mut std::ffi::c_void;
 
     unsafe extern "system" {
         fn GetCurrentProcess() -> Handle;
@@ -290,8 +354,7 @@ pub(super) fn peak_rss_bytes() -> io::Result<u64> {
     if result == 0 {
         return Err(io::Error::last_os_error());
     }
-    u64::try_from(counters.peak_working_set_size)
-        .map_err(|_| io::Error::other("peak working set does not fit in u64"))
+    Ok(counters)
 }
 
 #[cfg(test)]
@@ -312,11 +375,11 @@ mod tests {
     fn watchdog_aborts_at_the_emergency_threshold() {
         let thresholds = MemoryThresholds::from_limit_bytes(LIMIT);
         assert_eq!(
-            decision_for_peak_rss(thresholds.emergency_bytes - 1, thresholds),
+            decision_for_rss(thresholds.emergency_bytes - 1, thresholds),
             MemoryWatchdogDecision::Continue
         );
         assert_eq!(
-            decision_for_peak_rss(thresholds.emergency_bytes, thresholds),
+            decision_for_rss(thresholds.emergency_bytes, thresholds),
             MemoryWatchdogDecision::Abort
         );
     }
@@ -325,7 +388,7 @@ mod tests {
     fn watchdog_aborts_when_startup_is_already_high() {
         let thresholds = MemoryThresholds::from_limit_bytes(LIMIT);
         assert_eq!(
-            decision_for_peak_rss(thresholds.emergency_bytes, thresholds),
+            decision_for_rss(thresholds.emergency_bytes, thresholds),
             MemoryWatchdogDecision::Abort
         );
     }
@@ -334,11 +397,11 @@ mod tests {
     fn watchdog_aborts_at_the_hard_threshold() {
         let thresholds = MemoryThresholds::from_limit_bytes(LIMIT);
         assert_eq!(
-            decision_for_peak_rss(thresholds.emergency_bytes - 1, thresholds),
+            decision_for_rss(thresholds.emergency_bytes - 1, thresholds),
             MemoryWatchdogDecision::Continue
         );
         assert_eq!(
-            decision_for_peak_rss(thresholds.limit_bytes, thresholds),
+            decision_for_rss(thresholds.limit_bytes, thresholds),
             MemoryWatchdogDecision::Abort
         );
     }
@@ -346,5 +409,14 @@ mod tests {
     #[test]
     fn peak_rss_sampler_reports_nonzero_memory() {
         assert!(peak_rss_bytes().expect("peak RSS should be readable") > 0);
+    }
+
+    #[test]
+    fn current_rss_reports_nonzero_and_at_most_peak() {
+        let current = current_rss_bytes().expect("current RSS should be readable");
+        let peak = peak_rss_bytes().expect("peak RSS should be readable");
+        assert!(current > 0);
+        // The lifetime high-water mark can never be below the current value.
+        assert!(current <= peak, "current {current} > peak {peak}");
     }
 }

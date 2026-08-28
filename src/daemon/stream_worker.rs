@@ -14,7 +14,7 @@ use crate::metrics::{
 use crate::streams::agent::{SHARED_STREAM_SESSION_ID, StreamDescriptor};
 use crate::streams::db::{StreamRecord, StreamsDatabase};
 use crate::streams::types::StreamError;
-use crate::streams::watermark::{WatermarkStrategy, WatermarkType};
+use crate::streams::watermark::WatermarkType;
 use chrono::{TimeZone, Utc};
 use std::collections::{BinaryHeap, HashSet};
 use std::path::{Path, PathBuf};
@@ -864,9 +864,8 @@ impl StreamWorker {
             return Ok(());
         }
 
-        use crate::streams::watermark::ByteOffsetWatermark;
-
-        let initial_watermark = ByteOffsetWatermark::new(0);
+        let initial_watermark = crate::streams::watermark::WatermarkType::ByteOffset
+            .create_initial_watermark_for_file(path);
         let record = StreamRecord {
             session_id: session_id.to_string(),
             stream_kind: "transcript".to_string(),
@@ -910,7 +909,7 @@ impl StreamWorker {
         }
 
         let effective_wm_type = stream.effective_watermark_type(stream_path);
-        let initial_watermark = effective_wm_type.create_initial_watermark();
+        let initial_watermark = effective_wm_type.create_initial_watermark_for_file(stream_path);
 
         // For shared streams, external_session_id/parent/repo_work_dir are meaningless
         // since the resource serves all sessions — use empty/None to avoid stale first-caller data
@@ -1095,13 +1094,13 @@ impl StreamWorker {
         }
 
         let file_meta = std::fs::metadata(&path).ok();
-        let watermark_type_str = &stream.watermark_type;
-        let is_initial_watermark = stream.watermark_value.is_empty()
-            || watermark_type_str
-                .parse::<crate::streams::watermark::WatermarkType>()
-                .ok()
-                .map(|wt| wt.create_initial_watermark().serialize() == stream.watermark_value)
-                .unwrap_or(false);
+        // "Never processed" rather than "watermark equals the zero value":
+        // capped first-seen streams start at a non-zero byte offset (see
+        // create_initial_watermark_for_file), so comparing against the
+        // serialized zero watermark would misclassify exactly those streams.
+        // update_watermark stamps last_processed_at on every batch.
+        let is_initial_watermark =
+            stream.watermark_value.is_empty() || stream.last_processed_at == 0;
 
         loop {
             if shutdown_flag.load(Ordering::Relaxed) {
@@ -1127,8 +1126,26 @@ impl StreamWorker {
 
             let batch_count = batch.events.len();
 
+            // Advance the watermark BEFORE converting/persisting the batch.
+            // Transcript metrics are best-effort telemetry; when processing a
+            // batch OOM-aborts the daemon (memory watchdog), a watermark that
+            // only advances after processing makes the respawned daemon
+            // re-read the same bytes and die again — an abort loop (#2244).
+            // Skipping one batch of diagnostics on crash is the safer
+            // failure mode.
+            db.update_watermark(
+                &stream.session_id,
+                &task.stream_kind,
+                &stream.stream_path,
+                batch.new_watermark.as_ref(),
+            )?;
+
             let is_otel_stream = task.stream_kind == "otel_traces";
-            let metric_events: Vec<MetricEvent> = batch
+            // Serialize each event as it is built and let the MetricEvent
+            // (which still holds the redacted JSON tree) drop before the next
+            // one is constructed. Collecting Vec<MetricEvent> and serializing
+            // afterwards kept two full copies of the batch alive at once (#2244).
+            let metric_event_jsons: Vec<String> = batch
                 .events
                 .into_iter()
                 .enumerate()
@@ -1164,7 +1181,7 @@ impl StreamWorker {
 
                     let attrs_sparse = event_attrs.to_sparse();
                     let raw_event = redact_json_secrets(raw_event);
-                    Some(if is_otel_stream {
+                    let metric_event = if is_otel_stream {
                         MetricEvent::from_values_with_timestamp(
                             OtelTraceValues::with_ids(raw_event, eid, pid, tid),
                             attrs_sparse,
@@ -1176,11 +1193,18 @@ impl StreamWorker {
                             attrs_sparse,
                             Some(event_ts),
                         )
-                    })
+                    };
+                    match serde_json::to_string(&metric_event) {
+                        Ok(json) => Some(json),
+                        Err(e) => {
+                            tracing::warn!(%e, "telemetry: failed to serialize transcript metric event; dropping");
+                            None
+                        }
+                    }
                 })
                 .collect();
 
-            if let Err(e) = telemetry.persist_metrics_blocking(&metric_events) {
+            if let Err(e) = telemetry.persist_metric_jsons_blocking(&metric_event_jsons) {
                 tracing::warn!(%e, "telemetry: failed to persist transcript metrics locally");
             }
 
@@ -1202,12 +1226,6 @@ impl StreamWorker {
             }
 
             total_events += batch_count;
-            db.update_watermark(
-                &stream.session_id,
-                &task.stream_kind,
-                &stream.stream_path,
-                batch.new_watermark.as_ref(),
-            )?;
             current_watermark = batch.new_watermark;
         }
 
