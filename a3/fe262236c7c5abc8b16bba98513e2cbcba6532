@@ -1,0 +1,23 @@
+src/metrics/model_pricing.rs
+  s_ecc10b55b372b3::t_45a6e2ddfafea1 848-861
+  s_ecc10b55b372b3::t_28423ba90eca95 26
+  s_ecc10b55b372b3::t_3a7c6121950ba1 480
+  s_ecc10b55b372b3::t_05825fca4e7438 501-504,508-509
+  s_ecc10b55b372b3::t_1b8501a4e6d281 847
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "development:1.6.25",
+  "base_commit_sha": "a3fe262236c7c5abc8b16bba98513e2cbcba6532",
+  "prompts": {},
+  "sessions": {
+    "s_ecc10b55b372b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "725da754-5eb5-4a7e-a504-a0badfb0707e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Sasha Varlamov <sasha@sashavarlamov.com>"
+    }
+  }
+}
