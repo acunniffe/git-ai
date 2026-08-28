@@ -8962,8 +8962,11 @@ fn daemon_socket_health_check_loop(
             }
             let (outstanding_checkpoints, retained_checkpoint_bytes) =
                 coordinator.outstanding_checkpoint_state();
-            if should_defer_restart_for_checkpoints(outstanding_checkpoints, consecutive_deferrals)
-            {
+            if should_defer_restart_for_checkpoints(
+                outstanding_checkpoints,
+                consecutive_deferrals,
+                processing_stalled,
+            ) {
                 consecutive_deferrals += 1;
                 tracing::error!(
                     component = "daemon",
@@ -9017,11 +9020,21 @@ fn daemon_socket_health_check_loop(
 /// checkpoints are still retained. Deferral is bounded: checkpoints drain
 /// through the same machinery a stalled daemon cannot run, so unbounded
 /// deferral would leave blocked git writers hanging forever.
+///
+/// Never defer when processing is stalled: a stalled ingest pipeline means
+/// traced git clients may be blocked on the socket RIGHT NOW, and each
+/// deferral extends a user-visible hang by a full health-check interval.
+/// The retained checkpoints cannot drain through a stalled pipeline anyway,
+/// so deferral buys nothing there (#2244). Deferral remains for pure
+/// socket-probe failures, where the pipeline is still moving.
 fn should_defer_restart_for_checkpoints(
     outstanding_checkpoints: usize,
     consecutive_deferrals: usize,
+    processing_stalled: bool,
 ) -> bool {
-    outstanding_checkpoints > 0 && consecutive_deferrals < SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS
+    !processing_stalled
+        && outstanding_checkpoints > 0
+        && consecutive_deferrals < SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS
 }
 
 /// Snapshot of the ingest-loss counters for delta reporting.
@@ -11390,15 +11403,29 @@ mod tests {
 
     #[test]
     fn deferral_for_checkpoints_is_bounded() {
-        assert!(!should_defer_restart_for_checkpoints(0, 0));
-        assert!(should_defer_restart_for_checkpoints(1, 0));
+        assert!(!should_defer_restart_for_checkpoints(0, 0, false));
+        assert!(should_defer_restart_for_checkpoints(1, 0, false));
         assert!(should_defer_restart_for_checkpoints(
             1,
-            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS - 1
+            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS - 1,
+            false
         ));
         assert!(!should_defer_restart_for_checkpoints(
             1,
-            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS
+            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS,
+            false
+        ));
+    }
+
+    #[test]
+    fn deferral_never_applies_while_processing_is_stalled() {
+        // A stalled pipeline can block traced git clients; restart urgency
+        // outweighs checkpoint retention (#2244).
+        assert!(!should_defer_restart_for_checkpoints(1, 0, true));
+        assert!(!should_defer_restart_for_checkpoints(
+            10,
+            SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS - 1,
+            true
         ));
     }
 
