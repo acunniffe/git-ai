@@ -1127,6 +1127,20 @@ impl StreamWorker {
 
             let batch_count = batch.events.len();
 
+            // Advance the watermark BEFORE converting/persisting the batch.
+            // Transcript metrics are best-effort telemetry; when processing a
+            // batch OOM-aborts the daemon (memory watchdog), a watermark that
+            // only advances after processing makes the respawned daemon
+            // re-read the same bytes and die again — an abort loop (#2244).
+            // Skipping one batch of diagnostics on crash is the safer
+            // failure mode.
+            db.update_watermark(
+                &stream.session_id,
+                &task.stream_kind,
+                &stream.stream_path,
+                batch.new_watermark.as_ref(),
+            )?;
+
             let is_otel_stream = task.stream_kind == "otel_traces";
             // Serialize each event as it is built and let the MetricEvent
             // (which still holds the redacted JSON tree) drop before the next
@@ -1213,12 +1227,6 @@ impl StreamWorker {
             }
 
             total_events += batch_count;
-            db.update_watermark(
-                &stream.session_id,
-                &task.stream_kind,
-                &stream.stream_path,
-                batch.new_watermark.as_ref(),
-            )?;
             current_watermark = batch.new_watermark;
         }
 
