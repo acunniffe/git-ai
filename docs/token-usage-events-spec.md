@@ -70,8 +70,10 @@ Driven by `TokenUsageWorker` (`src/daemon/token_usage_worker.rs`):
   dedup would re-count that history on every resume. When a replacement moves
   an entry between sessions, the previous owner is durably flagged
   (`needs_reconcile`, in the same transaction) and re-reconciled DB-only —
-  inline after the pass and from sweeps for crash recovery — so the
-  correction lands even if that session's transcripts were deleted. Entries
+  inline after a notification-driven pass (so the drain barrier reflects the
+  move), and for sweep passes once the backlog drains plus on every sweep
+  tick (crash recovery), throttled like all sweep work — so the correction
+  lands even if that session's transcripts were deleted. Entries
   older than the 90-day retention window are dropped at insert (backfill
   never uploads history the prune would delete), and stored entries/bucket
   state are pruned atomically on sweep.

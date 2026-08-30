@@ -90,26 +90,38 @@ fn read_line_bytes(
 const BATCH_MAX_ENTRIES: usize = 1_000;
 const BATCH_MAX_BYTES: usize = 4 * 1024 * 1024;
 
-/// CPU duty cycle for sweep-origin transcript passes: after each batch, the
-/// pass sleeps long enough that the work occupies at most this share of one
-/// core (work W is followed by a pause of W * (100 - duty) / duty). A multi-
-/// gigabyte backfill therefore takes ~3x longer instead of pinning a core.
+/// CPU duty cycle for sweep-origin work: every charged segment (batch,
+/// bucket emission, cross-session reconcile) is followed by a pause long
+/// enough that the work occupies at most this share of one core (work W is
+/// followed by a pause of W * (100 - duty) / duty). A multi-gigabyte
+/// backfill therefore takes ~3x longer instead of pinning a core.
 /// Notification-origin passes are never throttled (see `TaskOrigin`).
 const THROTTLE_DUTY_PERCENT: u32 = 30;
-/// Batches doing less work than this owe no pause (quiet skips, small
-/// appends swept between notifications).
+/// Work debt below this settles without a pause; it stays on the ledger and
+/// is paid by a later settlement. Without the carried debt, a backfill of
+/// many small files (each under the floor per segment) would never pause at
+/// all and run at full speed — the floor only batches sleeps, it must not
+/// forgive work.
 const THROTTLE_MIN_WORK: Duration = Duration::from_millis(5);
-/// Upper bound on a single pause (guards pathologically slow batches, and
-/// bounds how long a pass can delay a drain or shutdown).
+/// Upper bound on a single pause (guards pathologically slow segments, and
+/// bounds how long a pass can delay a drain or shutdown). Work the cap left
+/// unpaid stays on the ledger.
 const THROTTLE_MAX_PAUSE: Duration = Duration::from_secs(5);
 
-/// The pause owed after `work` of batch processing under the duty cycle.
-fn throttle_pause_for(work: Duration) -> Duration {
-    if work < THROTTLE_MIN_WORK {
+/// Add `work` to the debt ledger and settle it into the pause now owed.
+/// Debt the returned pause does not cover (the floor or the cap) carries to
+/// the next settlement, so the duty cycle holds across many small segments,
+/// not just within large ones.
+fn settle_throttle_debt(debt: &mut Duration, work: Duration) -> Duration {
+    *debt = debt.saturating_add(work);
+    if *debt < THROTTLE_MIN_WORK {
         return Duration::ZERO;
     }
-    (work.saturating_mul(100 - THROTTLE_DUTY_PERCENT) / THROTTLE_DUTY_PERCENT)
-        .min(THROTTLE_MAX_PAUSE)
+    let pause = (debt.saturating_mul(100 - THROTTLE_DUTY_PERCENT) / THROTTLE_DUTY_PERCENT)
+        .min(THROTTLE_MAX_PAUSE);
+    let paid = pause.saturating_mul(THROTTLE_DUTY_PERCENT) / (100 - THROTTLE_DUTY_PERCENT);
+    *debt = debt.saturating_sub(paid);
+    pause
 }
 
 /// Sleep out a throttle pause in small chunks so shutdown stays prompt.
@@ -210,6 +222,7 @@ pub fn spawn_token_usage_worker(
         sweep_queue: VecDeque::new(),
         queued: HashSet::new(),
         sweep_interval: Duration::from_secs(30 * 60),
+        throttle_debt: Arc::new(std::sync::Mutex::new(Duration::ZERO)),
         #[cfg(test)]
         test_sink: None,
         #[cfg(test)]
@@ -239,12 +252,16 @@ struct TokenUsageWorker {
     queued: HashSet<TokenUsageTask>,
     /// 30 minutes in production; injectable so tests can drive the ticker.
     sweep_interval: Duration,
+    /// Sweep-work debt ledger shared by every throttled segment (see
+    /// `settle_throttle_debt`); carried across batches, files, and tasks.
+    throttle_debt: Arc<std::sync::Mutex<Duration>>,
     /// Test-only event capture: the metrics DB is a process-lifetime
     /// singleton, so run()-level tests inject a sink instead of a real
     /// telemetry handle.
     #[cfg(test)]
     test_sink: Option<TestSink>,
-    /// Test-only throttle-pause recorder, replacing the real sleep.
+    /// Test-only recorder of charged work segments, replacing the debt
+    /// ledger and the real sleep.
     #[cfg(test)]
     test_throttle: Option<TestThrottle>,
 }
@@ -304,6 +321,18 @@ impl TokenUsageWorker {
                     }
                     if let Some((task, origin)) = self.pop_next() {
                         self.process_task(task, origin).await;
+                        // Sweep tasks defer cross-session reconciliation (a
+                        // notify task settles all flags inline for the drain
+                        // barrier): settle once the backlog drains, instead
+                        // of re-aggregating the flagged sessions after every
+                        // file of a large backfill.
+                        if matches!(origin, TaskOrigin::Sweep)
+                            && self.notify_queue.is_empty()
+                            && self.sweep_queue.is_empty()
+                            && !self.shutdown_flag.load(Ordering::Relaxed)
+                        {
+                            self.reconcile_flagged().await;
+                        }
                     }
                 }
                 _ = sweep_ticker.tick() => {
@@ -427,31 +456,42 @@ impl TokenUsageWorker {
         }
     }
 
-    /// Reconcile cross-session flags off the async loop (used by sweeps for
-    /// crash recovery; the per-task path reconciles inline).
+    /// Reconcile cross-session flags off the async loop, throttled like all
+    /// other sweep-origin work (notify tasks reconcile inline, unthrottled,
+    /// for the drain barrier). Called when the task backlog drains, on every
+    /// sweep tick (crash recovery for flags left by a pass that died between
+    /// its batch commit and its reconcile), and at startup.
     async fn reconcile_flagged(&self) {
         let token_db = self.token_db.clone();
         let sink = self.make_sink();
+        let throttle = self.make_throttle();
         let _ = tokio::task::spawn_blocking(move || {
-            if let Err(e) = reconcile_flagged_sessions(&token_db, &sink) {
+            if let Err(e) = reconcile_flagged_sessions(&token_db, &sink, Some(&throttle)) {
                 tracing::warn!(error = %e, "token-usage cross-session reconcile failed");
             }
         })
         .await;
     }
 
-    /// The pause a sweep-origin pass sleeps after each batch. Tests inject a
-    /// recorder to pin the per-batch call sites without wall-clock waits.
+    /// The charge function sweep-origin work calls with each segment's
+    /// measured work: it settles the shared debt ledger and sleeps out the
+    /// pause owed. Tests inject a recorder to pin the charge sites without
+    /// wall-clock waits.
     fn make_throttle(&self) -> impl Fn(Duration) + Send + Sync + use<> {
         let shutdown_flag = self.shutdown_flag.clone();
+        let debt = self.throttle_debt.clone();
         #[cfg(test)]
         let test_throttle = self.test_throttle.clone();
-        move |pause: Duration| {
+        move |work: Duration| {
             #[cfg(test)]
             if let Some(throttle) = &test_throttle {
-                throttle(pause);
+                throttle(work);
                 return;
             }
+            let pause = {
+                let mut debt = debt.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                settle_throttle_debt(&mut debt, work)
+            };
             throttle_sleep(pause, &shutdown_flag);
         }
     }
@@ -677,12 +717,17 @@ fn process_task_blocking(
         );
     }
     // Cross-session replacements flagged other sessions during the batch
-    // commits: reconcile them now, DB-only. Failures here belong to the
-    // flagged sessions (the durable flag retries them), NOT to this task's
+    // commits: notify-origin passes (unthrottled — the drain barrier awaits
+    // them) reconcile inline, DB-only, so `git-ai await` reflects the moves.
+    // Sweep passes leave the durable flags for the run loop to settle once
+    // the backlog drains, instead of re-aggregating the flagged sessions
+    // after every file of a backfill. Failures here belong to the flagged
+    // sessions (the durable flag retries them), NOT to this task's
     // transcript — charging them here would put a healthy file into error
     // backoff and point diagnostics at the wrong session.
     if result.is_ok()
-        && let Err(e) = reconcile_flagged_sessions(token_db, sink)
+        && throttle.is_none()
+        && let Err(e) = reconcile_flagged_sessions(token_db, sink, None)
     {
         tracing::warn!(error = %e, "token-usage cross-session reconcile failed; flags retained for retry");
     }
@@ -716,8 +761,10 @@ fn persist_events(
 fn reconcile_flagged_sessions(
     token_db: &TokenUsageDatabase,
     sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
+    throttle: Option<&(dyn Fn(Duration) + Sync)>,
 ) -> Result<(), GitAiError> {
     for session in token_db.sessions_needing_reconcile()? {
+        let started = std::time::Instant::now();
         let identity = SessionIdentity {
             session_id: session.session_id.clone(),
             external_session_id: session.external_session_id,
@@ -726,6 +773,9 @@ fn reconcile_flagged_sessions(
         };
         emit_changed_buckets(token_db, &identity, || session.repo_url, sink)?;
         token_db.clear_needs_reconcile(&session.session_id)?;
+        if let Some(throttle) = throttle {
+            throttle(started.elapsed());
+        }
     }
     Ok(())
 }
@@ -948,6 +998,12 @@ fn process_file(
         return Ok(());
     }
 
+    // The pass is live from here on: everything below up to the first batch
+    // commit (config lookup, parent-prefix resolution, open, seek) is work
+    // the first batch's throttle charge covers. Quiet skips returned above
+    // and stay free.
+    let mut batch_started = std::time::Instant::now();
+
     // Only lines fed below consume the fallback speed, so quiet-skipped
     // passes never pay the config lookup.
     if identity.tool == "codex" {
@@ -979,7 +1035,6 @@ fn process_file(
     let mut reached_end = false;
     let mut interrupted = false;
     while !reached_end && !interrupted {
-        let batch_started = std::time::Instant::now();
         let mut entries = Vec::new();
         let mut consumed = 0usize;
         loop {
@@ -1043,12 +1098,14 @@ fn process_file(
             pending_flush: extractor.has_pending(),
             min_bucket_ts: cutoff,
         })?;
-        // CPU throttle (sweep-origin passes only): pay for this batch's work
-        // with a proportional pause (also after the final batch, so back-to-
-        // back file passes during a large backfill hold the duty cycle too).
+        // CPU throttle (sweep-origin passes only): charge this batch's work
+        // to the debt ledger and sleep out the pause owed (also after the
+        // final batch, so back-to-back file passes during a large backfill
+        // hold the duty cycle too).
         if let Some(throttle) = throttle {
-            throttle(throttle_pause_for(batch_started.elapsed()));
+            throttle(batch_started.elapsed());
         }
+        batch_started = std::time::Instant::now();
     }
 
     if interrupted {
@@ -1057,11 +1114,19 @@ fn process_file(
         // reconciles emission.
         return Ok(());
     }
+    let emit_started = std::time::Instant::now();
     emit_changed_buckets(token_db, identity, resolve_repo_url, sink)?;
     // The quiet-skip snapshot is written only after emission succeeded, so a
     // failed hand-off (or a crash anywhere in this pass) leaves the file
     // "changed" and the next pass re-runs reconciliation.
-    token_db.update_file_metadata(&identity.session_id, stream_path, size, modified)
+    let result = token_db.update_file_metadata(&identity.session_id, stream_path, size, modified);
+    // Bucket aggregation and event emission are real work too — charge them
+    // like a batch, or a backfill's duty cycle only covers the parsing half
+    // of each pass.
+    if let Some(throttle) = throttle {
+        throttle(emit_started.elapsed());
+    }
+    result
 }
 
 /// Reconcile the session's buckets in one pass and emit those whose
@@ -2011,10 +2076,14 @@ mod tests {
         // The DB-only reconcile pass emits A's emptied bucket as zero with
         // A's stored identity, no file read required, and clears the flag.
         let collected = Mutex::new(Vec::new());
-        reconcile_flagged_sessions(&db, &|events: &[MetricEvent]| {
-            collected.lock().unwrap().extend(events.to_vec());
-            Ok(())
-        })
+        reconcile_flagged_sessions(
+            &db,
+            &|events: &[MetricEvent]| {
+                collected.lock().unwrap().extend(events.to_vec());
+                Ok(())
+            },
+            None,
+        )
         .unwrap();
         let events = collected.into_inner().unwrap();
         assert_eq!(events.len(), 1);
@@ -2064,22 +2133,162 @@ mod tests {
 
         // The flag survives a failed reconcile sink...
         assert!(
-            reconcile_flagged_sessions(&db, &|_: &[MetricEvent]| {
-                Err(GitAiError::Generic("sink down".to_string()))
-            })
+            reconcile_flagged_sessions(
+                &db,
+                &|_: &[MetricEvent]| { Err(GitAiError::Generic("sink down".to_string())) },
+                None
+            )
             .is_err()
         );
         assert_eq!(db.sessions_needing_reconcile().unwrap().len(), 1);
 
         // ...and the retry emits the correction and clears it.
         let collected = Mutex::new(Vec::new());
-        reconcile_flagged_sessions(&db, &|events: &[MetricEvent]| {
-            collected.lock().unwrap().extend(events.to_vec());
-            Ok(())
-        })
+        reconcile_flagged_sessions(
+            &db,
+            &|events: &[MetricEvent]| {
+                collected.lock().unwrap().extend(events.to_vec());
+                Ok(())
+            },
+            None,
+        )
         .unwrap();
         assert_eq!(collected.into_inner().unwrap().len(), 1);
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
+    }
+
+    #[test]
+    fn sweep_origin_pass_defers_cross_session_reconcile() {
+        // A throttled (sweep-origin) pass must NOT reconcile flagged
+        // sessions inline: during a large backfill that would re-aggregate
+        // every flagged session after every file, unthrottled. The durable
+        // flag stays for the run loop to settle; a notify-origin pass still
+        // settles it inline for the drain barrier.
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let base = dir.path().join("base.jsonl");
+        fs::write(
+            &base,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        let resume = dir.path().join("resume.jsonl");
+        fs::write(
+            &resume,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 30), 90)),
+        )
+        .unwrap();
+        for (session, path) in [("s_base", &base), ("s_resume", &resume)] {
+            streams_db
+                .insert_stream(&stream_record(
+                    session,
+                    "claude",
+                    &path.display().to_string(),
+                ))
+                .unwrap();
+        }
+        let (_collected, sink) = collecting_sink();
+        let noop_throttle = |_: Duration| {};
+        for session in ["s_base", "s_resume"] {
+            process_task_blocking(
+                &streams_db,
+                &token_db,
+                &|e| sink(e),
+                Some(&noop_throttle),
+                &TokenUsageTask {
+                    session_id: session.to_string(),
+                    tool: "claude".to_string(),
+                    stream_path: if session == "s_base" { &base } else { &resume }
+                        .display()
+                        .to_string(),
+                },
+                &flag_off(),
+            )
+            .unwrap();
+        }
+        // The resume pass moved m1 to s_resume and flagged s_base — and the
+        // sweep-origin pass left the flag alone.
+        assert_eq!(token_db.sessions_needing_reconcile().unwrap().len(), 1);
+
+        // A notify-origin (unthrottled) pass settles all flags inline.
+        process_task_blocking(
+            &streams_db,
+            &token_db,
+            &|e| sink(e),
+            None,
+            &TokenUsageTask {
+                session_id: "s_resume".to_string(),
+                tool: "claude".to_string(),
+                stream_path: resume.display().to_string(),
+            },
+            &flag_off(),
+        )
+        .unwrap();
+        assert!(token_db.sessions_needing_reconcile().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_loop_settles_sweep_reconcile_flags_when_the_backlog_drains() {
+        // End to end through run(): the startup sweep backfills a base
+        // session and a resumed copy that steals its entry; the deferred
+        // reconcile pass runs once the backlog drains and emits the base
+        // session's corrected (zeroed) bucket without any notification.
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let base = dir.path().join("base.jsonl");
+        fs::write(
+            &base,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        let resume = dir.path().join("resume.jsonl");
+        fs::write(
+            &resume,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 30), 90)),
+        )
+        .unwrap();
+        for (session, path) in [("s_base", &base), ("s_resume", &resume)] {
+            streams_db
+                .insert_stream(&stream_record(
+                    session,
+                    "claude",
+                    &path.display().to_string(),
+                ))
+                .unwrap();
+        }
+        let (collected, sink) = collecting_sink();
+        let (_handle, shutdown) = spawn_run_loop(
+            streams_db.clone(),
+            token_db.clone(),
+            sink,
+            Duration::from_secs(600),
+        );
+
+        // The correction is a re-emission of s_base's bucket at zero.
+        for _ in 0..600 {
+            let corrected = collected.lock().unwrap().iter().any(|e| {
+                EventAttributes::from_sparse(&e.attrs).session_id
+                    == Some(Some("s_base".to_string()))
+                    && value_u64(e, token_usage_pos::TOTAL_TOKENS) == Some(0)
+            });
+            if corrected {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let corrected = collected.lock().unwrap().iter().any(|e| {
+            EventAttributes::from_sparse(&e.attrs).session_id == Some(Some("s_base".to_string()))
+                && value_u64(e, token_usage_pos::TOTAL_TOKENS) == Some(0)
+        });
+        assert!(corrected, "deferred reconcile emits the correction");
+        assert!(token_db.sessions_needing_reconcile().unwrap().is_empty());
+        shutdown.notify_one();
     }
 
     #[test]
@@ -2181,6 +2390,7 @@ mod tests {
             sweep_queue: VecDeque::new(),
             queued: HashSet::new(),
             sweep_interval: Duration::from_secs(30 * 60),
+            throttle_debt: Arc::new(std::sync::Mutex::new(Duration::ZERO)),
             test_sink: None,
             test_throttle: None,
         }
@@ -2350,23 +2560,43 @@ mod tests {
     }
 
     #[test]
-    fn throttle_pause_holds_the_duty_cycle() {
-        // Below the floor: not throttled (quiet skips, small appends), so
-        // notification-driven work and the drain barrier stay fast.
-        assert_eq!(throttle_pause_for(Duration::from_millis(4)), Duration::ZERO);
-        // 30% duty cycle: work W is followed by a pause of 7W/3.
+    fn throttle_debt_holds_the_duty_cycle_across_small_segments() {
+        // 30% duty cycle: work W is followed by a pause of 7W/3, and the
+        // ledger returns to (near) zero.
+        let mut debt = Duration::ZERO;
         assert_eq!(
-            throttle_pause_for(Duration::from_millis(300)),
+            settle_throttle_debt(&mut debt, Duration::from_millis(300)),
             Duration::from_millis(700)
         );
+        assert!(debt < Duration::from_micros(10), "paid debt clears");
+
+        // Below the floor no pause is owed yet, but the work is NOT
+        // forgiven: it stays on the ledger and a later settlement pays it.
+        // (Without the carry, a backfill of many small files would never
+        // pause at all.)
+        let mut debt = Duration::ZERO;
         assert_eq!(
-            throttle_pause_for(Duration::from_millis(900)),
-            Duration::from_millis(2100)
+            settle_throttle_debt(&mut debt, Duration::from_millis(4)),
+            Duration::ZERO
         );
-        // Capped, so one pathologically slow batch cannot stall a drain or
-        // shutdown for minutes.
+        assert_eq!(debt, Duration::from_millis(4));
         assert_eq!(
-            throttle_pause_for(Duration::from_secs(60)),
+            settle_throttle_debt(&mut debt, Duration::from_millis(2)),
+            Duration::from_millis(14)
+        );
+        assert!(debt < Duration::from_micros(10));
+
+        // Capped, so one pathologically slow segment cannot stall a drain
+        // or shutdown for minutes; the unpaid remainder carries.
+        let mut debt = Duration::ZERO;
+        assert_eq!(
+            settle_throttle_debt(&mut debt, Duration::from_secs(60)),
+            THROTTLE_MAX_PAUSE
+        );
+        // 5s of pause pays ~2.14s of work; the rest stays owed.
+        assert!(debt > Duration::from_secs(57));
+        assert_eq!(
+            settle_throttle_debt(&mut debt, Duration::ZERO),
             THROTTLE_MAX_PAUSE
         );
     }
@@ -2380,11 +2610,11 @@ mod tests {
     }
 
     #[test]
-    fn throttled_passes_pay_a_pause_per_batch_and_quiet_skips_pay_nothing() {
-        // Pins the call site (finding: deleting the throttle call failed no
-        // test): a throttled multi-batch pass owes exactly one pause per
-        // batch commit, recorded via the injectable sleeper — no wall-clock
-        // assertions needed.
+    fn throttled_passes_charge_each_batch_and_emission_and_quiet_skips_pay_nothing() {
+        // Pins the charge sites (finding: deleting the throttle call failed
+        // no test): a throttled multi-batch pass charges once per batch
+        // commit plus once for bucket emission, recorded via the injectable
+        // recorder — no wall-clock assertions needed.
         let (_dir, db, transcript) = setup();
         let mut content = String::new();
         for i in 0..(BATCH_MAX_ENTRIES + 1) {
@@ -2398,8 +2628,8 @@ mod tests {
         }
         fs::write(&transcript, content).unwrap();
 
-        let pauses = Mutex::new(Vec::new());
-        let recorder = |pause: Duration| pauses.lock().unwrap().push(pause);
+        let charges = Mutex::new(Vec::new());
+        let recorder = |work: Duration| charges.lock().unwrap().push(work);
         let flag = AtomicBool::new(false);
         process_file(
             &db,
@@ -2411,9 +2641,13 @@ mod tests {
             Some(&recorder),
         )
         .unwrap();
-        assert_eq!(pauses.lock().unwrap().len(), 2, "one pause per batch");
+        assert_eq!(
+            charges.lock().unwrap().len(),
+            3,
+            "one charge per batch plus one for emission"
+        );
 
-        // Quiet skip: unchanged bytes owe no pause at all.
+        // Quiet skip: unchanged bytes charge nothing at all.
         process_file(
             &db,
             &identity(),
@@ -2424,7 +2658,7 @@ mod tests {
             Some(&recorder),
         )
         .unwrap();
-        assert_eq!(pauses.lock().unwrap().len(), 2, "quiet skip pays nothing");
+        assert_eq!(charges.lock().unwrap().len(), 3, "quiet skip pays nothing");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2620,6 +2854,7 @@ mod tests {
             sweep_queue: VecDeque::new(),
             queued: HashSet::new(),
             sweep_interval,
+            throttle_debt: Arc::new(std::sync::Mutex::new(Duration::ZERO)),
             test_sink: Some(sink),
             test_throttle,
         };
@@ -2746,5 +2981,273 @@ mod tests {
             .filter(|e| value_u64(e, token_usage_pos::BUCKET_TS) == Some(bucket_of(1, 0)))
             .count();
         assert_eq!(first_bucket_emissions, 1, "restart must not re-emit");
+    }
+
+    /// CPU/RSS profile of a cold backfill over a realistic corpus, at the
+    /// real run() loop with the real throttle. Ignored: run manually with
+    /// `task test TEST_FILTER=bench_backfill_cpu_duty NO_CAPTURE=true \
+    ///  EXTRA_TEST_BINARY_ARGS="--ignored"` and read the printed duty
+    /// timeline. Guards the ~30% sweep duty-cycle contract end to end —
+    /// including emission and cross-session reconciliation, not just the
+    /// parse batches.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore]
+    async fn bench_backfill_cpu_duty() {
+        const BASE_SESSIONS: usize = 240;
+        const LINES_PER_SESSION: usize = 800;
+        const RESUME_SESSIONS: usize = 120;
+        const SIDECHAIN_SESSIONS: usize = 60;
+        const CODEX_SESSIONS: usize = 40;
+        const CODEX_TURNS: usize = 600;
+        const CODEX_FORKS: usize = 20;
+        const SMALL_SESSIONS: usize = 400;
+
+        fn cpu_ticks() -> u64 {
+            let stat = std::fs::read_to_string("/proc/self/stat").unwrap();
+            // utime + stime are fields 14 + 15; comm (field 2) may contain
+            // spaces, so parse after the closing paren.
+            let after = &stat[stat.rfind(')').unwrap() + 2..];
+            let fields: Vec<&str> = after.split_whitespace().collect();
+            fields[11].parse::<u64>().unwrap() + fields[12].parse::<u64>().unwrap()
+        }
+        fn rss_kb() -> u64 {
+            std::fs::read_to_string("/proc/self/status")
+                .unwrap()
+                .lines()
+                .find(|l| l.starts_with("VmRSS:"))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0)
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+
+        let claude_usage = |sess: usize, i: usize, output: u64| {
+            // ~55 buckets per session, all inside the retention window.
+            let ts = recent_ts((i / 8) as u32 % 1200, (i % 8) as u32 * 7);
+            format!(
+                r#"{{"timestamp":"{ts}","sessionId":"ext-{sess}","requestId":"r{sess}_{i}","message":{{"id":"m{sess}_{i}","model":"claude-sonnet-4-6-20260115","usage":{{"input_tokens":220,"output_tokens":{output},"cache_creation_input_tokens":40,"cache_read_input_tokens":18000}}}}}}"#
+            )
+        };
+
+        let insert = |session: &str, tool: &str, path: &std::path::Path| {
+            streams_db
+                .insert_stream(&stream_record(session, tool, &path.display().to_string()))
+                .unwrap();
+        };
+
+        let mut total_bytes = 0usize;
+        // Base claude sessions first (the bulk parse phase).
+        for sess in 0..BASE_SESSIONS {
+            let mut body = String::with_capacity(LINES_PER_SESSION * 320);
+            for i in 0..LINES_PER_SESSION {
+                body.push_str(&claude_usage(sess, i, 900));
+                body.push('\n');
+            }
+            total_bytes += body.len();
+            let path = dir.path().join(format!("claude-{sess}.jsonl"));
+            fs::write(&path, body).unwrap();
+            insert(&format!("s_claude_{sess}"), "claude", &path);
+        }
+        // Many small sessions (the common real shape): each is one batch of
+        // a few milliseconds — work the throttle floor must accumulate, not
+        // forgive, or this whole phase runs unthrottled.
+        for sess in 0..SMALL_SESSIONS {
+            let mut body = String::with_capacity(12 * 320);
+            for i in 0..12usize {
+                body.push_str(&claude_usage(BASE_SESSIONS + sess, i, 900));
+                body.push('\n');
+            }
+            total_bytes += body.len();
+            let path = dir.path().join(format!("claude-small-{sess}.jsonl"));
+            fs::write(&path, body).unwrap();
+            insert(&format!("s_claude_small_{sess}"), "claude", &path);
+        }
+        // Codex rollouts + forks replaying a parent prefix.
+        for sess in 0..CODEX_SESSIONS {
+            let mut body = String::with_capacity(CODEX_TURNS * 300);
+            body.push_str(&codex_meta_line(
+                &format!("codex-{sess}"),
+                None,
+                &recent_ts(0, 5),
+            ));
+            body.push('\n');
+            for i in 0..CODEX_TURNS {
+                let base = (i as u64 + 1) * 1200;
+                body.push_str(&codex_usage_line(
+                    &recent_ts((i / 6) as u32 % 1200, (i % 6) as u32 * 9),
+                    (base, base / 3, base / 10, base / 40, base + base / 10),
+                ));
+                body.push('\n');
+            }
+            total_bytes += body.len();
+            let path = dir.path().join(format!("codex-{sess}.jsonl"));
+            fs::write(&path, body).unwrap();
+            insert(&format!("s_codex_{sess}"), "codex", &path);
+        }
+        for fork in 0..CODEX_FORKS {
+            let parent = fork % CODEX_SESSIONS;
+            let mut body = String::new();
+            body.push_str(&codex_meta_line(
+                &format!("fork-{fork}"),
+                Some(&format!("codex-{parent}")),
+                &recent_ts(600, 0),
+            ));
+            body.push('\n');
+            // Replay the parent's first 50 cumulative totals verbatim.
+            for i in 0..50usize {
+                let base = (i as u64 + 1) * 1200;
+                body.push_str(&codex_usage_line(
+                    &recent_ts(600, 1),
+                    (base, base / 3, base / 10, base / 40, base + base / 10),
+                ));
+                body.push('\n');
+            }
+            // Then its own turns.
+            for i in 50..80usize {
+                let base = (i as u64 + 1) * 1300;
+                body.push_str(&codex_usage_line(
+                    &recent_ts(601 + (i as u32 - 50), 0),
+                    (base, base / 3, base / 10, base / 40, base + base / 10),
+                ));
+                body.push('\n');
+            }
+            total_bytes += body.len();
+            let path = dir.path().join(format!("codex-fork-{fork}.jsonl"));
+            fs::write(&path, body).unwrap();
+            let mut record = stream_record(
+                &format!("s_codex_fork_{fork}"),
+                "codex",
+                &path.display().to_string(),
+            );
+            record.external_session_id = format!("fork-{fork}");
+            record.external_parent_session_id = Some(format!("codex-{parent}"));
+            streams_db.insert_stream(&record).unwrap();
+        }
+        // Sidechain replays (message-id dedup against the base sessions).
+        for sc in 0..SIDECHAIN_SESSIONS {
+            let parent = sc % BASE_SESSIONS;
+            let mut body = String::new();
+            for i in 0..120usize {
+                let ts = recent_ts((i / 8) as u32 % 1200, (i % 8) as u32 * 7);
+                body.push_str(&format!(
+                    r#"{{"timestamp":"{ts}","isSidechain":true,"sessionId":"ext-sc-{sc}","requestId":"rsc{sc}_{i}","message":{{"id":"m{parent}_{i}","model":"claude-sonnet-4-6-20260115","usage":{{"input_tokens":220,"output_tokens":900,"cache_creation_input_tokens":40,"cache_read_input_tokens":45000}}}}}}"#
+                ));
+                body.push('\n');
+            }
+            total_bytes += body.len();
+            let path = dir.path().join(format!("claude-sc-{sc}.jsonl"));
+            fs::write(&path, body).unwrap();
+            let mut record = stream_record(
+                &format!("s_claude_sc_{sc}"),
+                "claude",
+                &path.display().to_string(),
+            );
+            record.external_session_id = format!("sc-{sc}-ext");
+            record.external_parent_session_id = Some(format!("ext-{parent}"));
+            streams_db.insert_stream(&record).unwrap();
+        }
+        // Resume copies LAST: every duplicated message carries larger totals,
+        // so each line replaces the base session's row and flags it for
+        // reconciliation — the storm lands at the end of the cycle, like a
+        // real backfill tail.
+        for res in 0..RESUME_SESSIONS {
+            let parent = res % BASE_SESSIONS;
+            let mut body = String::with_capacity(LINES_PER_SESSION * 320);
+            for i in 0..LINES_PER_SESSION {
+                body.push_str(&claude_usage(parent, i, 910));
+                body.push('\n');
+            }
+            total_bytes += body.len();
+            let path = dir.path().join(format!("claude-resume-{res}.jsonl"));
+            fs::write(&path, body).unwrap();
+            insert(&format!("s_claude_res_{res}"), "claude", &path);
+        }
+
+        let files = BASE_SESSIONS
+            + SMALL_SESSIONS
+            + CODEX_SESSIONS
+            + CODEX_FORKS
+            + SIDECHAIN_SESSIONS
+            + RESUME_SESSIONS;
+        println!(
+            "corpus: {files} files, {:.1} MiB",
+            total_bytes as f64 / 1048576.0
+        );
+
+        // Sample process CPU + RSS at 100ms.
+        let stop = Arc::new(AtomicBool::new(false));
+        let sampler_stop = stop.clone();
+        let sampler = std::thread::spawn(move || {
+            let tick_hz = 100.0; // Linux USER_HZ
+            let mut last = cpu_ticks();
+            let mut samples: Vec<f64> = Vec::new();
+            let mut max_rss = 0u64;
+            while !sampler_stop.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(100));
+                let now = cpu_ticks();
+                samples.push((now - last) as f64 / tick_hz / 0.1 * 100.0);
+                last = now;
+                max_rss = max_rss.max(rss_kb());
+            }
+            (samples, max_rss)
+        });
+
+        let started = std::time::Instant::now();
+        let (collected, sink) = collecting_sink();
+        let (_handle, shutdown) = spawn_run_loop(
+            streams_db.clone(),
+            token_db.clone(),
+            sink,
+            Duration::from_secs(600),
+        );
+
+        // Done when every file is quiet (size/mtime snapshots written, no
+        // pending flushes) and nothing is left to reconcile.
+        loop {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let streams_db = streams_db.clone();
+            let token_db = token_db.clone();
+            let quiet = tokio::task::spawn_blocking(move || {
+                sweep_candidates(&streams_db, &token_db).is_empty()
+                    && token_db.sessions_needing_reconcile().unwrap().is_empty()
+            })
+            .await
+            .unwrap();
+            if quiet && started.elapsed() > Duration::from_secs(2) {
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(1200), "bench hung");
+        }
+        let wall = started.elapsed();
+        shutdown.notify_one();
+        stop.store(true, Ordering::Relaxed);
+        let (samples, max_rss) = sampler.join().unwrap();
+
+        let events = collected.lock().unwrap().len();
+        let total_cpu: f64 = samples.iter().sum::<f64>() * 0.1 / 100.0;
+        let mut sorted = samples.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pct = |q: f64| sorted[((sorted.len() as f64 * q) as usize).min(sorted.len() - 1)];
+        println!(
+            "wall={:.1}s cpu={:.1}s avg_duty={:.0}% p50={:.0}% p95={:.0}% max={:.0}% max_rss={}MiB events={events}",
+            wall.as_secs_f64(),
+            total_cpu,
+            total_cpu / wall.as_secs_f64() * 100.0,
+            pct(0.5),
+            pct(0.95),
+            sorted[sorted.len() - 1],
+            max_rss / 1024,
+        );
+        // 1-second duty timeline (10 samples each).
+        let timeline: Vec<String> = samples
+            .chunks(10)
+            .map(|c| format!("{:.0}", c.iter().sum::<f64>() / c.len() as f64))
+            .collect();
+        println!("duty/s: {}", timeline.join(" "));
     }
 }
