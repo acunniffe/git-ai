@@ -3257,14 +3257,14 @@ pub fn content_has_conflict_markers(content: &str) -> bool {
 /// >>>>>>> local
 /// ```
 ///
-/// Also preserves the trailing newline of the original content so byte-level
-/// attribution diffing sees the same length as the actual on-disk file.
+/// Preserves the original line endings (including mixed LF/CRLF content) so
+/// byte-level attribution diffing stays aligned with the actual on-disk file.
 pub fn strip_conflict_markers_keep_ours(content: &str) -> String {
-    let mut result = Vec::new();
+    let mut result = String::with_capacity(content.len());
     let mut in_conflict = false;
     let mut in_ours = false; // true only while inside the ======= … >>>>>>> section
 
-    for line in content.lines() {
+    for line in content.split_inclusive('\n') {
         if line.starts_with("<<<<<<<") {
             in_conflict = true;
             in_ours = false; // theirs section starts — skip it
@@ -3278,16 +3278,10 @@ pub fn strip_conflict_markers_keep_ours(content: &str) -> String {
             in_conflict = false;
             in_ours = false; // back to normal content
         } else if !in_conflict || in_ours {
-            result.push(line);
+            result.push_str(line);
         }
     }
-    let mut out = result.join("\n");
-    // Preserve the trailing newline that std::fs::read_to_string typically returns,
-    // so the cleaned content has the same byte length as the actual file.
-    if content.ends_with('\n') {
-        out.push('\n');
-    }
-    out
+    result
 }
 
 /// Transform attributions from old content to new content
@@ -3799,6 +3793,17 @@ mod tests {
         assert_eq!(
             checkout_merge_rebased_content("shared\n", "THEIRS\n", "AI_CONTENT\n"),
             "AI_CONTENT\n"
+        );
+    }
+
+    #[test]
+    fn strip_conflict_markers_preserves_crlf_line_endings() {
+        let conflicted =
+            "before\r\n<<<<<<< feature\r\ntheirs\r\n=======\r\nours\r\n>>>>>>> local\r\nafter\r\n";
+
+        assert_eq!(
+            strip_conflict_markers_keep_ours(conflicted),
+            "before\r\nours\r\nafter\r\n"
         );
     }
 
