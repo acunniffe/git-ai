@@ -460,17 +460,49 @@ impl TokenUsageWorker {
     /// other sweep-origin work (notify tasks reconcile inline, unthrottled,
     /// for the drain barrier). Called when the task backlog drains, on every
     /// sweep tick (crash recovery for flags left by a pass that died between
-    /// its batch commit and its reconcile), and at startup.
-    async fn reconcile_flagged(&self) {
-        let token_db = self.token_db.clone();
-        let sink = self.make_sink();
-        let throttle = self.make_throttle();
-        let _ = tokio::task::spawn_blocking(move || {
-            if let Err(e) = reconcile_flagged_sessions(&token_db, &sink, Some(&throttle)) {
-                tracing::warn!(error = %e, "token-usage cross-session reconcile failed");
+    /// its batch commit and its reconcile), and at startup. One session per
+    /// blocking job — its throttle pause included — so shutdown, drains, and
+    /// fresh notifications are serviced between sessions instead of stalling
+    /// behind the whole flag set.
+    async fn reconcile_flagged(&mut self) {
+        loop {
+            if self.shutdown_flag.load(Ordering::Relaxed) {
+                return;
             }
-        })
-        .await;
+            let token_db = self.token_db.clone();
+            let sink = self.make_sink();
+            let throttle = self.make_throttle();
+            let mut handle = tokio::task::spawn_blocking(move || {
+                reconcile_next_flagged_session(&token_db, &sink, &throttle)
+            });
+            let result = tokio::select! {
+                result = &mut handle => result,
+                _ = self.shutdown_notify.notified() => {
+                    self.shutdown_flag.store(true, Ordering::Relaxed);
+                    (&mut handle).await
+                }
+            };
+            match result {
+                Ok(Ok(true)) => {}
+                Ok(Ok(false)) => return,
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "token-usage cross-session reconcile failed");
+                    return;
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, "token-usage cross-session reconcile panicked");
+                    return;
+                }
+            }
+            // Fresh traffic takes priority over the remaining flags: a
+            // notify task's inline reconcile settles them anyway, and a
+            // drain must not wait out throttle pauses. Flags are durable —
+            // whatever is left resumes at the next backlog drain or sweep
+            // tick.
+            if !self.notify_rx.is_empty() || !self.drain_rx.is_empty() {
+                return;
+            }
+        }
     }
 
     /// The charge function sweep-origin work calls with each segment's
@@ -727,7 +759,7 @@ fn process_task_blocking(
     // backoff and point diagnostics at the wrong session.
     if result.is_ok()
         && throttle.is_none()
-        && let Err(e) = reconcile_flagged_sessions(token_db, sink, None)
+        && let Err(e) = reconcile_flagged_sessions(token_db, sink)
     {
         tracing::warn!(error = %e, "token-usage cross-session reconcile failed; flags retained for retry");
     }
@@ -761,23 +793,44 @@ fn persist_events(
 fn reconcile_flagged_sessions(
     token_db: &TokenUsageDatabase,
     sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
-    throttle: Option<&(dyn Fn(Duration) + Sync)>,
 ) -> Result<(), GitAiError> {
     for session in token_db.sessions_needing_reconcile()? {
-        let started = std::time::Instant::now();
-        let identity = SessionIdentity {
-            session_id: session.session_id.clone(),
-            external_session_id: session.external_session_id,
-            external_parent_session_id: session.external_parent_session_id,
-            tool: session.tool,
-        };
-        emit_changed_buckets(token_db, &identity, || session.repo_url, sink)?;
-        token_db.clear_needs_reconcile(&session.session_id)?;
-        if let Some(throttle) = throttle {
-            throttle(started.elapsed());
-        }
+        reconcile_session(token_db, session, sink)?;
     }
     Ok(())
+}
+
+/// Reconcile one flagged session (the deferred, throttled path): emit its
+/// changed buckets, clear its flag, and charge the throttle for the work.
+/// Returns whether a session was reconciled, so the caller can hand control
+/// back to its event loop between sessions and come back for the rest.
+fn reconcile_next_flagged_session(
+    token_db: &TokenUsageDatabase,
+    sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
+    throttle: &(dyn Fn(Duration) + Sync),
+) -> Result<bool, GitAiError> {
+    let Some(session) = token_db.next_session_needing_reconcile()? else {
+        return Ok(false);
+    };
+    let started = std::time::Instant::now();
+    reconcile_session(token_db, session, sink)?;
+    throttle(started.elapsed());
+    Ok(true)
+}
+
+fn reconcile_session(
+    token_db: &TokenUsageDatabase,
+    session: crate::token_usage::db::ReconcileSession,
+    sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
+) -> Result<(), GitAiError> {
+    let identity = SessionIdentity {
+        session_id: session.session_id.clone(),
+        external_session_id: session.external_session_id,
+        external_parent_session_id: session.external_parent_session_id,
+        tool: session.tool,
+    };
+    emit_changed_buckets(token_db, &identity, || session.repo_url, sink)?;
+    token_db.clear_needs_reconcile(&session.session_id)
 }
 
 /// Speed fallback from the rollout's codex-home `config.toml` (recorded
@@ -2076,14 +2129,10 @@ mod tests {
         // The DB-only reconcile pass emits A's emptied bucket as zero with
         // A's stored identity, no file read required, and clears the flag.
         let collected = Mutex::new(Vec::new());
-        reconcile_flagged_sessions(
-            &db,
-            &|events: &[MetricEvent]| {
-                collected.lock().unwrap().extend(events.to_vec());
-                Ok(())
-            },
-            None,
-        )
+        reconcile_flagged_sessions(&db, &|events: &[MetricEvent]| {
+            collected.lock().unwrap().extend(events.to_vec());
+            Ok(())
+        })
         .unwrap();
         let events = collected.into_inner().unwrap();
         assert_eq!(events.len(), 1);
@@ -2133,25 +2182,19 @@ mod tests {
 
         // The flag survives a failed reconcile sink...
         assert!(
-            reconcile_flagged_sessions(
-                &db,
-                &|_: &[MetricEvent]| { Err(GitAiError::Generic("sink down".to_string())) },
-                None
-            )
+            reconcile_flagged_sessions(&db, &|_: &[MetricEvent]| {
+                Err(GitAiError::Generic("sink down".to_string()))
+            },)
             .is_err()
         );
         assert_eq!(db.sessions_needing_reconcile().unwrap().len(), 1);
 
         // ...and the retry emits the correction and clears it.
         let collected = Mutex::new(Vec::new());
-        reconcile_flagged_sessions(
-            &db,
-            &|events: &[MetricEvent]| {
-                collected.lock().unwrap().extend(events.to_vec());
-                Ok(())
-            },
-            None,
-        )
+        reconcile_flagged_sessions(&db, &|events: &[MetricEvent]| {
+            collected.lock().unwrap().extend(events.to_vec());
+            Ok(())
+        })
         .unwrap();
         assert_eq!(collected.into_inner().unwrap().len(), 1);
         assert!(db.sessions_needing_reconcile().unwrap().is_empty());
@@ -2289,6 +2332,92 @@ mod tests {
         assert!(corrected, "deferred reconcile emits the correction");
         assert!(token_db.sessions_needing_reconcile().unwrap().is_empty());
         shutdown.notify_one();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn deferred_reconcile_yields_to_fresh_notifications_between_sessions() {
+        // The deferred pass reconciles one session per blocking job and
+        // hands control back when notify traffic arrives: the remaining
+        // durable flags must not make a fresh notification (or drain) wait
+        // out throttle pauses for the whole flag set.
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        for (session, message) in [("s_base1", "m1"), ("s_base2", "m2")] {
+            let path = dir.path().join(format!("{session}.jsonl"));
+            fs::write(
+                &path,
+                format!("{}\n", claude_line(message, message, &recent_ts(1, 0), 50)),
+            )
+            .unwrap();
+            let identity = SessionIdentity {
+                session_id: session.to_string(),
+                external_session_id: format!("{session}-ext"),
+                external_parent_session_id: None,
+                tool: "claude".to_string(),
+            };
+            run_as(&token_db, &identity, &path).unwrap();
+        }
+        // One resumed session steals an entry from each base session,
+        // flagging both.
+        let resume = dir.path().join("resume.jsonl");
+        fs::write(
+            &resume,
+            format!(
+                "{}\n{}\n",
+                claude_line("m1", "m1", &recent_ts(1, 30), 90),
+                claude_line("m2", "m2", &recent_ts(1, 30), 90)
+            ),
+        )
+        .unwrap();
+        let identity = SessionIdentity {
+            session_id: "s_resume".to_string(),
+            external_session_id: "s_resume-ext".to_string(),
+            external_parent_session_id: None,
+            tool: "claude".to_string(),
+        };
+        run_as(&token_db, &identity, &resume).unwrap();
+        assert_eq!(token_db.sessions_needing_reconcile().unwrap().len(), 2);
+
+        let (notify_tx, notify_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_drain_tx, drain_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_collected, sink) = collecting_sink();
+        let mut worker = TokenUsageWorker {
+            streams_db,
+            token_db: token_db.clone(),
+            telemetry: DaemonTelemetryWorkerHandle::new_noop(),
+            shutdown_notify: Arc::new(Notify::new()),
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
+            notify_rx,
+            drain_rx,
+            notify_queue: VecDeque::new(),
+            sweep_queue: VecDeque::new(),
+            queued: HashSet::new(),
+            sweep_interval: Duration::from_secs(600),
+            throttle_debt: Arc::new(std::sync::Mutex::new(Duration::ZERO)),
+            test_sink: Some(sink),
+            test_throttle: Some(Arc::new(|_| {})),
+        };
+        notify_tx
+            .send(TokenUsageTask {
+                session_id: "s_resume".to_string(),
+                tool: "claude".to_string(),
+                stream_path: resume.display().to_string(),
+            })
+            .unwrap();
+        worker.reconcile_flagged().await;
+        assert_eq!(
+            token_db.sessions_needing_reconcile().unwrap().len(),
+            1,
+            "one session settled, then control returned to the queued notification"
+        );
+
+        // With no pending traffic, the pass runs the flag set dry.
+        worker.notify_rx.try_recv().unwrap();
+        worker.reconcile_flagged().await;
+        assert!(token_db.sessions_needing_reconcile().unwrap().is_empty());
     }
 
     #[test]

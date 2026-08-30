@@ -684,6 +684,12 @@ impl TokenUsageDatabase {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    /// One flagged session, for callers that reconcile incrementally and
+    /// hand control back between sessions.
+    pub fn next_session_needing_reconcile(&self) -> Result<Option<ReconcileSession>, GitAiError> {
+        Ok(self.sessions_needing_reconcile()?.into_iter().next())
+    }
+
     /// Persist the repo_url the session's events are emitted with, so later
     /// DB-only corrections carry the same repo gate attribute. Never erases
     /// a stored value (a transient resolution failure must not drop it).
