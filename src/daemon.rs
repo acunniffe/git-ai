@@ -104,6 +104,14 @@ const DAEMON_SOCKET_PROBE_TIMEOUT: Duration = Duration::from_millis(100);
 const CHECKPOINT_INGRESS_REQUEST_LIMIT: usize = 1_024;
 const CHECKPOINT_INGRESS_BYTE_LIMIT: usize = 64 * 1024 * 1024;
 const CHECKPOINT_FAMILY_DRAIN_CONCURRENCY: usize = 2;
+/// Global bound on concurrently executing command side-effect passes. They
+/// do blocking git work directly on the daemon runtime's 4 worker threads,
+/// and with drains running on detached tasks an unbounded number of
+/// simultaneously grinding families could otherwise occupy every worker and
+/// starve the runtime (#2252). Checkpoint side effects keep their own
+/// semaphore: they run on the blocking pool and must not be starved by
+/// long command passes.
+const COMMAND_SIDE_EFFECT_CONCURRENCY: usize = 2;
 // Trace2 frames are written synchronously by Git to the daemon's Unix socket.
 // With small kernel socket buffers (macOS defaults to ~8 KiB), a bursty trace2
 // stream can fill the buffer and block the raw `git` process in `write()` until
@@ -2648,6 +2656,14 @@ fn read_checkpoint_body<R: BufRead>(
 enum FamilySequencerEntry {
     PendingRoot,
     ReadyCommand(Box<crate::daemon::domain::NormalizedCommand>),
+    /// A command already applied to family state (it did not participate in
+    /// the sequencer, e.g. `git am`) whose side-effect pass is still pending.
+    /// Sequencing the pass keeps it ordered with, and serialized against,
+    /// the family's other passes (#2252).
+    AppliedSideEffects {
+        applied: Box<crate::daemon::domain::AppliedCommand>,
+        commit_file_timestamp_snapshots: CommitFileTimestampSnapshotHandles,
+    },
     Checkpoint {
         request: Box<CheckpointRequest>,
         receipt_seq: u64,
@@ -2681,6 +2697,30 @@ type CommitFileTimestampSnapshotHandles = HashMap<String, CommitFileTimestampSna
 const COMMIT_FILE_TIMESTAMP_SNAPSHOT_WAIT: Duration = Duration::from_millis(500);
 const SESSION_EVENT_RECOVERY_PREFLIGHT_WAIT: Duration = Duration::from_secs(2);
 const SESSION_EVENT_RECOVERY_PREFLIGHT_POLL: Duration = Duration::from_millis(100);
+
+/// RAII registration of an in-flight family side-effect pass; see
+/// [`ActorDaemonCoordinator::begin_family_effect_guarded`].
+struct FamilyEffectGuard<'a> {
+    coordinator: &'a ActorDaemonCoordinator,
+    family: String,
+}
+
+impl Drop for FamilyEffectGuard<'_> {
+    fn drop(&mut self) {
+        let _ = self.coordinator.end_family_effect(&self.family);
+    }
+}
+
+/// Extracts a printable message from a `catch_unwind` panic payload.
+fn panic_payload_message(panic_payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(message) = panic_payload.downcast_ref::<String>() {
+        message.clone()
+    } else if let Some(message) = panic_payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else {
+        "unknown panic".to_string()
+    }
+}
 
 fn run_blocking_side_effect<T>(operation: impl FnOnce() -> T) -> T {
     if tokio::runtime::Handle::try_current()
@@ -2768,7 +2808,11 @@ pub struct ActorDaemonCoordinator {
         Mutex<HashMap<String, VecDeque<RecentReplayPrerequisite>>>,
     side_effect_errors_by_family: Mutex<HashMap<String, BTreeMap<u64, String>>>,
     side_effect_exec_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
+    /// Families with a scheduled-or-running coalesced drain task; see
+    /// [`Self::schedule_family_drain`].
+    scheduled_family_drains: Mutex<HashSet<String>>,
     checkpoint_side_effect_semaphore: Semaphore,
+    command_side_effect_semaphore: Semaphore,
     checkpoint_ingress_quota: Arc<CheckpointIngressQuota>,
     checkpoint_ingress_tx: std::sync::OnceLock<mpsc::Sender<AcceptedCheckpoint>>,
     next_checkpoint_receipt_seq: AtomicUsize,
@@ -2865,7 +2909,6 @@ impl DaemonExitAction {
 
 enum TracePayloadApplyOutcome {
     None,
-    Applied(Box<crate::daemon::domain::AppliedCommand>),
     QueuedFamily,
 }
 
@@ -2892,7 +2935,9 @@ impl ActorDaemonCoordinator {
             recent_replay_prerequisites_by_family: Mutex::new(HashMap::new()),
             side_effect_errors_by_family: Mutex::new(HashMap::new()),
             side_effect_exec_locks: Mutex::new(HashMap::new()),
+            scheduled_family_drains: Mutex::new(HashSet::new()),
             checkpoint_side_effect_semaphore: Semaphore::new(CHECKPOINT_FAMILY_DRAIN_CONCURRENCY),
+            command_side_effect_semaphore: Semaphore::new(COMMAND_SIDE_EFFECT_CONCURRENCY),
             checkpoint_ingress_quota: Arc::new(CheckpointIngressQuota::new(
                 CHECKPOINT_INGRESS_REQUEST_LIMIT,
                 CHECKPOINT_INGRESS_BYTE_LIMIT,
@@ -3295,6 +3340,58 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    /// Registers an in-flight family side-effect pass for the guard's
+    /// lifetime. Sync, await, and graceful shutdown fence on this
+    /// registration, so it must be released on every exit path — early
+    /// returns, panics, and dropped tasks included — which only a Drop
+    /// impl can guarantee.
+    fn begin_family_effect_guarded<'a>(&'a self, family: &str) -> FamilyEffectGuard<'a> {
+        let _ = self.begin_family_effect(family);
+        FamilyEffectGuard {
+            coordinator: self,
+            family: family.to_string(),
+        }
+    }
+
+    /// Attribution work an automatic restart would abandon mid-flight:
+    /// accepted checkpoints, queued trace payloads, actionable sequencer
+    /// entries, and executing side-effect passes. PendingRoot placeholders
+    /// are deliberately excluded so an idle interactive command (e.g. a
+    /// rebase waiting on an editor) cannot defer restarts forever (#2252).
+    fn has_pending_attribution_work(&self) -> bool {
+        if self.outstanding_checkpoint_state().0 > 0 {
+            return true;
+        }
+        if self.queued_trace_payloads.load(Ordering::Relaxed) > 0 {
+            return true;
+        }
+        if self.has_inflight_family_effects() {
+            return true;
+        }
+        if let Ok(map) = self.family_sequencers_by_family.lock()
+            && map.values().any(|state| {
+                state
+                    .entries
+                    .values()
+                    .any(|entry| !matches!(entry, FamilySequencerEntry::PendingRoot))
+            })
+        {
+            return true;
+        }
+        false
+    }
+
+    /// Whether any detached side-effect pass is currently in flight, in any
+    /// family. Passes register via `begin_family_effect` before the trace
+    /// ingest watermark advances, so this is a valid completion fence for
+    /// work the watermark no longer covers (#2252).
+    fn has_inflight_family_effects(&self) -> bool {
+        self.inflight_effects_by_family
+            .lock()
+            .map(|map| !map.is_empty())
+            .unwrap_or(false)
+    }
+
     fn end_family_effect(&self, family: &str) -> Result<(), GitAiError> {
         let mut map = self
             .inflight_effects_by_family
@@ -3525,35 +3622,34 @@ impl ActorDaemonCoordinator {
         self.append_pending_root_entry(&family, root_sid, started_at_ns)
     }
 
-    async fn append_ready_command_entry(
+    /// Appends an entry to the family sequencer, ordered by the originating
+    /// command's start time. The caller is responsible for scheduling a
+    /// drain of the family afterwards — this must stay a constant-time map
+    /// insert because it runs on the serial trace ingest worker, whose
+    /// watermark checkpoint admission waits on (#2252).
+    fn append_family_sequencer_entry(
         &self,
         family: &str,
-        command: crate::daemon::domain::NormalizedCommand,
+        started_at_ns: u128,
+        entry: FamilySequencerEntry,
     ) -> Result<(), GitAiError> {
-        let exec_lock = self.side_effect_exec_lock(family)?;
-        let _guard = exec_lock.lock().await;
-        {
-            let mut sequencers = self.family_sequencers_by_family.lock().map_err(|_| {
-                GitAiError::Generic("family sequencer map lock poisoned".to_string())
-            })?;
-            let state =
-                sequencers
-                    .entry(family.to_string())
-                    .or_insert_with(|| FamilySequencerState {
-                        next_ordinal: 1,
-                        entries: BTreeMap::new(),
-                    });
-            let order = FamilySequencerOrder {
-                started_at_ns: command.started_at_ns,
-                ordinal: state.next_ordinal,
-            };
-            state.next_ordinal = state.next_ordinal.saturating_add(1);
-            state
-                .entries
-                .insert(order, FamilySequencerEntry::ReadyCommand(Box::new(command)));
-        }
-        self.drain_ready_family_sequencer_entries_locked(family)
-            .await
+        let mut sequencers = self
+            .family_sequencers_by_family
+            .lock()
+            .map_err(|_| GitAiError::Generic("family sequencer map lock poisoned".to_string()))?;
+        let state = sequencers
+            .entry(family.to_string())
+            .or_insert_with(|| FamilySequencerState {
+                next_ordinal: 1,
+                entries: BTreeMap::new(),
+            });
+        let order = FamilySequencerOrder {
+            started_at_ns,
+            ordinal: state.next_ordinal,
+        };
+        state.next_ordinal = state.next_ordinal.saturating_add(1);
+        state.entries.insert(order, entry);
+        Ok(())
     }
 
     async fn drain_ready_family_sequencer_entries(&self, family: &str) -> Result<(), GitAiError> {
@@ -3586,18 +3682,111 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
-    async fn drain_ready_family_sequencers_after_root_cleared(
-        &self,
-        family: Option<String>,
-    ) -> Result<(), GitAiError> {
+    /// Schedules drains for sequencer entries unblocked by a cleared trace
+    /// root. Drains run detached: side-effect passes are unbounded-duration
+    /// git work and must never execute inline on the trace ingest worker,
+    /// whose watermark checkpoint admission waits on (#2252).
+    fn schedule_ready_family_drains_after_root_cleared(self: &Arc<Self>, family: Option<String>) {
         if let Some(family) = family {
-            self.drain_ready_family_sequencer_entries(&family).await
+            self.schedule_family_drain(family);
         } else {
-            self.drain_all_ready_family_sequencers().await
+            self.schedule_all_ready_family_drains();
         }
     }
 
-    async fn replace_pending_root_entry(
+    /// Schedules a detached drain for one family, coalescing to at most one
+    /// scheduled-or-running drain task per family. The marker is released
+    /// only after a pass that ends with no actionable front entry (checked
+    /// atomically with the release), so an entry appended before this call
+    /// is always covered: either the running task's next pass pops it, or
+    /// this call spawns a fresh task.
+    fn schedule_family_drain(self: &Arc<Self>, family: String) {
+        {
+            let Ok(mut scheduled) = self.scheduled_family_drains.lock() else {
+                return;
+            };
+            if !scheduled.insert(family.clone()) {
+                return;
+            }
+        }
+        let coordinator = Arc::clone(self);
+        tokio::spawn(async move {
+            loop {
+                if let Err(error) = coordinator
+                    .drain_ready_family_sequencer_entries(&family)
+                    .await
+                {
+                    tracing::error!(
+                        component = "daemon",
+                        phase = "checkpoint_processing",
+                        reason = "family_drain_failed",
+                        %family,
+                        %error,
+                        "failed draining family sequencer"
+                    );
+                    if let Ok(mut scheduled) = coordinator.scheduled_family_drains.lock() {
+                        scheduled.remove(&family);
+                    }
+                    return;
+                }
+                // Deregister atomically with the emptiness check: an entry
+                // appended after the pass but before deregistration must
+                // either be seen here (loop again) or by the fresh task its
+                // own schedule call spawns after we release the marker.
+                let Ok(mut scheduled) = coordinator.scheduled_family_drains.lock() else {
+                    return;
+                };
+                if !coordinator.family_has_actionable_front_entry(&family) {
+                    scheduled.remove(&family);
+                    return;
+                }
+            }
+        });
+    }
+
+    /// Whether the family's sequencer front would be popped by a drain right
+    /// now — mirrors the gates of `drain_ready_family_sequencer_entries_locked`
+    /// (unadmitted checkpoints, PendingRoot front, prior-open-root fencing).
+    /// Gated-but-present entries return false: the event that lifts their
+    /// gate (admission completion, root clear) schedules its own drain.
+    fn family_has_actionable_front_entry(&self, family: &str) -> bool {
+        if self.unadmitted_checkpoints.load(Ordering::Acquire) > 0 {
+            return false;
+        }
+        let Ok(map) = self.family_sequencers_by_family.lock() else {
+            return false;
+        };
+        let Some(state) = map.get(family) else {
+            return false;
+        };
+        let Some((order, entry)) = state.entries.first_key_value() else {
+            return false;
+        };
+        if matches!(entry, FamilySequencerEntry::PendingRoot) {
+            return false;
+        }
+        let entry_root_sid = match entry {
+            FamilySequencerEntry::ReadyCommand(command) => Some(command.root_sid.as_str()),
+            FamilySequencerEntry::AppliedSideEffects { applied, .. } => {
+                Some(applied.command.root_sid.as_str())
+            }
+            _ => None,
+        };
+        !self
+            .family_entry_blocked_by_prior_open_trace_root(
+                family,
+                order.started_at_ns,
+                entry_root_sid,
+            )
+            .unwrap_or(true)
+    }
+
+    /// Replaces a root's PendingRoot sequencer entry with `replacement` and
+    /// returns the family whose sequencer changed. The caller is responsible
+    /// for scheduling a drain of that family afterwards — this must stay a
+    /// constant-time map mutation because it runs on the serial trace ingest
+    /// worker, whose watermark checkpoint admission waits on (#2252).
+    fn replace_pending_root_entry(
         &self,
         root_sid: &str,
         replacement: FamilySequencerEntry,
@@ -3606,8 +3795,6 @@ impl ActorDaemonCoordinator {
             return Ok(None);
         };
         let family = slot.family.clone();
-        let exec_lock = self.side_effect_exec_lock(&family)?;
-        let _guard = exec_lock.lock().await;
         {
             let mut sequencers = self.family_sequencers_by_family.lock().map_err(|_| {
                 GitAiError::Generic("family sequencer map lock poisoned".to_string())
@@ -3636,8 +3823,6 @@ impl ActorDaemonCoordinator {
                 }
             }
         }
-        self.drain_ready_family_sequencer_entries_locked(&family)
-            .await?;
         Ok(Some(family))
     }
 
@@ -3842,20 +4027,27 @@ impl ActorDaemonCoordinator {
             .lock()
             .map_err(|_| GitAiError::Generic("trace ingress state lock poisoned".to_string()))?;
         for root_sid in roots {
-            if let Some(count) = ingress.root_open_connections.get_mut(root_sid) {
-                if *count > 1 {
-                    *count -= 1;
-                    continue;
-                }
-                ingress.root_open_connections.remove(root_sid);
+            if let Some(count) = ingress.root_open_connections.get_mut(root_sid)
+                && *count > 1
+            {
+                *count -= 1;
+                continue;
             }
             if !Self::trace_root_needs_close_marker(&ingress, root_sid) {
+                ingress.root_open_connections.remove(root_sid);
                 Self::clear_trace_ingress_root_locked(&mut ingress, root_sid);
                 continue;
             }
             if ingress.root_close_markers_enqueued.contains(root_sid) {
                 continue;
             }
+            // Keep the root registered as open until the ingest worker has
+            // processed its queued frames and this close marker
+            // (clear_trace_root_tracking removes the registration then). The
+            // reader runs ahead of the worker; clearing here would drop the
+            // open-root fence while the root's own command is still queued,
+            // letting a detached drain execute a later command's pass first
+            // and invert per-family side-effect order (#2252).
             ingress.root_close_markers_enqueued.insert(root_sid.clone());
             close_marker_candidates.push(root_sid.clone());
         }
@@ -4109,14 +4301,7 @@ impl ActorDaemonCoordinator {
                                 Err(error)
                             }
                             Err(panic_payload) => {
-                                let panic_msg =
-                                    if let Some(s) = panic_payload.downcast_ref::<String>() {
-                                        s.clone()
-                                    } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                                        s.to_string()
-                                    } else {
-                                        "unknown panic".to_string()
-                                    };
+                                let panic_msg = panic_payload_message(panic_payload.as_ref());
                                 tracing::error!(
                                     component = "daemon",
                                     phase = "trace_ingest_worker",
@@ -4251,14 +4436,7 @@ impl ActorDaemonCoordinator {
                         }
                     }
                     Err(panic_payload) => {
-                        let panic_msg =
-                            if let Some(message) = panic_payload.downcast_ref::<String>() {
-                                message.clone()
-                            } else if let Some(message) = panic_payload.downcast_ref::<&str>() {
-                                message.to_string()
-                            } else {
-                                "unknown panic".to_string()
-                            };
+                        let panic_msg = panic_payload_message(panic_payload.as_ref());
                         tracing::error!(
                             component = "daemon",
                             phase = "checkpoint_ingress_worker",
@@ -4810,6 +4988,10 @@ impl ActorDaemonCoordinator {
         &self,
         family: &str,
     ) -> Result<(), GitAiError> {
+        // Register the in-flight pass BEFORE popping entries: completion
+        // fences must never observe an empty sequencer with no registered
+        // pass while popped entries are about to execute (#2252).
+        let _family_effect = self.begin_family_effect_guarded(family);
         let mut ready: Vec<(u64, FamilySequencerEntry)> = Vec::new();
         let mut progressed = false;
         {
@@ -4828,6 +5010,9 @@ impl ActorDaemonCoordinator {
                 }
                 let entry_root_sid = match first_entry.get() {
                     FamilySequencerEntry::ReadyCommand(command) => Some(command.root_sid.as_str()),
+                    FamilySequencerEntry::AppliedSideEffects { applied, .. } => {
+                        Some(applied.command.root_sid.as_str())
+                    }
                     _ => None,
                 };
                 if self.family_entry_blocked_by_prior_open_trace_root(
@@ -4854,7 +5039,6 @@ impl ActorDaemonCoordinator {
             return Ok(());
         }
 
-        let _ = self.begin_family_effect(family);
         for (order, ready_entry) in ready {
             // Per-family drains must be strictly serialized; overlapping or
             // order-regressing exec windows in a wltrace capture indicate a
@@ -4865,6 +5049,14 @@ impl ActorDaemonCoordinator {
                         "command:{}",
                         command.primary_command.as_deref().unwrap_or("unknown")
                     ),
+                    FamilySequencerEntry::AppliedSideEffects { applied, .. } => format!(
+                        "applied:{}",
+                        applied
+                            .command
+                            .primary_command
+                            .as_deref()
+                            .unwrap_or("unknown")
+                    ),
                     FamilySequencerEntry::Checkpoint { receipt_seq, .. } => {
                         format!("checkpoint:seq={receipt_seq}")
                     }
@@ -4874,6 +5066,13 @@ impl ActorDaemonCoordinator {
             });
             match ready_entry {
                 FamilySequencerEntry::ReadyCommand(command) => {
+                    let _side_effect_permit = self
+                        .command_side_effect_semaphore
+                        .acquire()
+                        .await
+                        .map_err(|_| {
+                            GitAiError::Generic("command side-effect semaphore closed".to_string())
+                        })?;
                     // Wrap the entire command + side-effect pipeline in catch_unwind
                     // so that a panic (e.g. from UTF-8 boundary issues in diff parsing)
                     // does not kill the daemon process.
@@ -4931,14 +5130,7 @@ impl ActorDaemonCoordinator {
                             );
                         }
                         Err(panic_payload) => {
-                            let panic_msg = if let Some(s) = panic_payload.downcast_ref::<String>()
-                            {
-                                s.clone()
-                            } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                                s.to_string()
-                            } else {
-                                "unknown panic".to_string()
-                            };
+                            let panic_msg = panic_payload_message(panic_payload.as_ref());
                             let error = GitAiError::Generic(format!(
                                 "daemon command side effect panic: {}",
                                 panic_msg
@@ -4954,6 +5146,59 @@ impl ActorDaemonCoordinator {
                                 "command side effect panic"
                             );
                         }
+                    }
+                }
+                FamilySequencerEntry::AppliedSideEffects {
+                    applied,
+                    mut commit_file_timestamp_snapshots,
+                } => {
+                    let _side_effect_permit = self
+                        .command_side_effect_semaphore
+                        .acquire()
+                        .await
+                        .map_err(|_| {
+                            GitAiError::Generic("command side-effect semaphore closed".to_string())
+                        })?;
+                    let side_effect_result = {
+                        let future = self.maybe_apply_side_effects_for_applied_command(
+                            Some(family),
+                            &applied,
+                            &mut commit_file_timestamp_snapshots,
+                        );
+                        let caught = std::panic::AssertUnwindSafe(future);
+                        match futures::FutureExt::catch_unwind(caught).await {
+                            Ok(result) => result,
+                            Err(panic_payload) => {
+                                let panic_msg = panic_payload_message(panic_payload.as_ref());
+                                Err(GitAiError::Generic(format!(
+                                    "daemon command side effect panic: {}",
+                                    panic_msg
+                                )))
+                            }
+                        }
+                    };
+                    if let Err(error) = &side_effect_result {
+                        let _ = self.record_side_effect_error(family, order, error);
+                        tracing::error!(
+                            %error,
+                            %family,
+                            seq = applied.seq,
+                            "command side effect failed"
+                        );
+                    }
+                    if let Err(error) = self.append_command_completion_log(
+                        family,
+                        &applied,
+                        &side_effect_result,
+                        order,
+                    ) {
+                        let _ = self.record_side_effect_error(family, order, &error);
+                        tracing::error!(
+                            %error,
+                            %family,
+                            order,
+                            "command completion log write failed"
+                        );
                     }
                 }
                 FamilySequencerEntry::Checkpoint {
@@ -5080,14 +5325,7 @@ impl ActorDaemonCoordinator {
                     let result = match checkpoint_request {
                         Ok(inner) => inner,
                         Err(panic_payload) => {
-                            let panic_msg = if let Some(s) = panic_payload.downcast_ref::<String>()
-                            {
-                                s.clone()
-                            } else if let Some(s) = panic_payload.downcast_ref::<&str>() {
-                                s.to_string()
-                            } else {
-                                "unknown panic".to_string()
-                            };
+                            let panic_msg = panic_payload_message(panic_payload.as_ref());
                             tracing::error!(
                                 component = "daemon",
                                 phase = "checkpoint_side_effect",
@@ -5232,7 +5470,6 @@ impl ActorDaemonCoordinator {
                 FamilySequencerEntry::PendingRoot => {}
             }
         }
-        let _ = self.end_family_effect(family);
 
         let _ = progressed;
         Ok(())
@@ -5913,6 +6150,9 @@ impl ActorDaemonCoordinator {
                     && let Ok(delay_ms) = delay_ms.parse::<u64>()
                     && delay_ms > 0
                 {
+                    // Lets tests poll for the grind having actually started
+                    // instead of guessing with fixed sleeps.
+                    tracing::info!(op = primary, delay_ms, "test side-effect delay started");
                     tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                     break;
                 }
@@ -6735,7 +6975,7 @@ impl ActorDaemonCoordinator {
     }
 
     async fn apply_trace_payload_to_state(
-        &self,
+        self: &Arc<Self>,
         payload: Value,
     ) -> Result<TracePayloadApplyOutcome, GitAiError> {
         let payload_root_sid = Self::trace_payload_root_sid(&payload);
@@ -6752,17 +6992,15 @@ impl ActorDaemonCoordinator {
                 let mut normalizer = self.normalizer.lock().await;
                 let _ = normalizer.sweep_orphans_for_roots(&[root_sid.to_string()]);
             }
-            let replaced_family = self
-                .replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)
-                .await?;
+            let replaced_family =
+                self.replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)?;
             let outcome = if replaced_family.is_some() {
                 TracePayloadApplyOutcome::QueuedFamily
             } else {
                 TracePayloadApplyOutcome::None
             };
             self.clear_trace_root_tracking(root_sid)?;
-            self.drain_ready_family_sequencers_after_root_cleared(replaced_family)
-                .await?;
+            self.schedule_ready_family_drains_after_root_cleared(replaced_family);
             return Ok(outcome);
         }
 
@@ -6780,13 +7018,11 @@ impl ActorDaemonCoordinator {
                     .unwrap_or_default(),
                 payload_root_sid.as_deref().unwrap_or_default(),
             ) && let Some(root_sid) = payload_root_sid.as_deref()
-                && let Some(family) = self
-                    .replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)
-                    .await?
+                && let Some(family) =
+                    self.replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)?
             {
                 self.clear_trace_root_tracking(root_sid)?;
-                self.drain_ready_family_sequencers_after_root_cleared(Some(family))
-                    .await?;
+                self.schedule_ready_family_drains_after_root_cleared(Some(family));
                 return Ok(TracePayloadApplyOutcome::QueuedFamily);
             }
             return Ok(TracePayloadApplyOutcome::None);
@@ -6794,13 +7030,10 @@ impl ActorDaemonCoordinator {
         let root_sid = command.root_sid.clone();
 
         let mut family_to_drain_after_clear = None;
-        let outcome = if let Some(family) = self
-            .replace_pending_root_entry(
-                &root_sid,
-                FamilySequencerEntry::ReadyCommand(Box::new(command.clone())),
-            )
-            .await?
-        {
+        let outcome = if let Some(family) = self.replace_pending_root_entry(
+            &root_sid,
+            FamilySequencerEntry::ReadyCommand(Box::new(command.clone())),
+        )? {
             self.cache_commit_file_timestamp_snapshots_for_command(&command)?;
             family_to_drain_after_clear = Some(family);
             TracePayloadApplyOutcome::QueuedFamily
@@ -6811,12 +7044,44 @@ impl ActorDaemonCoordinator {
             )
         {
             self.cache_commit_file_timestamp_snapshots_for_command(&command)?;
-            self.append_ready_command_entry(&family, command).await?;
+            let started_at_ns = command.started_at_ns;
+            self.append_family_sequencer_entry(
+                &family,
+                started_at_ns,
+                FamilySequencerEntry::ReadyCommand(Box::new(command)),
+            )?;
             family_to_drain_after_clear = Some(family);
             TracePayloadApplyOutcome::QueuedFamily
         } else {
             match self.coordinator.route_command(command).await {
-                Ok(applied) => TracePayloadApplyOutcome::Applied(Box::new(applied)),
+                Ok(applied) => {
+                    if let Some(family) =
+                        applied.command.family_key.as_ref().map(|key| key.0.clone())
+                    {
+                        // The command is applied to family state, but its
+                        // side-effect pass is unbounded git work: sequence it
+                        // so drains execute it off-worker, ordered by the
+                        // command's start time and serialized with the
+                        // family's other passes (#2252).
+                        let commit_file_timestamp_snapshots =
+                            Self::start_commit_file_timestamp_snapshots_for_command(
+                                &applied.command,
+                            );
+                        let started_at_ns = applied.command.started_at_ns;
+                        self.append_family_sequencer_entry(
+                            &family,
+                            started_at_ns,
+                            FamilySequencerEntry::AppliedSideEffects {
+                                applied: Box::new(applied),
+                                commit_file_timestamp_snapshots,
+                            },
+                        )?;
+                        family_to_drain_after_clear = Some(family);
+                        TracePayloadApplyOutcome::QueuedFamily
+                    } else {
+                        TracePayloadApplyOutcome::None
+                    }
+                }
                 Err(error) => {
                     let _ = self.clear_trace_root_tracking(&root_sid);
                     return Err(error);
@@ -6824,8 +7089,7 @@ impl ActorDaemonCoordinator {
             }
         };
         self.clear_trace_root_tracking(&root_sid)?;
-        self.drain_ready_family_sequencers_after_root_cleared(family_to_drain_after_clear)
-            .await?;
+        self.schedule_ready_family_drains_after_root_cleared(family_to_drain_after_clear);
         Ok(outcome)
     }
 
@@ -6833,45 +7097,7 @@ impl ActorDaemonCoordinator {
         if !is_trace_payload(&payload) {
             return Ok(());
         }
-        match self.apply_trace_payload_to_state(payload).await? {
-            TracePayloadApplyOutcome::None | TracePayloadApplyOutcome::QueuedFamily => {}
-            TracePayloadApplyOutcome::Applied(applied) => {
-                if let Some(family) = applied.command.family_key.as_ref().map(|key| key.0.clone()) {
-                    self.begin_family_effect(&family)?;
-                    let mut commit_file_timestamp_snapshots =
-                        Self::start_commit_file_timestamp_snapshots_for_command(&applied.command);
-                    let result = self
-                        .maybe_apply_side_effects_for_applied_command(
-                            Some(&family),
-                            &applied,
-                            &mut commit_file_timestamp_snapshots,
-                        )
-                        .await;
-                    let _ = self.end_family_effect(&family);
-                    if let Err(error) = &result {
-                        let _ = self.record_side_effect_error(&family, applied.seq, error);
-                        tracing::error!(
-                            %error,
-                            %family,
-                            seq = applied.seq,
-                            "async side-effect error"
-                        );
-                    }
-                    if let Err(error) =
-                        self.append_command_completion_log(&family, &applied, &result, applied.seq)
-                    {
-                        let _ = self.record_side_effect_error(&family, applied.seq, &error);
-                        tracing::error!(
-                            %error,
-                            %family,
-                            seq = applied.seq,
-                            "async completion log write failed"
-                        );
-                    }
-                }
-            }
-        }
-
+        let _ = self.apply_trace_payload_to_state(payload).await?;
         Ok(())
     }
 
@@ -6949,17 +7175,26 @@ impl ActorDaemonCoordinator {
         self.wait_for_trace_ingest_processed_through_family(&family.0)
             .await;
 
-        let exec_lock = self.side_effect_exec_lock(&family.0)?;
         loop {
             self.wait_for_no_unadmitted_checkpoints().await;
-            let guard = exec_lock.lock().await;
-            self.drain_ready_family_sequencer_entries_locked(&family.0)
-                .await?;
-            if self.unadmitted_checkpoints.load(Ordering::Acquire) == 0 {
-                drop(guard);
+            // Drain every family, not just the synced one: side-effect
+            // passes can write into other repositories (`git push <path>`
+            // pushes authorship notes into the destination repo), and before
+            // side effects ran detached the global ingest watermark implied
+            // all already-ingested passes had completed. Ready entries are
+            // executed here or by their detached drains (serialized per
+            // family by the exec lock); passes already handed off are
+            // visible via the effect registrations they take before the
+            // watermark advances (#2252). Entries fail-closed behind a
+            // still-open trace root stay queued without blocking this loop,
+            // exactly as they did pre-detachment.
+            self.drain_all_ready_family_sequencers().await?;
+            if self.unadmitted_checkpoints.load(Ordering::Acquire) == 0
+                && !self.has_inflight_family_effects()
+            {
                 break;
             }
-            drop(guard);
+            tokio::time::sleep(Duration::from_millis(25)).await;
         }
 
         self.status_for_family(repo_working_dir).await
@@ -6974,7 +7209,11 @@ impl ActorDaemonCoordinator {
             self.wait_for_trace_ingest_processed_through().await;
             self.drain_all_ready_family_sequencers().await?;
 
-            if self.outstanding_checkpoint_state().0 == 0 {
+            // Detached side-effect passes (drains and non-sequencer
+            // commands) are invisible to the sequencer map once their
+            // entries are popped; exiting while one is in flight would let
+            // process teardown kill it mid-write (#2252).
+            if self.outstanding_checkpoint_state().0 == 0 && !self.has_inflight_family_effects() {
                 return Ok(());
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -9128,11 +9367,13 @@ fn daemon_update_check_loop(coordinator: Arc<ActorDaemonCoordinator>, started_at
             Ok(DaemonUpdateCheckResult::UpdateReady) => {
                 let (outstanding_checkpoints, retained_checkpoint_bytes) =
                     coordinator.outstanding_checkpoint_state();
-                if outstanding_checkpoints > 0 {
+                // Also defer while queued or executing attribution work
+                // remains: process teardown would abandon it (#2252).
+                if coordinator.has_pending_attribution_work() {
                     tracing::info!(
                         outstanding_checkpoints,
                         retained_checkpoint_bytes,
-                        "update restart deferred while accepted checkpoints remain"
+                        "update restart deferred while attribution work remains"
                     );
                 } else {
                     tracing::info!("update check: newer version available, requesting shutdown");
@@ -9152,11 +9393,13 @@ fn daemon_update_check_loop(coordinator: Arc<ActorDaemonCoordinator>, started_at
         if uptime_ns >= daemon_max_uptime_ns() {
             let (outstanding_checkpoints, retained_checkpoint_bytes) =
                 coordinator.outstanding_checkpoint_state();
-            if outstanding_checkpoints > 0 {
+            // Also defer while queued or executing attribution work
+            // remains: process teardown would abandon it (#2252).
+            if coordinator.has_pending_attribution_work() {
                 tracing::info!(
                     outstanding_checkpoints,
                     retained_checkpoint_bytes,
-                    "uptime restart deferred while accepted checkpoints remain"
+                    "uptime restart deferred while attribution work remains"
                 );
             } else {
                 tracing::info!("uptime exceeded max, requesting restart");
@@ -10275,6 +10518,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn pending_attribution_work_fence_ignores_idle_pending_roots() {
+        let coord = ActorDaemonCoordinator::new();
+        assert!(
+            !coord.has_pending_attribution_work(),
+            "an idle daemon must not defer automatic restarts"
+        );
+
+        // An idle interactive command (PendingRoot placeholder, e.g. a rebase
+        // waiting on an editor) must not defer restarts forever.
+        coord
+            .append_pending_root_entry("family-a", "pending-root-1", 10)
+            .expect("append pending root");
+        assert!(
+            !coord.has_pending_attribution_work(),
+            "a PendingRoot placeholder alone must not defer restarts"
+        );
+
+        // Actionable sequencer entries must defer: a restart would abandon
+        // the queued attribution pass before its drain registers an effect.
+        coord
+            .append_family_sequencer_entry("family-b", 20, FamilySequencerEntry::Canceled)
+            .expect("append actionable entry");
+        assert!(
+            coord.has_pending_attribution_work(),
+            "queued sequencer entries must defer restarts"
+        );
+        coord
+            .family_sequencers_by_family
+            .lock()
+            .unwrap()
+            .remove("family-b");
+        assert!(!coord.has_pending_attribution_work());
+
+        // Executing side-effect passes must defer too.
+        {
+            let _effect = coord.begin_family_effect_guarded("family-c");
+            assert!(
+                coord.has_pending_attribution_work(),
+                "in-flight side-effect passes must defer restarts"
+            );
+        }
+        assert!(
+            !coord.has_pending_attribution_work(),
+            "the effect guard must release the fence on drop"
+        );
+    }
+
+    #[tokio::test]
     async fn draining_an_unknown_family_does_not_retain_empty_sequencer_state() {
         let coord = ActorDaemonCoordinator::new();
 
@@ -10779,7 +11070,7 @@ mod tests {
 
     #[tokio::test]
     async fn mutating_pending_root_is_created_when_repo_and_argv_arrive_on_different_events() {
-        let coord = ActorDaemonCoordinator::new();
+        let coord = Arc::new(ActorDaemonCoordinator::new());
         let temp = tempfile::tempdir().unwrap();
         let repo = temp.path().join("repo");
         let init = std::process::Command::new("git")
@@ -10914,12 +11205,26 @@ mod tests {
         coord
             .record_trace_connection_close(&[sid.to_string()])
             .unwrap();
+        // The reader-side close keeps a mutating root registered until the
+        // ingest worker processes its queued frames and close marker, so the
+        // fence must still hold across the reader/worker gap (#2252).
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(50),
+                coord.wait_for_trace_ingest_processed_through()
+            )
+            .await
+            .is_err(),
+            "checkpoint fence must hold until the worker processes the root's close marker"
+        );
+
+        coord.clear_trace_root_tracking(sid).unwrap();
         tokio::time::timeout(
             Duration::from_secs(1),
             coord.wait_for_trace_ingest_processed_through(),
         )
         .await
-        .expect("checkpoint fence should pass once the mutating trace root closes");
+        .expect("checkpoint fence should pass once the worker has processed the root's close");
     }
 
     #[tokio::test]
@@ -10982,12 +11287,26 @@ mod tests {
         coord
             .record_trace_connection_close(&[sid.to_string()])
             .unwrap();
+        // The reader-side close keeps a mutating root registered until the
+        // ingest worker processes its queued frames and close marker, so the
+        // fence must still hold across the reader/worker gap (#2252).
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(50),
+                coord.wait_for_trace_ingest_processed_through_family(&own_family)
+            )
+            .await
+            .is_err(),
+            "own family fence must hold until the worker processes the root's close marker"
+        );
+
+        coord.clear_trace_root_tracking(sid).unwrap();
         tokio::time::timeout(
             Duration::from_secs(1),
             coord.wait_for_trace_ingest_processed_through_family(&own_family),
         )
         .await
-        .expect("own family fence should pass once the root closes");
+        .expect("own family fence should pass once the worker has processed the root's close");
     }
 
     #[tokio::test]
@@ -11482,12 +11801,26 @@ mod tests {
         coord
             .record_trace_connection_close(&[sid.to_string()])
             .unwrap();
+        // The reader-side close keeps a mutating root registered until the
+        // ingest worker processes its queued frames and close marker, so the
+        // fence must still hold across the reader/worker gap (#2252).
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(50),
+                coord.wait_for_trace_ingest_processed_through()
+            )
+            .await
+            .is_err(),
+            "checkpoint fence must hold until the worker processes the root's close marker"
+        );
+
+        coord.clear_trace_root_tracking(sid).unwrap();
         tokio::time::timeout(
             Duration::from_secs(1),
             coord.wait_for_trace_ingest_processed_through(),
         )
         .await
-        .expect("checkpoint fence should pass once the branch mutation root closes");
+        .expect("checkpoint fence should pass once the worker has processed the root's close");
     }
 
     #[tokio::test]

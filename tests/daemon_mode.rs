@@ -171,6 +171,29 @@ fn write_trace_frames_to_stream(stream: &mut impl Write, payloads: &[Value]) {
     stream.flush().expect("failed to flush trace payloads");
 }
 
+/// Waits until the repo's dedicated daemon logs that a delayed side-effect
+/// pass (GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND) has started executing,
+/// so grind tests gate on the actual daemon-side precondition instead of
+/// fixed sleeps that can pass vacuously or fail spuriously on loaded runners.
+#[cfg(not(windows))]
+fn wait_for_test_side_effect_delay_started(repo: &TestRepo) {
+    let started = std::time::Instant::now();
+    loop {
+        if repo
+            .daemon_stderr_contents()
+            .contains("test side-effect delay started")
+        {
+            return;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "daemon never entered the delayed side-effect pass; logs:\n{}",
+            repo.daemon_stderr_contents()
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+
 fn repo_workdir_string(repo: &TestRepo) -> String {
     repo.path().to_string_lossy().to_string()
 }
@@ -2124,6 +2147,308 @@ fn daemon_drains_independent_checkpoint_families_concurrently() {
         );
         thread::sleep(Duration::from_millis(10));
     }
+}
+
+/// Regression test for #2252: a long write-op side-effect pass in one family
+/// (a large checkout/commit in a monorepo) must not stall the trace-ingest
+/// watermark that checkpoint admission waits on. A checkpoint for an
+/// independent repository family must be admitted and processed while the
+/// other family's side effects are still grinding.
+#[test]
+#[cfg(not(windows))]
+fn family_side_effect_grind_does_not_stall_independent_checkpoint_admission() {
+    let grinding_repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+        "commit=10000",
+    )]);
+    let independent_repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let control_socket = daemon_control_socket_path(&grinding_repo);
+
+    // A traced commit whose side-effect pass grinds for 10s in its family.
+    fs::write(grinding_repo.path().join("grind.txt"), "grind\n").unwrap();
+    grinding_repo
+        .git_without_test_sync_for_test(&["add", "grind.txt"], &[])
+        .unwrap();
+    grinding_repo
+        .git_without_test_sync_for_test(&["commit", "-m", "grind commit"], &[])
+        .unwrap();
+
+    wait_for_test_side_effect_delay_started(&grinding_repo);
+
+    fs::write(
+        independent_repo.path().join("independent.txt"),
+        "independent-grind-checkpoint\n",
+    )
+    .unwrap();
+    let checkpoint = CheckpointRequest {
+        trace_id: "independent-grind-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "independent-grind-checkpoint".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("independent.txt"),
+            content: Some("independent-grind-checkpoint\n".to_string()),
+            repo_work_dir: independent_repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+    let response =
+        send_checkpoint_request_with_timeout(&control_socket, &checkpoint, Duration::from_secs(2))
+            .expect("checkpoint should be acknowledged during an unrelated side-effect grind");
+    assert!(response.ok, "checkpoint failed: {response:?}");
+
+    // The independent family must finish processing well before the 10s grind
+    // completes; admission queueing behind the grind is issue #2252.
+    let started = std::time::Instant::now();
+    loop {
+        let checkpoint_count = find_repository_in_path(independent_repo.path().to_str().unwrap())
+            .unwrap()
+            .storage
+            .working_log_for_base_commit("initial")
+            .unwrap()
+            .read_all_checkpoints()
+            .map(|checkpoints| checkpoints.len())
+            .unwrap_or(0);
+        if checkpoint_count == 1 {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "independent checkpoint was not admitted/processed while another \
+             family's side effects were running (#2252)"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+
+/// Regression test for #2252's headline symptom: checkpoints "received into
+/// bounded ingress" but never "prepared for family admission" while the same
+/// family's write-op side effects grind. Admission is a global sequencing
+/// stage and must not queue behind side-effect execution; only processing may
+/// wait for the family's turn.
+#[test]
+#[cfg(not(windows))]
+fn checkpoint_admission_proceeds_while_same_family_side_effects_grind() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+        "commit=10000",
+    )]);
+
+    fs::write(repo.path().join("grind.txt"), "grind\n").unwrap();
+    repo.git_without_test_sync_for_test(&["add", "grind.txt"], &[])
+        .unwrap();
+    repo.git_without_test_sync_for_test(&["commit", "-m", "grind commit"], &[])
+        .unwrap();
+
+    wait_for_test_side_effect_delay_started(&repo);
+
+    fs::write(repo.path().join("same-family.txt"), "same-family\n").unwrap();
+    let checkpoint = CheckpointRequest {
+        trace_id: "same-family-grind-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "same-family-grind-checkpoint".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("same-family.txt"),
+            content: Some("same-family\n".to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+    let response = send_checkpoint_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &checkpoint,
+        Duration::from_secs(2),
+    )
+    .expect("checkpoint should be acknowledged during a same-family side-effect grind");
+    assert!(response.ok, "checkpoint failed: {response:?}");
+
+    // Admission (not processing) must complete well before the 10s grind ends.
+    let started = std::time::Instant::now();
+    loop {
+        let logs = repo.daemon_stderr_contents();
+        if logs.lines().any(|line| {
+            line.contains("checkpoint prepared for family admission")
+                && line.contains("same-family-grind-checkpoint")
+        }) {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "checkpoint was received but not admitted while the same family's \
+             side effects were running (#2252); daemon logs:\n{logs}"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+}
+
+/// #2252: side effects for commands that do not participate in the family
+/// sequencer (e.g. `git am`) run on detached tasks. `sync.family` must still
+/// cover them — it must not report a family as synced while such a pass is
+/// in flight.
+#[test]
+#[cfg(not(windows))]
+fn sync_family_waits_for_detached_non_sequencer_side_effects() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+        "am=3000",
+    )]);
+
+    // Base commit so `git am` has a parent to apply onto.
+    fs::write(repo.path().join("base.txt"), "base\n").unwrap();
+    repo.git_without_test_sync_for_test(&["add", "base.txt"], &[])
+        .unwrap();
+    repo.git_without_test_sync_for_test(&["commit", "-m", "base"], &[])
+        .unwrap();
+
+    let patch = "\
+From 1111111111111111111111111111111111111111 Mon Sep 17 00:00:00 2001
+From: Repro <repro@example.com>
+Date: Mon, 1 Sep 2026 00:00:00 +0000
+Subject: [PATCH] add am file
+
+---
+ am.txt | 1 +
+ 1 file changed, 1 insertion(+)
+ create mode 100644 am.txt
+
+diff --git a/am.txt b/am.txt
+new file mode 100644
+index 0000000..7898192
+--- /dev/null
++++ b/am.txt
+@@ -0,0 +1 @@
++a
+--\x20
+2.39.0
+";
+    fs::write(repo.path().join("am-patch.mbox"), patch).unwrap();
+    repo.git_without_test_sync_for_test(&["am", "am-patch.mbox"], &[])
+        .unwrap();
+    wait_for_test_side_effect_delay_started(&repo);
+
+    let sync = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(30),
+    )
+    .expect("sync.family should succeed");
+    assert!(sync.ok, "sync.family failed: {sync:?}");
+
+    let am_entries = completion_entries_for_command(&repo, "am");
+    assert!(
+        !am_entries.is_empty(),
+        "sync.family returned before the detached `git am` side-effect pass completed (#2252)"
+    );
+}
+
+/// #2252: with side-effect passes running on detached tasks, graceful
+/// shutdown must not complete while such a pass is still in flight — the
+/// process exit right after the shutdown response would kill it mid-write.
+#[test]
+#[cfg(not(windows))]
+fn graceful_shutdown_waits_for_detached_side_effect_passes() {
+    let repo = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+        "commit=3000",
+    )]);
+
+    fs::write(repo.path().join("grind.txt"), "grind\n").unwrap();
+    repo.git_without_test_sync_for_test(&["add", "grind.txt"], &[])
+        .unwrap();
+    repo.git_without_test_sync_for_test(&["commit", "-m", "grind commit"], &[])
+        .unwrap();
+    wait_for_test_side_effect_delay_started(&repo);
+
+    let shutdown = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::Shutdown,
+        Duration::from_secs(30),
+    )
+    .expect("graceful shutdown request should succeed");
+    assert!(shutdown.ok, "graceful shutdown failed: {shutdown:?}");
+
+    let commit_entries = completion_entries_for_command(&repo, "commit");
+    assert!(
+        !commit_entries.is_empty(),
+        "graceful shutdown completed while the commit side-effect pass was still running (#2252)"
+    );
+}
+
+/// #2252: a side-effect pass can write into a DIFFERENT repository — e.g.
+/// `git push <path>` pushes authorship notes into the destination repo.
+/// Before side effects ran detached, the global ingest watermark implied
+/// they had completed, so `sync.family` on the destination covered them
+/// transitively. That guarantee must survive detachment: sync.family must
+/// not report until already-ingested side-effect work has finished, in any
+/// family.
+#[test]
+#[cfg(not(windows))]
+fn sync_family_covers_cross_repo_side_effects_of_other_families() {
+    let local = TestRepo::new_with_daemon_env(&[(
+        "GIT_AI_TEST_DELAY_SIDE_EFFECT_MS_FOR_COMMAND",
+        "push=3000",
+    )]);
+    let destination = TestRepo::new_bare_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    fs::write(local.path().join("pushed.txt"), "pushed\n").unwrap();
+    local.git_og(&["add", "pushed.txt"]).unwrap();
+    local.git_og(&["commit", "-m", "pushed commit"]).unwrap();
+    let commit_sha = local
+        .git_og(&["rev-parse", "HEAD"])
+        .unwrap()
+        .trim()
+        .to_string();
+    local
+        .git_og(&[
+            "notes",
+            "--ref=ai",
+            "add",
+            "-m",
+            "cross-repo-note",
+            commit_sha.as_str(),
+        ])
+        .unwrap();
+
+    let destination_path = destination.path().to_string_lossy().to_string();
+    local
+        .git_without_test_sync_for_test(
+            &["push", destination_path.as_str(), "HEAD:refs/heads/pushed"],
+            &[],
+        )
+        .unwrap();
+    wait_for_test_side_effect_delay_started(&local);
+
+    let sync = send_control_request_with_timeout(
+        &daemon_control_socket_path(&local),
+        &ControlRequest::SyncFamily {
+            repo_working_dir: destination_path.clone(),
+        },
+        Duration::from_secs(30),
+    )
+    .expect("sync.family for the destination should succeed");
+    assert!(sync.ok, "sync.family failed: {sync:?}");
+
+    let pushed_note = destination.git_og(&["notes", "--ref=ai", "show", commit_sha.as_str()]);
+    assert!(
+        pushed_note.is_ok_and(|note| note.contains("cross-repo-note")),
+        "sync.family for the destination returned before the push side-effect \
+         pass finished pushing authorship notes into it (#2252)"
+    );
 }
 
 #[test]
