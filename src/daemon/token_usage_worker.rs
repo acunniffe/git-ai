@@ -809,10 +809,10 @@ fn reconcile_next_flagged_session(
     sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
     throttle: &(dyn Fn(Duration) + Sync),
 ) -> Result<bool, GitAiError> {
+    let started = std::time::Instant::now();
     let Some(session) = token_db.next_session_needing_reconcile()? else {
         return Ok(false);
     };
-    let started = std::time::Instant::now();
     reconcile_session(token_db, session, sink)?;
     throttle(started.elapsed());
     Ok(true)

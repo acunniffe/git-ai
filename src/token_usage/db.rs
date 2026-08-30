@@ -685,9 +685,27 @@ impl TokenUsageDatabase {
     }
 
     /// One flagged session, for callers that reconcile incrementally and
-    /// hand control back between sessions.
+    /// hand control back between sessions (same grouped projection as
+    /// [`Self::sessions_needing_reconcile`], stopping at the first group).
     pub fn next_session_needing_reconcile(&self) -> Result<Option<ReconcileSession>, GitAiError> {
-        Ok(self.sessions_needing_reconcile()?.into_iter().next())
+        let conn = self.lock();
+        let mut stmt = conn.prepare(
+            "SELECT session_id, MAX(external_session_id), MAX(external_parent_session_id),
+                    MAX(tool), MAX(repo_url)
+             FROM tracked_files WHERE needs_reconcile = 1 GROUP BY session_id LIMIT 1",
+        )?;
+        Ok(stmt
+            .query_map([], |row| {
+                Ok(ReconcileSession {
+                    session_id: row.get(0)?,
+                    external_session_id: row.get(1)?,
+                    external_parent_session_id: row.get(2)?,
+                    tool: row.get(3)?,
+                    repo_url: row.get(4)?,
+                })
+            })?
+            .next()
+            .transpose()?)
     }
 
     /// Persist the repo_url the session's events are emitted with, so later
