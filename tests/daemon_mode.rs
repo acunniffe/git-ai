@@ -2451,6 +2451,101 @@ fn sync_family_covers_cross_repo_side_effects_of_other_families() {
     );
 }
 
+/// #2252 observability: when checkpoint admission is delayed behind the
+/// trace-ingest watermark, the daemon must log the delay explicitly instead
+/// of it having to be inferred from absent admission log lines.
+#[test]
+#[cfg(not(windows))]
+fn delayed_checkpoint_admission_is_logged() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    // Delay the trace ingest worker's start so the synthetic frames below are
+    // enqueued but the watermark checkpoint admission waits on cannot advance.
+    // The delay-log interval is lowered so the warning fires well within the
+    // stall window even when daemon startup eats seconds on a loaded runner.
+    let mut daemon = DaemonGuard::start_with_env(
+        &repo,
+        &[
+            ("GIT_AI_TEST_TRACE_INGEST_WORKER_START_DELAY_MS", "10000"),
+            (
+                "GIT_AI_TEST_CHECKPOINT_ADMISSION_DELAY_LOG_INTERVAL_MS",
+                "500",
+            ),
+        ],
+    );
+    let worktree = repo_workdir_string(&repo);
+    let git_dir = repo.path().join(".git").to_string_lossy().to_string();
+
+    send_trace_frames(
+        &daemon_trace_socket_path(&repo),
+        &[
+            json!({
+                "event": "start",
+                "sid": "stalled-ingest-root",
+                "argv": ["git", "commit", "-m", "synthetic"],
+                "time_ns": 10_000u64,
+            }),
+            json!({
+                "event": "def_repo",
+                "sid": "stalled-ingest-root",
+                "worktree": worktree,
+                "repo": git_dir,
+                "time_ns": 10_001u64,
+            }),
+            json!({
+                "event": "exit",
+                "sid": "stalled-ingest-root",
+                "code": 0,
+                "time_ns": 10_100u64,
+            }),
+            trace_atexit_frame("stalled-ingest-root", 0, 10_101u64),
+        ],
+    );
+    // Let the trace reader enqueue the frames (allocating ingest sequence
+    // numbers) before the checkpoint samples its admission target.
+    thread::sleep(Duration::from_millis(200));
+
+    fs::write(repo.path().join("delayed.txt"), "delayed\n").unwrap();
+    let checkpoint = CheckpointRequest {
+        trace_id: "delayed-admission-checkpoint".to_string(),
+        checkpoint_kind: CheckpointKind::AiAgent,
+        agent_id: Some(AgentId {
+            tool: "mock_ai".to_string(),
+            id: "delayed-admission-checkpoint".to_string(),
+            model: "test".to_string(),
+        }),
+        files: vec![CheckpointFile {
+            path: PathBuf::from("delayed.txt"),
+            content: Some("delayed\n".to_string()),
+            repo_work_dir: repo.path().to_path_buf(),
+            base_commit: BaseCommit::Initial,
+        }],
+        path_role: PreparedPathRole::Edited,
+        stream_source: None,
+        metadata: Default::default(),
+    };
+    let response = send_checkpoint_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &checkpoint,
+        Duration::from_secs(2),
+    )
+    .expect("checkpoint should be acknowledged while trace ingest is stalled");
+    assert!(response.ok, "checkpoint failed: {response:?}");
+
+    let started = std::time::Instant::now();
+    loop {
+        let logs = daemon.stderr_contents();
+        if logs.contains("checkpoint admission delayed waiting for trace ingestion") {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(9),
+            "stalled checkpoint admission was not logged (#2252); daemon logs:\n{logs}"
+        );
+        thread::sleep(Duration::from_millis(50));
+    }
+    daemon.shutdown();
+}
+
 #[test]
 #[cfg(not(windows))]
 fn daemon_checkpoint_processing_failure_is_logged_after_receipt_ack() {

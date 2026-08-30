@@ -112,6 +112,11 @@ const CHECKPOINT_FAMILY_DRAIN_CONCURRENCY: usize = 2;
 /// semaphore: they run on the blocking pool and must not be starved by
 /// long command passes.
 const COMMAND_SIDE_EFFECT_CONCURRENCY: usize = 2;
+/// How long an accepted checkpoint may wait on the trace-ingest watermark
+/// before the delay is logged, and the cadence of repeat logs while it keeps
+/// waiting. Healthy admission takes milliseconds; a wait this long means
+/// trace ingestion is stalled and must be visible in the logs (#2252).
+const CHECKPOINT_ADMISSION_DELAY_LOG_INTERVAL: Duration = Duration::from_secs(5);
 // Trace2 frames are written synchronously by Git to the daemon's Unix socket.
 // With small kernel socket buffers (macOS defaults to ~8 KiB), a bursty trace2
 // stream can fill the buffer and block the raw `git` process in `write()` until
@@ -165,6 +170,9 @@ struct CheckpointIngressReservation {
 struct AcceptedCheckpoint {
     receipt_seq: u64,
     received_at_ns: u128,
+    /// Monotonic receipt timestamp for admission-delay measurement;
+    /// `received_at_ns` is wall-clock and can move backwards.
+    received_at: std::time::Instant,
     trace_ingest_target: u64,
     body: Vec<u8>,
     reservation: CheckpointIngressReservation,
@@ -4498,8 +4506,12 @@ impl ActorDaemonCoordinator {
         });
 
         self.notify_checkpoint_stream(&request);
-        self.wait_for_trace_ingest_seq(accepted.trace_ingest_target)
-            .await;
+        self.wait_for_trace_ingest_seq_logging_delay(
+            accepted.trace_ingest_target,
+            accepted.receipt_seq,
+            accepted.received_at,
+        )
+        .await;
 
         tracing::info!(
             component = "daemon",
@@ -4695,6 +4707,58 @@ impl ActorDaemonCoordinator {
             tokio::select! {
                 _ = &mut progress => {}
                 _ = self.wait_for_shutdown() => return,
+            }
+        }
+    }
+
+    fn checkpoint_admission_delay_log_interval() -> Duration {
+        #[cfg(feature = "test-support")]
+        if let Ok(raw) = std::env::var("GIT_AI_TEST_CHECKPOINT_ADMISSION_DELAY_LOG_INTERVAL_MS")
+            && let Ok(interval_ms) = raw.parse::<u64>()
+            && interval_ms > 0
+        {
+            return Duration::from_millis(interval_ms);
+        }
+
+        CHECKPOINT_ADMISSION_DELAY_LOG_INTERVAL
+    }
+
+    /// As [`Self::wait_for_trace_ingest_seq`], but logs whenever the total
+    /// time since the checkpoint's receipt exceeds
+    /// [`CHECKPOINT_ADMISSION_DELAY_LOG_INTERVAL`], so a stalled trace-ingest
+    /// watermark shows up as delayed checkpoint admission instead of having
+    /// to be inferred from absent admission log lines. Admission is serial,
+    /// so a checkpoint can spend most of its delay queued behind the
+    /// head-of-line one; measuring from receipt makes the first warning for
+    /// such a checkpoint fire immediately once its turn comes, and
+    /// `unadmitted_checkpoints` shows how many more are queued behind.
+    async fn wait_for_trace_ingest_seq_logging_delay(
+        &self,
+        target: u64,
+        receipt_seq: u64,
+        received_at: std::time::Instant,
+    ) {
+        let log_interval = Self::checkpoint_admission_delay_log_interval();
+        let mut next_log_in = log_interval.saturating_sub(received_at.elapsed());
+        loop {
+            match tokio::time::timeout(next_log_in, self.wait_for_trace_ingest_seq(target)).await {
+                Ok(()) => return,
+                Err(_) => {
+                    tracing::warn!(
+                        component = "daemon",
+                        phase = "checkpoint_admission",
+                        reason = "admission_delayed_by_trace_ingest",
+                        receipt_seq,
+                        trace_ingest_target = target,
+                        processed_trace_ingest_seq =
+                            self.processed_trace_ingest_seq.load(Ordering::Acquire) as u64,
+                        unadmitted_checkpoints =
+                            self.unadmitted_checkpoints.load(Ordering::Acquire) as u64,
+                        waited_ms = received_at.elapsed().as_millis() as u64,
+                        "checkpoint admission delayed waiting for trace ingestion"
+                    );
+                    next_log_in = log_interval;
+                }
             }
         }
     }
@@ -8304,6 +8368,7 @@ fn handle_control_connection_actor_reader<R: ControlConnection>(
                             as u64
                             + 1;
                         let received_at_ns = now_unix_nanos();
+                        let received_at = std::time::Instant::now();
                         let trace_ingest_target =
                             coordinator.next_trace_ingest_seq.load(Ordering::Acquire) as u64;
                         coordinator
@@ -8312,6 +8377,7 @@ fn handle_control_connection_actor_reader<R: ControlConnection>(
                         permit.send(AcceptedCheckpoint {
                             receipt_seq,
                             received_at_ns,
+                            received_at,
                             trace_ingest_target,
                             body,
                             reservation,
