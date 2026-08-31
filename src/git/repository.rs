@@ -2159,6 +2159,12 @@ struct DiscoveredRepositoryPaths {
     git_common_dir: PathBuf,
 }
 
+/// Message prefix of the error returned when repository discovery without
+/// spawning git finds no repository. The daemon treats these as expected:
+/// traced commands can run outside any repo or in a temp repo deleted before
+/// async processing.
+pub const NO_REPO_WITHOUT_EXEC_ERROR_PREFIX: &str = "No git repository found for path without exec";
+
 fn discover_repository_paths_no_git_exec(
     path: &Path,
 ) -> Result<DiscoveredRepositoryPaths, GitAiError> {
@@ -2259,7 +2265,8 @@ fn discover_repository_paths_no_git_exec(
     }
 
     Err(GitAiError::Generic(format!(
-        "No git repository found for path without exec: {}",
+        "{}: {}",
+        NO_REPO_WITHOUT_EXEC_ERROR_PREFIX,
         path.display()
     )))
 }
