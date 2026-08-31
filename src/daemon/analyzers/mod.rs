@@ -102,10 +102,35 @@ pub(crate) fn normalized_args(argv: &[String]) -> Vec<String> {
     let start = argv
         .first()
         .and_then(|arg| Path::new(arg).file_name().and_then(|name| name.to_str()))
-        .is_some_and(|name| name == "git" || name == "git.exe");
+        .is_some_and(|name| {
+            name.eq_ignore_ascii_case("git") || name.eq_ignore_ascii_case("git.exe")
+        });
     if start {
         argv[1..].to_vec()
     } else {
         argv.to_vec()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalized_args;
+
+    #[test]
+    fn normalized_args_strips_git_executable_prefix_case_insensitively() {
+        let argv: Vec<String> = ["/usr/local/bin/Git.EXE", "update-ref", "refs/heads/x"]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect();
+        assert_eq!(normalized_args(&argv), argv[1..].to_vec());
+    }
+
+    #[test]
+    fn normalized_args_keeps_argv_without_git_prefix() {
+        let argv: Vec<String> = ["update-ref", "refs/heads/x"]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect();
+        assert_eq!(normalized_args(&argv), argv);
     }
 }

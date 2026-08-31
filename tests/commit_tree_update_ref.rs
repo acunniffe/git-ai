@@ -1919,6 +1919,50 @@ fn test_update_ref_current_branch_with_new_content_preserves_attribution() {
 }
 
 #[test]
+fn test_update_ref_with_global_config_flag_preserves_attribution() {
+    let repo = TestRepo::new();
+    setup_initial_commit(&repo);
+
+    repo.git(&["checkout", "-b", "feature"])
+        .expect("checkout feature should succeed");
+
+    fs::write(repo.path().join("global-flag-plumbing.txt"), "branch ai\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "global-flag-plumbing.txt"])
+        .unwrap();
+    repo.git(&["add", "-A"]).unwrap();
+
+    let parent_sha = head_sha(&repo);
+    let tree_sha = repo.git(&["write-tree"]).unwrap().trim().to_string();
+    let commit_sha = repo
+        .git(&[
+            "commit-tree",
+            &tree_sha,
+            "-p",
+            &parent_sha,
+            "-m",
+            "global flag plumbing commit",
+        ])
+        .unwrap()
+        .trim()
+        .to_string();
+    // A global option before the subcommand (`git -c ... update-ref`) must not
+    // break trace2 cursor enrichment of the update-ref command.
+    repo.git(&[
+        "-c",
+        "foo.bar=1",
+        "update-ref",
+        "refs/heads/feature",
+        &commit_sha,
+        &parent_sha,
+    ])
+    .unwrap();
+
+    assert_note_has_ai_for_file(&repo, &commit_sha, "global-flag-plumbing.txt");
+    let mut feature_file = repo.filename("global-flag-plumbing.txt");
+    feature_file.assert_lines_and_blame(lines!["branch ai".ai()]);
+}
+
+#[test]
 fn test_update_ref_fast_forward_bounds_committed_hunks_to_final_commit() {
     let repo = TestRepo::new();
     setup_initial_commit(&repo);
