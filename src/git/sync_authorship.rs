@@ -1,6 +1,6 @@
 use crate::git::refs::{
-    AI_AUTHORSHIP_PUSH_REFSPEC, copy_ref, fallback_merge_notes_ours, merge_notes_from_ref,
-    ref_exists, tracking_ref_for_remote,
+    AI_AUTHORSHIP_FULL_REF, AI_AUTHORSHIP_PUSH_REFSPEC, copy_ref, fallback_merge_notes_ours,
+    merge_notes_from_ref, ref_exists, tracking_ref_for_remote,
 };
 use crate::{
     error::GitAiError,
@@ -360,8 +360,9 @@ pub fn push_authorship_notes(repository: &Repository, remote_name: &str) -> Resu
             Ok(_) => return Ok(()),
             Err(e) => {
                 tracing::debug!("authorship push failed: {}", e);
-                if is_non_fast_forward_error(&e) && attempt + 1 < PUSH_NOTES_MAX_ATTEMPTS {
-                    // Another pusher updated remote notes between our merge and push.
+                if is_retryable_notes_push_rejection(&e) && attempt + 1 < PUSH_NOTES_MAX_ATTEMPTS {
+                    // The notes ref was rejected -- usually because another pusher
+                    // moved remote refs/notes/ai between our merge and push.
                     // Retry the full fetch-merge-push cycle.
                     last_error = Some(e);
                     continue;
@@ -429,11 +430,26 @@ fn fetch_and_merge_tracking_notes(repository: &Repository, remote_name: &str) {
     }
 }
 
-fn is_non_fast_forward_error(error: &GitAiError) -> bool {
+/// Returns true when a rejected notes push may be resolved by retrying the
+/// fetch-merge-push cycle: the remote refs/notes/ai moved concurrently. Git
+/// reports this as a per-ref rejection line whose reason varies by version
+/// and race timing (e.g. "non-fast-forward", "fetch first",
+/// "incorrect old value provided", "failed to update ref"), so match the
+/// rejection line for the notes ref rather than any one reason. This
+/// deliberately also matches permanent rejections (e.g. "pre-receive hook
+/// declined"): a few bounded, pointless retries are accepted to avoid
+/// missing a reason variant. Failures without such a line (auth, network,
+/// missing remote) are not retried.
+fn is_retryable_notes_push_rejection(error: &GitAiError) -> bool {
     let GitAiError::GitCliError { stderr, .. } = error else {
         return false;
     };
-    stderr.contains("non-fast-forward")
+    stderr.lines().any(|line| {
+        line.contains(AI_AUTHORSHIP_FULL_REF)
+            && (line.contains("[rejected]")
+                || line.contains("[remote rejected]")
+                || line.contains("non-fast-forward"))
+    })
 }
 
 fn extract_repository_arg_from_args(args: &[String]) -> Option<String> {
@@ -690,6 +706,104 @@ mod tests {
             extract_repository_arg_from_args(&["HEAD:refs/heads/main".to_string()]),
             None
         );
+    }
+
+    fn push_rejection_error(stderr: &str) -> GitAiError {
+        GitAiError::GitCliError {
+            code: Some(1),
+            stderr: stderr.to_string(),
+            args: vec!["push".to_string(), "origin".to_string()],
+        }
+    }
+
+    /// Remote-side compare-and-swap race: another user's notes push landed
+    /// while ours was being processed by the server. Modern git reports the
+    /// per-ref reason as "incorrect old value provided"; older versions report
+    /// "failed to update ref" with the cannot-lock detail on a sideband line.
+    #[test]
+    fn retryable_push_rejection_matches_remote_cas_race() {
+        let modern = push_rejection_error(
+            "To github.com:org/repo.git\n \
+             ! [remote rejected] refs/notes/ai -> refs/notes/ai (incorrect old value provided)\n\
+             error: failed to push some refs to 'github.com:org/repo.git'",
+        );
+        assert!(is_retryable_notes_push_rejection(&modern));
+
+        let older = push_rejection_error(
+            "remote: error: cannot lock ref 'refs/notes/ai': is at 08e5c53c9adc26b647a4a1943b8ae1a5d47e356c but expected b1f4c05b7500bb47a1ac89ecdaa82ba60d15b6ff\n\
+             To github.com:org/repo.git\n \
+             ! [remote rejected] refs/notes/ai -> refs/notes/ai (failed to update ref)\n\
+             error: failed to push some refs to 'github.com:org/repo.git'",
+        );
+        assert!(is_retryable_notes_push_rejection(&older));
+
+        // Some servers (e.g. GitHub) surface the cannot-lock detail directly
+        // as the per-ref rejection reason.
+        let inline_reason = push_rejection_error(
+            "To github.com:org/repo.git\n \
+             ! [remote rejected]  refs/notes/ai -> refs/notes/ai (cannot lock ref 'refs/notes/ai': is at 08e5c53c9adc26b647a4a1943b8ae1a5d47e356c but expected b1f4c05b7500bb47a1ac89ecdaa82ba60d15b6ff)\n\
+             error: failed to push some refs to 'github.com:org/repo.git'",
+        );
+        assert!(is_retryable_notes_push_rejection(&inline_reason));
+    }
+
+    /// Remote notes advanced between our fetch-merge and push: the stale push
+    /// is rejected with "fetch first" (not "non-fast-forward").
+    #[test]
+    fn retryable_push_rejection_matches_stale_fetch_first_rejection() {
+        let err = push_rejection_error(
+            "To https://github.com/org/repo.git\n \
+             ! [rejected]        refs/notes/ai -> refs/notes/ai (fetch first)\n\
+             error: failed to push some refs to 'https://github.com/org/repo.git'\n\
+             hint: Updates were rejected because the remote contains work that you do not\n\
+             hint: have locally. This is usually caused by another repository pushing to\n\
+             hint: the same ref. If you want to integrate the remote changes, use\n\
+             hint: 'git pull' before pushing again.\n\
+             hint: See the 'Note about fast-forwards' in 'git push --help' for details.",
+        );
+        assert!(is_retryable_notes_push_rejection(&err));
+    }
+
+    /// The original "non-fast-forward" detection keeps working, including on
+    /// a reason-only line without a bracketed status marker.
+    #[test]
+    fn retryable_push_rejection_matches_non_fast_forward() {
+        let err = push_rejection_error(
+            "To github.com:org/repo.git\n \
+             ! [rejected]        refs/notes/ai -> refs/notes/ai (non-fast-forward)\n\
+             error: failed to push some refs to 'github.com:org/repo.git'",
+        );
+        assert!(is_retryable_notes_push_rejection(&err));
+
+        let reason_only = push_rejection_error(
+            "error: failed to push refs/notes/ai to 'github.com:org/repo.git': non-fast-forward",
+        );
+        assert!(is_retryable_notes_push_rejection(&reason_only));
+    }
+
+    /// Failures that a fetch-merge-push retry cannot fix (auth, network,
+    /// missing remote) must not be retried.
+    #[test]
+    fn retryable_push_rejection_ignores_non_retryable_failures() {
+        let auth = push_rejection_error(
+            "remote: Invalid username or token. Password authentication is not supported for Git operations.\n\
+             fatal: Authentication failed for 'https://github.com/org/repo.git/'",
+        );
+        assert!(!is_retryable_notes_push_rejection(&auth));
+
+        let network = push_rejection_error(
+            "fatal: unable to access 'https://github.com/org/repo.git/': Could not resolve host: github.com",
+        );
+        assert!(!is_retryable_notes_push_rejection(&network));
+
+        let missing_remote = push_rejection_error(
+            "fatal: 'origin' does not appear to be a git repository\n\
+             fatal: Could not read from remote repository.",
+        );
+        assert!(!is_retryable_notes_push_rejection(&missing_remote));
+
+        let not_git_error = GitAiError::Generic("some non-git-cli failure".to_string());
+        assert!(!is_retryable_notes_push_rejection(&not_git_error));
     }
 
     #[test]
