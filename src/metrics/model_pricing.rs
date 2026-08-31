@@ -73,10 +73,14 @@ const FAMILY_FALLBACK_TOKENS: [&str; 7] =
 /// "fast" tier is not its API priority pricing), so they are hand-tracked
 /// against vendor price sheets. Exact entries apply to that catalog id only —
 /// "gpt-5.5-pro" must not inherit gpt-5.5's multiplier.
-const FAST_MULTIPLIER_EXACT: [(&str, f64); 6] = [
+const FAST_MULTIPLIER_EXACT: [(&str, f64); 7] = [
     ("gpt-5.6-sol", 2.0),
     ("gpt-5.6-terra", 2.0),
     ("gpt-5.6-luna", 2.0),
+    // The bare family id is an alias that bills as gpt-5.6-sol (ccusage
+    // `pricing_alias`); models.dev catalogs it as its own entry, so it needs
+    // its own multiplier row.
+    ("gpt-5.6", 2.0),
     ("gpt-5.5", 2.5),
     ("gpt-5.4", 2.0),
     ("gpt-5.3-codex", 2.0),
@@ -795,7 +799,9 @@ mod tests {
             "openai": {
                 "models": {
                     "gpt-5.5": {"cost": {"input": 5.0, "output": 30.0}},
-                    "gpt-5.5-pro": {"cost": {"input": 30.0, "output": 180.0}}
+                    "gpt-5.5-pro": {"cost": {"input": 30.0, "output": 180.0}},
+                    "gpt-5.6": {"cost": {"input": 4.0, "output": 20.0}},
+                    "gpt-5.6-sol": {"cost": {"input": 4.0, "output": 20.0}}
                 }
             },
             "anthropic": {
@@ -819,6 +825,13 @@ mod tests {
         assert_eq!(
             catalog.pricing_for("gpt-5.5-pro").unwrap().fast_multiplier,
             1.0
+        );
+        // The bare gpt-5.6 alias bills as gpt-5.6-sol (ccusage
+        // `pricing_alias`), fast multiplier included.
+        assert_eq!(catalog.pricing_for("gpt-5.6").unwrap().fast_multiplier, 2.0);
+        assert_eq!(
+            catalog.pricing_for("gpt-5.6-sol").unwrap().fast_multiplier,
+            2.0
         );
         assert_eq!(
             catalog

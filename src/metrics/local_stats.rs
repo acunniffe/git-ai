@@ -579,6 +579,12 @@ impl CodexSessionAccum {
     }
 }
 
+/// Rough display estimate for `git-ai usage`: flat base rates with the
+/// Claude-shape defaults for unpublished cache rates (0.1x input for reads,
+/// 1.25x for writes) for every tool. The TokenUsage event pipeline
+/// (`src/token_usage/cost.rs`) is the authoritative dollars — it prices
+/// per entry with tier, speed, and per-tool cache-rate semantics (e.g. Codex
+/// bills unpublished cache reads at the full input rate).
 fn estimate_cost(acc: &TokenAccum, pricing: &ModelPricing) -> f64 {
     (acc.input as f64 * pricing.input
         + acc.output as f64 * pricing.output
