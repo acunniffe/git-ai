@@ -659,18 +659,23 @@ fn install_hooks_no_author_prompt_flag_skips_prompt() {
     assert_install_hooks_skips_author_prompt(&output, &repo, "--no-author-prompt flag");
 }
 
-/// End-to-end /dev/tty fallback: stdin is /dev/null (like `curl | bash`,
-/// where stdin is the script pipe), but the process has a controlling
-/// terminal — the pty allocated by script(1), which forwards our piped input
-/// to it.
-#[test]
+/// Run install-hooks under a script(1)-allocated pty: stdin is /dev/null but
+/// the process has a real controlling terminal, exactly like the install
+/// script running from a user's terminal session (`curl | bash`, or an
+/// installed binary's upgrade flow re-running the installer). Answers to any
+/// prompt are piped through the pty. Returns `None` when the environment
+/// cannot host the test (no util-linux script(1), or an unscrubbable ambient
+/// suppression marker).
 #[cfg(target_os = "linux")]
-fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
+fn run_install_hooks_under_pty(
+    repo: &TestRepo,
+    extra_env: &[(&str, &str)],
+) -> Option<std::process::Output> {
     use std::io::Write as _;
 
     if let Some(reason) = ambient_unscrubbable_prompt_suppression() {
         eprintln!("skipping: {reason} suppresses the author prompt");
-        return;
+        return None;
     }
 
     // A spawn error means no script(1) at all; a non-success exit means a
@@ -679,11 +684,9 @@ fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
         Ok(output) if output.status.success() => {}
         _ => {
             eprintln!("skipping: util-linux script(1) not available");
-            return;
+            return None;
         }
     }
-
-    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
 
     // Build the normal test command purely to harvest the binary path and the
     // isolated environment, then re-run it under script's pty.
@@ -695,6 +698,9 @@ fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
         ],
     );
     remove_ambient_prompt_suppression_env(&mut inner);
+    for (key, value) in extra_env {
+        inner.env(key, value);
+    }
     let binary = inner.get_program().to_str().unwrap().to_string();
 
     let mut command = Command::new("script");
@@ -724,7 +730,20 @@ fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
         .unwrap()
         .write_all(b"Bob\nbob@example.com\n")
         .unwrap();
-    let output = child.wait_with_output().expect("wait for script");
+    Some(child.wait_with_output().expect("wait for script"))
+}
+
+/// End-to-end /dev/tty fallback: stdin is /dev/null (like `curl | bash`,
+/// where stdin is the script pipe), but the process has a controlling
+/// terminal — the pty allocated by script(1), which forwards our piped input
+/// to it.
+#[test]
+#[cfg(target_os = "linux")]
+fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let Some(output) = run_install_hooks_under_pty(&repo, &[]) else {
+        return;
+    };
 
     assert!(
         output.status.success(),
@@ -743,6 +762,50 @@ fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
     let config = git_ai_config_json(&repo);
     assert_eq!(config["author"]["name"], "Bob");
     assert_eq!(config["author"]["email"], "bob@example.com");
+}
+
+/// Compatibility with OLD binaries driving the auto-update flow: a released
+/// (pre-prompt) git-ai fetches the new install script and ends up running the
+/// NEW binary's `install-hooks --env` with only the env vars the old binary
+/// sets. Its daemon-silent path exports GIT_AI_DAEMON_UPGRADE=1 but runs in
+/// the user's session, where /dev/tty is still openable — the new binary must
+/// recognize the marker and never prompt. (The companion positive test above
+/// proves this same pty harness detects the prompt when no marker is set.)
+#[test]
+#[cfg(target_os = "linux")]
+fn install_hooks_under_pty_skips_prompt_for_old_binary_daemon_upgrade() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let Some(output) = run_install_hooks_under_pty(&repo, &[("GIT_AI_DAEMON_UPGRADE", "1")]) else {
+        return;
+    };
+    assert_install_hooks_skips_author_prompt(
+        &output,
+        &repo,
+        "old-binary daemon upgrade with an openable /dev/tty",
+    );
+}
+
+/// Same as above for the old binaries' background upgrade worker, which does
+/// NOT set GIT_AI_DAEMON_UPGRADE (its install runs non-silent) but always
+/// carries GIT_AI_BACKGROUND_UPGRADE_WORKER=1 from its spawn guard.
+#[test]
+#[cfg(target_os = "linux")]
+fn install_hooks_under_pty_skips_prompt_for_old_binary_background_upgrade_worker() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let Some(output) = run_install_hooks_under_pty(
+        &repo,
+        &[(
+            git_ai::commands::upgrade::ENV_BACKGROUND_UPGRADE_WORKER,
+            "1",
+        )],
+    ) else {
+        return;
+    };
+    assert_install_hooks_skips_author_prompt(
+        &output,
+        &repo,
+        "old-binary background upgrade worker with an openable /dev/tty",
+    );
 }
 
 #[test]
