@@ -325,10 +325,17 @@ impl TokenUsageWorker {
                         // notify task settles all flags inline for the drain
                         // barrier): settle once the backlog drains, instead
                         // of re-aggregating the flagged sessions after every
-                        // file of a large backfill.
+                        // file of a large backfill. Ingest what arrived
+                        // during the pass first — traffic sitting in the
+                        // channels must not wait behind even one throttled
+                        // reconcile step.
+                        while let Ok(task) = self.notify_rx.try_recv() {
+                            self.enqueue_notify(task);
+                        }
                         if matches!(origin, TaskOrigin::Sweep)
                             && self.notify_queue.is_empty()
                             && self.sweep_queue.is_empty()
+                            && self.drain_rx.is_empty()
                             && !self.shutdown_flag.load(Ordering::Relaxed)
                         {
                             self.reconcile_flagged().await;
