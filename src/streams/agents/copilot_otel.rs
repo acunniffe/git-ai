@@ -57,41 +57,47 @@ fn read_otel_spans_incremental_with(
 
     let conn = open_sqlite_readonly(path)?;
 
-    let mut spans = read_spans_after(&conn, cursor.timestamp_millis, &cursor.last_id, batch_size)?;
-    if spans.is_empty() {
-        return Ok(StreamBatch {
-            events: vec![],
-            new_watermark: Box::new(cursor.clone()),
-        });
-    }
+    // Oversized spans are skipped by advancing the keyset cursor past them
+    // and re-reading WITHIN this poll: returning early on a skip would let
+    // the caller treat the poll as complete and strand the spans behind the
+    // giant one until the database next changes.
+    let mut cursor_ms = cursor.timestamp_millis;
+    let mut cursor_id = cursor.last_id.clone();
+    let (mut spans, payload_bytes) = loop {
+        let spans = read_spans_after(&conn, cursor_ms, &cursor_id, batch_size)?;
+        if spans.is_empty() {
+            return Ok(StreamBatch {
+                events: vec![],
+                new_watermark: Box::new(TimestampCursorWatermark::new(cursor_ms, cursor_id)),
+            });
+        }
 
-    // Byte-bound the batch: the LIMIT above is count-only, but the attribute
-    // and event TEXT payloads are unbounded, so a count-only batch could
-    // materialize arbitrarily many MBs at once (#2244). Payload sizes come
-    // from SQL LENGTH sums, so nothing is inflated for the estimate.
-    let all_ids: Vec<&str> = spans.iter().map(|s| s.span_id.as_str()).collect();
-    let payload_bytes = read_payload_bytes_for_spans(&conn, &all_ids)?;
+        // Byte-bound the batch: the LIMIT above is count-only, but the
+        // attribute and event TEXT payloads are unbounded, so a count-only
+        // batch could materialize arbitrarily many MBs at once (#2244).
+        // Payload sizes come from SQL LENGTH sums, so nothing is inflated
+        // for the estimate.
+        let all_ids: Vec<&str> = spans.iter().map(|s| s.span_id.as_str()).collect();
+        let payload_bytes = read_payload_bytes_for_spans(&conn, &all_ids)?;
 
-    // A single span whose payload alone exceeds the per-line budget is
-    // skipped outright: keyset pagination makes advancing past it exact,
-    // and parsing it would defeat the byte bound.
-    let first_bytes = payload_bytes.get(&spans[0].span_id).copied().unwrap_or(0);
-    if first_bytes > max_span_bytes {
-        let first = &spans[0];
-        tracing::warn!(
-            span_id = %first.span_id,
-            payload_bytes = first_bytes,
-            max_bytes = max_span_bytes,
-            "skipping oversized OTEL span"
-        );
-        return Ok(StreamBatch {
-            events: vec![],
-            new_watermark: Box::new(TimestampCursorWatermark::new(
-                first.end_time_ms,
-                first.span_id.clone(),
-            )),
-        });
-    }
+        // A single span whose payload alone exceeds the per-line budget is
+        // skipped outright: keyset pagination makes advancing past it exact,
+        // and parsing it would defeat the byte bound.
+        let first_bytes = payload_bytes.get(&spans[0].span_id).copied().unwrap_or(0);
+        if first_bytes > max_span_bytes {
+            let first = &spans[0];
+            tracing::warn!(
+                span_id = %first.span_id,
+                payload_bytes = first_bytes,
+                max_bytes = max_span_bytes,
+                "skipping oversized OTEL span"
+            );
+            cursor_ms = first.end_time_ms;
+            cursor_id = first.span_id.clone();
+            continue;
+        }
+        break (spans, payload_bytes);
+    };
 
     // Truncate at the batch byte budget (always keeping at least one span);
     // the remainder arrives next poll via the keyset cursor.
@@ -529,18 +535,20 @@ mod tests {
         insert_span_attr(&conn, "normal", "payload", &"y".repeat(10));
         drop(conn);
 
-        // The giant span exceeds the 1024-byte per-span budget: skipped, with
-        // the cursor advanced past it so it is never re-read.
+        // The giant span exceeds the 1024-byte per-span budget: skipped with
+        // the cursor advanced past it, and the SAME poll continues to the
+        // spans behind it — an early return would strand them until the
+        // database next changes.
         let watermark: Box<dyn WatermarkStrategy> = Box::new(TimestampCursorWatermark::initial());
         let batch = read_otel_spans_incremental_with(&db_path, watermark, 100, 4096, 1024).unwrap();
-        assert!(batch.events.is_empty());
-        assert_eq!(batch.new_watermark.serialize(), "1000|giant");
+        assert_eq!(batch.events.len(), 1);
+        assert_eq!(batch.events[0]["span"]["span_id"], "normal");
+        assert_eq!(batch.new_watermark.serialize(), "2000|normal");
 
         let batch =
             read_otel_spans_incremental_with(&db_path, batch.new_watermark, 100, 4096, 1024)
                 .unwrap();
-        assert_eq!(batch.events.len(), 1);
-        assert_eq!(batch.events[0]["span"]["span_id"], "normal");
+        assert!(batch.events.is_empty(), "the giant span is never re-read");
     }
 
     #[test]

@@ -55,46 +55,62 @@ impl OpenCodeAgent {
         // could theoretically be skipped, but OpenCode writes are interactive
         // (not concurrent) so millisecond collisions are effectively
         // impossible in practice.
-        let through_millis = match plan_message_batch(
-            &conn,
-            session_id,
-            watermark_millis,
-            self.batch_size,
-            max_batch_bytes,
-            max_row_bytes,
-        )? {
-            BatchPlan::Empty => {
-                return Ok(StreamBatch {
-                    events: Vec::new(),
-                    new_watermark: Box::new(TimestampWatermark::new(ts_watermark.0)),
-                });
+        //
+        // Oversized rows are skipped by advancing the effective watermark
+        // past them and re-planning WITHIN this poll: returning early on a
+        // skip would let the caller treat the poll as complete and stamp the
+        // file's size/mtime, stranding the history behind the giant row
+        // until the database next changes.
+        let mut effective_after = watermark_millis;
+        let through_millis = loop {
+            match plan_message_batch(
+                &conn,
+                session_id,
+                effective_after,
+                self.batch_size,
+                max_batch_bytes,
+                max_row_bytes,
+            )? {
+                BatchPlan::Empty => {
+                    // A true no-op poll must return the original watermark
+                    // object: reconstructing it from truncated milliseconds
+                    // would serialize differently and defeat the caller's
+                    // no-op-poll detection.
+                    let new_watermark: Box<dyn WatermarkStrategy> =
+                        if effective_after == watermark_millis {
+                            Box::new(TimestampWatermark::new(ts_watermark.0))
+                        } else {
+                            let skipped_ts = DateTime::from_timestamp_millis(effective_after)
+                                .unwrap_or(ts_watermark.0);
+                            Box::new(TimestampWatermark::new(skipped_ts))
+                        };
+                    return Ok(StreamBatch {
+                        events: Vec::new(),
+                        new_watermark,
+                    });
+                }
+                BatchPlan::SkipOversized {
+                    through_millis,
+                    bytes,
+                } => {
+                    tracing::warn!(
+                        path = %path.display(),
+                        session_id,
+                        time_updated = through_millis,
+                        row_bytes = bytes,
+                        max_bytes = max_row_bytes,
+                        "skipping oversized OpenCode message; advancing watermark past it"
+                    );
+                    effective_after = through_millis;
+                }
+                BatchPlan::ReadThrough { through_millis } => break through_millis,
             }
-            BatchPlan::SkipOversized {
-                through_millis,
-                bytes,
-            } => {
-                tracing::warn!(
-                    path = %path.display(),
-                    session_id,
-                    time_updated = through_millis,
-                    row_bytes = bytes,
-                    max_bytes = max_row_bytes,
-                    "skipping oversized OpenCode message; advancing watermark past it"
-                );
-                let skipped_ts =
-                    DateTime::from_timestamp_millis(through_millis).unwrap_or(ts_watermark.0);
-                return Ok(StreamBatch {
-                    events: Vec::new(),
-                    new_watermark: Box::new(TimestampWatermark::new(skipped_ts)),
-                });
-            }
-            BatchPlan::ReadThrough { through_millis } => through_millis,
         };
 
         let messages = read_session_messages_raw_with_limit(
             &conn,
             session_id,
-            watermark_millis,
+            effective_after,
             through_millis,
             self.batch_size,
         )?;
@@ -103,12 +119,12 @@ impl OpenCodeAgent {
         let mut parts_by_message = read_parts_for_messages_with_limit(
             &conn,
             session_id,
-            watermark_millis,
+            effective_after,
             through_millis,
             self.batch_size,
         )?;
 
-        let mut max_updated: i64 = watermark_millis;
+        let mut max_updated: i64 = effective_after;
         let mut events = Vec::with_capacity(messages.len());
 
         for (msg_id, time_updated, msg_data) in messages {
@@ -534,8 +550,10 @@ mod tests {
         drop(conn);
 
         let agent = OpenCodeAgent::new();
-        // The giant row exceeds the 1024-byte per-row budget: skipped, with
-        // the watermark advanced past its timestamp so it is never re-read.
+        // The giant row exceeds the 1024-byte per-row budget: skipped with
+        // the watermark advanced past its timestamp, and the SAME poll
+        // continues to the rows behind it — an early return would strand
+        // them until the database next changes.
         let batch = agent
             .read_incremental_bounded(
                 &db_path,
@@ -547,13 +565,13 @@ mod tests {
                 1024,
             )
             .unwrap();
-        assert!(batch.events.is_empty());
+        assert_eq!(batch.events.len(), 1);
+        assert_eq!(batch.events[0]["message"]["id"], "normal");
 
         let batch = agent
             .read_incremental_bounded(&db_path, batch.new_watermark, "test-session", 4096, 1024)
             .unwrap();
-        assert_eq!(batch.events.len(), 1);
-        assert_eq!(batch.events[0]["message"]["id"], "normal");
+        assert!(batch.events.is_empty(), "the giant row is never re-read");
     }
 
     #[test]

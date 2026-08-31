@@ -44,7 +44,10 @@ pub fn handle_flush_metrics_db(_args: &[String]) {
                     break;
                 }
             };
-            match db_lock.dequeue_pending_batch(MAX_BATCH_SIZE) {
+            match db_lock.dequeue_pending_batch(
+                MAX_BATCH_SIZE,
+                crate::config::Config::get().max_metrics_flush_chunk_bytes(),
+            ) {
                 Ok(batch) => batch,
                 Err(e) => {
                     eprintln!("flush-metrics-db: failed to read batch: {}", e);
