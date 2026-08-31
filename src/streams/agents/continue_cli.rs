@@ -100,6 +100,13 @@ impl Agent for ContinueAgent {
         watermark: Box<dyn WatermarkStrategy>,
         session_id: &str,
     ) -> Result<StreamBatch, StreamError> {
+        // Whole-file parse below: gate on size first (#2244).
+        if crate::streams::types::skip_whole_file_over_budget(path, "Continue", session_id) {
+            return Ok(StreamBatch {
+                events: Vec::new(),
+                new_watermark: watermark,
+            });
+        }
         // Downcast watermark to RecordIndexWatermark
         let record_watermark = watermark
             .as_any()
@@ -193,6 +200,26 @@ impl Agent for ContinueAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_oversized_thread_file_is_skipped_with_watermark_unchanged() {
+        // A sparse file over the 64 MiB default whole-file budget: the gate
+        // must return an empty batch without parsing (a parse would fail on
+        // the zero bytes) and leave the watermark where it was.
+        let file = tempfile::NamedTempFile::new().unwrap();
+        file.as_file().set_len(65 * 1024 * 1024).unwrap();
+
+        let agent = ContinueAgent::new();
+        let batch = agent
+            .read_incremental(
+                file.path(),
+                Box::new(crate::streams::watermark::RecordIndexWatermark::new(7)),
+                "session-1",
+            )
+            .expect("over-budget file should be skipped, not an error");
+        assert!(batch.events.is_empty());
+        assert_eq!(batch.new_watermark.serialize(), "7");
+    }
 
     #[test]
     fn test_sweep_strategy() {

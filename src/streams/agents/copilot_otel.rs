@@ -31,6 +31,23 @@ pub fn read_otel_spans_incremental(
     watermark: Box<dyn WatermarkStrategy>,
     batch_size: usize,
 ) -> Result<StreamBatch, StreamError> {
+    let config = crate::config::Config::get();
+    read_otel_spans_incremental_with(
+        path,
+        watermark,
+        batch_size,
+        config.max_transcript_batch_bytes() as u64,
+        config.max_transcript_line_bytes(),
+    )
+}
+
+fn read_otel_spans_incremental_with(
+    path: &Path,
+    watermark: Box<dyn WatermarkStrategy>,
+    batch_size: usize,
+    max_batch_bytes: u64,
+    max_span_bytes: u64,
+) -> Result<StreamBatch, StreamError> {
     let cursor = watermark
         .as_any()
         .downcast_ref::<TimestampCursorWatermark>()
@@ -40,13 +57,55 @@ pub fn read_otel_spans_incremental(
 
     let conn = open_sqlite_readonly(path)?;
 
-    let spans = read_spans_after(&conn, cursor.timestamp_millis, &cursor.last_id, batch_size)?;
+    let mut spans = read_spans_after(&conn, cursor.timestamp_millis, &cursor.last_id, batch_size)?;
     if spans.is_empty() {
         return Ok(StreamBatch {
             events: vec![],
             new_watermark: Box::new(cursor.clone()),
         });
     }
+
+    // Byte-bound the batch: the LIMIT above is count-only, but the attribute
+    // and event TEXT payloads are unbounded, so a count-only batch could
+    // materialize arbitrarily many MBs at once (#2244). Payload sizes come
+    // from SQL LENGTH sums, so nothing is inflated for the estimate.
+    let all_ids: Vec<&str> = spans.iter().map(|s| s.span_id.as_str()).collect();
+    let payload_bytes = read_payload_bytes_for_spans(&conn, &all_ids)?;
+
+    // A single span whose payload alone exceeds the per-line budget is
+    // skipped outright: keyset pagination makes advancing past it exact,
+    // and parsing it would defeat the byte bound.
+    let first_bytes = payload_bytes.get(&spans[0].span_id).copied().unwrap_or(0);
+    if first_bytes > max_span_bytes {
+        let first = &spans[0];
+        tracing::warn!(
+            span_id = %first.span_id,
+            payload_bytes = first_bytes,
+            max_bytes = max_span_bytes,
+            "skipping oversized OTEL span"
+        );
+        return Ok(StreamBatch {
+            events: vec![],
+            new_watermark: Box::new(TimestampCursorWatermark::new(
+                first.end_time_ms,
+                first.span_id.clone(),
+            )),
+        });
+    }
+
+    // Truncate at the batch byte budget (always keeping at least one span);
+    // the remainder arrives next poll via the keyset cursor.
+    let mut cumulative = 0u64;
+    let mut included = 0usize;
+    for span in &spans {
+        let bytes = payload_bytes.get(&span.span_id).copied().unwrap_or(0);
+        if included > 0 && cumulative + bytes > max_batch_bytes {
+            break;
+        }
+        cumulative += bytes;
+        included += 1;
+    }
+    spans.truncate(included);
 
     let span_ids: Vec<&str> = spans.iter().map(|s| s.span_id.as_str()).collect();
     let attributes = read_attributes_for_spans(&conn, &span_ids)?;
@@ -190,6 +249,39 @@ fn read_spans_after(
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|e| map_sqlite_error(e, "Failed to read span row"))
+}
+
+/// Approximate payload bytes per span: attribute values plus event attribute
+/// blobs (the unbounded TEXT columns; the span row itself is small fixed
+/// columns). Computed with SQL LENGTH sums so nothing is materialized.
+fn read_payload_bytes_for_spans(
+    conn: &Connection,
+    span_ids: &[&str],
+) -> Result<HashMap<String, u64>, StreamError> {
+    let mut result: HashMap<String, u64> = HashMap::new();
+    let placeholders: String = span_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    for (table, expr) in [
+        ("span_attributes", "LENGTH(COALESCE(value, ''))"),
+        ("span_events", "LENGTH(COALESCE(attributes, ''))"),
+    ] {
+        let sql = format!(
+            "SELECT span_id, SUM({expr}) FROM {table} WHERE span_id IN ({placeholders}) GROUP BY span_id"
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| map_sqlite_error(e, "Failed to prepare payload size query"))?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(span_ids.iter()), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })
+            .map_err(|e| map_sqlite_error(e, "Failed to query payload sizes"))?;
+        for row in rows {
+            let (span_id, bytes) =
+                row.map_err(|e| map_sqlite_error(e, "Failed to read payload size row"))?;
+            *result.entry(span_id).or_insert(0) += bytes.max(0) as u64;
+        }
+    }
+    Ok(result)
 }
 
 fn read_attributes_for_spans(
@@ -391,6 +483,64 @@ mod tests {
             rusqlite::params![span_id, end_time_ms - 1000, end_time_ms, input_tokens, output_tokens],
         )
         .unwrap();
+    }
+
+    fn insert_span_attr(conn: &rusqlite::Connection, span_id: &str, key: &str, value: &str) {
+        conn.execute(
+            "INSERT INTO span_attributes (span_id, key, value) VALUES (?1, ?2, ?3)",
+            rusqlite::params![span_id, key, value],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_batch_truncates_at_byte_budget_and_resumes() {
+        let (_dir, db_path) = create_test_otel_db();
+        let conn = crate::sqlite::open_with_memory_limits(&db_path).unwrap();
+        for i in 1..=4 {
+            let span_id = format!("span{}", i);
+            insert_span(&conn, &span_id, i * 1000, 100, 50);
+            insert_span_attr(&conn, &span_id, "payload", &"x".repeat(100));
+        }
+        drop(conn);
+
+        // 250-byte batch budget fits two 100-byte payloads (the check runs
+        // before the third would exceed it); per-span budget stays permissive.
+        let watermark: Box<dyn WatermarkStrategy> = Box::new(TimestampCursorWatermark::initial());
+        let batch = read_otel_spans_incremental_with(&db_path, watermark, 100, 250, 1024).unwrap();
+        assert_eq!(batch.events.len(), 2);
+        assert_eq!(batch.events[1]["span"]["span_id"], "span2");
+
+        // The keyset watermark resumes exactly after the last included span.
+        let batch = read_otel_spans_incremental_with(&db_path, batch.new_watermark, 100, 250, 1024)
+            .unwrap();
+        assert_eq!(batch.events.len(), 2);
+        assert_eq!(batch.events[0]["span"]["span_id"], "span3");
+        assert_eq!(batch.events[1]["span"]["span_id"], "span4");
+    }
+
+    #[test]
+    fn test_oversized_span_is_skipped_with_cursor_advanced() {
+        let (_dir, db_path) = create_test_otel_db();
+        let conn = crate::sqlite::open_with_memory_limits(&db_path).unwrap();
+        insert_span(&conn, "giant", 1000, 100, 50);
+        insert_span_attr(&conn, "giant", "payload", &"x".repeat(2000));
+        insert_span(&conn, "normal", 2000, 100, 50);
+        insert_span_attr(&conn, "normal", "payload", &"y".repeat(10));
+        drop(conn);
+
+        // The giant span exceeds the 1024-byte per-span budget: skipped, with
+        // the cursor advanced past it so it is never re-read.
+        let watermark: Box<dyn WatermarkStrategy> = Box::new(TimestampCursorWatermark::initial());
+        let batch = read_otel_spans_incremental_with(&db_path, watermark, 100, 4096, 1024).unwrap();
+        assert!(batch.events.is_empty());
+        assert_eq!(batch.new_watermark.serialize(), "1000|giant");
+
+        let batch =
+            read_otel_spans_incremental_with(&db_path, batch.new_watermark, 100, 4096, 1024)
+                .unwrap();
+        assert_eq!(batch.events.len(), 1);
+        assert_eq!(batch.events[0]["span"]["span_id"], "normal");
     }
 
     #[test]

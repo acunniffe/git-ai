@@ -396,6 +396,13 @@ fn read_session_json(
     session_id: &str,
     batch_limit: usize,
 ) -> Result<StreamBatch, StreamError> {
+    // Whole-file parse below: gate on size first (#2244).
+    if crate::streams::types::skip_whole_file_over_budget(path, "Copilot session", session_id) {
+        return Ok(StreamBatch {
+            events: Vec::new(),
+            new_watermark: watermark,
+        });
+    }
     let record_watermark = watermark
         .as_any()
         .downcast_ref::<RecordIndexWatermark>()
@@ -495,6 +502,28 @@ pub(super) fn read_event_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_oversized_session_json_is_skipped_with_watermark_unchanged() {
+        // A sparse .json file over the 64 MiB default whole-file budget: the
+        // gate must return an empty batch without parsing and leave the
+        // watermark where it was.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("session.json");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(65 * 1024 * 1024).unwrap();
+
+        let batch = read_session_json(
+            &path,
+            Box::new(RecordIndexWatermark::new(3)),
+            "session-1",
+            1000,
+        )
+        .expect("over-budget session json should be skipped, not an error");
+        assert!(batch.events.is_empty());
+        assert_eq!(batch.new_watermark.serialize(), "3");
+    }
+
     use crate::streams::watermark::ByteOffsetWatermark;
 
     #[test]
