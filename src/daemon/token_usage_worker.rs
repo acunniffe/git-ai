@@ -547,6 +547,7 @@ impl TokenUsageWorker {
                 &token_db,
                 &sink,
                 throttle,
+                origin,
                 &task_clone,
                 &shutdown_flag,
             )
@@ -710,6 +711,7 @@ fn process_task_blocking(
     token_db: &TokenUsageDatabase,
     sink: &impl Fn(&[MetricEvent]) -> Result<(), GitAiError>,
     throttle: Option<&(dyn Fn(Duration) + Sync)>,
+    origin: TaskOrigin,
     task: &TokenUsageTask,
     shutdown_flag: &AtomicBool,
 ) -> Result<(), GitAiError> {
@@ -758,7 +760,7 @@ fn process_task_blocking(
     // transcript — charging them here would put a healthy file into error
     // backoff and point diagnostics at the wrong session.
     if result.is_ok()
-        && throttle.is_none()
+        && origin == TaskOrigin::Notify
         && let Err(e) = reconcile_flagged_sessions(token_db, sink)
     {
         tracing::warn!(error = %e, "token-usage cross-session reconcile failed; flags retained for retry");
@@ -2241,6 +2243,7 @@ mod tests {
                 &token_db,
                 &|e| sink(e),
                 Some(&noop_throttle),
+                TaskOrigin::Sweep,
                 &TokenUsageTask {
                     session_id: session.to_string(),
                     tool: "claude".to_string(),
@@ -2262,6 +2265,7 @@ mod tests {
             &token_db,
             &|e| sink(e),
             None,
+            TaskOrigin::Notify,
             &TokenUsageTask {
                 session_id: "s_resume".to_string(),
                 tool: "claude".to_string(),
@@ -2647,6 +2651,7 @@ mod tests {
             &token_db,
             &|_: &[MetricEvent]| Ok(()),
             None,
+            TaskOrigin::Notify,
             &task,
             &AtomicBool::new(false),
         );
@@ -2908,6 +2913,7 @@ mod tests {
             &token_db,
             &|e| sink(e),
             None,
+            TaskOrigin::Notify,
             &task,
             &flag_off(),
         )
@@ -2931,6 +2937,7 @@ mod tests {
             &token_db,
             &|e| sink(e),
             None,
+            TaskOrigin::Notify,
             &task,
             &flag_off(),
         )
@@ -3121,6 +3128,7 @@ mod tests {
     /// parse batches.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore]
+    #[cfg(target_os = "linux")] // CPU/RSS sampling reads /proc
     async fn bench_backfill_cpu_duty() {
         const BASE_SESSIONS: usize = 240;
         const LINES_PER_SESSION: usize = 800;

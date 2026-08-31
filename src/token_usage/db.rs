@@ -454,6 +454,23 @@ pub struct ReconcileSession {
     pub repo_url: Option<String>,
 }
 
+/// Grouped projection of the flagged sessions, shared by the full listing
+/// and the incremental single-session fetch so the two can never diverge.
+const RECONCILE_SESSIONS_SQL: &str =
+    "SELECT session_id, MAX(external_session_id), MAX(external_parent_session_id),
+            MAX(tool), MAX(repo_url)
+     FROM tracked_files WHERE needs_reconcile = 1 GROUP BY session_id";
+
+fn read_reconcile_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReconcileSession> {
+    Ok(ReconcileSession {
+        session_id: row.get(0)?,
+        external_session_id: row.get(1)?,
+        external_parent_session_id: row.get(2)?,
+        tool: row.get(3)?,
+        repo_url: row.get(4)?,
+    })
+}
+
 /// One extracted batch to persist atomically.
 pub struct BatchCommit<'a> {
     pub session_id: &'a str,
@@ -667,20 +684,8 @@ impl TokenUsageDatabase {
     /// file: identity plus the repo_url their events were last emitted with.
     pub fn sessions_needing_reconcile(&self) -> Result<Vec<ReconcileSession>, GitAiError> {
         let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "SELECT session_id, MAX(external_session_id), MAX(external_parent_session_id),
-                    MAX(tool), MAX(repo_url)
-             FROM tracked_files WHERE needs_reconcile = 1 GROUP BY session_id",
-        )?;
-        let rows = stmt.query_map([], |row| {
-            Ok(ReconcileSession {
-                session_id: row.get(0)?,
-                external_session_id: row.get(1)?,
-                external_parent_session_id: row.get(2)?,
-                tool: row.get(3)?,
-                repo_url: row.get(4)?,
-            })
-        })?;
+        let mut stmt = conn.prepare(RECONCILE_SESSIONS_SQL)?;
+        let rows = stmt.query_map([], read_reconcile_session)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
@@ -689,21 +694,9 @@ impl TokenUsageDatabase {
     /// [`Self::sessions_needing_reconcile`], stopping at the first group).
     pub fn next_session_needing_reconcile(&self) -> Result<Option<ReconcileSession>, GitAiError> {
         let conn = self.lock();
-        let mut stmt = conn.prepare(
-            "SELECT session_id, MAX(external_session_id), MAX(external_parent_session_id),
-                    MAX(tool), MAX(repo_url)
-             FROM tracked_files WHERE needs_reconcile = 1 GROUP BY session_id LIMIT 1",
-        )?;
+        let mut stmt = conn.prepare(&format!("{RECONCILE_SESSIONS_SQL} LIMIT 1"))?;
         Ok(stmt
-            .query_map([], |row| {
-                Ok(ReconcileSession {
-                    session_id: row.get(0)?,
-                    external_session_id: row.get(1)?,
-                    external_parent_session_id: row.get(2)?,
-                    tool: row.get(3)?,
-                    repo_url: row.get(4)?,
-                })
-            })?
+            .query_map([], read_reconcile_session)?
             .next()
             .transpose()?)
     }
