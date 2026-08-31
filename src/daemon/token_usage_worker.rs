@@ -3394,4 +3394,322 @@ mod tests {
             .collect();
         println!("duty/s: {}", timeline.join(" "));
     }
+
+    /// CPU/RSS profile over a small number of GIANT transcripts (500MB-2GB
+    /// each, ~8GB total), the complement of `bench_backfill_cpu_duty`'s
+    /// many-small-files corpus: single-file batch chains hundreds of
+    /// batches long, a fork prefix streamed from a 1GB parent, a resume
+    /// copy flagging a giant session, and pathological single lines (100MB
+    /// unmatched, 50MB matching the usage prefilter) that bound the line
+    /// buffer and parse allocations. Ignored: needs ~8GB free in the temp
+    /// dir; run manually with NO_CAPTURE and --ignored and read the
+    /// printed duty/RSS timeline.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore]
+    #[cfg(target_os = "linux")] // CPU/RSS sampling reads /proc
+    async fn bench_giant_transcripts_cpu_rss() {
+        use std::io::Write;
+
+        fn cpu_ticks() -> u64 {
+            let stat = std::fs::read_to_string("/proc/self/stat").unwrap();
+            let after = &stat[stat.rfind(')').unwrap() + 2..];
+            let fields: Vec<&str> = after.split_whitespace().collect();
+            fields[11].parse::<u64>().unwrap() + fields[12].parse::<u64>().unwrap()
+        }
+        fn rss_kb() -> u64 {
+            std::fs::read_to_string("/proc/self/status")
+                .unwrap()
+                .lines()
+                .find(|l| l.starts_with("VmRSS:"))
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0)
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+
+        // ~3KB noise lines that miss each tool's prefilter.
+        let claude_noise = format!(
+            "{{\"type\":\"assistant\",\"timestamp\":\"{}\",\"content\":\"{}\"}}\n",
+            recent_ts(1, 0),
+            "n".repeat(3000)
+        );
+        let codex_noise = format!(
+            "{{\"timestamp\":\"{}\",\"type\":\"event_msg\",\"payload\":{{\"type\":\"agent_message\",\"message\":\"{}\"}}}}\n",
+            recent_ts(1, 0),
+            "n".repeat(3000)
+        );
+        let claude_usage = |sess: &str, i: usize, output: u64| {
+            let ts = recent_ts((i / 12) as u32 % 1000, (i % 12) as u32 * 5);
+            format!(
+                "{{\"timestamp\":\"{ts}\",\"sessionId\":\"ext-{sess}\",\"requestId\":\"r{sess}_{i}\",\"message\":{{\"id\":\"m{sess}_{i}\",\"model\":\"claude-sonnet-4-6-20260115\",\"usage\":{{\"input_tokens\":220,\"output_tokens\":{output},\"cache_creation_input_tokens\":40,\"cache_read_input_tokens\":18000}}}}}}\n"
+            )
+        };
+        let codex_usage = |i: usize| {
+            let base = (i as u64 + 1) * 1500;
+            format!(
+                "{}\n",
+                codex_usage_line(
+                    &recent_ts((i / 12) as u32 % 1000, (i % 12) as u32 * 5),
+                    (base, base / 3, base / 10, base / 40, base + base / 10),
+                )
+            )
+        };
+
+        // Write `target` bytes: one usage line per `interval` noise lines.
+        let write_claude_giant = |path: &std::path::Path, sess: &str, target: u64, output: u64| {
+            let mut w = std::io::BufWriter::with_capacity(
+                1024 * 1024,
+                std::fs::File::create(path).unwrap(),
+            );
+            let mut written = 0u64;
+            let mut i = 0usize;
+            while written < target {
+                for _ in 0..50 {
+                    w.write_all(claude_noise.as_bytes()).unwrap();
+                    written += claude_noise.len() as u64;
+                }
+                let usage = claude_usage(sess, i, output);
+                w.write_all(usage.as_bytes()).unwrap();
+                written += usage.len() as u64;
+                i += 1;
+            }
+            w.flush().unwrap();
+        };
+        let write_codex_giant = |path: &std::path::Path, ext_id: &str, target: u64| {
+            let mut w = std::io::BufWriter::with_capacity(
+                1024 * 1024,
+                std::fs::File::create(path).unwrap(),
+            );
+            let meta = format!("{}\n", codex_meta_line(ext_id, None, &recent_ts(0, 1)));
+            w.write_all(meta.as_bytes()).unwrap();
+            let mut written = meta.len() as u64;
+            let mut i = 0usize;
+            while written < target {
+                for _ in 0..50 {
+                    w.write_all(codex_noise.as_bytes()).unwrap();
+                    written += codex_noise.len() as u64;
+                }
+                let usage = codex_usage(i);
+                w.write_all(usage.as_bytes()).unwrap();
+                written += usage.len() as u64;
+                i += 1;
+            }
+            w.flush().unwrap();
+        };
+        let insert = |session: &str, tool: &str, path: &std::path::Path, parent: Option<&str>| {
+            let mut record = stream_record(session, tool, &path.display().to_string());
+            if let Some(parent) = parent {
+                record.external_parent_session_id = Some(parent.to_string());
+            }
+            streams_db.insert_stream(&record).unwrap();
+        };
+
+        const GB: u64 = 1024 * 1024 * 1024;
+        const MB: u64 = 1024 * 1024;
+        let gen_started = std::time::Instant::now();
+
+        for (name, size) in [
+            ("g0", 2 * GB),
+            ("g1", GB),
+            ("g2", 800 * MB),
+            ("g3", 500 * MB),
+        ] {
+            let path = dir.path().join(format!("claude-{name}.jsonl"));
+            write_claude_giant(&path, name, size, 900);
+            insert(&format!("s_claude_{name}"), "claude", &path, None);
+        }
+
+        // Pathological single lines: a 100MB line missing the prefilter and
+        // a 50MB line matching it (a real usage object at the end), inside a
+        // 500MB file of normal traffic.
+        {
+            let path = dir.path().join("claude-hugeline.jsonl");
+            write_claude_giant(&path, "hl", 350 * MB, 900);
+            let mut w = std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .unwrap();
+            let unmatched = format!(
+                "{{\"type\":\"assistant\",\"content\":\"{}\"}}\n",
+                "x".repeat(100 * MB as usize)
+            );
+            w.write_all(unmatched.as_bytes()).unwrap();
+            drop(unmatched);
+            let matched = format!(
+                "{{\"timestamp\":\"{}\",\"sessionId\":\"ext-hl\",\"requestId\":\"rhl_huge\",\"filler\":\"{}\",\"message\":{{\"id\":\"mhl_huge\",\"model\":\"claude-sonnet-4-6-20260115\",\"usage\":{{\"input_tokens\":220,\"output_tokens\":900,\"cache_creation_input_tokens\":40,\"cache_read_input_tokens\":18000}}}}}}\n",
+                recent_ts(999, 0),
+                "y".repeat(50 * MB as usize)
+            );
+            w.write_all(matched.as_bytes()).unwrap();
+            w.flush().unwrap();
+            insert("s_claude_hl", "claude", &path, None);
+        }
+
+        // Resume copy of the 2GB giant's usage with larger totals: every
+        // duplicated id replaces g0's row and flags a ~14k-entry session.
+        {
+            let path = dir.path().join("claude-resume-g0.jsonl");
+            let mut w = std::io::BufWriter::with_capacity(
+                1024 * 1024,
+                std::fs::File::create(&path).unwrap(),
+            );
+            let mut written = 0u64;
+            let mut i = 0usize;
+            while written < 500 * MB {
+                for _ in 0..50 {
+                    w.write_all(claude_noise.as_bytes()).unwrap();
+                    written += claude_noise.len() as u64;
+                }
+                let usage = claude_usage("g0", i, 910);
+                w.write_all(usage.as_bytes()).unwrap();
+                written += usage.len() as u64;
+                i += 1;
+            }
+            w.flush().unwrap();
+            insert("s_claude_resume", "claude", &path, None);
+        }
+
+        for (name, size) in [("cg0", GB), ("cg1", 700 * MB), ("cg2", 500 * MB)] {
+            let path = dir.path().join(format!("codex-{name}.jsonl"));
+            write_codex_giant(&path, name, size);
+            insert(&format!("s_codex_{name}"), "codex", &path, None);
+        }
+
+        // A 300MB fork child of the 1GB parent: prefix resolution streams
+        // the parent up to the fork instant. The replayed head repeats the
+        // parent's first cumulative totals verbatim.
+        {
+            let path = dir.path().join("codex-fork.jsonl");
+            let mut w = std::io::BufWriter::with_capacity(
+                1024 * 1024,
+                std::fs::File::create(&path).unwrap(),
+            );
+            let meta = format!(
+                "{}\n",
+                codex_meta_line("fork-child", Some("cg0"), &recent_ts(1100, 0))
+            );
+            w.write_all(meta.as_bytes()).unwrap();
+            for i in 0..200usize {
+                w.write_all(codex_usage(i).as_bytes()).unwrap();
+            }
+            let mut written = 0u64;
+            let mut i = 200usize;
+            while written < 300 * MB {
+                for _ in 0..50 {
+                    w.write_all(codex_noise.as_bytes()).unwrap();
+                    written += codex_noise.len() as u64;
+                }
+                let base = (i as u64 + 1) * 1700;
+                let own = format!(
+                    "{}\n",
+                    codex_usage_line(
+                        &recent_ts(1101 + (i as u32 % 90), (i % 12) as u32 * 5),
+                        (base, base / 3, base / 10, base / 40, base + base / 10),
+                    )
+                );
+                w.write_all(own.as_bytes()).unwrap();
+                written += own.len() as u64;
+                i += 1;
+            }
+            w.flush().unwrap();
+            let mut record = stream_record("s_codex_fork", "codex", &path.display().to_string());
+            record.external_session_id = "fork-child".to_string();
+            record.external_parent_session_id = Some("cg0".to_string());
+            streams_db.insert_stream(&record).unwrap();
+        }
+
+        let total: u64 = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| e.path().extension().is_some_and(|x| x == "jsonl"))
+            .filter_map(|e| e.metadata().ok())
+            .map(|m| m.len())
+            .sum();
+        println!(
+            "corpus: {:.1} GiB in 10 giants, generated in {:.0}s",
+            total as f64 / GB as f64,
+            gen_started.elapsed().as_secs_f64()
+        );
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let sampler_stop = stop.clone();
+        let sampler = std::thread::spawn(move || {
+            let mut last = cpu_ticks();
+            let mut cpu: Vec<f64> = Vec::new();
+            let mut rss: Vec<u64> = Vec::new();
+            while !sampler_stop.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(100));
+                let now = cpu_ticks();
+                cpu.push((now - last) as f64);
+                last = now;
+                rss.push(rss_kb());
+            }
+            (cpu, rss)
+        });
+
+        let started = std::time::Instant::now();
+        let (collected, sink) = collecting_sink();
+        let (_handle, shutdown) = spawn_run_loop(
+            streams_db.clone(),
+            token_db.clone(),
+            sink,
+            Duration::from_secs(3600),
+        );
+
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let streams_db = streams_db.clone();
+            let token_db = token_db.clone();
+            let quiet = tokio::task::spawn_blocking(move || {
+                sweep_candidates(&streams_db, &token_db).is_empty()
+                    && token_db.sessions_needing_reconcile().unwrap().is_empty()
+            })
+            .await
+            .unwrap();
+            if quiet && started.elapsed() > Duration::from_secs(5) {
+                break;
+            }
+            assert!(started.elapsed() < Duration::from_secs(1800), "bench hung");
+        }
+        let wall = started.elapsed();
+        shutdown.notify_one();
+        stop.store(true, Ordering::Relaxed);
+        let (cpu, rss) = sampler.join().unwrap();
+
+        let events = collected.lock().unwrap().len();
+        let total_cpu: f64 = cpu.iter().sum::<f64>() / 1000.0;
+        let mut cpu_sorted = cpu.clone();
+        cpu_sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let pct =
+            |q: f64| cpu_sorted[((cpu_sorted.len() as f64 * q) as usize).min(cpu_sorted.len() - 1)];
+        let mut rss_sorted = rss.clone();
+        rss_sorted.sort_unstable();
+        println!(
+            "wall={:.0}s cpu={:.0}s avg_duty={:.0}% p95={:.0}% max={:.0}% rss_p50={}MiB rss_p95={}MiB rss_max={}MiB events={events}",
+            wall.as_secs_f64(),
+            total_cpu,
+            total_cpu / wall.as_secs_f64() * 100.0,
+            pct(0.95),
+            cpu_sorted[cpu_sorted.len() - 1],
+            rss_sorted[rss_sorted.len() / 2] / 1024,
+            rss_sorted[((rss_sorted.len() as f64 * 0.95) as usize).min(rss_sorted.len() - 1)]
+                / 1024,
+            rss_sorted[rss_sorted.len() - 1] / 1024,
+        );
+        let duty_line: Vec<String> = cpu
+            .chunks(50)
+            .map(|c| format!("{:.0}", c.iter().sum::<f64>() / c.len() as f64))
+            .collect();
+        println!("duty/5s: {}", duty_line.join(" "));
+        let rss_line: Vec<String> = rss
+            .chunks(50)
+            .map(|c| format!("{}", c.iter().max().unwrap() / 1024))
+            .collect();
+        println!("rssMiB/5s: {}", rss_line.join(" "));
+    }
 }
