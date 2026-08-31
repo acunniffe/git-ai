@@ -60,6 +60,7 @@ pub mod control_api;
 pub mod coordinator;
 pub mod daemon_log_layer;
 pub mod domain;
+pub(crate) mod error_log_policy;
 pub mod family_actor;
 pub mod git_backend;
 pub mod global_actor;
@@ -2767,6 +2768,8 @@ pub struct ActorDaemonCoordinator {
     recent_replay_prerequisites_by_family:
         Mutex<HashMap<String, VecDeque<RecentReplayPrerequisite>>>,
     side_effect_errors_by_family: Mutex<HashMap<String, BTreeMap<u64, String>>>,
+    side_effect_error_log_trackers:
+        Mutex<HashMap<String, crate::daemon::error_log_policy::RepeatedErrorTracker>>,
     side_effect_exec_locks: Mutex<HashMap<String, Arc<AsyncMutex<()>>>>,
     checkpoint_side_effect_semaphore: Semaphore,
     checkpoint_ingress_quota: Arc<CheckpointIngressQuota>,
@@ -2891,6 +2894,7 @@ impl ActorDaemonCoordinator {
             commit_file_timestamp_snapshots_by_root: Mutex::new(HashMap::new()),
             recent_replay_prerequisites_by_family: Mutex::new(HashMap::new()),
             side_effect_errors_by_family: Mutex::new(HashMap::new()),
+            side_effect_error_log_trackers: Mutex::new(HashMap::new()),
             side_effect_exec_locks: Mutex::new(HashMap::new()),
             checkpoint_side_effect_semaphore: Semaphore::new(CHECKPOINT_FAMILY_DRAIN_CONCURRENCY),
             checkpoint_ingress_quota: Arc::new(CheckpointIngressQuota::new(
@@ -3322,6 +3326,13 @@ impl ActorDaemonCoordinator {
         if let Ok(mut map) = self.side_effect_errors_by_family.lock() {
             map.retain(|_, errors| !errors.is_empty());
         }
+        if let Ok(mut map) = self.side_effect_error_log_trackers.lock() {
+            // Drop trackers idle past the eviction window (e.g. for deleted
+            // repos that will never re-arm). Recently active trackers are kept
+            // so repeated-error suppression stays continuous across GC passes.
+            let now = std::time::Instant::now();
+            map.retain(|_, tracker| !tracker.is_stale(now));
+        }
         if let Ok(mut map) = self.family_sequencers_by_family.lock() {
             map.retain(|_, state| !state.entries.is_empty());
         }
@@ -3702,6 +3713,80 @@ impl ActorDaemonCoordinator {
             }
         }
         Ok(())
+    }
+
+    /// Records a side-effect error and logs it at a level decided by
+    /// `error_log_policy`: expected repo-gone conditions and repeated
+    /// identical failures are downgraded to debug (with a rate-limited warn
+    /// summary) so a persistently broken git environment cannot flood the
+    /// logs with one error per traced command.
+    ///
+    /// `record_seq` keys the recorded error (the drain/completion keyspace);
+    /// `log_seq` is the sequence reported in the log line, which some call
+    /// sites take from the applied command instead.
+    fn record_and_log_side_effect_error(
+        &self,
+        family: &str,
+        record_seq: u64,
+        log_seq: u64,
+        error: &GitAiError,
+        context: &'static str,
+    ) {
+        use crate::daemon::error_log_policy::{SideEffectErrorLog, is_expected_missing_repo_error};
+
+        let _ = self.record_side_effect_error(family, record_seq, error);
+        // Stat the family root before taking the tracker lock so a slow
+        // filesystem cannot stall other families' error logging. Only a
+        // definitive NotFound counts as gone: EACCES/EIO and similar keep the
+        // error loud rather than misclassifying it as an expected deletion.
+        let family_root_exists = !matches!(
+            std::fs::metadata(family),
+            Err(ref io_error) if io_error.kind() == std::io::ErrorKind::NotFound
+        );
+        let decision = if is_expected_missing_repo_error(error, family_root_exists) {
+            // Short-circuit without touching the tracker map: deleted temp
+            // repos are the high-cardinality case and must not leave entries.
+            SideEffectErrorLog::ExpectedRepoGoneDebug
+        } else {
+            self.side_effect_error_log_trackers
+                .lock()
+                .map(|mut trackers| {
+                    trackers
+                        .entry(family.to_string())
+                        .or_default()
+                        .on_error(error, std::time::Instant::now())
+                })
+                .unwrap_or(SideEffectErrorLog::Error)
+        };
+        match decision {
+            SideEffectErrorLog::Error => {
+                tracing::error!(%error, %family, seq = log_seq, "{context}")
+            }
+            SideEffectErrorLog::ExpectedRepoGoneDebug => {
+                tracing::debug!(%error, %family, seq = log_seq, "{context} (repo removed before processing)")
+            }
+            SideEffectErrorLog::RepeatedDebug => {
+                tracing::debug!(%error, %family, seq = log_seq, "{context} (repeated identical error)")
+            }
+            SideEffectErrorLog::RepeatedSummaryWarn { suppressed_count } => {
+                tracing::warn!(
+                    %error,
+                    %family,
+                    seq = log_seq,
+                    suppressed_count,
+                    "{context} (repeated identical error; earlier occurrences downgraded to debug)"
+                )
+            }
+        }
+    }
+
+    /// Re-arms error-level logging for the family after a successful
+    /// side-effect pass. Removes the tracker entry entirely so retired
+    /// families do not accumulate in the map.
+    fn note_side_effect_success(&self, family: &str) {
+        if let Ok(mut trackers) = self.side_effect_error_log_trackers.lock() {
+            trackers.remove(family);
+        }
     }
 
     fn latest_side_effect_error(&self, family: &str) -> Result<Option<String>, GitAiError> {
@@ -4097,15 +4182,30 @@ impl ActorDaemonCoordinator {
                         match futures::FutureExt::catch_unwind(caught).await {
                             Ok(Ok(())) => Ok(()),
                             Ok(Err(error)) => {
-                                tracing::error!(
-                                    component = "daemon",
-                                    phase = "trace_ingest_worker",
-                                    reason = "ingest_error",
-                                    sequence = processed_seq,
-                                    root_sid = ?ordered_payload_root,
-                                    %error,
-                                    "trace ingest error"
-                                );
+                                // Traced commands can run outside any repo or
+                                // in a temp repo deleted before async
+                                // processing; that is expected, not an error.
+                                if crate::daemon::error_log_policy::is_repo_discovery_miss_without_exec(&error) {
+                                    tracing::debug!(
+                                        component = "daemon",
+                                        phase = "trace_ingest_worker",
+                                        reason = "repo_gone_before_processing",
+                                        sequence = processed_seq,
+                                        root_sid = ?ordered_payload_root,
+                                        %error,
+                                        "trace ingest skipped: repo removed before processing"
+                                    );
+                                } else {
+                                    tracing::error!(
+                                        component = "daemon",
+                                        phase = "trace_ingest_worker",
+                                        reason = "ingest_error",
+                                        sequence = processed_seq,
+                                        root_sid = ?ordered_payload_root,
+                                        %error,
+                                        "trace ingest error"
+                                    );
+                                }
                                 Err(error)
                             }
                             Err(panic_payload) => {
@@ -4897,14 +4997,15 @@ impl ActorDaemonCoordinator {
                     };
                     match side_effect_result {
                         Ok(Ok((applied, side_effect_result))) => {
-                            if let Err(error) = &side_effect_result {
-                                let _ = self.record_side_effect_error(family, order, error);
-                                tracing::error!(
-                                    %error,
-                                    %family,
-                                    seq = applied.seq,
-                                    "command side effect failed"
-                                );
+                            match &side_effect_result {
+                                Ok(()) => self.note_side_effect_success(family),
+                                Err(error) => self.record_and_log_side_effect_error(
+                                    family,
+                                    order,
+                                    applied.seq,
+                                    error,
+                                    "command side effect failed",
+                                ),
                             }
                             if let Err(error) = self.append_command_completion_log(
                                 family,
@@ -4922,12 +5023,12 @@ impl ActorDaemonCoordinator {
                             }
                         }
                         Ok(Err(error)) => {
-                            let _ = self.record_side_effect_error(family, order, &error);
-                            tracing::error!(
-                                %error,
-                                %family,
+                            self.record_and_log_side_effect_error(
+                                family,
                                 order,
-                                "command apply failed"
+                                order,
+                                &error,
+                                "command apply failed",
                             );
                         }
                         Err(panic_payload) => {
@@ -5120,6 +5221,7 @@ impl ActorDaemonCoordinator {
                             "checkpoint failed"
                         );
                     }
+                    let mut watermark_update_failed = false;
                     if result.is_ok() {
                         // Clear pending AI edit state once the PostFileEdit completes.
                         if checkpoint_kind.is_ai()
@@ -5156,33 +5258,27 @@ impl ActorDaemonCoordinator {
                                 )
                                 .await
                         {
-                            let _ = self.record_side_effect_error(family, order, &error);
-                            tracing::error!(
-                                component = "daemon",
-                                phase = "checkpoint_processing",
-                                reason = "watermark_update_failed",
-                                receipt_seq,
-                                %family,
+                            watermark_update_failed = true;
+                            self.record_and_log_side_effect_error(
+                                family,
                                 order,
-                                %error,
-                                "checkpoint watermark update failed"
+                                order,
+                                &error,
+                                "checkpoint watermark update failed",
                             );
                         }
                     }
                     // Removed captured_checkpoint_id cleanup - no more captured checkpoints
-                    if let Err(error) = &result {
-                        let _ = self.record_side_effect_error(family, order, error);
-                        tracing::error!(
-                            component = "daemon",
-                            phase = "checkpoint_processing",
-                            reason = "side_effect_failed",
-                            receipt_seq,
-                            trace_id = %checkpoint_trace_id,
-                            %error,
-                            %family,
+                    match &result {
+                        Ok(_) if !watermark_update_failed => self.note_side_effect_success(family),
+                        Ok(_) => {}
+                        Err(error) => self.record_and_log_side_effect_error(
+                            family,
                             order,
-                            "checkpoint side effect failed"
-                        );
+                            order,
+                            error,
+                            "checkpoint side effect failed",
+                        ),
                     }
                     if should_log_completion {
                         let log_entry = TestCompletionLogEntry {
@@ -6848,14 +6944,15 @@ impl ActorDaemonCoordinator {
                         )
                         .await;
                     let _ = self.end_family_effect(&family);
-                    if let Err(error) = &result {
-                        let _ = self.record_side_effect_error(&family, applied.seq, error);
-                        tracing::error!(
-                            %error,
-                            %family,
-                            seq = applied.seq,
-                            "async side-effect error"
-                        );
+                    match &result {
+                        Ok(()) => self.note_side_effect_success(&family),
+                        Err(error) => self.record_and_log_side_effect_error(
+                            &family,
+                            applied.seq,
+                            applied.seq,
+                            error,
+                            "async side-effect error",
+                        ),
                     }
                     if let Err(error) =
                         self.append_command_completion_log(&family, &applied, &result, applied.seq)
