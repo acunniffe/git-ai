@@ -132,7 +132,11 @@ impl WatermarkType {
             return None;
         }
         let capped = meta.len() - max_backfill_bytes;
-        let start = align_offset_to_next_line(path, capped).unwrap_or(capped);
+        let start = backfill_start_from_alignment(
+            align_offset_to_next_line(path, capped),
+            meta.len(),
+            path,
+        );
         tracing::warn!(
             path = %path.display(),
             file_bytes = meta.len(),
@@ -140,6 +144,30 @@ impl WatermarkType {
             "large first-seen stream: skipping historical backfill beyond cap"
         );
         Some(start)
+    }
+}
+
+/// Fallback when line alignment of the capped backfill offset fails: never
+/// persist the raw capped offset — it can split a multi-byte UTF-8 character
+/// or begin mid-record, leaving a permanently misaligned cursor. Skipping the
+/// existing content entirely (EOF) is the safe degradation for a transient
+/// I/O failure: these streams feed best-effort diagnostics, and new appends
+/// still flow from a line boundary once the current line completes.
+fn backfill_start_from_alignment(
+    aligned: std::io::Result<u64>,
+    file_len: u64,
+    path: &std::path::Path,
+) -> u64 {
+    match aligned {
+        Ok(start) => start,
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "backfill offset alignment failed; skipping existing content"
+            );
+            file_len
+        }
     }
 }
 
@@ -858,6 +886,19 @@ mod tests {
         let start: u64 = wm.serialize().parse().unwrap();
         assert_eq!(start, expected);
         assert_eq!(start % 1003, 0, "aligned offset must begin a line");
+    }
+
+    #[test]
+    fn test_alignment_failure_falls_back_to_eof_not_raw_offset() {
+        // A failed alignment must never persist the raw capped offset (it can
+        // split a UTF-8 character or begin mid-record); the safe degradation
+        // is skipping the existing content entirely.
+        let err = std::io::Error::other("injected alignment failure");
+        let start = backfill_start_from_alignment(Err(err), 12345, std::path::Path::new("t"));
+        assert_eq!(start, 12345);
+
+        let start = backfill_start_from_alignment(Ok(777), 12345, std::path::Path::new("t"));
+        assert_eq!(start, 777);
     }
 
     #[test]
