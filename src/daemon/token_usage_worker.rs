@@ -812,10 +812,12 @@ fn records_session_id(path: &Path, session_id: &str) -> bool {
     let Ok(file) = std::fs::File::open(path) else {
         return false;
     };
-    // A rollout's session_meta line is small; a candidate whose first line
-    // is larger is not one, and must not be buffered wholly into memory
-    // (the scan feeds this any file whose name carries the parent id).
-    const MAX_FIRST_LINE_BYTES: u64 = 64 * 1024;
+    // A candidate whose first line is larger than any real session_meta
+    // must not be buffered wholly into memory (the scan feeds this any
+    // .jsonl whose name carries the parent id). The cap is generous:
+    // session_meta embeds the session's instructions (AGENTS.md contents),
+    // which can reach hundreds of KiB.
+    const MAX_FIRST_LINE_BYTES: u64 = 1024 * 1024;
     let mut line = Vec::new();
     let mut reader = BufReader::new(file.take(MAX_FIRST_LINE_BYTES));
     if read_line_bytes(&mut reader, &mut line).is_err() {
