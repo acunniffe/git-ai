@@ -274,6 +274,20 @@ fn http_search_notes(repo: &Repository, pattern: &str) -> Result<Vec<String>, Gi
     crate::git::refs::sort_commit_shas_by_date_desc(repo, shas)
 }
 
+/// True when a `rev-list` failure means the rev doesn't exist — e.g. an unborn
+/// HEAD in a freshly-initialized repo with no commits. Callers treat this the
+/// same as an empty rev-list (no commits), not a hard error.
+fn is_unknown_revision_error(err: &GitAiError) -> bool {
+    matches!(
+        err,
+        GitAiError::GitCliError {
+            code: Some(128),
+            stderr,
+            ..
+        } if stderr.contains("unknown revision")
+    )
+}
+
 // --- Materialization (for git ai log) ---
 
 /// Materialize notes from the local cache into a one-off git ref
@@ -302,7 +316,14 @@ pub fn materialize_notes_for_display(repo: &Repository, limit: usize) -> Result<
         ])
         .collect();
 
-    let output = exec_git(&rev_list_args)?;
+    let output = match exec_git(&rev_list_args) {
+        Ok(output) => output,
+        Err(e) if is_unknown_revision_error(&e) => {
+            tracing::debug!("materialize_notes_for_display: HEAD is unborn; skipping");
+            return Ok(0);
+        }
+        Err(e) => return Err(e),
+    };
     let stdout = String::from_utf8_lossy(&output.stdout);
     let commit_shas: Vec<String> = stdout
         .lines()
@@ -416,7 +437,14 @@ pub fn warm_cache_for_remote(repo: &Repository, remote: &str) -> Result<(), GitA
         ])
         .collect();
 
-    let output = exec_git(&rev_list_args)?;
+    let output = match exec_git(&rev_list_args) {
+        Ok(output) => output,
+        Err(e) if is_unknown_revision_error(&e) => {
+            tracing::debug!("warm_cache_for_remote: rev target is unborn (no commits); skipping");
+            return Ok(());
+        }
+        Err(e) => return Err(e),
+    };
     let stdout = String::from_utf8_lossy(&output.stdout);
     let all_shas: Vec<String> = stdout
         .lines()
@@ -1159,5 +1187,46 @@ mod tests {
             std::env::remove_var("GIT_AI_API_KEY");
             std::env::remove_var("GIT_AI_NOTES_BACKEND_URL");
         }
+    }
+
+    /// Unit test: `warm_cache_for_remote` on a repo with an unborn HEAD
+    /// (freshly `git init`ed, no commits) must skip quietly instead of
+    /// propagating the `rev-list HEAD` "unknown revision" failure.
+    #[test]
+    fn warm_cache_for_remote_skips_unborn_head() {
+        use crate::git::test_utils::TmpRepo;
+
+        // Fresh repo with a remote configured but no commits.
+        let repo = TmpRepo::new().expect("TmpRepo::new");
+        repo.git_command(&[
+            "remote",
+            "add",
+            "origin",
+            "https://example.invalid/repo.git",
+        ])
+        .expect("add remote");
+
+        let result = warm_cache_for_remote(repo.gitai_repo(), "origin");
+        assert!(
+            result.is_ok(),
+            "warm_cache_for_remote must skip quietly on unborn HEAD: {:?}",
+            result
+        );
+    }
+
+    /// Unit test: `materialize_notes_for_display` on a repo with an unborn HEAD
+    /// must return Ok(0) instead of propagating the `rev-list HEAD` failure.
+    #[test]
+    fn materialize_notes_for_display_skips_unborn_head() {
+        use crate::git::test_utils::TmpRepo;
+
+        let repo = TmpRepo::new().expect("TmpRepo::new");
+
+        let result = materialize_notes_for_display(repo.gitai_repo(), 50);
+        assert_eq!(
+            result.ok(),
+            Some(0),
+            "materialize_notes_for_display must treat unborn HEAD as no commits"
+        );
     }
 }
