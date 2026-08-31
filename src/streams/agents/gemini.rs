@@ -5,7 +5,7 @@ use crate::mdm::utils::gemini_config_dir;
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
-use crate::streams::watermark::{ByteOffsetWatermark, WatermarkStrategy};
+use crate::streams::watermark::WatermarkStrategy;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -117,97 +117,17 @@ impl Agent for GeminiAgent {
         watermark: Box<dyn WatermarkStrategy>,
         session_id: &str,
     ) -> Result<StreamBatch, StreamError> {
-        use std::fs::File;
-        use std::io::{BufReader, Seek, SeekFrom};
-
-        let byte_watermark = watermark
-            .as_any()
-            .downcast_ref::<ByteOffsetWatermark>()
-            .ok_or_else(|| StreamError::Fatal {
-                message: format!(
-                    "Gemini reader requires ByteOffsetWatermark, got incompatible type for session {}",
-                    session_id
-                ),
-            })?;
-
-        let start_offset = byte_watermark.0;
-
-        let file = File::open(path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                StreamError::Fatal {
-                    message: format!("Transcript file not found: {}", path.display()),
-                }
-            } else if e.kind() == std::io::ErrorKind::PermissionDenied {
-                StreamError::Fatal {
-                    message: format!("Permission denied reading transcript: {}", path.display()),
-                }
-            } else {
-                StreamError::Transient {
-                    message: format!("Failed to read transcript file: {}", e),
-                    retry_after: Duration::from_secs(5),
-                }
-            }
-        })?;
-
-        let mut reader = BufReader::new(file);
-
-        reader
-            .seek(SeekFrom::Start(start_offset))
-            .map_err(|e| StreamError::Transient {
-                message: format!("Failed to seek to offset {}: {}", start_offset, e),
-                retry_after: Duration::from_secs(5),
-            })?;
-
-        let batch_limit = self.batch_size_hint();
-        let mut events = Vec::with_capacity(batch_limit);
-        let mut current_offset = start_offset;
-        let mut line_number = 0;
-
-        let mut line = String::new();
-        loop {
-            match crate::streams::types::read_jsonl_line(&mut reader, &mut line).map_err(|e| {
-                StreamError::Transient {
-                    message: format!("I/O error reading line: {}", e),
-                    retry_after: Duration::from_secs(5),
-                }
-            })? {
-                crate::streams::types::JsonlLineState::Eof => break,
-                crate::streams::types::JsonlLineState::Partial => break,
-                crate::streams::types::JsonlLineState::Complete(bytes_read) => {
-                    line_number += 1;
-                    current_offset += bytes_read as u64;
-                }
-            }
-
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            let entry: serde_json::Value = match serde_json::from_str(&line) {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!(
-                        line = line_number,
-                        path = %path.display(),
-                        error = %e,
-                        "skipping malformed JSON line"
-                    );
-                    continue;
-                }
-            };
-
-            events.push(entry);
-            if events.len() >= batch_limit {
-                break;
-            }
-        }
-
-        let new_watermark = Box::new(ByteOffsetWatermark::new(current_offset));
-
-        Ok(StreamBatch {
-            events,
-            new_watermark,
-        })
+        crate::streams::reader::read_jsonl_event_stream(
+            path,
+            watermark,
+            session_id,
+            &crate::streams::reader::JsonlReadOptions {
+                agent_label: "Gemini",
+                batch_limit: self.batch_size_hint(),
+                mode: crate::streams::reader::JsonlWatermarkMode::ByteOffset,
+                event_filter: None,
+            },
+        )
     }
 
     fn extract_event_timestamp(
@@ -237,6 +157,7 @@ impl Agent for GeminiAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::streams::watermark::ByteOffsetWatermark;
     use serial_test::serial;
 
     #[test]

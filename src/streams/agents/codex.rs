@@ -5,9 +5,8 @@ use crate::mdm::utils::codex_home_dir;
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
-use crate::streams::watermark::{ByteOffsetWatermark, WatermarkStrategy};
-use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use crate::streams::watermark::WatermarkStrategy;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -135,9 +134,11 @@ impl CodexAgent {
     /// `payload.thread_source == "subagent"` and `payload.forked_from_id` containing
     /// the parent session UUID.
     pub fn detect_subagent_parent(path: &Path) -> Option<String> {
-        let file = File::open(path).ok()?;
-        let reader = BufReader::new(file);
-        let first_line = reader.lines().next()?.ok()?;
+        // Bounded read: an unbounded first-line read of a runaway transcript
+        // would balloon memory before any watermark exists.
+        let first_line = crate::streams::types::read_leading_jsonl_lines(path, 1)
+            .into_iter()
+            .next()?;
         if first_line.trim().is_empty() {
             return None;
         }
@@ -207,97 +208,17 @@ impl Agent for CodexAgent {
         watermark: Box<dyn WatermarkStrategy>,
         session_id: &str,
     ) -> Result<StreamBatch, StreamError> {
-        // Downcast watermark to ByteOffsetWatermark
-        let byte_watermark = watermark
-            .as_any()
-            .downcast_ref::<ByteOffsetWatermark>()
-            .ok_or_else(|| StreamError::Fatal {
-                message: format!(
-                    "Codex reader requires ByteOffsetWatermark, got incompatible type for session {}",
-                    session_id
-                ),
-            })?;
-
-        let start_offset = byte_watermark.0;
-
-        // Open file
-        let file = File::open(path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                StreamError::Fatal {
-                    message: format!("Transcript file not found: {}", path.display()),
-                }
-            } else if e.kind() == std::io::ErrorKind::PermissionDenied {
-                StreamError::Fatal {
-                    message: format!("Permission denied reading transcript: {}", path.display()),
-                }
-            } else {
-                StreamError::Transient {
-                    message: format!("Failed to open transcript file: {}", e),
-                    retry_after: Duration::from_secs(5),
-                }
-            }
-        })?;
-
-        let mut reader = BufReader::new(file);
-
-        // Seek to watermark position
-        reader
-            .seek(SeekFrom::Start(start_offset))
-            .map_err(|e| StreamError::Transient {
-                message: format!("Failed to seek to offset {}: {}", start_offset, e),
-                retry_after: Duration::from_secs(5),
-            })?;
-
-        let batch_limit = self.batch_size_hint();
-        let mut events = Vec::with_capacity(batch_limit);
-        let mut current_offset = start_offset;
-        let mut line_number = 0;
-        let mut line = String::new();
-
-        loop {
-            match crate::streams::types::read_jsonl_line(&mut reader, &mut line).map_err(|e| {
-                StreamError::Transient {
-                    message: format!("I/O error reading line: {}", e),
-                    retry_after: Duration::from_secs(5),
-                }
-            })? {
-                crate::streams::types::JsonlLineState::Eof => break,
-                crate::streams::types::JsonlLineState::Partial => break,
-                crate::streams::types::JsonlLineState::Complete(bytes_read) => {
-                    line_number += 1;
-                    current_offset += bytes_read as u64;
-                }
-            }
-
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            let entry: serde_json::Value = match serde_json::from_str(&line) {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!(
-                        line = line_number,
-                        path = %path.display(),
-                        error = %e,
-                        "skipping malformed JSON line"
-                    );
-                    continue;
-                }
-            };
-
-            events.push(entry);
-            if events.len() >= batch_limit {
-                break;
-            }
-        }
-
-        let new_watermark = Box::new(ByteOffsetWatermark::new(current_offset));
-
-        Ok(StreamBatch {
-            events,
-            new_watermark,
-        })
+        crate::streams::reader::read_jsonl_event_stream(
+            path,
+            watermark,
+            session_id,
+            &crate::streams::reader::JsonlReadOptions {
+                agent_label: "Codex",
+                batch_limit: self.batch_size_hint(),
+                mode: crate::streams::reader::JsonlWatermarkMode::ByteOffset,
+                event_filter: None,
+            },
+        )
     }
 
     fn extract_event_timestamp(
@@ -311,15 +232,10 @@ impl Agent for CodexAgent {
     }
 
     fn infer_cwd(&self, stream_path: &Path) -> Option<PathBuf> {
-        use std::fs::File;
-        use std::io::{BufRead, BufReader};
-
-        let file = File::open(stream_path).ok()?;
-        let reader = BufReader::new(file);
-
         // Codex has cwd in session_meta or turn_context payload events
-        for line in reader.lines().take(20) {
-            let Ok(line) = line else { continue };
+        // (bounded reads: this runs before the capped batch loop, so a giant
+        // line must not balloon memory here).
+        for line in crate::streams::types::read_leading_jsonl_lines(stream_path, 20) {
             if line.is_empty() {
                 continue;
             }
@@ -355,6 +271,7 @@ impl Agent for CodexAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::streams::watermark::ByteOffsetWatermark;
 
     #[test]
     fn test_sweep_strategy() {

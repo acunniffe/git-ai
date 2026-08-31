@@ -4,7 +4,7 @@ use crate::authorship::authorship_log_serialization::generate_session_id;
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
-use crate::streams::watermark::{HybridWatermark, WatermarkStrategy};
+use crate::streams::watermark::WatermarkStrategy;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -118,130 +118,20 @@ impl Agent for DroidAgent {
         watermark: Box<dyn WatermarkStrategy>,
         session_id: &str,
     ) -> Result<StreamBatch, StreamError> {
-        use std::fs::File;
-        use std::io::{BufReader, Seek, SeekFrom};
-
-        // Downcast watermark to HybridWatermark
-        let hybrid_watermark = watermark
-            .as_any()
-            .downcast_ref::<HybridWatermark>()
-            .ok_or_else(|| StreamError::Fatal {
-                message: format!(
-                    "Droid reader requires HybridWatermark, got incompatible type for session {}",
-                    session_id
-                ),
-            })?;
-
-        let start_offset = hybrid_watermark.offset;
-        let mut record_count = hybrid_watermark.record;
-
-        // Open file
-        let file = File::open(path).map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                StreamError::Fatal {
-                    message: format!("Transcript file not found: {}", path.display()),
-                }
-            } else if e.kind() == std::io::ErrorKind::PermissionDenied {
-                StreamError::Fatal {
-                    message: format!("Permission denied reading transcript: {}", path.display()),
-                }
-            } else {
-                StreamError::Transient {
-                    message: format!("Failed to open transcript file: {}", e),
-                    retry_after: std::time::Duration::from_secs(5),
-                }
-            }
-        })?;
-
-        let mut reader = BufReader::new(file);
-
-        // Seek to watermark position
-        reader
-            .seek(SeekFrom::Start(start_offset))
-            .map_err(|e| StreamError::Transient {
-                message: format!("Failed to seek to offset {}: {}", start_offset, e),
-                retry_after: std::time::Duration::from_secs(5),
-            })?;
-
-        let batch_limit = self.batch_size_hint();
-        let mut events = Vec::with_capacity(batch_limit);
-        let mut current_offset = start_offset;
-        let mut line_number = 0;
-        let mut latest_timestamp: Option<chrono::DateTime<chrono::Utc>> =
-            hybrid_watermark.timestamp;
-
-        // Read lines from watermark position
-        let mut line = String::new();
-        loop {
-            match crate::streams::types::read_jsonl_line(&mut reader, &mut line).map_err(|e| {
-                StreamError::Transient {
-                    message: format!("I/O error reading line: {}", e),
-                    retry_after: std::time::Duration::from_secs(5),
-                }
-            })? {
-                crate::streams::types::JsonlLineState::Eof => break,
-                crate::streams::types::JsonlLineState::Partial => break,
-                crate::streams::types::JsonlLineState::Complete(bytes_read) => {
-                    line_number += 1;
-                    current_offset += bytes_read as u64;
-                }
-            }
-
-            // Skip empty lines
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            // Parse JSONL entry
-            let entry: serde_json::Value = match serde_json::from_str(&line) {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!(
-                        line = line_number,
-                        path = %path.display(),
-                        error = %e,
-                        "skipping malformed JSON line"
-                    );
-                    continue;
-                }
-            };
-
-            // Only process "message" entries; skip session_start, todo_state, etc.
-            if entry["type"].as_str() != Some("message") {
-                continue;
-            }
-
-            // Track record count for hybrid watermark
-            record_count += 1;
-
-            // Update latest_timestamp for hybrid watermark
-            if let Some(ts_str) = entry["timestamp"].as_str()
-                && let Ok(dt) = chrono::DateTime::parse_from_rfc3339(ts_str)
-            {
-                let utc_dt = dt.with_timezone(&chrono::Utc);
-                if latest_timestamp.is_none() || Some(utc_dt) > latest_timestamp {
-                    latest_timestamp = Some(utc_dt);
-                }
-            }
-
-            // Push raw JSON entry
-            events.push(entry);
-            if events.len() >= batch_limit {
-                break;
-            }
-        }
-
-        // Create new hybrid watermark with updated offset, record count, and timestamp
-        let new_watermark = Box::new(HybridWatermark::new(
-            current_offset,
-            record_count,
-            latest_timestamp,
-        ));
-
-        Ok(StreamBatch {
-            events,
-            new_watermark,
-        })
+        // Only "message" entries are emitted; session_start, todo_state, etc.
+        // advance the offset and hybrid record state without being returned.
+        let message_filter = |entry: &serde_json::Value| entry["type"].as_str() == Some("message");
+        crate::streams::reader::read_jsonl_event_stream(
+            path,
+            watermark,
+            session_id,
+            &crate::streams::reader::JsonlReadOptions {
+                agent_label: "Droid",
+                batch_limit: self.batch_size_hint(),
+                mode: crate::streams::reader::JsonlWatermarkMode::Hybrid,
+                event_filter: Some(&message_filter),
+            },
+        )
     }
 
     fn extract_event_timestamp(
@@ -271,6 +161,7 @@ impl Agent for DroidAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::streams::watermark::HybridWatermark;
 
     fn make_droid_line(i: usize) -> String {
         format!(
