@@ -179,6 +179,10 @@ fn analyze_token(s: &[u8]) -> CharStats {
 
 /// Calculate the probability that a string is random based on various heuristics.
 /// Uses a single-pass analysis for efficiency.
+///
+/// Tokens must be at most MAX_SECRET_LENGTH bytes (as produced by
+/// `scan_tokens`); longer inputs exceed the precomputed table domains and
+/// panic on the Stirling table lookup.
 pub fn p_random(s: &[u8]) -> f64 {
     let stats = analyze_token(s);
 
@@ -218,7 +222,12 @@ fn p_random_distinct_values_with_stats(n: usize, num_distinct: usize, base: f64)
     let mut num_more_extreme: f64 = 0.0;
     let mut falling = base;
 
-    for k in 1..=num_distinct {
+    // A random string over `base` characters has at most `base` distinct
+    // values, so every term past k = base is zero (`falling` reaches exactly
+    // 0.0 there). Bounding k at `base` skips those zero terms and keeps k
+    // within the Stirling table bounds (k <= 64) when a token has more
+    // distinct characters than the base (the secret-char alphabet has 68).
+    for k in 1..=num_distinct.min(base as usize) {
         num_more_extreme += stirling(n, k) * falling;
         falling *= base - k as f64;
     }
@@ -334,10 +343,12 @@ fn get_stirling_table() -> &'static [[f64; 65]; MAX_SECRET_LENGTH + 1] {
         }
 
         // Fill using DP: S(n,k) = k*S(n-1,k) + S(n-1,k-1)
+        // The bound must be inclusive: for n > 64 nothing else fills
+        // table[n][64] (the base cases above only cover k == n for n <= 64).
         for n in 2..=MAX_SECRET_LENGTH {
             let max_k = n.min(64);
             #[allow(clippy::needless_range_loop)]
-            for k in 2..max_k {
+            for k in 2..=max_k {
                 table[n][k] = k as f64 * table[n - 1][k] + table[n - 1][k - 1];
             }
         }
@@ -347,6 +358,8 @@ fn get_stirling_table() -> &'static [[f64; 65]; MAX_SECRET_LENGTH + 1] {
 }
 
 /// Get Stirling number S(n, k) from precomputed table. O(1) lookup.
+/// The table only covers n <= MAX_SECRET_LENGTH and k <= 64, so callers must
+/// stay within that domain; anything larger panics on the table indexing.
 #[inline]
 fn stirling(n: usize, k: usize) -> f64 {
     if k == 0 || n == 0 || k > n {
@@ -355,6 +368,10 @@ fn stirling(n: usize, k: usize) -> f64 {
     if k == 1 || k == n {
         return 1.0;
     }
+    debug_assert!(
+        n <= MAX_SECRET_LENGTH && k <= 64,
+        "stirling(n={n}, k={k}) is outside the precomputed table bounds"
+    );
     get_stirling_table()[n][k]
 }
 
@@ -707,5 +724,46 @@ impl Configuration {
         // Code should be completely unchanged - no false positives
         assert_eq!(code, redacted);
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_no_panic_on_tokens_with_more_than_64_distinct_chars() {
+        // Regression test: the secret-char alphabet has 68 characters, so a
+        // token can have more than 64 distinct values while the Stirling table
+        // only covers k=0..=64. These previously panicked with
+        // "index out of bounds: the len is 65 but the index is 65".
+
+        // 66 chars, all distinct.
+        let token_66 = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_";
+        assert_eq!(token_66.len(), 66);
+        assert_eq!(analyze_token(token_66).distinct_count, 66);
+        assert!(p_random(token_66).is_finite());
+
+        // MAX_SECRET_LENGTH (90) chars with all 68 distinct secret chars.
+        let mut token_90 =
+            String::from("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_.~");
+        token_90.push_str("ABCDEFGHIJKLMNOPQRSTUV");
+        assert_eq!(token_90.len(), MAX_SECRET_LENGTH);
+        assert_eq!(analyze_token(token_90.as_bytes()).distinct_count, 68);
+        assert!(p_random(token_90.as_bytes()).is_finite());
+
+        // Scanning text that embeds such a token must not panic either.
+        let text = format!(
+            "token={} and also {}",
+            std::str::from_utf8(token_66).unwrap(),
+            token_90
+        );
+        let _ = text_contains_secrets(&text);
+        let _ = redact_secrets_in_text(&text);
+    }
+
+    #[test]
+    fn test_stirling_table_covers_k_64_for_n_above_64() {
+        // Regression test: the DP fill previously used an exclusive bound
+        // (`2..max_k`), so table[n][64] was never written for n > 64 and
+        // stirling(n, 64) returned 0.0 instead of the true value.
+        assert_eq!(stirling(65, 64), 2080.0); // S(65, 64) = C(65, 2)
+        assert!(stirling(MAX_SECRET_LENGTH, 64) > 0.0);
+        assert!(stirling(MAX_SECRET_LENGTH, 64).is_finite());
     }
 }
