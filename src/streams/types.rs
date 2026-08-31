@@ -16,17 +16,26 @@ pub enum JsonlLineState {
 /// Read a line from a BufReader, detecting partial writes from concurrent writers.
 ///
 /// Returns `Eof` if no more data, `Partial` if the line lacks a trailing newline,
-/// or `Complete(bytes)` on success.
+/// or `Complete(bytes)` on success, where `bytes` is the raw byte count read
+/// (including the newline). Invalid UTF-8 never fails the read: invalid bytes
+/// are replaced with U+FFFD, so a corrupt line either fails JSON parsing (and
+/// is skipped by callers) or parses with replacement characters.
 pub fn read_jsonl_line(
     reader: &mut impl BufRead,
     line: &mut String,
 ) -> std::io::Result<JsonlLineState> {
-    line.clear();
-    let bytes_read = reader.read_line(line)?;
+    // Reuse the caller's String allocation as the byte buffer so the per-line
+    // read loop stays allocation-free for valid UTF-8 (the common case).
+    let mut buf = std::mem::take(line).into_bytes();
+    buf.clear();
+    let bytes_read = reader.read_until(b'\n', &mut buf)?;
+    let complete = buf.ends_with(b"\n");
+    *line = String::from_utf8(buf)
+        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned());
     if bytes_read == 0 {
         return Ok(JsonlLineState::Eof);
     }
-    if !line.ends_with('\n') {
+    if !complete {
         return Ok(JsonlLineState::Partial);
     }
     Ok(JsonlLineState::Complete(bytes_read))
@@ -186,6 +195,54 @@ mod tests {
     #[test]
     fn test_read_jsonl_line_complete_then_partial() {
         let data = b"{\"a\":1}\n{\"b\":2}";
+        let mut reader = std::io::BufReader::new(&data[..]);
+        let mut line = String::new();
+
+        let r1 = read_jsonl_line(&mut reader, &mut line).unwrap();
+        assert!(matches!(r1, JsonlLineState::Complete(8)));
+
+        let r2 = read_jsonl_line(&mut reader, &mut line).unwrap();
+        assert!(matches!(r2, JsonlLineState::Partial));
+    }
+
+    #[test]
+    fn test_read_jsonl_line_invalid_utf8_line_advances() {
+        // Middle line contains invalid UTF-8 bytes; reading must not error,
+        // must advance past it, and the following valid line must still parse.
+        let mut data = Vec::new();
+        data.extend_from_slice(b"{\"a\":1}\n");
+        data.extend_from_slice(b"{\"bad\":\"\xff\xfe\"}\n");
+        data.extend_from_slice(b"{\"c\":3}\n");
+        let mut reader = std::io::BufReader::new(&data[..]);
+        let mut line = String::new();
+
+        let r1 = read_jsonl_line(&mut reader, &mut line).unwrap();
+        assert!(matches!(r1, JsonlLineState::Complete(8)));
+        assert_eq!(line, "{\"a\":1}\n");
+
+        // Byte count must be the raw byte count (13), not the length of the
+        // lossily-decoded string (replacement chars are 3 bytes each).
+        let r2 = read_jsonl_line(&mut reader, &mut line).unwrap();
+        assert!(matches!(r2, JsonlLineState::Complete(13)));
+        // Invalid bytes decode to U+FFFD. Note the result here is still valid
+        // JSON, so callers ingest such a line rather than skip it.
+        assert_eq!(line, "{\"bad\":\"\u{FFFD}\u{FFFD}\"}\n");
+
+        let r3 = read_jsonl_line(&mut reader, &mut line).unwrap();
+        assert!(matches!(r3, JsonlLineState::Complete(8)));
+        let parsed: serde_json::Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(parsed["c"].as_i64(), Some(3));
+
+        let r4 = read_jsonl_line(&mut reader, &mut line).unwrap();
+        assert!(matches!(r4, JsonlLineState::Eof));
+    }
+
+    #[test]
+    fn test_read_jsonl_line_partial_mid_multibyte() {
+        // File ends mid-write, in the middle of a multi-byte UTF-8 sequence
+        // ("€" is \xe2\x82\xac; only the first two bytes are present). This
+        // must be reported as Partial, not an error.
+        let data = b"{\"a\":1}\n{\"x\":\"\xe2\x82";
         let mut reader = std::io::BufReader::new(&data[..]);
         let mut line = String::new();
 
