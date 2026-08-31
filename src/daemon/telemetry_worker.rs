@@ -435,6 +435,19 @@ impl DaemonTelemetryWorkerHandle {
         store_metrics_in_db(events)
     }
 
+    /// Persist pre-serialized metric-event JSON rows.
+    ///
+    /// Streaming variant of [`Self::persist_metrics_blocking`] for large
+    /// transcript batches: the caller serializes each event as it is built
+    /// and drops the event immediately, so a batch's `MetricEvent` trees and
+    /// their JSON copies are never all resident at the same time (#2244).
+    pub fn persist_metric_jsons_blocking(
+        &self,
+        event_jsons: &[String],
+    ) -> Result<Vec<i64>, GitAiError> {
+        store_metric_jsons_in_db(event_jsons)
+    }
+
     /// Submit telemetry envelopes synchronously (best-effort, non-blocking).
     ///
     /// Used by the daemon process's own `observability::log_*()` calls which
@@ -970,6 +983,10 @@ fn store_metrics_in_db(events: &[MetricEvent]) -> Result<Vec<i64>, GitAiError> {
         .map(serde_json::to_string)
         .collect::<Result<_, _>>()?;
 
+    store_metric_jsons_in_db(&event_jsons)
+}
+
+fn store_metric_jsons_in_db(event_jsons: &[String]) -> Result<Vec<i64>, GitAiError> {
     if event_jsons.is_empty() {
         return Ok(Vec::new());
     }
@@ -978,7 +995,7 @@ fn store_metrics_in_db(events: &[MetricEvent]) -> Result<Vec<i64>, GitAiError> {
     let mut db_lock = db
         .lock()
         .map_err(|_| GitAiError::Generic("metrics DB lock poisoned".to_string()))?;
-    db_lock.insert_events(&event_jsons)
+    db_lock.insert_events(event_jsons)
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
