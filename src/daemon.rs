@@ -3715,11 +3715,46 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
-    /// Records a side-effect error and logs it at a level decided by
+    /// Records a side-effect error and returns how it should be logged per
     /// `error_log_policy`: expected repo-gone conditions and repeated
     /// identical failures are downgraded to debug (with a rate-limited warn
     /// summary) so a persistently broken git environment cannot flood the
     /// logs with one error per traced command.
+    fn record_side_effect_error_and_decide(
+        &self,
+        family: &str,
+        record_seq: u64,
+        error: &GitAiError,
+    ) -> crate::daemon::error_log_policy::SideEffectErrorLog {
+        use crate::daemon::error_log_policy::{SideEffectErrorLog, is_expected_missing_repo_error};
+
+        let _ = self.record_side_effect_error(family, record_seq, error);
+        // Stat the family root before taking the tracker lock so a slow
+        // filesystem cannot stall other families' error logging. Only a
+        // definitive NotFound counts as gone: EACCES/EIO and similar keep the
+        // error loud rather than misclassifying it as an expected deletion.
+        let family_root_exists = !matches!(
+            std::fs::metadata(family),
+            Err(ref io_error) if io_error.kind() == std::io::ErrorKind::NotFound
+        );
+        if is_expected_missing_repo_error(error, family_root_exists) {
+            // Short-circuit without touching the tracker map: deleted temp
+            // repos are the high-cardinality case and must not leave entries.
+            return SideEffectErrorLog::ExpectedRepoGoneDebug;
+        }
+        self.side_effect_error_log_trackers
+            .lock()
+            .map(|mut trackers| {
+                trackers
+                    .entry(family.to_string())
+                    .or_default()
+                    .on_error(error, std::time::Instant::now())
+            })
+            .unwrap_or(SideEffectErrorLog::Error)
+    }
+
+    /// Records a side-effect error and logs it at the level decided by
+    /// [`Self::record_side_effect_error_and_decide`].
     ///
     /// `record_seq` keys the recorded error (the drain/completion keyspace);
     /// `log_seq` is the sequence reported in the log line, which some call
@@ -3732,32 +3767,9 @@ impl ActorDaemonCoordinator {
         error: &GitAiError,
         context: &'static str,
     ) {
-        use crate::daemon::error_log_policy::{SideEffectErrorLog, is_expected_missing_repo_error};
+        use crate::daemon::error_log_policy::SideEffectErrorLog;
 
-        let _ = self.record_side_effect_error(family, record_seq, error);
-        // Stat the family root before taking the tracker lock so a slow
-        // filesystem cannot stall other families' error logging. Only a
-        // definitive NotFound counts as gone: EACCES/EIO and similar keep the
-        // error loud rather than misclassifying it as an expected deletion.
-        let family_root_exists = !matches!(
-            std::fs::metadata(family),
-            Err(ref io_error) if io_error.kind() == std::io::ErrorKind::NotFound
-        );
-        let decision = if is_expected_missing_repo_error(error, family_root_exists) {
-            // Short-circuit without touching the tracker map: deleted temp
-            // repos are the high-cardinality case and must not leave entries.
-            SideEffectErrorLog::ExpectedRepoGoneDebug
-        } else {
-            self.side_effect_error_log_trackers
-                .lock()
-                .map(|mut trackers| {
-                    trackers
-                        .entry(family.to_string())
-                        .or_default()
-                        .on_error(error, std::time::Instant::now())
-                })
-                .unwrap_or(SideEffectErrorLog::Error)
-        };
+        let decision = self.record_side_effect_error_and_decide(family, record_seq, error);
         match decision {
             SideEffectErrorLog::Error => {
                 tracing::error!(%error, %family, seq = log_seq, "{context}")
@@ -3777,6 +3789,72 @@ impl ActorDaemonCoordinator {
                     "{context} (repeated identical error; earlier occurrences downgraded to debug)"
                 )
             }
+        }
+    }
+
+    /// Checkpoint variant of [`Self::record_and_log_side_effect_error`] that
+    /// preserves the checkpoint log sites' structured fields (reason,
+    /// receipt_seq, trace_id).
+    #[allow(clippy::too_many_arguments)]
+    fn record_and_log_checkpoint_side_effect_error(
+        &self,
+        family: &str,
+        order: u64,
+        receipt_seq: u64,
+        trace_id: &str,
+        reason: &'static str,
+        error: &GitAiError,
+        context: &'static str,
+    ) {
+        use crate::daemon::error_log_policy::SideEffectErrorLog;
+
+        let decision = self.record_side_effect_error_and_decide(family, order, error);
+        match decision {
+            SideEffectErrorLog::Error => tracing::error!(
+                component = "daemon",
+                phase = "checkpoint_processing",
+                reason,
+                receipt_seq,
+                trace_id = %trace_id,
+                %error,
+                %family,
+                order,
+                "{context}"
+            ),
+            SideEffectErrorLog::ExpectedRepoGoneDebug => tracing::debug!(
+                component = "daemon",
+                phase = "checkpoint_processing",
+                reason,
+                receipt_seq,
+                trace_id = %trace_id,
+                %error,
+                %family,
+                order,
+                "{context} (repo removed before processing)"
+            ),
+            SideEffectErrorLog::RepeatedDebug => tracing::debug!(
+                component = "daemon",
+                phase = "checkpoint_processing",
+                reason,
+                receipt_seq,
+                trace_id = %trace_id,
+                %error,
+                %family,
+                order,
+                "{context} (repeated identical error)"
+            ),
+            SideEffectErrorLog::RepeatedSummaryWarn { suppressed_count } => tracing::warn!(
+                component = "daemon",
+                phase = "checkpoint_processing",
+                reason,
+                receipt_seq,
+                trace_id = %trace_id,
+                %error,
+                %family,
+                order,
+                suppressed_count,
+                "{context} (repeated identical error; earlier occurrences downgraded to debug)"
+            ),
         }
     }
 
@@ -5214,7 +5292,10 @@ impl ActorDaemonCoordinator {
                             "checkpoint done"
                         );
                     } else {
-                        tracing::warn!(
+                        // Status line only: the failure itself is logged below
+                        // via the error-log policy, which keeps genuine errors
+                        // loud without letting repeated failures storm.
+                        tracing::debug!(
                             kind = %checkpoint_kind_str,
                             repo = %repo_wd,
                             duration_ms = checkpoint_duration_ms as u64,
@@ -5259,10 +5340,12 @@ impl ActorDaemonCoordinator {
                                 .await
                         {
                             watermark_update_failed = true;
-                            self.record_and_log_side_effect_error(
+                            self.record_and_log_checkpoint_side_effect_error(
                                 family,
                                 order,
-                                order,
+                                receipt_seq,
+                                &checkpoint_trace_id,
+                                "watermark_update_failed",
                                 &error,
                                 "checkpoint watermark update failed",
                             );
@@ -5272,10 +5355,12 @@ impl ActorDaemonCoordinator {
                     match &result {
                         Ok(_) if !watermark_update_failed => self.note_side_effect_success(family),
                         Ok(_) => {}
-                        Err(error) => self.record_and_log_side_effect_error(
+                        Err(error) => self.record_and_log_checkpoint_side_effect_error(
                             family,
                             order,
-                            order,
+                            receipt_seq,
+                            &checkpoint_trace_id,
+                            "side_effect_failed",
                             error,
                             "checkpoint side effect failed",
                         ),

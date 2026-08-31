@@ -151,21 +151,46 @@ pub(crate) fn is_repo_discovery_miss_without_exec(error: &GitAiError) -> bool {
 /// True when the error is an expected consequence of the repository being
 /// removed before async processing: a repo-discovery miss without exec, or a
 /// git CLI failure whose stderr indicates a missing repository while the
-/// family root no longer exists on disk.
+/// path git names (or, failing that, the family root) no longer exists on
+/// disk. Checking the named path covers deleted linked worktrees, whose
+/// shared common dir (the family root) survives the worktree's deletion.
 pub(crate) fn is_expected_missing_repo_error(error: &GitAiError, family_root_exists: bool) -> bool {
     if is_repo_discovery_miss_without_exec(error) {
         return true;
     }
-    if family_root_exists {
+    let GitAiError::GitCliError { stderr, .. } = error else {
         return false;
+    };
+    if stderr_names_missing_path(stderr) {
+        return true;
     }
-    matches!(
-        error,
-        GitAiError::GitCliError { stderr, .. }
-            if VANISHED_REPO_GIT_STDERR_MARKERS
-                .iter()
-                .any(|marker| stderr.contains(marker))
-    )
+    !family_root_exists
+        && VANISHED_REPO_GIT_STDERR_MARKERS
+            .iter()
+            .any(|marker| stderr.contains(marker))
+}
+
+/// True when git's stderr quotes a concrete path (`cannot change to '<p>'`,
+/// `failed to stat '<p>'`) that no longer exists on disk. Only a definitive
+/// NotFound counts as gone, mirroring the family-root check.
+fn stderr_names_missing_path(stderr: &str) -> bool {
+    ["cannot change to ", "failed to stat "]
+        .iter()
+        .filter_map(|marker| quoted_path_after(stderr, marker))
+        .any(|path| {
+            matches!(
+                std::fs::metadata(path),
+                Err(ref io_error) if io_error.kind() == std::io::ErrorKind::NotFound
+            )
+        })
+}
+
+/// Extracts the single-quoted path following `marker` in git stderr, e.g.
+/// `fatal: cannot change to '/tmp/gone': No such file or directory`.
+fn quoted_path_after<'a>(stderr: &'a str, marker: &str) -> Option<&'a str> {
+    let after = &stderr[stderr.find(marker)? + marker.len()..];
+    let after = after.strip_prefix('\'')?;
+    after.split('\'').next()
 }
 
 #[cfg(test)]
@@ -347,15 +372,33 @@ mod tests {
     }
 
     #[test]
-    fn vanished_repo_git_errors_are_expected_only_when_root_is_gone() {
+    fn vanished_repo_git_errors_are_expected_when_root_is_gone() {
+        let existing = tempfile::tempdir().unwrap();
+        let existing = existing.path().display().to_string();
         for stderr in [
-            "fatal: cannot change to '/tmp/gone': No such file or directory",
-            "fatal: not a git repository (or any of the parent directories): .git",
-            "fatal: failed to stat '/tmp/gone': No such file or directory",
+            format!("fatal: cannot change to '{existing}': Permission denied"),
+            "fatal: not a git repository (or any of the parent directories): .git".to_string(),
+            format!("fatal: failed to stat '{existing}': Permission denied"),
         ] {
-            let error = git_cli_error(stderr);
+            let error = git_cli_error(&stderr);
             assert!(is_expected_missing_repo_error(&error, false), "{stderr}");
             assert!(!is_expected_missing_repo_error(&error, true), "{stderr}");
+        }
+    }
+
+    #[test]
+    fn errors_naming_a_deleted_path_are_expected_even_if_root_survives() {
+        // A deleted linked worktree leaves the shared common dir (the family
+        // root) in place; the path git names in stderr is the tell.
+        let dir = tempfile::tempdir().unwrap();
+        let gone = dir.path().join("gone-worktree");
+        let gone = gone.display().to_string();
+        for stderr in [
+            format!("fatal: cannot change to '{gone}': No such file or directory"),
+            format!("fatal: failed to stat '{gone}': No such file or directory"),
+        ] {
+            let error = git_cli_error(&stderr);
+            assert!(is_expected_missing_repo_error(&error, true), "{stderr}");
         }
     }
 
