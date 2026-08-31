@@ -108,6 +108,26 @@ const THROTTLE_MIN_WORK: Duration = Duration::from_millis(5);
 /// unpaid stays on the ledger.
 const THROTTLE_MAX_PAUSE: Duration = Duration::from_secs(5);
 
+/// One process-wide ledger for all paced background work: the sweep's
+/// parse/emit segments and the telemetry worker's background metrics flush
+/// charge the same debt, so their combined CPU holds the duty cycle instead
+/// of each pipeline claiming 30% on its own thread. Notify-origin passes and
+/// awaited flushes never charge it.
+static BACKGROUND_WORK_DEBT: std::sync::Mutex<Duration> = std::sync::Mutex::new(Duration::ZERO);
+
+/// Charge `work` to the shared background ledger and return the pause owed.
+pub(crate) fn background_work_pause(work: Duration) -> Duration {
+    let mut debt = BACKGROUND_WORK_DEBT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    settle_throttle_debt(&mut debt, work)
+}
+
+/// Cap on one batch's wall time: a slow-disk batch pauses (and observes
+/// shutdown) at this cadence instead of only at the byte/entry bounds, so a
+/// one-second window never holds much more work than the duty cycle allows.
+const BATCH_MAX_SEGMENT: Duration = Duration::from_millis(150);
+
 /// Add `work` to the debt ledger and settle it into the pause now owed.
 /// Debt the returned pause does not cover (the floor or the cap) carries to
 /// the next settlement, so the duty cycle holds across many small segments,
@@ -222,7 +242,6 @@ pub fn spawn_token_usage_worker(
         sweep_queue: VecDeque::new(),
         queued: HashSet::new(),
         sweep_interval: Duration::from_secs(30 * 60),
-        throttle_debt: Arc::new(std::sync::Mutex::new(Duration::ZERO)),
         #[cfg(test)]
         test_sink: None,
         #[cfg(test)]
@@ -252,9 +271,6 @@ struct TokenUsageWorker {
     queued: HashSet<TokenUsageTask>,
     /// 30 minutes in production; injectable so tests can drive the ticker.
     sweep_interval: Duration,
-    /// Sweep-work debt ledger shared by every throttled segment (see
-    /// `settle_throttle_debt`); carried across batches, files, and tasks.
-    throttle_debt: Arc<std::sync::Mutex<Duration>>,
     /// Test-only event capture: the metrics DB is a process-lifetime
     /// singleton, so run()-level tests inject a sink instead of a real
     /// telemetry handle.
@@ -518,7 +534,6 @@ impl TokenUsageWorker {
     /// wall-clock waits.
     fn make_throttle(&self) -> impl Fn(Duration) + Send + Sync + use<> {
         let shutdown_flag = self.shutdown_flag.clone();
-        let debt = self.throttle_debt.clone();
         #[cfg(test)]
         let test_throttle = self.test_throttle.clone();
         move |work: Duration| {
@@ -527,11 +542,7 @@ impl TokenUsageWorker {
                 throttle(work);
                 return;
             }
-            let pause = {
-                let mut debt = debt.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                settle_throttle_debt(&mut debt, work)
-            };
-            throttle_sleep(pause, &shutdown_flag);
+            throttle_sleep(background_work_pause(work), &shutdown_flag);
         }
     }
 
@@ -1139,7 +1150,10 @@ fn process_file(
                         entries.extend(extractor.extract_line(trimmed));
                         serve_parent_request(&mut extractor);
                     }
-                    if entries.len() >= BATCH_MAX_ENTRIES || consumed >= BATCH_MAX_BYTES {
+                    if entries.len() >= BATCH_MAX_ENTRIES
+                        || consumed >= BATCH_MAX_BYTES
+                        || batch_started.elapsed() >= BATCH_MAX_SEGMENT
+                    {
                         break;
                     }
                 }
@@ -2407,7 +2421,6 @@ mod tests {
             sweep_queue: VecDeque::new(),
             queued: HashSet::new(),
             sweep_interval: Duration::from_secs(600),
-            throttle_debt: Arc::new(std::sync::Mutex::new(Duration::ZERO)),
             test_sink: Some(sink),
             test_throttle: Some(Arc::new(|_| {})),
         };
@@ -2530,7 +2543,6 @@ mod tests {
             sweep_queue: VecDeque::new(),
             queued: HashSet::new(),
             sweep_interval: Duration::from_secs(30 * 60),
-            throttle_debt: Arc::new(std::sync::Mutex::new(Duration::ZERO)),
             test_sink: None,
             test_throttle: None,
         }
@@ -2997,7 +3009,6 @@ mod tests {
             sweep_queue: VecDeque::new(),
             queued: HashSet::new(),
             sweep_interval,
-            throttle_debt: Arc::new(std::sync::Mutex::new(Duration::ZERO)),
             test_sink: Some(sink),
             test_throttle,
         };

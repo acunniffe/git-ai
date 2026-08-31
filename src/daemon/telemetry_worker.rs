@@ -749,10 +749,15 @@ async fn telemetry_flush_loop(
         let flush_result = tokio::task::spawn_blocking(move || {
             #[cfg(feature = "test-support")]
             maybe_stall_telemetry_upload_for_test();
+            // Periodic flushes pace their metrics work against the shared
+            // background-work ledger (the token sweep charges the same one),
+            // so a backfill's emission volume cannot saturate cores; awaited
+            // flushes drain at full speed for the `git-ai await` barrier.
+            let pace = flush_mode == FlushMode::Periodic;
             let requeue_daemon_logs = if let Some(snapshot) = snapshot {
-                flush_telemetry_batch(snapshot, &daemon_id_for_flush)
+                flush_telemetry_batch(snapshot, &daemon_id_for_flush, pace)
             } else {
-                flush_pending_metrics();
+                flush_pending_metrics(pace);
                 Vec::new()
             };
             let await_status = collect_await_flush_status(flush_mode);
@@ -830,13 +835,17 @@ fn maybe_stall_telemetry_upload_for_test() {
     }
 }
 
-fn flush_telemetry_batch(batch: TelemetryBuffer, daemon_id: &str) -> Vec<DaemonLogEvent> {
+fn flush_telemetry_batch(
+    batch: TelemetryBuffer,
+    daemon_id: &str,
+    pace: bool,
+) -> Vec<DaemonLogEvent> {
     let config = Config::get();
     let distinct_id = get_or_create_distinct_id();
 
     // Flush metrics (always processed — uploaded or stored in SQLite)
     if !batch.metrics.is_empty() {
-        flush_metrics(&batch.metrics);
+        flush_metrics(&batch.metrics, pace);
     }
 
     // Flush Sentry events (errors, performance, messages)
@@ -861,7 +870,7 @@ fn flush_telemetry_batch(batch: TelemetryBuffer, daemon_id: &str) -> Vec<DaemonL
     // Flush pending notes (reads directly from notes-db; no-op when kind != Http).
     flush_notes();
 
-    flush_pending_metrics();
+    flush_pending_metrics(pace);
 
     if batch.daemon_logs.is_empty() {
         Vec::new()
@@ -911,7 +920,7 @@ fn count_pending_metrics_for_await() -> usize {
         .unwrap_or(0)
 }
 
-fn flush_metrics(events: &[MetricEvent]) {
+fn flush_metrics(events: &[MetricEvent], pace: bool) {
     let context = ApiContext::new(None);
     let api_base_url = context.base_url.clone();
     let client = ApiClient::new(context);
@@ -923,13 +932,14 @@ fn flush_metrics(events: &[MetricEvent]) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
 
     for chunk in events.chunks(MAX_METRICS_PER_ENVELOPE) {
+        let chunk_started = std::time::Instant::now();
         if let Err(e) = store_metrics_in_db(chunk) {
             tracing::warn!(%e, "telemetry: failed to persist metrics before upload");
             continue;
         }
 
         if should_upload && !upload_failed && std::time::Instant::now() < deadline {
-            match flush_pending_metrics_from_db(&client, deadline) {
+            match flush_pending_metrics_from_db(&client, deadline, pace) {
                 Ok(_) => {}
                 Err(e) => {
                     tracing::warn!(%e, "telemetry: failed to upload pending metrics");
@@ -937,10 +947,11 @@ fn flush_metrics(events: &[MetricEvent]) {
                 }
             }
         }
+        pace_background_flush(pace, chunk_started.elapsed());
     }
 }
 
-fn flush_pending_metrics() {
+fn flush_pending_metrics(pace: bool) {
     let context = ApiContext::new(None);
     let api_base_url = context.base_url.clone();
     let client = ApiClient::new(context);
@@ -955,8 +966,22 @@ fn flush_pending_metrics() {
     }
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    if let Err(e) = flush_pending_metrics_from_db(&client, deadline) {
+    if let Err(e) = flush_pending_metrics_from_db(&client, deadline, pace) {
         tracing::warn!(%e, "telemetry: failed to upload pending metrics");
+    }
+}
+
+/// Sleep out a paced flush segment's pause: the same shared ledger and duty
+/// cycle as the token sweep, with the pause additionally capped so an
+/// awaited flush arriving behind a paced drain is not held long.
+fn pace_background_flush(pace: bool, work: std::time::Duration) {
+    const MAX_FLUSH_PAUSE: std::time::Duration = std::time::Duration::from_secs(1);
+    if !pace {
+        return;
+    }
+    let pause = crate::daemon::token_usage_worker::background_work_pause(work).min(MAX_FLUSH_PAUSE);
+    if !pause.is_zero() {
+        std::thread::sleep(pause);
     }
 }
 
@@ -981,6 +1006,14 @@ fn store_metrics_in_db(events: &[MetricEvent]) -> Result<Vec<i64>, GitAiError> {
     db_lock.insert_events(&event_jsons)
 }
 
+/// How much of the pending backlog one flush invocation may drain, and
+/// whether it paces itself against the shared background-work ledger.
+struct PendingFlushBudget {
+    deadline: std::time::Instant,
+    max_batch_size: usize,
+    paced: bool,
+}
+
 #[derive(Debug, Default, PartialEq, Eq)]
 struct PendingMetricsFlushResult {
     uploaded_events: usize,
@@ -991,6 +1024,7 @@ struct PendingMetricsFlushResult {
 fn flush_pending_metrics_from_db(
     client: &ApiClient,
     deadline: std::time::Instant,
+    pace: bool,
 ) -> Result<PendingMetricsFlushResult, GitAiError> {
     flush_pending_metric_records_with(
         read_pending_metrics_batch,
@@ -998,8 +1032,11 @@ fn flush_pending_metrics_from_db(
         mark_metric_records_failed,
         mark_metric_records_undeliverable,
         |batch| client.upload_metrics(batch),
-        deadline,
-        MAX_METRICS_PER_ENVELOPE,
+        PendingFlushBudget {
+            deadline,
+            max_batch_size: MAX_METRICS_PER_ENVELOPE,
+            paced: pace,
+        },
     )
 }
 
@@ -1048,8 +1085,7 @@ fn flush_pending_metric_records_with<
     mut mark_failed: MarkFailed,
     mut mark_undeliverable: MarkUndeliverable,
     mut upload_batch: UploadBatch,
-    deadline: std::time::Instant,
-    max_batch_size: usize,
+    budget: PendingFlushBudget,
 ) -> Result<PendingMetricsFlushResult, GitAiError>
 where
     DequeueBatch: FnMut(usize) -> Result<Vec<MetricRecord>, GitAiError>,
@@ -1061,8 +1097,27 @@ where
     let mut result = PendingMetricsFlushResult::default();
     let config = Config::fresh();
 
-    while std::time::Instant::now() < deadline {
-        let batch = dequeue_batch(max_batch_size)?;
+    // A paced (periodic, background) drain processes a bounded slice of the
+    // backlog per flush cycle: pending rows are durable, the next tick (3s)
+    // resumes, and an awaited flush never queues behind a long paced drain.
+    // Paced batches are also smaller: each iteration's live set (dequeued
+    // rows, parsed events, serialized envelope) sets the process's RSS
+    // high-water mark, which a background drain must keep low — an awaited
+    // flush keeps the full envelope size.
+    const MAX_PACED_BATCHES_PER_CYCLE: usize = 16;
+    const PACED_BATCH_SIZE: usize = 250;
+
+    while std::time::Instant::now() < budget.deadline {
+        if budget.paced && result.uploaded_batches >= MAX_PACED_BATCHES_PER_CYCLE {
+            break;
+        }
+        let batch_started = std::time::Instant::now();
+        let batch_size = if budget.paced {
+            budget.max_batch_size.min(PACED_BATCH_SIZE)
+        } else {
+            budget.max_batch_size
+        };
+        let batch = dequeue_batch(batch_size)?;
         if batch.is_empty() {
             break;
         }
@@ -1161,6 +1216,7 @@ where
 
         result.uploaded_events += successful_ids.len();
         result.uploaded_batches += 1;
+        pace_background_flush(budget.paced, batch_started.elapsed());
     }
 
     Ok(result)
@@ -2065,8 +2121,11 @@ mod tests {
                     Ok(MetricsUploadResponse { errors: vec![] })
                 }
             },
-            std::time::Instant::now() + std::time::Duration::from_secs(60),
-            1,
+            PendingFlushBudget {
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                max_batch_size: 1,
+                paced: false,
+            },
         )
         .unwrap();
 
@@ -2084,6 +2143,61 @@ mod tests {
             db.borrow().get_metric_history(0, None, &[1]).unwrap().len(),
             2
         );
+    }
+
+    #[test]
+    fn paced_flush_drains_a_bounded_slice_per_cycle() {
+        // A paced (periodic background) drain must stop after its per-cycle
+        // batch cap: pending rows are durable and resume next tick, and an
+        // awaited flush never queues behind a long paced drain. An unpaced
+        // (awaited) drain with the same backlog runs it dry.
+        let (metrics_db, _metrics_db_dir) = MetricsDatabase::new_temp_for_tests().unwrap();
+        let db = Rc::new(RefCell::new(metrics_db));
+        let events: Vec<String> = (0..20).map(|i| event_json(now_ts() - 30 + i)).collect();
+        db.borrow_mut().insert_events(&events).unwrap();
+
+        let run = |pace: bool| {
+            flush_pending_metric_records_with(
+                {
+                    let db = Rc::clone(&db);
+                    move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+                },
+                {
+                    let db = Rc::clone(&db);
+                    move |ids| db.borrow_mut().mark_records_delivered(ids, unix_now())
+                },
+                {
+                    let db = Rc::clone(&db);
+                    move |ids, err| {
+                        let now = unix_now();
+                        db.borrow_mut()
+                            .mark_records_failed(ids, &err.to_string(), now)
+                    }
+                },
+                {
+                    let db = Rc::clone(&db);
+                    move |records| {
+                        db.borrow_mut()
+                            .mark_records_undeliverable(records, unix_now())
+                    }
+                },
+                |_batch| Ok(MetricsUploadResponse { errors: vec![] }),
+                PendingFlushBudget {
+                    deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                    max_batch_size: 1,
+                    paced: pace,
+                },
+            )
+            .unwrap()
+        };
+
+        let paced = run(true);
+        assert_eq!(paced.uploaded_batches, 16, "paced cycle stops at its cap");
+        assert_eq!(db.borrow().count().unwrap(), 4, "the rest stays pending");
+
+        let drained = run(false);
+        assert_eq!(drained.uploaded_batches, 4, "unpaced drain runs dry");
+        assert_eq!(db.borrow().count().unwrap(), 0);
     }
 
     #[test]
@@ -2129,8 +2243,11 @@ mod tests {
                     Ok(MetricsUploadResponse { errors: vec![] })
                 }
             },
-            std::time::Instant::now() + std::time::Duration::from_secs(60),
-            10,
+            PendingFlushBudget {
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                max_batch_size: 10,
+                paced: false,
+            },
         )
         .unwrap();
 
@@ -2200,8 +2317,11 @@ mod tests {
                     })
                 }
             },
-            std::time::Instant::now() + std::time::Duration::from_secs(60),
-            10,
+            PendingFlushBudget {
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                max_batch_size: 10,
+                paced: false,
+            },
         )
         .unwrap();
 
@@ -2276,8 +2396,11 @@ mod tests {
                     ],
                 })
             },
-            std::time::Instant::now() + std::time::Duration::from_secs(60),
-            10,
+            PendingFlushBudget {
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                max_batch_size: 10,
+                paced: false,
+            },
         )
         .unwrap();
 
@@ -2343,8 +2466,11 @@ mod tests {
                     }],
                 })
             },
-            std::time::Instant::now() + std::time::Duration::from_secs(60),
-            10,
+            PendingFlushBudget {
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                max_batch_size: 10,
+                paced: false,
+            },
         );
 
         assert!(result.is_err());
@@ -2388,8 +2514,11 @@ mod tests {
                 }
             },
             |_batch| Err(GitAiError::Generic("upload failed".to_string())),
-            std::time::Instant::now() + std::time::Duration::from_secs(60),
-            10,
+            PendingFlushBudget {
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                max_batch_size: 10,
+                paced: false,
+            },
         );
 
         assert!(result.is_err());
@@ -2431,8 +2560,11 @@ mod tests {
                 }
             },
             |_batch| Err(GitAiError::Generic("upload failed".to_string())),
-            std::time::Instant::now() + std::time::Duration::from_secs(60),
-            1,
+            PendingFlushBudget {
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                max_batch_size: 1,
+                paced: false,
+            },
         );
         assert!(failed.is_err());
         assert_eq!(db.borrow().count_retryable().unwrap(), 0);
@@ -2477,8 +2609,11 @@ mod tests {
                     Ok(MetricsUploadResponse { errors: vec![] })
                 }
             },
-            std::time::Instant::now() + std::time::Duration::from_secs(60),
-            1,
+            PendingFlushBudget {
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                max_batch_size: 1,
+                paced: false,
+            },
         )
         .unwrap();
 
