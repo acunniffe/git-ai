@@ -3267,6 +3267,19 @@ fn discover_reflog_refs(
 }
 
 fn parse_update_ref_spec(args: &[String]) -> Result<Option<UpdateRefSpec>, GitAiError> {
+    // `args` may still carry git global options that precede the subcommand
+    // (e.g. `git -c key=val update-ref ...` or `git -C path update-ref ...`):
+    // when a command has no `invoked_args` (already global-stripped during
+    // trace normalization), `command_args` falls back to the raw argv minus
+    // the executable. Strip the globals with the CLI parser, which knows which
+    // global options consume a value, so they are not misread as update-ref
+    // options/positionals.
+    let parsed = parse_git_cli_args(args);
+    let args: &[String] = if parsed.command.as_deref() == Some("update-ref") {
+        &parsed.command_args
+    } else {
+        args
+    };
     let mut positionals = Vec::new();
     let mut delete = false;
     let mut idx = 0usize;
@@ -3290,10 +3303,15 @@ fn parse_update_ref_spec(args: &[String]) -> Result<Option<UpdateRefSpec>, GitAi
                 }
                 idx += 2;
             }
-            "--create-reflog" | "--no-deref" => {
+            "-z" | "--create-reflog" | "--no-create-reflog" | "--no-deref" => {
                 idx += 1;
             }
             value if value.starts_with("--message=") => {
+                idx += 1;
+            }
+            // git's parse-options also accepts the reason attached to the
+            // short flag (`-m<reason>`).
+            value if value.starts_with("-m") && value.len() > 2 => {
                 idx += 1;
             }
             value if value.starts_with('-') => {
@@ -3890,6 +3908,68 @@ mod tests {
             cherry_pick_source_args(&["-Smy-key".to_string(), "HEAD~1".to_string()]),
             vec!["HEAD~1"]
         );
+    }
+
+    fn parse_update_ref_args(args: &[&str]) -> Result<Option<UpdateRefSpec>, GitAiError> {
+        let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+        parse_update_ref_spec(&args)
+    }
+
+    #[test]
+    fn parse_update_ref_spec_skips_global_config_flag_before_subcommand() {
+        let spec = parse_update_ref_args(&["-c", "some.key=val", "update-ref", "refs/heads/x", A])
+            .unwrap()
+            .unwrap();
+        assert_eq!(spec.reference, "refs/heads/x");
+        assert_eq!(spec.new_oid, A);
+        assert_eq!(spec.old_oid, None);
+    }
+
+    #[test]
+    fn parse_update_ref_spec_skips_global_chdir_flag_before_subcommand() {
+        let spec = parse_update_ref_args(&["-C", "/path", "update-ref", "refs/heads/x", A, B])
+            .unwrap()
+            .unwrap();
+        assert_eq!(spec.reference, "refs/heads/x");
+        assert_eq!(spec.new_oid, A);
+        assert_eq!(spec.old_oid, Some(B.to_string()));
+    }
+
+    #[test]
+    fn parse_update_ref_spec_parses_plain_delete() {
+        let spec = parse_update_ref_args(&["update-ref", "-d", "refs/heads/x"])
+            .unwrap()
+            .unwrap();
+        assert_eq!(spec.reference, "refs/heads/x");
+        assert_eq!(spec.new_oid, zero_oid());
+        assert_eq!(spec.old_oid, None);
+    }
+
+    #[test]
+    fn parse_update_ref_spec_accepts_z_and_negated_create_reflog_flags() {
+        // git's parse-options accepts `-z` in any position relative to
+        // `--stdin` and auto-negates boolean long options.
+        assert!(
+            parse_update_ref_args(&["update-ref", "-z", "--stdin"])
+                .unwrap()
+                .is_none()
+        );
+        let spec = parse_update_ref_args(&["update-ref", "--no-create-reflog", "refs/heads/x", A])
+            .unwrap()
+            .unwrap();
+        assert_eq!(spec.reference, "refs/heads/x");
+        assert_eq!(spec.new_oid, A);
+        assert_eq!(spec.old_oid, None);
+    }
+
+    #[test]
+    fn parse_update_ref_spec_consumes_sticky_short_message_value() {
+        let spec = parse_update_ref_args(&["update-ref", "-mreason", "refs/heads/x", A, B])
+            .unwrap()
+            .unwrap();
+        assert_eq!(spec.reference, "refs/heads/x");
+        assert_eq!(spec.new_oid, A);
+        assert_eq!(spec.old_oid, Some(B.to_string()));
     }
 
     fn family_state(family: &FamilyKey) -> FamilyState {
@@ -4531,6 +4611,58 @@ mod tests {
         let mut cursor = RefCursor::new(family.clone());
         let mut cmd =
             command_with_worktree(&family, Some(worktree), &["update-ref", reference, D, C]);
+        cmd.reflog_start_offsets
+            .insert(common_key(reference), branch_line.len() as u64);
+        cmd.reflog_start_offsets
+            .insert(head_key(&git_dir), head_line.len() as u64);
+
+        cursor.enrich_command(&mut cmd, &state).unwrap();
+
+        assert_eq!(
+            cmd.ref_changes,
+            vec![
+                RefChange {
+                    reference: reference.to_string(),
+                    old: C.to_string(),
+                    new: D.to_string(),
+                },
+                RefChange {
+                    reference: "HEAD".to_string(),
+                    old: C.to_string(),
+                    new: D.to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn direct_branch_update_ref_strips_global_options_on_raw_argv_fallback() {
+        // The production shape for the global-option stripping in
+        // `parse_update_ref_spec`: when a command carries no `invoked_args`,
+        // `command_args` falls back to the raw argv minus the executable,
+        // which retains global options and the subcommand token.
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let reference = "refs/heads/feature";
+        fs::create_dir_all(git_dir.join("logs").join("refs/heads")).unwrap();
+
+        let branch_line = format!("{C} {D} Test User <test@example.com> 0 +0000\t\n");
+        let head_line = format!("{C} {D} Test User <test@example.com> 0 +0000\t\n");
+        fs::write(git_dir.join("logs").join(reference), &branch_line).unwrap();
+        fs::write(git_dir.join("logs").join("HEAD"), &head_line).unwrap();
+
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        let mut cmd =
+            command_with_worktree(&family, Some(worktree), &["update-ref", reference, D, C]);
+        cmd.invoked_command = None;
+        cmd.invoked_args = Vec::new();
+        cmd.raw_argv = ["git", "-c", "foo.bar=1", "update-ref", reference, D, C]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect();
         cmd.reflog_start_offsets
             .insert(common_key(reference), branch_line.len() as u64);
         cmd.reflog_start_offsets
