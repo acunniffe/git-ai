@@ -31,17 +31,23 @@ impl ContinueAgent {
     fn scan_session_files() -> Vec<PathBuf> {
         let mut paths = Vec::new();
 
-        if let Some(home) = dirs::home_dir() {
-            let pattern = home
-                .join(".continue/sessions/**/*.json")
-                .to_string_lossy()
-                .to_string();
+        let pattern = crate::mdm::utils::home_dir()
+            .join(".continue/sessions/**/*.json")
+            .to_string_lossy()
+            .to_string();
 
-            if let Ok(entries) = glob::glob(&pattern) {
-                for entry in entries.flatten() {
-                    if entry.is_file() {
-                        paths.push(entry);
-                    }
+        if let Ok(entries) = glob::glob(&pattern) {
+            for entry in entries.flatten() {
+                // Skip Continue's own session index file (a JSON array listing
+                // sessions) -- it is not a transcript and has no "history".
+                if entry
+                    .file_name()
+                    .is_some_and(|name| name == "sessions.json")
+                {
+                    continue;
+                }
+                if entry.is_file() {
+                    paths.push(entry);
                 }
             }
         }
@@ -193,6 +199,83 @@ impl Agent for ContinueAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
+
+    /// Temporarily override HOME (and USERPROFILE on Windows) to a temp directory
+    /// for the duration of the closure. Must only be called from `#[serial]` tests
+    /// to avoid racing with other tests that read HOME.
+    fn with_temp_home<F: FnOnce(&Path)>(f: F) {
+        /// Restores HOME/USERPROFILE on drop so a panicking test closure
+        /// cannot leave the environment poisoned for subsequent tests.
+        struct RestoreHomeGuard {
+            prev_home: Option<std::ffi::OsString>,
+            prev_userprofile: Option<std::ffi::OsString>,
+        }
+
+        impl Drop for RestoreHomeGuard {
+            fn drop(&mut self) {
+                // SAFETY: tests using this helper are serialized via #[serial],
+                // so restoring the process environment is safe.
+                unsafe {
+                    match self.prev_home.take() {
+                        Some(v) => std::env::set_var("HOME", v),
+                        None => std::env::remove_var("HOME"),
+                    }
+                    match self.prev_userprofile.take() {
+                        Some(v) => std::env::set_var("USERPROFILE", v),
+                        None => std::env::remove_var("USERPROFILE"),
+                    }
+                }
+            }
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let home = temp.path().to_path_buf();
+
+        let _guard = RestoreHomeGuard {
+            prev_home: std::env::var_os("HOME"),
+            prev_userprofile: std::env::var_os("USERPROFILE"),
+        };
+
+        // SAFETY: tests using this helper are serialized via #[serial],
+        // so mutating the process environment is safe.
+        unsafe {
+            std::env::set_var("HOME", &home);
+            std::env::set_var("USERPROFILE", &home);
+        }
+
+        f(&home);
+    }
+
+    #[test]
+    #[serial]
+    fn test_discover_sessions_skips_sessions_index_file() {
+        with_temp_home(|home| {
+            let sessions_dir = home.join(".continue").join("sessions");
+            std::fs::create_dir_all(&sessions_dir).unwrap();
+
+            // Continue's own index file: a JSON array of session summaries.
+            // It is not a transcript and has no "history" array.
+            std::fs::write(
+                sessions_dir.join("sessions.json"),
+                r#"[{"sessionId":"1cf47bde-0f18-4934-8b23-43b0829f0b37","title":"Fix a bug","dateCreated":"2026-08-30T12:00:00.000Z","workspaceDirectory":"/tmp/project"}]"#,
+            )
+            .unwrap();
+
+            let transcript_path = sessions_dir.join("1cf47bde-0f18-4934-8b23-43b0829f0b37.json");
+            std::fs::write(&transcript_path, make_continue_json(2)).unwrap();
+
+            let agent = ContinueAgent::new();
+            let sessions = agent.discover_sessions().unwrap();
+
+            let external_ids: Vec<&str> = sessions
+                .iter()
+                .map(|s| s.external_session_id.as_str())
+                .collect();
+            assert_eq!(external_ids, vec!["1cf47bde-0f18-4934-8b23-43b0829f0b37"]);
+            assert_eq!(sessions[0].stream_path, transcript_path);
+        });
+    }
 
     #[test]
     fn test_sweep_strategy() {
