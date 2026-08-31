@@ -70,6 +70,10 @@ enum LineRead {
     /// reader advanced past its newline, so one giant transcript line cannot
     /// balloon daemon RSS (#2244).
     Oversized(usize),
+    /// Line exceeded `max_line_bytes` but reached EOF before a newline: the
+    /// writer may still be appending. The cursor must stay before the line —
+    /// resuming mid-line would extract its tail as bogus usage data.
+    OversizedPartial,
 }
 
 /// Lossy byte-level sibling of `streams::types::read_jsonl_line`: it must
@@ -95,7 +99,10 @@ fn read_line_bytes(
             // Cap hit mid-line: discard the buffered prefix and skip the rest
             // of the physical line without storing it.
             buf.clear();
-            let skipped = reader.skip_until(b'\n')?;
+            let (skipped, terminated) = crate::streams::types::skip_line_remainder(reader)?;
+            if !terminated {
+                return Ok(LineRead::OversizedPartial);
+            }
             return Ok(LineRead::Oversized(bytes + skipped));
         }
         return Ok(LineRead::Partial(bytes));
@@ -864,6 +871,12 @@ fn process_file(
                         break;
                     }
                 }
+                // An oversized line still being written: stop with the cursor
+                // before it; a later pass consumes it whole once terminated.
+                LineRead::OversizedPartial => {
+                    reached_end = true;
+                    break;
+                }
                 // Advance past the skipped line; counting it toward the batch
                 // budget keeps commit cadence, so the persisted cursor moves
                 // beyond the giant line promptly.
@@ -1027,6 +1040,21 @@ mod tests {
                 assert_eq!(String::from_utf8_lossy(&buf).trim_end(), "{\"ok\":1}")
             }
             _ => panic!("expected the next line to read normally"),
+        }
+    }
+
+    #[test]
+    fn read_line_bytes_unterminated_oversized_line_is_partial() {
+        // The cursor must stay before a giant line still being written:
+        // resuming mid-line would extract its tail as bogus usage data.
+        let cap: u64 = 64;
+        let big = "x".repeat(cap as usize + 100);
+        let mut reader = std::io::BufReader::new(big.as_bytes());
+        let mut buf = Vec::new();
+
+        match read_line_bytes(&mut reader, &mut buf, cap).unwrap() {
+            LineRead::OversizedPartial => {}
+            _ => panic!("expected OversizedPartial for an unterminated giant line"),
         }
     }
 

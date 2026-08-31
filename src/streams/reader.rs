@@ -135,7 +135,10 @@ fn read_jsonl_event_stream_with(
             }
         })? {
             JsonlLineState::Eof => break,
-            JsonlLineState::Partial => break,
+            // Partial states leave the watermark before the line: advancing
+            // past a half-written line would resume mid-record and emit its
+            // tail as a bogus event once the writer finishes.
+            JsonlLineState::Partial | JsonlLineState::OversizedPartial => break,
             JsonlLineState::Complete(bytes_read) => {
                 line_number += 1;
                 current_offset += bytes_read as u64;
@@ -151,6 +154,17 @@ fn read_jsonl_event_stream_with(
                     agent = opts.agent_label,
                     max_bytes = max_line_bytes,
                     "skipping oversized transcript line"
+                );
+                continue;
+            }
+            JsonlLineState::Invalid(bytes_read) => {
+                line_number += 1;
+                current_offset += bytes_read as u64;
+                tracing::warn!(
+                    line = line_number,
+                    path = %path.display(),
+                    agent = opts.agent_label,
+                    "skipping non-UTF-8 transcript line"
                 );
                 continue;
             }
@@ -326,6 +340,73 @@ mod tests {
         // The next poll picks up the remaining two events.
         let batch = read(&file, batch.new_watermark, &opts, TEST_LINE_CAP, 30);
         assert_eq!(batch.events.len(), 2);
+    }
+
+    #[test]
+    fn test_unterminated_oversized_line_never_emits_its_tail() {
+        // A writer paused mid-giant-line: the poll must stop with the
+        // watermark at the line's start. Once the writer finishes the line
+        // (with a tail that parses as valid JSON on its own) and appends a
+        // normal event, the next poll must skip the whole giant line and
+        // emit only the normal event — never the tail.
+        use std::fs::OpenOptions;
+
+        let prefix = "x".repeat(TEST_LINE_CAP as usize + 40);
+        let file = write_temp(&format!("{{\"a\":1}}\n{prefix}"));
+        let opts = byte_offset_opts(10);
+
+        let batch = read(
+            &file,
+            Box::new(ByteOffsetWatermark::new(0)),
+            &opts,
+            TEST_LINE_CAP,
+            TEST_BATCH_CAP,
+        );
+        assert_eq!(batch.events.len(), 1);
+        assert_eq!(
+            batch.new_watermark.serialize(),
+            "8",
+            "watermark must stop before the unterminated giant line"
+        );
+
+        let mut appender = OpenOptions::new().append(true).open(file.path()).unwrap();
+        write!(appender, "{{\"tail\":true}}\n{{\"b\":2}}\n").unwrap();
+        appender.flush().unwrap();
+
+        let batch = read(
+            &file,
+            batch.new_watermark,
+            &opts,
+            TEST_LINE_CAP,
+            TEST_BATCH_CAP,
+        );
+        assert_eq!(
+            batch.events.len(),
+            1,
+            "the giant line's tail must not be emitted"
+        );
+        assert_eq!(batch.events[0]["b"], 2);
+    }
+
+    #[test]
+    fn test_invalid_utf8_line_skipped_with_watermark_advanced() {
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"{\"a\":1}\n\xff\xfe garbage\n{\"b\":2}\n")
+            .unwrap();
+        file.flush().unwrap();
+        let opts = byte_offset_opts(10);
+
+        let batch = read(
+            &file,
+            Box::new(ByteOffsetWatermark::new(0)),
+            &opts,
+            TEST_LINE_CAP,
+            TEST_BATCH_CAP,
+        );
+        assert_eq!(batch.events.len(), 2);
+        assert_eq!(batch.events[1]["b"], 2);
+        // The invalid line is consumed, never re-read.
+        assert_eq!(batch.new_watermark.serialize(), "27");
     }
 
     #[test]

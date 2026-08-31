@@ -9,13 +9,24 @@ pub enum JsonlLineState {
     /// End of file reached.
     Eof,
     /// Incomplete line (no trailing newline) — writer still appending.
+    /// Callers must stop and must not advance their watermark past it.
     Partial,
     /// Complete line ready for processing. Contains bytes read.
     Complete(usize),
-    /// Line exceeded the byte cap and was skipped without being buffered.
-    /// Contains total bytes consumed (cap + remainder up to and including the
-    /// newline) so callers can advance their watermark past it.
+    /// Line exceeded the byte cap and was skipped without being buffered;
+    /// its terminating newline was consumed. Contains total bytes consumed
+    /// (cap + remainder up to and including the newline) so callers can
+    /// advance their watermark past it.
     Oversized(usize),
+    /// Line exceeded the byte cap but reached EOF before a newline — the
+    /// writer may still be appending it. Like `Partial`, callers must stop
+    /// and must NOT advance the watermark: resuming mid-line once the
+    /// writer finishes would emit the line's tail as a bogus record.
+    OversizedPartial,
+    /// Complete line whose content is not valid UTF-8, consumed through its
+    /// newline. Contains bytes consumed so callers can skip past it — a
+    /// hard error here would wedge the stream at a fixed watermark.
+    Invalid(usize),
 }
 
 /// Read a line from a BufReader, detecting partial writes from concurrent writers.
@@ -24,10 +35,6 @@ pub enum JsonlLineState {
 /// (`Config::max_transcript_line_bytes()` in production): `read_line` is
 /// otherwise unbounded, and a single multi-hundred-MB transcript line can
 /// balloon daemon RSS past the memory watchdog's hard limit (#2244).
-///
-/// Returns `Eof` if no more data, `Partial` if the line lacks a trailing newline,
-/// `Complete(bytes)` on success, or `Oversized(bytes)` when the line exceeded
-/// `max_line_bytes` (content is discarded, reader advanced past the newline).
 pub fn read_jsonl_line(
     reader: &mut impl BufRead,
     line: &mut String,
@@ -49,23 +56,53 @@ pub fn read_jsonl_line(
         // The cap was hit mid-line: discard what we buffered (no UTF-8
         // conversion is attempted on discarded content, and dropping the
         // buffer releases the cap-sized allocation) and skip the rest of the
-        // physical line without storing it. If EOF arrives before the
-        // newline (giant line still being written), we still report
-        // Oversized — re-reading it later would OOM anyway.
+        // physical line without storing it.
         drop(buf);
-        let skipped = reader.skip_until(b'\n')?;
+        let (skipped, terminated) = skip_line_remainder(reader)?;
+        if !terminated {
+            return Ok(JsonlLineState::OversizedPartial);
+        }
         return Ok(JsonlLineState::Oversized(bytes_read + skipped));
     }
-    // Same contract as read_line: non-UTF-8 content is an InvalidData error.
-    *line = String::from_utf8(buf)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     if bytes_read == 0 {
+        *line = String::from_utf8(buf).unwrap_or_default();
         return Ok(JsonlLineState::Eof);
     }
-    if !line.ends_with('\n') {
-        return Ok(JsonlLineState::Partial);
+    let terminated = buf.last() == Some(&b'\n');
+    match String::from_utf8(buf) {
+        Ok(content) => {
+            *line = content;
+            if !terminated {
+                return Ok(JsonlLineState::Partial);
+            }
+            Ok(JsonlLineState::Complete(bytes_read))
+        }
+        // An unterminated line can legitimately end mid-UTF-8-character (the
+        // writer is mid-write): report Partial, not an error. A terminated
+        // non-UTF-8 line is reported as Invalid so callers can skip it.
+        Err(_) if !terminated => Ok(JsonlLineState::Partial),
+        Err(_) => Ok(JsonlLineState::Invalid(bytes_read)),
     }
-    Ok(JsonlLineState::Complete(bytes_read))
+}
+
+/// Consume the remainder of the current physical line without buffering it.
+/// Returns `(bytes_skipped, newline_found)` — unlike `skip_until`, callers
+/// can tell a terminated line apart from one that ran into EOF.
+pub(crate) fn skip_line_remainder(reader: &mut impl BufRead) -> std::io::Result<(usize, bool)> {
+    let mut skipped = 0usize;
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return Ok((skipped, false));
+        }
+        if let Some(pos) = available.iter().position(|&b| b == b'\n') {
+            reader.consume(pos + 1);
+            return Ok((skipped + pos + 1, true));
+        }
+        let len = available.len();
+        reader.consume(len);
+        skipped += len;
+    }
 }
 
 /// Read up to `max_lines` leading lines of a JSONL file, each bounded by
@@ -95,7 +132,7 @@ fn read_leading_jsonl_lines_with(
     let mut line = String::new();
     for _ in 0..max_lines {
         match read_jsonl_line(&mut reader, &mut line, max_line_bytes) {
-            Ok(JsonlLineState::Eof) => break,
+            Ok(JsonlLineState::Eof) | Ok(JsonlLineState::OversizedPartial) => break,
             Ok(JsonlLineState::Partial) => {
                 lines.push(std::mem::take(&mut line));
                 break;
@@ -103,10 +140,9 @@ fn read_leading_jsonl_lines_with(
             Ok(JsonlLineState::Complete(_)) => {
                 lines.push(line.trim_end_matches(['\n', '\r']).to_string());
             }
-            Ok(JsonlLineState::Oversized(_)) => {}
             // The reader consumed the offending line through its newline, so
             // the scan can continue on the next one.
-            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
+            Ok(JsonlLineState::Oversized(_)) | Ok(JsonlLineState::Invalid(_)) => {}
             Err(_) => break,
         }
     }
@@ -302,14 +338,51 @@ mod tests {
     }
 
     #[test]
-    fn test_read_jsonl_line_oversized_without_newline_at_eof() {
+    fn test_read_jsonl_line_oversized_without_newline_is_partial() {
+        // A giant line still being written (no newline at EOF) must not be
+        // classified as consumed: advancing the watermark past EOF would make
+        // a later poll resume mid-line and emit the line's tail as a bogus
+        // record once the writer finishes.
         let big = "x".repeat(TEST_CAP as usize + 50);
         let mut reader = std::io::BufReader::new(big.as_bytes());
         let mut line = String::new();
 
         match read_jsonl_line(&mut reader, &mut line, TEST_CAP).unwrap() {
-            JsonlLineState::Oversized(consumed) => assert_eq!(consumed, big.len()),
-            other => panic!("expected Oversized even without a trailing newline, got {other:?}"),
+            JsonlLineState::OversizedPartial => {}
+            other => panic!("expected OversizedPartial without a trailing newline, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_read_jsonl_line_invalid_utf8_terminated_line_is_skippable() {
+        // A terminated non-UTF-8 line reports Invalid with its byte count so
+        // callers advance past it instead of wedging on a hard error.
+        let data: &[u8] = b"\xff\xfe bad bytes\n{\"ok\":1}\n";
+        let mut reader = std::io::BufReader::new(data);
+        let mut line = String::new();
+
+        match read_jsonl_line(&mut reader, &mut line, TEST_CAP).unwrap() {
+            JsonlLineState::Invalid(bytes) => assert_eq!(bytes, 13),
+            other => panic!("expected Invalid for terminated non-UTF-8 line, got {other:?}"),
+        }
+        match read_jsonl_line(&mut reader, &mut line, TEST_CAP).unwrap() {
+            JsonlLineState::Complete(_) => assert_eq!(line.trim_end(), "{\"ok\":1}"),
+            other => panic!("expected the next line to parse normally, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_read_jsonl_line_unterminated_mid_utf8_char_is_partial() {
+        // A writer mid-write can pause between the bytes of a multi-byte
+        // character; that is a Partial line, not an error.
+        let euro = "€".as_bytes();
+        let data = [b"{\"t\":\"", &euro[..2]].concat();
+        let mut reader = std::io::BufReader::new(&data[..]);
+        let mut line = String::new();
+
+        match read_jsonl_line(&mut reader, &mut line, TEST_CAP).unwrap() {
+            JsonlLineState::Partial => {}
+            other => panic!("expected Partial for an unterminated mid-char line, got {other:?}"),
         }
     }
 
@@ -334,17 +407,6 @@ mod tests {
             JsonlLineState::Complete(_) => assert_eq!(line.trim_end(), "{\"ok\":1}"),
             other => panic!("expected the next line to parse normally, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn test_read_jsonl_line_invalid_utf8_within_cap_still_errors() {
-        // Non-UTF-8 content on a normal-sized line keeps read_line's
-        // InvalidData contract.
-        let data: &[u8] = b"\xff\xfe bad bytes\n";
-        let mut reader = std::io::BufReader::new(data);
-        let mut line = String::new();
-        let err = read_jsonl_line(&mut reader, &mut line, TEST_CAP).unwrap_err();
-        assert_eq!(err.kind(), std::io::ErrorKind::InvalidData);
     }
 
     #[test]
