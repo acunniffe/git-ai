@@ -382,6 +382,52 @@ mod tests {
     }
 
     #[test]
+    fn test_read_incremental_tolerates_invalid_utf8_lines() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(b"{\"type\":\"user\",\"message\":{\"content\":\"Hello\"}}\n")
+            .unwrap();
+        // Invalid UTF-8 lines must not fail the session. This one is also
+        // structurally broken JSON, so it is skipped as malformed.
+        file.write_all(b"{\"type\":\"user\",\"message\":{\"content\":\"\xff\xfe garbage\n")
+            .unwrap();
+        // Invalid UTF-8 inside structurally valid JSON is ingested with the
+        // bad bytes replaced by U+FFFD.
+        file.write_all(b"{\"type\":\"user\",\"message\":{\"content\":\"caf\xff\"}}\n")
+            .unwrap();
+        file.write_all(b"{\"type\":\"user\",\"message\":{\"content\":\"After\"}}\n")
+            .unwrap();
+        file.flush().unwrap();
+        let total_len = std::fs::metadata(file.path()).unwrap().len();
+
+        let agent = ClaudeAgent::new();
+        let watermark = Box::new(ByteOffsetWatermark::new(0));
+        let result = agent
+            .read_incremental(file.path(), watermark, "test-session")
+            .unwrap();
+
+        assert_eq!(result.events.len(), 3);
+        assert_eq!(
+            result.events[1]["message"]["content"].as_str(),
+            Some("caf\u{FFFD}")
+        );
+        assert_eq!(
+            result.events[2]["message"]["content"].as_str(),
+            Some("After")
+        );
+        // Watermark must advance past every line by raw byte count, not the
+        // (longer) lossily-decoded lengths.
+        let wm = result
+            .new_watermark
+            .as_any()
+            .downcast_ref::<ByteOffsetWatermark>()
+            .unwrap();
+        assert_eq!(wm.0, total_len);
+    }
+
+    #[test]
     fn test_scan_discovers_real_claude_files() {
         let paths = ClaudeAgent::scan_conversation_files();
         // On this machine we have files in ~/.claude/projects/
