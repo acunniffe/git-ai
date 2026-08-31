@@ -8279,3 +8279,148 @@ fn await_rejects_zero_timeout() {
         "await should report an input validation error: {error}"
     );
 }
+
+/// Capstone for the #2244 abort loop: a transcript containing one line beyond
+/// `max_transcript_line_bytes` must be ingested with the giant line skipped
+/// (never buffered), its neighbors processed, and the persisted watermark
+/// advanced past it — so a daemon restart never re-reads the line. The
+/// production failure re-read multi-hundred-MB transcripts from watermark 0
+/// after every memory-watchdog abort, blocking traced git until the daemon
+/// was killed by hand.
+#[test]
+#[serial]
+fn oversized_transcript_line_is_skipped_and_never_reread_after_restart() {
+    const BUDGET_ENV: &[(&str, &str)] = &[
+        ("GIT_AI_MAX_TRANSCRIPT_LINE_BYTES", "65536"),
+        ("GIT_AI_MAX_TRANSCRIPT_BATCH_BYTES", "131072"),
+        ("GIT_AI_MAX_TRANSCRIPT_BACKFILL_BYTES", "262144"),
+    ];
+    const SKIP_LOG_LINE: &str = "skipping oversized transcript line";
+
+    let mut repo = TestRepo::new_with_daemon_env(BUDGET_ENV);
+    repo.patch_git_ai_config(|patch| {
+        patch.exclude_prompts_in_repositories = Some(vec![]);
+        patch.prompt_storage = Some("default".to_string());
+        patch.telemetry_oss_disabled = Some(true);
+    });
+
+    let repo_root = repo.canonical_path();
+    let file_path = repo_root.join("test.ts");
+    fs::write(&file_path, "const x = 1;\n").expect("failed to write initial file");
+    repo.stage_all_and_commit("Initial commit")
+        .expect("initial commit should succeed");
+
+    // Claude-style transcript: normal events around one ~256 KiB single-line
+    // event (4x the configured line cap).
+    let session_id = "11111111-2222-3333-4444-555555555555";
+    let claude_event = |uuid: &str, text: &str| {
+        json!({
+            "parentUuid": null,
+            "isSidechain": false,
+            "cwd": repo_root.to_string_lossy().to_string(),
+            "sessionId": session_id,
+            "type": "user",
+            "message": {"role": "user", "content": text},
+            "uuid": uuid,
+            "timestamp": "2026-08-30T12:00:00.000Z"
+        })
+        .to_string()
+    };
+    let transcript_path = repo_root.join("claude-session.jsonl");
+    let transcript_contents = format!(
+        "{}\n{}\n{}\n",
+        claude_event("evt-before", "before the giant line"),
+        claude_event("evt-giant", &"x".repeat(256 * 1024)),
+        claude_event("evt-after", "after the giant line"),
+    );
+    fs::write(&transcript_path, &transcript_contents).expect("failed to write transcript");
+    let transcript_len = fs::metadata(&transcript_path)
+        .expect("transcript metadata")
+        .len();
+
+    let hook_input = json!({
+        "cwd": repo_root.to_string_lossy().to_string(),
+        "hook_event_name": "PostToolUse",
+        "transcript_path": transcript_path.to_string_lossy().to_string(),
+        "tool_input": {"file_path": file_path.to_string_lossy().to_string()}
+    })
+    .to_string();
+
+    fs::write(&file_path, "const x = 1;\n// ai line\n").expect("failed to write AI edit");
+    repo.git_ai(&["checkpoint", "claude", "--hook-input", &hook_input])
+        .expect("checkpoint should succeed");
+    repo.stage_all_and_commit("AI commit")
+        .expect("AI commit should succeed");
+    repo.git_ai(&["await", "--timeout", "60"])
+        .expect("await should succeed");
+
+    let streams_db_path = DaemonConfig::from_home(&repo.daemon_home_path())
+        .internal_dir
+        .join("transcripts-db");
+    let transcript_watermark = |label: &str| -> String {
+        let db =
+            git_ai::streams::StreamsDatabase::open(&streams_db_path).expect("open transcripts-db");
+        let streams = db.all_streams().expect("list streams");
+        streams
+            .iter()
+            .find(|s| s.stream_path == transcript_path.to_string_lossy())
+            .unwrap_or_else(|| panic!("{label}: transcript stream not registered: {streams:?}"))
+            .watermark_value
+            .clone()
+    };
+
+    // The watermark must land at EOF: the giant line was skipped and consumed,
+    // not wedged on. Poll: transcript processing is asynchronous to `await`'s
+    // certification of metrics/notes.
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
+    loop {
+        if transcript_watermark("phase 1") == transcript_len.to_string() {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "watermark never reached EOF ({transcript_len}): stuck at {} \ndaemon log:\n{}",
+            transcript_watermark("phase 1"),
+            repo.daemon_stderr_contents()
+        );
+        thread::sleep(Duration::from_millis(100));
+    }
+    let phase1_stderr = repo.daemon_stderr_contents();
+    let phase1_skips = phase1_stderr.matches(SKIP_LOG_LINE).count();
+    assert!(
+        phase1_skips >= 1,
+        "the giant line should be skipped with a warning\ndaemon log:\n{phase1_stderr}"
+    );
+    assert!(
+        !phase1_stderr.contains("memory emergency"),
+        "processing the giant line must not trip the memory watchdog"
+    );
+
+    // A restarted daemon must not re-read the transcript: the watermark is
+    // already past the giant line and the file is unchanged.
+    repo.restart_dedicated_daemon_with_env_for_test(BUDGET_ENV);
+    fs::write(&file_path, "const x = 1;\n// ai line\n// more\n")
+        .expect("failed to write second edit");
+    repo.git_ai(&["checkpoint", "mock_ai", "test.ts"])
+        .expect("second checkpoint should succeed");
+    repo.stage_all_and_commit("Second commit")
+        .expect("second commit should succeed");
+    repo.git_ai(&["await", "--timeout", "60"])
+        .expect("second await should succeed");
+
+    assert_eq!(
+        transcript_watermark("phase 2"),
+        transcript_len.to_string(),
+        "restart must not move the watermark backwards or re-read"
+    );
+    // No new oversized-skip warning: the restarted daemon never touched the
+    // giant line (the log file may be fresh or appended depending on restart).
+    let phase2_skips = repo.daemon_stderr_contents().matches(SKIP_LOG_LINE).count();
+    assert!(
+        phase2_skips == 0 || phase2_skips == phase1_skips,
+        "restarted daemon re-read the oversized line: {} skips before restart, {} after\ndaemon log:\n{}",
+        phase1_skips,
+        phase2_skips,
+        repo.daemon_stderr_contents()
+    );
+}
