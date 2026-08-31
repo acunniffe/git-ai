@@ -44,6 +44,7 @@ pub mod agent;
 pub mod agents;
 pub mod db;
 pub mod model_extraction;
+pub(crate) mod reader;
 pub mod sweep;
 pub mod types;
 pub mod watermark;
