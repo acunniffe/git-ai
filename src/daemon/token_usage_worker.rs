@@ -782,6 +782,14 @@ fn resolve_parent_prefix(
     child_path: &str,
     request: &ParentPrefixRequest,
 ) -> Option<Vec<UsageSignature>> {
+    // The trait hook is provider-neutral, but everything below is codex
+    // machinery (rollout layout, session_meta confirmation, codex delta
+    // parsing). Another tool's request resolves to "parent unavailable"
+    // (its burst fallback) instead of misparsing a foreign transcript as a
+    // rollout; extend with per-tool dispatch when a second tool needs it.
+    if tool != "codex" {
+        return None;
+    }
     let tracked = token_db
         .stream_paths_for_external_session(&request.parent_id, tool)
         .unwrap_or_default();
@@ -800,13 +808,20 @@ fn resolve_parent_prefix(
 
 /// Whether the rollout's first line records `session_id` as its own id.
 fn records_session_id(path: &Path, session_id: &str) -> bool {
+    use std::io::Read;
     let Ok(file) = std::fs::File::open(path) else {
         return false;
     };
+    // A rollout's session_meta line is small; a candidate whose first line
+    // is larger is not one, and must not be buffered wholly into memory
+    // (the scan feeds this any file whose name carries the parent id).
+    const MAX_FIRST_LINE_BYTES: u64 = 64 * 1024;
     let mut line = Vec::new();
-    if read_line_bytes(&mut BufReader::new(file), &mut line).is_err() {
+    let mut reader = BufReader::new(file.take(MAX_FIRST_LINE_BYTES));
+    if read_line_bytes(&mut reader, &mut line).is_err() {
         return false;
     }
+    // A line truncated at the cap is not valid JSON and fails the id parse.
     crate::token_usage::codex::session_meta_id(&String::from_utf8_lossy(&line)).as_deref()
         == Some(session_id)
 }
@@ -859,7 +874,7 @@ fn scan_sessions_tree(child_path: &Path, parent_id: &str) -> Option<PathBuf> {
             } else if path
                 .file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.contains(parent_id))
+                .is_some_and(|name| name.contains(parent_id) && name.ends_with(".jsonl"))
                 && path != child_path
                 && records_session_id(&path, parent_id)
             {

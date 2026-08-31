@@ -203,7 +203,15 @@ impl UsageExtractor for CodexUsageExtractor {
         };
         match raw.entry_type.as_deref() {
             Some("session_meta") => {
-                if let Some(parent_id) = raw.payload.as_ref().and_then(fork_parent_id) {
+                // A fork marker arms replay matching only from the pristine
+                // state (real rollouts carry session_meta as line 1): once
+                // matching started or any usage was counted, a repeated
+                // marker must not discard that progress, re-trigger parent
+                // resolution, or mis-skip genuine usage as replayed history.
+                if matches!(self.state.replay, ReplayState::Done)
+                    && self.state.prev_totals.is_none()
+                    && let Some(parent_id) = raw.payload.as_ref().and_then(fork_parent_id)
+                {
                     self.state.replay = ReplayState::AwaitingParent {
                         parent_id,
                         fork_ts_ms: timestamp_millis(raw.timestamp.as_ref()).unwrap_or(i64::MAX),
@@ -587,8 +595,12 @@ pub fn collect_parent_prefix(
     let mut line: Vec<u8> = Vec::new();
     loop {
         line.clear();
+        // A mid-read I/O error means the prefix is unknown, not complete: a
+        // truncated (possibly empty) prefix would verify as the whole
+        // replayed history and double-count the rest. Unresolvable — the
+        // burst-heuristic fallback — like a parent that failed to open.
         let Ok(bytes) = reader.read_until(b'\n', &mut line) else {
-            return Some(prefix);
+            return None;
         };
         if bytes == 0 {
             return Some(prefix);
@@ -1475,6 +1487,57 @@ mod tests {
             (300, 140, 90, 30, 390),
         ));
         assert_eq!(second.len(), 1);
+    }
+
+    #[test]
+    fn a_parent_read_error_means_the_prefix_is_unknown_not_empty() {
+        // An I/O error mid-read must not verify a truncated prefix as the
+        // whole replayed history (which would double-count the rest): the
+        // parent is unresolvable, like one that failed to open.
+        struct FailingReader;
+        impl std::io::Read for FailingReader {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("stale handle"))
+            }
+        }
+        let prefix = collect_parent_prefix(std::io::BufReader::new(FailingReader), i64::MAX);
+        assert_eq!(prefix, None);
+    }
+
+    #[test]
+    fn a_repeated_fork_marker_does_not_rearm_replay_matching() {
+        // Real rollouts carry session_meta as line 1; a repeated marker in a
+        // corrupt or crafted file must not discard matching progress or
+        // mis-skip genuine usage as replayed history.
+        let mut e = CodexUsageExtractor::default();
+        e.extract_line(forked_child_line());
+        e.provide_parent_prefix(Some(vec![sig(100, 40, 50, 10, 150)]));
+        // The replayed head is skipped.
+        assert!(
+            e.extract_line(&token_count_line(
+                "2026-01-09T02:16:39Z",
+                (100, 40, 50, 10, 150),
+            ))
+            .is_empty()
+        );
+        // A second marker after genuine usage was counted stays inert.
+        let own = e.extract_line(&token_count_line(
+            "2026-01-09T02:16:40Z",
+            (300, 140, 90, 30, 390),
+        ));
+        assert_eq!(own.len(), 1);
+        e.extract_line(forked_child_line());
+        assert!(matches!(e.state.replay, ReplayState::Done));
+        assert_eq!(e.parent_request(), None);
+        let after = e.extract_line(&token_count_line(
+            "2026-01-09T02:16:41Z",
+            (500, 220, 150, 50, 650),
+        ));
+        assert_eq!(
+            after.len(),
+            1,
+            "usage after the spurious marker still counts"
+        );
     }
 
     #[test]
