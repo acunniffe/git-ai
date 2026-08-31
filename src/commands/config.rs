@@ -122,6 +122,11 @@ fn print_config_help() {
     println!("  max_checkpoint_file_size_bytes      Per-file checkpoint content limit in bytes");
     println!("  max_checkpoint_total_size_bytes     Per-checkpoint content limit in bytes");
     println!("  max_checkpoint_total_lines          Per-checkpoint content limit in lines");
+    println!("  max_transcript_line_bytes           Per-line transcript ingest limit in bytes");
+    println!("  max_transcript_batch_bytes          Per-batch transcript ingest limit in bytes");
+    println!("  max_transcript_backfill_bytes       First-seen transcript backfill limit in bytes");
+    println!("  max_transcript_file_bytes           Whole-file transcript parse limit in bytes");
+    println!("  max_metrics_flush_chunk_bytes       Pending-metrics flush chunk limit in bytes");
     println!("  daemon_memory_limit_mb               Daemon peak-RSS limit in MiB");
     println!("  custom_attributes            Custom telemetry attributes, string->string (object)");
     println!("  git_ai_hooks                 Hook name -> shell commands map (object)");
@@ -397,6 +402,26 @@ fn show_all_config() -> Result<(), String> {
         Value::Number(runtime_config.max_checkpoint_total_lines().into()),
     );
     effective_config.insert(
+        "max_transcript_line_bytes".to_string(),
+        Value::Number(runtime_config.max_transcript_line_bytes().into()),
+    );
+    effective_config.insert(
+        "max_transcript_batch_bytes".to_string(),
+        Value::Number(runtime_config.max_transcript_batch_bytes().into()),
+    );
+    effective_config.insert(
+        "max_transcript_backfill_bytes".to_string(),
+        Value::Number(runtime_config.max_transcript_backfill_bytes().into()),
+    );
+    effective_config.insert(
+        "max_transcript_file_bytes".to_string(),
+        Value::Number(runtime_config.max_transcript_file_bytes().into()),
+    );
+    effective_config.insert(
+        "max_metrics_flush_chunk_bytes".to_string(),
+        Value::Number(runtime_config.max_metrics_flush_chunk_bytes().into()),
+    );
+    effective_config.insert(
         "daemon_memory_limit_mb".to_string(),
         runtime_config
             .daemon_memory_limit_mb()
@@ -541,6 +566,21 @@ fn get_config_value(key: &str) -> Result<(), String> {
             }
             "max_checkpoint_total_lines" => {
                 Value::Number(runtime_config.max_checkpoint_total_lines().into())
+            }
+            "max_transcript_line_bytes" => {
+                Value::Number(runtime_config.max_transcript_line_bytes().into())
+            }
+            "max_transcript_batch_bytes" => {
+                Value::Number(runtime_config.max_transcript_batch_bytes().into())
+            }
+            "max_transcript_backfill_bytes" => {
+                Value::Number(runtime_config.max_transcript_backfill_bytes().into())
+            }
+            "max_transcript_file_bytes" => {
+                Value::Number(runtime_config.max_transcript_file_bytes().into())
+            }
+            "max_metrics_flush_chunk_bytes" => {
+                Value::Number(runtime_config.max_metrics_flush_chunk_bytes().into())
             }
             "daemon_memory_limit_mb" => runtime_config
                 .daemon_memory_limit_mb()
@@ -882,6 +922,36 @@ fn set_config_value(key: &str, value: &str, add_mode: bool) -> Result<(), String
                 file_config.max_checkpoint_total_lines = Some(lines);
                 crate::config::save_file_config(&file_config)?;
                 println!("[max_checkpoint_total_lines]: {}", lines);
+            }
+            "max_transcript_line_bytes" => {
+                let bytes = parse_byte_budget("max_transcript_line_bytes", value)?;
+                file_config.max_transcript_line_bytes = Some(bytes);
+                crate::config::save_file_config(&file_config)?;
+                println!("[max_transcript_line_bytes]: {}", bytes);
+            }
+            "max_transcript_batch_bytes" => {
+                let bytes = parse_byte_budget("max_transcript_batch_bytes", value)?;
+                file_config.max_transcript_batch_bytes = Some(bytes);
+                crate::config::save_file_config(&file_config)?;
+                println!("[max_transcript_batch_bytes]: {}", bytes);
+            }
+            "max_transcript_backfill_bytes" => {
+                let bytes = parse_byte_budget("max_transcript_backfill_bytes", value)?;
+                file_config.max_transcript_backfill_bytes = Some(bytes);
+                crate::config::save_file_config(&file_config)?;
+                println!("[max_transcript_backfill_bytes]: {}", bytes);
+            }
+            "max_transcript_file_bytes" => {
+                let bytes = parse_byte_budget("max_transcript_file_bytes", value)?;
+                file_config.max_transcript_file_bytes = Some(bytes);
+                crate::config::save_file_config(&file_config)?;
+                println!("[max_transcript_file_bytes]: {}", bytes);
+            }
+            "max_metrics_flush_chunk_bytes" => {
+                let bytes = parse_byte_budget("max_metrics_flush_chunk_bytes", value)?;
+                file_config.max_metrics_flush_chunk_bytes = Some(bytes);
+                crate::config::save_file_config(&file_config)?;
+                println!("[max_metrics_flush_chunk_bytes]: {}", bytes);
             }
             "daemon_memory_limit_mb" => {
                 let limit_mb = value.trim().parse::<u64>().map_err(|_| {
@@ -1258,6 +1328,41 @@ fn unset_config_value(key: &str) -> Result<(), String> {
                 crate::config::save_file_config(&file_config)?;
                 if let Some(v) = old_value {
                     println!("- [max_checkpoint_total_lines]: {}", v);
+                }
+            }
+            "max_transcript_line_bytes" => {
+                let old_value = file_config.max_transcript_line_bytes.take();
+                crate::config::save_file_config(&file_config)?;
+                if let Some(v) = old_value {
+                    println!("- [max_transcript_line_bytes]: {}", v);
+                }
+            }
+            "max_transcript_batch_bytes" => {
+                let old_value = file_config.max_transcript_batch_bytes.take();
+                crate::config::save_file_config(&file_config)?;
+                if let Some(v) = old_value {
+                    println!("- [max_transcript_batch_bytes]: {}", v);
+                }
+            }
+            "max_transcript_backfill_bytes" => {
+                let old_value = file_config.max_transcript_backfill_bytes.take();
+                crate::config::save_file_config(&file_config)?;
+                if let Some(v) = old_value {
+                    println!("- [max_transcript_backfill_bytes]: {}", v);
+                }
+            }
+            "max_transcript_file_bytes" => {
+                let old_value = file_config.max_transcript_file_bytes.take();
+                crate::config::save_file_config(&file_config)?;
+                if let Some(v) = old_value {
+                    println!("- [max_transcript_file_bytes]: {}", v);
+                }
+            }
+            "max_metrics_flush_chunk_bytes" => {
+                let old_value = file_config.max_metrics_flush_chunk_bytes.take();
+                crate::config::save_file_config(&file_config)?;
+                if let Some(v) = old_value {
+                    println!("- [max_metrics_flush_chunk_bytes]: {}", v);
                 }
             }
             "daemon_memory_limit_mb" => {
@@ -1643,6 +1748,23 @@ fn parse_hook_commands_value(value: &Value) -> Result<Vec<String>, String> {
         }
         _ => Err("git_ai_hooks hook values must be a string or an array of strings".to_string()),
     }
+}
+
+/// Parse a transcript ingestion byte budget: a positive integer in bytes.
+fn parse_byte_budget(key: &str, value: &str) -> Result<u64, String> {
+    let bytes = value.trim().parse::<u64>().map_err(|_| {
+        format!(
+            "Invalid {} value '{}'. Expected a positive integer in bytes",
+            key, value
+        )
+    })?;
+    if bytes == 0 {
+        return Err(format!(
+            "Invalid {} value '{}'. Expected a positive integer in bytes",
+            key, value
+        ));
+    }
+    Ok(bytes)
 }
 
 fn parse_bool(value: &str) -> Result<bool, String> {
