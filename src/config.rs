@@ -21,6 +21,11 @@ pub const DEFAULT_API_BASE_URL: &str = "https://usegitai.com";
 pub const DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES: usize = 3 * 1024 * 1024;
 pub const DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES: usize = 32 * 1024 * 1024;
 pub const DEFAULT_MAX_CHECKPOINT_TOTAL_LINES: usize = 500_000;
+pub const DEFAULT_MAX_TRANSCRIPT_LINE_BYTES: u64 = 8 * 1024 * 1024;
+pub const DEFAULT_MAX_TRANSCRIPT_BATCH_BYTES: u64 = 8 * 1024 * 1024;
+pub const DEFAULT_MAX_TRANSCRIPT_BACKFILL_BYTES: u64 = 32 * 1024 * 1024;
+pub const DEFAULT_MAX_TRANSCRIPT_FILE_BYTES: u64 = 64 * 1024 * 1024;
+pub const DEFAULT_MAX_METRICS_FLUSH_CHUNK_BYTES: u64 = 8 * 1024 * 1024;
 pub(crate) const MEBIBYTE_BYTES: u64 = 1024 * 1024;
 pub(crate) const MAX_DAEMON_MEMORY_LIMIT_MB: u64 = u64::MAX / MEBIBYTE_BYTES;
 
@@ -189,6 +194,11 @@ pub struct Config {
     max_checkpoint_file_size_bytes: usize,
     max_checkpoint_total_size_bytes: usize,
     max_checkpoint_total_lines: usize,
+    max_transcript_line_bytes: u64,
+    max_transcript_batch_bytes: u64,
+    max_transcript_backfill_bytes: u64,
+    max_transcript_file_bytes: u64,
+    max_metrics_flush_chunk_bytes: u64,
     daemon_memory_limit_mb: Option<u64>,
 }
 
@@ -278,6 +288,16 @@ pub struct FileConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_checkpoint_total_lines: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_transcript_line_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_transcript_batch_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_transcript_backfill_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_transcript_file_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_metrics_flush_chunk_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub daemon_memory_limit_mb: Option<u64>,
 }
 
@@ -346,6 +366,16 @@ pub struct ConfigPatch {
     pub max_checkpoint_total_size_bytes: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_checkpoint_total_lines: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_transcript_line_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_transcript_batch_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_transcript_backfill_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_transcript_file_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_metrics_flush_chunk_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub daemon_memory_limit_mb: Option<u64>,
 }
@@ -666,6 +696,31 @@ impl Config {
     /// Returns the total line budget for content in one checkpoint request.
     pub fn max_checkpoint_total_lines(&self) -> usize {
         self.max_checkpoint_total_lines
+    }
+
+    /// Max bytes for a single transcript JSONL line before it is skipped as oversized.
+    pub fn max_transcript_line_bytes(&self) -> u64 {
+        self.max_transcript_line_bytes
+    }
+
+    /// Max accumulated event bytes per transcript read batch.
+    pub fn max_transcript_batch_bytes(&self) -> usize {
+        usize::try_from(self.max_transcript_batch_bytes).unwrap_or(usize::MAX)
+    }
+
+    /// Max historical bytes ingested from a first-seen transcript file.
+    pub fn max_transcript_backfill_bytes(&self) -> u64 {
+        self.max_transcript_backfill_bytes
+    }
+
+    /// Max size for transcript files that can only be parsed whole (JSON thread/session files).
+    pub fn max_transcript_file_bytes(&self) -> u64 {
+        self.max_transcript_file_bytes
+    }
+
+    /// Max raw metric-JSON bytes inflated per pending-metrics flush sub-chunk.
+    pub fn max_metrics_flush_chunk_bytes(&self) -> usize {
+        usize::try_from(self.max_metrics_flush_chunk_bytes).unwrap_or(usize::MAX)
     }
 
     /// Returns the daemon peak-RSS limit in MiB, or `None` when disabled.
@@ -1235,6 +1290,38 @@ fn build_config() -> Config {
         .or_else(|| file_cfg.as_ref().and_then(|c| c.max_checkpoint_total_lines))
         .unwrap_or(DEFAULT_MAX_CHECKPOINT_TOTAL_LINES);
 
+    // Transcript ingestion byte budgets: env > file > defaults. Zero falls back to
+    // the default so a bad config cannot disable bounded reads entirely (#2244).
+    let max_transcript_line_bytes = resolve_byte_budget(
+        "GIT_AI_MAX_TRANSCRIPT_LINE_BYTES",
+        file_cfg.as_ref().and_then(|c| c.max_transcript_line_bytes),
+        DEFAULT_MAX_TRANSCRIPT_LINE_BYTES,
+    );
+    let max_transcript_batch_bytes = resolve_byte_budget(
+        "GIT_AI_MAX_TRANSCRIPT_BATCH_BYTES",
+        file_cfg.as_ref().and_then(|c| c.max_transcript_batch_bytes),
+        DEFAULT_MAX_TRANSCRIPT_BATCH_BYTES,
+    );
+    let max_transcript_backfill_bytes = resolve_byte_budget(
+        "GIT_AI_MAX_TRANSCRIPT_BACKFILL_BYTES",
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.max_transcript_backfill_bytes),
+        DEFAULT_MAX_TRANSCRIPT_BACKFILL_BYTES,
+    );
+    let max_transcript_file_bytes = resolve_byte_budget(
+        "GIT_AI_MAX_TRANSCRIPT_FILE_BYTES",
+        file_cfg.as_ref().and_then(|c| c.max_transcript_file_bytes),
+        DEFAULT_MAX_TRANSCRIPT_FILE_BYTES,
+    );
+    let max_metrics_flush_chunk_bytes = resolve_byte_budget(
+        "GIT_AI_MAX_METRICS_FLUSH_CHUNK_BYTES",
+        file_cfg
+            .as_ref()
+            .and_then(|c| c.max_metrics_flush_chunk_bytes),
+        DEFAULT_MAX_METRICS_FLUSH_CHUNK_BYTES,
+    );
+
     let daemon_memory_limit_mb = file_cfg
         .as_ref()
         .and_then(|c| c.daemon_memory_limit_mb)
@@ -1269,6 +1356,11 @@ fn build_config() -> Config {
             max_checkpoint_file_size_bytes,
             max_checkpoint_total_size_bytes,
             max_checkpoint_total_lines,
+            max_transcript_line_bytes,
+            max_transcript_batch_bytes,
+            max_transcript_backfill_bytes,
+            max_transcript_file_bytes,
+            max_metrics_flush_chunk_bytes,
             daemon_memory_limit_mb,
         };
         apply_test_config_patch(&mut config);
@@ -1303,6 +1395,11 @@ fn build_config() -> Config {
         max_checkpoint_file_size_bytes,
         max_checkpoint_total_size_bytes,
         max_checkpoint_total_lines,
+        max_transcript_line_bytes,
+        max_transcript_batch_bytes,
+        max_transcript_backfill_bytes,
+        max_transcript_file_bytes,
+        max_metrics_flush_chunk_bytes,
         daemon_memory_limit_mb,
     }
 }
@@ -1315,6 +1412,28 @@ fn resolve_notes_backend_url(
     url_from_env
         .or_else(|| file_backend.and_then(|backend| backend.backend_url.clone()))
         .unwrap_or_else(|| api_base_url.to_string())
+}
+
+/// Resolve a transcript ingestion byte budget: env > file > default.
+fn resolve_byte_budget(env_var: &str, file_value: Option<u64>, default: u64) -> u64 {
+    let value = env::var(env_var)
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .or(file_value);
+    normalize_byte_budget(value, default, env_var)
+}
+
+/// Zero and missing values fall back to the default so a bad config cannot
+/// disable bounded transcript reads entirely (#2244).
+fn normalize_byte_budget(value: Option<u64>, default: u64, name: &str) -> u64 {
+    match value {
+        Some(0) => {
+            eprintln!("Warning: {name} must be greater than zero; using the default");
+            default
+        }
+        Some(value) => value,
+        None => default,
+    }
 }
 
 fn normalize_daemon_memory_limit_mb(limit_mb: u64) -> Option<u64> {
@@ -1704,11 +1823,17 @@ fn apply_test_config_patch(config: &mut Config) {
     if let Ok(patch_json) = env::var("GIT_AI_TEST_CONFIG_PATCH")
         && let Ok(patch) = serde_json::from_str::<ConfigPatch>(&patch_json)
     {
-        if let Some(git_path) = patch.git_path {
-            config.git_path = git_path;
-        }
-        if let Some(patterns) = patch.exclude_prompts_in_repositories {
-            config.exclude_prompts_in_repositories = patterns
+        apply_config_patch(config, patch);
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn apply_config_patch(config: &mut Config, patch: ConfigPatch) {
+    if let Some(git_path) = patch.git_path {
+        config.git_path = git_path;
+    }
+    if let Some(patterns) = patch.exclude_prompts_in_repositories {
+        config.exclude_prompts_in_repositories = patterns
                     .into_iter()
                     .filter_map(|pattern_str| {
                         Pattern::new(&pattern_str)
@@ -1721,74 +1846,108 @@ fn apply_test_config_patch(config: &mut Config) {
                             .ok()
                     })
                     .collect();
-        }
-        if let Some(telemetry_oss_disabled) = patch.telemetry_oss_disabled {
-            config.telemetry_oss_disabled = telemetry_oss_disabled;
-        }
-        if let Some(disable_version_checks) = patch.disable_version_checks {
-            config.disable_version_checks = disable_version_checks;
-        }
-        if let Some(disable_auto_updates) = patch.disable_auto_updates {
-            config.disable_auto_updates = disable_auto_updates;
-        }
-        if let Some(prompt_storage) = patch.prompt_storage {
-            // Validate the value
-            if matches!(prompt_storage.as_str(), "default" | "notes" | "local") {
-                config.prompt_storage = prompt_storage;
-            } else {
-                eprintln!(
-                    "Warning: Invalid test prompt_storage value '{}', ignoring",
-                    prompt_storage
-                );
-            }
-        }
-        if let Some(custom_attributes) = patch.custom_attributes {
-            config.custom_attributes = custom_attributes;
-        }
-        if let Some(author) = patch.author {
-            config.author = author.normalized();
-        }
-        if let Some(feature_flags_value) = patch.feature_flags
-            && let Ok(deserialized) = serde_json::from_value::<
-                crate::feature_flags::DeserializableFeatureFlags,
-            >(feature_flags_value)
-        {
-            config.feature_flags = crate::feature_flags::FeatureFlags::merge_with(
-                config.feature_flags.clone(),
-                deserialized,
+    }
+    if let Some(telemetry_oss_disabled) = patch.telemetry_oss_disabled {
+        config.telemetry_oss_disabled = telemetry_oss_disabled;
+    }
+    if let Some(disable_version_checks) = patch.disable_version_checks {
+        config.disable_version_checks = disable_version_checks;
+    }
+    if let Some(disable_auto_updates) = patch.disable_auto_updates {
+        config.disable_auto_updates = disable_auto_updates;
+    }
+    if let Some(prompt_storage) = patch.prompt_storage {
+        // Validate the value
+        if matches!(prompt_storage.as_str(), "default" | "notes" | "local") {
+            config.prompt_storage = prompt_storage;
+        } else {
+            eprintln!(
+                "Warning: Invalid test prompt_storage value '{}', ignoring",
+                prompt_storage
             );
         }
-        if let Some(codex_hooks_format) = patch.codex_hooks_format {
-            if let Some(format) = CodexHooksFormat::from_str(&codex_hooks_format) {
-                config.codex_hooks_format = format;
-            } else {
-                eprintln!(
-                    "Warning: Invalid test codex_hooks_format value '{}', ignoring",
-                    codex_hooks_format
-                );
-            }
+    }
+    if let Some(custom_attributes) = patch.custom_attributes {
+        config.custom_attributes = custom_attributes;
+    }
+    if let Some(author) = patch.author {
+        config.author = author.normalized();
+    }
+    if let Some(feature_flags_value) = patch.feature_flags
+        && let Ok(deserialized) = serde_json::from_value::<
+            crate::feature_flags::DeserializableFeatureFlags,
+        >(feature_flags_value)
+    {
+        config.feature_flags = crate::feature_flags::FeatureFlags::merge_with(
+            config.feature_flags.clone(),
+            deserialized,
+        );
+    }
+    if let Some(codex_hooks_format) = patch.codex_hooks_format {
+        if let Some(format) = CodexHooksFormat::from_str(&codex_hooks_format) {
+            config.codex_hooks_format = format;
+        } else {
+            eprintln!(
+                "Warning: Invalid test codex_hooks_format value '{}', ignoring",
+                codex_hooks_format
+            );
         }
-        if let Some(nb) = patch.notes_backend {
-            config.notes_backend.kind = nb.kind;
-            if let Some(url) = nb.backend_url {
-                config.notes_backend.backend_url = Some(url);
-            }
+    }
+    if let Some(nb) = patch.notes_backend {
+        config.notes_backend.kind = nb.kind;
+        if let Some(url) = nb.backend_url {
+            config.notes_backend.backend_url = Some(url);
         }
-        if let Some(days) = patch.transcript_streaming_lookback_days {
-            config.transcript_streaming_lookback_days = if days == 0 { None } else { Some(days) };
-        }
-        if let Some(max_bytes) = patch.max_checkpoint_file_size_bytes {
-            config.max_checkpoint_file_size_bytes = max_bytes;
-        }
-        if let Some(max_bytes) = patch.max_checkpoint_total_size_bytes {
-            config.max_checkpoint_total_size_bytes = max_bytes;
-        }
-        if let Some(max_lines) = patch.max_checkpoint_total_lines {
-            config.max_checkpoint_total_lines = max_lines;
-        }
-        if let Some(limit_mb) = patch.daemon_memory_limit_mb {
-            config.daemon_memory_limit_mb = normalize_daemon_memory_limit_mb(limit_mb);
-        }
+    }
+    if let Some(days) = patch.transcript_streaming_lookback_days {
+        config.transcript_streaming_lookback_days = if days == 0 { None } else { Some(days) };
+    }
+    if let Some(max_bytes) = patch.max_checkpoint_file_size_bytes {
+        config.max_checkpoint_file_size_bytes = max_bytes;
+    }
+    if let Some(max_bytes) = patch.max_checkpoint_total_size_bytes {
+        config.max_checkpoint_total_size_bytes = max_bytes;
+    }
+    if let Some(max_lines) = patch.max_checkpoint_total_lines {
+        config.max_checkpoint_total_lines = max_lines;
+    }
+    if let Some(max_bytes) = patch.max_transcript_line_bytes {
+        config.max_transcript_line_bytes = normalize_byte_budget(
+            Some(max_bytes),
+            DEFAULT_MAX_TRANSCRIPT_LINE_BYTES,
+            "max_transcript_line_bytes",
+        );
+    }
+    if let Some(max_bytes) = patch.max_transcript_batch_bytes {
+        config.max_transcript_batch_bytes = normalize_byte_budget(
+            Some(max_bytes),
+            DEFAULT_MAX_TRANSCRIPT_BATCH_BYTES,
+            "max_transcript_batch_bytes",
+        );
+    }
+    if let Some(max_bytes) = patch.max_transcript_backfill_bytes {
+        config.max_transcript_backfill_bytes = normalize_byte_budget(
+            Some(max_bytes),
+            DEFAULT_MAX_TRANSCRIPT_BACKFILL_BYTES,
+            "max_transcript_backfill_bytes",
+        );
+    }
+    if let Some(max_bytes) = patch.max_transcript_file_bytes {
+        config.max_transcript_file_bytes = normalize_byte_budget(
+            Some(max_bytes),
+            DEFAULT_MAX_TRANSCRIPT_FILE_BYTES,
+            "max_transcript_file_bytes",
+        );
+    }
+    if let Some(max_bytes) = patch.max_metrics_flush_chunk_bytes {
+        config.max_metrics_flush_chunk_bytes = normalize_byte_budget(
+            Some(max_bytes),
+            DEFAULT_MAX_METRICS_FLUSH_CHUNK_BYTES,
+            "max_metrics_flush_chunk_bytes",
+        );
+    }
+    if let Some(limit_mb) = patch.daemon_memory_limit_mb {
+        config.daemon_memory_limit_mb = normalize_daemon_memory_limit_mb(limit_mb);
     }
 }
 
@@ -1833,6 +1992,11 @@ mod tests {
             max_checkpoint_file_size_bytes: DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
             max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
             max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+            max_transcript_line_bytes: DEFAULT_MAX_TRANSCRIPT_LINE_BYTES,
+            max_transcript_batch_bytes: DEFAULT_MAX_TRANSCRIPT_BATCH_BYTES,
+            max_transcript_backfill_bytes: DEFAULT_MAX_TRANSCRIPT_BACKFILL_BYTES,
+            max_transcript_file_bytes: DEFAULT_MAX_TRANSCRIPT_FILE_BYTES,
+            max_metrics_flush_chunk_bytes: DEFAULT_MAX_METRICS_FLUSH_CHUNK_BYTES,
             daemon_memory_limit_mb: None,
         }
     }
@@ -2079,6 +2243,11 @@ mod tests {
             max_checkpoint_file_size_bytes: DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
             max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
             max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+            max_transcript_line_bytes: DEFAULT_MAX_TRANSCRIPT_LINE_BYTES,
+            max_transcript_batch_bytes: DEFAULT_MAX_TRANSCRIPT_BATCH_BYTES,
+            max_transcript_backfill_bytes: DEFAULT_MAX_TRANSCRIPT_BACKFILL_BYTES,
+            max_transcript_file_bytes: DEFAULT_MAX_TRANSCRIPT_FILE_BYTES,
+            max_metrics_flush_chunk_bytes: DEFAULT_MAX_METRICS_FLUSH_CHUNK_BYTES,
             daemon_memory_limit_mb: None,
         }
     }
@@ -2228,6 +2397,11 @@ mod tests {
             max_checkpoint_file_size_bytes: DEFAULT_MAX_CHECKPOINT_FILE_SIZE_BYTES,
             max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
             max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
+            max_transcript_line_bytes: DEFAULT_MAX_TRANSCRIPT_LINE_BYTES,
+            max_transcript_batch_bytes: DEFAULT_MAX_TRANSCRIPT_BATCH_BYTES,
+            max_transcript_backfill_bytes: DEFAULT_MAX_TRANSCRIPT_BACKFILL_BYTES,
+            max_transcript_file_bytes: DEFAULT_MAX_TRANSCRIPT_FILE_BYTES,
+            max_metrics_flush_chunk_bytes: DEFAULT_MAX_METRICS_FLUSH_CHUNK_BYTES,
             daemon_memory_limit_mb: None,
         }
     }
@@ -2754,5 +2928,103 @@ mod tests {
             None => unsafe { std::env::remove_var("GIT_AI_TRANSCRIPT_STREAMING_LOOKBACK_DAYS") },
         }
         assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_transcript_budget_defaults() {
+        let config = create_test_config(vec![], vec![]);
+        assert_eq!(config.max_transcript_line_bytes(), 8 * 1024 * 1024);
+        assert_eq!(config.max_transcript_batch_bytes(), 8 * 1024 * 1024);
+        assert_eq!(config.max_transcript_backfill_bytes(), 32 * 1024 * 1024);
+        assert_eq!(config.max_transcript_file_bytes(), 64 * 1024 * 1024);
+        assert_eq!(config.max_metrics_flush_chunk_bytes(), 8 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_normalize_byte_budget_missing_or_zero_falls_back_to_default() {
+        assert_eq!(normalize_byte_budget(None, 42, "TEST_BUDGET"), 42);
+        assert_eq!(normalize_byte_budget(Some(0), 42, "TEST_BUDGET"), 42);
+        assert_eq!(normalize_byte_budget(Some(7), 42, "TEST_BUDGET"), 7);
+    }
+
+    #[test]
+    fn test_resolve_byte_budget_file_value_wins_over_default() {
+        // Env var deliberately unset; file value takes precedence over the default.
+        let resolved = resolve_byte_budget("GIT_AI_TEST_UNSET_BUDGET_VAR", Some(9), 42);
+        assert_eq!(resolved, 9);
+        let resolved = resolve_byte_budget("GIT_AI_TEST_UNSET_BUDGET_VAR", None, 42);
+        assert_eq!(resolved, 42);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_transcript_line_budget_env_override_wins_over_file() {
+        let previous = std::env::var("GIT_AI_MAX_TRANSCRIPT_LINE_BYTES").ok();
+        unsafe { std::env::set_var("GIT_AI_MAX_TRANSCRIPT_LINE_BYTES", "12345") };
+        let resolved = resolve_byte_budget(
+            "GIT_AI_MAX_TRANSCRIPT_LINE_BYTES",
+            Some(999),
+            DEFAULT_MAX_TRANSCRIPT_LINE_BYTES,
+        );
+        let config = build_config();
+        let built = config.max_transcript_line_bytes;
+        match previous {
+            Some(v) => unsafe { std::env::set_var("GIT_AI_MAX_TRANSCRIPT_LINE_BYTES", v) },
+            None => unsafe { std::env::remove_var("GIT_AI_MAX_TRANSCRIPT_LINE_BYTES") },
+        }
+        assert_eq!(resolved, 12345, "env override must win over the file value");
+        assert_eq!(built, 12345, "build_config must apply the env override");
+    }
+
+    #[test]
+    fn test_transcript_budgets_deserialize_from_file_config() {
+        let file_cfg: FileConfig = serde_json::from_str(
+            r#"{
+                "max_transcript_line_bytes": 1024,
+                "max_transcript_batch_bytes": 2048,
+                "max_transcript_backfill_bytes": 4096,
+                "max_transcript_file_bytes": 8192,
+                "max_metrics_flush_chunk_bytes": 512
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(file_cfg.max_transcript_line_bytes, Some(1024));
+        assert_eq!(file_cfg.max_transcript_batch_bytes, Some(2048));
+        assert_eq!(file_cfg.max_transcript_backfill_bytes, Some(4096));
+        assert_eq!(file_cfg.max_transcript_file_bytes, Some(8192));
+        assert_eq!(file_cfg.max_metrics_flush_chunk_bytes, Some(512));
+    }
+
+    #[test]
+    fn test_config_patch_overrides_transcript_budgets() {
+        let mut config = create_test_config(vec![], vec![]);
+        let patch = ConfigPatch {
+            max_transcript_line_bytes: Some(1111),
+            max_transcript_batch_bytes: Some(2222),
+            max_transcript_backfill_bytes: Some(3333),
+            max_transcript_file_bytes: Some(4444),
+            max_metrics_flush_chunk_bytes: Some(5555),
+            ..Default::default()
+        };
+        apply_config_patch(&mut config, patch);
+        assert_eq!(config.max_transcript_line_bytes(), 1111);
+        assert_eq!(config.max_transcript_batch_bytes(), 2222);
+        assert_eq!(config.max_transcript_backfill_bytes(), 3333);
+        assert_eq!(config.max_transcript_file_bytes(), 4444);
+        assert_eq!(config.max_metrics_flush_chunk_bytes(), 5555);
+    }
+
+    #[test]
+    fn test_config_patch_zero_budget_falls_back_to_default() {
+        let mut config = create_test_config(vec![], vec![]);
+        let patch = ConfigPatch {
+            max_transcript_line_bytes: Some(0),
+            ..Default::default()
+        };
+        apply_config_patch(&mut config, patch);
+        assert_eq!(
+            config.max_transcript_line_bytes(),
+            DEFAULT_MAX_TRANSCRIPT_LINE_BYTES
+        );
     }
 }
