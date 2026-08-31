@@ -1,4 +1,4 @@
-use crate::repos::test_repo::{TestRepo, real_git_executable};
+use crate::repos::test_repo::{NewCommit, TestRepo, real_git_executable};
 use serde_json::json;
 use std::fs;
 use std::io::Write;
@@ -237,6 +237,88 @@ fn git_plumbing(repo_path: &std::path::Path, args: &[&str], stdin_data: Option<&
         .to_string()
 }
 
+/// Shared fixture for the concurrent notes-pusher tests: mirror makes an
+/// initial commit (note auto-created by hook) and pushes the branch, the bare
+/// upstream's refs/notes/ai is seeded from mirror, and a second clone builds
+/// its own note on top of the current remote notes and pushes that tip to
+/// upstream at `notes_push_refspec`. The clone is deleted before returning.
+/// Returns mirror's initial commit and the sha of the clone's annotated
+/// commit.
+fn setup_concurrent_notes_pusher(
+    mirror: &TestRepo,
+    upstream: &TestRepo,
+    clone_suffix: &str,
+    notes_push_refspec: &str,
+) -> (NewCommit, String) {
+    // Initial commit (note auto-created by hook) and branch push.
+    fs::write(mirror.path().join("a.txt"), "a\n").expect("write a");
+    let commit1 = mirror
+        .stage_all_and_commit("first commit")
+        .expect("commit1");
+    mirror
+        .git_og(&["push", "origin", "main"])
+        .expect("setup branch push should succeed");
+
+    // Ensure mirror's initial notes are present on upstream. The preceding
+    // branch push can already push authorship notes through the normal push
+    // path, so set the bare fixture ref directly instead of racing remote
+    // receive policy during test setup.
+    git_plumbing(
+        upstream.path(),
+        &[
+            "fetch",
+            mirror.path().to_str().unwrap(),
+            "+refs/notes/ai:refs/notes/ai",
+        ],
+        None,
+    );
+
+    // A second clone simulates the concurrent pusher. Its committer identity
+    // comes from git_plumbing's -c flags, so no repo config is needed.
+    let clone2_path = mirror.path().with_extension(clone_suffix);
+    let _ = fs::remove_dir_all(&clone2_path);
+    git_plumbing(
+        mirror.path(),
+        &[
+            "clone",
+            upstream.path().to_str().unwrap(),
+            clone2_path.to_str().unwrap(),
+        ],
+        None,
+    );
+    git_plumbing(
+        &clone2_path,
+        &["fetch", "origin", "+refs/notes/ai:refs/notes/ai"],
+        None,
+    );
+
+    // The clone makes a commit, annotates it on top of the fetched remote
+    // notes, and pushes that notes tip to `notes_push_refspec` on upstream.
+    fs::write(clone2_path.join("b.txt"), "b\n").expect("write b");
+    git_plumbing(&clone2_path, &["add", "b.txt"], None);
+    git_plumbing(&clone2_path, &["commit", "-m", "other commit"], None);
+    let other_sha = git_plumbing(&clone2_path, &["rev-parse", "HEAD"], None);
+    git_plumbing(
+        &clone2_path,
+        &[
+            "notes",
+            "--ref=ai",
+            "add",
+            "-m",
+            r#"{"author":"other"}"#,
+            &other_sha,
+        ],
+        None,
+    );
+    git_plumbing(&clone2_path, &["push", "origin", notes_push_refspec], None);
+
+    // The pushed objects now live on upstream; drop the clone so test runs do
+    // not leak sibling directories in the system temp dir.
+    fs::remove_dir_all(&clone2_path).expect("remove clone2");
+
+    (commit1, other_sha)
+}
+
 /// Reproduces a bug where `git notes merge -s ours` crashes with:
 ///   Assertion failed: (is_null_oid(&mp->remote)), function diff_tree_remote,
 ///   file notes-merge.c, line 170.
@@ -355,86 +437,23 @@ fn test_push_authorship_notes_survives_corrupted_remote_notes_tree() {
 fn test_push_authorship_notes_retries_on_concurrent_push() {
     let (mirror, upstream) = TestRepo::new_with_remote();
 
-    // 1. Create initial commit and push
-    fs::write(mirror.path().join("a.txt"), "a\n").expect("write a");
-    let commit1 = mirror
-        .stage_all_and_commit("first commit")
-        .expect("commit1");
-    mirror
-        .git_og(&["push", "origin", "main"])
-        .expect("setup branch push should succeed");
-
-    // 2. Ensure mirror's initial notes are present on upstream. The preceding
-    // branch push can already push authorship notes through the normal push
-    // path, so set the bare fixture ref directly instead of racing remote
-    // receive policy during test setup.
-    git_plumbing(
-        upstream.path(),
-        &[
-            "fetch",
-            mirror.path().to_str().unwrap(),
-            "+refs/notes/ai:refs/notes/ai",
-        ],
-        None,
+    // 1. The concurrent pusher advances remote refs/notes/ai beyond what
+    //    mirror has fetched.
+    let (commit1, other_sha) = setup_concurrent_notes_pusher(
+        &mirror,
+        &upstream,
+        "concurrent-clone",
+        "refs/notes/ai:refs/notes/ai",
     );
 
-    // 3. Create a second clone that simulates the concurrent pusher
-    let clone2_path = mirror.path().with_extension("concurrent-clone");
-    let _ = fs::remove_dir_all(&clone2_path);
-    git_plumbing(
-        mirror.path(),
-        &[
-            "clone",
-            upstream.path().to_str().unwrap(),
-            clone2_path.to_str().unwrap(),
-        ],
-        None,
-    );
-    // Configure clone2 and fetch notes
-    git_plumbing(
-        &clone2_path,
-        &["config", "user.email", "other@test.com"],
-        None,
-    );
-    git_plumbing(&clone2_path, &["config", "user.name", "Other"], None);
-    git_plumbing(
-        &clone2_path,
-        &["fetch", "origin", "+refs/notes/ai:refs/notes/ai"],
-        None,
-    );
-
-    // 4. Other clone makes a commit with a note and pushes notes to upstream.
-    //    This advances remote refs/notes/ai beyond what mirror has fetched.
-    fs::write(clone2_path.join("b.txt"), "b\n").expect("write b");
-    git_plumbing(&clone2_path, &["add", "b.txt"], None);
-    git_plumbing(&clone2_path, &["commit", "-m", "other commit"], None);
-    let other_sha = git_plumbing(&clone2_path, &["rev-parse", "HEAD"], None);
-    git_plumbing(
-        &clone2_path,
-        &[
-            "notes",
-            "--ref=ai",
-            "add",
-            "-m",
-            r#"{"author":"other"}"#,
-            &other_sha,
-        ],
-        None,
-    );
-    git_plumbing(
-        &clone2_path,
-        &["push", "origin", "refs/notes/ai:refs/notes/ai"],
-        None,
-    );
-
-    // 5. Mirror makes another commit (notes auto-created by hook).
+    // 2. Mirror makes another commit (notes auto-created by hook).
     //    Mirror's local refs/notes/ai is now behind remote.
     fs::write(mirror.path().join("c.txt"), "c\n").expect("write c");
     let _commit3 = mirror
         .stage_all_and_commit("mirror commit")
         .expect("commit3");
 
-    // 6. Push authorship notes. The retry loop should:
+    // 3. Push authorship notes. The retry loop should:
     //    - Attempt 1: fetch, merge, push → fails (non-fast-forward if
     //      remote was updated between merge and push, or succeeds on first try)
     //    - Attempt 2+: re-fetch, re-merge, push → succeeds
@@ -453,7 +472,7 @@ fn test_push_authorship_notes_retries_on_concurrent_push() {
         push_output.trim()
     );
 
-    // 7. Verify all notes are present on upstream
+    // 4. Verify all notes are present on upstream
     let notes_list = git_plumbing(upstream.path(), &["notes", "--ref=ai", "list"], None);
     assert!(
         notes_list.contains(&commit1.commit_sha),
@@ -462,5 +481,99 @@ fn test_push_authorship_notes_retries_on_concurrent_push() {
     assert!(
         notes_list.contains(&other_sha),
         "upstream should have note from concurrent pusher"
+    );
+}
+
+/// Reproduces the production race where another user's notes push lands on the
+/// remote *between* our fetch-merge and push. receive-pack's compare-and-swap
+/// then rejects our push with a `[remote rejected]` line (git prints
+/// `incorrect old value provided` or `failed to update ref` depending on
+/// version) — none of which contain "non-fast-forward". The retry loop must
+/// treat this as retryable, re-fetch, re-merge, and succeed on the next
+/// attempt.
+///
+/// The race is injected deterministically with an `update` hook on the bare
+/// upstream that advances refs/notes/ai (to a staged concurrent tip) exactly
+/// once, mid-push, before the ref update is committed.
+#[cfg(unix)]
+#[test]
+fn test_push_authorship_notes_retries_when_remote_notes_advance_mid_push() {
+    let (mirror, upstream) = TestRepo::new_with_remote();
+
+    // 1. The concurrent pusher's tip is staged on upstream as
+    //    refs/notes/pending-ai: its objects are uploaded, but refs/notes/ai
+    //    has not moved yet.
+    let (commit1, other_sha) = setup_concurrent_notes_pusher(
+        &mirror,
+        &upstream,
+        "mid-push-clone",
+        "refs/notes/ai:refs/notes/pending-ai",
+    );
+
+    // 2. Upstream update hook: the first time refs/notes/ai is pushed, land
+    // the concurrent pusher's tip before the pushed update is committed, so
+    // the compare-and-swap fails. Hooks run with cwd = the bare repo dir. The
+    // marker file is created only after the ref actually moved, so the race
+    // assertion below cannot pass if the injection failed.
+    let hook_path = upstream.path().join("hooks").join("update");
+    fs::create_dir_all(hook_path.parent().unwrap()).expect("hooks dir");
+    fs::write(
+        &hook_path,
+        "#!/bin/sh\n\
+         if [ \"$1\" = \"refs/notes/ai\" ] && [ ! -f mid-push-race-done ]; then\n\
+           git update-ref refs/notes/ai \"$(git rev-parse --verify refs/notes/pending-ai)\" \\\n\
+             && : > mid-push-race-done\n\
+         fi\n\
+         exit 0\n",
+    )
+    .expect("write update hook");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&hook_path, fs::Permissions::from_mode(0o755))
+            .expect("update hook should be executable");
+    }
+
+    // 3. Mirror makes another commit and pushes authorship notes. Attempt 1
+    // fetch-merges the pre-race remote state and gets remote-rejected; the
+    // retry must pick up the advanced ref, merge, and push successfully.
+    fs::write(mirror.path().join("c.txt"), "c\n").expect("write c");
+    let commit2 = mirror
+        .stage_all_and_commit("mirror commit")
+        .expect("commit2");
+
+    let request = json!({"remote_name": "origin"}).to_string();
+    let push_output = mirror
+        .git_ai(&["push-authorship-notes", "--json", &request])
+        .expect("push-authorship-notes should succeed by retrying the rejected push");
+    let push_json: serde_json::Value =
+        serde_json::from_str(push_output.trim()).expect("push output should be JSON");
+    assert_eq!(
+        push_json["ok"],
+        true,
+        "push should succeed after retry, got: {}",
+        push_output.trim()
+    );
+
+    // The injected race must actually have fired, otherwise this test did not
+    // exercise the retry path.
+    assert!(
+        upstream.path().join("mid-push-race-done").exists(),
+        "update hook should have advanced refs/notes/ai mid-push"
+    );
+
+    // 4. Upstream ends up with the concurrent pusher's note AND both of
+    // mirror's notes.
+    let notes_list = git_plumbing(upstream.path(), &["notes", "--ref=ai", "list"], None);
+    assert!(
+        notes_list.contains(&commit1.commit_sha),
+        "upstream should have note for mirror's first commit"
+    );
+    assert!(
+        notes_list.contains(&other_sha),
+        "upstream should have note from concurrent pusher"
+    );
+    assert!(
+        notes_list.contains(&commit2.commit_sha),
+        "upstream should have note for mirror's second commit"
     );
 }
