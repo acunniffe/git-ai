@@ -95,19 +95,13 @@
     "cache_read": 0.2,
     "cache_write": 0.0
   },
-  "deepseek-chat": {
-    "input": 0.14,
-    "output": 0.28,
-    "cache_read": 0.0028,
-    "cache_write": 0.0
-  },
-  "deepseek-reasoner": {
-    "input": 0.14,
-    "output": 0.28,
-    "cache_read": 0.0028,
-    "cache_write": 0.0
-  },
   "deepseek-v4-flash": {
+    "input": 0.14,
+    "output": 0.28,
+    "cache_read": 0.0028,
+    "cache_write": 0.0
+  },
+  "deepseek-v4-flash-vision-exp": {
     "input": 0.14,
     "output": 0.28,
     "cache_read": 0.0028,
@@ -288,9 +282,9 @@
     "cache_write": 0.0
   },
   "gemini-3.6-flash": {
-    "input": 1.5,
-    "output": 7.5,
-    "cache_read": 0.15,
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075,
     "cache_write": 0.0
   },
   "gemini-3.7-flash": {
@@ -312,15 +306,15 @@
     "cache_write": 0.0
   },
   "gemini-flash-latest": {
-    "input": 1.5,
-    "output": 9.0,
-    "cache_read": 0.15,
+    "input": 0.75,
+    "output": 3.75,
+    "cache_read": 0.075,
     "cache_write": 0.0
   },
   "gemini-flash-lite-latest": {
-    "input": 0.25,
-    "output": 1.5,
-    "cache_read": 0.025,
+    "input": 0.3,
+    "output": 2.5,
+    "cache_read": 0.03,
     "cache_write": 0.0
   },
   "gemini-omni-flash-preview": {
@@ -411,6 +405,18 @@
     "input": 1.4,
     "output": 4.4,
     "cache_read": 0.26,
+    "cache_write": 0.0
+  },
+  "glm-5.3": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.26,
+    "cache_write": 0.0
+  },
+  "glm-5.3-flash": {
+    "input": 0.075,
+    "output": 0.25,
+    "cache_read": 0.015,
     "cache_write": 0.0
   },
   "glm-5v-turbo": {
@@ -588,10 +594,10 @@
     "cache_write": 0.0
   },
   "gpt-5.6": {
-    "input": 5.0,
-    "output": 30.0,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 4.0,
+    "output": 20.0,
+    "cache_read": 0.4,
+    "cache_write": 5.0
   },
   "gpt-5.6-luna": {
     "input": 0.2,
@@ -600,10 +606,10 @@
     "cache_write": 0.25
   },
   "gpt-5.6-sol": {
-    "input": 5.0,
-    "output": 30.0,
-    "cache_read": 0.5,
-    "cache_write": 6.25
+    "input": 4.0,
+    "output": 20.0,
+    "cache_read": 0.4,
+    "cache_write": 5.0
   },
   "gpt-5.6-terra": {
     "input": 2.0,
@@ -933,6 +939,12 @@
     "input": 0.1,
     "output": 0.3,
     "cache_read": 0.0,
+    "cache_write": 0.0
+  },
+  "zai-glm-5-2": {
+    "input": 1.4,
+    "output": 4.4,
+    "cache_read": 0.14,
     "cache_write": 0.0
   }
 }
