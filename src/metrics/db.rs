@@ -27,7 +27,7 @@ pub(crate) const METADATA_BACKFILL_BATCH_SIZE: usize = 1000;
 const EVENT_METADATA_BACKFILL_COMPLETED_KEY: &str = "event_metadata_backfill_completed";
 const NS_PER_SECOND: u128 = 1_000_000_000;
 
-const RETRYABLE_METRIC_IDS_SQL: &str = "SELECT id FROM metrics \
+const RETRYABLE_METRIC_IDS_SQL: &str = "SELECT id, LENGTH(event_json) FROM metrics \
      WHERE delivered_ts IS NULL \
        AND processing_started_at IS NULL \
        AND next_retry_at <= ?1 \
@@ -578,7 +578,16 @@ impl MetricsDatabase {
     }
 
     /// Atomically claim a due batch of pending metrics for upload.
-    pub fn dequeue_pending_batch(&mut self, limit: usize) -> Result<Vec<MetricRecord>, GitAiError> {
+    ///
+    /// The batch is bounded by row count AND by accumulated `event_json`
+    /// bytes (always at least one row): transcript-derived rows can be MBs
+    /// each, so a count-only dequeue could materialize GBs of JSON strings
+    /// before any downstream chunking applies (#2244).
+    pub fn dequeue_pending_batch(
+        &mut self,
+        limit: usize,
+        max_bytes: usize,
+    ) -> Result<Vec<MetricRecord>, GitAiError> {
         if limit == 0 {
             return Ok(Vec::new());
         }
@@ -590,11 +599,18 @@ impl MetricsDatabase {
         let ids = {
             let mut stmt = tx.prepare(RETRYABLE_METRIC_IDS_SQL)?;
             let rows = stmt.query_map(params![now as i64, limit as i64], |row| {
-                row.get::<_, i64>(0)
+                Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
             })?;
             let mut ids = Vec::new();
+            let mut total_bytes = 0usize;
             for row in rows {
-                ids.push(row?);
+                let (id, bytes) = row?;
+                let bytes = bytes.max(0) as usize;
+                if !ids.is_empty() && total_bytes.saturating_add(bytes) > max_bytes {
+                    break;
+                }
+                total_bytes = total_bytes.saturating_add(bytes);
+                ids.push(id);
             }
             ids
         };
@@ -704,6 +720,28 @@ impl MetricsDatabase {
 
             for id in ids {
                 stmt.execute(params![error, failed_at as i64, id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Release the processing locks of dequeued records WITHOUT counting a
+    /// delivery attempt. For rows that were claimed but never attempted
+    /// (deadline expiry, or an earlier chunk's upload failure): charging them
+    /// an attempt would let repeated failures of other rows exhaust their
+    /// retries before they were ever uploaded.
+    pub fn release_processing_locks(&mut self, ids: &[i64]) -> Result<(), GitAiError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+
+        let tx = self.conn.transaction()?;
+        {
+            let mut stmt =
+                tx.prepare_cached("UPDATE metrics SET processing_started_at = NULL WHERE id = ?1")?;
+            for id in ids {
+                stmt.execute(params![id])?;
             }
         }
         tx.commit()?;
@@ -2603,7 +2641,7 @@ mod tests {
         let events = vec![event_json(days_ago(2)), event_json(days_ago(1))];
         db.insert_events(&events).unwrap();
 
-        let batch = db.dequeue_pending_batch(1).unwrap();
+        let batch = db.dequeue_pending_batch(1, usize::MAX).unwrap();
         assert_eq!(batch.len(), 1);
         assert_eq!(db.count().unwrap(), 2);
         assert_eq!(db.count_retryable().unwrap(), 1);
@@ -2612,6 +2650,29 @@ mod tests {
             .unwrap();
         assert_eq!(db.count().unwrap(), 1);
         assert_eq!(db.count_retryable().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_dequeue_pending_batch_stops_at_byte_budget() {
+        let (mut db, _dir) = MetricsDatabase::new_temp_for_tests().unwrap();
+        let fat = format!("{{\"pad\":\"{}\"}}", "x".repeat(100));
+        db.insert_events(&[fat.clone(), fat.clone(), fat.clone()])
+            .unwrap();
+
+        // ~110-byte rows against a 250-byte budget: two rows fit (the third
+        // would exceed it), and the excluded row is not locked, so a later
+        // dequeue claims it.
+        let batch = db.dequeue_pending_batch(10, 250).unwrap();
+        assert_eq!(batch.len(), 2);
+
+        let rest = db.dequeue_pending_batch(10, 250).unwrap();
+        assert_eq!(rest.len(), 1);
+
+        // A single row over the budget is still dequeued alone (progress).
+        db.release_processing_locks(&rest.iter().map(|r| r.id).collect::<Vec<_>>())
+            .unwrap();
+        let one = db.dequeue_pending_batch(10, 1).unwrap();
+        assert_eq!(one.len(), 1);
     }
 
     #[test]
@@ -2627,7 +2688,7 @@ mod tests {
         ])
         .unwrap();
 
-        let batch = db.dequeue_pending_batch(2).unwrap();
+        let batch = db.dequeue_pending_batch(2, usize::MAX).unwrap();
         assert_eq!(batch.len(), 2);
         assert!(batch[0].id > batch[1].id);
         assert!(batch[0].event_json.contains(&format!("\"t\":{newest_ts}")));
@@ -2682,7 +2743,7 @@ mod tests {
         db.insert_events(&[event_json(days_ago(2)), event_json(days_ago(1))])
             .unwrap();
 
-        let batch = db.dequeue_pending_batch(1).unwrap();
+        let batch = db.dequeue_pending_batch(1, usize::MAX).unwrap();
         let failed_id = batch[0].id;
         let failed_at = unix_now();
         db.mark_records_failed(&[failed_id], "upload failed", failed_at)
@@ -2691,7 +2752,7 @@ mod tests {
         assert_eq!(db.count().unwrap(), 2);
         assert_eq!(db.count_retryable().unwrap(), 1);
 
-        let retryable_batch = db.dequeue_pending_batch(10).unwrap();
+        let retryable_batch = db.dequeue_pending_batch(10, usize::MAX).unwrap();
         assert_eq!(retryable_batch.len(), 1);
         assert_ne!(retryable_batch[0].id, failed_id);
 
@@ -2712,7 +2773,7 @@ mod tests {
         let (mut db, _temp_dir) = create_test_db();
         db.insert_events(&[event_json(days_ago(1))]).unwrap();
 
-        let first_batch = db.dequeue_pending_batch(1).unwrap();
+        let first_batch = db.dequeue_pending_batch(1, usize::MAX).unwrap();
         assert_eq!(first_batch.len(), 1);
         assert_eq!(db.count_retryable().unwrap(), 0);
 
@@ -2724,7 +2785,7 @@ mod tests {
             )
             .unwrap();
 
-        let second_batch = db.dequeue_pending_batch(1).unwrap();
+        let second_batch = db.dequeue_pending_batch(1, usize::MAX).unwrap();
         assert_eq!(second_batch.len(), 1);
         assert_eq!(second_batch[0].id, first_batch[0].id);
     }
@@ -2742,7 +2803,7 @@ mod tests {
 
         assert_eq!(db.count().unwrap(), 1);
         assert_eq!(db.count_retryable().unwrap(), 0);
-        assert!(db.dequeue_pending_batch(1).unwrap().is_empty());
+        assert!(db.dequeue_pending_batch(1, usize::MAX).unwrap().is_empty());
     }
 
     #[test]
@@ -2831,14 +2892,14 @@ mod tests {
         let event_ts = days_ago(1);
         let ids = db.insert_events(&[event_json(event_ts)]).unwrap();
 
-        let batch = db.dequeue_pending_batch(1).unwrap();
+        let batch = db.dequeue_pending_batch(1, usize::MAX).unwrap();
         assert_eq!(batch.len(), 1);
         db.mark_records_undeliverable(&[(ids[0], "validation failed".to_string())], unix_now())
             .unwrap();
 
         assert_eq!(db.count().unwrap(), 1);
         assert_eq!(db.count_retryable().unwrap(), 0);
-        assert!(db.dequeue_pending_batch(1).unwrap().is_empty());
+        assert!(db.dequeue_pending_batch(1, usize::MAX).unwrap().is_empty());
         assert_eq!(db.get_metric_history(0, None, &[1]).unwrap().len(), 1);
 
         let (delivered_ts, attempts, last_sync_error): (Option<i64>, i64, Option<String>) = db
@@ -3008,7 +3069,7 @@ mod tests {
         db.insert_events(&events).unwrap();
 
         // Dequeue newest rows and mark them delivered.
-        let batch = db.dequeue_pending_batch(2).unwrap();
+        let batch = db.dequeue_pending_batch(2, usize::MAX).unwrap();
         let ids: Vec<i64> = batch.iter().map(|r| r.id).collect();
 
         db.mark_records_delivered(&ids, unix_now()).unwrap();
@@ -3251,7 +3312,7 @@ mod tests {
         db.insert_events(&[]).unwrap();
 
         // Dequeue from empty should return empty.
-        let batch = db.dequeue_pending_batch(10).unwrap();
+        let batch = db.dequeue_pending_batch(10, usize::MAX).unwrap();
         assert!(batch.is_empty());
 
         // Marking an empty set delivered should succeed.

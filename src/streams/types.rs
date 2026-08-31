@@ -149,6 +149,44 @@ fn read_leading_jsonl_lines_with(
     lines
 }
 
+/// Gate for readers that must parse a whole file in one piece (JSON
+/// thread/session files with record-index watermarks — there is no byte
+/// offset to seek to, so the per-line and backfill caps cannot apply).
+/// Returns true, logging an error, when the file exceeds
+/// `Config::max_transcript_file_bytes()`: the caller should return an empty
+/// batch with its watermark unchanged. Nothing is falsely marked processed,
+/// and the sweep's size/mtime stamp stops re-enqueueing the stream until the
+/// file changes, so the error log stays bounded; raising the budget resumes
+/// ingestion naturally.
+pub fn skip_whole_file_over_budget(path: &std::path::Path, agent: &str, session_id: &str) -> bool {
+    let max_bytes = crate::config::Config::get().max_transcript_file_bytes();
+    skip_whole_file_over_budget_with(path, agent, session_id, max_bytes)
+}
+
+fn skip_whole_file_over_budget_with(
+    path: &std::path::Path,
+    agent: &str,
+    session_id: &str,
+    max_bytes: u64,
+) -> bool {
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if meta.len() <= max_bytes {
+        return false;
+    }
+    tracing::error!(
+        path = %path.display(),
+        size_bytes = meta.len(),
+        max_bytes,
+        agent,
+        session_id,
+        "transcript exceeds the whole-file ingest budget; skipping \
+         (raise max_transcript_file_bytes to ingest it)"
+    );
+    true
+}
+
 /// Errors that can occur during transcript processing.
 #[derive(Debug, Clone)]
 pub enum StreamError {
@@ -407,6 +445,34 @@ mod tests {
             JsonlLineState::Complete(_) => assert_eq!(line.trim_end(), "{\"ok\":1}"),
             other => panic!("expected the next line to parse normally, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_skip_whole_file_over_budget_gates_on_size() {
+        use std::io::Write;
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        write!(file, "{}", "x".repeat(100)).unwrap();
+        file.flush().unwrap();
+
+        assert!(!skip_whole_file_over_budget_with(
+            file.path(),
+            "Test",
+            "s",
+            100
+        ));
+        assert!(skip_whole_file_over_budget_with(
+            file.path(),
+            "Test",
+            "s",
+            99
+        ));
+        // Missing files are not the gate's concern; the reader reports those.
+        assert!(!skip_whole_file_over_budget_with(
+            std::path::Path::new("/nonexistent/thread.json"),
+            "Test",
+            "s",
+            1
+        ));
     }
 
     #[test]

@@ -30,6 +30,7 @@ use tokio::time::{Duration, Instant, sleep_until};
 const FLUSH_INTERVAL: Duration = Duration::from_secs(3);
 const DAEMON_LOG_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15 * 60);
 const MAX_DAEMON_LOG_EVENTS_PER_UPLOAD: usize = 1000;
+
 const MAX_DAEMON_LOG_BUFFER_EVENTS: usize = 5000;
 
 static METRICS_UPLOAD_AVAILABLE: AtomicBool = AtomicBool::new(false);
@@ -1014,18 +1015,35 @@ fn flush_pending_metrics_from_db(
         mark_metric_records_delivered,
         mark_metric_records_failed,
         mark_metric_records_undeliverable,
+        release_metric_processing_locks,
         |batch| client.upload_metrics(batch),
         deadline,
         MAX_METRICS_PER_ENVELOPE,
+        // Pending-metrics dequeueing is count-bounded (MAX_METRICS_PER_ENVELOPE),
+        // but transcript-derived rows can be MBs each, so a count-only chunk
+        // could inflate GBs of MetricEvent trees at once — the flush-path
+        // variant of the #2244 memory balloon.
+        crate::config::Config::get().max_metrics_flush_chunk_bytes(),
     )
 }
 
-fn read_pending_metrics_batch(limit: usize) -> Result<Vec<MetricRecord>, GitAiError> {
+fn read_pending_metrics_batch(
+    limit: usize,
+    max_bytes: usize,
+) -> Result<Vec<MetricRecord>, GitAiError> {
     let db = MetricsDatabase::global()?;
     let mut db_lock = db
         .lock()
         .map_err(|_| GitAiError::Generic("metrics DB lock poisoned".to_string()))?;
-    db_lock.dequeue_pending_batch(limit)
+    db_lock.dequeue_pending_batch(limit, max_bytes)
+}
+
+fn release_metric_processing_locks(ids: &[i64]) -> Result<(), GitAiError> {
+    let db = MetricsDatabase::global()?;
+    let mut db_lock = db
+        .lock()
+        .map_err(|_| GitAiError::Generic("metrics DB lock poisoned".to_string()))?;
+    db_lock.release_processing_locks(ids)
 }
 
 fn mark_metric_records_delivered(ids: &[i64]) -> Result<(), GitAiError> {
@@ -1053,131 +1071,190 @@ fn mark_metric_records_undeliverable(records: &[(i64, String)]) -> Result<(), Gi
     db_lock.mark_records_undeliverable(records, current_unix_ts())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn flush_pending_metric_records_with<
     DequeueBatch,
     MarkDelivered,
     MarkFailed,
     MarkUndeliverable,
+    ReleaseLocks,
     UploadBatch,
 >(
     mut dequeue_batch: DequeueBatch,
     mut mark_delivered: MarkDelivered,
     mut mark_failed: MarkFailed,
     mut mark_undeliverable: MarkUndeliverable,
+    mut release_locks: ReleaseLocks,
     mut upload_batch: UploadBatch,
     deadline: std::time::Instant,
     max_batch_size: usize,
+    max_chunk_bytes: usize,
 ) -> Result<PendingMetricsFlushResult, GitAiError>
 where
-    DequeueBatch: FnMut(usize) -> Result<Vec<MetricRecord>, GitAiError>,
+    DequeueBatch: FnMut(usize, usize) -> Result<Vec<MetricRecord>, GitAiError>,
     MarkDelivered: FnMut(&[i64]) -> Result<(), GitAiError>,
     MarkFailed: FnMut(&[i64], &GitAiError) -> Result<(), GitAiError>,
     MarkUndeliverable: FnMut(&[(i64, String)]) -> Result<(), GitAiError>,
+    ReleaseLocks: FnMut(&[i64]) -> Result<(), GitAiError>,
     UploadBatch: FnMut(&MetricsBatch) -> Result<MetricsUploadResponse, GitAiError>,
 {
     let mut result = PendingMetricsFlushResult::default();
     let config = Config::fresh();
 
     while std::time::Instant::now() < deadline {
-        let batch = dequeue_batch(max_batch_size)?;
+        // The dequeue itself is byte-bounded: transcript-derived rows can be
+        // MBs each, so a count-only dequeue could materialize GBs of raw
+        // JSON strings before any downstream chunking applies — the
+        // flush-path variant of the #2244 memory balloon (re-created on
+        // every restart while the rows stay undelivered). The sub-chunk
+        // split below keeps the parsed MetricEvent trees byte-bounded too.
+        let batch = dequeue_batch(max_batch_size, max_chunk_bytes)?;
         if batch.is_empty() {
             break;
         }
 
-        let mut events = Vec::new();
-        let mut record_ids = Vec::new();
-        let mut invalid_ids = Vec::new();
-        let mut skipped_ids = Vec::new();
-
-        for record in &batch {
-            match serde_json::from_str::<MetricEvent>(&record.event_json) {
-                Ok(event) if should_deliver_metric_event(&config, &event) => {
-                    events.push(event);
-                    record_ids.push(record.id);
-                }
-                Ok(_) => skipped_ids.push(record.id),
-                Err(_) => {
-                    invalid_ids.push(record.id);
+        let mut remaining = batch.as_slice();
+        while !remaining.is_empty() {
+            // Deadline: rows not yet attempted have their locks released
+            // without being charged a delivery attempt.
+            if std::time::Instant::now() >= deadline {
+                let rest_ids: Vec<i64> = remaining.iter().map(|r| r.id).collect();
+                release_locks(&rest_ids)?;
+                return Ok(result);
+            }
+            let mut sub_len = 0usize;
+            let mut sub_bytes = 0usize;
+            for record in remaining {
+                sub_bytes += record.event_json.len();
+                sub_len += 1;
+                if sub_bytes >= max_chunk_bytes {
+                    break;
                 }
             }
-        }
+            let (sub, rest) = remaining.split_at(sub_len);
+            remaining = rest;
 
-        let batch_min_id = record_ids.iter().chain(invalid_ids.iter()).min().copied();
-        let batch_max_id = record_ids.iter().chain(invalid_ids.iter()).max().copied();
+            let mut events = Vec::new();
+            let mut record_ids = Vec::new();
+            let mut invalid_ids = Vec::new();
+            let mut skipped_ids = Vec::new();
 
-        if !invalid_ids.is_empty() {
-            result.invalid_records += invalid_ids.len();
-            mark_delivered(&invalid_ids)?;
-        }
-        if !skipped_ids.is_empty() {
-            mark_delivered(&skipped_ids)?;
-        }
+            for record in sub {
+                match serde_json::from_str::<MetricEvent>(&record.event_json) {
+                    Ok(event) if should_deliver_metric_event(&config, &event) => {
+                        events.push(event);
+                        record_ids.push(record.id);
+                    }
+                    Ok(_) => skipped_ids.push(record.id),
+                    Err(_) => {
+                        invalid_ids.push(record.id);
+                    }
+                }
+            }
 
-        if events.is_empty() {
-            continue;
-        }
+            let batch_min_id = record_ids.iter().chain(invalid_ids.iter()).min().copied();
+            let batch_max_id = record_ids.iter().chain(invalid_ids.iter()).max().copied();
 
-        let metrics_batch = MetricsBatch::new(events);
-        tracing::info!(
-            min_id = ?batch_min_id,
-            max_id = ?batch_max_id,
-            events = record_ids.len(),
-            invalid_records = invalid_ids.len(),
-            "metrics upload batch sending"
-        );
-        let response = match upload_batch(&metrics_batch) {
-            Ok(response) => response,
-            Err(e) => {
+            if !invalid_ids.is_empty() {
+                result.invalid_records += invalid_ids.len();
+                mark_delivered(&invalid_ids)?;
+            }
+            if !skipped_ids.is_empty() {
+                mark_delivered(&skipped_ids)?;
+            }
+
+            if events.is_empty() {
+                continue;
+            }
+
+            // On upload failure, only the attempted sub-chunk is charged a
+            // delivery attempt. The dequeued-but-never-attempted remainder
+            // still holds processing locks: release them without an attempt,
+            // or repeated failures of one chunk would exhaust the retries of
+            // rows that were never uploaded at all.
+            let fail_chunk_release_rest_and_bail =
+                |mark_failed: &mut MarkFailed,
+                 release_locks: &mut ReleaseLocks,
+                 e: GitAiError,
+                 record_ids: &[i64]| {
+                    mark_failed(record_ids, &e)?;
+                    if !remaining.is_empty() {
+                        let rest_ids: Vec<i64> = remaining.iter().map(|r| r.id).collect();
+                        release_locks(&rest_ids)?;
+                    }
+                    Err(e)
+                };
+
+            let metrics_batch = MetricsBatch::new(events);
+            tracing::info!(
+                min_id = ?batch_min_id,
+                max_id = ?batch_max_id,
+                events = record_ids.len(),
+                invalid_records = invalid_ids.len(),
+                "metrics upload batch sending"
+            );
+            let response = match upload_batch(&metrics_batch) {
+                Ok(response) => response,
+                Err(e) => {
+                    tracing::info!(
+                        min_id = ?batch_min_id,
+                        max_id = ?batch_max_id,
+                        events = record_ids.len(),
+                        error = %e,
+                        "metrics upload batch failed"
+                    );
+                    return fail_chunk_release_rest_and_bail(
+                        &mut mark_failed,
+                        &mut release_locks,
+                        e,
+                        &record_ids,
+                    );
+                }
+            };
+
+            if let Err(e) = response.validate_error_indices(record_ids.len()) {
                 tracing::info!(
                     min_id = ?batch_min_id,
                     max_id = ?batch_max_id,
                     events = record_ids.len(),
                     error = %e,
-                    "metrics upload batch failed"
+                    "metrics upload batch returned invalid response"
                 );
-                mark_failed(&record_ids, &e)?;
-                return Err(e);
+                return fail_chunk_release_rest_and_bail(
+                    &mut mark_failed,
+                    &mut release_locks,
+                    e,
+                    &record_ids,
+                );
             }
-        };
 
-        if let Err(e) = response.validate_error_indices(record_ids.len()) {
+            let successful_ids: Vec<i64> = response
+                .successful_indices(record_ids.len())
+                .into_iter()
+                .map(|index| record_ids[index])
+                .collect();
+            let undeliverable_records: Vec<(i64, String)> = response
+                .errors
+                .iter()
+                .map(|error| (record_ids[error.index], error.error.clone()))
+                .collect();
+
             tracing::info!(
                 min_id = ?batch_min_id,
                 max_id = ?batch_max_id,
                 events = record_ids.len(),
-                error = %e,
-                "metrics upload batch returned invalid response"
+                delivered_events = successful_ids.len(),
+                errored_events = undeliverable_records.len(),
+                errors = ?response.errors,
+                "metrics upload batch result"
             );
-            mark_failed(&record_ids, &e)?;
-            return Err(e);
+
+            mark_delivered(&successful_ids)?;
+            mark_undeliverable(&undeliverable_records)?;
+
+            result.uploaded_events += successful_ids.len();
+            result.uploaded_batches += 1;
         }
-
-        let successful_ids: Vec<i64> = response
-            .successful_indices(record_ids.len())
-            .into_iter()
-            .map(|index| record_ids[index])
-            .collect();
-        let undeliverable_records: Vec<(i64, String)> = response
-            .errors
-            .iter()
-            .map(|error| (record_ids[error.index], error.error.clone()))
-            .collect();
-
-        tracing::info!(
-            min_id = ?batch_min_id,
-            max_id = ?batch_max_id,
-            events = record_ids.len(),
-            delivered_events = successful_ids.len(),
-            errored_events = undeliverable_records.len(),
-            errors = ?response.errors,
-            "metrics upload batch result"
-        );
-
-        mark_delivered(&successful_ids)?;
-        mark_undeliverable(&undeliverable_records)?;
-
-        result.uploaded_events += successful_ids.len();
-        result.uploaded_batches += 1;
     }
 
     Ok(result)
@@ -2052,7 +2129,7 @@ mod tests {
         let result = flush_pending_metric_records_with(
             {
                 let db = Rc::clone(&db);
-                move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
             },
             {
                 let db = Rc::clone(&db);
@@ -2074,6 +2151,10 @@ mod tests {
                 }
             },
             {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
+            {
                 let uploaded = Rc::clone(&uploaded);
                 move |batch| {
                     uploaded
@@ -2084,6 +2165,7 @@ mod tests {
             },
             std::time::Instant::now() + std::time::Duration::from_secs(60),
             1,
+            usize::MAX,
         )
         .unwrap();
 
@@ -2104,19 +2186,23 @@ mod tests {
     }
 
     #[test]
-    fn flush_pending_metric_records_marks_invalid_rows_delivered() {
+    fn flush_failure_releases_unattempted_rows_without_charging_attempts() {
+        // When one sub-chunk's upload fails, only that sub-chunk may be
+        // charged a delivery attempt: the dequeued-but-never-attempted
+        // remainder must have its locks released with attempts untouched,
+        // or repeated failures of one chunk would exhaust the retries of
+        // rows that were never uploaded at all.
         let (metrics_db, _metrics_db_dir) = MetricsDatabase::new_temp_for_tests().unwrap();
         let db = Rc::new(RefCell::new(metrics_db));
-        let ts = now_ts();
+        let ts = now_ts().saturating_sub(3);
         db.borrow_mut()
-            .insert_events(&["not-json".to_string(), event_json(ts)])
+            .insert_events(&[event_json(ts), event_json(ts + 1)])
             .unwrap();
 
-        let uploaded = Rc::new(RefCell::new(Vec::<u32>::new()));
         let result = flush_pending_metric_records_with(
             {
                 let db = Rc::clone(&db);
-                move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
             },
             {
                 let db = Rc::clone(&db);
@@ -2138,6 +2224,202 @@ mod tests {
                 }
             },
             {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
+            |_batch| -> Result<MetricsUploadResponse, GitAiError> {
+                Err(GitAiError::Generic("upload down".to_string()))
+            },
+            std::time::Instant::now() + std::time::Duration::from_secs(60),
+            10,
+            // 1-byte chunk budget: each sub-chunk holds exactly one row.
+            1,
+        );
+        assert!(result.is_err(), "the failed flush must surface its error");
+
+        // The first row was attempted (attempts = 1, retry backoff applied);
+        // the second must still be immediately dequeueable with attempts 0.
+        let releasable = db
+            .borrow_mut()
+            .dequeue_pending_batch(10, usize::MAX)
+            .unwrap();
+        assert_eq!(releasable.len(), 1);
+        assert_eq!(
+            releasable[0].attempts, 0,
+            "a never-attempted row must not be charged a delivery attempt"
+        );
+    }
+
+    #[test]
+    fn flush_deadline_releases_remaining_rows_without_charging_attempts() {
+        let (metrics_db, _metrics_db_dir) = MetricsDatabase::new_temp_for_tests().unwrap();
+        let db = Rc::new(RefCell::new(metrics_db));
+        let ts = now_ts().saturating_sub(3);
+        db.borrow_mut()
+            .insert_events(&[event_json(ts), event_json(ts + 1)])
+            .unwrap();
+
+        // The deadline expires during the first sub-chunk's upload; the
+        // second row must be released, not failed, and stay dequeueable.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(30);
+        let result = flush_pending_metric_records_with(
+            {
+                let db = Rc::clone(&db);
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids| db.borrow_mut().mark_records_delivered(ids, unix_now())
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids, err| {
+                    let now = unix_now();
+                    db.borrow_mut()
+                        .mark_records_failed(ids, &err.to_string(), now)
+                }
+            },
+            {
+                let db = Rc::clone(&db);
+                move |records| {
+                    db.borrow_mut()
+                        .mark_records_undeliverable(records, unix_now())
+                }
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
+            |_batch| {
+                std::thread::sleep(std::time::Duration::from_millis(60));
+                Ok(MetricsUploadResponse { errors: vec![] })
+            },
+            deadline,
+            10,
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(result.uploaded_events, 1);
+        let remaining = db
+            .borrow_mut()
+            .dequeue_pending_batch(10, usize::MAX)
+            .unwrap();
+        assert_eq!(
+            remaining.len(),
+            1,
+            "the un-attempted row must stay dequeueable"
+        );
+        assert_eq!(remaining[0].attempts, 0);
+    }
+
+    #[test]
+    fn flush_pending_metric_records_splits_count_batches_by_bytes() {
+        // A count-bounded dequeue of fat rows must not inflate them all at
+        // once (#2244): the byte budget splits parsing/uploading into
+        // sub-chunks while still delivering every row.
+        let (metrics_db, _metrics_db_dir) = MetricsDatabase::new_temp_for_tests().unwrap();
+        let db = Rc::new(RefCell::new(metrics_db));
+        let ts = now_ts().saturating_sub(3);
+        db.borrow_mut()
+            .insert_events(&[event_json(ts), event_json(ts + 1), event_json(ts + 2)])
+            .unwrap();
+
+        let uploaded = Rc::new(RefCell::new(Vec::<usize>::new()));
+        let result = flush_pending_metric_records_with(
+            {
+                let db = Rc::clone(&db);
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids| db.borrow_mut().mark_records_delivered(ids, unix_now())
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids, err| {
+                    let now = unix_now();
+                    db.borrow_mut()
+                        .mark_records_failed(ids, &err.to_string(), now)
+                }
+            },
+            {
+                let db = Rc::clone(&db);
+                move |records| {
+                    db.borrow_mut()
+                        .mark_records_undeliverable(records, unix_now())
+                }
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
+            {
+                let uploaded = Rc::clone(&uploaded);
+                move |batch| {
+                    uploaded.borrow_mut().push(batch.events.len());
+                    Ok(MetricsUploadResponse { errors: vec![] })
+                }
+            },
+            std::time::Instant::now() + std::time::Duration::from_secs(60),
+            10,
+            // Any single row exhausts this budget, so each sub-chunk holds
+            // exactly one row even though the count batch dequeued all three.
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(
+            result,
+            PendingMetricsFlushResult {
+                uploaded_events: 3,
+                uploaded_batches: 3,
+                invalid_records: 0,
+            }
+        );
+        assert_eq!(*uploaded.borrow(), vec![1, 1, 1]);
+        assert_eq!(db.borrow().count().unwrap(), 0);
+    }
+
+    #[test]
+    fn flush_pending_metric_records_marks_invalid_rows_delivered() {
+        let (metrics_db, _metrics_db_dir) = MetricsDatabase::new_temp_for_tests().unwrap();
+        let db = Rc::new(RefCell::new(metrics_db));
+        let ts = now_ts();
+        db.borrow_mut()
+            .insert_events(&["not-json".to_string(), event_json(ts)])
+            .unwrap();
+
+        let uploaded = Rc::new(RefCell::new(Vec::<u32>::new()));
+        let result = flush_pending_metric_records_with(
+            {
+                let db = Rc::clone(&db);
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids| db.borrow_mut().mark_records_delivered(ids, unix_now())
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids, err| {
+                    let now = unix_now();
+                    db.borrow_mut()
+                        .mark_records_failed(ids, &err.to_string(), now)
+                }
+            },
+            {
+                let db = Rc::clone(&db);
+                move |records| {
+                    db.borrow_mut()
+                        .mark_records_undeliverable(records, unix_now())
+                }
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
+            {
                 let uploaded = Rc::clone(&uploaded);
                 move |batch| {
                     uploaded
@@ -2148,6 +2430,7 @@ mod tests {
             },
             std::time::Instant::now() + std::time::Duration::from_secs(60),
             10,
+            usize::MAX,
         )
         .unwrap();
 
@@ -2182,7 +2465,7 @@ mod tests {
         let result = flush_pending_metric_records_with(
             {
                 let db = Rc::clone(&db);
-                move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
             },
             {
                 let db = Rc::clone(&db);
@@ -2204,6 +2487,10 @@ mod tests {
                 }
             },
             {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
+            {
                 let uploaded = Rc::clone(&uploaded);
                 move |batch| {
                     uploaded
@@ -2219,6 +2506,7 @@ mod tests {
             },
             std::time::Instant::now() + std::time::Duration::from_secs(60),
             10,
+            usize::MAX,
         )
         .unwrap();
 
@@ -2235,7 +2523,7 @@ mod tests {
         assert_eq!(db.borrow().count_retryable().unwrap(), 0);
         assert!(
             db.borrow_mut()
-                .dequeue_pending_batch(10)
+                .dequeue_pending_batch(10, usize::MAX)
                 .unwrap()
                 .is_empty()
         );
@@ -2258,7 +2546,7 @@ mod tests {
         let result = flush_pending_metric_records_with(
             {
                 let db = Rc::clone(&db);
-                move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
             },
             {
                 let db = Rc::clone(&db);
@@ -2279,6 +2567,10 @@ mod tests {
                         .mark_records_undeliverable(records, unix_now())
                 }
             },
+            {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
             |_batch| {
                 Ok(MetricsUploadResponse {
                     errors: vec![
@@ -2295,6 +2587,7 @@ mod tests {
             },
             std::time::Instant::now() + std::time::Duration::from_secs(60),
             10,
+            usize::MAX,
         )
         .unwrap();
 
@@ -2310,7 +2603,7 @@ mod tests {
         assert_eq!(db.borrow().count_retryable().unwrap(), 0);
         assert!(
             db.borrow_mut()
-                .dequeue_pending_batch(10)
+                .dequeue_pending_batch(10, usize::MAX)
                 .unwrap()
                 .is_empty()
         );
@@ -2331,7 +2624,7 @@ mod tests {
         let result = flush_pending_metric_records_with(
             {
                 let db = Rc::clone(&db);
-                move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
             },
             {
                 let db = Rc::clone(&db);
@@ -2352,6 +2645,10 @@ mod tests {
                         .mark_records_undeliverable(records, unix_now())
                 }
             },
+            {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
             |_batch| {
                 Ok(MetricsUploadResponse {
                     errors: vec![MetricsUploadError {
@@ -2362,6 +2659,7 @@ mod tests {
             },
             std::time::Instant::now() + std::time::Duration::from_secs(60),
             10,
+            usize::MAX,
         );
 
         assert!(result.is_err());
@@ -2383,7 +2681,7 @@ mod tests {
         let result = flush_pending_metric_records_with(
             {
                 let db = Rc::clone(&db);
-                move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
             },
             {
                 let db = Rc::clone(&db);
@@ -2404,9 +2702,14 @@ mod tests {
                         .mark_records_undeliverable(records, unix_now())
                 }
             },
+            {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
             |_batch| Err(GitAiError::Generic("upload failed".to_string())),
             std::time::Instant::now() + std::time::Duration::from_secs(60),
             10,
+            usize::MAX,
         );
 
         assert!(result.is_err());
@@ -2426,7 +2729,7 @@ mod tests {
         let failed = flush_pending_metric_records_with(
             {
                 let db = Rc::clone(&db);
-                move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
             },
             {
                 let db = Rc::clone(&db);
@@ -2447,9 +2750,14 @@ mod tests {
                         .mark_records_undeliverable(records, unix_now())
                 }
             },
+            {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
             |_batch| Err(GitAiError::Generic("upload failed".to_string())),
             std::time::Instant::now() + std::time::Duration::from_secs(60),
             1,
+            usize::MAX,
         );
         assert!(failed.is_err());
         assert_eq!(db.borrow().count_retryable().unwrap(), 0);
@@ -2464,7 +2772,7 @@ mod tests {
         let result = flush_pending_metric_records_with(
             {
                 let db = Rc::clone(&db);
-                move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+                move |limit, max_bytes| db.borrow_mut().dequeue_pending_batch(limit, max_bytes)
             },
             {
                 let db = Rc::clone(&db);
@@ -2486,6 +2794,10 @@ mod tests {
                 }
             },
             {
+                let db = Rc::clone(&db);
+                move |ids: &[i64]| db.borrow_mut().release_processing_locks(ids)
+            },
+            {
                 let uploaded = Rc::clone(&uploaded);
                 move |batch| {
                     uploaded
@@ -2496,6 +2808,7 @@ mod tests {
             },
             std::time::Instant::now() + std::time::Duration::from_secs(60),
             1,
+            usize::MAX,
         )
         .unwrap();
 
