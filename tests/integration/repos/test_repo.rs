@@ -1025,6 +1025,7 @@ fn is_known_checkpoint_preset(arg: &str) -> bool {
             | "pi"
             | "ai_tab"
             | "firebender"
+            | "grok"
             | "mock_ai"
             | "mock_known_human"
             | "known_human"

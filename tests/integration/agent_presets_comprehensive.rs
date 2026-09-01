@@ -888,6 +888,7 @@ fn test_all_presets_handle_invalid_json_consistently() {
         "amp",
         "droid",
         "ai_tab",
+        "grok",
     ];
 
     for name in preset_names {

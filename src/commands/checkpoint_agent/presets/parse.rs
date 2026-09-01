@@ -9,6 +9,19 @@ pub fn required_str<'a>(data: &'a Value, key: &str) -> Result<&'a str, GitAiErro
         .ok_or_else(|| GitAiError::PresetError(format!("{} not found in hook_input", key)))
 }
 
+pub fn required_str_multi<'a>(data: &'a Value, keys: &[&str]) -> Result<&'a str, GitAiError> {
+    optional_str_multi(data, keys).ok_or_else(|| {
+        GitAiError::PresetError(format!("{} not found in hook_input", keys.join(" or ")))
+    })
+}
+
+pub fn is_pre_hook_event(name: Option<&str>) -> bool {
+    matches!(
+        name,
+        Some("PreToolUse") | Some("preToolUse") | Some("pre_tool_use") | Some("BeforeTool")
+    )
+}
+
 pub fn optional_str<'a>(data: &'a Value, key: &str) -> Option<&'a str> {
     data.get(key).and_then(|v| v.as_str())
 }
@@ -283,6 +296,33 @@ mod tests {
     fn test_bash_command_missing_or_empty() {
         let data = json!({"tool_input": {"command": "   "}});
         assert_eq!(bash_command_from_hook_input(&data), None);
+    }
+
+    #[test]
+    fn test_required_str_multi_falls_back() {
+        let data = json!({"workspaceRoot": "/tmp/proj"});
+        assert_eq!(
+            required_str_multi(&data, &["cwd", "workspaceRoot"]).unwrap(),
+            "/tmp/proj"
+        );
+    }
+
+    #[test]
+    fn test_required_str_multi_missing() {
+        let data = json!({"other": "value"});
+        let err = required_str_multi(&data, &["cwd", "workspaceRoot"]).unwrap_err();
+        assert!(err.to_string().contains("cwd or workspaceRoot"));
+    }
+
+    #[test]
+    fn test_is_pre_hook_event() {
+        assert!(is_pre_hook_event(Some("PreToolUse")));
+        assert!(is_pre_hook_event(Some("pre_tool_use")));
+        assert!(is_pre_hook_event(Some("preToolUse")));
+        assert!(is_pre_hook_event(Some("BeforeTool")));
+        assert!(!is_pre_hook_event(Some("PostToolUse")));
+        assert!(!is_pre_hook_event(Some("post_tool_use")));
+        assert!(!is_pre_hook_event(None));
     }
 
     #[test]

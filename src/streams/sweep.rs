@@ -41,6 +41,7 @@ pub enum StreamFormat {
     AmpThreadJson,
     OpenCodeSqlite,
     PiJsonl,
+    GrokJsonl,
     CopilotOtelSqlite,
 }
 
@@ -59,6 +60,7 @@ impl std::fmt::Display for StreamFormat {
             Self::AmpThreadJson => write!(f, "AmpThreadJson"),
             Self::OpenCodeSqlite => write!(f, "OpenCodeSqlite"),
             Self::PiJsonl => write!(f, "PiJsonl"),
+            Self::GrokJsonl => write!(f, "GrokJsonl"),
             Self::CopilotOtelSqlite => write!(f, "CopilotOtelSqlite"),
         }
     }
@@ -74,6 +76,7 @@ impl StreamFormat {
             | Self::WindsurfJsonl
             | Self::CodexJsonl
             | Self::PiJsonl
+            | Self::GrokJsonl
             | Self::CopilotEventStreamJsonl => WatermarkType::ByteOffset,
             Self::DroidJsonl => WatermarkType::Hybrid,
             Self::CopilotSessionJson | Self::ContinueJson | Self::AmpThreadJson => {

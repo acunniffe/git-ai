@@ -12,6 +12,7 @@ mod droid;
 mod firebender;
 mod gemini;
 mod github_copilot;
+mod grok;
 mod human;
 mod known_human;
 mod mock_ai;
@@ -124,6 +125,7 @@ pub enum StreamFormat {
     AmpThreadJson,
     OpenCodeSqlite,
     PiJsonl,
+    GrokJsonl,
 }
 
 impl StreamFormat {
@@ -136,6 +138,7 @@ impl StreamFormat {
             | Self::WindsurfJsonl
             | Self::CodexJsonl
             | Self::PiJsonl
+            | Self::GrokJsonl
             | Self::CopilotEventStreamJsonl => WatermarkType::ByteOffset,
             Self::DroidJsonl => WatermarkType::Hybrid,
             Self::CopilotSessionJson | Self::ContinueJson | Self::AmpThreadJson => {
@@ -168,6 +171,7 @@ pub fn resolve_preset(name: &str) -> Result<Box<dyn AgentPreset>, GitAiError> {
         "droid" => Ok(Box::new(droid::DroidPreset)),
         "opencode" => Ok(Box::new(opencode::OpenCodePreset)),
         "pi" => Ok(Box::new(pi::PiPreset)),
+        "grok" => Ok(Box::new(grok::GrokPreset)),
         "human" => Ok(Box::new(human::HumanPreset)),
         "mock_ai" => Ok(Box::new(mock_ai::MockAiPreset)),
         "known_human" => Ok(Box::new(known_human::KnownHumanPreset)),
