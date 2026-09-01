@@ -18,28 +18,64 @@ pub fn normalize_to_posix(path: &str) -> String {
 /// `/var` → `/private/var`, or an explicit workdir symlink. Walk up to the
 /// longest existing ancestor, canonicalize that, and re-join the missing
 /// suffix so both sides share the same key.
+///
+/// Dangling symlink components are followed via `read_link` without requiring
+/// the target to exist (relative targets are resolved against the symlink's
+/// parent). Symlink loops are ignored so the walk can continue.
 pub fn canonicalize_path_key(path: &str) -> String {
-    let path = Path::new(path);
-    let mut suffix: Vec<std::ffi::OsString> = Vec::new();
-    let mut cursor = path;
-    loop {
-        if let Ok(canonical) = std::fs::canonicalize(cursor) {
-            let mut result = canonical;
-            for part in suffix.iter().rev() {
-                result.push(part);
+    fn resolve(
+        path: &Path,
+        visited: &mut std::collections::HashSet<PathBuf>,
+        depth: usize,
+    ) -> PathBuf {
+        const MAX_SYMLINKS: usize = 256;
+        let mut suffix: Vec<std::ffi::OsString> = Vec::new();
+        let mut cursor = path.to_path_buf();
+        loop {
+            if let Ok(canonical) = std::fs::canonicalize(&cursor) {
+                let mut result = canonical;
+                for part in suffix.iter().rev() {
+                    result.push(part);
+                }
+                return result;
             }
-            return result.to_string_lossy().into_owned();
-        }
-        match (cursor.file_name(), cursor.parent()) {
-            (Some(name), Some(parent)) if !parent.as_os_str().is_empty() => {
-                suffix.push(name.to_owned());
-                cursor = parent;
+
+            // `canonicalize` requires the target to exist. A dangling symlink
+            // still has a readable target; follow it so Pre/Post keys match.
+            if depth < MAX_SYMLINKS
+                && let Ok(target) = std::fs::read_link(&cursor)
+                && visited.insert(cursor.clone())
+            {
+                let parent = cursor
+                    .parent()
+                    .filter(|p| !p.as_os_str().is_empty())
+                    .unwrap_or_else(|| Path::new("."));
+                let mut continued = if target.is_absolute() {
+                    target
+                } else {
+                    parent.join(target)
+                };
+                for part in suffix.iter().rev() {
+                    continued.push(part);
+                }
+                return resolve(&continued, visited, depth + 1);
             }
-            _ => break,
+
+            match (cursor.file_name(), cursor.parent()) {
+                (Some(name), Some(parent)) if !parent.as_os_str().is_empty() => {
+                    suffix.push(name.to_owned());
+                    cursor = parent.to_path_buf();
+                }
+                _ => break,
+            }
         }
+
+        path.to_path_buf()
     }
 
-    path.to_string_lossy().into_owned()
+    resolve(Path::new(path), &mut std::collections::HashSet::new(), 0)
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn resolve_git_ai_exe_from_invocation_path(path: PathBuf) -> PathBuf {
@@ -555,6 +591,52 @@ mod tests {
 
         assert_eq!(key_before, expected);
         assert_eq!(key_after, expected);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_canonicalize_path_key_dangling_symlink_matches_after_target_create() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("sub");
+        std::fs::create_dir(&sub).unwrap();
+        let link = sub.join("link");
+        // Relative dangling symlink: the final component exists, the target does not.
+        std::os::unix::fs::symlink("../target.txt", &link).unwrap();
+
+        let key_before = canonicalize_path_key(link.to_str().unwrap());
+        // Creating through the symlink materializes the relative target.
+        std::fs::write(&link, "x\n").unwrap();
+        let key_after = canonicalize_path_key(link.to_str().unwrap());
+        let expected = dir
+            .path()
+            .join("target.txt")
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        assert_eq!(key_before, expected);
+        assert_eq!(key_after, expected);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_canonicalize_path_key_symlink_loop_does_not_hang() {
+        let dir = tempfile::tempdir().unwrap();
+        let a = dir.path().join("a");
+        let b = dir.path().join("b");
+        std::os::unix::fs::symlink(&b, &a).unwrap();
+        std::os::unix::fs::symlink(&a, &b).unwrap();
+
+        let key = canonicalize_path_key(a.to_str().unwrap());
+        let expected = dir
+            .path()
+            .canonicalize()
+            .unwrap()
+            .join("a")
+            .to_string_lossy()
+            .into_owned();
+        assert_eq!(key, expected);
     }
 
     // =========================================================================
