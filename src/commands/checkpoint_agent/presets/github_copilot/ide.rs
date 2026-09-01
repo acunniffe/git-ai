@@ -292,12 +292,41 @@ pub(super) fn parse_vscode_native_hooks(
         )));
     }
 
-    // Workaround: VS Code Copilot fires PostToolUse before the file is written to disk.
-    // https://github.com/microsoft/vscode/issues/315926
-    tracing::debug!(
-        "Sleeping 80ms for VS Code Copilot PostToolUse file-write race (vscode#315926)"
-    );
-    std::thread::sleep(std::time::Duration::from_millis(80));
+    // Prefer explicit create_file content from the payload over a disk re-read.
+    // VS Code Copilot often fires PostToolUse before the new file is flushed
+    // (microsoft/vscode#315926); the full text is already in tool_input.content.
+    // VS Code's native create_file tool_input always uses "content" (see the
+    // PreToolUse branch above and captured real payloads in tests below).
+    // "file_text" is a different tool's field (Copilot CLI's create) and is
+    // never populated here, so it is intentionally not checked as a fallback.
+    let create_file_payload_content = tool_name
+        .eq_ignore_ascii_case("create_file")
+        .then(|| {
+            tool_input
+                .and_then(|ti| ti.get("content"))
+                .and_then(|v| v.as_str())
+        })
+        .flatten();
+
+    let dirty_files = if let Some(content) = create_file_payload_content {
+        let mut map = dirty_files.unwrap_or_default();
+        for path in &extracted_paths {
+            // Unconditionally override: the payload content is authoritative for
+            // create_file, regardless of any stale entry from a legacy dirty_files
+            // hook field.
+            map.insert(path.clone(), content.to_string());
+        }
+        Some(map)
+    } else {
+        // Fallback: wait briefly for the write to land on disk. Applies both to
+        // create_file without payload content and to all other edit tools.
+        // https://github.com/microsoft/vscode/issues/315926
+        tracing::debug!(
+            "Sleeping 80ms for VS Code Copilot PostToolUse file-write race (vscode#315926)"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(80));
+        dirty_files
+    };
 
     Ok(vec![ParsedHookEvent::PostFileEdit(PostFileEdit {
         context,
@@ -718,6 +747,39 @@ mod tests {
                 );
             }
             _ => panic!("Expected PreFileEdit"),
+        }
+    }
+
+    #[test]
+    fn test_copilot_native_create_file_post_uses_tool_input_content() {
+        let input = json!({
+            "hook_event_name": "PostToolUse",
+            "cwd": "/home/user/project",
+            "tool_name": "create_file",
+            "session_id": "sess-456",
+            "tool_input": {
+                "file_path": "/home/user/project/src/new_file.rs",
+                "content": "fn main() {}\n"
+            },
+            "tool_response": "",
+            "transcript_path": "/home/user/.vscode/data/github.copilot-chat/transcripts/sess-456.json"
+        })
+        .to_string();
+        let events = GithubCopilotPreset
+            .parse(&input, "t_test123456789a")
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        match &events[0] {
+            ParsedHookEvent::PostFileEdit(e) => {
+                assert_eq!(
+                    e.dirty_files
+                        .as_ref()
+                        .unwrap()
+                        .get(&PathBuf::from("/home/user/project/src/new_file.rs")),
+                    Some(&"fn main() {}\n".to_string())
+                );
+            }
+            _ => panic!("Expected PostFileEdit"),
         }
     }
 

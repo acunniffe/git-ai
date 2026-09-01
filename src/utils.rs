@@ -1,6 +1,6 @@
 use crate::error::GitAiError;
 use std::io::IsTerminal;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 static IS_TERMINAL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
@@ -8,6 +8,38 @@ static IS_TERMINAL: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 #[inline]
 pub fn normalize_to_posix(path: &str) -> String {
     path.replace('\\', "/")
+}
+
+/// Stable path key for maps that must match before and after a file is created.
+///
+/// `std::fs::canonicalize` fails for paths that do not exist yet, so a naive
+/// `canonicalize(...).unwrap_or(raw)` stores the raw path at AI PreToolUse and a
+/// resolved path (symlink-expanded) once the file exists — e.g. macOS
+/// `/var` → `/private/var`, or an explicit workdir symlink. Walk up to the
+/// longest existing ancestor, canonicalize that, and re-join the missing
+/// suffix so both sides share the same key.
+pub fn canonicalize_path_key(path: &str) -> String {
+    let path = Path::new(path);
+    let mut suffix: Vec<std::ffi::OsString> = Vec::new();
+    let mut cursor = path;
+    loop {
+        if let Ok(canonical) = std::fs::canonicalize(cursor) {
+            let mut result = canonical;
+            for part in suffix.iter().rev() {
+                result.push(part);
+            }
+            return result.to_string_lossy().into_owned();
+        }
+        match (cursor.file_name(), cursor.parent()) {
+            (Some(name), Some(parent)) if !parent.as_os_str().is_empty() => {
+                suffix.push(name.to_owned());
+                cursor = parent;
+            }
+            _ => break,
+        }
+    }
+
+    path.to_string_lossy().into_owned()
 }
 
 fn resolve_git_ai_exe_from_invocation_path(path: PathBuf) -> PathBuf {
@@ -481,6 +513,49 @@ pub fn write_json_file<T: serde::Serialize>(path: &std::path::Path, value: &T) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // =========================================================================
+    // canonicalize_path_key
+    // =========================================================================
+
+    #[test]
+    fn test_canonicalize_path_key_matches_before_and_after_create() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("new.txt");
+        let before = canonicalize_path_key(file.to_str().unwrap());
+        assert!(!file.exists());
+        std::fs::write(&file, "hi\n").unwrap();
+        let after = canonicalize_path_key(file.to_str().unwrap());
+        assert_eq!(
+            before, after,
+            "pending-AI path keys must match across file creation"
+        );
+        assert_eq!(after, file.canonicalize().unwrap().to_string_lossy());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_canonicalize_path_key_resolves_symlink_parent_for_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        let via_link = link.join("created.txt");
+        let key_before = canonicalize_path_key(via_link.to_str().unwrap());
+        std::fs::write(real.join("created.txt"), "x\n").unwrap();
+        let key_after = canonicalize_path_key(via_link.to_str().unwrap());
+        let expected = real
+            .join("created.txt")
+            .canonicalize()
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+
+        assert_eq!(key_before, expected);
+        assert_eq!(key_after, expected);
+    }
 
     // =========================================================================
     // JSON cache file helpers

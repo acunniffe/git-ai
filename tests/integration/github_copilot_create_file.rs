@@ -420,3 +420,80 @@ fn test_create_file_ignores_top_level_edited_filepaths() {
     new_file.assert_lines_and_blame(crate::lines!["print(\"new\")".ai()]);
     old_file.assert_lines_and_blame(crate::lines!["print(\"old\")".human()]);
 }
+
+/// Regression for #2221: Copilot create_file Pre fires before the file exists,
+/// then a KnownHuman save lands before Post. The new file must still be AI.
+#[cfg(unix)]
+#[test]
+fn test_create_file_known_human_race_before_disk_write() {
+    use std::fs;
+
+    let repo = TestRepo::new();
+    let mut initial_file = repo.filename("README.md");
+    initial_file.set_contents(crate::lines!["# Test repo"]);
+    repo.stage_all_and_commit("Initial commit").unwrap();
+
+    let real_dir = repo.path().join("realdir");
+    fs::create_dir(&real_dir).unwrap();
+    let link_dir = repo.path().join("linkdir");
+    std::os::unix::fs::symlink(&real_dir, &link_dir).unwrap();
+
+    let via_link = link_dir.join("new_file.py");
+    let content = "print(\"hello world\")\n";
+    assert!(!via_link.exists());
+
+    let pre_hook_input = json!({
+        "timestamp": "2026-04-09T17:36:05.881Z",
+        "hook_event_name": "PreToolUse",
+        "session_id": "b4a517c6-b9f0-4787-af3a-7c002539b448",
+        "transcript_path": fake_copilot_transcript_path(&repo),
+        "tool_name": "create_file",
+        "tool_input": {
+            "filePath": via_link.to_str().unwrap(),
+            "content": content,
+        },
+        "tool_use_id": "call_create_race_pre",
+        "cwd": repo.path().to_str().unwrap()
+    });
+    repo.git_ai(&[
+        "checkpoint",
+        "github-copilot",
+        "--hook-input",
+        &pre_hook_input.to_string(),
+    ])
+    .unwrap();
+
+    // Disk write + spurious KnownHuman save (VS Code onDidSave) before Post.
+    fs::write(real_dir.join("new_file.py"), content).unwrap();
+    repo.git_ai(&["checkpoint", "mock_known_human", via_link.to_str().unwrap()])
+        .unwrap();
+
+    let post_hook_input = json!({
+        "timestamp": "2026-04-09T17:36:05.970Z",
+        "hook_event_name": "PostToolUse",
+        "session_id": "b4a517c6-b9f0-4787-af3a-7c002539b448",
+        "transcript_path": fake_copilot_transcript_path(&repo),
+        "tool_name": "create_file",
+        "tool_input": {
+            "filePath": via_link.to_str().unwrap(),
+            "content": content,
+        },
+        "tool_response": "",
+        "tool_use_id": "call_create_race_post",
+        "cwd": repo.path().to_str().unwrap()
+    });
+    repo.git_ai(&[
+        "checkpoint",
+        "github-copilot",
+        "--hook-input",
+        &post_hook_input.to_string(),
+    ])
+    .unwrap();
+
+    repo.sync_daemon();
+    repo.git(&["add", "realdir/new_file.py"]).unwrap();
+    repo.commit("Create new file via Copilot").unwrap();
+
+    let mut file = repo.filename("realdir/new_file.py");
+    file.assert_committed_lines(crate::lines!["print(\"hello world\")".ai()]);
+}

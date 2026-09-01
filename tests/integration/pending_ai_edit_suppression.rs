@@ -11,6 +11,10 @@ fn fire_pre_edit_checkpoint(repo: &TestRepo, file_paths: &[&str]) {
         .iter()
         .map(|p| repo.path().join(p).to_string_lossy().to_string())
         .collect();
+    fire_pre_edit_checkpoint_abs(repo, &abs_paths);
+}
+
+fn fire_pre_edit_checkpoint_abs(repo: &TestRepo, abs_paths: &[String]) {
     let payload = json!({
         "type": "human",
         "repo_working_dir": repo.path().to_string_lossy().to_string(),
@@ -313,4 +317,50 @@ fn test_multi_file_known_human_partial_suppression() {
         "human_file.txt's new line should be KnownHuman-attributed (not suppressed). Stats: {}",
         serde_json::to_string_pretty(&stats).unwrap()
     );
+}
+
+/// Regression for #2221: agent creates a *new* file under a symlinked path.
+/// Pre-edit registers pending state while the file does not exist yet
+/// (`canonicalize` fails); after the write, KnownHuman's path resolves through
+/// the symlink to a different string. Suppression must still match so the AI
+/// post-edit owns the lines instead of KnownHuman.
+#[cfg(unix)]
+#[test]
+fn test_known_human_suppressed_for_new_file_under_symlinked_path() {
+    let repo = TestRepo::new();
+    fs::write(repo.path().join("README.md"), "# init\n").unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+
+    let real_dir = repo.path().join("realdir");
+    fs::create_dir(&real_dir).unwrap();
+    let link_dir = repo.path().join("linkdir");
+    std::os::unix::fs::symlink(&real_dir, &link_dir).unwrap();
+
+    let via_link = link_dir.join("created.txt");
+    assert!(
+        !via_link.exists(),
+        "file must not exist yet when Pre registers pending AI edit"
+    );
+
+    // Pre through the symlink path — canonicalize fails, historically stored the raw path.
+    fire_pre_edit_checkpoint_abs(&repo, &[via_link.to_string_lossy().to_string()]);
+
+    // Agent writes the new file (content visible via both link and real path).
+    fs::write(real_dir.join("created.txt"), "ai created\n").unwrap();
+
+    // Spurious IDE save after the write: path now canonicalizes through the symlink.
+    repo.git_ai(&[
+        "checkpoint",
+        "mock_known_human",
+        via_link.to_str().expect("utf-8 path"),
+    ])
+    .unwrap();
+
+    fire_post_edit_checkpoint(&repo, &[via_link.to_str().expect("utf-8 path")]);
+
+    repo.git(&["add", "realdir/created.txt"]).unwrap();
+    repo.commit("AI created new file").unwrap();
+
+    let mut file = repo.filename("realdir/created.txt");
+    file.assert_committed_lines(lines!["ai created".ai()]);
 }

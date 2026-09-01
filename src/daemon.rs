@@ -3364,9 +3364,7 @@ impl ActorDaemonCoordinator {
     }
 
     fn canonicalize_path(path: &str) -> String {
-        std::fs::canonicalize(path)
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| path.to_string())
+        crate::utils::canonicalize_path_key(path)
     }
 
     fn register_pending_ai_edits(&self, family: &str, file_paths: &[String]) {
