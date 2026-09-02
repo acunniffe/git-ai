@@ -113,14 +113,50 @@ const THROTTLE_MAX_PAUSE: Duration = Duration::from_secs(5);
 /// charge the same debt, so their combined CPU holds the duty cycle instead
 /// of each pipeline claiming 30% on its own thread. Notify-origin passes and
 /// awaited flushes never charge it.
-static BACKGROUND_WORK_DEBT: std::sync::Mutex<Duration> = std::sync::Mutex::new(Duration::ZERO);
+///
+/// Pauses are issued as *serialized reservations* (`paused_until`): a caller
+/// settling while another caller's pause is still reserved queues its pause
+/// behind it and is told to wait out both, so concurrent sleepers cannot
+/// overlap their pauses and double the effective duty. A caller that sleeps
+/// less than it was told (the flush caps its sleeps to stay responsive)
+/// forgives nothing — the reservation stands and the next background segment
+/// absorbs the remainder.
+struct BackgroundLedger {
+    debt: Duration,
+    paused_until: Option<std::time::Instant>,
+}
 
-/// Charge `work` to the shared background ledger and return the pause owed.
+static BACKGROUND_LEDGER: std::sync::Mutex<BackgroundLedger> =
+    std::sync::Mutex::new(BackgroundLedger {
+        debt: Duration::ZERO,
+        paused_until: None,
+    });
+
+/// Charge `work` to the shared background ledger and return how long this
+/// caller must wait (its own pause queued behind any outstanding
+/// reservation).
 pub(crate) fn background_work_pause(work: Duration) -> Duration {
-    let mut debt = BACKGROUND_WORK_DEBT
+    reserve_background_pause(&BACKGROUND_LEDGER, work)
+}
+
+fn reserve_background_pause(
+    ledger: &std::sync::Mutex<BackgroundLedger>,
+    work: Duration,
+) -> Duration {
+    let mut ledger = ledger
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    settle_throttle_debt(&mut debt, work)
+    let pause = settle_throttle_debt(&mut ledger.debt, work);
+    let now = std::time::Instant::now();
+    let start = match ledger.paused_until {
+        Some(reserved) if reserved > now => reserved,
+        _ => now,
+    };
+    let end = start + pause;
+    if end > now {
+        ledger.paused_until = Some(end);
+    }
+    end - now
 }
 
 /// Cap on one batch's wall time: a slow-disk batch pauses (and observes
@@ -344,12 +380,15 @@ impl TokenUsageWorker {
                         // file of a large backfill. Ingest what arrived
                         // during the pass first — traffic sitting in the
                         // channels must not wait behind even one throttled
-                        // reconcile step.
+                        // reconcile step. Runs after notify tasks too: their
+                        // inline reconcile normally leaves nothing (this is
+                        // then one SELECT), but flags left by a FAILED
+                        // inline pass must not wait for the next 30-minute
+                        // sweep tick.
                         while let Ok(task) = self.notify_rx.try_recv() {
                             self.enqueue_notify(task);
                         }
-                        if matches!(origin, TaskOrigin::Sweep)
-                            && self.notify_queue.is_empty()
+                        if self.notify_queue.is_empty()
                             && self.sweep_queue.is_empty()
                             && self.drain_rx.is_empty()
                             && !self.shutdown_flag.load(Ordering::Relaxed)
@@ -2710,6 +2749,38 @@ mod tests {
         let identity = SessionIdentity::from_stream(&stream);
         assert_eq!(identity.session_id, "s_child");
         assert_eq!(identity.external_parent_session_id, None);
+    }
+
+    #[test]
+    fn background_pauses_are_serialized_reservations() {
+        // Two pipelines settling concurrently must queue their pauses, not
+        // overlap them: the second caller is told to wait out the first
+        // caller's outstanding reservation plus its own pause, so combined
+        // background CPU holds one duty cycle instead of two.
+        let ledger = std::sync::Mutex::new(BackgroundLedger {
+            debt: Duration::ZERO,
+            paused_until: None,
+        });
+        let first = reserve_background_pause(&ledger, Duration::from_millis(300));
+        assert!(
+            first >= Duration::from_millis(690) && first <= Duration::from_millis(710),
+            "own pause only: {first:?}"
+        );
+        // Settle immediately (the first sleeper has not woken): queued.
+        let second = reserve_background_pause(&ledger, Duration::from_millis(300));
+        assert!(
+            second >= Duration::from_millis(1380) && second <= Duration::from_millis(1420),
+            "queued behind the first reservation: {second:?}"
+        );
+
+        // A caller that under-sleeps its reservation (the flush caps its
+        // sleeps) forgives nothing: with zero new work, the wait returned to
+        // the next caller still covers the outstanding reservation.
+        let remainder = reserve_background_pause(&ledger, Duration::ZERO);
+        assert!(
+            remainder >= Duration::from_millis(1350),
+            "reservation persists: {remainder:?}"
+        );
     }
 
     #[test]

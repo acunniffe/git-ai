@@ -932,11 +932,14 @@ fn flush_metrics(events: &[MetricEvent], pace: bool) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
 
     for chunk in events.chunks(MAX_METRICS_PER_ENVELOPE) {
-        let chunk_started = std::time::Instant::now();
+        let store_started = std::time::Instant::now();
         if let Err(e) = store_metrics_in_db(chunk) {
             tracing::warn!(%e, "telemetry: failed to persist metrics before upload");
             continue;
         }
+        // Only the store is charged here: the drain below paces itself, and
+        // wrapping it would bill its own pauses as fresh work.
+        pace_background_flush(pace, store_started.elapsed());
 
         if should_upload && !upload_failed && std::time::Instant::now() < deadline {
             match flush_pending_metrics_from_db(&client, deadline, pace) {
@@ -947,7 +950,6 @@ fn flush_metrics(events: &[MetricEvent], pace: bool) {
                 }
             }
         }
-        pace_background_flush(pace, chunk_started.elapsed());
     }
 }
 
@@ -972,8 +974,10 @@ fn flush_pending_metrics(pace: bool) {
 }
 
 /// Sleep out a paced flush segment's pause: the same shared ledger and duty
-/// cycle as the token sweep, with the pause additionally capped so an
-/// awaited flush arriving behind a paced drain is not held long.
+/// cycle as the token sweep. The sleep is capped so an awaited flush
+/// arriving behind a paced drain is not held long; the capped remainder is
+/// not forgiven — the ledger reservation stands and the next background
+/// segment (either pipeline) waits it out.
 fn pace_background_flush(pace: bool, work: std::time::Duration) {
     const MAX_FLUSH_PAUSE: std::time::Duration = std::time::Duration::from_secs(1);
     if !pace {
@@ -1100,17 +1104,21 @@ where
     // A paced (periodic, background) drain processes a bounded slice of the
     // backlog per flush cycle: pending rows are durable, the next tick (3s)
     // resumes, and an awaited flush never queues behind a long paced drain.
-    // Paced batches are also smaller: each iteration's live set (dequeued
-    // rows, parsed events, serialized envelope) sets the process's RSS
-    // high-water mark, which a background drain must keep low — an awaited
-    // flush keeps the full envelope size.
+    // The cap counts iterations, not uploads — a backlog of filtered or
+    // malformed records must not loop unpaced to the deadline. Paced batches
+    // are also smaller: each iteration's live set (dequeued rows, parsed
+    // events, serialized envelope) sets the process's RSS high-water mark,
+    // which a background drain must keep low — an awaited flush keeps the
+    // full envelope size.
     const MAX_PACED_BATCHES_PER_CYCLE: usize = 16;
     const PACED_BATCH_SIZE: usize = 250;
+    let mut iterations = 0usize;
 
     while std::time::Instant::now() < budget.deadline {
-        if budget.paced && result.uploaded_batches >= MAX_PACED_BATCHES_PER_CYCLE {
+        if budget.paced && iterations >= MAX_PACED_BATCHES_PER_CYCLE {
             break;
         }
+        iterations += 1;
         let batch_started = std::time::Instant::now();
         let batch_size = if budget.paced {
             budget.max_batch_size.min(PACED_BATCH_SIZE)
@@ -1152,6 +1160,7 @@ where
         }
 
         if events.is_empty() {
+            pace_background_flush(budget.paced, batch_started.elapsed());
             continue;
         }
 
@@ -2198,6 +2207,58 @@ mod tests {
         let drained = run(false);
         assert_eq!(drained.uploaded_batches, 4, "unpaced drain runs dry");
         assert_eq!(db.borrow().count().unwrap(), 0);
+    }
+
+    #[test]
+    fn paced_flush_caps_iterations_even_when_nothing_uploads() {
+        // A backlog of malformed records uploads nothing, so a cap counted
+        // in uploaded batches would never trip and the drain would loop
+        // unpaced to its 30s deadline. The cap counts iterations.
+        let (metrics_db, _metrics_db_dir) = MetricsDatabase::new_temp_for_tests().unwrap();
+        let db = Rc::new(RefCell::new(metrics_db));
+        let rows: Vec<String> = (0..20).map(|_| "not json".to_string()).collect();
+        db.borrow_mut().insert_events(&rows).unwrap();
+
+        let result = flush_pending_metric_records_with(
+            {
+                let db = Rc::clone(&db);
+                move |limit| db.borrow_mut().dequeue_pending_batch(limit)
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids| db.borrow_mut().mark_records_delivered(ids, unix_now())
+            },
+            {
+                let db = Rc::clone(&db);
+                move |ids, err| {
+                    let now = unix_now();
+                    db.borrow_mut()
+                        .mark_records_failed(ids, &err.to_string(), now)
+                }
+            },
+            {
+                let db = Rc::clone(&db);
+                move |records| {
+                    db.borrow_mut()
+                        .mark_records_undeliverable(records, unix_now())
+                }
+            },
+            |_batch| Ok(MetricsUploadResponse { errors: vec![] }),
+            PendingFlushBudget {
+                deadline: std::time::Instant::now() + std::time::Duration::from_secs(60),
+                max_batch_size: 1,
+                paced: true,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.uploaded_batches, 0);
+        assert_eq!(result.invalid_records, 16, "one invalid row per iteration");
+        assert_eq!(
+            db.borrow().count().unwrap(),
+            4,
+            "the rest waits for the next cycle"
+        );
     }
 
     #[test]
