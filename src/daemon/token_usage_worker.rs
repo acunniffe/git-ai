@@ -402,11 +402,10 @@ impl TokenUsageWorker {
                     self.enqueue_notify(task);
                 }
                 Some(request) = self.drain_rx.recv() => {
+                    // handle_drain settles reconcile flags before its ack,
+                    // which also covers flags whose deferred settle a
+                    // pending drain suppressed in the ready-task arm.
                     self.handle_drain(request).await;
-                    // A drain that arrived as the last sweep task finished
-                    // suppressed that task's deferred reconcile; settle now
-                    // rather than waiting for the next sweep tick.
-                    self.settle_flags_if_drained().await;
                 }
             }
         }
@@ -425,6 +424,19 @@ impl TokenUsageWorker {
                 break;
             }
         }
+        // Settle reconcile flags BEFORE acknowledging, unthrottled like all
+        // barrier work: a notify task's inline reconcile can fail
+        // transiently, and the barrier must not report success while a
+        // correction it produced is still pending. Normally one SELECT; a
+        // failure here leaves the durable flags for the next trigger.
+        let token_db = self.token_db.clone();
+        let sink = self.make_sink();
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Err(e) = reconcile_flagged_sessions(&token_db, &sink) {
+                tracing::warn!(error = %e, "token-usage reconcile before drain ack failed; flags retained for retry");
+            }
+        })
+        .await;
         let _ = request.completion.send(());
     }
 
@@ -2501,6 +2513,66 @@ mod tests {
         worker.notify_rx.try_recv().unwrap();
         worker.reconcile_flagged().await;
         assert!(token_db.sessions_needing_reconcile().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn drain_settles_reconcile_flags_before_acknowledging() {
+        // The barrier must not report success while corrections are still
+        // pending: flags left over (e.g. by a failed inline pass, or by a
+        // deferred sweep settle a pending drain suppressed) are settled
+        // before the drain acknowledgment, so by the time `git-ai await`
+        // returns, the corrections are in the sink.
+        let dir = tempfile::tempdir().unwrap();
+        let streams_db =
+            Arc::new(StreamsDatabase::open(dir.path().join("transcripts-db")).unwrap());
+        let token_db =
+            Arc::new(TokenUsageDatabase::open(dir.path().join("token-usage-db")).unwrap());
+        let base = dir.path().join("base.jsonl");
+        fs::write(
+            &base,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 0), 50)),
+        )
+        .unwrap();
+        let resume = dir.path().join("resume.jsonl");
+        fs::write(
+            &resume,
+            format!("{}\n", claude_line("m1", "r1", &recent_ts(1, 30), 90)),
+        )
+        .unwrap();
+        let identity_base = SessionIdentity {
+            session_id: "s_base".to_string(),
+            external_session_id: "s_base-ext".to_string(),
+            external_parent_session_id: None,
+            tool: "claude".to_string(),
+        };
+        let identity_resume = SessionIdentity {
+            session_id: "s_resume".to_string(),
+            external_session_id: "s_resume-ext".to_string(),
+            external_parent_session_id: None,
+            tool: "claude".to_string(),
+        };
+        run_as(&token_db, &identity_base, &base).unwrap();
+        run_as(&token_db, &identity_resume, &resume).unwrap();
+        // The replacement left s_base flagged (run_as never reconciles).
+        assert_eq!(token_db.sessions_needing_reconcile().unwrap().len(), 1);
+
+        let (collected, sink) = collecting_sink();
+        let (handle, shutdown) = spawn_run_loop(
+            streams_db.clone(),
+            token_db.clone(),
+            sink,
+            Duration::from_secs(600),
+        );
+        handle.drain().await.unwrap();
+        // The ack has been received: the flag is already settled and the
+        // correction already handed to the sink.
+        assert!(token_db.sessions_needing_reconcile().unwrap().is_empty());
+        let corrected = collected.lock().unwrap().iter().any(|e| {
+            EventAttributes::from_sparse(&e.attrs).session_id == Some(Some("s_base".to_string()))
+                && value_u64(e, token_usage_pos::TOTAL_TOKENS) == Some(0)
+        });
+        assert!(corrected, "correction emitted before the drain ack");
+        shutdown.notify_one();
     }
 
     #[test]
