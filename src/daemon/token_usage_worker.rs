@@ -103,9 +103,10 @@ const THROTTLE_DUTY_PERCENT: u32 = 30;
 /// all and run at full speed — the floor only batches sleeps, it must not
 /// forgive work.
 const THROTTLE_MIN_WORK: Duration = Duration::from_millis(5);
-/// Upper bound on a single pause (guards pathologically slow segments, and
-/// bounds how long a pass can delay a drain or shutdown). Work the cap left
-/// unpaid stays on the ledger.
+/// Upper bound on a single pause AND on one caller's total wait including
+/// reservations queued by other pipelines (guards pathologically slow
+/// segments, and bounds how long a pass can delay a drain or shutdown).
+/// Work the cap left unpaid stays on the ledger.
 const THROTTLE_MAX_PAUSE: Duration = Duration::from_secs(5);
 
 /// One process-wide ledger for all paced background work: the sweep's
@@ -146,13 +147,26 @@ fn reserve_background_pause(
     let mut ledger = ledger
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let pause = settle_throttle_debt(&mut ledger.debt, work);
+    let pause_owed = settle_throttle_debt(&mut ledger.debt, work);
     let now = std::time::Instant::now();
     let start = match ledger.paused_until {
         Some(reserved) if reserved > now => reserved,
         _ => now,
     };
-    let end = start + pause;
+    // No caller — queued reservations included — waits past this horizon:
+    // fresh notifications and drains sit behind at most one capped pause.
+    // The pause that does not fit is not forgiven: its work equivalent is
+    // refunded to the debt ledger and a later settlement pays it.
+    let horizon = now + THROTTLE_MAX_PAUSE;
+    let room = horizon.saturating_duration_since(start);
+    let granted = pause_owed.min(room);
+    let refused = pause_owed.saturating_sub(granted);
+    if !refused.is_zero() {
+        ledger.debt = ledger.debt.saturating_add(
+            refused.saturating_mul(THROTTLE_DUTY_PERCENT) / (100 - THROTTLE_DUTY_PERCENT),
+        );
+    }
+    let end = start + granted;
     if end > now {
         ledger.paused_until = Some(end);
     }
@@ -373,28 +387,7 @@ impl TokenUsageWorker {
                     }
                     if let Some((task, origin)) = self.pop_next() {
                         self.process_task(task, origin).await;
-                        // Sweep tasks defer cross-session reconciliation (a
-                        // notify task settles all flags inline for the drain
-                        // barrier): settle once the backlog drains, instead
-                        // of re-aggregating the flagged sessions after every
-                        // file of a large backfill. Ingest what arrived
-                        // during the pass first — traffic sitting in the
-                        // channels must not wait behind even one throttled
-                        // reconcile step. Runs after notify tasks too: their
-                        // inline reconcile normally leaves nothing (this is
-                        // then one SELECT), but flags left by a FAILED
-                        // inline pass must not wait for the next 30-minute
-                        // sweep tick.
-                        while let Ok(task) = self.notify_rx.try_recv() {
-                            self.enqueue_notify(task);
-                        }
-                        if self.notify_queue.is_empty()
-                            && self.sweep_queue.is_empty()
-                            && self.drain_rx.is_empty()
-                            && !self.shutdown_flag.load(Ordering::Relaxed)
-                        {
-                            self.reconcile_flagged().await;
-                        }
+                        self.settle_flags_if_drained().await;
                     }
                 }
                 _ = sweep_ticker.tick() => {
@@ -410,6 +403,10 @@ impl TokenUsageWorker {
                 }
                 Some(request) = self.drain_rx.recv() => {
                     self.handle_drain(request).await;
+                    // A drain that arrived as the last sweep task finished
+                    // suppressed that task's deferred reconcile; settle now
+                    // rather than waiting for the next sweep tick.
+                    self.settle_flags_if_drained().await;
                 }
             }
         }
@@ -515,6 +512,29 @@ impl TokenUsageWorker {
         }
         for task in tasks {
             self.enqueue_sweep(task);
+        }
+    }
+
+    /// Settle deferred cross-session reconcile flags once the backlog is
+    /// drained. Sweep tasks defer reconciliation (a notify task settles all
+    /// flags inline for the drain barrier): settling once the backlog
+    /// drains re-aggregates each flagged session once instead of after
+    /// every file of a large backfill. Pending channel traffic is ingested
+    /// first — it must not wait behind even one throttled reconcile step.
+    /// Also runs after notify tasks and drains: their inline reconciles
+    /// normally leave nothing (this is then one SELECT), but flags left by
+    /// a FAILED inline pass must not wait for the next 30-minute sweep
+    /// tick.
+    async fn settle_flags_if_drained(&mut self) {
+        while let Ok(task) = self.notify_rx.try_recv() {
+            self.enqueue_notify(task);
+        }
+        if self.notify_queue.is_empty()
+            && self.sweep_queue.is_empty()
+            && self.drain_rx.is_empty()
+            && !self.shutdown_flag.load(Ordering::Relaxed)
+        {
+            self.reconcile_flagged().await;
         }
     }
 
@@ -2780,6 +2800,33 @@ mod tests {
         assert!(
             remainder >= Duration::from_millis(1350),
             "reservation persists: {remainder:?}"
+        );
+    }
+
+    #[test]
+    fn no_caller_waits_past_the_pause_cap_and_refused_pause_stays_owed() {
+        // Stacked reservations must not make one sweep sleep exceed the cap
+        // (fresh notifications and drains wait behind at most one capped
+        // pause), and pause that does not fit the horizon is refunded to
+        // the debt ledger rather than forgiven.
+        let ledger = std::sync::Mutex::new(BackgroundLedger {
+            debt: Duration::ZERO,
+            paused_until: None,
+        });
+        for _ in 0..4 {
+            let wait = reserve_background_pause(&ledger, Duration::from_secs(30));
+            assert!(
+                wait <= THROTTLE_MAX_PAUSE,
+                "wait bounded by the cap: {wait:?}"
+            );
+        }
+        // 120s of work owes ~280s of pause; the horizon granted at most 5s.
+        // The refused remainder must survive as debt: even with no new
+        // work, settlements keep owing full capped pauses.
+        let debt = ledger.lock().unwrap().debt;
+        assert!(
+            debt >= Duration::from_secs(100),
+            "refused pause refunded as debt: {debt:?}"
         );
     }
 
