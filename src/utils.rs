@@ -299,6 +299,36 @@ impl LockFile {
         let file = try_lock_exclusive(path)?;
         Some(Self { _file: file })
     }
+
+    /// As [`Self::try_acquire`], but retries until `timeout` elapses.
+    ///
+    /// A failed acquisition does not necessarily mean a competing holder of
+    /// the *lock*: on Windows the exclusive-share open loses to any transient
+    /// reader of the file — antivirus and indexer services routinely open
+    /// freshly created files for a few milliseconds — and on every platform a
+    /// process handover can race the previous holder's release by a beat. A
+    /// genuinely held lock stays held for far longer than any sane `timeout`,
+    /// so retrying cleanly separates transient opens from real contention.
+    /// Costs nothing when the first attempt succeeds.
+    pub fn acquire_with_timeout(
+        path: &std::path::Path,
+        timeout: std::time::Duration,
+    ) -> Option<Self> {
+        const RETRY_INTERVAL: std::time::Duration = std::time::Duration::from_millis(25);
+        let deadline = std::time::Instant::now() + timeout;
+        loop {
+            if let Some(lock) = Self::try_acquire(path) {
+                return Some(lock);
+            }
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                return None;
+            }
+            // Cap the sleep to the remaining budget so the wait cannot
+            // overshoot `timeout` by more than one final attempt.
+            std::thread::sleep(RETRY_INTERVAL.min(deadline - now));
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -548,6 +578,72 @@ mod tests {
         assert!(
             second.is_some(),
             "should acquire lock after previous holder is dropped"
+        );
+    }
+
+    #[test]
+    fn test_lockfile_acquire_with_timeout_survives_transient_holder() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join("test.lock");
+        let held = LockFile::try_acquire(&lock_path).expect("first acquire should succeed");
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            drop(held);
+        });
+
+        let started = std::time::Instant::now();
+        let lock = LockFile::acquire_with_timeout(&lock_path, std::time::Duration::from_secs(5));
+        release.join().expect("release thread panicked");
+        assert!(
+            lock.is_some(),
+            "acquisition should succeed once the transient holder releases"
+        );
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "acquisition should not exhaust the timeout"
+        );
+    }
+
+    #[test]
+    fn test_lockfile_acquire_with_timeout_fails_against_persistent_holder() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join("test.lock");
+        let _held = LockFile::try_acquire(&lock_path).expect("first acquire should succeed");
+
+        let budget = std::time::Duration::from_millis(200);
+        let started = std::time::Instant::now();
+        let lock = LockFile::acquire_with_timeout(&lock_path, budget);
+        assert!(
+            lock.is_none(),
+            "acquisition must fail while the lock stays held"
+        );
+        assert!(
+            started.elapsed() >= budget,
+            "acquisition should keep retrying until the timeout elapses"
+        );
+    }
+
+    #[test]
+    fn test_lockfile_acquire_with_timeout_shorter_than_retry_interval() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join("test.lock");
+
+        // A free lock must still acquire immediately regardless of budget.
+        let tiny = std::time::Duration::from_millis(5);
+        assert!(
+            LockFile::acquire_with_timeout(&lock_path, tiny).is_some(),
+            "free lock should acquire on the first attempt"
+        );
+
+        // A held lock with a budget below the retry interval must fail
+        // without overshooting the budget by more than one capped sleep.
+        let _held = LockFile::try_acquire(&lock_path).expect("first acquire should succeed");
+        let started = std::time::Instant::now();
+        let lock = LockFile::acquire_with_timeout(&lock_path, tiny);
+        assert!(lock.is_none(), "held lock must fail within a tiny budget");
+        assert!(
+            started.elapsed() < std::time::Duration::from_millis(100),
+            "tiny budgets must not stretch to a full retry interval cycle"
         );
     }
 

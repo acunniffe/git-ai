@@ -1199,6 +1199,41 @@ fn checkpoint_fails_hard_when_daemon_startup_is_blocked() {
     drop(held_lock);
 }
 
+/// The daemon's lock acquisition must tolerate a transient holder of the
+/// lock file. On Windows CI the exclusive-share open loses to antivirus and
+/// indexer scans of the freshly created `daemon.lock` (any open of the file
+/// defeats `share_mode(0)`), which made cold daemon starts flake with
+/// "background service is already running (lock held)" even though no other
+/// daemon existed; a self-restart handover can race the previous holder's
+/// release the same way. A short-lived holder must not abort startup.
+#[test]
+fn daemon_startup_tolerates_transient_lock_file_holder() {
+    let mut repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let lock_path = daemon_lock_path(&repo);
+    fs::create_dir_all(
+        lock_path
+            .parent()
+            .expect("daemon lock path should have a parent"),
+    )
+    .expect("failed to create daemon lock parent directory");
+    let held = git_ai::utils::LockFile::try_acquire(&lock_path)
+        .expect("test should pre-hold the daemon lock");
+    let release = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(750));
+        drop(held);
+    });
+
+    // Panics "daemon exited before becoming ready ... lock held" without the
+    // bounded startup retry.
+    repo.start_dedicated_daemon_for_test();
+    release.join().expect("lock release thread panicked");
+
+    let response = send_control_request(&daemon_control_socket_path(&repo), &ControlRequest::Ping)
+        .expect("daemon should serve control requests after the transient holder released");
+    assert!(response.ok, "ping failed: {response:?}");
+}
+
 #[test]
 #[cfg(windows)]
 #[serial]
