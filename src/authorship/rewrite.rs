@@ -992,7 +992,24 @@ fn derive_mappings_from_range_diff(
         }
         _ => &base,
     };
-    let range_diff_output = run_range_diff(repo, &base, old_tip, onto, new_tip)?;
+    let commit_limit = range_diff_commit_limit();
+    let old_count = range_commit_count_up_to(repo, &base, old_tip, commit_limit);
+    let bounded_new_base = bounded_tip_range_base(repo, onto, new_tip, commit_limit);
+    let bounded_new_base = match (old_count, bounded_new_base) {
+        (Some(old), Some(new_base)) if old <= commit_limit => new_base,
+        _ => {
+            tracing::warn!(
+                old_tip,
+                new_tip,
+                old_count,
+                commit_limit,
+                "skipping range-diff mapping derivation because its inputs cannot be bounded"
+            );
+            return Ok(Vec::new());
+        }
+    };
+
+    let range_diff_output = run_range_diff(repo, &base, old_tip, &bounded_new_base, new_tip)?;
     let mut mappings = parse_range_diff_output(&range_diff_output);
 
     let merge_mappings = derive_merge_commit_mappings(repo, &base, old_tip, new_tip, &mappings)?;
@@ -1046,6 +1063,71 @@ pub(crate) fn list_commits_in_range(repo: &Repository, base: &str, tip: &str) ->
         .unwrap_or_default()
 }
 
+/// `git range-diff` retains every commit's patch while calculating its
+/// pairwise matching costs. Bounding each input side prevents a divergent
+/// ref move from making the daemon spawn a multi-GB range-diff child.
+const MAX_RANGE_DIFF_COMMITS: u64 = 1000;
+
+fn range_diff_commit_limit() -> u64 {
+    #[cfg(feature = "test-support")]
+    if let Ok(raw) = std::env::var("GIT_AI_TEST_RANGE_DIFF_COMMIT_LIMIT")
+        && let Ok(limit) = raw.parse()
+    {
+        return limit;
+    }
+
+    MAX_RANGE_DIFF_COMMITS
+}
+
+/// Count at most `limit + 1` commits so the preflight itself has bounded work.
+/// This is called once per range-diff side: two constant git spawns total,
+/// independent of the number of commits in either range.
+fn range_commit_count_up_to(repo: &Repository, base: &str, tip: &str, limit: u64) -> Option<u64> {
+    let mut args = repo.global_args_for_exec();
+    args.extend([
+        "rev-list".to_string(),
+        "--count".to_string(),
+        format!("--max-count={}", limit.saturating_add(1)),
+        format!("{}..{}", base, tip),
+    ]);
+    let output = exec_git_allow_nonzero(&args).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
+}
+
+/// Return a base that keeps `base..tip` at or below `limit` commits. If the
+/// original range is larger, retain its newest bounded suffix. This preserves
+/// rewritten stack commits at the tip while excluding long upstream history
+/// that may be present when no precise landing hint is available.
+fn bounded_tip_range_base(repo: &Repository, base: &str, tip: &str, limit: u64) -> Option<String> {
+    let mut args = repo.global_args_for_exec();
+    args.extend([
+        "rev-list".to_string(),
+        "--topo-order".to_string(),
+        format!("--max-count={}", limit.saturating_add(1)),
+        format!("{}..{}", base, tip),
+    ]);
+    let output = exec_git_allow_nonzero(&args).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let output = String::from_utf8_lossy(&output.stdout);
+    let mut commits = output.lines();
+    let bounded_base = commits.nth(limit.try_into().ok()?);
+    let Some(bounded_base) = bounded_base else {
+        return Some(base.to_string());
+    };
+
+    matches!(
+        range_commit_count_up_to(repo, bounded_base, tip, limit),
+        Some(count) if count <= limit
+    )
+    .then(|| bounded_base.to_string())
+}
+
 fn run_range_diff(
     repo: &Repository,
     old_base: &str,
@@ -1070,16 +1152,12 @@ fn run_range_diff(
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// Maximum number of unmatched old-range (`<`) commits buffered ahead of the
-/// first matched pair. A genuine rebase squash absorbs a handful of commits
-/// into the first surviving one, so small queues are drained into that match
-/// as before. But when the count exceeds this bound the history is divergent
-/// — e.g. a restack undo (`git reset --keep <pre-rebase-tip>`), where the old
-/// range spans every trunk commit landed since the branch forked — and the
-/// whole queue is discarded, permanently. Without this, each bogus mapping
-/// whose source commit has an authorship note becomes a full-root-tree diff
-/// pair, and daemon memory scales as
-/// (trunk commits since fork) × (lines modified on trunk).
+/// Maximum number of consecutive unmatched old-range (`<`) commits that may
+/// be treated as a squash into an adjacent matched commit. This applies both
+/// before the first match and after a match: exceeding it discards the whole
+/// fabricated run while retaining exact `=`/`!` mappings. Without the
+/// post-match bound, moving a branch away from many commits on top of its
+/// matched stack fabricated one full-root-tree diff pair per dropped commit.
 const MAX_PENDING_DROPPED_COMMITS: usize = 64;
 
 fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
@@ -1108,19 +1186,14 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
         match status_char {
             '<' => {
                 // Dropped commit (squashed into a later commit)
-                if !old_sha.chars().all(|c| c == '0') {
-                    if let Some(new_sha) = previous_new_sha.as_ref() {
-                        mappings.push((old_sha, new_sha.clone()));
-                    } else if !pending_overflowed {
-                        pending_dropped.push(old_sha);
-                        if pending_dropped.len() > MAX_PENDING_DROPPED_COMMITS {
-                            // Divergent history (e.g. restack undo), not a
-                            // squash: discard the queue and stop collecting so
-                            // the mapping count stays bounded.
-                            pending_dropped.clear();
-                            pending_dropped.shrink_to_fit();
-                            pending_overflowed = true;
-                        }
+                if !old_sha.chars().all(|c| c == '0') && !pending_overflowed {
+                    pending_dropped.push(old_sha);
+                    if pending_dropped.len() > MAX_PENDING_DROPPED_COMMITS {
+                        // Divergent history, not a squash: discard the entire
+                        // run and stop collecting until the next exact match.
+                        pending_dropped.clear();
+                        pending_dropped.shrink_to_fit();
+                        pending_overflowed = true;
                     }
                 }
             }
@@ -1133,10 +1206,14 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
                 if old_sha.chars().all(|c| c == '0') || new_sha.chars().all(|c| c == '0') {
                     continue;
                 }
-                // Map any preceding dropped commits to this new commit (squash)
+                // Leading drops squash into this match. Drops after a prior
+                // match squash into that prior destination, preserving the
+                // parser's existing direction for small runs.
+                let dropped_destination = previous_new_sha.as_ref().unwrap_or(&new_sha);
                 for dropped in pending_dropped.drain(..) {
-                    mappings.push((dropped, new_sha.clone()));
+                    mappings.push((dropped, dropped_destination.clone()));
                 }
+                pending_overflowed = false;
                 previous_new_sha = Some(new_sha.clone());
                 mappings.push((old_sha, new_sha));
             }
@@ -1144,6 +1221,12 @@ fn parse_range_diff_output(output: &str) -> Vec<(String, String)> {
                 // '>' (new commit) or other — skip
                 continue;
             }
+        }
+    }
+
+    if !pending_overflowed && let Some(new_sha) = previous_new_sha {
+        for dropped in pending_dropped {
+            mappings.push((dropped, new_sha.clone()));
         }
     }
 
@@ -1822,6 +1905,26 @@ Binary files a/image.png and b/image.png differ
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn test_parse_range_diff_output_discards_many_drops_after_match() {
+        let old_matched = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();
+        let new_matched = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
+        let mut output = format!("1:  {old_matched} = 1:  {new_matched} matched\n");
+        for i in 1..=MAX_PENDING_DROPPED_COMMITS + 1 {
+            let sha = format!("{i:040}");
+            output.push_str(&format!(
+                "{}:  {} < -:  ---------------------------------------- dropped {}\n",
+                i + 1,
+                sha,
+                i
+            ));
+        }
+
+        let mappings = parse_range_diff_output(&output);
+
+        assert_eq!(mappings, vec![(old_matched, new_matched)]);
     }
 
     #[test]
