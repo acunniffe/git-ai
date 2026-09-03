@@ -69,18 +69,45 @@ enum LineRead {
     /// No trailing newline: the writer may still be appending.
     Partial(usize),
     Complete(usize),
+    /// Line exceeded `max_line_bytes`; the content was discarded and the
+    /// reader advanced past its newline, so one giant transcript line cannot
+    /// balloon daemon RSS (#2244).
+    Oversized(usize),
+    /// Line exceeded `max_line_bytes` but reached EOF before a newline: the
+    /// writer may still be appending. The cursor must stay before the line —
+    /// resuming mid-line would extract its tail as bogus usage data.
+    OversizedPartial,
 }
 
+/// Lossy byte-level sibling of `streams::types::read_jsonl_line`: it must
+/// stay byte-based (not UTF-8-strict) for ccusage parity, so the two readers
+/// share the config cap but not an implementation.
 fn read_line_bytes(
     reader: &mut impl std::io::BufRead,
     buf: &mut Vec<u8>,
+    max_line_bytes: u64,
 ) -> std::io::Result<LineRead> {
+    use std::io::{BufRead, Read};
+
     buf.clear();
-    let bytes = reader.read_until(b'\n', buf)?;
+    let bytes = reader
+        .by_ref()
+        .take(max_line_bytes)
+        .read_until(b'\n', buf)?;
     if bytes == 0 {
         return Ok(LineRead::Eof);
     }
     if buf.last() != Some(&b'\n') {
+        if bytes as u64 == max_line_bytes {
+            // Cap hit mid-line: discard the buffered prefix and skip the rest
+            // of the physical line without storing it.
+            buf.clear();
+            let (skipped, terminated) = crate::streams::types::skip_line_remainder(reader)?;
+            if !terminated {
+                return Ok(LineRead::OversizedPartial);
+            }
+            return Ok(LineRead::Oversized(bytes + skipped));
+        }
         return Ok(LineRead::Partial(bytes));
     }
     Ok(LineRead::Complete(bytes))
@@ -1175,6 +1202,7 @@ fn process_file(
     reader.seek(SeekFrom::Start(offset))?;
 
     let cutoff = retention_cutoff_bucket(now);
+    let max_line_bytes = crate::config::Config::get().max_transcript_line_bytes();
     let mut line: Vec<u8> = Vec::new();
     let mut reached_end = false;
     let mut interrupted = false;
@@ -1186,7 +1214,7 @@ fn process_file(
                 interrupted = true;
                 break;
             }
-            match read_line_bytes(&mut reader, &mut line)? {
+            match read_line_bytes(&mut reader, &mut line, max_line_bytes)? {
                 LineRead::Eof => {
                     reached_end = true;
                     break;
@@ -1225,6 +1253,27 @@ fn process_file(
                         || consumed >= BATCH_MAX_BYTES
                         || batch_started.elapsed() >= BATCH_MAX_SEGMENT
                     {
+                        break;
+                    }
+                }
+                // An oversized line still being written: stop with the cursor
+                // before it; a later pass consumes it whole once terminated.
+                LineRead::OversizedPartial => {
+                    reached_end = true;
+                    break;
+                }
+                // Advance past the skipped line; counting it toward the batch
+                // budget keeps commit cadence, so the persisted cursor moves
+                // beyond the giant line promptly.
+                LineRead::Oversized(bytes) => {
+                    tracing::warn!(
+                        session_id = %identity.session_id,
+                        max_bytes = max_line_bytes,
+                        "token usage: skipping oversized transcript line"
+                    );
+                    offset += bytes as u64;
+                    consumed += bytes;
+                    if entries.len() >= BATCH_MAX_ENTRIES || consumed >= BATCH_MAX_BYTES {
                         break;
                     }
                 }
@@ -1402,6 +1451,55 @@ mod tests {
     use crate::metrics::events::token_usage_pos;
     use std::fs;
     use std::sync::Mutex;
+
+    #[test]
+    fn read_line_bytes_skips_oversized_lines_and_recovers() {
+        let cap: u64 = 64;
+        let big = "x".repeat(cap as usize + 100);
+        let data = format!("{big}\n{{\"ok\":1}}\n");
+        let mut reader = std::io::BufReader::new(data.as_bytes());
+        let mut buf = Vec::new();
+
+        match read_line_bytes(&mut reader, &mut buf, cap).unwrap() {
+            LineRead::Oversized(consumed) => {
+                assert_eq!(consumed, big.len() + 1);
+                assert!(buf.is_empty(), "oversized content must not be retained");
+            }
+            _ => panic!("expected Oversized for a line beyond the cap"),
+        }
+
+        match read_line_bytes(&mut reader, &mut buf, cap).unwrap() {
+            LineRead::Complete(_) => {
+                assert_eq!(String::from_utf8_lossy(&buf).trim_end(), "{\"ok\":1}")
+            }
+            _ => panic!("expected the next line to read normally"),
+        }
+    }
+
+    #[test]
+    fn read_line_bytes_unterminated_oversized_line_is_partial() {
+        // The cursor must stay before a giant line still being written:
+        // resuming mid-line would extract its tail as bogus usage data.
+        let cap: u64 = 64;
+        let big = "x".repeat(cap as usize + 100);
+        let mut reader = std::io::BufReader::new(big.as_bytes());
+        let mut buf = Vec::new();
+
+        match read_line_bytes(&mut reader, &mut buf, cap).unwrap() {
+            LineRead::OversizedPartial => {}
+            _ => panic!("expected OversizedPartial for an unterminated giant line"),
+        }
+    }
+
+    #[test]
+    fn read_line_bytes_keeps_partial_semantics_below_cap() {
+        let mut reader = std::io::BufReader::new(&b"{\"unfinished\":1"[..]);
+        let mut buf = Vec::new();
+        match read_line_bytes(&mut reader, &mut buf, 64).unwrap() {
+            LineRead::Partial(bytes) => assert_eq!(bytes, 15),
+            _ => panic!("expected Partial for an unterminated in-cap line"),
+        }
+    }
 
     fn identity() -> SessionIdentity {
         SessionIdentity {
