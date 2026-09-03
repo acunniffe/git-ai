@@ -1,7 +1,6 @@
 use crate::ci::ci_context::{CiContext, CiEvent};
 use crate::error::GitAiError;
-use crate::git::repository::exec_git;
-use crate::git::repository::find_repository_in_path;
+use crate::git::repository::{Repository, exec_git, find_repository_in_path};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -138,6 +137,82 @@ fn fetch_mr_base_sha(
     }
 }
 
+/// Validates a potential squash commit candidate by checking:
+/// 1. The merge commit (M) has exactly 2 parents
+/// 2. One parent (S) has tree(M) == tree(S) — this is the squash candidate
+/// 3. S has exactly 1 parent, and that parent == target base (base_sha)
+/// 4. S != source head (mr.sha)
+/// Returns Some(squash_sha) if valid, None otherwise.
+fn validate_squash_candidate(
+    repo: &Repository,
+    merge_commit_sha: &str,
+    target_base_sha: &str,
+    source_head_sha: &str,
+) -> Option<String> {
+    let merge_commit = match repo.find_commit(merge_commit_sha.to_string()) {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+
+    let parents: Vec<_> = merge_commit.parents().collect();
+    if parents.len() != 2 {
+        return None;
+    }
+
+    let merge_tree = match merge_commit.tree() {
+        Ok(t) => t,
+        Err(_) => return None,
+    };
+    let merge_tree_id = merge_tree.id();
+
+    // Identify squash candidate by tree match (not position).
+    // The squash commit has the same tree as the merge commit.
+    let (squash_candidate_sha, target_base_candidate_sha) = {
+        let mut squash = None;
+        let mut target_base = None;
+        for p in &parents {
+            let tree = match repo.find_commit(p.id()).and_then(|c| c.tree()) {
+                Ok(t) => t,
+                Err(_) => return None,
+            };
+            if tree.id() == merge_tree_id {
+                squash = Some(p.id());
+            } else {
+                target_base = Some(p.id());
+            }
+        }
+        // Must have exactly one tree match (the squash commit) and one non-match (target base)
+        let s = squash?;
+        let t = target_base?;
+        (s, t)
+    };
+
+    // Check: parent(S) == target base
+    let squash_candidate = match repo.find_commit(squash_candidate_sha.clone()) {
+        Ok(c) => c,
+        Err(_) => return None,
+    };
+    let squash_parents: Vec<_> = squash_candidate.parents().collect();
+    if squash_parents.len() != 1 {
+        return None;
+    }
+    if squash_parents[0].id() != target_base_candidate_sha {
+        return None;
+    }
+
+    // Check: target base candidate matches expected target base
+    if target_base_candidate_sha != target_base_sha {
+        return None;
+    }
+
+    // Check: S != source head
+    if squash_candidate_sha == source_head_sha {
+        return None;
+    }
+
+    Some(squash_candidate_sha)
+}
+
 /// Query GitLab API for recently merged MRs and find one matching the current commit SHA.
 /// Returns None if no matching MR is found (this is not an error - just means this commit
 /// wasn't from a merged MR).
@@ -261,34 +336,6 @@ pub fn get_gitlab_ci_context() -> Result<Option<CiContext>, GitAiError> {
             return Ok(None);
         }
     };
-
-    // Determine which commit SHA to use as the "merge commit" for rewriting
-    // If this was a squash merge, CI_COMMIT_SHA might be the squash commit
-    // (which is what we want to rewrite authorship TO)
-    let effective_merge_sha = if mr.squash_commit_sha.as_ref() == Some(&commit_sha) {
-        println!("[GitLab CI] CI_COMMIT_SHA matches squash_commit_sha - this is a squash merge");
-        commit_sha.clone()
-    } else {
-        println!(
-            "[GitLab CI] CI_COMMIT_SHA matches merge_commit_sha - checking if this is a squash+merge"
-        );
-        // If squash was used but we matched on merge_commit_sha,
-        // the actual squash commit is in squash_commit_sha
-        if let Some(squash_sha) = &mr.squash_commit_sha {
-            println!(
-                "[GitLab CI] MR has squash_commit_sha={}, will use that for rewriting",
-                squash_sha
-            );
-            squash_sha.clone()
-        } else {
-            commit_sha.clone()
-        }
-    };
-
-    println!(
-        "[GitLab CI] Effective merge/squash SHA for rewriting: {}",
-        effective_merge_sha
-    );
 
     // Detect fork: if source_project_id differs from target_project_id, this is a fork MR
     let fork_clone_url = if mr.source_project_id != mr.target_project_id {
@@ -441,6 +488,66 @@ pub fn get_gitlab_ci_context() -> Result<Option<CiContext>, GitAiError> {
             String::new()
         });
 
+    // Determine which commit SHA to use as the "merge commit" for rewriting
+    // If this was a squash merge, CI_COMMIT_SHA might be the squash commit
+    // (which is what we want to rewrite authorship TO)
+    let effective_merge_sha = if mr.squash_commit_sha.as_ref() == Some(&commit_sha) {
+        println!("[GitLab CI] CI_COMMIT_SHA matches squash_commit_sha - this is a squash merge");
+        commit_sha.clone()
+    } else {
+        println!(
+            "[GitLab CI] CI_COMMIT_SHA matches merge_commit_sha - checking if this is a squash+merge"
+        );
+        // If squash was used but we matched on merge_commit_sha,
+        // the actual squash commit is in squash_commit_sha
+        if let Some(squash_sha) = &mr.squash_commit_sha {
+            println!(
+                "[GitLab CI] MR has squash_commit_sha={}, will use that for rewriting",
+                squash_sha
+            );
+            squash_sha.clone()
+        } else if mr.squash == Some(true) {
+            // GitLab reported squash but didn't provide squash_commit_sha.
+            // Try to infer the squash commit from the merge commit's parents.
+            // This handles older GitLab versions (e.g., 12.4.2) where
+            // squash_commit_sha is null even though squash=true.
+            println!(
+                "[GitLab CI] MR has squash=true but squash_commit_sha=null - attempting to infer squash commit"
+            );
+            if base_sha.is_empty() {
+                println!(
+                    "[GitLab CI] Warning: base_sha unavailable (fetch_mr_base_sha failed); \
+                     cannot validate squash commit inference; falling back to merge commit SHA"
+                );
+                commit_sha.clone()
+            } else if let Some(inferred_squash_sha) = validate_squash_candidate(
+                &repo,
+                &commit_sha, // merge_commit_sha (M)
+                &base_sha,   // target base (B)
+                &mr.sha,     // source head (C)
+            ) {
+                println!(
+                    "[GitLab CI] Inferred squash commit: {}, will use that for rewriting",
+                    inferred_squash_sha
+                );
+                inferred_squash_sha
+            } else {
+                println!(
+                    "[GitLab CI] Warning: GitLab reported a squash merge without squash_commit_sha. \
+                     Unable to identify the generated squash commit; authorship may not be preserved."
+                );
+                commit_sha.clone()
+            }
+        } else {
+            commit_sha.clone()
+        }
+    };
+
+    println!(
+        "[GitLab CI] Effective merge/squash SHA for rewriting: {}",
+        effective_merge_sha
+    );
+
     println!(
         "[GitLab CI] Created CiContext: merge_commit_sha={}, head_sha={}, head_ref={}, base_ref={}, base_sha={}",
         effective_merge_sha,
@@ -490,6 +597,8 @@ pub fn print_gitlab_ci_yaml() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::git::repository::find_repository_in_path;
+    use crate::git::test_utils::TmpRepo;
 
     #[test]
     fn test_gitlab_merge_request_deserialization() {
@@ -799,5 +908,210 @@ mod tests {
             result,
             Some("abc1234567890abcdef1234567890abcdef12345".to_string())
         );
+    }
+
+    /// Test validate_squash_candidate with a properly structured squash merge.
+    /// Creates: B (base) -> C (source head) and M (merge) with parents [B, S]
+    /// where S is the squash commit with parent B and tree matching M.
+    #[test]
+    #[serial_test::serial]
+    fn test_validate_squash_candidate_valid() {
+        let (repo, base_sha, source_sha, squash_sha, merge_sha, _squash_tree) =
+            setup_squash_merge_scenario(false);
+        let repo_obj = find_repository_in_path(repo.path().to_str().unwrap()).expect("find repo");
+
+        // Valid case: correct base_sha, correct source_sha
+        let result =
+            super::validate_squash_candidate(&repo_obj, &merge_sha, &base_sha, &source_sha);
+        assert_eq!(
+            result,
+            Some(squash_sha.clone()),
+            "Should identify squash commit"
+        );
+
+        // Invalid: wrong base_sha
+        let result = super::validate_squash_candidate(
+            &repo_obj,
+            &merge_sha,
+            "0000000000000000000000000000000000000000",
+            &source_sha,
+        );
+        assert!(result.is_none(), "Should reject wrong base_sha");
+
+        // Invalid: squash candidate equals source head
+        let result =
+            super::validate_squash_candidate(&repo_obj, &merge_sha, &base_sha, &squash_sha);
+        assert!(result.is_none(), "Should reject when squash == source head");
+    }
+
+    /// Test validate_squash_candidate with parent order reversed (S first, B second).
+    /// The validator should identify the squash candidate by tree match, not position.
+    #[test]
+    #[serial_test::serial]
+    fn test_validate_squash_candidate_reversed_parents() {
+        let (repo, base_sha, source_sha, squash_sha, merge_sha, _squash_tree) =
+            setup_squash_merge_scenario(true);
+        let repo_obj = find_repository_in_path(repo.path().to_str().unwrap()).expect("find repo");
+
+        // Should still work - validator identifies squash by tree match, not position
+        let result =
+            super::validate_squash_candidate(&repo_obj, &merge_sha, &base_sha, &source_sha);
+        assert_eq!(
+            result,
+            Some(squash_sha.clone()),
+            "Should identify squash commit regardless of parent order"
+        );
+    }
+
+    /// Test validate_squash_candidate rejects merge commit with != 2 parents.
+    #[test]
+    #[serial_test::serial]
+    fn test_validate_squash_candidate_not_merge() {
+        let repo = TmpRepo::new().expect("test repo");
+        repo.write_file("file.txt", "content", false)
+            .expect("write file");
+        let commit_sha = repo.commit_all("Single parent commit").expect("commit");
+        let repo_obj = find_repository_in_path(repo.path().to_str().unwrap()).expect("find repo");
+
+        // Single parent commit should be rejected
+        let result =
+            super::validate_squash_candidate(&repo_obj, &commit_sha, &commit_sha, &commit_sha);
+        assert!(result.is_none(), "Should reject non-merge commit");
+    }
+
+    /// Test validate_squash_candidate rejects when tree doesn't match.
+    #[test]
+    #[serial_test::serial]
+    fn test_validate_squash_candidate_tree_mismatch() {
+        let repo = TmpRepo::new().expect("test repo");
+
+        // Create base commit B
+        repo.write_file("file.txt", "base content", false)
+            .expect("write base file");
+        let base_sha = repo.commit_all("Base commit").expect("base commit");
+
+        // Create source branch with commit C
+        repo.create_branch("feature")
+            .expect("create feature branch");
+        repo.switch_branch("feature").expect("switch to feature");
+        repo.write_file("file.txt", "source content", false)
+            .expect("write source file");
+        let source_sha = repo.commit_all("Source commit").expect("source commit");
+
+        // Create squash commit S on main (parent B)
+        repo.switch_branch("main").expect("switch to main");
+        repo.write_file("file.txt", "squashed content v1", false)
+            .expect("write squash file");
+        let squash_sha = repo.commit_all("Squash commit").expect("squash commit");
+
+        // Create merge commit with DIFFERENT tree (not matching squash)
+        repo.write_file("file.txt", "different content", false)
+            .expect("write different file");
+        repo.git_command(&["add", "file.txt"])
+            .expect("stage different file");
+        let different_tree = repo
+            .git_command(&["write-tree"])
+            .expect("write-tree")
+            .trim()
+            .to_string();
+
+        let merge_msg = "Merge with different tree";
+        let merge_commit = repo
+            .git_command(&[
+                "commit-tree",
+                &different_tree,
+                "-p",
+                &base_sha,
+                "-p",
+                &squash_sha,
+                "-m",
+                merge_msg,
+            ])
+            .expect("commit-tree");
+        let merge_sha = merge_commit.trim().to_string();
+
+        repo.git_command(&["reset", "--hard", &merge_sha])
+            .expect("reset hard");
+
+        let repo_obj = find_repository_in_path(repo.path().to_str().unwrap()).expect("find repo");
+        // Should reject because tree(M) != tree(S)
+        let result =
+            super::validate_squash_candidate(&repo_obj, &merge_sha, &base_sha, &source_sha);
+        assert!(
+            result.is_none(),
+            "Should reject when merge tree != squash tree"
+        );
+    }
+
+    /// Helper to set up a squash merge scenario using TmpRepo.
+    /// Returns (TmpRepo, base_sha, source_sha, squash_sha, merge_sha, squash_tree).
+    /// The TmpRepo must be kept alive by the caller to keep the temp directory alive.
+    /// If `reversed_parents` is true, creates merge commit with parents [S, B] instead of [B, S].
+    fn setup_squash_merge_scenario(
+        reversed_parents: bool,
+    ) -> (TmpRepo, String, String, String, String, String) {
+        let repo = TmpRepo::new().expect("test repo");
+
+        // Create base commit B
+        repo.write_file("file.txt", "base content", false)
+            .expect("write base file");
+        let base_sha = repo.commit_all("Base commit").expect("base commit");
+
+        // Create source branch with commit C
+        repo.create_branch("feature")
+            .expect("create feature branch");
+        repo.switch_branch("feature").expect("switch to feature");
+        repo.write_file("file.txt", "source content", false)
+            .expect("write source file");
+        let source_sha = repo.commit_all("Source commit").expect("source commit");
+
+        // Create squash commit S on main (parent B)
+        repo.switch_branch("main").expect("switch to main");
+        repo.write_file("file.txt", "squashed content", false)
+            .expect("write squash file");
+        let squash_sha = repo.commit_all("Squash commit").expect("squash commit");
+
+        // Get the tree from the squash commit
+        let squash_tree = repo
+            .git_command(&["rev-parse", "HEAD^{tree}"])
+            .expect("rev-parse tree");
+        let squash_tree = squash_tree.trim().to_string();
+
+        // Create merge commit M with parents [B, S] or [S, B]
+        let merge_msg = if reversed_parents {
+            "Merge branch 'feature'"
+        } else {
+            "Merge branch 'feature'\n\nSquash commit from MR"
+        };
+        let (parent1, parent2) = if reversed_parents {
+            (&squash_sha, &base_sha)
+        } else {
+            (&base_sha, &squash_sha)
+        };
+        let merge_commit = repo
+            .git_command(&[
+                "commit-tree",
+                &squash_tree,
+                "-p",
+                parent1,
+                "-p",
+                parent2,
+                "-m",
+                merge_msg,
+            ])
+            .expect("commit-tree");
+        let merge_sha = merge_commit.trim().to_string();
+
+        repo.git_command(&["reset", "--hard", &merge_sha])
+            .expect("reset hard");
+
+        (
+            repo,
+            base_sha,
+            source_sha,
+            squash_sha,
+            merge_sha,
+            squash_tree,
+        )
     }
 }
