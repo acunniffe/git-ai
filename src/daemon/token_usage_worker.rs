@@ -963,6 +963,10 @@ fn emit_changed_buckets(
         .collect();
     token_db.reserve_emit_seqs(&identity.session_id, &reservations)?;
     let repo_url = resolve_repo_url();
+    // The org-configured attribute map every event type carries (the
+    // checkpoint and session emitters attach the same one).
+    let config = crate::config::Config::fresh();
+    let custom_attributes = config.custom_attributes();
     let mut events = Vec::with_capacity(changed.len());
     for (bucket, next_seq) in &changed {
         let aggregate = &bucket.aggregate;
@@ -989,6 +993,7 @@ fn emit_changed_buckets(
             .long_context_cache_write_1h_tokens(aggregate.long_context_cache_write_1h)
             .transcript_cost_micro_usd(aggregate.transcript_cost_micro_usd);
         let mut attrs = EventAttributes::with_version(env!("CARGO_PKG_VERSION"))
+            .custom_attributes_map(custom_attributes)
             .session_id(identity.session_id.clone())
             .tool(&identity.tool)
             .model(&bucket.model);

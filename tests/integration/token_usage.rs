@@ -332,8 +332,15 @@ fn codex_transcript_emits_deltas_with_reasoning_tokens() {
 #[test]
 fn fast_long_context_codex_usage_emits_tier_and_speed_fields() {
     let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
-    let repo =
-        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    let repo = TestRepo::new_with_daemon_env(&[
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
+        // The org-configured attribute map must ride token-usage events
+        // like every other event type.
+        (
+            "GIT_AI_TEST_CONFIG_PATCH",
+            r#"{"custom_attributes":{"team":"platform"}}"#,
+        ),
+    ]);
     repo.git(&["commit", "--allow-empty", "-m", "initial"])
         .expect("initial commit should succeed");
     let repo_root = repo.canonical_path();
@@ -426,6 +433,11 @@ fn fast_long_context_codex_usage_emits_tier_and_speed_fields() {
         .flatten()
         .expect("catalog-priced buckets carry the pricing catalog id");
     assert!(catalog.starts_with("embedded:"), "{catalog}");
+    let custom = attrs
+        .custom_attributes
+        .flatten()
+        .expect("org-configured attributes ride token-usage events");
+    assert_eq!(custom, r#"{"team":"platform"}"#);
 }
 
 #[test]
