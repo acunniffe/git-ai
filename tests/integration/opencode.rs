@@ -1,4 +1,5 @@
 use crate::test_utils::fixture_path;
+use crate::{repos::test_file::ExpectedLineExt, repos::test_repo::TestRepo};
 use git_ai::authorship::authorship_log_serialization::generate_session_id;
 use git_ai::commands::checkpoint_agent::presets::{ParsedHookEvent, resolve_preset};
 use git_ai::error::GitAiError;
@@ -480,6 +481,84 @@ fn test_opencode_e2e_checkpoint_and_commit() {
     assert_eq!(
         session_record.agent_id.model, "gpt-5",
         "Session record model should be extracted from OpenCode SQLite fixture"
+    );
+}
+
+#[test]
+#[serial_test::serial]
+fn test_opencode_checkpoint_finds_model_in_platform_data_path() {
+    let repo = TestRepo::new();
+    let repo_root = repo.canonical_path();
+    let file_path = repo_root.join("index.ts");
+    fs::write(&file_path, "// initial\n").unwrap();
+    repo.stage_all_and_commit("Initial commit").unwrap();
+
+    let mut file = repo.filename("index.ts");
+    file.assert_committed_lines(lines!["// initial".unattributed_human()]);
+
+    let storage_path = repo
+        .test_home_path()
+        .join(".local")
+        .join("share")
+        .join("opencode");
+    fs::create_dir_all(&storage_path).unwrap();
+    fs::copy(
+        opencode_sqlite_fixture_path().join("opencode.db"),
+        storage_path.join("opencode.db"),
+    )
+    .unwrap();
+    let xdg_data_home = storage_path.parent().unwrap().to_str().unwrap();
+    // Linux resolves OpenCode data through XDG_DATA_HOME. On macOS and Windows,
+    // TestRepo redirects HOME/USERPROFILE to the same isolated test home.
+    let checkpoint_env = if cfg!(target_os = "linux") {
+        vec![("XDG_DATA_HOME", xdg_data_home)]
+    } else {
+        vec![]
+    };
+
+    let pre_hook_input = json!({
+        "hook_event_name": "PreToolUse",
+        "session_id": "test-session-123",
+        "cwd": repo_root,
+        "tool_name": "edit",
+        "tool_input": { "filePath": file_path }
+    })
+    .to_string();
+    repo.git_ai_with_env(
+        &["checkpoint", "opencode", "--hook-input", &pre_hook_input],
+        &checkpoint_env,
+    )
+    .unwrap();
+
+    fs::write(&file_path, "// initial\n// AI edit\n").unwrap();
+
+    let post_hook_input = json!({
+        "hook_event_name": "PostToolUse",
+        "session_id": "test-session-123",
+        "cwd": repo_root,
+        "tool_name": "edit",
+        "tool_input": { "filePath": file_path }
+    })
+    .to_string();
+    repo.git_ai_with_env(
+        &["checkpoint", "opencode", "--hook-input", &post_hook_input],
+        &checkpoint_env,
+    )
+    .unwrap();
+
+    let commit = repo.stage_all_and_commit("Add AI line").unwrap();
+    file.assert_committed_lines(lines!["// initial".unattributed_human(), "// AI edit".ai(),]);
+
+    let session = commit
+        .authorship_log
+        .metadata
+        .sessions
+        .values()
+        .next()
+        .expect("OpenCode checkpoint should record a session");
+    assert_eq!(
+        session.agent_id.model, "gpt-5",
+        "OpenCode should load its model from ~/.local/share/opencode/opencode.db"
     );
 }
 

@@ -127,32 +127,46 @@ impl OpenCodePreset {
     }
 
     fn resolve_stream_source(session_id: &str) -> Option<(StreamSource, PathBuf)> {
-        let opencode_path = if let Ok(test_path) = std::env::var("GIT_AI_OPENCODE_STORAGE_PATH") {
-            PathBuf::from(test_path)
+        let opencode_paths = if let Ok(test_path) = std::env::var("GIT_AI_OPENCODE_STORAGE_PATH") {
+            vec![PathBuf::from(test_path)]
         } else {
-            Self::opencode_data_path().ok()?
+            Self::opencode_data_paths().ok()?
         };
 
-        // Try sqlite first
-        let db_path = Self::resolve_sqlite_db_path(&opencode_path);
-        if let Some(db_path) = db_path {
-            let parent_id = Self::lookup_parent_session(&db_path, session_id);
-            return Some((
-                StreamSource {
-                    path: db_path,
-                    format: StreamFormat::OpenCodeSqlite,
-                    session_id: generate_session_id(session_id, "opencode"),
-                    external_session_id: session_id.to_string(),
-                    external_parent_session_id: parent_id,
-                },
-                opencode_path,
-            ));
-        }
-
-        None
+        Self::resolve_stream_source_from_paths(session_id, opencode_paths)
     }
 
-    fn lookup_parent_session(db_path: &Path, session_id: &str) -> Option<String> {
+    fn resolve_stream_source_from_paths(
+        session_id: &str,
+        opencode_paths: Vec<PathBuf>,
+    ) -> Option<(StreamSource, PathBuf)> {
+        let mut fallback = None;
+
+        for opencode_path in opencode_paths {
+            let Some(db_path) = Self::resolve_sqlite_db_path(&opencode_path) else {
+                continue;
+            };
+
+            if fallback.is_none() {
+                fallback = Some((db_path.clone(), opencode_path.clone()));
+            }
+
+            if let Some(parent_id) = Self::lookup_session_parent(&db_path, session_id) {
+                return Some(Self::stream_source(
+                    session_id,
+                    db_path,
+                    opencode_path,
+                    parent_id,
+                ));
+            }
+        }
+
+        fallback.map(|(db_path, opencode_path)| {
+            Self::stream_source(session_id, db_path, opencode_path, None)
+        })
+    }
+
+    fn lookup_session_parent(db_path: &Path, session_id: &str) -> Option<Option<String>> {
         let conn = crate::streams::agents::opencode::open_sqlite_readonly(db_path).ok()?;
         conn.query_row(
             "SELECT parent_id FROM session WHERE id = ?",
@@ -160,41 +174,54 @@ impl OpenCodePreset {
             |row| row.get::<_, Option<String>>(0),
         )
         .ok()
-        .flatten()
     }
 
-    fn opencode_data_path() -> Result<PathBuf, GitAiError> {
+    fn stream_source(
+        session_id: &str,
+        db_path: PathBuf,
+        opencode_path: PathBuf,
+        parent_id: Option<String>,
+    ) -> (StreamSource, PathBuf) {
+        (
+            StreamSource {
+                path: db_path,
+                format: StreamFormat::OpenCodeSqlite,
+                session_id: generate_session_id(session_id, "opencode"),
+                external_session_id: session_id.to_string(),
+                external_parent_session_id: parent_id,
+            },
+            opencode_path,
+        )
+    }
+
+    fn opencode_data_paths() -> Result<Vec<PathBuf>, GitAiError> {
         #[cfg(target_os = "macos")]
         {
             let home = dirs::home_dir().ok_or_else(|| {
                 GitAiError::Generic("Could not determine home directory".to_string())
             })?;
-            Ok(home.join(".local").join("share").join("opencode"))
+            Ok(vec![home.join(".local").join("share").join("opencode")])
         }
 
         #[cfg(target_os = "linux")]
         {
             if let Ok(xdg_data) = std::env::var("XDG_DATA_HOME") {
-                Ok(PathBuf::from(xdg_data).join("opencode"))
+                Ok(vec![PathBuf::from(xdg_data).join("opencode")])
             } else {
                 let home = dirs::home_dir().ok_or_else(|| {
                     GitAiError::Generic("Could not determine home directory".to_string())
                 })?;
-                Ok(home.join(".local").join("share").join("opencode"))
+                Ok(vec![home.join(".local").join("share").join("opencode")])
             }
         }
 
         #[cfg(target_os = "windows")]
         {
-            if let Ok(app_data) = std::env::var("APPDATA") {
-                Ok(PathBuf::from(app_data).join("opencode"))
-            } else if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
-                Ok(PathBuf::from(local_app_data).join("opencode"))
-            } else {
-                Err(GitAiError::Generic(
-                    "Neither APPDATA nor LOCALAPPDATA is set".to_string(),
-                ))
-            }
+            Ok(Self::windows_data_paths(
+                crate::mdm::utils::home_dir(),
+                std::env::var_os("APPDATA").map(PathBuf::from),
+                std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
+            ))
         }
 
         #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
@@ -203,6 +230,18 @@ impl OpenCodePreset {
                 "OpenCode storage path not supported on this platform".to_string(),
             ))
         }
+    }
+
+    #[cfg(any(target_os = "windows", test))]
+    fn windows_data_paths(
+        home: PathBuf,
+        app_data: Option<PathBuf>,
+        local_app_data: Option<PathBuf>,
+    ) -> Vec<PathBuf> {
+        let mut paths = vec![home.join(".local").join("share").join("opencode")];
+        paths.extend(app_data.into_iter().map(|path| path.join("opencode")));
+        paths.extend(local_app_data.into_iter().map(|path| path.join("opencode")));
+        paths
     }
 
     fn resolve_sqlite_db_path(path: &Path) -> Option<PathBuf> {
@@ -517,5 +556,67 @@ mod tests {
             }
             _ => panic!("Expected PreBashCall"),
         }
+    }
+
+    #[test]
+    fn test_windows_opencode_data_paths_prefer_xdg_layout() {
+        let home = PathBuf::from(r"C:\Users\test");
+        let app_data = PathBuf::from(r"C:\Users\test\AppData\Roaming");
+        let local_app_data = PathBuf::from(r"C:\Users\test\AppData\Local");
+
+        assert_eq!(
+            OpenCodePreset::windows_data_paths(
+                home.clone(),
+                Some(app_data.clone()),
+                Some(local_app_data.clone()),
+            ),
+            vec![
+                home.join(".local").join("share").join("opencode"),
+                app_data.join("opencode"),
+                local_app_data.join("opencode"),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_resolve_stream_source_prefers_database_containing_session() {
+        let temp = tempfile::tempdir().unwrap();
+        let stale_path = temp.path().join("stale");
+        let live_path = temp.path().join("live");
+        std::fs::create_dir_all(&stale_path).unwrap();
+        std::fs::create_dir_all(&live_path).unwrap();
+
+        let stale_db = stale_path.join("opencode.db");
+        let stale_conn = crate::sqlite::open_with_memory_limits(&stale_db).unwrap();
+        stale_conn
+            .execute(
+                "CREATE TABLE session (id TEXT PRIMARY KEY, parent_id TEXT)",
+                [],
+            )
+            .unwrap();
+        drop(stale_conn);
+
+        let fixture_db = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("opencode-sqlite")
+            .join("opencode.db");
+        std::fs::copy(&fixture_db, live_path.join("opencode.db")).unwrap();
+
+        let (source, resolved_path) = OpenCodePreset::resolve_stream_source_from_paths(
+            "test-session-123",
+            vec![stale_path.clone(), live_path.clone()],
+        )
+        .expect("the database containing the session should be selected");
+
+        assert_eq!(resolved_path, live_path);
+        assert_eq!(source.path, live_path.join("opencode.db"));
+
+        let (_, fallback_path) = OpenCodePreset::resolve_stream_source_from_paths(
+            "missing-session",
+            vec![stale_path.clone(), live_path],
+        )
+        .expect("the first existing database should remain the fallback");
+        assert_eq!(fallback_path, stale_path);
     }
 }
