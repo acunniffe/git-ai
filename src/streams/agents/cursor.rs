@@ -11,6 +11,9 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+/// Line cap for `infer_cwd_from_transcript`'s multi-repo scan (see there).
+const CURSOR_INFER_CWD_LINE_LIMIT: usize = 1000;
+
 /// Cursor agent that discovers conversations from Cursor storage.
 pub struct CursorAgent {
     batch_size: usize,
@@ -69,8 +72,13 @@ impl CursorAgent {
         let file = fs::File::open(stream_path).ok()?;
         let reader = BufReader::new(file);
         let mut found: Option<PathBuf> = None;
-        // Check up to 40 lines for tool-use file paths.
-        for line in reader.lines().take(40).map_while(Result::ok) {
+        // Scan far enough to catch a repo switch anywhere in a typical
+        // session, not just in the first few lines.
+        for line in reader
+            .lines()
+            .take(CURSOR_INFER_CWD_LINE_LIMIT)
+            .map_while(Result::ok)
+        {
             let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) else {
                 continue;
             };
@@ -79,13 +87,9 @@ impl CursorAgent {
                     continue;
                 };
                 match &found {
-                    Some(existing) if *existing != root => {
-                        // Tool paths resolve to more than one worktree
-                        // root: every event in the stream shares one
-                        // cached cwd, so fail closed rather than guessing
-                        // which repository the whole session belongs to.
-                        return None;
-                    }
+                    // Multiple worktree roots: fail closed instead of
+                    // guessing which repo the whole session belongs to.
+                    Some(existing) if *existing != root => return None,
                     _ => found = Some(root),
                 }
             }
@@ -537,6 +541,44 @@ mod tests {
             agent.infer_cwd(transcript.path()),
             None,
             "tool paths spanning multiple repos must fail closed instead of guessing one"
+        );
+    }
+
+    /// A repo switch well past a short prefix must still be caught.
+    #[test]
+    fn test_infer_cwd_none_when_repo_switch_happens_after_short_prefix() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let repo_a = fake_git_repo();
+        let file_a = repo_a.path().join("a.rs");
+        fs::write(&file_a, "fn a() {}\n").unwrap();
+
+        let repo_b = fake_git_repo();
+        let file_b = repo_b.path().join("b.rs");
+        fs::write(&file_b, "fn b() {}\n").unwrap();
+
+        let mut transcript = NamedTempFile::new().unwrap();
+        let line_a = format!(
+            r#"{{"role":"assistant","message":{{"content":[{{"type":"tool_use","name":"Read","input":{{"path":{}}}}}]}}}}"#,
+            serde_json::to_string(&file_a.to_string_lossy()).unwrap()
+        );
+        for _ in 0..60 {
+            writeln!(transcript, "{line_a}").unwrap();
+        }
+        writeln!(
+            transcript,
+            r#"{{"role":"assistant","message":{{"content":[{{"type":"tool_use","name":"Read","input":{{"path":{}}}}}]}}}}"#,
+            serde_json::to_string(&file_b.to_string_lossy()).unwrap()
+        )
+        .unwrap();
+        transcript.flush().unwrap();
+
+        let agent = CursorAgent::new();
+        assert_eq!(
+            agent.infer_cwd(transcript.path()),
+            None,
+            "a repo switch past a short prefix must still be caught, not silently missed"
         );
     }
 }

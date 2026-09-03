@@ -24,6 +24,8 @@ const SCHEMA_VERSION: usize = 5;
 const MAX_METRIC_UPLOAD_ATTEMPTS: u32 = 6;
 const METRIC_PROCESSING_LOCK_TIMEOUT_SECS: u64 = 10 * 60;
 pub(crate) const METADATA_BACKFILL_BATCH_SIZE: usize = 1000;
+/// Row cap for `latest_session_event_candidate_for_repo`'s scan (see there).
+const LATEST_SESSION_EVENT_SCAN_LIMIT: usize = 1000;
 const EVENT_METADATA_BACKFILL_COMPLETED_KEY: &str = "event_metadata_backfill_completed";
 const NS_PER_SECOND: u128 = 1_000_000_000;
 
@@ -1143,15 +1145,12 @@ impl MetricsDatabase {
     /// Find the newest session-event row for any of `tools` whose repo_url
     /// exactly matches `target_repo_url`.
     ///
-    /// This deliberately does not `LIMIT` the underlying query before
-    /// checking `repo_url`: a busy machine can produce well over a hundred
-    /// more-recent session events for other or unscoped repositories, and
-    /// truncating first would make an older, genuinely matching same-repo
-    /// session invisible -- recovery would then mint a session that never
-    /// existed instead of finding the real one. Rows are still consumed in
-    /// `event_ts DESC, id DESC` order and the first repo_url match wins, so
-    /// the result stays deterministic; the scan simply stops as soon as a
-    /// match is found.
+    /// Scanned newest-first under the metrics DB lock, capped at
+    /// `LATEST_SESSION_EVENT_SCAN_LIMIT` rows: unbounded would risk parsing
+    /// a year of retained history under the lock, but a small `LIMIT` (the
+    /// old `100`) can hide an older same-repo session behind newer
+    /// foreign/unscoped ones. This bound trades a documented, unlikely miss
+    /// for a predictable worst-case scan cost.
     pub(crate) fn latest_session_event_candidate_for_repo(
         &self,
         tools: &[&str],
@@ -1187,10 +1186,11 @@ impl MetricsDatabase {
               AND external_session_id IS NOT NULL
               AND external_session_id != ''
             ORDER BY event_ts DESC, id DESC
+            LIMIT ?
             "#
         );
 
-        let mut values = Vec::with_capacity(tools.len() + 1);
+        let mut values = Vec::with_capacity(tools.len() + 2);
         values.push(rusqlite::types::Value::Integer(
             MetricEventId::SessionEvent as i64,
         ));
@@ -1199,6 +1199,9 @@ impl MetricsDatabase {
                 .iter()
                 .map(|tool| rusqlite::types::Value::Text((*tool).to_string())),
         );
+        values.push(rusqlite::types::Value::Integer(
+            LATEST_SESSION_EVENT_SCAN_LIMIT as i64,
+        ));
 
         let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map(params_from_iter(values.iter()), |row| {
@@ -2411,6 +2414,41 @@ mod tests {
             .expect("an older same-repo session must still be found");
 
         assert_eq!(candidate.session_id, "session-same-repo");
+    }
+
+    /// A same-repo session past the scan bound is a documented, accepted miss.
+    #[test]
+    fn test_latest_session_event_candidate_for_repo_bounds_scan_past_the_limit() {
+        let (mut db, _temp_dir) = create_test_db();
+        let base_ts = seconds_ago(10_000);
+
+        let mut events = Vec::new();
+        for i in 0..(LATEST_SESSION_EVENT_SCAN_LIMIT as u32 + 1) {
+            events.push(session_event_json(
+                base_ts + 1_000 + i,
+                &format!("session-foreign-{i}"),
+                &format!("external-foreign-{i}"),
+                "cursor",
+                Some("https://github.com/other/repo"),
+            ));
+        }
+        events.push(session_event_json(
+            base_ts,
+            "session-same-repo",
+            "external-same-repo",
+            "cursor",
+            Some("https://github.com/acme/repo"),
+        ));
+        db.insert_events(&events).unwrap();
+
+        let candidate = db
+            .latest_session_event_candidate_for_repo(&["cursor"], "https://github.com/acme/repo")
+            .unwrap();
+
+        assert!(
+            candidate.is_none(),
+            "a same-repo session past the scan bound is an accepted, documented miss"
+        );
     }
 
     #[test]
