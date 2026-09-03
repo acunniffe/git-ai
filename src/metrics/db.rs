@@ -1140,12 +1140,25 @@ impl MetricsDatabase {
         Ok(candidates)
     }
 
-    pub(crate) fn latest_session_event_candidates_for_tools(
+    /// Find the newest session-event row for any of `tools` whose repo_url
+    /// exactly matches `target_repo_url`.
+    ///
+    /// This deliberately does not `LIMIT` the underlying query before
+    /// checking `repo_url`: a busy machine can produce well over a hundred
+    /// more-recent session events for other or unscoped repositories, and
+    /// truncating first would make an older, genuinely matching same-repo
+    /// session invisible -- recovery would then mint a session that never
+    /// existed instead of finding the real one. Rows are still consumed in
+    /// `event_ts DESC, id DESC` order and the first repo_url match wins, so
+    /// the result stays deterministic; the scan simply stops as soon as a
+    /// match is found.
+    pub(crate) fn latest_session_event_candidate_for_repo(
         &self,
         tools: &[&str],
-    ) -> Result<Vec<SessionEventRecoveryCandidate>, GitAiError> {
+        target_repo_url: &str,
+    ) -> Result<Option<SessionEventRecoveryCandidate>, GitAiError> {
         if tools.is_empty() {
-            return Ok(Vec::new());
+            return Ok(None);
         }
 
         let placeholders = std::iter::repeat_n("?", tools.len())
@@ -1174,7 +1187,6 @@ impl MetricsDatabase {
               AND external_session_id IS NOT NULL
               AND external_session_id != ''
             ORDER BY event_ts DESC, id DESC
-            LIMIT 100
             "#
         );
 
@@ -1202,7 +1214,6 @@ impl MetricsDatabase {
             ))
         })?;
 
-        let mut candidates = Vec::new();
         for row in rows {
             let (
                 row_id,
@@ -1219,7 +1230,11 @@ impl MetricsDatabase {
             }
 
             let (repo_url, model) = recovery_attrs_from_event_json(&event_json);
-            candidates.push(SessionEventRecoveryCandidate {
+            if repo_url.as_deref() != Some(target_repo_url) {
+                continue;
+            }
+
+            return Ok(Some(SessionEventRecoveryCandidate {
                 row_id,
                 event_ts: event_ts as u32,
                 session_id,
@@ -1229,10 +1244,10 @@ impl MetricsDatabase {
                 external_session_id,
                 external_tool_use_id,
                 repo_url,
-            });
+            }));
         }
 
-        Ok(candidates)
+        Ok(None)
     }
 
     /// Backfill cached event metadata for one bounded batch of legacy rows.
@@ -2359,6 +2374,73 @@ mod tests {
             candidate.repo_url.as_deref(),
             Some("https://github.com/acme/repo")
         );
+    }
+
+    /// A busy machine can easily produce more than 100 newer session events
+    /// for the same tool from other (or unscoped) repositories. The latest-
+    /// session query must not truncate before checking repo_url, or a valid
+    /// older same-repo session becomes invisible and recovery mints a
+    /// session that never existed instead of finding the real one.
+    #[test]
+    fn test_latest_session_event_candidate_for_repo_finds_match_past_first_hundred() {
+        let (mut db, _temp_dir) = create_test_db();
+        let base_ts = seconds_ago(1_000);
+
+        let mut events = Vec::new();
+        for i in 0..150u32 {
+            events.push(session_event_json(
+                base_ts + 1_000 + i,
+                &format!("session-foreign-{i}"),
+                &format!("external-foreign-{i}"),
+                "cursor",
+                Some("https://github.com/other/repo"),
+            ));
+        }
+        events.push(session_event_json(
+            base_ts,
+            "session-same-repo",
+            "external-same-repo",
+            "cursor",
+            Some("https://github.com/acme/repo"),
+        ));
+        db.insert_events(&events).unwrap();
+
+        let candidate = db
+            .latest_session_event_candidate_for_repo(&["cursor"], "https://github.com/acme/repo")
+            .unwrap()
+            .expect("an older same-repo session must still be found");
+
+        assert_eq!(candidate.session_id, "session-same-repo");
+    }
+
+    #[test]
+    fn test_latest_session_event_candidate_for_repo_picks_newest_matching_row() {
+        let (mut db, _temp_dir) = create_test_db();
+        let base_ts = seconds_ago(60);
+        db.insert_events(&[
+            session_event_json(
+                base_ts,
+                "session-older",
+                "external-older",
+                "cursor",
+                Some("https://github.com/acme/repo"),
+            ),
+            session_event_json(
+                base_ts + 10,
+                "session-newer",
+                "external-newer",
+                "cursor",
+                Some("https://github.com/acme/repo"),
+            ),
+        ])
+        .unwrap();
+
+        let candidate = db
+            .latest_session_event_candidate_for_repo(&["cursor"], "https://github.com/acme/repo")
+            .unwrap()
+            .expect("a matching same-repo session must be found");
+
+        assert_eq!(candidate.session_id, "session-newer");
     }
 
     #[test]

@@ -1188,6 +1188,14 @@ fn select_latest_commit_metadata_metric_session(
     target_repo_url: Option<&str>,
     metrics_db_unavailable: &mut bool,
 ) -> Result<Option<CommitMetadataSessionSelection>, GitAiError> {
+    // Only an exact repo_url match is safe here: this fallback has no time
+    // window, so an unscoped session (no repo_url) could belong to any
+    // commit on the machine. Without a target repo there is nothing to
+    // match against, and the metrics DB does not need to be consulted.
+    let Some(target_repo_url) = target_repo_url else {
+        return Ok(None);
+    };
+
     let db = match crate::metrics::db::MetricsDatabase::global() {
         Ok(db) => db,
         Err(_) => {
@@ -1204,31 +1212,19 @@ fn select_latest_commit_metadata_metric_session(
     };
 
     for detection in detections {
-        let candidates = match db.latest_session_event_candidates_for_tools(detection.kind.tools) {
-            Ok(candidates) => candidates,
+        let candidate = match db
+            .latest_session_event_candidate_for_repo(detection.kind.tools, target_repo_url)
+        {
+            Ok(candidate) => candidate,
             Err(error) => {
                 tracing::debug!(%error, "latest session-event candidate query failed");
                 *metrics_db_unavailable = true;
                 return Ok(None);
             }
         };
-        // Only an exact repo_url match is safe here: this fallback has no
-        // time window. Unscoped Cursor session events (no repo_url) would
-        // otherwise attach whatever Cursor session last ran on the machine.
-        if let Some(candidate) = candidates
-            .iter()
-            .filter(|candidate| {
-                commit_metadata_metric_repo_tier(candidate, target_repo_url)
-                    == Some(CommitMetadataMetricRepoTier::SameRepoUrl)
-            })
-            .max_by(|left, right| {
-                left.event_ts
-                    .cmp(&right.event_ts)
-                    .then_with(|| left.row_id.cmp(&right.row_id))
-            })
-        {
+        if let Some(candidate) = candidate {
             return Ok(Some(commit_metadata_selection_from_metric_candidate(
-                candidate,
+                &candidate,
                 "latest_matching_tool_session",
                 None,
             )));
@@ -2104,10 +2100,16 @@ mod tests {
         // temp dir so the open connection never points at a deleted file.
         std::mem::forget(dir);
 
+        // A target repo is required for the DB to be consulted at all: with
+        // no target repo an exact repo_url match can never succeed, so the
+        // busy-DB path below would never be reached otherwise.
+        let target_repo_url = Some("https://github.com/acme/repo");
+
         // Uncontended: the DB is consulted and the flag stays clear.
         let mut unavailable = false;
         let selection =
-            select_latest_commit_metadata_metric_session(&[], None, &mut unavailable).unwrap();
+            select_latest_commit_metadata_metric_session(&[], target_repo_url, &mut unavailable)
+                .unwrap();
         assert!(selection.is_none());
         assert!(!unavailable, "an uncontended DB must count as consulted");
 
@@ -2115,10 +2117,13 @@ mod tests {
         // caller mistake a busy DB for "no matching AI session" (which would
         // end in AI lines being attributed to the human author).
         let _held = db.lock().unwrap();
-        let checker = std::thread::spawn(|| {
+        let checker = std::thread::spawn(move || {
             let mut unavailable = false;
-            let selection =
-                select_latest_commit_metadata_metric_session(&[], None, &mut unavailable);
+            let selection = select_latest_commit_metadata_metric_session(
+                &[],
+                target_repo_url,
+                &mut unavailable,
+            );
             (selection, unavailable)
         });
         let (selection, unavailable) = checker.join().unwrap();

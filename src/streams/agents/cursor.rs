@@ -68,17 +68,29 @@ impl CursorAgent {
     fn infer_cwd_from_transcript(stream_path: &Path) -> Option<PathBuf> {
         let file = fs::File::open(stream_path).ok()?;
         let reader = BufReader::new(file);
+        let mut found: Option<PathBuf> = None;
+        // Check up to 40 lines for tool-use file paths.
         for line in reader.lines().take(40).map_while(Result::ok) {
             let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) else {
                 continue;
             };
             for path in cursor_event_file_paths(&json) {
-                if let Some(root) = worktree_root_for_path(&path) {
-                    return Some(root);
+                let Some(root) = worktree_root_for_path(&path) else {
+                    continue;
+                };
+                match &found {
+                    Some(existing) if *existing != root => {
+                        // Tool paths resolve to more than one worktree
+                        // root: every event in the stream shares one
+                        // cached cwd, so fail closed rather than guessing
+                        // which repository the whole session belongs to.
+                        return None;
+                    }
+                    _ => found = Some(root),
                 }
             }
         }
-        None
+        found
     }
 }
 
@@ -433,13 +445,7 @@ mod tests {
         use std::io::Write;
         use tempfile::NamedTempFile;
 
-        let repo = tempfile::tempdir().unwrap();
-        fs::create_dir_all(repo.path().join(".git")).unwrap();
-        fs::write(
-            repo.path().join(".git").join("HEAD"),
-            "ref: refs/heads/main",
-        )
-        .unwrap();
+        let repo = fake_git_repo();
         fs::create_dir_all(repo.path().join("src")).unwrap();
         let file_path = repo.path().join("src").join("main.rs");
         fs::write(&file_path, "fn main() {}\n").unwrap();
@@ -480,5 +486,57 @@ mod tests {
 
         let agent = CursorAgent::new();
         assert_eq!(agent.infer_cwd(transcript.path()), None);
+    }
+
+    fn fake_git_repo() -> tempfile::TempDir {
+        let repo = tempfile::tempdir().unwrap();
+        fs::create_dir_all(repo.path().join(".git")).unwrap();
+        fs::write(
+            repo.path().join(".git").join("HEAD"),
+            "ref: refs/heads/main",
+        )
+        .unwrap();
+        repo
+    }
+
+    /// A single Cursor conversation can read or edit more than one
+    /// repository (e.g. a monorepo checkout plus a sibling dependency
+    /// checked out elsewhere). Every event in the stream shares one cached
+    /// repo_work_dir, so guessing the first repository seen would silently
+    /// mislabel every later event that actually belongs to a different one.
+    #[test]
+    fn test_infer_cwd_none_when_tool_paths_span_multiple_repos() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let repo_a = fake_git_repo();
+        let file_a = repo_a.path().join("a.rs");
+        fs::write(&file_a, "fn a() {}\n").unwrap();
+
+        let repo_b = fake_git_repo();
+        let file_b = repo_b.path().join("b.rs");
+        fs::write(&file_b, "fn b() {}\n").unwrap();
+
+        let mut transcript = NamedTempFile::new().unwrap();
+        writeln!(
+            transcript,
+            r#"{{"role":"assistant","message":{{"content":[{{"type":"tool_use","name":"Read","input":{{"path":{}}}}}]}}}}"#,
+            serde_json::to_string(&file_a.to_string_lossy()).unwrap()
+        )
+        .unwrap();
+        writeln!(
+            transcript,
+            r#"{{"role":"assistant","message":{{"content":[{{"type":"tool_use","name":"Read","input":{{"path":{}}}}}]}}}}"#,
+            serde_json::to_string(&file_b.to_string_lossy()).unwrap()
+        )
+        .unwrap();
+        transcript.flush().unwrap();
+
+        let agent = CursorAgent::new();
+        assert_eq!(
+            agent.infer_cwd(transcript.path()),
+            None,
+            "tool paths spanning multiple repos must fail closed instead of guessing one"
+        );
     }
 }
