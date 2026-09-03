@@ -1,4 +1,8 @@
 use std::io::Read;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -80,6 +84,10 @@ pub(crate) fn run_command_with_timeout_and_env(
     let mut command = Command::new(program);
     command
         .args(args)
+        // Match Command::output() semantics used by the non-timed path. These
+        // internal best-effort transports must never compete for the caller's
+        // terminal or stall on a credential/passphrase prompt.
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     for key in env_remove {
@@ -91,6 +99,12 @@ pub(crate) fn run_command_with_timeout_and_env(
     if let Some(cwd) = cwd {
         command.current_dir(cwd);
     }
+    #[cfg(windows)]
+    if !crate::utils::is_interactive_terminal() {
+        command.creation_flags(crate::utils::CREATE_NO_WINDOW);
+    }
+    #[cfg(unix)]
+    command.process_group(0);
 
     let mut child = command
         .spawn()
@@ -127,6 +141,18 @@ pub(crate) fn run_command_with_timeout_and_env(
                 return Ok(output.finish(status.code(), false, None));
             }
             Ok(None) if start.elapsed() >= timeout => {
+                #[cfg(unix)]
+                {
+                    // Kill the whole process group so an SSH transport cannot keep
+                    // inherited stdout/stderr pipes open after Git is reaped.
+                    let group = -(child.id() as i32);
+                    // SAFETY: `group` names the child-owned process group created above.
+                    if unsafe { libc::kill(group, libc::SIGKILL) } == 0 {
+                        output
+                            .diagnostics
+                            .push("sent kill to child process group".to_string());
+                    }
+                }
                 let kill_result = child.kill();
                 match &kill_result {
                     Ok(()) => output
@@ -264,5 +290,52 @@ fn drain_output_events(rx: &Receiver<OutputEvent>, output: &mut OutputState) {
                 output.stderr_done = true;
             }
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn timed_commands_do_not_inherit_caller_stdin() {
+        let output = run_command_with_timeout(
+            "sh",
+            &["-c", "readlink /proc/self/fd/0"],
+            None,
+            Duration::from_secs(1),
+            Duration::from_millis(10),
+            &[],
+        )
+        .expect("timed command should start");
+
+        assert_eq!(output.status, Some(0));
+        assert_eq!(output.stdout, "/dev/null");
+    }
+
+    #[test]
+    fn timeout_kills_and_reaps_the_child_process_group() {
+        let started = Instant::now();
+        let output = run_command_with_timeout(
+            "sh",
+            &["-c", "sleep 30 & wait"],
+            None,
+            Duration::from_millis(100),
+            Duration::from_millis(10),
+            &[],
+        )
+        .expect("timed command should start");
+
+        assert!(output.timed_out);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(
+            output
+                .diagnostics
+                .iter()
+                .any(|message| message.contains("process group")),
+            "timeout diagnostics should confirm process-group termination: {:?}",
+            output.diagnostics
+        );
     }
 }

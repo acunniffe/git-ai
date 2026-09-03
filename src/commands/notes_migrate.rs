@@ -7,6 +7,10 @@
 //!
 //! The command refuses to run unless `notes_backend.kind == http` because migrating
 //! notes to the git-notes backend (the default) is a no-op.
+//!
+//! This explicitly invoked migration is the sole HTTP-mode exception to the runtime
+//! invariant that Git AI never inspects or mutates `refs/notes/*`. Ordinary reads,
+//! writes, rewrites, sync, transport, and CI paths must remain backend-isolated.
 
 use crate::api::client::{ApiClient, ApiContext};
 use crate::api::types::{NoteEntry, NotesUploadRequest};
