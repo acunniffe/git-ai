@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
 /// Current schema version (must match MIGRATIONS.len())
-const SCHEMA_VERSION: usize = 5;
+const SCHEMA_VERSION: usize = 6;
 
 // This value is part of the metrics retry index schema. Changing it requires a
 // migration that rebuilds `metrics_retryable` with the same literal used by
@@ -24,8 +24,6 @@ const SCHEMA_VERSION: usize = 5;
 const MAX_METRIC_UPLOAD_ATTEMPTS: u32 = 6;
 const METRIC_PROCESSING_LOCK_TIMEOUT_SECS: u64 = 10 * 60;
 pub(crate) const METADATA_BACKFILL_BATCH_SIZE: usize = 1000;
-/// Row cap for `latest_session_event_candidate_for_repo`'s scan (see there).
-const LATEST_SESSION_EVENT_SCAN_LIMIT: usize = 1000;
 const EVENT_METADATA_BACKFILL_COMPLETED_KEY: &str = "event_metadata_backfill_completed";
 const NS_PER_SECOND: u128 = 1_000_000_000;
 
@@ -91,6 +89,14 @@ const MIGRATIONS: &[&str] = &[
             AND attempts < 6;
 
     DROP INDEX IF EXISTS metrics_pending_retry;
+    "#,
+    // Migration 5 -> 6: Cache repo_url so the latest-matching-session lookup
+    // can filter by exact repository through an index instead of scanning
+    // event_json row by row under the metrics DB lock.
+    r#"
+    CREATE INDEX IF NOT EXISTS metrics_repo_tool_kind_ts
+        ON metrics (repo_url, tool, event_kind, event_ts DESC, id DESC)
+        WHERE repo_url IS NOT NULL;
     "#,
 ];
 
@@ -162,6 +168,7 @@ struct MetricEventMetadata {
     external_event_id: Option<String>,
     external_parent_event_id: Option<String>,
     external_tool_use_id: Option<String>,
+    repo_url: Option<String>,
 }
 
 /// Database wrapper for metrics storage
@@ -374,6 +381,13 @@ impl MetricsDatabase {
         if from_version == 3 {
             self.add_event_metadata_columns()?;
         }
+        if from_version == 5 {
+            self.add_column_if_missing(
+                "metrics",
+                "repo_url",
+                "ALTER TABLE metrics ADD COLUMN repo_url TEXT DEFAULT NULL",
+            )?;
+        }
 
         let migration_sql = MIGRATIONS[from_version];
         let tx = self.conn.transaction()?;
@@ -531,9 +545,10 @@ impl MetricsDatabase {
                     external_parent_session_id,
                     external_event_id,
                     external_parent_event_id,
-                    external_tool_use_id
+                    external_tool_use_id,
+                    repo_url
                 )
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
                 "#,
             )?;
 
@@ -569,6 +584,7 @@ impl MetricsDatabase {
                     metadata
                         .as_ref()
                         .and_then(|m| m.external_tool_use_id.as_deref()),
+                    metadata.as_ref().and_then(|m| m.repo_url.as_deref()),
                 ])?;
                 ids.push(tx.last_insert_rowid());
             }
@@ -1145,12 +1161,14 @@ impl MetricsDatabase {
     /// Find the newest session-event row for any of `tools` whose repo_url
     /// exactly matches `target_repo_url`.
     ///
-    /// Scanned newest-first under the metrics DB lock, capped at
-    /// `LATEST_SESSION_EVENT_SCAN_LIMIT` rows: unbounded would risk parsing
-    /// a year of retained history under the lock, but a small `LIMIT` (the
-    /// old `100`) can hide an older same-repo session behind newer
-    /// foreign/unscoped ones. This bound trades a documented, unlikely miss
-    /// for a predictable worst-case scan cost.
+    /// Filters on the cached, indexed `repo_url` column (`metrics_repo_tool_kind_ts`)
+    /// rather than parsing `event_json` per row: an app-level scan ordered by
+    /// recency and truncated with a `LIMIT` can always be defeated by enough
+    /// newer foreign/unscoped events, hiding a genuinely matching older
+    /// session. Filtering in SQL finds the exact match directly, however far
+    /// back it is, without holding the metrics DB lock any longer than an
+    /// indexed lookup takes. Legacy rows get `repo_url` populated by
+    /// `backfill_event_metadata`, same as the other cached columns here.
     pub(crate) fn latest_session_event_candidate_for_repo(
         &self,
         tools: &[&str],
@@ -1173,9 +1191,11 @@ impl MetricsDatabase {
                 trace_id,
                 tool,
                 external_session_id,
-                external_tool_use_id
+                external_tool_use_id,
+                repo_url
             FROM metrics
             WHERE event_kind = ?1
+              AND repo_url = ?2
               AND tool IN ({placeholders})
               AND event_ts IS NOT NULL
               AND session_id IS NOT NULL
@@ -1186,7 +1206,7 @@ impl MetricsDatabase {
               AND external_session_id IS NOT NULL
               AND external_session_id != ''
             ORDER BY event_ts DESC, id DESC
-            LIMIT ?
+            LIMIT 1
             "#
         );
 
@@ -1194,63 +1214,61 @@ impl MetricsDatabase {
         values.push(rusqlite::types::Value::Integer(
             MetricEventId::SessionEvent as i64,
         ));
+        values.push(rusqlite::types::Value::Text(target_repo_url.to_string()));
         values.extend(
             tools
                 .iter()
                 .map(|tool| rusqlite::types::Value::Text((*tool).to_string())),
         );
-        values.push(rusqlite::types::Value::Integer(
-            LATEST_SESSION_EVENT_SCAN_LIMIT as i64,
-        ));
 
         let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(params_from_iter(values.iter()), |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, Option<String>>(4)?,
-                row.get::<_, String>(5)?,
-                row.get::<_, String>(6)?,
-                row.get::<_, Option<String>>(7)?,
-            ))
-        })?;
+        let row = stmt
+            .query_map(params_from_iter(values.iter()), |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                ))
+            })?
+            .next()
+            .transpose()?;
 
-        for row in rows {
-            let (
-                row_id,
-                event_json,
-                event_ts,
-                session_id,
-                trace_id,
-                tool,
-                external_session_id,
-                external_tool_use_id,
-            ) = row?;
-            if event_ts < 0 || event_ts > u32::MAX as i64 {
-                continue;
-            }
-
-            let (repo_url, model) = recovery_attrs_from_event_json(&event_json);
-            if repo_url.as_deref() != Some(target_repo_url) {
-                continue;
-            }
-
-            return Ok(Some(SessionEventRecoveryCandidate {
-                row_id,
-                event_ts: event_ts as u32,
-                session_id,
-                trace_id,
-                tool,
-                model,
-                external_session_id,
-                external_tool_use_id,
-                repo_url,
-            }));
+        let Some((
+            row_id,
+            event_json,
+            event_ts,
+            session_id,
+            trace_id,
+            tool,
+            external_session_id,
+            external_tool_use_id,
+            repo_url,
+        )) = row
+        else {
+            return Ok(None);
+        };
+        if event_ts < 0 || event_ts > u32::MAX as i64 {
+            return Ok(None);
         }
 
-        Ok(None)
+        let (_, model) = recovery_attrs_from_event_json(&event_json);
+        Ok(Some(SessionEventRecoveryCandidate {
+            row_id,
+            event_ts: event_ts as u32,
+            session_id,
+            trace_id,
+            tool,
+            model,
+            external_session_id,
+            external_tool_use_id,
+            repo_url,
+        }))
     }
 
     /// Backfill cached event metadata for one bounded batch of legacy rows.
@@ -1365,8 +1383,9 @@ impl MetricsDatabase {
                     external_parent_session_id = ?8,
                     external_event_id = ?9,
                     external_parent_event_id = ?10,
-                    external_tool_use_id = ?11
-                WHERE id = ?12
+                    external_tool_use_id = ?11,
+                    repo_url = ?12
+                WHERE id = ?13
                 "#,
             )?;
 
@@ -1387,6 +1406,7 @@ impl MetricsDatabase {
                     metadata.external_event_id.as_deref(),
                     metadata.external_parent_event_id.as_deref(),
                     metadata.external_tool_use_id.as_deref(),
+                    metadata.repo_url.as_deref(),
                     id,
                 ])?;
                 summary.updated += 1;
@@ -1549,6 +1569,7 @@ fn extract_metric_event_metadata(event_json: &str) -> Option<MetricEventMetadata
         external_event_id: event_specific_external_event_id(event_kind, values),
         external_parent_event_id: event_specific_external_parent_event_id(event_kind, values),
         external_tool_use_id: event_specific_external_tool_use_id(event_kind, values),
+        repo_url: sparse_object_string(attrs, attr_pos::REPO_URL),
     })
 }
 
@@ -1698,6 +1719,7 @@ mod tests {
         external_event_id: Option<String>,
         external_parent_event_id: Option<String>,
         external_tool_use_id: Option<String>,
+        repo_url: Option<String>,
     }
 
     fn metric_identifier_rows(db: &MetricsDatabase) -> Vec<MetricIdentifierRow> {
@@ -1706,7 +1728,8 @@ mod tests {
             .prepare(
                 "SELECT trace_id, session_id, parent_session_id, tool, \
                         external_session_id, external_parent_session_id, \
-                        external_event_id, external_parent_event_id, external_tool_use_id \
+                        external_event_id, external_parent_event_id, external_tool_use_id, \
+                        repo_url \
                  FROM metrics ORDER BY id ASC",
             )
             .unwrap();
@@ -1722,6 +1745,7 @@ mod tests {
                     external_event_id: row.get(6)?,
                     external_parent_event_id: row.get(7)?,
                     external_tool_use_id: row.get(8)?,
+                    repo_url: row.get(9)?,
                 })
             })
             .unwrap();
@@ -1735,6 +1759,7 @@ mod tests {
                 "e":{event_kind},
                 "v":{{}},
                 "a":{{
+                    "1":"https://github.com/acme/repo",
                     "20":"codex",
                     "23":"external-session-1",
                     "24":"session-1",
@@ -1770,7 +1795,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "5");
+        assert_eq!(version, "6");
 
         for column in [
             "delivered_ts",
@@ -1790,6 +1815,7 @@ mod tests {
             "external_event_id",
             "external_parent_event_id",
             "external_tool_use_id",
+            "repo_url",
         ] {
             let column_count: i64 = db
                 .conn
@@ -1866,7 +1892,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "5");
+        assert_eq!(version, "6");
     }
 
     #[test]
@@ -1905,7 +1931,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "5");
+        assert_eq!(version, "6");
         assert_eq!(db.count().unwrap(), 1);
         assert_eq!(db.count_retryable().unwrap(), 1);
     }
@@ -1948,7 +1974,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "5");
+        assert_eq!(version, "6");
 
         for column in [
             "delivered_ts",
@@ -1968,6 +1994,7 @@ mod tests {
             "external_event_id",
             "external_parent_event_id",
             "external_tool_use_id",
+            "repo_url",
         ] {
             assert!(db.column_exists("metrics", column).unwrap());
         }
@@ -2017,13 +2044,15 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "5");
+        assert_eq!(version, "6");
         assert!(db.column_exists("metrics", "event_ts").unwrap());
         assert!(db.column_exists("metrics", "event_kind").unwrap());
+        assert!(db.column_exists("metrics", "repo_url").unwrap());
         for index in [
             "metrics_event_ts_kind",
             "metrics_session_kind_ts",
             "metrics_parent_session_kind_ts",
+            "metrics_repo_tool_kind_ts",
         ] {
             assert_metric_index_exists(&db, index);
         }
@@ -2040,6 +2069,7 @@ mod tests {
                 external_event_id: None,
                 external_parent_event_id: None,
                 external_tool_use_id: None,
+                repo_url: None,
             }]
         );
     }
@@ -2076,7 +2106,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, "5");
+        assert_eq!(version, "6");
         assert_metric_index_exists(&db, "metrics_retryable");
         assert_metric_index_missing(&db, "metrics_pending_retry");
         assert_eq!(db.count().unwrap(), 1);
@@ -2132,6 +2162,7 @@ mod tests {
                 external_event_id: None,
                 external_parent_event_id: None,
                 external_tool_use_id: None,
+                repo_url: Some("https://github.com/acme/repo".to_string()),
             }]
         );
     }
@@ -2214,6 +2245,7 @@ mod tests {
                     external_event_id: Some("legacy-event".to_string()),
                     external_parent_event_id: Some("legacy-parent".to_string()),
                     external_tool_use_id: Some("legacy-tool".to_string()),
+                    repo_url: None,
                 },
                 MetricIdentifierRow {
                     trace_id: Some("trace-from-attrs".to_string()),
@@ -2225,6 +2257,7 @@ mod tests {
                     external_event_id: Some("otel-event".to_string()),
                     external_parent_event_id: Some("otel-parent".to_string()),
                     external_tool_use_id: Some("otel-tool".to_string()),
+                    repo_url: None,
                 },
                 MetricIdentifierRow {
                     trace_id: None,
@@ -2236,6 +2269,7 @@ mod tests {
                     external_event_id: None,
                     external_parent_event_id: None,
                     external_tool_use_id: Some("checkpoint-tool-use".to_string()),
+                    repo_url: None,
                 },
             ]
         );
@@ -2416,14 +2450,16 @@ mod tests {
         assert_eq!(candidate.session_id, "session-same-repo");
     }
 
-    /// A same-repo session past the scan bound is a documented, accepted miss.
+    /// Filtering happens on the indexed `repo_url` column, not an
+    /// app-level scan with a `LIMIT`, so no number of newer foreign events
+    /// can hide an older same-repo session.
     #[test]
-    fn test_latest_session_event_candidate_for_repo_bounds_scan_past_the_limit() {
+    fn test_latest_session_event_candidate_for_repo_finds_match_past_a_thousand() {
         let (mut db, _temp_dir) = create_test_db();
         let base_ts = seconds_ago(10_000);
 
         let mut events = Vec::new();
-        for i in 0..(LATEST_SESSION_EVENT_SCAN_LIMIT as u32 + 1) {
+        for i in 0..1_500u32 {
             events.push(session_event_json(
                 base_ts + 1_000 + i,
                 &format!("session-foreign-{i}"),
@@ -2443,12 +2479,10 @@ mod tests {
 
         let candidate = db
             .latest_session_event_candidate_for_repo(&["cursor"], "https://github.com/acme/repo")
-            .unwrap();
+            .unwrap()
+            .expect("an older same-repo session must still be found");
 
-        assert!(
-            candidate.is_none(),
-            "a same-repo session past the scan bound is an accepted, documented miss"
-        );
+        assert_eq!(candidate.session_id, "session-same-repo");
     }
 
     #[test]
@@ -2510,6 +2544,7 @@ mod tests {
                     external_event_id: None,
                     external_parent_event_id: None,
                     external_tool_use_id: None,
+                    repo_url: None,
                 },
                 MetricIdentifierRow {
                     trace_id: None,
@@ -2521,6 +2556,7 @@ mod tests {
                     external_event_id: None,
                     external_parent_event_id: None,
                     external_tool_use_id: None,
+                    repo_url: None,
                 },
                 MetricIdentifierRow {
                     trace_id: None,
@@ -2532,6 +2568,7 @@ mod tests {
                     external_event_id: None,
                     external_parent_event_id: None,
                     external_tool_use_id: None,
+                    repo_url: None,
                 },
             ]
         );
@@ -2581,6 +2618,7 @@ mod tests {
                     external_event_id: None,
                     external_parent_event_id: None,
                     external_tool_use_id: None,
+                    repo_url: Some("https://github.com/acme/repo".to_string()),
                 },
                 MetricIdentifierRow {
                     trace_id: None,
@@ -2592,6 +2630,7 @@ mod tests {
                     external_event_id: Some("legacy-event".to_string()),
                     external_parent_event_id: Some("legacy-parent".to_string()),
                     external_tool_use_id: Some("legacy-tool".to_string()),
+                    repo_url: Some("https://github.com/acme/project".to_string()),
                 },
                 MetricIdentifierRow {
                     trace_id: None,
@@ -2603,6 +2642,7 @@ mod tests {
                     external_event_id: None,
                     external_parent_event_id: None,
                     external_tool_use_id: None,
+                    repo_url: None,
                 },
             ]
         );
