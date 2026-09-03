@@ -87,30 +87,35 @@ const FAST_MULTIPLIER_EXACT: [(&str, f64); 7] = [
 ];
 
 /// Prefix entries also cover the base model's date-suffixed and tier-variant
-/// catalog ids (ccusage's `normalized_prefix` section).
-const FAST_MULTIPLIER_PREFIX: [(&str, f64); 3] = [
+/// catalog ids (ccusage's `normalized_prefix` section). Anthropic's pricing
+/// page currently offers fast mode on Opus 5 and Opus 4.8 only, both at 2x
+/// ($10/$50 vs $5/$25); the 4-6/4-7 rows are kept for transcripts recorded
+/// under the earlier fast research preview (matching ccusage and LiteLLM's
+/// hand-tracked values for that era — today 4-7 fast requests error and 4-6
+/// runs at standard billing).
+const FAST_MULTIPLIER_PREFIX: [(&str, f64); 4] = [
     ("claude-opus-4-6", 6.0),
     ("claude-opus-4-7", 6.0),
     ("claude-opus-4-8", 2.0),
+    ("claude-opus-5", 2.0),
 ];
 
-/// Anthropic's published long-context premium: every token of a request whose
-/// context exceeds 200K bills at these rates on 1M-context models. models.dev
-/// only records these tiers under gateway spellings (google-vertex, azure)
-/// that the provider allowlist drops, so they are hand-tracked here and
-/// stamped onto first-party entries that carry no tiers of their own. Prefix
-/// semantics like [`FAST_MULTIPLIER_PREFIX`]. Both override tables are
-/// applied when a catalog is *loaded* (not when it is fetched/trimmed), so
-/// editing them takes effect on upgrade even against a previously fetched
-/// on-disk cache.
-const CLAUDE_LONG_CONTEXT_PREFIX: [(&str, LongContextRates); 6] = [
-    ("claude-sonnet-4", SONNET_LONG_CONTEXT),
-    ("claude-sonnet-4-5", SONNET_LONG_CONTEXT),
-    ("claude-sonnet-4-6", SONNET_LONG_CONTEXT),
-    ("claude-opus-4-6", OPUS_LONG_CONTEXT),
-    ("claude-opus-4-7", OPUS_LONG_CONTEXT),
-    ("claude-opus-4-8", OPUS_LONG_CONTEXT),
-];
+/// Anthropic's >200K long-context premium applies ONLY to the pre-4.6
+/// 1M-context beta: per the pricing page's "Long context pricing" section,
+/// "Claude 4.6 and later models ... include the full 1M token context window
+/// at standard pricing" — so 4.6+ models must NOT be listed here. Of the
+/// premium-era models, only Sonnet 4.5 is still served first-party (plain
+/// Sonnet 4 is retired, and a bare "claude-sonnet-4" row would token-prefix
+/// onto 4-6 and later ids). models.dev's first-party entries carry no tiers
+/// — correct data for 4.6+, an omission for 4.5 — so 4.5's rates are
+/// hand-tracked from the 1M-beta announcement (2x input, 1.5x output, cache
+/// multipliers on the premium input rate; LiteLLM's `above_200k` for
+/// sonnet-4-5 records the same values). Prefix semantics like
+/// [`FAST_MULTIPLIER_PREFIX`]. Both override tables are applied when a
+/// catalog is *loaded* (not when it is fetched/trimmed), so editing them
+/// takes effect on upgrade even against a previously fetched on-disk cache.
+const CLAUDE_LONG_CONTEXT_PREFIX: [(&str, LongContextRates); 1] =
+    [("claude-sonnet-4-5", SONNET_LONG_CONTEXT)];
 
 const SONNET_LONG_CONTEXT: LongContextRates = LongContextRates {
     threshold: 200_000,
@@ -118,14 +123,6 @@ const SONNET_LONG_CONTEXT: LongContextRates = LongContextRates {
     output: Some(22.5),
     cache_read: Some(0.6),
     cache_write: Some(7.5),
-};
-
-const OPUS_LONG_CONTEXT: LongContextRates = LongContextRates {
-    threshold: 200_000,
-    input: Some(10.0),
-    output: Some(37.5),
-    cache_read: Some(1.0),
-    cache_write: Some(12.5),
 };
 
 /// One above-threshold pricing band (per-million-token USD).
@@ -877,10 +874,14 @@ mod tests {
         let api_json = serde_json::json!({
             "anthropic": {
                 "models": {
-                    "claude-sonnet-4-6": {"cost": {
+                    "claude-sonnet-4-5": {"cost": {
                         "input": 3.0, "output": 15.0, "cache_read": 0.3, "cache_write": 3.75
                     }},
-                    "claude-sonnet-4-6-20260115": {"cost": {"input": 3.0, "output": 15.0}},
+                    "claude-sonnet-4-5-20250929": {"cost": {"input": 3.0, "output": 15.0}},
+                    // 4.6+ prices flat across the full 1M window (pricing
+                    // page, "Long context pricing") and must NOT inherit the
+                    // 4-5 row via prefix matching.
+                    "claude-sonnet-4-6": {"cost": {"input": 3.0, "output": 15.0}},
                     // A published tier must win over the hand-tracked one.
                     "claude-opus-4-8": {"cost": {
                         "input": 5.0, "output": 25.0,
@@ -894,11 +895,11 @@ mod tests {
 
         let entries = trim_catalog(&api_json).unwrap();
         assert_eq!(
-            entries["claude-sonnet-4-6"].long_context_threshold, None,
+            entries["claude-sonnet-4-5"].long_context_threshold, None,
             "trim output is pure models.dev data"
         );
         let catalog = PricingCatalog::from_entries(entries);
-        let sonnet = catalog.pricing_for("claude-sonnet-4-6").unwrap();
+        let sonnet = catalog.pricing_for("claude-sonnet-4-5").unwrap();
         assert_eq!(sonnet.long_context_threshold, Some(200_000));
         assert_eq!(sonnet.input_above, Some(6.0));
         assert_eq!(sonnet.output_above, Some(22.5));
@@ -906,11 +907,19 @@ mod tests {
         assert_eq!(sonnet.cache_write_above, Some(7.5));
         assert_eq!(
             catalog
-                .pricing_for("claude-sonnet-4-6-20260115")
+                .pricing_for("claude-sonnet-4-5-20250929")
                 .unwrap()
                 .long_context_threshold,
             Some(200_000),
             "date-suffixed spellings inherit the premium"
+        );
+        assert_eq!(
+            catalog
+                .pricing_for("claude-sonnet-4-6")
+                .unwrap()
+                .long_context_threshold,
+            None,
+            "4.6+ models price flat across the 1M window"
         );
         let opus = catalog.pricing_for("claude-opus-4-8").unwrap();
         assert_eq!(
@@ -1014,12 +1023,17 @@ mod tests {
         assert_eq!(sol.long_context_threshold, Some(272_000));
         assert!(sol.input_above.is_some());
         assert_eq!(sol.fast_multiplier, 2.0);
-        let sonnet = catalog.pricing_for("claude-sonnet-4-6").unwrap();
-        assert_eq!(sonnet.long_context_threshold, Some(200_000));
-        assert_eq!(sonnet.input_above, Some(6.0));
+        // Anthropic prices Claude 4.6+ flat across the 1M window ("Long
+        // context pricing" on the pricing page); only pre-4.6 1M-beta
+        // models carry the >200K premium.
+        let sonnet45 = catalog.pricing_for("claude-sonnet-4-5").unwrap();
+        assert_eq!(sonnet45.long_context_threshold, Some(200_000));
+        assert_eq!(sonnet45.input_above, Some(6.0));
+        let sonnet46 = catalog.pricing_for("claude-sonnet-4-6").unwrap();
+        assert_eq!(sonnet46.long_context_threshold, None);
         let opus = catalog.pricing_for("claude-opus-4-8").unwrap();
         assert_eq!(opus.fast_multiplier, 2.0);
-        assert_eq!(opus.long_context_threshold, Some(200_000));
+        assert_eq!(opus.long_context_threshold, None);
         let fable = catalog.pricing_for("claude-fable-5").unwrap();
         assert_eq!(fable.fast_multiplier, 1.0);
         assert_eq!(fable.long_context_threshold, None);
