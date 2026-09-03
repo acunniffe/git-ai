@@ -474,16 +474,26 @@ pub struct DaemonLock {
     _lock: LockFile,
 }
 
+/// How long daemon startup keeps retrying the lock before concluding another
+/// daemon genuinely holds it. Transient holders (Windows antivirus/indexer
+/// scans of the freshly created lock file, the previous daemon's handle a
+/// beat away from release during a restart handover) clear within
+/// milliseconds; a live daemon holds the lock for its entire lifetime, so a
+/// few seconds cleanly separates the two. Startup is not latency-sensitive,
+/// and the happy path still acquires on the first attempt with no delay.
+const DAEMON_LOCK_ACQUIRE_TIMEOUT: Duration = Duration::from_secs(3);
+
 impl DaemonLock {
     pub fn acquire(path: &Path) -> Result<Self, GitAiError> {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let lock = LockFile::try_acquire(path).ok_or_else(|| {
-            GitAiError::Generic(
-                "git-ai background service is already running (lock held)".to_string(),
-            )
-        })?;
+        let lock =
+            LockFile::acquire_with_timeout(path, DAEMON_LOCK_ACQUIRE_TIMEOUT).ok_or_else(|| {
+                GitAiError::Generic(
+                    "git-ai background service is already running (lock held)".to_string(),
+                )
+            })?;
         Ok(Self { _lock: lock })
     }
 }

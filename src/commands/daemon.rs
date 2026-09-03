@@ -256,6 +256,14 @@ pub(crate) fn ensure_daemon_running(
     }
 }
 
+/// How long the pre-spawn probe tolerates a held lock before reporting the
+/// daemon as blocked. Transient holders (Windows antivirus/indexer opens of
+/// the lock file) clear within milliseconds; a live daemon holds the lock for
+/// its lifetime, so a genuinely blocked start still reports quickly. Kept
+/// well below the daemon's own 3s acquire budget: the probe only avoids
+/// spawning a doomed process, it is not the correctness gate.
+const DAEMON_STARTUP_PROBE_LOCK_TIMEOUT: Duration = Duration::from_millis(500);
+
 fn daemon_startup_is_blocked(config: &DaemonConfig) -> bool {
     if let Some(parent) = config.lock_path.parent()
         && std::fs::create_dir_all(parent).is_err()
@@ -263,7 +271,7 @@ fn daemon_startup_is_blocked(config: &DaemonConfig) -> bool {
         return false;
     }
 
-    match LockFile::try_acquire(&config.lock_path) {
+    match LockFile::acquire_with_timeout(&config.lock_path, DAEMON_STARTUP_PROBE_LOCK_TIMEOUT) {
         Some(lock) => {
             drop(lock);
             false
