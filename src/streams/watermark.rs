@@ -80,6 +80,117 @@ impl WatermarkType {
             WatermarkType::TimestampCursor => Box::new(TimestampCursorWatermark::initial()),
         }
     }
+
+    /// Initial watermark for a newly-registered stream backed by `path`.
+    ///
+    /// Byte-seeking streams (byte-offset and hybrid) clamp the initial
+    /// backfill: a first-seen transcript is otherwise ingested from byte 0,
+    /// and a multi-hundred-MB historical file (long agent sessions embed file
+    /// contents in every event) forces a full re-ingest whose memory cost
+    /// tripped the memory watchdog in production (#2244). Only the newest
+    /// `Config::max_transcript_backfill_bytes()` are ingested; older history
+    /// is skipped — these streams feed best-effort diagnostics, not authorship
+    /// data. The capped offset is aligned to the next line boundary so the
+    /// first read never starts mid-line (a cut inside a multi-byte UTF-8
+    /// character would otherwise fail UTF-8 validation on every retry and
+    /// wedge the stream).
+    pub fn create_initial_watermark_for_file(
+        &self,
+        path: &std::path::Path,
+    ) -> Box<dyn WatermarkStrategy> {
+        let max_backfill_bytes = crate::config::Config::get().max_transcript_backfill_bytes();
+        self.create_initial_watermark_for_file_with(path, max_backfill_bytes)
+    }
+
+    fn create_initial_watermark_for_file_with(
+        &self,
+        path: &std::path::Path,
+        max_backfill_bytes: u64,
+    ) -> Box<dyn WatermarkStrategy> {
+        if let Some(start) = self.capped_backfill_start(path, max_backfill_bytes) {
+            return match self {
+                WatermarkType::Hybrid => Box::new(HybridWatermark::new(start, 0, None)),
+                _ => Box::new(ByteOffsetWatermark::new(start)),
+            };
+        }
+        self.create_initial_watermark()
+    }
+
+    /// For byte-seeking watermark types over a file larger than
+    /// `max_backfill_bytes`, the line-aligned offset where the capped
+    /// backfill starts. `None` means backfill from the type's zero watermark.
+    fn capped_backfill_start(
+        &self,
+        path: &std::path::Path,
+        max_backfill_bytes: u64,
+    ) -> Option<u64> {
+        if !matches!(self, WatermarkType::ByteOffset | WatermarkType::Hybrid) {
+            return None;
+        }
+        let meta = std::fs::metadata(path).ok()?;
+        if meta.len() <= max_backfill_bytes {
+            return None;
+        }
+        let capped = meta.len() - max_backfill_bytes;
+        let start = backfill_start_from_alignment(
+            align_offset_to_next_line(path, capped),
+            meta.len(),
+            path,
+        );
+        tracing::warn!(
+            path = %path.display(),
+            file_bytes = meta.len(),
+            start_offset = start,
+            "large first-seen stream: skipping historical backfill beyond cap"
+        );
+        Some(start)
+    }
+}
+
+/// Fallback when line alignment of the capped backfill offset fails: never
+/// persist the raw capped offset — it can split a multi-byte UTF-8 character
+/// or begin mid-record, leaving a permanently misaligned cursor. Skipping the
+/// existing content entirely (EOF) is the safe degradation for a transient
+/// I/O failure: these streams feed best-effort diagnostics, and new appends
+/// still flow from a line boundary once the current line completes.
+fn backfill_start_from_alignment(
+    aligned: std::io::Result<u64>,
+    file_len: u64,
+    path: &std::path::Path,
+) -> u64 {
+    match aligned {
+        Ok(start) => start,
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                error = %e,
+                "backfill offset alignment failed; skipping existing content"
+            );
+            file_len
+        }
+    }
+}
+
+/// Smallest line-start offset at or after `offset`: `offset` itself when it
+/// already begins a line, otherwise the byte after the enclosing line's
+/// newline (the file length when the final line is unterminated).
+fn align_offset_to_next_line(path: &std::path::Path, offset: u64) -> std::io::Result<u64> {
+    use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+
+    if offset == 0 {
+        return Ok(0);
+    }
+    let mut file = std::fs::File::open(path)?;
+    file.seek(SeekFrom::Start(offset - 1))?;
+    let mut prev = [0u8; 1];
+    file.read_exact(&mut prev)?;
+    if prev == [b'\n'] {
+        return Ok(offset);
+    }
+    // skip_until discards the enclosing line's remainder without buffering it
+    // and returns the bytes consumed, including the newline when found.
+    let skipped = BufReader::new(file).skip_until(b'\n')?;
+    Ok(offset + skipped as u64)
 }
 
 /// Byte-offset based watermark for append-only files.
@@ -684,5 +795,124 @@ mod tests {
             .deserialize("5000|span_42")
             .unwrap();
         assert_eq!(wm.serialize(), "5000|span_42");
+    }
+
+    /// Backfill cap for fixtures; small so tests stay fast.
+    const TEST_BACKFILL_CAP: u64 = 8 * 1024;
+
+    /// Write a JSONL file of identical lines whose total size exceeds
+    /// [`TEST_BACKFILL_CAP`], returning the file and the expected
+    /// line-aligned capped start offset.
+    fn oversized_jsonl_fixture(line_body: &str) -> (tempfile::NamedTempFile, u64) {
+        use std::io::Write;
+
+        let line = format!("{line_body}\n");
+        let line_len = line.len() as u64;
+        let line_count = TEST_BACKFILL_CAP / line_len + 2;
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        for _ in 0..line_count {
+            file.write_all(line.as_bytes()).unwrap();
+        }
+        file.flush().unwrap();
+
+        let total = line_count * line_len;
+        let capped = total - TEST_BACKFILL_CAP;
+        let expected = capped.div_ceil(line_len) * line_len;
+        (file, expected)
+    }
+
+    #[test]
+    fn test_capped_initial_watermark_aligns_to_next_line_boundary() {
+        // 1003-byte lines guarantee the raw cap offset lands mid-line.
+        let (file, expected) = oversized_jsonl_fixture(&"x".repeat(1002));
+        assert_ne!(
+            expected,
+            std::fs::metadata(file.path()).unwrap().len() - TEST_BACKFILL_CAP,
+            "fixture must exercise the mid-line case"
+        );
+
+        let wm = WatermarkType::ByteOffset
+            .create_initial_watermark_for_file_with(file.path(), TEST_BACKFILL_CAP);
+        assert_eq!(wm.serialize(), expected.to_string());
+    }
+
+    #[test]
+    fn test_capped_initial_watermark_never_splits_multibyte_characters() {
+        // 3-byte characters ensure a naive len-cap offset would slice
+        // mid-character (the 8 KiB cap is not divisible by the 1000-byte line
+        // stride below) and wedge the reader on UTF-8 validation.
+        let (file, expected) = oversized_jsonl_fixture(&"€".repeat(333));
+
+        let wm = WatermarkType::ByteOffset
+            .create_initial_watermark_for_file_with(file.path(), TEST_BACKFILL_CAP);
+        let start: u64 = wm.serialize().parse().unwrap();
+        assert_eq!(start, expected);
+
+        // The first read from the aligned offset must be a complete valid line.
+        use std::io::{Seek, SeekFrom};
+        let mut reader = std::io::BufReader::new(std::fs::File::open(file.path()).unwrap());
+        reader.seek(SeekFrom::Start(start)).unwrap();
+        let mut line = String::new();
+        match crate::streams::types::read_jsonl_line(&mut reader, &mut line, TEST_BACKFILL_CAP)
+            .unwrap()
+        {
+            crate::streams::types::JsonlLineState::Complete(_) => {
+                assert_eq!(line.trim_end(), "€".repeat(333));
+            }
+            other => panic!("expected a complete line at the aligned offset, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_capped_initial_watermark_applies_to_hybrid_streams() {
+        // Droid transcripts seek by byte offset through a Hybrid watermark;
+        // they need the same backfill cap as plain byte-offset streams.
+        let (file, expected) = oversized_jsonl_fixture(&"x".repeat(1002));
+
+        let wm = WatermarkType::Hybrid
+            .create_initial_watermark_for_file_with(file.path(), TEST_BACKFILL_CAP);
+        assert_eq!(wm.serialize(), format!("{expected}|0|"));
+    }
+
+    #[test]
+    fn test_capped_initial_watermark_aligns_across_crlf_line_endings() {
+        // Windows-written transcripts end lines with \r\n; alignment searches
+        // for \n, so the aligned offset must begin the next line (after the
+        // full \r\n pair), never between \r and \n.
+        let (file, expected) = oversized_jsonl_fixture(&format!("{}\r", "x".repeat(1001)));
+
+        let wm = WatermarkType::ByteOffset
+            .create_initial_watermark_for_file_with(file.path(), TEST_BACKFILL_CAP);
+        let start: u64 = wm.serialize().parse().unwrap();
+        assert_eq!(start, expected);
+        assert_eq!(start % 1003, 0, "aligned offset must begin a line");
+    }
+
+    #[test]
+    fn test_alignment_failure_falls_back_to_eof_not_raw_offset() {
+        // A failed alignment must never persist the raw capped offset (it can
+        // split a UTF-8 character or begin mid-record); the safe degradation
+        // is skipping the existing content entirely.
+        let err = std::io::Error::other("injected alignment failure");
+        let start = backfill_start_from_alignment(Err(err), 12345, std::path::Path::new("t"));
+        assert_eq!(start, 12345);
+
+        let start = backfill_start_from_alignment(Ok(777), 12345, std::path::Path::new("t"));
+        assert_eq!(start, 777);
+    }
+
+    #[test]
+    fn test_small_file_keeps_zero_initial_watermark() {
+        use std::io::Write;
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        file.write_all(b"{\"ok\":1}\n").unwrap();
+        file.flush().unwrap();
+
+        let wm = WatermarkType::ByteOffset
+            .create_initial_watermark_for_file_with(file.path(), TEST_BACKFILL_CAP);
+        assert_eq!(wm.serialize(), "0");
+        let wm = WatermarkType::Hybrid
+            .create_initial_watermark_for_file_with(file.path(), TEST_BACKFILL_CAP);
+        assert_eq!(wm.serialize(), "0|0|");
     }
 }
