@@ -140,10 +140,11 @@ fast-speed entries. Codex service tiers come from `thread_settings_applied`
 (sticky), falling back to the `service_tier` in the rollout's codex-home
 `config.toml`, else standard; unlike ccusage, the fallback is resolved and
 stored at extraction time, so a config change never retroactively reprices
-history. Fast multipliers and the Anthropic 200K long-context premium are
-hand-tracked override tables in `model_pricing.rs` (no machine-readable
-source publishes them; the latter appears in models.dev only under gateway
-spellings the provider allowlist drops).
+history. Fast multipliers and the pre-4.6 Anthropic 200K long-context
+premium are hand-tracked override tables in `model_pricing.rs` (no
+machine-readable source publishes them). Per Anthropic's pricing page,
+Claude 4.6+ models include the full 1M context window at standard pricing,
+so the premium override covers only the 1M-beta era (sonnet-4-5).
 
 Costs are event-time: pricing snapshot refreshes do not retroactively
 rewrite already-emitted buckets (only changed buckets recompute) - intended.
