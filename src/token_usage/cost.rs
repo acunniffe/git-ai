@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn transcript_cost_takes_precedence_over_computed() {
         let mut e = entry(
-            "claude-sonnet-4-6-20260115",
+            "claude-sonnet-4-5-20250929",
             TokenCounts {
                 input: 1_000_000,
                 ..Default::default()
@@ -247,10 +247,11 @@ mod tests {
 
     #[test]
     fn computes_cost_from_pricing_catalog() {
-        // claude-sonnet-4 is in the embedded models.dev snapshot.
-        let pricing = pricing_for("claude-sonnet-4-6-20260115").expect("snapshot pricing");
+        // claude-sonnet-4-5 is in the embedded snapshot and carries the
+        // hand-tracked pre-4.6 long-context premium.
+        let pricing = pricing_for("claude-sonnet-4-5-20250929").expect("snapshot pricing");
         let e = entry(
-            "claude-sonnet-4-6-20260115",
+            "claude-sonnet-4-5-20250929",
             TokenCounts {
                 input: 1_000_000,
                 output: 2_000_000,
@@ -273,9 +274,9 @@ mod tests {
 
     #[test]
     fn one_hour_cache_writes_cost_double_the_input_rate() {
-        let pricing = pricing_for("claude-sonnet-4-6-20260115").expect("snapshot pricing");
+        let pricing = pricing_for("claude-sonnet-4-5-20250929").expect("snapshot pricing");
         let mut e = entry(
-            "claude-sonnet-4-6-20260115",
+            "claude-sonnet-4-5-20250929",
             TokenCounts {
                 cache_write: 1_000_000,
                 ..Default::default()
@@ -532,7 +533,7 @@ mod tests {
     #[test]
     fn price_entry_records_the_tier_decision_and_catalog() {
         let long = entry(
-            "claude-sonnet-4-6-20260115",
+            "claude-sonnet-4-5-20250929",
             TokenCounts {
                 input: 300_000,
                 ..Default::default()
