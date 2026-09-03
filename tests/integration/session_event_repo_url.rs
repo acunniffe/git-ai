@@ -641,20 +641,54 @@ fn test_repo_work_dir_priority_infer_fallback() {
     );
 }
 
-// === Test Group 7: Agents without cwd inference ===
+// === Test Group 7: Cursor cwd inference from tool paths ===
 
 #[test]
-fn test_cursor_infer_cwd_returns_none() {
+fn test_cursor_infer_cwd_returns_none_without_tool_paths() {
     use git_ai::streams::agents::CursorAgent;
 
     let temp_dir = TempDir::new().unwrap();
     let transcript = temp_dir.path().join("session.jsonl");
-    fs::write(&transcript, r#"{"type":"user","message":{"content":"hi"}}"#).unwrap();
+    fs::write(
+        &transcript,
+        r#"{"role":"user","message":{"content":[{"type":"text","text":"hi"}]}}"#,
+    )
+    .unwrap();
     let agent = CursorAgent::new();
     assert_eq!(
         agent.infer_cwd(&transcript),
         None,
-        "CursorAgent must return None for infer_cwd (no cwd in format)"
+        "CursorAgent must return None when the transcript has no file-path tool inputs"
+    );
+}
+
+#[test]
+fn test_cursor_infer_cwd_from_tool_path() {
+    use git_ai::streams::agents::CursorAgent;
+
+    let repo = TestRepo::new();
+    let file_path = repo.path().join("src.rs");
+    fs::write(&file_path, "fn main() {}\n").unwrap();
+
+    let temp_dir = TempDir::new().unwrap();
+    let transcript = temp_dir.path().join("session.jsonl");
+    let event = json!({
+        "role": "assistant",
+        "message": {
+            "content": [{
+                "type": "tool_use",
+                "name": "Read",
+                "input": {"path": file_path.to_string_lossy()}
+            }]
+        }
+    });
+    fs::write(&transcript, format!("{event}\n")).unwrap();
+
+    let agent = CursorAgent::new();
+    assert_eq!(
+        agent.infer_cwd(&transcript),
+        Some(repo.path().to_path_buf()),
+        "CursorAgent should infer the git workdir from tool-use file paths"
     );
 }
 

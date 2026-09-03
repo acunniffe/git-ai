@@ -1,11 +1,13 @@
 //! Cursor agent implementation with sweep discovery.
 
 use crate::authorship::authorship_log_serialization::generate_session_id;
+use crate::git::repo_state::worktree_root_for_path;
 use crate::streams::agent::{Agent, PathResolverKind, StreamDescriptor};
 use crate::streams::sweep::{DiscoveredSession, StreamFormat, SweepStrategy};
 use crate::streams::types::{StreamBatch, StreamError};
 use crate::streams::watermark::{ByteOffsetWatermark, WatermarkStrategy};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -62,6 +64,47 @@ impl CursorAgent {
             }
         }
     }
+
+    fn infer_cwd_from_transcript(stream_path: &Path) -> Option<PathBuf> {
+        let file = fs::File::open(stream_path).ok()?;
+        let reader = BufReader::new(file);
+        for line in reader.lines().take(40).map_while(Result::ok) {
+            let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            for path in cursor_event_file_paths(&json) {
+                if let Some(root) = worktree_root_for_path(&path) {
+                    return Some(root);
+                }
+            }
+        }
+        None
+    }
+}
+
+fn cursor_event_file_paths(event: &serde_json::Value) -> Vec<PathBuf> {
+    let Some(content) = event
+        .get("message")
+        .and_then(|message| message.get("content"))
+        .and_then(|content| content.as_array())
+    else {
+        return Vec::new();
+    };
+
+    let mut paths = Vec::new();
+    for item in content {
+        let Some(input) = item.get("input") else {
+            continue;
+        };
+        for key in ["path", "file_path", "target_directory"] {
+            if let Some(path) = input.get(key).and_then(|value| value.as_str())
+                && !path.is_empty()
+            {
+                paths.push(PathBuf::from(path));
+            }
+        }
+    }
+    paths
 }
 
 impl Default for CursorAgent {
@@ -217,6 +260,10 @@ impl Agent for CursorAgent {
         crate::streams::agent::file_time_fallback(file_meta, is_first_event)
     }
 
+    fn infer_cwd(&self, stream_path: &Path) -> Option<PathBuf> {
+        Self::infer_cwd_from_transcript(stream_path)
+    }
+
     fn streams(&self) -> Vec<StreamDescriptor> {
         let format = StreamFormat::CursorJsonl;
         vec![StreamDescriptor {
@@ -234,6 +281,7 @@ impl Agent for CursorAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::streams::agent::Agent;
 
     #[test]
     fn test_sweep_strategy() {
@@ -378,5 +426,59 @@ mod tests {
         assert_eq!(result.events.len(), 2);
         assert_eq!(result.events[0]["role"].as_str(), Some("user"));
         assert_eq!(result.events[1]["role"].as_str(), Some("assistant"));
+    }
+
+    #[test]
+    fn test_infer_cwd_from_transcript_tool_path() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let repo = tempfile::tempdir().unwrap();
+        fs::create_dir_all(repo.path().join(".git")).unwrap();
+        fs::write(
+            repo.path().join(".git").join("HEAD"),
+            "ref: refs/heads/main",
+        )
+        .unwrap();
+        fs::create_dir_all(repo.path().join("src")).unwrap();
+        let file_path = repo.path().join("src").join("main.rs");
+        fs::write(&file_path, "fn main() {}\n").unwrap();
+
+        let mut transcript = NamedTempFile::new().unwrap();
+        writeln!(
+            transcript,
+            r#"{{"role":"user","message":{{"content":[{{"type":"text","text":"edit main"}}]}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            transcript,
+            r#"{{"role":"assistant","message":{{"content":[{{"type":"tool_use","name":"Read","input":{{"path":{}}}}}]}}}}"#,
+            serde_json::to_string(&file_path.to_string_lossy()).unwrap()
+        )
+        .unwrap();
+        transcript.flush().unwrap();
+
+        let agent = CursorAgent::new();
+        assert_eq!(
+            agent.infer_cwd(transcript.path()).as_deref(),
+            Some(repo.path())
+        );
+    }
+
+    #[test]
+    fn test_infer_cwd_none_without_repo_paths() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut transcript = NamedTempFile::new().unwrap();
+        writeln!(
+            transcript,
+            r#"{{"role":"user","message":{{"content":[{{"type":"text","text":"hello"}}]}}}}"#
+        )
+        .unwrap();
+        transcript.flush().unwrap();
+
+        let agent = CursorAgent::new();
+        assert_eq!(agent.infer_cwd(transcript.path()), None);
     }
 }

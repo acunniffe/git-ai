@@ -553,7 +553,8 @@ fn recover_session_event_mtime(
         insert_session_event_record(authorship_log, candidate, human_author);
         add_attestation(authorship_log, &file_path, &author_id, &unknown_lines);
 
-        let selected_model = session_event_model(candidate);
+        let selected_model = recovery_model_for_session(authorship_log, &candidate.session_id)
+            .unwrap_or_else(|| session_event_model(candidate));
         let metadata = json!({
             "solver": "session_event_mtime",
             "file_path": file_path.as_str(),
@@ -641,6 +642,8 @@ fn recover_commit_metadata(
             human_author: Some(human_author.to_string()),
             custom_attributes: None,
         });
+    let selected_model = recovery_model_for_session(authorship_log, &selection.session_id)
+        .unwrap_or_else(|| selection.agent_id.model.clone());
 
     let detected_agents = detections
         .iter()
@@ -672,7 +675,7 @@ fn recover_commit_metadata(
             "selection_tier": selection.tier,
             "selected_session_id": selection.session_id.as_str(),
             "selected_tool": selection.agent_id.tool.as_str(),
-            "selected_model": selection.agent_id.model.as_str(),
+            "selected_model": selected_model.as_str(),
             "selected_external_session_id": selection.agent_id.id.as_str(),
             "selected_external_tool_use_id": selection.external_tool_use_id.as_deref(),
             "selected_repo_url": selection.repo_url.as_deref(),
@@ -692,7 +695,7 @@ fn recover_commit_metadata(
             session_id: &selection.session_id,
             trace_id: &trace_id,
             tool: &selection.agent_id.tool,
-            model: &selection.agent_id.model,
+            model: &selected_model,
             external_session_id: &selection.agent_id.id,
             external_tool_use_id: selection.external_tool_use_id.as_deref(),
             edit_kind: "attribution_recovery_commit_metadata",
@@ -1209,21 +1212,20 @@ fn select_latest_commit_metadata_metric_session(
                 return Ok(None);
             }
         };
-        if let Some((candidate, _)) = candidates
+        // Only an exact repo_url match is safe here: this fallback has no
+        // time window. Unscoped Cursor session events (no repo_url) would
+        // otherwise attach whatever Cursor session last ran on the machine.
+        if let Some(candidate) = candidates
             .iter()
-            .filter_map(|candidate| {
-                let repo_tier = commit_metadata_metric_repo_tier(candidate, target_repo_url)?;
-                Some((candidate, repo_tier))
+            .filter(|candidate| {
+                commit_metadata_metric_repo_tier(candidate, target_repo_url)
+                    == Some(CommitMetadataMetricRepoTier::SameRepoUrl)
             })
-            .min_by(
-                |(left_candidate, left_tier), (right_candidate, right_tier)| {
-                    left_tier
-                        .score()
-                        .cmp(&right_tier.score())
-                        .then_with(|| right_candidate.event_ts.cmp(&left_candidate.event_ts))
-                        .then_with(|| right_candidate.row_id.cmp(&left_candidate.row_id))
-                },
-            )
+            .max_by(|left, right| {
+                left.event_ts
+                    .cmp(&right.event_ts)
+                    .then_with(|| left.row_id.cmp(&right.row_id))
+            })
         {
             return Ok(Some(commit_metadata_selection_from_metric_candidate(
                 candidate,
@@ -1686,6 +1688,15 @@ fn session_event_model(candidate: &SessionEventRecoveryCandidate) -> String {
         .clone()
         .filter(|model| !model.is_empty())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn recovery_model_for_session(authorship_log: &AuthorshipLog, session_id: &str) -> Option<String> {
+    authorship_log
+        .metadata
+        .sessions
+        .get(session_id)
+        .map(|session| session.agent_id.model.clone())
+        .filter(|model| !model.is_empty() && model != "unknown")
 }
 
 fn unknown_lines_by_file(
@@ -2541,6 +2552,79 @@ mod tests {
         assert!(
             should_recover_remaining_as_known_human(&log),
             "a landed known-human attestation must enable recovery"
+        );
+    }
+
+    /// Session-event candidates for Cursor rarely carry a model, but the
+    /// session they belong to is often already known from other lines in
+    /// the same commit (recorded via a normal checkpoint). Recovery must
+    /// reuse that already-known model instead of writing "unknown" into the
+    /// recovery metric when a real model is on record for the session.
+    #[test]
+    fn recovery_model_for_session_reuses_known_model() {
+        let mut log = AuthorshipLog::new();
+        log.metadata.sessions.insert(
+            "s_known".to_string(),
+            SessionRecord {
+                agent_id: AgentId {
+                    tool: "cursor".to_string(),
+                    id: "cursor-session".to_string(),
+                    model: "grok-4.5".to_string(),
+                },
+                human_author: None,
+                custom_attributes: None,
+            },
+        );
+
+        assert_eq!(
+            recovery_model_for_session(&log, "s_known"),
+            Some("grok-4.5".to_string()),
+            "a session with a known model must be reused instead of falling back to unknown"
+        );
+    }
+
+    #[test]
+    fn recovery_model_for_session_falls_back_when_model_is_unknown_or_missing() {
+        let mut log = AuthorshipLog::new();
+        log.metadata.sessions.insert(
+            "s_unknown".to_string(),
+            SessionRecord {
+                agent_id: AgentId {
+                    tool: "cursor".to_string(),
+                    id: "cursor-session".to_string(),
+                    model: "unknown".to_string(),
+                },
+                human_author: None,
+                custom_attributes: None,
+            },
+        );
+        log.metadata.sessions.insert(
+            "s_empty".to_string(),
+            SessionRecord {
+                agent_id: AgentId {
+                    tool: "cursor".to_string(),
+                    id: "cursor-session".to_string(),
+                    model: String::new(),
+                },
+                human_author: None,
+                custom_attributes: None,
+            },
+        );
+
+        assert_eq!(
+            recovery_model_for_session(&log, "s_unknown"),
+            None,
+            "a session recorded as unknown must not shadow the candidate's own model lookup"
+        );
+        assert_eq!(
+            recovery_model_for_session(&log, "s_empty"),
+            None,
+            "a session with an empty model must not shadow the candidate's own model lookup"
+        );
+        assert_eq!(
+            recovery_model_for_session(&log, "s_missing"),
+            None,
+            "a session that has not been recorded yet must fall back to the candidate's model"
         );
     }
 

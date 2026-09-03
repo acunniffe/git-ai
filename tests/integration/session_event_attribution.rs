@@ -788,7 +788,7 @@ fn test_commit_metadata_recovery_uses_nearest_matching_tool_session_event() {
 }
 
 #[test]
-fn test_commit_metadata_recovery_falls_back_to_most_recent_matching_tool_session() {
+fn test_commit_metadata_recovery_does_not_attach_unscoped_latest_tool_session() {
     let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
     let repo =
         TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
@@ -829,12 +829,26 @@ fn test_commit_metadata_recovery_falls_back_to_most_recent_matching_tool_session
             .metadata
             .sessions
             .contains_key(&older_session_id),
-        "latest fallback should not select an older Claude session"
+        "unscoped session events must not be attached via latest-tool fallback"
+    );
+    assert!(
+        !commit
+            .authorship_log
+            .metadata
+            .sessions
+            .contains_key(&latest_session_id),
+        "unscoped session events must not be attached via latest-tool fallback"
+    );
+    let claude_sessions = session_ids_for_tool(&commit.authorship_log, "claude");
+    assert_eq!(
+        claude_sessions.len(),
+        1,
+        "Co-authored-by without a repo-linked session should synthesize one session"
     );
     assert_session_attests_lines(
         &commit.authorship_log,
         "metadata-latest.txt",
-        &latest_session_id,
+        &claude_sessions[0],
         &[1],
     );
 }
@@ -894,6 +908,122 @@ fn test_commit_metadata_recovery_latest_matching_tool_prefers_current_repo_url()
         &commit.authorship_log,
         "metadata-latest-repo-url.txt",
         &same_repo_session_id,
+        &[1],
+    );
+}
+
+#[test]
+fn test_commit_metadata_recovery_latest_ignores_newer_unscoped_session() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&[
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/acme/metadata-unscoped.git",
+    ])
+    .expect("remote add should succeed");
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    let file_path = repo.path().join("metadata-latest-unscoped.txt");
+    fs::write(&file_path, "cursor recovered ignoring unscoped session\n").unwrap();
+    let file_ts = file_mtime_secs(&file_path);
+    let unscoped_session_id = insert_session_event_for_tool(
+        &metrics_db_path,
+        file_ts.saturating_sub(100),
+        "cursor",
+        "cursor-unscoped-session",
+        "cursor-unscoped-tool",
+        None,
+    );
+    let same_repo_session_id = insert_session_event_for_tool(
+        &metrics_db_path,
+        file_ts.saturating_sub(200),
+        "cursor",
+        "cursor-same-repo-unscoped",
+        "cursor-same-repo-unscoped-tool",
+        Some("https://github.com/acme/metadata-unscoped"),
+    );
+
+    let commit = repo
+        .stage_all_and_commit(
+            "Recover from Cursor trailer\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+        )
+        .expect("commit should succeed");
+
+    let mut file = repo.filename("metadata-latest-unscoped.txt");
+    file.assert_committed_lines(lines!["cursor recovered ignoring unscoped session".ai()]);
+    assert!(
+        !commit
+            .authorship_log
+            .metadata
+            .sessions
+            .contains_key(&unscoped_session_id),
+        "latest fallback must not attach a more recent session event that has no repo_url"
+    );
+    assert_session_attests_lines(
+        &commit.authorship_log,
+        "metadata-latest-unscoped.txt",
+        &same_repo_session_id,
+        &[1],
+    );
+}
+
+#[test]
+fn test_commit_metadata_recovery_does_not_use_unscoped_session_from_another_project() {
+    let (_metrics_db_dir, metrics_db_path) = isolated_metrics_db_path();
+    let repo =
+        TestRepo::new_with_daemon_env(&[("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str())]);
+    repo.git(&[
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/acme/product-front.git",
+    ])
+    .expect("remote add should succeed");
+    repo.git(&["commit", "--allow-empty", "-m", "initial"])
+        .expect("initial empty commit should succeed");
+
+    let file_path = repo.path().join("product-name.txt");
+    fs::write(&file_path, "one recovered line\n").unwrap();
+    let file_ts = file_mtime_secs(&file_path);
+    let other_project_session_id = insert_session_event_for_tool(
+        &metrics_db_path,
+        file_ts.saturating_sub(42_000),
+        "cursor",
+        "cursor-other-project-session",
+        "cursor-other-project-tool",
+        None,
+    );
+
+    let commit = repo
+        .stage_all_and_commit(
+            "feat(product-name): add field\n\nCo-authored-by: Cursor <cursoragent@cursor.com>",
+        )
+        .expect("commit should succeed");
+
+    let mut file = repo.filename("product-name.txt");
+    file.assert_committed_lines(lines!["one recovered line".ai()]);
+    assert!(
+        !commit
+            .authorship_log
+            .metadata
+            .sessions
+            .contains_key(&other_project_session_id),
+        "Co-authored-by must not attach an unscoped Cursor session from another project"
+    );
+    let cursor_sessions = session_ids_for_tool(&commit.authorship_log, "cursor");
+    assert_eq!(
+        cursor_sessions.len(),
+        1,
+        "unscoped foreign sessions should fall back to a synthesized Cursor session"
+    );
+    assert_session_attests_lines(
+        &commit.authorship_log,
+        "product-name.txt",
+        &cursor_sessions[0],
         &[1],
     );
 }
