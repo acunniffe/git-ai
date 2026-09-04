@@ -2908,6 +2908,115 @@ fn daemon_await_completes_with_idle_open_mutating_root() {
     write_trace_frames(&mut open_trace, &[trace_atexit_frame(&sid, 0, 1_002)]);
 }
 
+#[cfg(not(windows))]
+fn status_daemon(repo: &TestRepo) -> Value {
+    let response = send_control_request(
+        &daemon_control_socket_path(repo),
+        &ControlRequest::StatusDaemon,
+    )
+    .expect("status.daemon request");
+    assert!(response.ok, "status.daemon failed: {response:?}");
+    response.data.expect("status.daemon data")
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_status_daemon_reports_open_root_and_fenced_checkpoint() {
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_DAEMON_CAUSAL_GRACE_MS", "10000")]);
+    let idle = status_daemon(&repo);
+    assert_eq!(idle["trace_roots_open_mutating"], json!(0), "{idle}");
+    assert_eq!(idle["sequencer_entries_total"], json!(0), "{idle}");
+    assert_eq!(idle["snapshot_partial"], json!(false), "{idle}");
+    assert!(idle["uptime_seconds"].is_u64(), "{idle}");
+    assert!(idle["checkpoints_dropped"].is_u64(), "{idle}");
+
+    let sid = live_pid_trace_sid("status");
+    let mut open_trace = repo.open_mutating_commit_trace_root(&sid, true);
+    // The reader must have registered the root before anything waits on it.
+    let started = std::time::Instant::now();
+    while status_daemon(&repo)["trace_roots_open_mutating"] != json!(1) {
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "status.daemon never reported the open root"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+    // The root writes refs (as a commit running its post-commit hook would):
+    // from here on its family's work is fenced behind it.
+    repo.git_og_with_env(
+        &[
+            "commit",
+            "--allow-empty",
+            "-m",
+            "written under the open root",
+        ],
+        &[("GIT_TRACE2_EVENT", "0")],
+    )
+    .expect("untraced commit");
+    fs::write(repo.path().join("fenced.txt"), "fenced ai\n").unwrap();
+    repo.git_ai_without_pre_sync_for_test(&["checkpoint", "mock_ai", "fenced.txt"])
+        .unwrap();
+
+    let started = std::time::Instant::now();
+    let fenced = loop {
+        let snapshot = status_daemon(&repo);
+        if snapshot["trace_roots_open_mutating"] == json!(1)
+            && snapshot["families"][0]["front_kind"] == json!("checkpoint")
+        {
+            break snapshot;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "status.daemon never reported the fenced checkpoint: {snapshot}"
+        );
+        thread::sleep(Duration::from_millis(25));
+    };
+    assert_eq!(
+        fenced["sequencer_entries_checkpoints"],
+        json!(1),
+        "{fenced}"
+    );
+    assert_eq!(fenced["sequencer_fenced_families"], json!(1), "{fenced}");
+    assert_eq!(fenced["trace_roots_written"], json!(1), "{fenced}");
+    assert_eq!(fenced["families"][0]["fenced"], json!(true), "{fenced}");
+    assert_eq!(fenced["sequencer_stalled"], json!(false), "{fenced}");
+
+    write_trace_frames(&mut open_trace, &[trace_atexit_frame(&sid, 0, 1_002)]);
+    let started = std::time::Instant::now();
+    loop {
+        let snapshot = status_daemon(&repo);
+        if snapshot["trace_roots_open_mutating"] == json!(0)
+            && snapshot["sequencer_entries_total"] == json!(0)
+        {
+            break;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "status.daemon never reported the drained checkpoint: {snapshot}"
+        );
+        thread::sleep(Duration::from_millis(25));
+    }
+    repo.sync_daemon();
+}
+
+#[test]
+fn daemon_bg_status_includes_daemon_health() {
+    let repo = TestRepo::new_dedicated_daemon();
+    let output = bg_command(&repo, "status", &[]);
+    assert!(output.status.success(), "bg status failed: {output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let value: Value = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|error| panic!("bg status must print JSON ({error}): {stdout}"));
+    assert_eq!(value["ok"], json!(true), "{value}");
+    assert!(value["data"]["family_key"].is_string(), "{value}");
+    assert!(value["daemon"]["uptime_seconds"].is_u64(), "{value}");
+    assert!(
+        value["daemon"]["sequencer_entries_total"].is_u64(),
+        "{value}"
+    );
+    assert!(value["daemon"]["families"].is_array(), "{value}");
+}
+
 #[test]
 #[cfg(not(windows))]
 fn daemon_sync_family_ignores_open_mutating_root_from_other_family() {

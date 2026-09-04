@@ -33,6 +33,10 @@ pub enum ControlRequest {
     /// Report ingest loss counters (dropped trace payloads/connections).
     #[serde(rename = "stats.ingest")]
     StatsIngest,
+    /// Snapshot of the daemon's attribution pipeline: per-family pending work
+    /// and fence state, open trace roots, and loss counters.
+    #[serde(rename = "status.daemon")]
+    StatusDaemon,
     #[serde(rename = "snapshot.watermarks")]
     SnapshotWatermarks { repo_working_dir: String },
     #[serde(rename = "bash_session.start")]
@@ -210,6 +214,14 @@ mod tests {
                 "method": "metrics.reingest",
                 "params": { "from_ts": 100, "to_ts": 200 }
             })
+        );
+    }
+
+    #[test]
+    fn status_daemon_request_uses_stable_wire_shape() {
+        assert_eq!(
+            serde_json::to_value(ControlRequest::StatusDaemon).unwrap(),
+            serde_json::json!({ "method": "status.daemon" })
         );
     }
 }
