@@ -486,6 +486,26 @@ pub fn set_daemon_internal_telemetry(handle: DaemonTelemetryWorkerHandle) {
     let _ = DAEMON_INTERNAL_TELEMETRY.set(handle);
 }
 
+/// Supplies the pipeline-health fields folded into each heartbeat.
+pub type HeartbeatFieldsProvider =
+    Arc<dyn Fn() -> BTreeMap<String, DaemonLogFieldValue> + Send + Sync>;
+
+/// Registered once at daemon startup by the coordinator, so the worker
+/// carries no coordinator dependency and the 15-minute cadence stays here.
+static DAEMON_HEARTBEAT_FIELDS_PROVIDER: std::sync::OnceLock<HeartbeatFieldsProvider> =
+    std::sync::OnceLock::new();
+
+pub fn set_daemon_heartbeat_fields_provider(provider: HeartbeatFieldsProvider) {
+    let _ = DAEMON_HEARTBEAT_FIELDS_PROVIDER.set(provider);
+}
+
+fn daemon_heartbeat_health_fields() -> BTreeMap<String, DaemonLogFieldValue> {
+    DAEMON_HEARTBEAT_FIELDS_PROVIDER
+        .get()
+        .map(|provider| provider())
+        .unwrap_or_default()
+}
+
 /// Submit telemetry from within the daemon process.
 /// Returns true if the handle was available and envelopes were submitted.
 pub fn submit_daemon_internal_telemetry(envelopes: Vec<TelemetryEnvelope>) -> bool {
@@ -719,7 +739,10 @@ async fn telemetry_flush_loop(
             while next_heartbeat_at <= now {
                 next_heartbeat_at += DAEMON_LOG_HEARTBEAT_INTERVAL;
             }
-            Some(daemon_heartbeat_event(started_at.elapsed()))
+            Some(daemon_heartbeat_event(
+                started_at.elapsed(),
+                daemon_heartbeat_health_fields(),
+            ))
         } else {
             None
         };
@@ -1261,8 +1284,12 @@ fn daemon_run_id() -> &'static str {
     DAEMON_RUN_ID.get_or_init(crate::uuid::generate_v4).as_str()
 }
 
-fn daemon_heartbeat_event(uptime: std::time::Duration) -> DaemonLogEvent {
-    let mut fields = BTreeMap::new();
+/// Builds the heartbeat from the daemon's health `fields`; the contract fields
+/// (`uptime_seconds`, `os`, `arch`) are set last and always win.
+fn daemon_heartbeat_event(
+    uptime: std::time::Duration,
+    mut fields: BTreeMap<String, DaemonLogFieldValue>,
+) -> DaemonLogEvent {
     fields.insert(
         "uptime_seconds".to_string(),
         DaemonLogFieldValue::from(uptime.as_secs()),

@@ -8,7 +8,12 @@ This document describes the Git AI client-side daemon diagnostics upload path.
 - Events are buffered in memory by the daemon telemetry worker and flushed with
   the existing API client/auth headers.
 - A heartbeat event is generated roughly every 15 minutes while the daemon is
-  running.
+  running. Besides `uptime_seconds`/`os`/`arch` it carries the daemon health
+  snapshot (the same data as the `status.daemon` control request / `git-ai bg
+  status`): pending sequencer work, open, finishing and written trace roots,
+  causal-fence releases, loss counters, a `sequencer_stalled` flag, and the two
+  families with the oldest pending work as `family_<i>_*` fields. Family keys
+  (local repository paths) are replaced by a stable `family_<i>_id` digest.
 - Upload is best-effort and fire-and-forget. The telemetry worker dispatches at
   most one daemon-log upload at a time on a detached thread and does not await
   endpoint availability.
@@ -54,7 +59,17 @@ Authentication uses the same headers as metrics upload:
       "fields": {
         "uptime_seconds": 900,
         "os": "linux",
-        "arch": "x86_64"
+        "arch": "x86_64",
+        "snapshot_partial": false,
+        "sequencer_entries_total": 1,
+        "sequencer_fenced_families": 1,
+        "sequencer_oldest_entry_age_ms": 420,
+        "sequencer_stalled": false,
+        "trace_roots_open_mutating": 1,
+        "causal_grace_expirations": 0,
+        "family_0_id": "3f2a9c1d8e07",
+        "family_0_front_kind": "checkpoint",
+        "family_0_fenced": true
       }
     }
   ]

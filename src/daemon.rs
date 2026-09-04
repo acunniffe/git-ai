@@ -9959,6 +9959,18 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
     }
 
     let coordinator = Arc::new(coordinator_inner);
+    // Heartbeats carry the pipeline health snapshot. The provider holds a Weak
+    // reference so the telemetry worker never extends the coordinator's life.
+    let heartbeat_coordinator = Arc::downgrade(&coordinator);
+    crate::daemon::telemetry_worker::set_daemon_heartbeat_fields_provider(Arc::new(move || {
+        heartbeat_coordinator
+            .upgrade()
+            .map(|coordinator| {
+                crate::daemon::health::DaemonHealthSnapshot::capture(&coordinator)
+                    .heartbeat_fields()
+            })
+            .unwrap_or_default()
+    }));
     coordinator.start_trace_ingest_worker()?;
     coordinator.start_checkpoint_ingress_worker()?;
     if let Some(limit_mb) = config::Config::get().daemon_memory_limit_mb()

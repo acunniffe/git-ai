@@ -11,13 +11,18 @@ use super::{
     FAMILY_WRITTEN_ROOT_FENCE_CAP_MULTIPLIER, FamilySequencerEntry, IngestLossSnapshot, RootFence,
     RootFenceProbe, now_unix_nanos,
 };
+use crate::api::types::DaemonLogFieldValue;
 use serde::Serialize;
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 /// Pending work older than this is a stall even under a long causal grace.
 const SEQUENCER_STALL_FLOOR: Duration = Duration::from_secs(10);
+/// Families detailed in the heartbeat (oldest pending work first). With the
+/// aggregates this keeps a heartbeat under the 64-field daemon-log contract.
+pub const HEARTBEAT_FAMILY_DETAIL_LIMIT: usize = 2;
 
 /// Open mutating roots observed (a reflog stat each) per snapshot. Beyond
 /// this many concurrently open commands the snapshot is reported partial
@@ -372,6 +377,71 @@ fn front_fence(
         }
     }
     fence
+}
+
+impl DaemonHealthSnapshot {
+    /// Flattens the snapshot into primitive heartbeat fields: every aggregate
+    /// under its own name, plus the [`HEARTBEAT_FAMILY_DETAIL_LIMIT`] families
+    /// with the oldest pending work as `family_<i>_<field>`. Family keys are
+    /// local repository paths and never leave the machine: the heartbeat
+    /// carries a stable `family_<i>_id` digest instead, enough to correlate
+    /// consecutive heartbeats and daemon log lines that carry the same digest.
+    pub fn heartbeat_fields(&self) -> BTreeMap<String, DaemonLogFieldValue> {
+        let mut fields = BTreeMap::new();
+        let Ok(Value::Object(snapshot)) = serde_json::to_value(self) else {
+            return fields;
+        };
+        for (key, value) in &snapshot {
+            if let Some(value) = primitive_field(value) {
+                fields.insert(key.clone(), value);
+            }
+        }
+        for (index, family) in self
+            .families
+            .iter()
+            .filter(|family| family.entries > 0)
+            .take(HEARTBEAT_FAMILY_DETAIL_LIMIT)
+            .enumerate()
+        {
+            let Ok(Value::Object(family_fields)) = serde_json::to_value(family) else {
+                continue;
+            };
+            fields.insert(
+                format!("family_{index}_id"),
+                DaemonLogFieldValue::from(family_id(&family.key)),
+            );
+            for (key, value) in &family_fields {
+                if key == "key" {
+                    continue;
+                }
+                if let Some(value) = primitive_field(value) {
+                    fields.insert(format!("family_{index}_{key}"), value);
+                }
+            }
+        }
+        fields
+    }
+}
+
+/// A stable, non-reversible digest of a family key (a local path).
+fn family_id(family_key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(family_key.as_bytes());
+    digest
+        .iter()
+        .take(6)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn primitive_field(value: &Value) -> Option<DaemonLogFieldValue> {
+    match value {
+        Value::Null => Some(DaemonLogFieldValue::Null),
+        Value::Bool(value) => Some(DaemonLogFieldValue::Bool(*value)),
+        Value::Number(value) => Some(DaemonLogFieldValue::Number(value.clone())),
+        Value::String(value) => Some(DaemonLogFieldValue::String(value.clone())),
+        Value::Array(_) | Value::Object(_) => None,
+    }
 }
 
 #[cfg(test)]
