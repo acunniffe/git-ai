@@ -1989,7 +1989,7 @@ fn test_delayed_current_branch_update_ref_trace_preserves_new_commit_attribution
 
 #[test]
 fn test_update_ref_side_effect_waits_for_prior_open_trace_root_until_causal_grace() {
-    let repo = TestRepo::new();
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_DAEMON_CAUSAL_GRACE_MS", "2000")]);
     setup_initial_commit(&repo);
 
     repo.git(&["checkout", "-b", "feature"])
@@ -2049,14 +2049,50 @@ fn test_update_ref_side_effect_waits_for_prior_open_trace_root_until_causal_grac
     let released = std::time::Instant::now();
     while !daemon_completed_session(&repo, &session) {
         assert!(
-            released.elapsed() < Duration::from_secs(5),
+            released.elapsed() < Duration::from_secs(8),
             "update-ref side effect stayed fenced behind a live open trace root past the causal grace"
         );
         std::thread::sleep(Duration::from_millis(10));
     }
 
+    // The release is a fact about the root: a later command in the family
+    // does not wait out the grace again while the same root stays open.
+    let later_tree_sha = raw_untraced_git(&repo, &["write-tree"]).trim().to_string();
+    let later_commit_sha = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &later_tree_sha,
+            "-p",
+            &commit_sha,
+            "-m",
+            "later plumbing commit behind a released root",
+        ],
+    )
+    .trim()
+    .to_string();
+    let later_session = new_daemon_test_sync_session_id();
+    let later_start = std::time::Instant::now();
+    raw_traced_git_with_session(
+        &repo,
+        &[
+            "update-ref",
+            "refs/heads/feature",
+            &later_commit_sha,
+            &commit_sha,
+        ],
+        &later_session,
+    );
+    while !daemon_completed_session(&repo, &later_session) {
+        assert!(
+            later_start.elapsed() < Duration::from_millis(1_200),
+            "a later command waited out the causal grace again behind an already released root"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
     drop(unfinished_trace);
-    repo.sync_daemon_external_completion_sessions(&[session]);
+    repo.sync_daemon_external_completion_sessions(&[session, later_session]);
 
     assert_note_has_ai_for_file(&repo, &commit_sha, "sequenced-branch-plumbing.txt");
     let mut feature_file = repo.filename("sequenced-branch-plumbing.txt");

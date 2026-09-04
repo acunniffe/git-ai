@@ -12496,6 +12496,85 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
+    async fn fence_release_is_a_fact_about_the_root_not_the_waiter() {
+        let grace = Duration::from_millis(20);
+        let hard_cap = grace * FAMILY_CAUSAL_FENCE_HARD_CAP_MULTIPLIER;
+        let coord = ActorDaemonCoordinator::new_with_causal_grace(grace);
+        let sid = dead_root_sid("leaked-fd");
+        open_unattributed_commit_root(&coord, &sid);
+        append_ready_rebase(&coord, "family-a");
+        tokio::time::sleep(hard_cap + grace).await;
+        assert_eq!(
+            coord.family_front_entry_disposition("family-a"),
+            FamilyFrontDisposition::Ready,
+            "the hard cap releases the root"
+        );
+        assert_eq!(
+            coord.causal_fence_hard_cap_releases.load(Ordering::Relaxed),
+            1
+        );
+
+        // The root stays registered (its connection never closed). Work that
+        // arrives later must not pay the whole bound again: the release is
+        // recorded against the root.
+        coord
+            .family_sequencers_by_family
+            .lock()
+            .unwrap()
+            .get_mut("family-a")
+            .unwrap()
+            .entries
+            .clear();
+        append_ready_rebase(&coord, "family-a");
+        assert_eq!(
+            coord.family_front_entry_disposition("family-a"),
+            FamilyFrontDisposition::Ready,
+            "a released root fences nothing for later work"
+        );
+        assert!(
+            !coord.has_open_mutating_roots_holding_fence(),
+            "nor is it pending work for await"
+        );
+        assert_eq!(
+            coord.causal_fence_hard_cap_releases.load(Ordering::Relaxed),
+            1,
+            "one release per root"
+        );
+    }
+
+    #[tokio::test]
+    async fn written_root_whose_process_is_gone_holds_only_to_the_hard_cap() {
+        let grace = Duration::from_millis(20);
+        let hard_cap = grace * FAMILY_CAUSAL_FENCE_HARD_CAP_MULTIPLIER;
+        let coord = ActorDaemonCoordinator::new_with_causal_grace(grace);
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+        commit_untraced(&repo);
+        // The root wrote refs, then died by signal with a sibling connection
+        // (a maintenance child) keeping it registered: its final frame will
+        // never come.
+        let sid = dead_root_sid("killed-after-write");
+        open_attributed_commit_root(&coord, &sid, &repo);
+        commit_untraced(&repo);
+        append_ready_rebase(&coord, &family);
+        tokio::time::sleep(grace * 3).await;
+        assert!(
+            is_fenced(coord.family_front_entry_disposition(&family)),
+            "a written root holds while it may still be finishing"
+        );
+        tokio::time::sleep(hard_cap).await;
+        assert_eq!(
+            coord.family_front_entry_disposition(&family),
+            FamilyFrontDisposition::Ready,
+            "a written root whose process is gone is bounded by the hard cap, not the written cap"
+        );
+        assert_eq!(
+            coord.causal_fence_hard_cap_releases.load(Ordering::Relaxed),
+            1
+        );
+    }
+
+    #[tokio::test]
     async fn family_fence_holds_past_grace_when_root_process_is_dead() {
         let grace = Duration::from_millis(20);
         let hard_cap = grace * FAMILY_CAUSAL_FENCE_HARD_CAP_MULTIPLIER;
