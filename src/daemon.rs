@@ -10584,27 +10584,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pending_attribution_work_fence_ignores_idle_pending_roots() {
+    async fn pending_attribution_work_ignores_open_trace_roots() {
         let coord = ActorDaemonCoordinator::new();
         assert!(
             !coord.has_pending_attribution_work(),
             "an idle daemon must not defer automatic restarts"
         );
 
-        // An idle interactive command (PendingRoot placeholder, e.g. a rebase
-        // waiting on an editor) must not defer restarts forever.
-        coord
-            .append_pending_root_entry("family-a", "pending-root-1", 10)
-            .expect("append pending root");
+        // A still-running interactive command (an open mutating trace root,
+        // e.g. a rebase waiting on an editor) is not daemon work.
+        let sid = "20260411T120000.000000-Popen-root";
+        coord.trace_root_connection_opened(sid).unwrap();
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "rebase", "-i", "HEAD~3"],
+            "time_ns": 10u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        assert!(coord.has_open_trace_roots_that_may_mutate_refs());
         assert!(
             !coord.has_pending_attribution_work(),
-            "a PendingRoot placeholder alone must not defer restarts"
+            "an open trace root alone must not defer restarts"
         );
 
-        // Actionable sequencer entries must defer: a restart would abandon
-        // the queued attribution pass before its drain registers an effect.
+        // Queued sequencer entries must defer: a restart would abandon the
+        // attribution pass before its drain registers an effect.
         coord
-            .append_family_sequencer_entry("family-b", 20, FamilySequencerEntry::Canceled)
+            .append_family_sequencer_entry(
+                "family-b",
+                20,
+                FamilySequencerEntry::ReadyCommand(Box::new(test_rebase_command(&[], Vec::new()))),
+            )
             .expect("append actionable entry");
         assert!(
             coord.has_pending_attribution_work(),
@@ -11134,25 +11145,30 @@ mod tests {
         coord.request_shutdown();
     }
 
+    /// `git init`s a repository under `temp` and returns its worktree and the
+    /// family key the daemon resolves for it.
+    fn init_test_family(
+        coord: &ActorDaemonCoordinator,
+        temp: &tempfile::TempDir,
+    ) -> (PathBuf, String) {
+        run_git_for_test(temp.path(), &["init", "repo"]);
+        let repo = temp.path().join("repo");
+        let family = coord
+            .backend
+            .resolve_family(&repo)
+            .expect("resolve family")
+            .0;
+        (repo, family)
+    }
+
     #[tokio::test]
-    async fn mutating_pending_root_is_created_when_repo_and_argv_arrive_on_different_events() {
+    async fn open_mutating_root_fences_family_when_repo_and_argv_arrive_on_different_events() {
         let coord = Arc::new(ActorDaemonCoordinator::new());
         let temp = tempfile::tempdir().unwrap();
-        let repo = temp.path().join("repo");
-        let init = std::process::Command::new("git")
-            .arg("-C")
-            .arg(temp.path())
-            .arg("init")
-            .arg("repo")
-            .output()
-            .expect("git init should run");
-        assert!(
-            init.status.success(),
-            "git init failed: {}",
-            String::from_utf8_lossy(&init.stderr)
-        );
+        let (repo, family) = init_test_family(&coord, &temp);
 
         let sid = "20260411T120000.000000-Psid-split-metadata";
+        coord.trace_root_connection_opened(sid).unwrap();
         let mut def_repo = serde_json::json!({
             "event": "def_repo",
             "sid": sid,
@@ -11165,12 +11181,20 @@ mod tests {
             .await
             .expect("def_repo should ingest");
         assert!(
+            coord
+                .family_entry_blocked_by_prior_open_trace_root(&family, now_unix_nanos(), None)
+                .unwrap(),
+            "an open root whose command is still unknown fails closed and fences its family"
+        );
+        assert!(
             !coord
-                .pending_root_slots_by_root
-                .lock()
-                .unwrap()
-                .contains_key(sid),
-            "repo-only metadata is not enough to sequence a command"
+                .family_entry_blocked_by_prior_open_trace_root(
+                    "/some/other/family/.git",
+                    now_unix_nanos(),
+                    None
+                )
+                .unwrap(),
+            "a root attributed to one family must not fence other families"
         );
 
         let mut start = serde_json::json!({
@@ -11187,11 +11211,242 @@ mod tests {
 
         assert!(
             coord
-                .pending_root_slots_by_root
+                .family_entry_blocked_by_prior_open_trace_root(&family, now_unix_nanos(), None)
+                .unwrap(),
+            "a running mutating root fences its family once argv and repo metadata are both known, even when they arrive on different events"
+        );
+        assert!(
+            coord
+                .family_sequencers_by_family
                 .lock()
                 .unwrap()
+                .values()
+                .all(|state| state.entries.is_empty()),
+            "a running root is tracked in trace ingress state, never as a sequencer entry"
+        );
+    }
+
+    #[tokio::test]
+    async fn finishing_root_keeps_fence_until_worker_clears_it() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+
+        let sid = "20260411T120000.000000-Psid-finishing";
+        coord.trace_root_connection_opened(sid).unwrap();
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "commit", "-m", "done"],
+            "worktree": repo,
+            "time_ns": 1u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut atexit = serde_json::json!({
+            "event": "atexit",
+            "sid": sid,
+            "code": 0,
+            "time_ns": 2u64,
+        });
+        assert!(
+            coord.prepare_trace_payload_for_ingest(&mut atexit),
+            "a mutating root's atexit is queued for the worker"
+        );
+
+        // The reader has consumed the final frame but the worker has not
+        // processed it: the root still fences its family, and only its family.
+        assert!(coord.has_open_trace_roots_that_may_mutate_family(&family));
+        assert!(!coord.has_open_trace_roots_that_may_mutate_family("/some/other/family/.git"));
+
+        // Socket EOF in that window must not drop the fence either.
+        assert!(
+            coord
+                .record_trace_connection_close(std::slice::from_ref(&sid.to_string()))
+                .unwrap()
+                .is_empty(),
+            "no close marker is needed: the queued atexit clears the root"
+        );
+        assert!(coord.has_open_trace_roots_that_may_mutate_family(&family));
+
+        // The worker processing the final frame clears the root and reports
+        // the family it fenced so exactly that family is re-drained.
+        let fenced = coord
+            .clear_trace_root_tracking(sid)
+            .unwrap()
+            .expect("the root was fencing its family");
+        assert_eq!(fenced, FenceScope::Family(family.clone()));
+        assert!(!coord.has_open_trace_roots_that_may_mutate_refs());
+        assert!(
+            coord.clear_trace_root_tracking(sid).unwrap().is_none(),
+            "clearing a root that fences nothing reports nothing to re-drain"
+        );
+    }
+
+    #[tokio::test]
+    async fn worker_lifts_fence_when_it_processes_the_atexit() {
+        let coord = Arc::new(ActorDaemonCoordinator::new());
+        coord.start_trace_ingest_worker().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+
+        // A normal root: start then atexit.
+        let sid = "20260411T120000.000000-Psid-worker-atexit";
+        coord.trace_root_connection_opened(sid).unwrap();
+        for mut frame in [
+            serde_json::json!({
+                "event": "start",
+                "sid": sid,
+                "argv": ["git", "commit", "-m", "done"],
+                "worktree": repo,
+                "time_ns": 1u64,
+            }),
+            serde_json::json!({ "event": "atexit", "sid": sid, "code": 0, "time_ns": 2u64 }),
+        ] {
+            assert!(coord.prepare_trace_payload_for_ingest(&mut frame));
+            coord.enqueue_trace_payload(frame).unwrap();
+        }
+        coord.wait_for_trace_ingest_processed_through().await;
+        assert!(
+            !coord.has_open_trace_roots_that_may_mutate_family(&family),
+            "processing the atexit clears the root and lifts its fence"
+        );
+
+        // An atexit whose start the daemon never saw (no command can be
+        // emitted) must lift the fence just the same.
+        let orphan = "20260411T120000.000000-Psid-orphan-atexit";
+        coord.trace_root_connection_opened(orphan).unwrap();
+        let mut atexit = serde_json::json!({
+            "event": "atexit",
+            "sid": orphan,
+            "code": 0,
+            "time_ns": 3u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut atexit));
+        coord.enqueue_trace_payload(atexit).unwrap();
+        coord.wait_for_trace_ingest_processed_through().await;
+        assert!(
+            !coord.has_open_trace_roots_that_may_mutate_refs(),
+            "a root whose atexit yields no command still clears"
+        );
+        coord.request_shutdown();
+    }
+
+    #[tokio::test]
+    async fn child_frames_do_not_reclassify_their_root() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+        // A commit so the parent repository has a HEAD reflog to capture.
+        run_git_for_test(
+            &repo,
+            &[
+                "-c",
+                "user.email=t@example.com",
+                "-c",
+                "user.name=t",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "base",
+            ],
+        );
+        let other = tempfile::tempdir().unwrap();
+        run_git_for_test(other.path(), &["init", "other"]);
+
+        let sid = "20260411T120000.000000-Psid-parent";
+        coord.trace_root_connection_opened(sid).unwrap();
+        // A hook's mutating `git commit` in another repository reports first.
+        let mut child_start = serde_json::json!({
+            "event": "start",
+            "sid": format!("{sid}/20260411T120000.500000-Psid-child"),
+            "argv": ["git", "commit", "-m", "hook side effect"],
+            "worktree": other.path().join("other"),
+            "time_ns": 2u64,
+        });
+        coord.prepare_trace_payload_for_ingest(&mut child_start);
+        assert!(
+            !coord
+                .trace_ingress_state
+                .lock()
+                .unwrap()
+                .root_reflog_start_offsets
                 .contains_key(sid),
-            "mutating roots must be sequenced once argv and repo metadata are both known, even when they arrive on different events"
+            "a child's repository must not be captured as the root's reflog start"
+        );
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "commit", "-m", "parent"],
+            "worktree": repo,
+            "time_ns": 1u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+
+        assert!(
+            coord.has_open_trace_roots_that_may_mutate_family(&family),
+            "the root is classified by its own start frame: a mutating commit in its own family"
+        );
+        let other_family = coord
+            .backend
+            .resolve_family(&other.path().join("other"))
+            .unwrap()
+            .0;
+        assert!(
+            !coord.has_open_trace_roots_that_may_mutate_family(&other_family),
+            "a child's worktree must not retarget the root's family"
+        );
+        let offsets = coord
+            .trace_ingress_state
+            .lock()
+            .unwrap()
+            .root_reflog_start_offsets
+            .get(sid)
+            .cloned()
+            .expect("the root's own start captures its reflog offsets");
+        let repo_git_dir = repo.join(".git").canonicalize().unwrap();
+        assert!(
+            offsets
+                .keys()
+                .any(|key| key.contains(&repo_git_dir.to_string_lossy().to_string())),
+            "offsets belong to the root's repository: {offsets:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn read_only_root_never_becomes_a_finishing_fence() {
+        let coord = ActorDaemonCoordinator::new();
+        let sid = "20260411T120000.000000-Psid-readonly";
+        coord.trace_root_connection_opened(sid).unwrap();
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "status", "--porcelain"],
+            "time_ns": 1u64,
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut atexit = serde_json::json!({
+            "event": "atexit",
+            "sid": sid,
+            "code": 0,
+            "time_ns": 2u64,
+        });
+        assert!(!coord.prepare_trace_payload_for_ingest(&mut atexit));
+        assert!(!coord.has_open_trace_roots_that_may_mutate_refs());
+
+        assert!(
+            coord
+                .record_trace_connection_close(std::slice::from_ref(&sid.to_string()))
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            !coord
+                .trace_ingress_state
+                .lock()
+                .unwrap()
+                .root_open_connections
+                .contains_key(sid),
+            "a read-only root is cleared inline at socket close"
         );
     }
 
@@ -11376,7 +11631,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn trace_connection_close_without_atexit_cancels_pending_root() {
+    async fn trace_connection_close_without_atexit_releases_family_fence() {
         let coord = Arc::new(ActorDaemonCoordinator::new());
         coord.start_trace_ingest_worker().unwrap();
         let temp = tempfile::tempdir().unwrap();
@@ -11395,18 +11650,24 @@ mod tests {
         });
         assert!(coord.prepare_trace_payload_for_ingest(&mut start));
         coord.enqueue_trace_payload(start).unwrap();
+        assert!(coord.has_open_trace_roots_that_may_mutate_refs());
 
         finalize_trace_connection_roots(coord.clone(), [sid.to_string()].into_iter().collect())
             .unwrap();
         coord.wait_for_trace_ingest_processed_through().await;
 
         assert!(
-            !coord
-                .pending_root_slots_by_root
+            !coord.has_open_trace_roots_that_may_mutate_refs(),
+            "closing the trace stream without root atexit must release the family fence"
+        );
+        assert!(
+            coord
+                .family_sequencers_by_family
                 .lock()
                 .unwrap()
-                .contains_key(sid),
-            "closing the trace stream without root atexit must not leave the family sequencer wedged"
+                .values()
+                .all(|state| state.entries.is_empty()),
+            "an abandoned root must not leave a sequencer entry behind"
         );
         coord.request_shutdown();
     }
