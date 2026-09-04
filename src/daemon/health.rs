@@ -373,3 +373,161 @@ fn front_fence(
     }
     fence
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::types::DaemonLogFieldValue;
+
+    /// The daemon-log upload contract keeps at most this many fields per event
+    /// (see `daemon_log_layer::MAX_FIELDS_PER_EVENT`); the heartbeat must stay
+    /// under it even with the per-family detail attached.
+    const MAX_FIELDS_PER_EVENT: usize = 64;
+
+    fn family(key: &str, oldest_entry_age_ms: u64) -> FamilyHealth {
+        FamilyHealth {
+            key: key.to_string(),
+            oldest_entry_age_ms,
+            entries: 1,
+            entries_checkpoints: 1,
+            front_kind: Some("checkpoint"),
+            fenced: true,
+            ..FamilyHealth::default()
+        }
+    }
+
+    fn snapshot(families: Vec<FamilyHealth>) -> DaemonHealthSnapshot {
+        DaemonHealthSnapshot {
+            uptime_seconds: 1,
+            causal_grace_ms: 1_000,
+            snapshot_partial: false,
+            checkpoints_outstanding: 0,
+            checkpoints_outstanding_bytes: 0,
+            checkpoints_unadmitted: 0,
+            checkpoint_receipt_seq_next: 0,
+            checkpoint_receipt_seq_processed: 0,
+            trace_payloads_queued: 0,
+            trace_ingest_seq_lag: 0,
+            trace_roots_open_mutating: 2,
+            trace_roots_finishing: 0,
+            trace_roots_written: 1,
+            trace_root_oldest_open_age_ms: Some(42),
+            trace_connections_unidentified: 0,
+            sequencer_families: families.len(),
+            sequencer_entries_total: families.len(),
+            sequencer_entries_commands: 0,
+            sequencer_entries_applied: 0,
+            sequencer_entries_checkpoints: families.len(),
+            sequencer_oldest_entry_age_ms: families.iter().map(|f| f.oldest_entry_age_ms).max(),
+            sequencer_fenced_families: families.len(),
+            sequencer_stalled: true,
+            effects_inflight_families: 0,
+            effects_inflight_total: 0,
+            side_effect_error_families: 0,
+            side_effect_errors_total: 0,
+            causal_grace_expirations: 3,
+            causal_fence_hard_cap_releases: 0,
+            losses: IngestLossSnapshot::default(),
+            families,
+        }
+    }
+
+    #[test]
+    fn heartbeat_health_fields_flatten_aggregates_and_worst_families() {
+        let fields = snapshot(vec![
+            family("/repos/slow/.git", 90_000),
+            family("/repos/fast/.git", 5),
+        ])
+        .heartbeat_fields();
+
+        assert_eq!(
+            fields.get("sequencer_stalled"),
+            Some(&DaemonLogFieldValue::from(true))
+        );
+        assert_eq!(
+            fields.get("trace_roots_open_mutating"),
+            Some(&DaemonLogFieldValue::from(2_u64))
+        );
+        assert_eq!(
+            fields.get("trace_root_oldest_open_age_ms"),
+            Some(&DaemonLogFieldValue::from(42_u64))
+        );
+        assert_eq!(
+            fields.get("causal_grace_expirations"),
+            Some(&DaemonLogFieldValue::from(3_u64))
+        );
+        assert!(
+            !fields.contains_key("families"),
+            "nested values are not primitive heartbeat fields"
+        );
+        assert!(
+            fields.values().all(|value| {
+                !matches!(value, DaemonLogFieldValue::String(text) if text.contains("/repos/"))
+            }),
+            "repository paths never leave the machine: {fields:?}"
+        );
+        assert_eq!(
+            fields.get("family_0_id"),
+            Some(&DaemonLogFieldValue::from(family_id("/repos/slow/.git"))),
+            "families are detailed oldest pending work first, by digest"
+        );
+        assert_eq!(
+            fields.get("family_0_oldest_entry_age_ms"),
+            Some(&DaemonLogFieldValue::from(90_000_u64))
+        );
+        assert_eq!(
+            fields.get("family_0_front_kind"),
+            Some(&DaemonLogFieldValue::from("checkpoint"))
+        );
+        assert_eq!(
+            fields.get("family_0_fenced"),
+            Some(&DaemonLogFieldValue::from(true))
+        );
+        assert_eq!(
+            fields.get("family_1_id"),
+            Some(&DaemonLogFieldValue::from(family_id("/repos/fast/.git")))
+        );
+        assert!(!fields.contains_key("family_2_id"));
+        assert_eq!(
+            fields.get("trace_payloads_dropped_queue_full"),
+            Some(&DaemonLogFieldValue::from(0_u64)),
+            "loss counters are flattened under their wire keys"
+        );
+    }
+
+    #[test]
+    fn heartbeat_health_fields_stay_within_daemon_log_field_cap() {
+        let families = (0..20)
+            .map(|index| family(&format!("/repos/{index}/.git"), 20 - index))
+            .collect();
+        let fields = snapshot(families).heartbeat_fields();
+
+        assert!(
+            fields.len() <= MAX_FIELDS_PER_EVENT,
+            "{} heartbeat fields exceed the {MAX_FIELDS_PER_EVENT}-field contract",
+            fields.len()
+        );
+        let detailed_families = fields.keys().filter(|key| key.ends_with("_id")).count();
+        assert_eq!(detailed_families, HEARTBEAT_FAMILY_DETAIL_LIMIT);
+        assert_eq!(
+            fields.get("family_0_id"),
+            Some(&DaemonLogFieldValue::from(family_id("/repos/0/.git")))
+        );
+    }
+
+    #[test]
+    fn heartbeat_health_fields_detail_only_families_with_pending_work() {
+        let idle = FamilyHealth {
+            key: "/repos/idle/.git".to_string(),
+            inflight_effects: 1,
+            ..FamilyHealth::default()
+        };
+        let fields = snapshot(vec![idle, family("/repos/pending/.git", 5)]).heartbeat_fields();
+        assert_eq!(
+            fields.get("family_0_id"),
+            Some(&DaemonLogFieldValue::from(family_id("/repos/pending/.git"))),
+            "a family with only in-flight effects is not pending work"
+        );
+        assert!(!fields.contains_key("family_1_id"));
+    }
+}

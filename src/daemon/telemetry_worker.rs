@@ -2862,7 +2862,7 @@ mod tests {
 
     #[test]
     fn daemon_heartbeat_event_uses_upload_contract_shape() {
-        let event = daemon_heartbeat_event(std::time::Duration::from_secs(900));
+        let event = daemon_heartbeat_event(std::time::Duration::from_secs(900), BTreeMap::new());
 
         assert!(event.id.is_some());
         assert_eq!(event.kind, DaemonLogKind::Heartbeat);
@@ -2872,6 +2872,43 @@ mod tests {
         assert_eq!(
             event.fields.get("uptime_seconds"),
             Some(&DaemonLogFieldValue::from(900_u64))
+        );
+        assert!(event.fields.contains_key("os"));
+        assert!(event.fields.contains_key("arch"));
+    }
+
+    #[test]
+    fn daemon_heartbeat_event_merges_health_fields_and_keeps_contract_fields() {
+        let mut health = BTreeMap::new();
+        health.insert(
+            "sequencer_stalled".to_string(),
+            DaemonLogFieldValue::from(false),
+        );
+        health.insert(
+            "trace_roots_open_mutating".to_string(),
+            DaemonLogFieldValue::from(2_u64),
+        );
+        // A provider must not be able to shadow the contract fields.
+        health.insert(
+            "uptime_seconds".to_string(),
+            DaemonLogFieldValue::from(1_u64),
+        );
+
+        let event = daemon_heartbeat_event(std::time::Duration::from_secs(900), health);
+
+        assert_eq!(event.kind, DaemonLogKind::Heartbeat);
+        assert_eq!(event.message, "alive");
+        assert_eq!(
+            event.fields.get("uptime_seconds"),
+            Some(&DaemonLogFieldValue::from(900_u64))
+        );
+        assert_eq!(
+            event.fields.get("sequencer_stalled"),
+            Some(&DaemonLogFieldValue::from(false))
+        );
+        assert_eq!(
+            event.fields.get("trace_roots_open_mutating"),
+            Some(&DaemonLogFieldValue::from(2_u64))
         );
         assert!(event.fields.contains_key("os"));
         assert!(event.fields.contains_key("arch"));
