@@ -454,6 +454,9 @@ fn fully_populated_file_config() -> FileConfig {
         }),
         custom_attributes: Some(custom_attributes),
         git_ai_hooks: Some(git_ai_hooks),
+        attribution_sinks: Some(vec![
+            git_ai::authorship::attribution_sink::SinkConfig::Stdout,
+        ]),
         codex_hooks_format: Some("config_toml".to_string()),
         notes_backend: Some(NotesBackendConfig::default()),
         transcript_streaming_lookback_days: Some(7),

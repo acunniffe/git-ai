@@ -190,6 +190,7 @@ pub struct Config {
     max_checkpoint_total_size_bytes: usize,
     max_checkpoint_total_lines: usize,
     daemon_memory_limit_mb: Option<u64>,
+    attribution_sinks: Vec<crate::authorship::attribution_sink::SinkConfig>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize)]
@@ -279,6 +280,8 @@ pub struct FileConfig {
     pub max_checkpoint_total_lines: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub daemon_memory_limit_mb: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution_sinks: Option<Vec<crate::authorship::attribution_sink::SinkConfig>>,
 }
 
 static CONFIG: OnceLock<Config> = OnceLock::new();
@@ -700,6 +703,11 @@ impl Config {
     /// Returns configured shell commands for a specific hook.
     pub fn git_ai_hook_commands(&self, hook_name: &str) -> Option<&Vec<String>> {
         self.git_ai_hooks.get(hook_name)
+    }
+
+    /// Returns the configured attribution sinks.
+    pub fn attribution_sinks(&self) -> &Vec<crate::authorship::attribution_sink::SinkConfig> {
+        &self.attribution_sinks
     }
 
     pub fn codex_hooks_format(&self) -> CodexHooksFormat {
@@ -1240,6 +1248,11 @@ fn build_config() -> Config {
         .and_then(|c| c.daemon_memory_limit_mb)
         .and_then(normalize_daemon_memory_limit_mb);
 
+    let attribution_sinks = file_cfg
+        .as_ref()
+        .and_then(|c| c.attribution_sinks.clone())
+        .unwrap_or_default();
+
     #[cfg(any(test, feature = "test-support"))]
     {
         let mut config = Config {
@@ -1270,6 +1283,7 @@ fn build_config() -> Config {
             max_checkpoint_total_size_bytes,
             max_checkpoint_total_lines,
             daemon_memory_limit_mb,
+            attribution_sinks: attribution_sinks.clone(),
         };
         apply_test_config_patch(&mut config);
         config
@@ -1304,6 +1318,7 @@ fn build_config() -> Config {
         max_checkpoint_total_size_bytes,
         max_checkpoint_total_lines,
         daemon_memory_limit_mb,
+        attribution_sinks,
     }
 }
 
@@ -1834,6 +1849,7 @@ mod tests {
             max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
             max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
             daemon_memory_limit_mb: None,
+            attribution_sinks: Vec::new(),
         }
     }
 
@@ -2080,6 +2096,7 @@ mod tests {
             max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
             max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
             daemon_memory_limit_mb: None,
+            attribution_sinks: Vec::new(),
         }
     }
 
@@ -2229,6 +2246,7 @@ mod tests {
             max_checkpoint_total_size_bytes: DEFAULT_MAX_CHECKPOINT_TOTAL_SIZE_BYTES,
             max_checkpoint_total_lines: DEFAULT_MAX_CHECKPOINT_TOTAL_LINES,
             daemon_memory_limit_mb: None,
+            attribution_sinks: Vec::new(),
         }
     }
 
