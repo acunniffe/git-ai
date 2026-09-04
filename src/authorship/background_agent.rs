@@ -61,6 +61,23 @@ pub fn detect() -> BackgroundAgent {
         };
     }
 
+    if std::env::var("COPILOT_AGENT_COMMIT_LOGIN")
+        .map(|v| v == "copilot-swe-agent[bot]")
+        .unwrap_or(false)
+        && std::env::var("GITHUB_JOB")
+            .map(|v| v == "copilot")
+            .unwrap_or(false)
+    {
+        let id = std::env::var("COPILOT_AGENT_SESSION_ID")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| placeholder_id("GITHUB_COPILOT_AGENT"));
+        return BackgroundAgent::NoHooks {
+            tool: "github-copilot-agent".to_string(),
+            id,
+        };
+    }
+
     if std::env::var("GIT_AI_CLOUD_AGENT")
         .map(|v| v == "1")
         .unwrap_or(false)
