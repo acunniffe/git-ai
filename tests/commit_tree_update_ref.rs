@@ -7,6 +7,8 @@ mod repos;
 
 use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::daemon::open_local_socket_stream_with_timeout;
+#[cfg(not(windows))]
+use git_ai::daemon::{ControlRequest, send_control_request};
 use git_ai::git::find_repository_in_path;
 use git_ai::git::notes_api::read_note;
 use git_ai::git::repository::Repository as GitAiRepository;
@@ -272,6 +274,29 @@ fn replay_trace_payloads_to_daemon(repo: &TestRepo, payloads: &[Value]) {
         stream.write_all(b"\n").expect("write trace newline");
     }
     stream.flush().expect("flush trace payloads");
+}
+
+/// Polls `status.daemon` until the daemon has registered `count` open
+/// mutating trace roots: the precondition for anything to be fenced by them.
+#[cfg(not(windows))]
+fn wait_for_open_mutating_roots(repo: &TestRepo, count: u64) {
+    let started = std::time::Instant::now();
+    loop {
+        let response = send_control_request(
+            &repo.daemon_control_socket_path(),
+            &ControlRequest::StatusDaemon,
+        )
+        .expect("status.daemon request");
+        let snapshot = response.data.expect("status.daemon data");
+        if snapshot["trace_roots_open_mutating"].as_u64() == Some(count) {
+            return;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the daemon never registered {count} open mutating root(s): {snapshot}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }
 
 fn daemon_completed_session(repo: &TestRepo, session: &str) -> bool {
@@ -2270,6 +2295,9 @@ fn test_checkpoint_during_post_commit_hook_waits_for_the_commit() {
         "committed during hook",
     );
 
+    // A real checkpoint arrives seconds into a hook; here the commit was
+    // spawned milliseconds ago, so first let the daemon read its frames.
+    wait_for_open_mutating_roots(&repo, 1);
     let baseline = checkpoint_completion_count(&repo);
     fs::write(repo.path().join("typed.txt"), "typed ai\n").unwrap();
     repo.git_ai_without_pre_sync_for_test(&["checkpoint", "mock_ai", "typed.txt"])
