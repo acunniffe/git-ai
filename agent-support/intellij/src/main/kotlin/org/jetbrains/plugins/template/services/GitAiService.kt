@@ -37,6 +37,8 @@ class GitAiService {
     // Track which locations were searched (for error reporting)
     private var lastSearchedPaths: List<String> = emptyList()
 
+    private val gitAiBinaryResolver = GitAiBinaryResolver()
+
     data class Version(val major: Int, val minor: Int, val patch: Int) : Comparable<Version> {
         override fun compareTo(other: Version): Int {
             return compareValuesBy(this, other, { it.major }, { it.minor }, { it.patch })
@@ -65,96 +67,23 @@ class GitAiService {
         }
     }
 
-    /**
-     * Finds the git-ai binary by checking known installation locations first,
-     * then falling back to PATH lookup.
-     *
-     * Known locations (from install.sh, install.ps1, scripts/dev.sh):
-     * - Production/dev build: ~/.git-ai/bin/git-ai  (dev.sh installs here too)
-     * - Nix development: ~/.git-ai-local-dev/gitwrap/bin/git-ai  (nix develop shellHook)
-     *
-     * @return The full path to git-ai if found, or null if not found
-     */
+    /** Finds git-ai using the resolver's cache, known locations, and IntelliJ's console PATH. */
     private fun findGitAiBinary(): String? {
-        // Return cached path if already resolved and still valid
-        resolvedGitAiPath?.let { path ->
-            if (File(path).canExecute()) {
-                return path
-            }
-            // Cached path no longer valid, clear it
+        val previousPath = resolvedGitAiPath
+        val resolution = gitAiBinaryResolver.resolve(previousPath)
+        lastSearchedPaths = resolution.searchedPaths
+
+        val path = resolution.executablePath
+        if (path == null) {
             resolvedGitAiPath = null
+            return null
         }
 
-        val homeDir = System.getProperty("user.home")
-        val isWindows = System.getProperty("os.name").lowercase().contains("win")
-
-        // Known installation locations from install.sh/install.ps1/scripts/dev.sh
-        // Nix dev path checked first so nix develop users can test local builds
-        val knownPaths = if (isWindows) {
-            listOf(
-                "$homeDir\\.git-ai-local-dev\\gitwrap\\bin\\git-ai.exe",  // Nix dev (nix develop shellHook)
-                "$homeDir\\.git-ai\\bin\\git-ai.exe"                      // Production + non-Nix dev (install.ps1 / dev.sh)
-            )
-        } else {
-            listOf(
-                "$homeDir/.git-ai-local-dev/gitwrap/bin/git-ai", // Nix dev (nix develop shellHook)
-                "$homeDir/.git-ai/bin/git-ai"                    // Production + non-Nix dev (install.sh / dev.sh)
-            )
+        if (path != previousPath) {
+            logger.info("Found git-ai executable at: $path")
         }
-
-        lastSearchedPaths = knownPaths
-
-        // Check known locations first
-        for (path in knownPaths) {
-            val file = File(path)
-            if (file.exists() && file.canExecute()) {
-                logger.info("Found git-ai at known location: $path")
-                resolvedGitAiPath = path
-                return path
-            }
-        }
-
-        // Fall back to PATH lookup via shell (may work if launched from terminal)
-        logger.info("git-ai not found in known locations, trying PATH lookup")
-        return tryPathLookup()
-    }
-
-    /**
-     * Attempts to find git-ai via PATH using the shell.
-     * This may work when IntelliJ is launched from a terminal with proper PATH.
-     */
-    private fun tryPathLookup(): String? {
-        return try {
-            val isWindows = System.getProperty("os.name").lowercase().contains("win")
-            val command = if (isWindows) {
-                listOf("cmd", "/c", "where git-ai")
-            } else {
-                listOf("/bin/sh", "-l", "-c", "which git-ai")
-            }
-
-            val process = ProcessBuilder(command)
-                .redirectErrorStream(true)
-                .start()
-
-            val completed = process.waitFor(5, TimeUnit.SECONDS)
-            if (!completed) {
-                process.destroyForcibly()
-                return null
-            }
-
-            if (process.exitValue() == 0) {
-                val path = process.inputStream.bufferedReader().readText().trim().lines().firstOrNull()
-                if (path != null && File(path).canExecute()) {
-                    logger.info("Found git-ai via PATH lookup: $path")
-                    resolvedGitAiPath = path
-                    return path
-                }
-            }
-            null
-        } catch (e: Exception) {
-            logger.warn("PATH lookup for git-ai failed: ${e.message}")
-            null
-        }
+        resolvedGitAiPath = path
+        return path
     }
 
     /**
@@ -182,7 +111,7 @@ class GitAiService {
             val gitAiPath = findGitAiBinary()
 
             if (gitAiPath == null) {
-                val currentPath = System.getenv("PATH") ?: "PATH not set"
+                val currentPath = currentPathForDiagnostics()
                 logger.warn("""
                     git-ai not found
                     Searched locations: ${lastSearchedPaths.joinToString(", ")}
@@ -219,7 +148,7 @@ class GitAiService {
             val errorOutput = process.errorStream.bufferedReader().readText().trim()
 
             if (process.exitValue() != 0) {
-                val currentPath = System.getenv("PATH") ?: "PATH not set"
+                val currentPath = currentPathForDiagnostics()
                 logger.warn("""
                     git-ai returned error
                     Command: ${command.joinToString(" ")}
@@ -256,7 +185,7 @@ class GitAiService {
             logger.info("git-ai CLI available at $gitAiPath, version: $version")
             true
         } catch (e: Exception) {
-            val currentPath = System.getenv("PATH") ?: "PATH not set"
+            val currentPath = currentPathForDiagnostics()
             logger.warn("""
                 git-ai CLI not available: ${e.message}
                 Searched locations: ${lastSearchedPaths.joinToString(", ")}
@@ -270,6 +199,9 @@ class GitAiService {
             false
         }
     }
+
+    private fun currentPathForDiagnostics(): String =
+        "IntelliJ console PATH searched (value redacted)"
 
     /**
      * Creates a checkpoint by calling git-ai checkpoint agent-v1 command.
