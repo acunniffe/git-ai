@@ -62,7 +62,12 @@ Separation of concerns:
   repo state to synthesize missing command facts.
 - The **family actor** owns all ordered, stateful reasoning: the ref cursor,
   the stash stack, pending operation state. Commands and checkpoints for one
-  repo family are processed in arrival order.
+  repo family are processed in arrival order, sequenced by the originating
+  command's start time (a checkpoint's receipt time). A still-running
+  mutating command is not a sequencer entry: it is an open trace root that
+  fences later entries of its family until it finishes, and a root the reader
+  has already seen finishing keeps that fence until the ingest worker
+  processes its final frames.
 - **Side effects** run only after enrichment, on exact data.
 
 ### NormalizedCommand

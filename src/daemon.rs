@@ -84,9 +84,6 @@ pub use control_api::{
 
 const PID_META_FILE: &str = "daemon.pid.json";
 const TRACE_INGEST_SEQ_FIELD: &str = "git_ai_ingest_seq";
-const TRACE_ROOT_ARGV_FIELD: &str = "git_ai_root_argv";
-const TRACE_ROOT_STARTED_AT_NS_FIELD: &str = "git_ai_root_started_at_ns";
-const TRACE_ROOT_WORKTREE_FIELD: &str = "git_ai_root_worktree";
 pub(crate) const TRACE_ROOT_REFLOG_START_OFFSETS_FIELD: &str = "git_ai_root_reflog_start_offsets";
 const TRACE_CONNECTION_CLOSED_EVENT: &str = "git_ai_connection_closed";
 // Synthetic frame written by the socket-health loop; recognized at parse time
@@ -547,12 +544,6 @@ fn trace_payload_worktree_hint(payload: &Value) -> Option<PathBuf> {
     if let Some(path) = payload.get("worktree").and_then(Value::as_str) {
         return Some(normalize(PathBuf::from(path)));
     }
-    if let Some(path) = payload
-        .get(TRACE_ROOT_WORKTREE_FIELD)
-        .and_then(Value::as_str)
-    {
-        return Some(normalize(PathBuf::from(path)));
-    }
     if let Some(cwd) = payload.get("cwd").and_then(Value::as_str)
         && let Some(base_dir) = trace_payload_command_base_dir(payload, &argv, Path::new(cwd))
     {
@@ -674,35 +665,11 @@ fn trace_payload_argv(payload: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn trace_payload_effective_argv(payload: &Value) -> Vec<String> {
-    let argv = trace_payload_argv(payload);
-    if !argv.is_empty() {
-        return argv;
-    }
-    payload
-        .get(TRACE_ROOT_ARGV_FIELD)
-        .and_then(Value::as_array)
-        .map(|argv| {
-            argv.iter()
-                .filter_map(Value::as_str)
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
-}
-
 fn trace_payload_primary_command(payload: &Value) -> Option<String> {
     trace_payload_cmd_name(payload).or_else(|| {
         let argv = trace_payload_argv(payload);
         trace_argv_primary_command(&argv)
     })
-}
-
-fn trace_payload_root_started_at_ns(payload: &Value) -> Option<u128> {
-    payload
-        .get(TRACE_ROOT_STARTED_AT_NS_FIELD)
-        .and_then(Value::as_u64)
-        .map(u128::from)
 }
 
 fn trace_argv_primary_command(argv: &[String]) -> Option<String> {
@@ -2662,7 +2629,6 @@ fn read_checkpoint_body<R: BufRead>(
 
 #[derive(Debug)]
 enum FamilySequencerEntry {
-    PendingRoot,
     ReadyCommand(Box<crate::daemon::domain::NormalizedCommand>),
     /// A command already applied to family state (it did not participate in
     /// the sequencer, e.g. `git am`) whose side-effect pass is still pending.
@@ -2677,9 +2643,16 @@ enum FamilySequencerEntry {
         receipt_seq: u64,
         reservation: CheckpointIngressReservation,
     },
-    Canceled,
 }
 
+/// Position of an entry in its family sequencer: the moment its originating
+/// command started (for a checkpoint, its receipt). Only entries present at
+/// the same time are ordered by this key; a still-running command is not an
+/// entry at all but an open trace root that fences later entries of its
+/// family (see `family_entry_blocked_by_prior_open_trace_root`). Among
+/// finished commands, start order is the best available predictor of the
+/// order in which they changed refs: a command finishes only after its ref
+/// write, including through post-write hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct FamilySequencerOrder {
     started_at_ns: u128,
@@ -2690,12 +2663,6 @@ struct FamilySequencerOrder {
 struct FamilySequencerState {
     next_ordinal: u64,
     entries: BTreeMap<FamilySequencerOrder, FamilySequencerEntry>,
-}
-
-#[derive(Debug, Clone)]
-struct PendingRootSlot {
-    family: String,
-    order: FamilySequencerOrder,
 }
 
 type CommitFileTimestampSnapshotHandle =
@@ -2788,6 +2755,11 @@ struct TraceIngressState {
     root_open_connections: HashMap<String, usize>,
     unidentified_open_connections: usize,
     root_close_markers_enqueued: HashSet<String>,
+    /// Mutating roots whose `atexit` the reader has already consumed: the git
+    /// process is done and its final frame is queued for the ingest worker,
+    /// which clears the root (and lifts its fence) when it reaches it. Socket
+    /// EOF must not clear such a root first, and needs no close marker for it.
+    root_finishing: HashSet<String>,
 }
 
 #[doc(hidden)]
@@ -2809,7 +2781,6 @@ pub struct ActorDaemonCoordinator {
     /// Outer key: family. Inner key: absolute file path string. Value: registration timestamp (nanos).
     pending_ai_edits_by_family: Mutex<HashMap<String, HashMap<String, u128>>>,
     family_sequencers_by_family: Mutex<HashMap<String, FamilySequencerState>>,
-    pending_root_slots_by_root: Mutex<HashMap<String, PendingRootSlot>>,
     commit_file_timestamp_snapshots_by_root:
         Mutex<HashMap<String, CommitFileTimestampSnapshotHandles>>,
     recent_replay_prerequisites_by_family:
@@ -2915,9 +2886,13 @@ impl DaemonExitAction {
     }
 }
 
-enum TracePayloadApplyOutcome {
-    None,
-    QueuedFamily,
+/// Which families' sequencers an open mutating trace root was fencing, so
+/// they can be re-drained when it clears.
+#[derive(Debug, PartialEq, Eq)]
+enum FenceScope {
+    Family(String),
+    /// The root never resolved a family, so it fenced every family.
+    EveryFamily,
 }
 
 impl ActorDaemonCoordinator {
@@ -2938,7 +2913,6 @@ impl ActorDaemonCoordinator {
             inflight_effects_by_family: Mutex::new(HashMap::new()),
             pending_ai_edits_by_family: Mutex::new(HashMap::new()),
             family_sequencers_by_family: Mutex::new(HashMap::new()),
-            pending_root_slots_by_root: Mutex::new(HashMap::new()),
             commit_file_timestamp_snapshots_by_root: Mutex::new(HashMap::new()),
             recent_replay_prerequisites_by_family: Mutex::new(HashMap::new()),
             side_effect_errors_by_family: Mutex::new(HashMap::new()),
@@ -3362,10 +3336,11 @@ impl ActorDaemonCoordinator {
     }
 
     /// Attribution work an automatic restart would abandon mid-flight:
-    /// accepted checkpoints, queued trace payloads, actionable sequencer
-    /// entries, and executing side-effect passes. PendingRoot placeholders
-    /// are deliberately excluded so an idle interactive command (e.g. a
-    /// rebase waiting on an editor) cannot defer restarts forever (#2252).
+    /// accepted checkpoints, queued trace payloads, sequencer entries, and
+    /// executing side-effect passes. Still-running commands live in trace
+    /// ingress state, not in the sequencer, so an idle interactive command
+    /// (e.g. a rebase waiting on an editor) is not by itself pending work
+    /// (#2252).
     fn has_pending_attribution_work(&self) -> bool {
         if self.outstanding_checkpoint_state().0 > 0 {
             return true;
@@ -3377,12 +3352,7 @@ impl ActorDaemonCoordinator {
             return true;
         }
         if let Ok(map) = self.family_sequencers_by_family.lock()
-            && map.values().any(|state| {
-                state
-                    .entries
-                    .values()
-                    .any(|entry| !matches!(entry, FamilySequencerEntry::PendingRoot))
-            })
+            && map.values().any(|state| !state.entries.is_empty())
         {
             return true;
         }
@@ -3523,113 +3493,6 @@ impl ActorDaemonCoordinator {
         })
     }
 
-    fn append_pending_root_entry(
-        &self,
-        family: &str,
-        root_sid: &str,
-        started_at_ns: u128,
-    ) -> Result<(), GitAiError> {
-        {
-            let pending_slots = self.pending_root_slots_by_root.lock().map_err(|_| {
-                GitAiError::Generic("pending root slots map lock poisoned".to_string())
-            })?;
-            if pending_slots.contains_key(root_sid) {
-                return Ok(());
-            }
-        }
-
-        let order = {
-            let mut sequencers = self.family_sequencers_by_family.lock().map_err(|_| {
-                GitAiError::Generic("family sequencer map lock poisoned".to_string())
-            })?;
-            let state =
-                sequencers
-                    .entry(family.to_string())
-                    .or_insert_with(|| FamilySequencerState {
-                        next_ordinal: 1,
-                        entries: BTreeMap::new(),
-                    });
-            let order = FamilySequencerOrder {
-                started_at_ns,
-                ordinal: state.next_ordinal,
-            };
-            state.next_ordinal = state.next_ordinal.saturating_add(1);
-            state
-                .entries
-                .insert(order, FamilySequencerEntry::PendingRoot);
-            order
-        };
-
-        self.pending_root_slots_by_root
-            .lock()
-            .map_err(|_| GitAiError::Generic("pending root slots map lock poisoned".to_string()))?
-            .insert(
-                root_sid.to_string(),
-                PendingRootSlot {
-                    family: family.to_string(),
-                    order,
-                },
-            );
-        Ok(())
-    }
-
-    fn take_pending_root_slot(
-        &self,
-        root_sid: &str,
-    ) -> Result<Option<PendingRootSlot>, GitAiError> {
-        self.pending_root_slots_by_root
-            .lock()
-            .map_err(|_| GitAiError::Generic("pending root slots map lock poisoned".to_string()))
-            .map(|mut slots| slots.remove(root_sid))
-    }
-
-    fn maybe_append_pending_root_from_trace_payload(
-        &self,
-        payload: &Value,
-    ) -> Result<(), GitAiError> {
-        let event = payload
-            .get("event")
-            .and_then(Value::as_str)
-            .unwrap_or_default();
-        if event == TRACE_CONNECTION_CLOSED_EVENT {
-            return Ok(());
-        }
-
-        let Some(sid) = payload.get("sid").and_then(Value::as_str) else {
-            return Ok(());
-        };
-        let root_sid = trace_root_sid(sid);
-        if root_sid != sid {
-            return Ok(());
-        }
-
-        let argv = trace_payload_effective_argv(payload);
-        let primary_command =
-            trace_payload_primary_command(payload).or_else(|| trace_argv_primary_command(&argv));
-        if !Self::trace_invocation_participates_in_family_sequencer(
-            primary_command.as_deref(),
-            &argv,
-        ) {
-            return Ok(());
-        }
-
-        let Some(worktree) = trace_payload_worktree_hint(payload) else {
-            return Ok(());
-        };
-        let Some(common_dir) = common_dir_for_worktree(&worktree) else {
-            return Ok(());
-        };
-        let started_at_ns = trace_payload_root_started_at_ns(payload)
-            .or_else(|| trace_payload_time_ns(payload))
-            .unwrap_or_else(now_unix_nanos);
-        let family = common_dir
-            .canonicalize()
-            .unwrap_or(common_dir)
-            .to_string_lossy()
-            .to_string();
-        self.append_pending_root_entry(&family, root_sid, started_at_ns)
-    }
-
     /// Appends an entry to the family sequencer, ordered by the originating
     /// command's start time. The caller is responsible for scheduling a
     /// drain of the family afterwards — this must stay a constant-time map
@@ -3694,11 +3557,14 @@ impl ActorDaemonCoordinator {
     /// root. Drains run detached: side-effect passes are unbounded-duration
     /// git work and must never execute inline on the trace ingest worker,
     /// whose watermark checkpoint admission waits on (#2252).
-    fn schedule_ready_family_drains_after_root_cleared(self: &Arc<Self>, family: Option<String>) {
-        if let Some(family) = family {
-            self.schedule_family_drain(family);
-        } else {
-            self.schedule_all_ready_family_drains();
+    fn schedule_ready_family_drains_after_root_cleared(
+        self: &Arc<Self>,
+        fenced: Option<FenceScope>,
+    ) {
+        match fenced {
+            None => {}
+            Some(FenceScope::Family(family)) => self.schedule_family_drain(family),
+            Some(FenceScope::EveryFamily) => self.schedule_all_ready_family_drains(),
         }
     }
 
@@ -3754,7 +3620,7 @@ impl ActorDaemonCoordinator {
 
     /// Whether the family's sequencer front would be popped by a drain right
     /// now — mirrors the gates of `drain_ready_family_sequencer_entries_locked`
-    /// (unadmitted checkpoints, PendingRoot front, prior-open-root fencing).
+    /// (unadmitted checkpoints, prior-open-root fencing).
     /// Gated-but-present entries return false: the event that lifts their
     /// gate (admission completion, root clear) schedules its own drain.
     fn family_has_actionable_front_entry(&self, family: &str) -> bool {
@@ -3770,9 +3636,6 @@ impl ActorDaemonCoordinator {
         let Some((order, entry)) = state.entries.first_key_value() else {
             return false;
         };
-        if matches!(entry, FamilySequencerEntry::PendingRoot) {
-            return false;
-        }
         let entry_root_sid = match entry {
             FamilySequencerEntry::ReadyCommand(command) => Some(command.root_sid.as_str()),
             FamilySequencerEntry::AppliedSideEffects { applied, .. } => {
@@ -3789,51 +3652,11 @@ impl ActorDaemonCoordinator {
             .unwrap_or(true)
     }
 
-    /// Replaces a root's PendingRoot sequencer entry with `replacement` and
-    /// returns the family whose sequencer changed. The caller is responsible
-    /// for scheduling a drain of that family afterwards — this must stay a
-    /// constant-time map mutation because it runs on the serial trace ingest
-    /// worker, whose watermark checkpoint admission waits on (#2252).
-    fn replace_pending_root_entry(
-        &self,
-        root_sid: &str,
-        replacement: FamilySequencerEntry,
-    ) -> Result<Option<String>, GitAiError> {
-        let Some(slot) = self.take_pending_root_slot(root_sid)? else {
-            return Ok(None);
-        };
-        let family = slot.family.clone();
-        {
-            let mut sequencers = self.family_sequencers_by_family.lock().map_err(|_| {
-                GitAiError::Generic("family sequencer map lock poisoned".to_string())
-            })?;
-            let state = sequencers
-                .entry(family.clone())
-                .or_insert_with(|| FamilySequencerState {
-                    next_ordinal: 1,
-                    entries: BTreeMap::new(),
-                });
-            let Some(entry) = state.entries.get_mut(&slot.order) else {
-                return Err(GitAiError::Generic(format!(
-                    "missing pending root sequencer entry for sid={} family={} order={:?}",
-                    root_sid, family, slot.order
-                )));
-            };
-            match entry {
-                FamilySequencerEntry::PendingRoot => {
-                    *entry = replacement;
-                }
-                _ => {
-                    return Err(GitAiError::Generic(format!(
-                        "sequencer entry for sid={} family={} order={:?} was not pending",
-                        root_sid, family, slot.order
-                    )));
-                }
-            }
-        }
-        Ok(Some(family))
-    }
-
+    /// Whether a sequencer entry must wait for an older mutating trace root
+    /// that is still open: a running command may still change refs, and a
+    /// finished one may have changed them with its final frames not yet
+    /// processed. Roots that started after the entry cannot precede it.
+    /// Unattributed roots (no family yet) fail closed and fence every family.
     fn family_entry_blocked_by_prior_open_trace_root(
         &self,
         family: &str,
@@ -3845,34 +3668,14 @@ impl ActorDaemonCoordinator {
             .lock()
             .map_err(|_| GitAiError::Generic("trace ingress state lock poisoned".to_string()))?;
 
-        for (root_sid, open_count) in &ingress.root_open_connections {
-            if *open_count == 0 || entry_root_sid == Some(root_sid.as_str()) {
-                continue;
-            }
-            if ingress.root_definitely_read_only.contains(root_sid) {
-                continue;
-            }
-            if !ingress.root_mutating.get(root_sid).copied().unwrap_or(true) {
-                continue;
-            }
-            if ingress
-                .root_started_at_ns
-                .get(root_sid)
-                .copied()
-                .is_some_and(|root_started| root_started > started_at_ns)
-            {
-                continue;
-            }
-            if ingress
-                .root_families
-                .get(root_sid)
-                .is_none_or(|root_family| root_family == family)
-            {
-                return Ok(true);
-            }
-        }
-
-        Ok(false)
+        Ok(ingress.root_open_connections.keys().any(|root_sid| {
+            entry_root_sid != Some(root_sid.as_str())
+                && Self::open_root_may_mutate_family(&ingress, root_sid, Some(family))
+                && ingress
+                    .root_started_at_ns
+                    .get(root_sid)
+                    .is_none_or(|root_started| *root_started <= started_at_ns)
+        }))
     }
 
     fn record_side_effect_error(
@@ -4002,21 +3805,29 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    /// Whether a root closing without its atexit must be cleared by the ingest
+    /// worker (through a close marker) rather than inline: any root the fence
+    /// counts, so the families it fenced get re-drained when it clears.
     fn trace_root_needs_close_marker(ingress: &TraceIngressState, root_sid: &str) -> bool {
-        if ingress.root_definitely_read_only.contains(root_sid) {
-            return false;
-        }
-        ingress
-            .root_mutating
-            .get(root_sid)
-            .copied()
-            .unwrap_or(false)
+        Self::open_root_may_mutate_family(ingress, root_sid, None)
             || ingress.root_reflog_start_offsets.contains_key(root_sid)
     }
 
-    fn clear_trace_ingress_root_locked(ingress: &mut TraceIngressState, root_sid: &str) {
-        ingress.root_worktrees.remove(root_sid);
+    /// Forgets a root; returns what it was fencing (see
+    /// `open_root_may_mutate_family`) so the caller can re-drain it.
+    fn clear_trace_ingress_root_locked(
+        ingress: &mut TraceIngressState,
+        root_sid: &str,
+    ) -> Option<FenceScope> {
+        let fenced = Self::open_root_may_mutate_family(ingress, root_sid, None).then(|| {
+            ingress
+                .root_families
+                .get(root_sid)
+                .cloned()
+                .map_or(FenceScope::EveryFamily, FenceScope::Family)
+        });
         ingress.root_families.remove(root_sid);
+        ingress.root_worktrees.remove(root_sid);
         ingress.root_argv.remove(root_sid);
         ingress.root_started_at_ns.remove(root_sid);
         ingress.root_reflog_start_offsets.remove(root_sid);
@@ -4026,6 +3837,31 @@ impl ActorDaemonCoordinator {
         ingress.root_definitely_read_only.remove(root_sid);
         ingress.root_open_connections.remove(root_sid);
         ingress.root_close_markers_enqueued.remove(root_sid);
+        ingress.root_finishing.remove(root_sid);
+        fenced
+    }
+
+    /// Whether an open trace root could still change refs that matter to
+    /// `family` (`None`: any family): open, not definitely read-only,
+    /// mutating or not yet classified, and attributed to `family` or to no
+    /// family yet (unattributed roots fail closed and count for everyone).
+    fn open_root_may_mutate_family(
+        ingress: &TraceIngressState,
+        root_sid: &str,
+        family: Option<&str>,
+    ) -> bool {
+        ingress
+            .root_open_connections
+            .get(root_sid)
+            .is_some_and(|count| *count > 0)
+            && !ingress.root_definitely_read_only.contains(root_sid)
+            && ingress.root_mutating.get(root_sid).copied().unwrap_or(true)
+            && family.is_none_or(|family| {
+                ingress
+                    .root_families
+                    .get(root_sid)
+                    .is_none_or(|root_family| root_family == family)
+            })
     }
 
     fn record_trace_connection_close(&self, roots: &[String]) -> Result<Vec<String>, GitAiError> {
@@ -4041,8 +3877,12 @@ impl ActorDaemonCoordinator {
                 *count -= 1;
                 continue;
             }
+            if ingress.root_finishing.contains(root_sid) {
+                // The root's atexit is queued: the worker clears it (and lifts
+                // its fence) when it processes it.
+                continue;
+            }
             if !Self::trace_root_needs_close_marker(&ingress, root_sid) {
-                ingress.root_open_connections.remove(root_sid);
                 Self::clear_trace_ingress_root_locked(&mut ingress, root_sid);
                 continue;
             }
@@ -4138,30 +3978,31 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
-    fn clear_trace_root_tracking(&self, root_sid: &str) -> Result<(), GitAiError> {
-        {
+    /// Forgets a root and lifts its fence; returns what it fenced so the
+    /// caller can re-drain exactly those families.
+    fn clear_trace_root_tracking(&self, root_sid: &str) -> Result<Option<FenceScope>, GitAiError> {
+        let cleared = {
             let mut ingress = self.trace_ingress_state.lock().map_err(|_| {
                 GitAiError::Generic("trace ingress state lock poisoned".to_string())
             })?;
-            Self::clear_trace_ingress_root_locked(&mut ingress, root_sid);
-        }
+            Self::clear_trace_ingress_root_locked(&mut ingress, root_sid)
+        };
         let mut queued = self.queued_trace_payloads_by_root.lock().map_err(|_| {
             GitAiError::Generic("queued trace payloads by root lock poisoned".to_string())
         })?;
         queued.remove(root_sid);
         self.trace_ingest_progress_notify.notify_waiters();
-        Ok(())
+        Ok(cleared)
     }
 
     fn has_open_trace_roots_that_may_mutate_refs(&self) -> bool {
         let Ok(ingress) = self.trace_ingress_state.lock() else {
             return false;
         };
-        ingress.root_open_connections.iter().any(|(root, count)| {
-            *count > 0
-                && !ingress.root_definitely_read_only.contains(root)
-                && ingress.root_mutating.get(root).copied().unwrap_or(true)
-        })
+        ingress
+            .root_open_connections
+            .keys()
+            .any(|root| Self::open_root_may_mutate_family(&ingress, root, None))
     }
 
     /// As [`Self::has_open_trace_roots_that_may_mutate_refs`], but scoped to
@@ -4172,15 +4013,10 @@ impl ActorDaemonCoordinator {
         let Ok(ingress) = self.trace_ingress_state.lock() else {
             return false;
         };
-        ingress.root_open_connections.iter().any(|(root, count)| {
-            *count > 0
-                && !ingress.root_definitely_read_only.contains(root)
-                && ingress.root_mutating.get(root).copied().unwrap_or(true)
-                && ingress
-                    .root_families
-                    .get(root)
-                    .is_none_or(|root_family| root_family == family)
-        })
+        ingress
+            .root_open_connections
+            .keys()
+            .any(|root| Self::open_root_may_mutate_family(&ingress, root, Some(family)))
     }
 
     fn next_trace_ingest_seq(&self) -> u64 {
@@ -4289,6 +4125,8 @@ impl ActorDaemonCoordinator {
                         object.remove(TRACE_INGEST_SEQ_FIELD);
                     }
                     let ordered_payload_root = Self::trace_payload_root_sid(&ordered_payload);
+                    let ordered_payload_is_final =
+                        Self::trace_payload_is_root_final_frame(&ordered_payload);
 
                     let ingest_result = {
                         let coord = coordinator.clone();
@@ -4325,7 +4163,27 @@ impl ActorDaemonCoordinator {
                             }
                         }
                     };
-                    let _ = ingest_result;
+                    if ingest_result.is_err()
+                        && ordered_payload_is_final
+                        && let Some(root_sid) = ordered_payload_root.as_deref()
+                    {
+                        // A root's final frame must lift its fence whatever went
+                        // wrong with it: a root stuck finishing would fence its
+                        // family forever.
+                        match coordinator.clear_trace_root_tracking(root_sid) {
+                            Ok(fenced) => {
+                                coordinator.schedule_ready_family_drains_after_root_cleared(fenced)
+                            }
+                            Err(error) => tracing::error!(
+                                component = "daemon",
+                                phase = "trace_ingest_worker",
+                                reason = "root_clear_failed",
+                                root_sid,
+                                %error,
+                                "failed clearing trace root after a final-frame ingest failure"
+                            ),
+                        }
+                    }
                     let _ = coordinator.queued_trace_payloads.fetch_update(
                         Ordering::Relaxed,
                         Ordering::Relaxed,
@@ -4901,7 +4759,12 @@ impl ActorDaemonCoordinator {
                 .or_insert(started_at_ns);
         }
 
-        if let Some(worktree) = worktree_hint.clone() {
+        // Only the root's own frames describe the root: a child git process
+        // (a hook's `git rev-parse`, say) must not retarget its family or
+        // downgrade its classification.
+        if sid == root
+            && let Some(worktree) = worktree_hint.clone()
+        {
             if let Some(family) = resolved_family {
                 ingress.root_families.insert(root.clone(), family);
             }
@@ -4924,7 +4787,9 @@ impl ActorDaemonCoordinator {
             early_primary.or_else(|| trace_argv_primary_command(&effective_argv));
         let command_mutates_refs =
             trace_invocation_may_mutate_refs(effective_primary.as_deref(), &effective_argv);
-        if let Some(primary) = effective_primary.as_deref() {
+        if sid == root
+            && let Some(primary) = effective_primary.as_deref()
+        {
             ingress
                 .root_mutating
                 .entry(root.clone())
@@ -4937,8 +4802,13 @@ impl ActorDaemonCoordinator {
         }
 
         let terminal = is_terminal_root_trace_event(&event, &sid, &root);
-        let capture_worktree = if command_mutates_refs
+        // Reflog start offsets describe the root's own repository: only its
+        // own frames may trigger the capture (a mutating child git in another
+        // repository must not record that repository under the root).
+        let capture_worktree = if sid == root
+            && command_mutates_refs
             && !terminal
+            && !ingress.root_finishing.contains(&root)
             && !ingress.root_reflog_start_offsets.contains_key(&root)
         {
             worktree_hint
@@ -4979,19 +4849,17 @@ impl ActorDaemonCoordinator {
 
         let read_only_root =
             event_is_read_only || ingress.root_definitely_read_only.contains(&root);
-        let inherited = (
-            ingress.root_argv.get(&root).cloned(),
-            ingress.root_started_at_ns.get(&root).copied(),
-            ingress.root_reflog_start_offsets.get(&root).cloned(),
-            ingress.root_worktrees.get(&root).cloned(),
-        );
+        let inherited_reflog_start_offsets = ingress.root_reflog_start_offsets.get(&root).cloned();
+        if terminal && !read_only_root {
+            ingress.root_finishing.insert(root.clone());
+        }
         if terminal {
+            // Drop what later frames could no longer use. The family, start
+            // time, argv and mutating classification stay until the worker
+            // clears the root, so its fence keeps its scope while the final
+            // frames are queued.
             ingress.root_worktrees.remove(&root);
-            ingress.root_families.remove(&root);
-            ingress.root_argv.remove(&root);
-            ingress.root_started_at_ns.remove(&root);
             ingress.root_reflog_start_offsets.remove(&root);
-            ingress.root_mutating.remove(&root);
             ingress.root_target_repo_only.remove(&root);
             ingress.root_last_activity_ns.remove(&root);
             ingress.root_definitely_read_only.remove(&root);
@@ -4999,39 +4867,14 @@ impl ActorDaemonCoordinator {
 
         drop(ingress);
 
-        if let Some(object) = payload.as_object_mut() {
-            if object.get("argv").is_none()
-                && let Some(root_argv) = inherited.0
-            {
-                object.insert(TRACE_ROOT_ARGV_FIELD.to_string(), json!(root_argv));
-            }
-            if object.get(TRACE_ROOT_STARTED_AT_NS_FIELD).is_none()
-                && let Some(started_at_ns) = inherited.1
-            {
-                let started_at_ns = u64::try_from(started_at_ns).unwrap_or(u64::MAX);
-                object.insert(
-                    TRACE_ROOT_STARTED_AT_NS_FIELD.to_string(),
-                    json!(started_at_ns),
-                );
-            }
-            if object.get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD).is_none()
-                && let Some(offsets) = inherited.2
-            {
-                object.insert(
-                    TRACE_ROOT_REFLOG_START_OFFSETS_FIELD.to_string(),
-                    json!(offsets),
-                );
-            }
-            if object.get(TRACE_ROOT_WORKTREE_FIELD).is_none()
-                && object.get("worktree").is_none()
-                && object.get("repo_working_dir").is_none()
-                && let Some(worktree) = inherited.3
-            {
-                object.insert(
-                    TRACE_ROOT_WORKTREE_FIELD.to_string(),
-                    json!(worktree.to_string_lossy().to_string()),
-                );
-            }
+        if let Some(object) = payload.as_object_mut()
+            && object.get(TRACE_ROOT_REFLOG_START_OFFSETS_FIELD).is_none()
+            && let Some(offsets) = inherited_reflog_start_offsets
+        {
+            object.insert(
+                TRACE_ROOT_REFLOG_START_OFFSETS_FIELD.to_string(),
+                json!(offsets),
+            );
         }
 
         read_only_root
@@ -5057,7 +4900,6 @@ impl ActorDaemonCoordinator {
         // pass while popped entries are about to execute (#2252).
         let _family_effect = self.begin_family_effect_guarded(family);
         let mut ready: Vec<(u64, FamilySequencerEntry)> = Vec::new();
-        let mut progressed = false;
         {
             let mut map = self.family_sequencers_by_family.lock().map_err(|_| {
                 GitAiError::Generic("family sequencer map lock poisoned".to_string())
@@ -5069,9 +4911,6 @@ impl ActorDaemonCoordinator {
                 return Ok(());
             };
             while let Some(first_entry) = state.entries.first_entry() {
-                if matches!(first_entry.get(), FamilySequencerEntry::PendingRoot) {
-                    break;
-                }
                 let entry_root_sid = match first_entry.get() {
                     FamilySequencerEntry::ReadyCommand(command) => Some(command.root_sid.as_str()),
                     FamilySequencerEntry::AppliedSideEffects { applied, .. } => {
@@ -5087,15 +4926,7 @@ impl ActorDaemonCoordinator {
                     break;
                 }
                 let (order, entry) = first_entry.remove_entry();
-                match entry {
-                    FamilySequencerEntry::PendingRoot => {
-                        unreachable!("pending root should not be removed from sequencer front");
-                    }
-                    other => {
-                        ready.push((order.ordinal, other));
-                        progressed = true;
-                    }
-                }
+                ready.push((order.ordinal, entry));
             }
         }
 
@@ -5124,7 +4955,6 @@ impl ActorDaemonCoordinator {
                     FamilySequencerEntry::Checkpoint { receipt_seq, .. } => {
                         format!("checkpoint:seq={receipt_seq}")
                     }
-                    _ => "other".to_string(),
                 };
                 format!("order={order} entry={entry}")
             });
@@ -5530,12 +5360,9 @@ impl ActorDaemonCoordinator {
                         "checkpoint processing completed"
                     );
                 }
-                FamilySequencerEntry::Canceled => {}
-                FamilySequencerEntry::PendingRoot => {}
             }
         }
 
-        let _ = progressed;
         Ok(())
     }
 
@@ -7038,10 +6865,25 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    /// Whether `payload` is the last frame the daemon will see for its root:
+    /// the root's own `atexit`, or the synthetic close marker.
+    fn trace_payload_is_root_final_frame(payload: &Value) -> bool {
+        let event = payload
+            .get("event")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let sid = payload
+            .get("sid")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        event == TRACE_CONNECTION_CLOSED_EVENT
+            || is_terminal_root_trace_event(event, sid, trace_root_sid(sid))
+    }
+
     async fn apply_trace_payload_to_state(
         self: &Arc<Self>,
         payload: Value,
-    ) -> Result<TracePayloadApplyOutcome, GitAiError> {
+    ) -> Result<(), GitAiError> {
         let payload_root_sid = Self::trace_payload_root_sid(&payload);
         let event = payload
             .get("event")
@@ -7050,58 +6892,69 @@ impl ActorDaemonCoordinator {
             .to_string();
         if event == TRACE_CONNECTION_CLOSED_EVENT {
             let Some(root_sid) = payload_root_sid.as_deref() else {
-                return Ok(TracePayloadApplyOutcome::None);
+                return Ok(());
             };
             {
                 let mut normalizer = self.normalizer.lock().await;
                 let _ = normalizer.sweep_orphans_for_roots(&[root_sid.to_string()]);
             }
-            let replaced_family =
-                self.replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)?;
-            let outcome = if replaced_family.is_some() {
-                TracePayloadApplyOutcome::QueuedFamily
-            } else {
-                TracePayloadApplyOutcome::None
-            };
-            self.clear_trace_root_tracking(root_sid)?;
-            self.schedule_ready_family_drains_after_root_cleared(replaced_family);
-            return Ok(outcome);
+            let fenced = self.clear_trace_root_tracking(root_sid)?;
+            self.schedule_ready_family_drains_after_root_cleared(fenced);
+            return Ok(());
+        }
+        if trace_payload_worktree_hint(&payload).is_some() {
+            // Until a root's worktree is known it fences every family; now
+            // that its scope has narrowed to one, the others may proceed.
+            self.schedule_all_ready_family_drains();
         }
 
-        self.maybe_append_pending_root_from_trace_payload(&payload)?;
+        let terminal = is_terminal_root_trace_event(
+            &event,
+            payload
+                .get("sid")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            payload_root_sid.as_deref().unwrap_or_default(),
+        );
         let emitted = {
             let mut normalizer = self.normalizer.lock().await;
-            normalizer.ingest_payload(&payload)?
+            normalizer.ingest_payload(&payload)
         };
-        let Some(command) = emitted else {
-            if is_terminal_root_trace_event(
-                &event,
-                payload
-                    .get("sid")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default(),
-                payload_root_sid.as_deref().unwrap_or_default(),
-            ) && let Some(root_sid) = payload_root_sid.as_deref()
-                && let Some(family) =
-                    self.replace_pending_root_entry(root_sid, FamilySequencerEntry::Canceled)?
-            {
-                self.clear_trace_root_tracking(root_sid)?;
-                self.schedule_ready_family_drains_after_root_cleared(Some(family));
-                return Ok(TracePayloadApplyOutcome::QueuedFamily);
+        let command = match emitted {
+            Ok(Some(command)) => command,
+            // A root's final frame always lifts its fence, whether or not the
+            // normalizer could turn the root into a command.
+            Ok(None) | Err(_) if terminal => {
+                if let Some(root_sid) = payload_root_sid.as_deref() {
+                    let fenced = self.clear_trace_root_tracking(root_sid)?;
+                    self.schedule_ready_family_drains_after_root_cleared(fenced);
+                }
+                return emitted.map(|_| ());
             }
-            return Ok(TracePayloadApplyOutcome::None);
+            Ok(None) => return Ok(()),
+            Err(error) => return Err(error),
         };
         let root_sid = command.root_sid.clone();
 
-        let mut family_to_drain_after_clear = None;
-        let outcome = if let Some(family) = self.replace_pending_root_entry(
-            &root_sid,
-            FamilySequencerEntry::ReadyCommand(Box::new(command.clone())),
-        )? {
-            self.cache_commit_file_timestamp_snapshots_for_command(&command)?;
-            family_to_drain_after_clear = Some(family);
-            TracePayloadApplyOutcome::QueuedFamily
-        } else if let Some(family) = command.family_key.as_ref().map(|family| family.0.clone())
+        let sequenced = self.sequence_emitted_command(command).await;
+        let fenced = self.clear_trace_root_tracking(&root_sid)?;
+        self.schedule_ready_family_drains_after_root_cleared(fenced);
+        // The family that gained the entry (coalesced: a drain already
+        // scheduled for it above is not doubled).
+        if let Some(family) = sequenced.as_ref().ok().and_then(|family| family.clone()) {
+            self.schedule_family_drain(family);
+        }
+        sequenced.map(|_| ())
+    }
+
+    /// Queues an emitted command for its family sequencer, or — for commands
+    /// outside the sequencer — applies it to family state and queues its
+    /// side-effect pass. Returns the family whose sequencer gained an entry.
+    async fn sequence_emitted_command(
+        self: &Arc<Self>,
+        command: crate::daemon::domain::NormalizedCommand,
+    ) -> Result<Option<String>, GitAiError> {
+        if let Some(family) = command.family_key.as_ref().map(|family| family.0.clone())
             && Self::trace_invocation_participates_in_family_sequencer(
                 command.primary_command.as_deref(),
                 &command.raw_argv,
@@ -7114,55 +6967,36 @@ impl ActorDaemonCoordinator {
                 started_at_ns,
                 FamilySequencerEntry::ReadyCommand(Box::new(command)),
             )?;
-            family_to_drain_after_clear = Some(family);
-            TracePayloadApplyOutcome::QueuedFamily
-        } else {
-            match self.coordinator.route_command(command).await {
-                Ok(applied) => {
-                    if let Some(family) =
-                        applied.command.family_key.as_ref().map(|key| key.0.clone())
-                    {
-                        // The command is applied to family state, but its
-                        // side-effect pass is unbounded git work: sequence it
-                        // so drains execute it off-worker, ordered by the
-                        // command's start time and serialized with the
-                        // family's other passes (#2252).
-                        let commit_file_timestamp_snapshots =
-                            Self::start_commit_file_timestamp_snapshots_for_command(
-                                &applied.command,
-                            );
-                        let started_at_ns = applied.command.started_at_ns;
-                        self.append_family_sequencer_entry(
-                            &family,
-                            started_at_ns,
-                            FamilySequencerEntry::AppliedSideEffects {
-                                applied: Box::new(applied),
-                                commit_file_timestamp_snapshots,
-                            },
-                        )?;
-                        family_to_drain_after_clear = Some(family);
-                        TracePayloadApplyOutcome::QueuedFamily
-                    } else {
-                        TracePayloadApplyOutcome::None
-                    }
-                }
-                Err(error) => {
-                    let _ = self.clear_trace_root_tracking(&root_sid);
-                    return Err(error);
-                }
-            }
+            return Ok(Some(family));
+        }
+
+        let applied = self.coordinator.route_command(command).await?;
+        let Some(family) = applied.command.family_key.as_ref().map(|key| key.0.clone()) else {
+            return Ok(None);
         };
-        self.clear_trace_root_tracking(&root_sid)?;
-        self.schedule_ready_family_drains_after_root_cleared(family_to_drain_after_clear);
-        Ok(outcome)
+        // The command is applied to family state, but its side-effect pass is
+        // unbounded git work: sequence it so drains execute it off-worker,
+        // ordered by the command's start time and serialized with the
+        // family's other passes (#2252).
+        let commit_file_timestamp_snapshots =
+            Self::start_commit_file_timestamp_snapshots_for_command(&applied.command);
+        let started_at_ns = applied.command.started_at_ns;
+        self.append_family_sequencer_entry(
+            &family,
+            started_at_ns,
+            FamilySequencerEntry::AppliedSideEffects {
+                applied: Box::new(applied),
+                commit_file_timestamp_snapshots,
+            },
+        )?;
+        Ok(Some(family))
     }
 
     async fn ingest_trace_payload_fast(self: Arc<Self>, payload: Value) -> Result<(), GitAiError> {
         if !is_trace_payload(&payload) {
             return Ok(());
         }
-        let _ = self.apply_trace_payload_to_state(payload).await?;
-        Ok(())
+        self.apply_trace_payload_to_state(payload).await
     }
 
     async fn watermarks_for_family(

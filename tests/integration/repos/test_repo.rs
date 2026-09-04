@@ -58,6 +58,9 @@ const DAEMON_TEST_SYNC_TOTAL_TIMEOUT: Duration = Duration::from_secs(120);
 const DAEMON_TEST_SYNC_TOTAL_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(windows)]
 const DAEMON_TEST_SYNC_IDLE_TIMEOUT: Duration = Duration::from_secs(45);
+/// Daemon log lines shown when a sync times out, so a CI failure explains
+/// what the daemon was doing.
+const DAEMON_TEST_SYNC_LOG_TAIL_LINES: usize = 150;
 #[cfg(not(windows))]
 const DAEMON_TEST_SYNC_IDLE_TIMEOUT: Duration = Duration::from_secs(20);
 const DAEMON_TEST_TRACE_READY_TIMEOUT: Duration = Duration::from_secs(15);
@@ -2078,9 +2081,19 @@ impl TestRepo {
             thread::sleep(Duration::from_millis(10));
         }
 
+        let daemon_log = self.daemon_stderr_contents();
+        let daemon_log_tail = daemon_log
+            .lines()
+            .rev()
+            .take(DAEMON_TEST_SYNC_LOG_TAIL_LINES)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n");
         panic!(
-            "daemon completion log for family {} did not observe all sessions within timeout: {:?}",
-            family_key, sessions
+            "daemon completion log for family {} did not observe all sessions within timeout: {:?}\ndaemon log tail:\n{}",
+            family_key, sessions, daemon_log_tail
         );
     }
 
