@@ -63,6 +63,7 @@ pub mod domain;
 pub mod family_actor;
 pub mod git_backend;
 pub mod global_actor;
+pub mod health;
 mod memory_watchdog;
 pub mod reducer;
 pub mod ref_cursor;
@@ -2981,6 +2982,7 @@ pub struct ActorDaemonCoordinator {
     /// Outer key: family. Inner key: absolute file path string. Value: registration timestamp (nanos).
     pending_ai_edits_by_family: Mutex<HashMap<String, HashMap<String, u128>>>,
     family_sequencers_by_family: Mutex<HashMap<String, FamilySequencerState>>,
+    started_at: Instant,
     /// See [`FAMILY_CAUSAL_GRACE`].
     causal_grace: Duration,
     /// Fences released because the root's process was alive past the grace
@@ -3124,6 +3126,7 @@ impl ActorDaemonCoordinator {
             inflight_effects_by_family: Mutex::new(HashMap::new()),
             pending_ai_edits_by_family: Mutex::new(HashMap::new()),
             family_sequencers_by_family: Mutex::new(HashMap::new()),
+            started_at: Instant::now(),
             causal_grace: family_causal_grace(),
             causal_grace_expirations: AtomicU64::new(0),
             causal_fence_hard_cap_releases: AtomicU64::new(0),
@@ -7800,6 +7803,11 @@ impl ActorDaemonCoordinator {
     async fn handle_control_request(self: &Arc<Self>, request: ControlRequest) -> ControlResponse {
         let result = match request {
             ControlRequest::Ping => Ok(ControlResponse::ok(None, None)),
+            ControlRequest::StatusDaemon => {
+                serde_json::to_value(crate::daemon::health::DaemonHealthSnapshot::capture(self))
+                    .map(|v| ControlResponse::ok(None, Some(v)))
+                    .map_err(GitAiError::from)
+            }
             ControlRequest::CheckpointRun { .. } => Err(GitAiError::Generic(
                 "checkpoint.run requires the framed checkpoint transport".to_string(),
             )),
@@ -7869,20 +7877,9 @@ impl ActorDaemonCoordinator {
                     ))
                 }
             }
-            ControlRequest::StatsIngest => Ok(ControlResponse::ok(
-                None,
-                Some(json!({
-                    "trace_payloads_dropped_queue_full": self
-                        .trace_payloads_dropped_queue_full
-                        .load(Ordering::Relaxed),
-                    "trace_connections_dropped": self
-                        .trace_connections_dropped
-                        .load(Ordering::Relaxed),
-                    "telemetry_metric_batches_dropped":
-                        crate::daemon::telemetry_worker::metric_batches_dropped(),
-                    "checkpoints_dropped": self.checkpoints_dropped.load(Ordering::Relaxed),
-                })),
-            )),
+            ControlRequest::StatsIngest => serde_json::to_value(IngestLossSnapshot::capture(self))
+                .map(|v| ControlResponse::ok(None, Some(v)))
+                .map_err(GitAiError::from),
             ControlRequest::Await { timeout_secs } => {
                 let result = self.await_completion(timeout_secs).await;
                 serde_json::to_value(result)
@@ -9602,25 +9599,27 @@ fn should_defer_restart_for_checkpoints(
     outstanding_checkpoints > 0 && consecutive_deferrals < SOCKET_HEALTH_MAX_CONSECUTIVE_DEFERRALS
 }
 
-/// Snapshot of the ingest-loss counters for delta reporting.
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-struct IngestLossSnapshot {
-    payloads_dropped_queue_full: u64,
-    connections_dropped: u64,
-    metric_batches_dropped: u64,
+/// Snapshot of the ingest-loss counters, for delta reporting and for the
+/// `stats.ingest` / `status.daemon` responses (field names are the wire keys).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub(crate) struct IngestLossSnapshot {
+    trace_payloads_dropped_queue_full: u64,
+    trace_connections_dropped: u64,
+    telemetry_metric_batches_dropped: u64,
     checkpoints_dropped: u64,
 }
 
 impl IngestLossSnapshot {
     fn capture(coordinator: &ActorDaemonCoordinator) -> Self {
         Self {
-            payloads_dropped_queue_full: coordinator
+            trace_payloads_dropped_queue_full: coordinator
                 .trace_payloads_dropped_queue_full
                 .load(Ordering::Relaxed),
-            connections_dropped: coordinator
+            trace_connections_dropped: coordinator
                 .trace_connections_dropped
                 .load(Ordering::Relaxed),
-            metric_batches_dropped: crate::daemon::telemetry_worker::metric_batches_dropped(),
+            telemetry_metric_batches_dropped:
+                crate::daemon::telemetry_worker::metric_batches_dropped(),
             checkpoints_dropped: coordinator.checkpoints_dropped.load(Ordering::Relaxed),
         }
     }
@@ -9654,14 +9653,14 @@ fn report_ingest_losses(coordinator: &Arc<ActorDaemonCoordinator>) {
     }
     let values = crate::metrics::events::DaemonIngestAnomalyValues::new(
         current
-            .payloads_dropped_queue_full
-            .saturating_sub(last_reported.payloads_dropped_queue_full),
+            .trace_payloads_dropped_queue_full
+            .saturating_sub(last_reported.trace_payloads_dropped_queue_full),
         current
-            .connections_dropped
-            .saturating_sub(last_reported.connections_dropped),
+            .trace_connections_dropped
+            .saturating_sub(last_reported.trace_connections_dropped),
         current
-            .metric_batches_dropped
-            .saturating_sub(last_reported.metric_batches_dropped),
+            .telemetry_metric_batches_dropped
+            .saturating_sub(last_reported.telemetry_metric_batches_dropped),
         current
             .checkpoints_dropped
             .saturating_sub(last_reported.checkpoints_dropped),

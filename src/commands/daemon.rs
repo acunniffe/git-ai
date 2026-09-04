@@ -458,11 +458,14 @@ fn handle_status(repo_working_dir: String) -> Result<(), String> {
     // family-level status query which requires a valid repo.
     if crate::git::find_repository_in_path(&repo_working_dir).is_err() {
         let daemon_running = daemon_is_up(&config);
-        let response = serde_json::json!({
+        let mut response = serde_json::json!({
             "ok": true,
             "git_repo": false,
             "daemon_running": daemon_running,
         });
+        if daemon_running {
+            attach_daemon_health(&config, &mut response);
+        }
         println!(
             "{}",
             serde_json::to_string_pretty(&response).map_err(|e| e.to_string())?
@@ -473,11 +476,36 @@ fn handle_status(repo_working_dir: String) -> Result<(), String> {
     let request = ControlRequest::StatusFamily { repo_working_dir };
     let response =
         send_control_request(&config.control_socket_path, &request).map_err(|e| e.to_string())?;
+    let mut output = serde_json::to_value(&response).map_err(|e| e.to_string())?;
+    attach_daemon_health(&config, &mut output);
     println!(
         "{}",
-        serde_json::to_string_pretty(&response).map_err(|e| e.to_string())?
+        serde_json::to_string_pretty(&output).map_err(|e| e.to_string())?
     );
     Ok(())
+}
+
+/// Adds the daemon-wide pipeline health (`status.daemon`) under `daemon`, or
+/// the reason it is unavailable under `daemon_error`; family status prints
+/// either way.
+fn attach_daemon_health(config: &DaemonConfig, output: &mut serde_json::Value) {
+    match send_control_request(&config.control_socket_path, &ControlRequest::StatusDaemon) {
+        Ok(response) if response.ok => {
+            output["daemon"] = response.data.unwrap_or(serde_json::Value::Null);
+        }
+        Ok(response) => {
+            let error = response.error.unwrap_or_default();
+            let message =
+                if error.contains("invalid control request") && error.contains("status.daemon") {
+                    "the running background service predates status.daemon; run `git-ai bg restart`"
+                        .to_string()
+                } else {
+                    error
+                };
+            output["daemon_error"] = serde_json::Value::String(message);
+        }
+        Err(error) => output["daemon_error"] = serde_json::Value::String(error.to_string()),
+    }
 }
 
 fn handle_tail(args: &[String]) -> Result<(), String> {
