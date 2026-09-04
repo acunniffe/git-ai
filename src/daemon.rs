@@ -5446,18 +5446,20 @@ impl ActorDaemonCoordinator {
         }
 
         let terminal = is_terminal_root_trace_event(&event, &sid, &root);
-        // Reflog start offsets describe the root's own repository: only its
-        // own frames may trigger the capture (a mutating child git in another
-        // repository must not record that repository under the root).
+        // Reflog start offsets describe the root's own repository, which only
+        // the root's own def_repo names with authority: a start frame's hint is
+        // a `-C` path that `--git-dir` or `GIT_DIR` may contradict, and a child
+        // git in another repository must not record that repository under the
+        // root. def_repo follows start within the same connection, so this
+        // costs no more than capturing at start did.
         let capture_worktree = if sid == root
+            && event == "def_repo"
             && command_mutates_refs
             && !terminal
             && !ingress.root_finishing.contains(&root)
             && !ingress.root_reflog_start_offsets.contains_key(&root)
         {
-            worktree_hint
-                .clone()
-                .or_else(|| ingress.root_worktrees.get(&root).cloned())
+            worktree_hint.clone()
         } else {
             None
         };
@@ -11963,6 +11965,13 @@ mod tests {
             "time_ns": 1u64,
         });
         assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "worktree": repo,
+            "time_ns": 2u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
 
         assert!(
             coord.has_open_trace_roots_that_may_mutate_family(&family),
@@ -11984,7 +11993,7 @@ mod tests {
             .root_reflog_start_offsets
             .get(sid)
             .cloned()
-            .expect("the root's own start captures its reflog offsets");
+            .expect("the root's own def_repo captures its reflog offsets");
         let repo_git_dir = repo.join(".git").canonicalize().unwrap();
         assert!(
             offsets
@@ -12032,6 +12041,105 @@ mod tests {
         );
     }
 
+    /// The `worktree:` reflog key recorded for `root`, if any.
+    fn recorded_head_reflog_key(coord: &ActorDaemonCoordinator, root: &str) -> Option<String> {
+        let ingress = coord.trace_ingress_state.lock().unwrap();
+        ingress
+            .root_reflog_start_offsets
+            .get(root)
+            .and_then(|offsets| {
+                crate::daemon::ref_cursor::worktree_head_start_offset(offsets).map(|(key, _)| key)
+            })
+    }
+
+    #[tokio::test]
+    async fn reflog_offsets_recorded_from_a_cwd_outside_any_repo_yield_to_def_repo() {
+        let coord = ActorDaemonCoordinator::new_with_causal_grace(Duration::from_millis(20));
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+        commit_untraced(&repo); // so the worktree HEAD reflog exists
+        let elsewhere = temp.path().join("not-a-repo");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+
+        // `cd ~ && git --git-dir=... --work-tree=... commit`: the start frame's
+        // only worktree hint is a cwd outside any repository.
+        let sid = alive_root_sid("dotfiles");
+        coord.trace_root_connection_opened(&sid).unwrap();
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "commit", "-m", "dotfiles"],
+            "cwd": elsewhere,
+            "time_ns": now_unix_nanos() as u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        assert_eq!(
+            recorded_head_reflog_key(&coord, &sid),
+            None,
+            "nothing about a repository is known yet"
+        );
+
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "worktree": repo,
+            "time_ns": now_unix_nanos() as u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert!(
+            recorded_head_reflog_key(&coord, &sid).is_some(),
+            "def_repo names the repository: its HEAD reflog is what the fence must consult"
+        );
+
+        // The root has written nothing: an editor commit fences nothing.
+        append_ready_rebase(&coord, &family);
+        assert_eq!(
+            coord.family_front_entry_disposition(&family),
+            FamilyFrontDisposition::Ready
+        );
+    }
+
+    #[tokio::test]
+    async fn reflog_offsets_come_from_def_repo_not_the_start_frames_hint() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        run_git_for_test(temp.path(), &["init", "here"]);
+        let here = temp.path().join("here");
+        commit_untraced(&here);
+        let (target, _) = init_test_family(&coord, &temp);
+        commit_untraced(&target);
+
+        // `GIT_DIR` points the command at `target` while it runs from `here`.
+        let sid = alive_root_sid("git-dir");
+        coord.trace_root_connection_opened(&sid).unwrap();
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "commit", "-m", "elsewhere"],
+            "cwd": here,
+            "time_ns": now_unix_nanos() as u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        assert_eq!(
+            recorded_head_reflog_key(&coord, &sid),
+            None,
+            "a start frame's hint names no repository with authority"
+        );
+
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "worktree": target,
+            "time_ns": now_unix_nanos() as u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        let target_key = recorded_head_reflog_key(&coord, &sid).expect("offsets for the real repo");
+        assert!(
+            target_key.contains("repo") && !target_key.contains("here"),
+            "def_repo names the repository the command mutates: {target_key}"
+        );
+    }
+
     #[tokio::test]
     async fn mutating_trace_payload_captures_repo_reflog_start_offsets() {
         let coord = ActorDaemonCoordinator::new();
@@ -12051,13 +12159,20 @@ mod tests {
         std::fs::write(&head_log, old_head_reflog).unwrap();
         std::fs::write(&stash_log, old_reflog).unwrap();
         std::fs::write(&branch_log, old_branch_reflog).unwrap();
-        let mut payload = serde_json::json!({
+        let mut start = serde_json::json!({
             "event": "start",
             "sid": "20260411T120000.000000-Psid-reflog",
             "argv": ["git", "reset", "--hard", "HEAD~1"],
             "worktree": repo,
         });
-
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        // The root's def_repo names its repository: that is where the reflog
+        // start offsets are captured and first attached.
+        let mut payload = serde_json::json!({
+            "event": "def_repo",
+            "sid": "20260411T120000.000000-Psid-reflog",
+            "worktree": repo,
+        });
         assert!(coord.prepare_trace_payload_for_ingest(&mut payload));
 
         let offsets = payload
@@ -12381,6 +12496,13 @@ mod tests {
             "time_ns": started_at_ns as u64,
         });
         assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "worktree": repo,
+            "time_ns": started_at_ns as u64 + 1,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
     }
 
     fn open_attributed_commit_root(coord: &ActorDaemonCoordinator, sid: &str, repo: &Path) {
