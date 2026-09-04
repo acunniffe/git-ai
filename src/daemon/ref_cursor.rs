@@ -2343,9 +2343,20 @@ pub(crate) fn capture_reflog_start_offsets_for_worktree(worktree: &Path) -> Hash
     offsets
 }
 
+/// The worktree `HEAD` entry of a command's reflog start offsets: its key and
+/// the reflog's length when the command started, if that reflog existed.
+pub(crate) fn worktree_head_start_offset(
+    start_offsets: &HashMap<String, u64>,
+) -> Option<(String, u64)> {
+    start_offsets
+        .iter()
+        .find(|(key, _)| key.starts_with("worktree:"))
+        .map(|(key, len)| (key.clone(), *len))
+}
+
 /// Whether a command that started at `started_at_ns` has written the worktree
 /// `HEAD` reflog since: the reflog is longer than the length recorded in
-/// `start_offsets` when the command started, or it was modified after the
+/// `head_start` when the command started, or it was modified after the
 /// command started. The modification time covers a recorded length that was
 /// itself taken late, after the first write; unlike a reflog entry's committer
 /// date it cannot be set by the user. A repository that had no `HEAD` reflog
@@ -2353,14 +2364,11 @@ pub(crate) fn capture_reflog_start_offsets_for_worktree(worktree: &Path) -> Hash
 /// the worktree is unknown, the repository keeps no reflogs, or the file
 /// cannot be read.
 pub(crate) fn worktree_head_reflog_grew_since(
-    start_offsets: &HashMap<String, u64>,
+    head_start: Option<(&str, u64)>,
     worktree: Option<&Path>,
     started_at_ns: Option<u128>,
 ) -> Option<bool> {
-    let Some((key, start_len)) = start_offsets
-        .iter()
-        .find(|(key, _)| key.starts_with("worktree:"))
-    else {
+    let Some((key, start_len)) = head_start else {
         let logs = git_dir_for_worktree(worktree?)?.join("logs");
         if !logs.is_dir() {
             return None;
@@ -2369,7 +2377,7 @@ pub(crate) fn worktree_head_reflog_grew_since(
     };
     let (_, path) = reflog_reference_and_path_for_key(Path::new(""), key)?;
     let metadata = fs::metadata(&path).ok()?;
-    if metadata.len() > *start_len {
+    if metadata.len() > start_len {
         return Some(true);
     }
     let modified_ns = metadata
