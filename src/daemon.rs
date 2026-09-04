@@ -13329,9 +13329,9 @@ mod tests {
     async fn health_snapshot_observes_a_bounded_number_of_open_roots() {
         use crate::daemon::health::{DaemonHealthSnapshot, HEALTH_ROOT_OBSERVE_LIMIT};
 
-        // Past a tiny grace, an observed live root without a reflog releases,
+        // Past a short grace, an observed live root without a reflog releases,
         // so the fence below is held only by roots the peek could not observe.
-        let grace = Duration::from_millis(1);
+        let grace = Duration::from_millis(20);
         let coord = ActorDaemonCoordinator::new_with_causal_grace(grace);
         for i in 0..HEALTH_ROOT_OBSERVE_LIMIT {
             open_unattributed_commit_root(&coord, &alive_root_sid(&format!("many-{i}")));
@@ -13361,7 +13361,16 @@ mod tests {
 
         // The drain releases even a written root at the written-root cap, so
         // an unobserved root is not reported as holding past it.
-        tokio::time::sleep(grace * FAMILY_WRITTEN_ROOT_FENCE_CAP_MULTIPLIER).await;
+        {
+            let mut sequencers = coord.family_sequencers_by_family.lock().unwrap();
+            let slot = sequencers
+                .get_mut("family-a")
+                .and_then(|state| state.entries.values_mut().next())
+                .unwrap();
+            slot.enqueued_at = Instant::now()
+                .checked_sub(grace * FAMILY_WRITTEN_ROOT_FENCE_CAP_MULTIPLIER + grace)
+                .unwrap();
+        }
         assert!(!DaemonHealthSnapshot::capture(&coord).families[0].fenced);
     }
 

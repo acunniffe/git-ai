@@ -506,6 +506,41 @@ fn daemon_heartbeat_health_fields() -> BTreeMap<String, DaemonLogFieldValue> {
         .unwrap_or_default()
 }
 
+/// How long a heartbeat waits for its health sample before going out without
+/// one. Sampling stats files and probes processes, so it runs on its own
+/// thread rather than this runtime's shared blocking pool, which the metrics
+/// persistence and backfill work may be occupying.
+const HEARTBEAT_HEALTH_SAMPLE_TIMEOUT: Duration = Duration::from_secs(2);
+/// Whether a health sample thread is still running: a sample that hung (a
+/// stat on an unresponsive mount) must not be joined by another every
+/// heartbeat, so at most one sampler exists at a time.
+static HEARTBEAT_HEALTH_SAMPLE_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
+
+async fn sample_heartbeat_health_fields() -> BTreeMap<String, DaemonLogFieldValue> {
+    if HEARTBEAT_HEALTH_SAMPLE_IN_FLIGHT
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return BTreeMap::new();
+    }
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let spawned = std::thread::Builder::new()
+        .name("git-ai-heartbeat-health".to_string())
+        .spawn(move || {
+            let fields = daemon_heartbeat_health_fields();
+            HEARTBEAT_HEALTH_SAMPLE_IN_FLIGHT.store(false, Ordering::Release);
+            let _ = sender.send(fields);
+        });
+    if spawned.is_err() {
+        HEARTBEAT_HEALTH_SAMPLE_IN_FLIGHT.store(false, Ordering::Release);
+        return BTreeMap::new();
+    }
+    match tokio::time::timeout(HEARTBEAT_HEALTH_SAMPLE_TIMEOUT, receiver).await {
+        Ok(Ok(fields)) => fields,
+        _ => BTreeMap::new(),
+    }
+}
+
 /// Submit telemetry from within the daemon process.
 /// Returns true if the handle was available and envelopes were submitted.
 pub fn submit_daemon_internal_telemetry(envelopes: Vec<TelemetryEnvelope>) -> bool {
@@ -741,7 +776,7 @@ async fn telemetry_flush_loop(
             }
             Some(daemon_heartbeat_event(
                 started_at.elapsed(),
-                daemon_heartbeat_health_fields(),
+                sample_heartbeat_health_fields().await,
             ))
         } else {
             None

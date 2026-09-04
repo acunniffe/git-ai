@@ -95,8 +95,9 @@ decided from data first and heuristics last:
 3. **Unwritten**: neither signal fired, so the root has changed nothing and
    fences nothing. Nobody waits for an editor or a pre-commit hook, not even a
    grace.
-4. **No reflog to consult** (the root's worktree is unknown, or the repository
-   has no `HEAD` reflog): time and liveness decide. The root holds for the
+4. **No reflog to consult** (a command that does not move HEAD, such as
+   `push`, `fetch`, `branch` or `update-ref`; a root whose worktree is unknown;
+   or a repository that keeps no reflogs): time and liveness decide. The root holds for the
    causal grace (`FAMILY_CAUSAL_GRACE`, 1 s; `GIT_AI_DAEMON_CAUSAL_GRACE_MS`)
    measured from when the waiting work became ready; past it, a root whose pid
    (encoded in its sid, `-P<hex>`) is alive is released
