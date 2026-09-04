@@ -1,5 +1,6 @@
 pub mod agent_detection;
 pub mod attribution_recovery;
+pub mod attribution_sink;
 pub mod attribution_tracker;
 pub mod authorship_log;
 pub mod authorship_log_serialization;
@@ -7,6 +8,7 @@ pub mod background_agent;
 pub mod conflict_resolution;
 pub mod diff_ai_accepted;
 pub(crate) mod diff_base;
+pub mod fingerprint;
 pub mod git_ai_hooks;
 pub mod hunk_shift;
 pub mod ignore;
