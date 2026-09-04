@@ -12032,6 +12032,102 @@ mod tests {
         );
     }
 
+    /// The `worktree:` reflog key recorded for `root`, if any.
+    fn recorded_head_reflog_key(coord: &ActorDaemonCoordinator, root: &str) -> Option<String> {
+        let ingress = coord.trace_ingress_state.lock().unwrap();
+        ingress
+            .root_reflog_start_offsets
+            .get(root)
+            .and_then(|offsets| {
+                crate::daemon::ref_cursor::worktree_head_start_offset(offsets).map(|(key, _)| key)
+            })
+    }
+
+    #[tokio::test]
+    async fn reflog_offsets_recorded_from_a_cwd_outside_any_repo_yield_to_def_repo() {
+        let coord = ActorDaemonCoordinator::new_with_causal_grace(Duration::from_millis(20));
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+        commit_untraced(&repo); // so the worktree HEAD reflog exists
+        let elsewhere = temp.path().join("not-a-repo");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+
+        // `cd ~ && git --git-dir=... --work-tree=... commit`: the start frame's
+        // only worktree hint is a cwd outside any repository.
+        let sid = alive_root_sid("dotfiles");
+        coord.trace_root_connection_opened(&sid).unwrap();
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "commit", "-m", "dotfiles"],
+            "cwd": elsewhere,
+            "time_ns": now_unix_nanos() as u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        assert_eq!(
+            recorded_head_reflog_key(&coord, &sid),
+            None,
+            "nothing about a repository is known yet"
+        );
+
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "worktree": repo,
+            "time_ns": now_unix_nanos() as u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        assert!(
+            recorded_head_reflog_key(&coord, &sid).is_some(),
+            "def_repo names the repository: its HEAD reflog is what the fence must consult"
+        );
+
+        // The root has written nothing: an editor commit fences nothing.
+        append_ready_rebase(&coord, &family);
+        assert_eq!(
+            coord.family_front_entry_disposition(&family),
+            FamilyFrontDisposition::Ready
+        );
+    }
+
+    #[tokio::test]
+    async fn def_repo_replaces_reflog_offsets_recorded_for_another_worktree() {
+        let coord = ActorDaemonCoordinator::new();
+        let temp = tempfile::tempdir().unwrap();
+        run_git_for_test(temp.path(), &["init", "here"]);
+        let here = temp.path().join("here");
+        commit_untraced(&here);
+        let (target, _) = init_test_family(&coord, &temp);
+        commit_untraced(&target);
+
+        // `GIT_DIR` points the command at `target` while it runs from `here`.
+        let sid = alive_root_sid("git-dir");
+        coord.trace_root_connection_opened(&sid).unwrap();
+        let mut start = serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "commit", "-m", "elsewhere"],
+            "cwd": here,
+            "time_ns": now_unix_nanos() as u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut start));
+        let here_key = recorded_head_reflog_key(&coord, &sid).expect("offsets for the cwd repo");
+        assert!(here_key.contains("here"), "{here_key}");
+
+        let mut def_repo = serde_json::json!({
+            "event": "def_repo",
+            "sid": sid,
+            "worktree": target,
+            "time_ns": now_unix_nanos() as u64,
+        });
+        assert!(coord.prepare_trace_payload_for_ingest(&mut def_repo));
+        let target_key = recorded_head_reflog_key(&coord, &sid).expect("offsets for the real repo");
+        assert!(
+            target_key.contains("repo") && !target_key.contains("here"),
+            "def_repo names the repository the command mutates: {target_key}"
+        );
+    }
+
     #[tokio::test]
     async fn mutating_trace_payload_captures_repo_reflog_start_offsets() {
         let coord = ActorDaemonCoordinator::new();
