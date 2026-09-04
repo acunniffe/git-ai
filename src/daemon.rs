@@ -3011,6 +3011,11 @@ pub struct ActorDaemonCoordinator {
     causal_grace_expirations: AtomicU64,
     /// Fences released at a time bound (hard cap, written-root cap).
     causal_fence_hard_cap_releases: AtomicU64,
+    /// Set when a fence observation (file stat, liveness probe) ran while the
+    /// sequencer map or the drain-marker lock was held; those locks sit on
+    /// the ingest worker's path and must never wait on I/O.
+    #[cfg(test)]
+    fence_observed_under_lock: AtomicBool,
     /// Fired when a root clears or is released: fenced drains and waits
     /// re-evaluate. Distinct from the per-frame ingest progress notify so a
     /// fenced family does not wake on every trace frame the daemon sees.
@@ -3151,6 +3156,8 @@ impl ActorDaemonCoordinator {
             causal_grace: family_causal_grace(),
             causal_grace_expirations: AtomicU64::new(0),
             causal_fence_hard_cap_releases: AtomicU64::new(0),
+            #[cfg(test)]
+            fence_observed_under_lock: AtomicBool::new(false),
             trace_root_fence_notify: Notify::new(),
             commit_file_timestamp_snapshots_by_root: Mutex::new(HashMap::new()),
             recent_replay_prerequisites_by_family: Mutex::new(HashMap::new()),
@@ -4107,6 +4114,13 @@ impl ActorDaemonCoordinator {
         };
         if probes.is_empty() {
             return Ok(None);
+        }
+        #[cfg(test)]
+        if self.family_sequencers_by_family.try_lock().is_err()
+            || self.scheduled_family_drains.try_lock().is_err()
+        {
+            self.fence_observed_under_lock
+                .store(true, Ordering::Relaxed);
         }
         for probe in &mut probes {
             probe.observe(self.causal_grace);
@@ -12528,6 +12542,40 @@ mod tests {
             }),
         );
         assert!(coord.has_open_trace_roots_that_may_mutate_refs());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fence_observations_run_with_the_sequencer_and_marker_locks_dropped() {
+        let coord = Arc::new(ActorDaemonCoordinator::new_with_causal_grace(
+            Duration::from_millis(20),
+        ));
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+        commit_untraced(&repo);
+        // A HEAD-moving root with a reflog to stat and a pid to probe.
+        let sid = dead_root_sid("observed");
+        open_attributed_commit_root(&coord, &sid, &repo);
+        commit_untraced(&repo);
+        append_ready_rebase(&coord, &family);
+
+        let fenced = coord
+            .drain_ready_family_sequencer_entries(&family)
+            .await
+            .unwrap();
+        assert!(fenced.is_some(), "the written root fences the entry");
+        assert!(
+            !coord.fence_observed_under_lock.load(Ordering::Relaxed),
+            "the drain must not stat reflogs or probe processes under the sequencer map lock"
+        );
+
+        coord.schedule_family_drain(family.clone());
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(
+            !coord.fence_observed_under_lock.load(Ordering::Relaxed),
+            "the drain task must not observe under the drain-marker lock either"
+        );
+        coord.request_shutdown();
     }
 
     #[cfg(unix)]
