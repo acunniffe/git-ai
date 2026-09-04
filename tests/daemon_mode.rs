@@ -29,7 +29,7 @@ use repos::test_repo::live_pid_trace_sid;
 use repos::test_repo::{
     DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS, DaemonTestCompletionLogEntry, DaemonTestScope, TestRepo,
     configure_raw_traced_git_env_for, get_binary_path, is_windows_loader_init_failure,
-    real_git_executable, trace_atexit_frame, write_trace_frames,
+    real_git_executable, reaped_pid_trace_sid, trace_atexit_frame, write_trace_frames,
 };
 use serde_json::Value;
 use serde_json::json;
@@ -2920,18 +2920,6 @@ fn daemon_sync_family_ignores_child_connection_of_a_completed_root() {
         started.elapsed() < Duration::from_secs(3),
         "a completed root's grandchild must not fence its family"
     );
-}
-
-/// A sid whose pid belongs to a process that has already exited, so the fence
-/// cannot mistake the root for a live interactive command.
-fn reaped_pid_trace_sid(tag: &str) -> String {
-    let mut child = std::process::Command::new(real_git_executable())
-        .arg("--version")
-        .stdout(std::process::Stdio::null())
-        .spawn()
-        .expect("spawn a short-lived process");
-    child.wait().expect("reap the short-lived process");
-    format!("20260411T120000.000000-H{tag}-P{:x}", child.id())
 }
 
 #[test]
