@@ -2739,6 +2739,14 @@ struct FamilySequencerOrder {
     ordinal: u64,
 }
 
+/// A family sequencer's front entry as the fence sees it.
+struct FamilyFront {
+    order: FamilySequencerOrder,
+    root_sid: Option<String>,
+    kind: &'static str,
+    enqueued_at: Instant,
+}
+
 /// A sequenced entry plus the daemon-side moment it became ready. The causal
 /// fence measures its wait from `enqueued_at`, never from git's own
 /// timestamps in the order key.
@@ -2770,15 +2778,24 @@ enum RootFence {
 /// the ingress lock (cheap map reads and clones); the filesystem and process
 /// observations run after the lock is dropped, so a slow worktree or a
 /// liveness syscall never stalls trace ingestion.
+/// What the fence asks a HEAD-moving root's worktree `HEAD` reflog: the
+/// reflog's key and length when the root started (if it existed then) and
+/// the root's worktree.
+#[derive(Clone)]
+struct HeadReflogProbe {
+    start: Option<(String, u64)>,
+    worktree: Option<PathBuf>,
+}
+
 #[derive(Clone)]
 struct RootFenceProbe {
     root_sid: String,
     waited: Duration,
     /// Its atexit is queued (or its socket closed): the worker will clear it.
     finishing: bool,
-    /// Worktree HEAD reflog start offsets and worktree, for commands that move
-    /// HEAD; `None` when that reflog cannot reveal the root's writes.
-    head_reflog: Option<(HashMap<String, u64>, Option<PathBuf>)>,
+    /// For commands that move HEAD, once the reader has recorded the root's
+    /// reflog offsets; `None` when that reflog cannot reveal the root's writes.
+    head_reflog: Option<HeadReflogProbe>,
     /// The root's start on git's clock, which a reflog modified later reveals
     /// as written even when its length was recorded late.
     started_at_ns: Option<u128>,
@@ -2820,10 +2837,10 @@ impl RootFenceProbe {
 
     /// Whether the root has written its worktree HEAD reflog since it started.
     fn observe_reflog(&mut self) {
-        self.wrote_refs = self.head_reflog.as_ref().and_then(|(offsets, worktree)| {
+        self.wrote_refs = self.head_reflog.as_ref().and_then(|reflog| {
             crate::daemon::ref_cursor::worktree_head_reflog_grew_since(
-                offsets,
-                worktree.as_deref(),
+                reflog.start.as_ref().map(|(key, len)| (key.as_str(), *len)),
+                reflog.worktree.as_deref(),
                 self.started_at_ns,
             )
         });
@@ -3011,6 +3028,11 @@ pub struct ActorDaemonCoordinator {
     causal_grace_expirations: AtomicU64,
     /// Fences released at a time bound (hard cap, written-root cap).
     causal_fence_hard_cap_releases: AtomicU64,
+    /// Set when a fence observation (file stat, liveness probe) ran while the
+    /// sequencer map or the drain-marker lock was held; those locks sit on
+    /// the ingest worker's path and must never wait on I/O.
+    #[cfg(test)]
+    fence_observed_under_lock: AtomicBool,
     /// Fired when a root clears or is released: fenced drains and waits
     /// re-evaluate. Distinct from the per-frame ingest progress notify so a
     /// fenced family does not wake on every trace frame the daemon sees.
@@ -3151,6 +3173,8 @@ impl ActorDaemonCoordinator {
             causal_grace: family_causal_grace(),
             causal_grace_expirations: AtomicU64::new(0),
             causal_fence_hard_cap_releases: AtomicU64::new(0),
+            #[cfg(test)]
+            fence_observed_under_lock: AtomicBool::new(false),
             trace_root_fence_notify: Notify::new(),
             commit_file_timestamp_snapshots_by_root: Mutex::new(HashMap::new()),
             recent_replay_prerequisites_by_family: Mutex::new(HashMap::new()),
@@ -3862,20 +3886,31 @@ impl ActorDaemonCoordinator {
                 {
                     Ok(Some(retry_in)) => Some(retry_in),
                     Ok(None) => {
-                        // Deregister atomically with the front check: an entry
-                        // appended after the pass but before deregistration
-                        // must either be seen here (loop again) or by the
-                        // fresh task its own schedule call spawns after we
-                        // release the marker.
-                        let Ok(mut scheduled) = coordinator.scheduled_family_drains.lock() else {
-                            return;
-                        };
-                        match coordinator.family_front_entry_disposition(&family) {
-                            FamilyFrontDisposition::Idle => {
+                        // Deregister atomically with the idleness check: an
+                        // entry appended after the pass but before
+                        // deregistration must either be seen here (loop
+                        // again) or by the fresh task its own schedule call
+                        // spawns after we release the marker. The check is a
+                        // map peek only: judging the front observes the file
+                        // system, which must not happen under this lock.
+                        {
+                            let Ok(mut scheduled) = coordinator.scheduled_family_drains.lock()
+                            else {
+                                return;
+                            };
+                            if coordinator.family_sequencer_is_idle(&family) {
                                 scheduled.remove(&family);
                                 return;
                             }
-                            FamilyFrontDisposition::Ready => continue,
+                        }
+                        match coordinator.family_front_entry_disposition(&family) {
+                            // The entries went away meanwhile (another drainer
+                            // popped them, or a checkpoint is awaiting
+                            // admission): loop, so the marker is only ever
+                            // released by the atomic idleness check above.
+                            FamilyFrontDisposition::Idle | FamilyFrontDisposition::Ready => {
+                                continue;
+                            }
                             FamilyFrontDisposition::Fenced { retry_in } => Some(retry_in),
                         }
                     }
@@ -3917,30 +3952,52 @@ impl ActorDaemonCoordinator {
     /// (unadmitted checkpoints, prior-open-root fencing). Entries gated on
     /// admission are `Idle`: admission completion schedules its own drain.
     fn family_front_entry_disposition(&self, family: &str) -> FamilyFrontDisposition {
-        if self.unadmitted_checkpoints.load(Ordering::Acquire) > 0 {
+        if self.family_sequencer_is_idle(family) {
             return FamilyFrontDisposition::Idle;
         }
-        let Ok(map) = self.family_sequencers_by_family.lock() else {
+        let Ok(Some(front)) = self.family_front(family) else {
             return FamilyFrontDisposition::Idle;
         };
-        let Some(state) = map.get(family) else {
-            return FamilyFrontDisposition::Idle;
-        };
-        let Some((order, slot)) = state.entries.first_key_value() else {
-            return FamilyFrontDisposition::Idle;
-        };
-        let (entry_root_sid, entry_kind) = Self::sequencer_entry_identity(&slot.entry);
+        // Judged with the map lock dropped: the fence observes the file system.
         match self.family_entry_blocked_by_prior_open_trace_root(
             family,
-            order.started_at_ns,
-            entry_root_sid,
-            slot.enqueued_at.elapsed(),
-            entry_kind,
+            front.order.started_at_ns,
+            front.root_sid.as_deref(),
+            front.enqueued_at.elapsed(),
+            front.kind,
         ) {
             Ok(None) => FamilyFrontDisposition::Ready,
             Ok(Some(retry_in)) => FamilyFrontDisposition::Fenced { retry_in },
             Err(_) => FamilyFrontDisposition::Idle,
         }
+    }
+
+    /// Whether a drain has nothing to do for `family` right now: no entry,
+    /// or a checkpoint still awaiting admission (whose completion schedules
+    /// its own drains).
+    fn family_sequencer_is_idle(&self, family: &str) -> bool {
+        self.unadmitted_checkpoints.load(Ordering::Acquire) > 0
+            || !matches!(self.family_front(family), Ok(Some(_)))
+    }
+
+    /// What the fence needs about a family's front entry, copied out so the
+    /// fence can be judged without the sequencer map lock.
+    fn family_front(&self, family: &str) -> Result<Option<FamilyFront>, GitAiError> {
+        let map = self
+            .family_sequencers_by_family
+            .lock()
+            .map_err(|_| GitAiError::Generic("family sequencer map lock poisoned".to_string()))?;
+        Ok(map.get(family).and_then(|state| {
+            state.entries.first_key_value().map(|(order, slot)| {
+                let (root_sid, kind) = Self::sequencer_entry_identity(&slot.entry);
+                FamilyFront {
+                    order: *order,
+                    root_sid: root_sid.map(str::to_string),
+                    kind,
+                    enqueued_at: slot.enqueued_at,
+                }
+            })
+        }))
     }
 
     /// The trace root an entry came from (so it never fences itself) and a
@@ -4001,10 +4058,15 @@ impl ActorDaemonCoordinator {
             finishing: ingress.root_finishing.contains(root_sid)
                 || ingress.root_close_markers_enqueued.contains(root_sid),
             released: ingress.root_fence_released.contains(root_sid),
+            // Only the worktree HEAD entry is needed: the recorded map holds
+            // every reflog in the repository and this runs under the lock.
             head_reflog: moves_head
-                .then(|| ingress.root_reflog_start_offsets.get(root_sid).cloned())
+                .then(|| ingress.root_reflog_start_offsets.get(root_sid))
                 .flatten()
-                .map(|offsets| (offsets, ingress.root_worktrees.get(root_sid).cloned())),
+                .map(|offsets| HeadReflogProbe {
+                    start: crate::daemon::ref_cursor::worktree_head_start_offset(offsets),
+                    worktree: ingress.root_worktrees.get(root_sid).cloned(),
+                }),
             started_at_ns: ingress.root_started_at_ns.get(root_sid).copied(),
             pid: trace_sid_pid(root_sid),
             wrote_refs: None,
@@ -4107,6 +4169,13 @@ impl ActorDaemonCoordinator {
         };
         if probes.is_empty() {
             return Ok(None);
+        }
+        #[cfg(test)]
+        if self.family_sequencers_by_family.try_lock().is_err()
+            || self.scheduled_family_drains.try_lock().is_err()
+        {
+            self.fence_observed_under_lock
+                .store(true, Ordering::Relaxed);
         }
         for probe in &mut probes {
             probe.observe(self.causal_grace);
@@ -5476,29 +5545,40 @@ impl ActorDaemonCoordinator {
         let _family_effect = self.begin_family_effect_guarded(family);
         let mut ready: Vec<(u64, FamilySequencerEntry)> = Vec::new();
         let mut fenced = None;
-        {
+        // The fence stats reflogs and probes processes, and the ingest worker
+        // appends under the sequencer map lock: judge the front with the lock
+        // dropped, then pop it only if it is still the entry that was judged.
+        // This pass is the family's only popper (exec lock), so the front can
+        // change only by an earlier-keyed entry arriving, which is re-judged.
+        loop {
+            let Some(front) = self.family_front(family)? else {
+                break;
+            };
+            fenced = self.family_entry_blocked_by_prior_open_trace_root(
+                family,
+                front.order.started_at_ns,
+                front.root_sid.as_deref(),
+                front.enqueued_at.elapsed(),
+                front.kind,
+            )?;
+            if fenced.is_some() {
+                break;
+            }
             let mut map = self.family_sequencers_by_family.lock().map_err(|_| {
                 GitAiError::Generic("family sequencer map lock poisoned".to_string())
             })?;
+            // Checkpoint receipt raises this under the same lock: an unadmitted
+            // checkpoint may still sort ahead of anything popped now.
             if self.unadmitted_checkpoints.load(Ordering::Acquire) > 0 {
-                return Ok(None);
+                fenced = None;
+                break;
             }
             let Some(state) = map.get_mut(family) else {
-                return Ok(None);
+                break;
             };
-            while let Some(first_entry) = state.entries.first_entry() {
-                let slot = first_entry.get();
-                let (entry_root_sid, entry_kind) = Self::sequencer_entry_identity(&slot.entry);
-                fenced = self.family_entry_blocked_by_prior_open_trace_root(
-                    family,
-                    first_entry.key().started_at_ns,
-                    entry_root_sid,
-                    slot.enqueued_at.elapsed(),
-                    entry_kind,
-                )?;
-                if fenced.is_some() {
-                    break;
-                }
+            if let Some(first_entry) = state.entries.first_entry()
+                && *first_entry.key() == front.order
+            {
                 let (order, slot) = first_entry.remove_entry();
                 ready.push((order.ordinal, slot.entry));
             }
@@ -7476,9 +7556,19 @@ impl ActorDaemonCoordinator {
             self.schedule_ready_family_drains_after_root_cleared(fenced);
             return Ok(());
         }
-        if trace_payload_worktree_hint(&payload).is_some() {
+        let sid = payload
+            .get("sid")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        if payload_root_sid.as_deref() == Some(sid)
+            && trace_payload_worktree_hint(&payload).is_some()
+        {
             // Until a root's worktree is known it fences every family; now
             // that its scope has narrowed to one, the others may proceed.
+            // Only the root's own frames narrow it: its def_repo, or a start
+            // frame with a `-C` path (child frames never reclassify their
+            // root). Real start frames carry no hint, so this fires once per
+            // mutating command.
             self.schedule_all_ready_family_drains();
         }
 
@@ -12528,6 +12618,40 @@ mod tests {
             }),
         );
         assert!(coord.has_open_trace_roots_that_may_mutate_refs());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn fence_observations_run_with_the_sequencer_and_marker_locks_dropped() {
+        let coord = Arc::new(ActorDaemonCoordinator::new_with_causal_grace(
+            Duration::from_millis(20),
+        ));
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+        commit_untraced(&repo);
+        // A HEAD-moving root with a reflog to stat and a pid to probe.
+        let sid = dead_root_sid("observed");
+        open_attributed_commit_root(&coord, &sid, &repo);
+        commit_untraced(&repo);
+        append_ready_rebase(&coord, &family);
+
+        let fenced = coord
+            .drain_ready_family_sequencer_entries(&family)
+            .await
+            .unwrap();
+        assert!(fenced.is_some(), "the written root fences the entry");
+        assert!(
+            !coord.fence_observed_under_lock.load(Ordering::Relaxed),
+            "the drain must not stat reflogs or probe processes under the sequencer map lock"
+        );
+
+        coord.schedule_family_drain(family.clone());
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(
+            !coord.fence_observed_under_lock.load(Ordering::Relaxed),
+            "the drain task must not observe under the drain-marker lock either"
+        );
+        coord.request_shutdown();
     }
 
     #[cfg(unix)]
