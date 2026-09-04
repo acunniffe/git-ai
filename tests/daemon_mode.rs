@@ -24,9 +24,12 @@ use git_ai::metrics::{
     EventAttributes, MetricEvent, PosEncoded, SessionEventValues, TokenUsageValues,
 };
 use repos::test_file::ExpectedLineExt;
+#[cfg(not(windows))]
+use repos::test_repo::live_pid_trace_sid;
 use repos::test_repo::{
     DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS, DaemonTestCompletionLogEntry, DaemonTestScope, TestRepo,
-    get_binary_path, is_windows_loader_init_failure, real_git_executable,
+    configure_raw_traced_git_env_for, get_binary_path, is_windows_loader_init_failure,
+    real_git_executable, trace_atexit_frame, write_trace_frames,
 };
 use serde_json::Value;
 use serde_json::json;
@@ -136,39 +139,7 @@ fn send_trace_frames(trace_socket_path: &Path, payloads: &[Value]) {
     let mut stream =
         open_local_socket_stream_with_timeout(trace_socket_path, DAEMON_TEST_PROBE_TIMEOUT)
             .expect("failed to connect to trace socket");
-    for payload in payloads {
-        let raw = serde_json::to_string(payload).expect("failed to serialize trace payload");
-        stream
-            .write_all(raw.as_bytes())
-            .expect("failed to write trace payload");
-        stream
-            .write_all(b"\n")
-            .expect("failed to write trace newline");
-    }
-    stream.flush().expect("failed to flush trace payloads");
-}
-
-fn trace_atexit_frame(sid: &str, code: i32, time_ns: u64) -> Value {
-    json!({
-        "event": "atexit",
-        "sid": sid,
-        "code": code,
-        "time_ns": time_ns,
-    })
-}
-
-#[cfg(not(windows))]
-fn write_trace_frames_to_stream(stream: &mut impl Write, payloads: &[Value]) {
-    for payload in payloads {
-        let raw = serde_json::to_string(payload).expect("failed to serialize trace payload");
-        stream
-            .write_all(raw.as_bytes())
-            .expect("failed to write trace payload");
-        stream
-            .write_all(b"\n")
-            .expect("failed to write trace newline");
-    }
-    stream.flush().expect("failed to flush trace payloads");
+    write_trace_frames(&mut stream, payloads);
 }
 
 /// Waits until the repo's dedicated daemon logs that a delayed side-effect
@@ -727,15 +698,14 @@ impl WorkdirRaceHarness {
     fn run_traced_git(&self, workdir: &Path, args: &[&str]) {
         let mut command = Command::new(real_git_executable());
         command.args(args).current_dir(workdir);
-        configure_test_home_env(&mut command, &self.test_home);
+        configure_raw_traced_git_env_for(
+            &mut command,
+            &self.test_home,
+            &DaemonConfig::trace2_event_target_for_path(&self.trace_socket_path),
+        );
         let output = command
             .env("GIT_AI_TEST_DB_PATH", &self.test_db_path)
             .env("GITAI_TEST_DB_PATH", &self.test_db_path)
-            .env(
-                "GIT_TRACE2_EVENT",
-                DaemonConfig::trace2_event_target_for_path(&self.trace_socket_path),
-            )
-            .env("GIT_TRACE2_EVENT_NESTING", "0")
             .output()
             .expect("failed to execute traced git command");
         assert!(
@@ -2882,38 +2852,87 @@ fn daemon_stalled_unidentified_trace_connection_does_not_block_sync_control_requ
 
 #[test]
 #[cfg(not(windows))]
+fn daemon_sync_family_returns_promptly_with_open_unwritten_mutating_root() {
+    let repo = TestRepo::new_dedicated_daemon();
+    // An attributed `git commit` that is still running (its worktree HEAD
+    // reflog has not grown) fences nothing: nobody waits for an editor.
+    let sid = live_pid_trace_sid("sync");
+    let mut open_trace = repo.open_mutating_commit_trace_root(&sid, true);
+    thread::sleep(Duration::from_millis(150));
+
+    let started = std::time::Instant::now();
+    let response = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(5),
+    )
+    .expect("sync.family must return while an interactive git command stays open");
+    assert!(response.ok, "sync.family failed: {response:?}");
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "sync.family must not wait for a root that has written nothing"
+    );
+
+    write_trace_frames(&mut open_trace, &[trace_atexit_frame(&sid, 0, 1_002)]);
+}
+
+#[test]
+#[cfg(not(windows))]
+fn daemon_await_completes_with_idle_open_mutating_root() {
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_DAEMON_CAUSAL_GRACE_MS", "300")]);
+    let sid = live_pid_trace_sid("await");
+    let mut open_trace = repo.open_mutating_commit_trace_root(&sid, true);
+    thread::sleep(Duration::from_millis(150));
+
+    let started = std::time::Instant::now();
+    let response = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::Await { timeout_secs: 5 },
+        Duration::from_secs(15),
+    )
+    .expect("await must answer while an interactive git command stays open");
+    assert!(response.ok, "await failed: {response:?}");
+    let data = response.data.expect("await response data");
+    assert_eq!(
+        data["timed_out"],
+        json!(false),
+        "await must not run to its deadline behind a human at an editor: {data}"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "await should return well before its 5s deadline"
+    );
+
+    write_trace_frames(&mut open_trace, &[trace_atexit_frame(&sid, 0, 1_002)]);
+}
+
+#[test]
+#[cfg(not(windows))]
 fn daemon_sync_family_ignores_open_mutating_root_from_other_family() {
     let first_repo = TestRepo::new_dedicated_daemon();
     let second_repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
-    let trace_socket = daemon_trace_socket_path(&first_repo);
     let control_socket = daemon_control_socket_path(&first_repo);
-    let first_worktree = repo_workdir_string(&first_repo);
     let second_worktree = repo_workdir_string(&second_repo);
-    let first_git_dir = first_repo.path().join(".git").to_string_lossy().to_string();
     let sid = "cross-family-open-mutating-root";
 
-    let mut open_trace =
-        open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
-            .expect("failed to connect to trace socket");
-    write_trace_frames_to_stream(
-        &mut open_trace,
-        &[
-            json!({
-                "event": "start",
-                "sid": sid,
-                "argv": ["git", "commit", "-m", "long-running commit"],
-                "time_ns": 1_000u64,
-            }),
-            json!({
-                "event": "def_repo",
-                "sid": sid,
-                "worktree": first_worktree,
-                "repo": first_git_dir,
-                "time_ns": 1_001u64,
-            }),
-        ],
-    );
+    let mut open_trace = first_repo.open_mutating_commit_trace_root(sid, true);
     thread::sleep(Duration::from_millis(150));
+
+    // The root has written refs (a real commit in its worktree, as its
+    // process would); from here on its own family must wait for it.
+    first_repo
+        .git_og_with_env(
+            &[
+                "commit",
+                "--allow-empty",
+                "-m",
+                "written under the open root",
+            ],
+            &[("GIT_TRACE2_EVENT", "0")],
+        )
+        .expect("untraced commit");
 
     let own_control_socket = control_socket.clone();
     let own_worktree = repo_workdir_string(&first_repo);
@@ -2932,7 +2951,7 @@ fn daemon_sync_family_ignores_open_mutating_root_from_other_family() {
         own_sync_rx
             .recv_timeout(Duration::from_millis(250))
             .is_err(),
-        "sync.family must still wait for an open mutating root in its own family"
+        "sync.family must still wait for an open mutating root in its own family once it has written"
     );
 
     let unrelated_sync = send_control_request_with_timeout(
@@ -2948,7 +2967,7 @@ fn daemon_sync_family_ignores_open_mutating_root_from_other_family() {
         "unrelated sync.family request failed: {unrelated_sync:?}"
     );
 
-    write_trace_frames_to_stream(&mut open_trace, &[trace_atexit_frame(sid, 0, 1_002)]);
+    write_trace_frames(&mut open_trace, &[trace_atexit_frame(sid, 0, 1_002)]);
     let own_sync_response = own_sync_rx
         .recv_timeout(Duration::from_secs(1))
         .expect("own-family sync should complete after the trace root closes")
@@ -3081,7 +3100,7 @@ fn daemon_trace_read_error_does_not_leave_root_open_forever() {
     let mut stream =
         open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
             .expect("failed to connect to trace socket");
-    write_trace_frames_to_stream(
+    write_trace_frames(
         &mut stream,
         &[
             json!({
@@ -3140,7 +3159,7 @@ fn daemon_trace_family_resolution_io_does_not_block_other_readers() {
     let mut slow_repo_stream =
         open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
             .expect("failed to connect slow-repo trace socket");
-    write_trace_frames_to_stream(
+    write_trace_frames(
         &mut slow_repo_stream,
         &[
             json!({
@@ -3685,7 +3704,7 @@ fn daemon_trace_ingest_backpressure_shuts_down_without_blocking_listener() {
     let mut stream =
         open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
             .expect("failed to connect trace socket");
-    write_trace_frames_to_stream(
+    write_trace_frames(
         &mut stream,
         &[
             json!({
@@ -8107,7 +8126,7 @@ fn trace_queue_full_drop_logs_the_dropped_root() {
     let mut stream =
         open_local_socket_stream_with_timeout(&trace_socket, DAEMON_TEST_PROBE_TIMEOUT)
             .expect("failed to connect trace socket");
-    write_trace_frames_to_stream(
+    write_trace_frames(
         &mut stream,
         &[
             json!({

@@ -11,7 +11,12 @@ use git_ai::git::find_repository_in_path;
 use git_ai::git::notes_api::read_note;
 use git_ai::git::repository::Repository as GitAiRepository;
 use repos::test_file::ExpectedLineExt;
-use repos::test_repo::{TestRepo, new_daemon_test_sync_session_id, real_git_executable};
+#[cfg(not(windows))]
+use repos::test_repo::configure_raw_traced_git_env_for;
+use repos::test_repo::{
+    TestRepo, configure_raw_traced_git_env, live_pid_trace_sid, new_daemon_test_sync_session_id,
+    real_git_executable,
+};
 use serde_json::{Value, json};
 use std::fs;
 use std::io::Write;
@@ -95,23 +100,7 @@ fn ai_attested_lines_for_file(
 fn raw_traced_git(repo: &TestRepo, args: &[&str]) -> String {
     let mut command = Command::new(real_git_executable());
     command.arg("-C").arg(repo.path()).args(args);
-    command.env("HOME", repo.test_home_path());
-    command.env(
-        "GIT_CONFIG_GLOBAL",
-        repo.test_home_path().join(".gitconfig"),
-    );
-    command.env("XDG_CONFIG_HOME", repo.test_home_path().join(".config"));
-    command.env("GIT_CONFIG_NOSYSTEM", "1");
-    command.env(
-        "GIT_TRACE2_EVENT",
-        git_ai::daemon::DaemonConfig::trace2_event_target_for_path(
-            &repo.daemon_trace_socket_path(),
-        ),
-    );
-    command.env(
-        "GIT_TRACE2_EVENT_NESTING",
-        std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string()),
-    );
+    configure_raw_traced_git_env(&mut command, repo);
 
     let output = command
         .output()
@@ -137,23 +126,7 @@ fn raw_traced_git(repo: &TestRepo, args: &[&str]) -> String {
 fn raw_traced_git_stdin(repo: &TestRepo, args: &[&str], stdin: &str) -> String {
     let mut command = Command::new(real_git_executable());
     command.arg("-C").arg(repo.path()).args(args);
-    command.env("HOME", repo.test_home_path());
-    command.env(
-        "GIT_CONFIG_GLOBAL",
-        repo.test_home_path().join(".gitconfig"),
-    );
-    command.env("XDG_CONFIG_HOME", repo.test_home_path().join(".config"));
-    command.env("GIT_CONFIG_NOSYSTEM", "1");
-    command.env(
-        "GIT_TRACE2_EVENT",
-        git_ai::daemon::DaemonConfig::trace2_event_target_for_path(
-            &repo.daemon_trace_socket_path(),
-        ),
-    );
-    command.env(
-        "GIT_TRACE2_EVENT_NESTING",
-        std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string()),
-    );
+    configure_raw_traced_git_env(&mut command, repo);
     command.stdin(Stdio::piped());
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
@@ -191,23 +164,7 @@ fn raw_traced_git_with_session(repo: &TestRepo, args: &[&str], session: &str) ->
         .arg("-c")
         .arg(&session_arg)
         .args(args);
-    command.env("HOME", repo.test_home_path());
-    command.env(
-        "GIT_CONFIG_GLOBAL",
-        repo.test_home_path().join(".gitconfig"),
-    );
-    command.env("XDG_CONFIG_HOME", repo.test_home_path().join(".config"));
-    command.env("GIT_CONFIG_NOSYSTEM", "1");
-    command.env(
-        "GIT_TRACE2_EVENT",
-        git_ai::daemon::DaemonConfig::trace2_event_target_for_path(
-            &repo.daemon_trace_socket_path(),
-        ),
-    );
-    command.env(
-        "GIT_TRACE2_EVENT_NESTING",
-        std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string()),
-    );
+    configure_raw_traced_git_env(&mut command, repo);
 
     let output = command
         .output()
@@ -228,17 +185,10 @@ fn raw_traced_git_with_session(repo: &TestRepo, args: &[&str], session: &str) ->
 fn raw_traced_git_in_dir(dir: &Path, test_home: &Path, trace_socket: &Path, args: &[&str]) {
     let mut command = Command::new(real_git_executable());
     command.arg("-C").arg(dir).args(args);
-    command.env("HOME", test_home);
-    command.env("GIT_CONFIG_GLOBAL", test_home.join(".gitconfig"));
-    command.env("XDG_CONFIG_HOME", test_home.join(".config"));
-    command.env("GIT_CONFIG_NOSYSTEM", "1");
-    command.env(
-        "GIT_TRACE2_EVENT",
-        git_ai::daemon::DaemonConfig::trace2_event_target_for_path(trace_socket),
-    );
-    command.env(
-        "GIT_TRACE2_EVENT_NESTING",
-        std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string()),
+    configure_raw_traced_git_env_for(
+        &mut command,
+        test_home,
+        &git_ai::daemon::DaemonConfig::trace2_event_target_for_path(trace_socket),
     );
 
     let output = command
@@ -276,18 +226,8 @@ fn raw_git_trace_to_file_output(repo: &TestRepo, args: &[&str], trace_path: &Pat
     let _ = fs::remove_file(trace_path);
     let mut command = Command::new(real_git_executable());
     command.arg("-C").arg(repo.path()).args(args);
-    command.env("HOME", repo.test_home_path());
-    command.env(
-        "GIT_CONFIG_GLOBAL",
-        repo.test_home_path().join(".gitconfig"),
-    );
-    command.env("XDG_CONFIG_HOME", repo.test_home_path().join(".config"));
-    command.env("GIT_CONFIG_NOSYSTEM", "1");
+    configure_raw_traced_git_env(&mut command, repo);
     command.env("GIT_TRACE2_EVENT", trace_path);
-    command.env(
-        "GIT_TRACE2_EVENT_NESTING",
-        std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string()),
-    );
 
     command
         .output()
@@ -332,32 +272,6 @@ fn replay_trace_payloads_to_daemon(repo: &TestRepo, payloads: &[Value]) {
         stream.write_all(b"\n").expect("write trace newline");
     }
     stream.flush().expect("flush trace payloads");
-}
-
-fn open_unfinished_mutating_trace_root(
-    repo: &TestRepo,
-    sid: &str,
-) -> git_ai::daemon::DaemonClientStream {
-    let mut stream = open_local_socket_stream_with_timeout(
-        &repo.daemon_trace_socket_path(),
-        Duration::from_secs(2),
-    )
-    .expect("connect unfinished trace root to daemon");
-    let line = serde_json::to_string(&json!({
-        "event": "start",
-        "sid": sid,
-        "argv": ["git", "commit", "-m", "unfinished earlier command"],
-        "time_ns": 1u64,
-    }))
-    .expect("serialize unfinished trace start");
-    stream
-        .write_all(line.as_bytes())
-        .expect("write unfinished trace start");
-    stream
-        .write_all(b"\n")
-        .expect("write unfinished trace newline");
-    stream.flush().expect("flush unfinished trace start");
-    stream
 }
 
 fn daemon_completed_session(repo: &TestRepo, session: &str) -> bool {
@@ -2049,7 +1963,7 @@ fn test_delayed_current_branch_update_ref_trace_preserves_new_commit_attribution
 }
 
 #[test]
-fn test_update_ref_side_effect_waits_for_prior_open_trace_root_without_family() {
+fn test_update_ref_side_effect_waits_for_prior_open_trace_root_until_causal_grace() {
     let repo = TestRepo::new();
     setup_initial_commit(&repo);
 
@@ -2082,8 +1996,9 @@ fn test_update_ref_side_effect_waits_for_prior_open_trace_root_without_family() 
     .trim()
     .to_string();
 
+    // This test process stands in for the still-running git: its pid is alive.
     let unfinished_trace =
-        open_unfinished_mutating_trace_root(&repo, "20260411T120000.000000-Punfinished-root");
+        repo.open_mutating_commit_trace_root(&live_pid_trace_sid("unfinished"), false);
     std::thread::sleep(Duration::from_millis(100));
 
     let session = new_daemon_test_sync_session_id();
@@ -2094,10 +2009,23 @@ fn test_update_ref_side_effect_waits_for_prior_open_trace_root_without_family() 
     );
 
     let start = std::time::Instant::now();
-    while start.elapsed() < Duration::from_millis(500) {
+    while start.elapsed() < Duration::from_millis(200) {
         assert!(
             !daemon_completed_session(&repo, &session),
             "update-ref side effect completed while an earlier mutating trace root was still open without family metadata"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // Past the causal grace the daemon checks the root's process: it is alive
+    // and has not written anything, so the command is still running and
+    // nothing causally prior is in flight. The fence releases without waiting
+    // for the trace to close.
+    let released = std::time::Instant::now();
+    while !daemon_completed_session(&repo, &session) {
+        assert!(
+            released.elapsed() < Duration::from_secs(5),
+            "update-ref side effect stayed fenced behind a live open trace root past the causal grace"
         );
         std::thread::sleep(Duration::from_millis(10));
     }
@@ -2146,4 +2074,252 @@ fn test_update_ref_stdin_head_with_new_content_preserves_attribution() {
     repo.wait_for_daemon_total_completion_count(baseline, baseline + 1);
 
     assert_note_has_ai_for_file(&repo, &commit_sha, "stdin.txt");
+}
+
+#[cfg(not(windows))]
+fn checkpoint_completion_count(repo: &TestRepo) -> usize {
+    repo.daemon_completion_entries()
+        .iter()
+        .filter(|entry| entry.kind == "checkpoint")
+        .count()
+}
+
+#[cfg(not(windows))]
+fn completion_seq_for_session(repo: &TestRepo, session: &str) -> u64 {
+    let entries = repo.daemon_completion_entries();
+    entries
+        .iter()
+        .find(|entry| entry.test_sync_session.as_deref() == Some(session))
+        .unwrap_or_else(|| panic!("no completion entry for session {session}: {entries:?}"))
+        .seq
+}
+
+/// A commit held open in its pre-commit hook must not hold up, nor be
+/// sequenced ahead of, a commit of the same family that started later but
+/// finished first: the blocked commit has not changed the repository yet. Here
+/// the blocked commit runs in the main worktree while a linked worktree of the
+/// same family commits underneath it.
+#[test]
+#[cfg(not(windows))]
+fn test_commit_blocked_in_pre_commit_hook_is_sequenced_after_later_completed_commit() {
+    let repo =
+        TestRepo::new_worktree_with_daemon_scope(repos::test_repo::DaemonTestScope::Dedicated);
+    let main_path = repo
+        .base_repo_path()
+        .expect("linked worktree has a base repo")
+        .to_path_buf();
+
+    // Main worktree: an AI edit is staged and its commit blocks in pre-commit.
+    fs::write(main_path.join("blocked.txt"), "blocked ai\n").unwrap();
+    repo.git_ai_from_working_dir(&main_path, &["checkpoint", "mock_ai", "blocked.txt"])
+        .unwrap();
+    raw_traced_git_in_dir(
+        &main_path,
+        repo.test_home_path(),
+        &repo.daemon_trace_socket_path(),
+        &["add", "blocked.txt"],
+    );
+    let blocked_session = new_daemon_test_sync_session_id();
+    let mut blocked = repos::test_repo::BlockedTracedGit::spawn_commit_blocked_in(
+        &repo,
+        &main_path,
+        "pre-commit",
+        &blocked_session,
+        "blocked commit",
+    );
+
+    // Linked worktree: a later AI edit commits and finishes while the first
+    // commit is still blocked.
+    fs::write(repo.path().join("later.txt"), "later ai\n").unwrap();
+    repo.git_ai_without_pre_sync_for_test(&["checkpoint", "mock_ai", "later.txt"])
+        .unwrap();
+    raw_traced_git(&repo, &["add", "later.txt"]);
+    let later_session = new_daemon_test_sync_session_id();
+    raw_traced_git_with_session(&repo, &["commit", "-m", "later commit"], &later_session);
+
+    // The later commit is processed while the blocked one is still running.
+    let started = std::time::Instant::now();
+    while !daemon_completed_session(&repo, &later_session) {
+        assert!(
+            blocked.is_running(),
+            "the hook-blocked commit must still be running"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the later commit stayed fenced behind the hook-blocked commit"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+
+    blocked.release();
+    repo.sync_daemon_external_completion_sessions(&[
+        blocked_session.clone(),
+        later_session.clone(),
+    ]);
+    assert!(
+        completion_seq_for_session(&repo, &later_session)
+            < completion_seq_for_session(&repo, &blocked_session),
+        "the commit that finished first must be sequenced first"
+    );
+
+    let mut later_file = repo.filename("later.txt");
+    later_file.assert_committed_lines(lines!["later ai".ai()]);
+    let main_head = raw_untraced_git(
+        &repo,
+        &["-C", main_path.to_str().unwrap(), "rev-parse", "HEAD"],
+    )
+    .trim()
+    .to_string();
+    let note = repo
+        .read_authorship_note(&main_head)
+        .expect("the blocked commit has an authorship note");
+    let log = AuthorshipLog::deserialize_from_string(&note).expect("parse authorship note");
+    assert_eq!(
+        ai_attested_lines_for_file(&log, "blocked.txt"),
+        std::collections::BTreeSet::from([1]),
+        "the blocked commit's AI line is attributed exactly"
+    );
+}
+
+/// A checkpoint that arrives while a `git commit` of the same family is
+/// blocked in its pre-commit hook must not wait for that commit: the commit
+/// has written nothing yet (its worktree HEAD reflog has not grown), so it
+/// fences nothing and the checkpoint is processed at once. The commit's own
+/// attribution is intact once it completes.
+#[test]
+#[cfg(not(windows))]
+fn test_checkpoint_completes_while_commit_blocked_in_pre_commit_hook() {
+    let repo = TestRepo::new_dedicated_daemon();
+    setup_initial_commit(&repo);
+
+    fs::write(repo.path().join("blocked.txt"), "blocked ai\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "blocked.txt"])
+        .unwrap();
+    raw_traced_git(&repo, &["add", "blocked.txt"]);
+    let blocked_session = new_daemon_test_sync_session_id();
+    let mut blocked = repos::test_repo::BlockedTracedGit::spawn_commit_blocked_in(
+        &repo,
+        repo.path(),
+        "pre-commit",
+        &blocked_session,
+        "blocked commit",
+    );
+
+    let baseline = checkpoint_completion_count(&repo);
+    fs::write(repo.path().join("later.txt"), "later ai\n").unwrap();
+    repo.git_ai_without_pre_sync_for_test(&["checkpoint", "mock_ai", "later.txt"])
+        .unwrap();
+
+    let started = std::time::Instant::now();
+    while checkpoint_completion_count(&repo) == baseline {
+        assert!(
+            blocked.is_running(),
+            "the hook-blocked commit must still be running"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "checkpoint stayed fenced behind the hook-blocked commit; daemon log:\n{}",
+            repo.daemon_stderr_contents()
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    assert!(
+        blocked.is_running(),
+        "the checkpoint must complete without waiting for the blocked commit"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "a root that has written nothing must not delay the checkpoint; took {:?}",
+        started.elapsed()
+    );
+
+    blocked.release();
+    repo.sync_daemon_external_completion_sessions(&[blocked_session]);
+    let mut blocked_file = repo.filename("blocked.txt");
+    blocked_file.assert_committed_lines(lines!["blocked ai".ai()]);
+
+    raw_traced_git(&repo, &["add", "later.txt"]);
+    let later_session = new_daemon_test_sync_session_id();
+    raw_traced_git_with_session(&repo, &["commit", "-m", "later commit"], &later_session);
+    repo.sync_daemon_external_completion_sessions(&[later_session]);
+    let mut later_file = repo.filename("later.txt");
+    later_file.assert_committed_lines(lines!["later ai".ai()]);
+}
+
+/// A commit blocked in its post-commit hook has already moved HEAD. A
+/// checkpoint arriving during that hook observed the new HEAD and must be
+/// processed after the commit, however long the hook runs: the daemon sees the
+/// root's worktree HEAD reflog has grown and keeps the fence even though the
+/// process is alive.
+#[test]
+#[cfg(not(windows))]
+fn test_checkpoint_during_post_commit_hook_waits_for_the_commit() {
+    let repo = TestRepo::new_dedicated_daemon();
+    setup_initial_commit(&repo);
+
+    fs::write(repo.path().join("committed.txt"), "committed ai\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "committed.txt"])
+        .unwrap();
+    raw_traced_git(&repo, &["add", "committed.txt"]);
+    let commit_session = new_daemon_test_sync_session_id();
+    let mut blocked = repos::test_repo::BlockedTracedGit::spawn_commit_blocked_in(
+        &repo,
+        repo.path(),
+        "post-commit",
+        &commit_session,
+        "committed during hook",
+    );
+
+    let baseline = checkpoint_completion_count(&repo);
+    fs::write(repo.path().join("typed.txt"), "typed ai\n").unwrap();
+    repo.git_ai_without_pre_sync_for_test(&["checkpoint", "mock_ai", "typed.txt"])
+        .unwrap();
+
+    // The checkpoint stays held behind the commit for as long as its hook runs.
+    let held = std::time::Instant::now();
+    while held.elapsed() < Duration::from_millis(800) {
+        assert!(
+            blocked.is_running(),
+            "the hook-blocked commit must still be running"
+        );
+        assert_eq!(
+            checkpoint_completion_count(&repo),
+            baseline,
+            "a checkpoint taken after HEAD moved must wait for the commit that moved it; daemon log:\n{}",
+            repo.daemon_stderr_contents()
+        );
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    blocked.release();
+    repo.sync_daemon_external_completion_sessions(std::slice::from_ref(&commit_session));
+    let started = std::time::Instant::now();
+    while checkpoint_completion_count(&repo) == baseline {
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "the checkpoint must be processed once the commit finishes"
+        );
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let entries = repo.daemon_completion_entries();
+    let commit_seq = completion_seq_for_session(&repo, &commit_session);
+    let checkpoint_seq = entries
+        .iter()
+        .filter(|entry| entry.kind == "checkpoint")
+        .map(|entry| entry.seq)
+        .max()
+        .expect("checkpoint completion entry");
+    assert!(
+        commit_seq < checkpoint_seq,
+        "the commit must be sequenced before the checkpoint that observed it (commit={commit_seq}, checkpoint={checkpoint_seq})"
+    );
+
+    let mut committed_file = repo.filename("committed.txt");
+    committed_file.assert_committed_lines(lines!["committed ai".ai()]);
+    raw_traced_git(&repo, &["add", "typed.txt"]);
+    let typed_session = new_daemon_test_sync_session_id();
+    raw_traced_git_with_session(&repo, &["commit", "-m", "typed commit"], &typed_session);
+    repo.sync_daemon_external_completion_sessions(&[typed_session]);
+    let mut typed_file = repo.filename("typed.txt");
+    typed_file.assert_committed_lines(lines!["typed ai".ai()]);
 }

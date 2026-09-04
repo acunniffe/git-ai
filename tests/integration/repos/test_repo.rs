@@ -4,8 +4,8 @@ use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::authorship::stats::CommitStats;
 use git_ai::config::ConfigPatch;
 use git_ai::daemon::{
-    ControlRequest, DaemonConfig, local_socket_connects_with_timeout, send_control_request,
-    send_control_request_with_timeout,
+    ControlRequest, DaemonClientStream, DaemonConfig, local_socket_connects_with_timeout,
+    open_local_socket_stream_with_timeout, send_control_request, send_control_request_with_timeout,
 };
 use git_ai::feature_flags::FeatureFlags;
 use git_ai::git::cli_parser::{ParsedGitInvocation, extract_clone_target_directory};
@@ -1801,7 +1801,7 @@ impl TestRepo {
             .and_then(|patch| serde_json::to_string(patch).ok())
     }
 
-    fn trace2_nesting_value() -> String {
+    pub(crate) fn trace2_nesting_value() -> String {
         std::env::var("GIT_AI_TEST_TRACE2_NESTING").unwrap_or_else(|_| "0".to_string())
     }
 
@@ -2486,6 +2486,45 @@ impl TestRepo {
 
     pub fn path(&self) -> &PathBuf {
         &self.path
+    }
+
+    /// The main repository path when this `TestRepo` is a linked worktree
+    /// created via `new_worktree*`; `None` for standalone repositories.
+    pub fn base_repo_path(&self) -> Option<&Path> {
+        self._base_repo_path.as_deref()
+    }
+
+    /// Holds a synthetic mutating `git commit` root open on the daemon's trace
+    /// socket: a `start` frame, plus a `def_repo` attributing it to this repo
+    /// when `attribute_to_repo`. Dropping the stream closes the root without
+    /// an `atexit`; write `trace_atexit_frame` to finish it normally.
+    pub(crate) fn open_mutating_commit_trace_root(
+        &self,
+        sid: &str,
+        attribute_to_repo: bool,
+    ) -> DaemonClientStream {
+        let mut stream = open_local_socket_stream_with_timeout(
+            &self.daemon_trace_socket_path(),
+            Duration::from_secs(2),
+        )
+        .expect("connect trace root to daemon");
+        let mut frames = vec![serde_json::json!({
+            "event": "start",
+            "sid": sid,
+            "argv": ["git", "commit", "-m", "still running"],
+            "time_ns": 1_000u64,
+        })];
+        if attribute_to_repo {
+            frames.push(serde_json::json!({
+                "event": "def_repo",
+                "sid": sid,
+                "worktree": self.path().to_string_lossy(),
+                "repo": self.path().join(".git").to_string_lossy(),
+                "time_ns": 1_001u64,
+            }));
+        }
+        write_trace_frames(&mut stream, &frames);
+        stream
     }
 
     pub fn canonical_path(&self) -> PathBuf {
@@ -3593,6 +3632,156 @@ pub(crate) fn real_git_executable() -> &'static str {
     // Ensure HOME is isolated before Config::get() caches HOME-derived paths.
     ensure_isolated_process_home();
     git_ai::config::Config::get().git_cmd()
+}
+
+/// Points a raw (non-proxied) git command at an isolated test HOME and at a
+/// trace2 event target, exactly like production trace2 wiring.
+pub(crate) fn configure_raw_traced_git_env_for(
+    command: &mut Command,
+    test_home: &Path,
+    trace2_event_target: &str,
+) {
+    configure_test_home_env(command, test_home);
+    command.env("GIT_TRACE2_EVENT", trace2_event_target);
+    command.env("GIT_TRACE2_EVENT_NESTING", TestRepo::trace2_nesting_value());
+}
+
+/// As [`configure_raw_traced_git_env_for`], targeting the repo's per-test
+/// daemon trace socket.
+pub(crate) fn configure_raw_traced_git_env(command: &mut Command, repo: &TestRepo) {
+    configure_raw_traced_git_env_for(
+        command,
+        repo.test_home_path(),
+        &DaemonConfig::trace2_event_target_for_path(&repo.daemon_trace_socket_path()),
+    );
+}
+
+/// Writes newline-delimited trace2 frames to an open daemon trace stream.
+pub(crate) fn write_trace_frames(stream: &mut impl Write, frames: &[serde_json::Value]) {
+    for frame in frames {
+        let raw = serde_json::to_string(frame).expect("serialize trace frame");
+        stream.write_all(raw.as_bytes()).expect("write trace frame");
+        stream.write_all(b"\n").expect("write trace frame newline");
+    }
+    stream.flush().expect("flush trace frames");
+}
+
+pub(crate) fn trace_atexit_frame(sid: &str, code: i32, time_ns: u64) -> serde_json::Value {
+    serde_json::json!({
+        "event": "atexit",
+        "sid": sid,
+        "code": code,
+        "time_ns": time_ns,
+    })
+}
+
+/// A trace2 root sid whose pid is this test process: alive for as long as the
+/// test runs, standing in for a git command blocked in an editor or a hook.
+pub(crate) fn live_pid_trace_sid(tag: &str) -> String {
+    format!("20260411T120000.000000-H{tag}-P{:x}", std::process::id())
+}
+
+/// A real, trace2-wired `git commit` whose named hook blocks until released.
+/// Lets tests hold a mutating Git root open (the way an editor or a slow hook
+/// does) while other daemon work arrives for the same family. Blocking in
+/// `pre-commit` holds the root before it writes refs; `post-commit` after.
+#[cfg(not(windows))]
+pub(crate) struct BlockedTracedGit {
+    child: Child,
+    release_path: PathBuf,
+}
+
+#[cfg(not(windows))]
+impl BlockedTracedGit {
+    /// Spawns `git commit -m <message>` in `working_dir`, tagged with
+    /// `git-ai.testSyncSession=<session>` so its completion can be synced
+    /// later. Returns once the `hook` is blocking; the child is released and
+    /// reaped on drop, including when a later assertion panics.
+    pub(crate) fn spawn_commit_blocked_in(
+        repo: &TestRepo,
+        working_dir: &Path,
+        hook: &str,
+        session: &str,
+        message: &str,
+    ) -> Self {
+        use std::os::unix::fs::PermissionsExt;
+
+        let hooks_dir = repo
+            .test_home_path()
+            .join(format!("blocked-hooks-{session}"));
+        fs::create_dir_all(&hooks_dir).expect("create blocked hooks dir");
+        let started_path = hooks_dir.join("started");
+        let release_path = hooks_dir.join("release");
+        let hook_path = hooks_dir.join(hook);
+        fs::write(
+            &hook_path,
+            format!(
+                "#!/bin/sh\ntouch '{}'\nwhile [ ! -e '{}' ]; do sleep 0.05; done\n",
+                started_path.display(),
+                release_path.display()
+            ),
+        )
+        .expect("write blocking hook");
+        fs::set_permissions(&hook_path, fs::Permissions::from_mode(0o755))
+            .expect("chmod blocking hook");
+
+        let mut command = Command::new(real_git_executable());
+        command
+            .arg("-C")
+            .arg(working_dir)
+            .arg("-c")
+            .arg(format!("core.hooksPath={}", hooks_dir.display()))
+            .arg("-c")
+            .arg(format!("git-ai.testSyncSession={session}"))
+            .args(["commit", "-m", message])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        configure_raw_traced_git_env(&mut command, repo);
+        let child = command.spawn().expect("spawn blocked traced git commit");
+        let mut blocked = Self {
+            child,
+            release_path,
+        };
+
+        let started = Instant::now();
+        while !started_path.exists() {
+            assert!(
+                blocked.is_running(),
+                "git commit exited before reaching its {hook} hook"
+            );
+            assert!(
+                started.elapsed() < Duration::from_secs(20),
+                "git commit never reached its {hook} hook"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        blocked
+    }
+
+    pub(crate) fn is_running(&mut self) -> bool {
+        self.child
+            .try_wait()
+            .expect("poll blocked git commit")
+            .is_none()
+    }
+
+    /// Releases the hook and waits for the commit to finish successfully.
+    pub(crate) fn release(mut self) {
+        fs::write(&self.release_path, b"").expect("release blocking hook");
+        let status = self.child.wait().expect("wait for released git commit");
+        assert!(status.success(), "released git commit failed: {status}");
+    }
+}
+
+#[cfg(not(windows))]
+impl Drop for BlockedTracedGit {
+    fn drop(&mut self) {
+        if fs::write(&self.release_path, b"").is_err() {
+            let _ = self.child.kill();
+        }
+        let _ = self.child.wait();
+    }
 }
 
 /// Create a pre-initialized template repo (cached across all tests in the process).
