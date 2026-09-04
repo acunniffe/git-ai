@@ -1,6 +1,6 @@
 [package]
 name = "git-ai"
-version = "1.7.2"
+version = "1.7.3"
 edition = "2024"
 default-run = "git-ai"
 
