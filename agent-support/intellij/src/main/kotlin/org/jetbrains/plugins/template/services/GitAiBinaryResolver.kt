@@ -80,7 +80,7 @@ internal class GitAiBinaryResolver(
     }
 
     private fun findOnPath(pathValue: String?): String? {
-        if (pathValue.isNullOrBlank()) return null
+        if (pathValue == null) return null
 
         val executableNames = if (isWindowsProvider()) {
             listOf("git-ai.exe", "git-ai")
