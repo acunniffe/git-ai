@@ -139,6 +139,10 @@ const FAMILY_WRITTEN_ROOT_FENCE_CAP_MULTIPLIER: u32 = 600;
 #[cfg(not(windows))]
 const TRACE_SOCKET_RECV_BUFFER_BYTES: usize = 512 * 1024;
 const TRACE_INGEST_QUEUE_CAPACITY: usize = 16_384;
+/// Completed roots the reader remembers, so their straggling children stay
+/// inert; a root completes once per git process, so this covers thousands
+/// of recent commands.
+const TRACE_ROOT_COMPLETION_MEMORY: usize = 4_096;
 #[cfg(windows)]
 const WINDOWS_TRACE_PIPE_WORKERS: usize = 16;
 #[cfg(windows)]
@@ -2961,6 +2965,12 @@ struct TraceIngressState {
     root_finishing: HashSet<String>,
     /// Roots whose fence release has been logged and counted already.
     root_fence_release_logged: HashSet<String>,
+    /// Roots the daemon has finished with, remembered (bounded, oldest out)
+    /// so a straggling child process of one cannot reopen it: git's detached
+    /// auto-maintenance opens its own connections under the parent's sid
+    /// after the parent's atexit was processed.
+    completed_roots: HashSet<String>,
+    completed_root_order: VecDeque<String>,
 }
 
 #[doc(hidden)]
@@ -4310,16 +4320,42 @@ impl ActorDaemonCoordinator {
         Ok(())
     }
 
+    #[cfg(test)]
     fn trace_root_connection_opened(&self, root_sid: &str) -> Result<(), GitAiError> {
+        self.trace_connection_identified(root_sid, true).map(|_| ())
+    }
+
+    /// Registers a connection's root once its first frame names it. A
+    /// connection identified only by a child sid of a root the daemon has
+    /// already finished with (a detached maintenance grandchild, say) is not
+    /// registered: nothing about that root is in flight any more, and an
+    /// argv-less re-registration would fence every family for the hard cap.
+    ///
+    /// Returns whether the root was registered, so the connection's close
+    /// releases only what it registered.
+    fn trace_connection_identified(
+        &self,
+        root_sid: &str,
+        by_root_frame: bool,
+    ) -> Result<bool, GitAiError> {
         let mut ingress = self
             .trace_ingress_state
             .lock()
             .map_err(|_| GitAiError::Generic("trace ingress state lock poisoned".to_string()))?;
+        if by_root_frame {
+            // The root's own frame proves it live (a same-sid process that
+            // daemonized, say): whatever completed before no longer applies.
+            if ingress.completed_roots.remove(root_sid) {
+                ingress.completed_root_order.retain(|root| root != root_sid);
+            }
+        } else if ingress.completed_roots.contains(root_sid) {
+            return Ok(false);
+        }
         *ingress
             .root_open_connections
             .entry(root_sid.to_string())
             .or_insert(0) += 1;
-        Ok(())
+        Ok(true)
     }
 
     /// Whether a root closing without its atexit must be cleared by the ingest
@@ -4343,6 +4379,7 @@ impl ActorDaemonCoordinator {
                 .cloned()
                 .map_or(FenceScope::EveryFamily, FenceScope::Family)
         });
+        let seen_own_frames = ingress.root_started_at_ns.contains_key(root_sid);
         ingress.root_families.remove(root_sid);
         ingress.root_worktrees.remove(root_sid);
         ingress.root_argv.remove(root_sid);
@@ -4356,6 +4393,20 @@ impl ActorDaemonCoordinator {
         ingress.root_close_markers_enqueued.remove(root_sid);
         ingress.root_finishing.remove(root_sid);
         ingress.root_fence_release_logged.remove(root_sid);
+        // Only a root the daemon saw through its own frames is known to have
+        // completed; one known only from a child that closed early may still
+        // be running, and its later children must keep failing closed.
+        if seen_own_frames {
+            if ingress.completed_roots.insert(root_sid.to_string()) {
+                ingress.completed_root_order.push_back(root_sid.to_string());
+            }
+            while ingress.completed_roots.len() > TRACE_ROOT_COMPLETION_MEMORY {
+                let Some(oldest) = ingress.completed_root_order.pop_front() else {
+                    break;
+                };
+                ingress.completed_roots.remove(&oldest);
+            }
+        }
         fenced
     }
 
@@ -5229,6 +5280,12 @@ impl ActorDaemonCoordinator {
             Ok(guard) => guard,
             Err(_) => return false,
         };
+        // A child frame of a root no connection registers (a straggling child
+        // of a completed root) describes nothing the daemon still tracks:
+        // leave no state behind and do not queue it.
+        if sid != root && !ingress.root_open_connections.contains_key(&root) {
+            return true;
+        }
         ingress
             .root_last_activity_ns
             .insert(root.clone(), now_unix_nanos() as u64);
@@ -8918,7 +8975,7 @@ fn handle_windows_trace_pipe_connection(
     }
     let reader = BufReader::new(&mut server);
     if let Err(e) =
-        handle_trace_connection_actor_reader(reader, coordinator, std::collections::BTreeSet::new())
+        handle_trace_connection_actor_reader(reader, coordinator, std::collections::BTreeMap::new())
     {
         tracing::debug!(%e, "trace connection error");
     }
@@ -9035,12 +9092,12 @@ fn run_trace_connection_reader(
     // the registry; close this connection ourselves instead of parking in
     // read until process exit.
     if coordinator.is_shutting_down() {
-        let _ = finalize_trace_connection_roots(coordinator, std::collections::BTreeSet::new());
+        let _ = finalize_trace_connection_roots(coordinator, std::collections::BTreeMap::new());
         return;
     }
     let reader = BufReader::new(stream);
     if let Err(error) =
-        handle_trace_connection_actor_reader(reader, coordinator, std::collections::BTreeSet::new())
+        handle_trace_connection_actor_reader(reader, coordinator, std::collections::BTreeMap::new())
     {
         tracing::debug!(%error, "trace connection error");
     }
@@ -9085,7 +9142,7 @@ struct TraceLineOutcome {
 fn handle_trace_connection_actor_reader<R: Read>(
     mut reader: BufReader<R>,
     coordinator: Arc<ActorDaemonCoordinator>,
-    mut observed_roots: std::collections::BTreeSet<String>,
+    mut observed_roots: std::collections::BTreeMap<String, bool>,
 ) -> Result<(), GitAiError> {
     let read_result = (|| {
         while let Some(line) = read_json_line(&mut reader)? {
@@ -9131,7 +9188,7 @@ fn raw_trace_event_type(line: &str) -> Option<&str> {
 fn process_trace_connection_line(
     line: &str,
     coordinator: Arc<ActorDaemonCoordinator>,
-    observed_roots: &mut std::collections::BTreeSet<String>,
+    observed_roots: &mut std::collections::BTreeMap<String, bool>,
 ) -> Result<Option<TraceLineOutcome>, GitAiError> {
     let trimmed = line.trim();
     if trimmed.is_empty() {
@@ -9170,8 +9227,13 @@ fn process_trace_connection_line(
     if let Some(sid) = parsed.get("sid").and_then(Value::as_str) {
         let was_unidentified = observed_roots.is_empty();
         let root_sid = trace_root_sid(sid).to_string();
-        if observed_roots.insert(root_sid.clone()) {
-            let _ = coordinator.trace_root_connection_opened(&root_sid);
+        if let std::collections::btree_map::Entry::Vacant(slot) =
+            observed_roots.entry(root_sid.clone())
+        {
+            let registered = coordinator
+                .trace_connection_identified(&root_sid, sid == root_sid)
+                .unwrap_or(false);
+            slot.insert(registered);
         }
         if was_unidentified {
             coordinator.trace_unidentified_connection_identified_or_closed()?;
@@ -9187,16 +9249,25 @@ fn process_trace_connection_line(
     Ok(Some(TraceLineOutcome { continue_reading }))
 }
 
+/// Closes the connection's roots. `observed_roots` maps each root the
+/// connection named to whether it registered that root; a connection releases
+/// only what it registered, never a registration another connection holds.
 fn finalize_trace_connection_roots(
     coordinator: Arc<ActorDaemonCoordinator>,
-    observed_roots: std::collections::BTreeSet<String>,
+    observed_roots: std::collections::BTreeMap<String, bool>,
 ) -> Result<(), GitAiError> {
     if observed_roots.is_empty() {
         coordinator.trace_unidentified_connection_identified_or_closed()?;
         return Ok(());
     }
 
-    let roots = observed_roots.into_iter().collect::<Vec<_>>();
+    let roots = observed_roots
+        .into_iter()
+        .filter_map(|(root, registered)| registered.then_some(root))
+        .collect::<Vec<_>>();
+    if roots.is_empty() {
+        return Ok(());
+    }
     let close_marker_roots = coordinator.record_trace_connection_close(&roots)?;
     coordinator.enqueue_trace_connection_close_markers(close_marker_roots)
 }
@@ -12037,8 +12108,11 @@ mod tests {
         coord.enqueue_trace_payload(start).unwrap();
         assert!(coord.has_open_trace_roots_that_may_mutate_refs());
 
-        finalize_trace_connection_roots(coord.clone(), [sid.to_string()].into_iter().collect())
-            .unwrap();
+        finalize_trace_connection_roots(
+            coord.clone(),
+            [(sid.to_string(), true)].into_iter().collect(),
+        )
+        .unwrap();
         coord.wait_for_trace_ingest_processed_through().await;
 
         assert!(
@@ -12289,13 +12363,68 @@ mod tests {
     }
 
     /// What a connection's first frame does on the reader: identifies the
-    /// connection's root and registers it.
-    fn identify_connection(coord: &Arc<ActorDaemonCoordinator>, frame: serde_json::Value) {
-        let mut observed_roots = std::collections::BTreeSet::new();
+    /// connection's root and registers it. Returns the connection's roots,
+    /// for closing it with `finalize_trace_connection_roots`.
+    #[cfg(unix)]
+    fn identify_connection(
+        coord: &Arc<ActorDaemonCoordinator>,
+        frame: serde_json::Value,
+    ) -> std::collections::BTreeMap<String, bool> {
+        let mut observed_roots = std::collections::BTreeMap::new();
         let _ =
             process_trace_connection_line(&frame.to_string(), coord.clone(), &mut observed_roots);
+        observed_roots
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn inert_child_connection_closing_does_not_release_a_root_seen_again() {
+        let coord = Arc::new(ActorDaemonCoordinator::new_with_causal_grace(
+            Duration::from_millis(20),
+        ));
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, _family) = init_test_family(&coord, &temp);
+        let sid = dead_root_sid("reappearing");
+        open_attributed_commit_root(&coord, &sid, &repo);
+        read_root_atexit(&coord, &sid);
+        coord.clear_trace_root_tracking(&sid).unwrap();
+
+        // A straggling child is identified while the root is complete (inert),
+        // then the root's own frames appear again (a same-sid process that
+        // daemonized and kept tracing).
+        let child_connection = identify_connection(
+            &coord,
+            serde_json::json!({
+                "event": "start",
+                "sid": format!("{sid}/1"),
+                "argv": ["git", "gc", "--auto"],
+                "time_ns": now_unix_nanos() as u64,
+            }),
+        );
+        assert_eq!(child_connection.get(&sid), Some(&false), "inert");
+        open_attributed_commit_root(&coord, &sid, &repo);
+        assert!(coord.has_open_trace_roots_that_may_mutate_refs());
+        {
+            let ingress = coord.trace_ingress_state.lock().unwrap();
+            assert!(!ingress.completed_roots.contains(&sid));
+            assert!(
+                !ingress.completed_root_order.contains(&sid),
+                "reactivation must not leave a stale eviction-order entry"
+            );
+        }
+
+        // The child's connection closes: it must release only what it
+        // registered, which is nothing.
+        finalize_trace_connection_roots(coord.clone(), child_connection).unwrap();
+        let ingress = coord.trace_ingress_state.lock().unwrap();
+        assert_eq!(ingress.root_open_connections.get(&sid), Some(&1));
+        assert!(
+            !ingress.root_close_markers_enqueued.contains(&sid),
+            "an inert connection's close must not queue a close marker for a live root"
+        );
+    }
+
+    #[cfg(unix)]
     #[tokio::test]
     async fn child_connection_of_a_completed_root_does_not_reopen_it() {
         let coord = Arc::new(ActorDaemonCoordinator::new_with_causal_grace(
@@ -12334,6 +12463,15 @@ mod tests {
             !coord.has_open_trace_roots_that_may_mutate_refs(),
             "a child of a completed root must not reopen it as a phantom"
         );
+        assert!(
+            !coord
+                .trace_ingress_state
+                .lock()
+                .unwrap()
+                .root_last_activity_ns
+                .contains_key(&sid),
+            "an inert child's frames must leave no per-root state behind"
+        );
         append_ready_rebase(&coord, &family);
         assert_eq!(
             coord.family_front_entry_disposition(&family),
@@ -12356,6 +12494,7 @@ mod tests {
         assert!(coord.has_open_trace_roots_that_may_mutate_refs());
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn family_fence_holds_past_grace_when_root_process_is_dead() {
         let grace = Duration::from_millis(20);
@@ -12964,7 +13103,7 @@ mod tests {
     #[tokio::test]
     async fn noise_frame_is_dropped_before_any_bookkeeping() {
         let coord = Arc::new(ActorDaemonCoordinator::new());
-        let mut observed_roots = std::collections::BTreeSet::new();
+        let mut observed_roots = std::collections::BTreeMap::new();
 
         let outcome = process_trace_connection_line(
             r#"{"event":"data","sid":"noise-root","category":"index","label":"x"}"#,
@@ -12988,7 +13127,7 @@ mod tests {
     #[tokio::test]
     async fn drain_probe_frame_advances_watermark_without_root_bookkeeping() {
         let coord = Arc::new(ActorDaemonCoordinator::new());
-        let mut observed_roots = std::collections::BTreeSet::new();
+        let mut observed_roots = std::collections::BTreeMap::new();
 
         // A forged probe id that was never issued must not advance the
         // watermark (it would permanently satisfy future health probes).
