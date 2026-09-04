@@ -503,6 +503,25 @@ mod tests {
     }
 
     #[test]
+    fn family_ids_are_stable_within_a_run_but_not_a_bare_digest_of_the_path() {
+        use sha2::{Digest, Sha256};
+
+        let key = "/Users/someone/src/project/.git";
+        assert_eq!(family_id(key), family_id(key));
+        assert_ne!(family_id(key), family_id("/Users/someone/src/other/.git"));
+        let bare: String = Sha256::digest(key.as_bytes())
+            .iter()
+            .take(6)
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        assert_ne!(
+            family_id(key),
+            bare,
+            "a bare digest of a low-entropy local path is confirmable by dictionary"
+        );
+    }
+
+    #[test]
     fn heartbeat_health_fields_flatten_aggregates_and_worst_families() {
         let fields = snapshot(vec![
             family("/repos/slow/.git", 90_000),

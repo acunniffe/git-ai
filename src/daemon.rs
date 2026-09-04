@@ -13366,6 +13366,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn health_snapshot_judges_a_stall_from_the_front_entry_wait() {
+        use crate::daemon::health::DaemonHealthSnapshot;
+
+        let coord = ActorDaemonCoordinator::new();
+        // An old entry sits behind a front that only just became ready (a
+        // command with an earlier start whose frames arrived late). The drain
+        // measures the fence from the front's wait, so the snapshot must too:
+        // this family is busy, not stuck.
+        coord
+            .append_family_sequencer_entry(
+                "family-a",
+                2_000,
+                FamilySequencerEntry::ReadyCommand(Box::new(test_rebase_command(&[], Vec::new()))),
+            )
+            .unwrap();
+        {
+            let mut sequencers = coord.family_sequencers_by_family.lock().unwrap();
+            let slot = sequencers
+                .get_mut("family-a")
+                .and_then(|state| state.entries.values_mut().next())
+                .unwrap();
+            slot.enqueued_at = Instant::now().checked_sub(Duration::from_secs(60)).unwrap();
+        }
+        coord
+            .append_family_sequencer_entry(
+                "family-a",
+                1_000,
+                FamilySequencerEntry::ReadyCommand(Box::new(test_rebase_command(&[], Vec::new()))),
+            )
+            .unwrap();
+
+        let snapshot = DaemonHealthSnapshot::capture(&coord);
+        assert!(snapshot.families[0].oldest_entry_age_ms >= 60_000);
+        assert!(
+            !snapshot.sequencer_stalled,
+            "the front has barely waited: nothing is stuck"
+        );
+    }
+
+    #[tokio::test]
     async fn health_snapshot_does_not_call_a_busy_family_stalled() {
         use crate::daemon::health::DaemonHealthSnapshot;
 
