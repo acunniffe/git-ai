@@ -2879,6 +2879,62 @@ fn daemon_sync_family_returns_promptly_with_open_unwritten_mutating_root() {
 }
 
 #[test]
+fn daemon_sync_family_ignores_child_connection_of_a_completed_root() {
+    let repo = TestRepo::new_dedicated_daemon();
+    // The root ran, wrote its atexit and exited; the daemon has processed it.
+    let sid = reaped_pid_trace_sid("gc-parent");
+    let mut root = repo.open_mutating_commit_trace_root(&sid, true);
+    write_trace_frames(&mut root, &[trace_atexit_frame(&sid, 0, 1_002)]);
+    drop(root);
+    repo.sync_daemon();
+
+    // A detached `git maintenance` grandchild opens its own connection under
+    // the finished root's sid, as auto-gc does after every commit or fetch.
+    let mut grandchild = open_local_socket_stream_with_timeout(
+        &daemon_trace_socket_path(&repo),
+        DAEMON_TEST_PROBE_TIMEOUT,
+    )
+    .expect("connect grandchild trace connection");
+    write_trace_frames(
+        &mut grandchild,
+        &[json!({
+            "event": "start",
+            "sid": format!("{sid}/1/2"),
+            "argv": ["git", "gc", "--auto"],
+            "time_ns": 2_000u64,
+        })],
+    );
+    thread::sleep(Duration::from_millis(150));
+
+    let started = std::time::Instant::now();
+    let response = send_control_request_with_timeout(
+        &daemon_control_socket_path(&repo),
+        &ControlRequest::SyncFamily {
+            repo_working_dir: repo_workdir_string(&repo),
+        },
+        Duration::from_secs(5),
+    )
+    .expect("sync.family must not wait for a phantom of a completed root");
+    assert!(response.ok, "sync.family failed: {response:?}");
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "a completed root's grandchild must not fence its family"
+    );
+}
+
+/// A sid whose pid belongs to a process that has already exited, so the fence
+/// cannot mistake the root for a live interactive command.
+fn reaped_pid_trace_sid(tag: &str) -> String {
+    let mut child = std::process::Command::new(real_git_executable())
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn a short-lived process");
+    child.wait().expect("reap the short-lived process");
+    format!("20260411T120000.000000-H{tag}-P{:x}", child.id())
+}
+
+#[test]
 #[cfg(not(windows))]
 fn daemon_await_completes_with_idle_open_mutating_root() {
     let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_DAEMON_CAUSAL_GRACE_MS", "300")]);

@@ -12279,6 +12279,83 @@ mod tests {
     }
 
     #[cfg(unix)]
+    /// A sid whose pid belongs to a process that has already exited.
+    fn dead_root_sid(tag: &str) -> String {
+        let mut child = std::process::Command::new("true")
+            .spawn()
+            .expect("spawn a short-lived process");
+        child.wait().expect("reap the short-lived process");
+        format!("20260411T120000.000000-H{tag}-P{:x}", child.id())
+    }
+
+    /// What a connection's first frame does on the reader: identifies the
+    /// connection's root and registers it.
+    fn identify_connection(coord: &Arc<ActorDaemonCoordinator>, frame: serde_json::Value) {
+        let mut observed_roots = std::collections::BTreeSet::new();
+        let _ =
+            process_trace_connection_line(&frame.to_string(), coord.clone(), &mut observed_roots);
+    }
+
+    #[tokio::test]
+    async fn child_connection_of_a_completed_root_does_not_reopen_it() {
+        let coord = Arc::new(ActorDaemonCoordinator::new_with_causal_grace(
+            Duration::from_millis(20),
+        ));
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+        // The root has exited (its pid is gone) and the worker has processed
+        // its atexit: the root is complete.
+        let sid = dead_root_sid("gc-parent");
+        open_attributed_commit_root(&coord, &sid, &repo);
+        read_root_atexit(&coord, &sid);
+        coord
+            .apply_trace_payload_to_state(serde_json::json!({
+                "event": "atexit",
+                "sid": sid,
+                "code": 0,
+                "time_ns": now_unix_nanos() as u64,
+            }))
+            .await
+            .unwrap();
+        assert!(!coord.has_open_trace_roots_that_may_mutate_refs());
+
+        // A detached maintenance grandchild opens its own connection under the
+        // finished root's sid.
+        identify_connection(
+            &coord,
+            serde_json::json!({
+                "event": "start",
+                "sid": format!("{sid}/1/2"),
+                "argv": ["git", "gc", "--auto"],
+                "time_ns": now_unix_nanos() as u64,
+            }),
+        );
+        assert!(
+            !coord.has_open_trace_roots_that_may_mutate_refs(),
+            "a child of a completed root must not reopen it as a phantom"
+        );
+        append_ready_rebase(&coord, &family);
+        assert_eq!(
+            coord.family_front_entry_disposition(&family),
+            FamilyFrontDisposition::Ready
+        );
+
+        // A child identified before its root's own frames are read is a
+        // different matter: nothing is known about that root yet, so it fails
+        // closed as before.
+        let unseen = dead_root_sid("unseen-parent");
+        identify_connection(
+            &coord,
+            serde_json::json!({
+                "event": "start",
+                "sid": format!("{unseen}/1"),
+                "argv": ["git", "rev-parse", "HEAD"],
+                "time_ns": now_unix_nanos() as u64,
+            }),
+        );
+        assert!(coord.has_open_trace_roots_that_may_mutate_refs());
+    }
+
     #[tokio::test]
     async fn family_fence_holds_past_grace_when_root_process_is_dead() {
         let grace = Duration::from_millis(20);
