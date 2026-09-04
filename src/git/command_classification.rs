@@ -129,6 +129,24 @@ pub fn participates_in_family_sequencer_command(command: &str) -> bool {
     )
 }
 
+/// Commands whose ref writes move `HEAD`, and so append to the worktree's
+/// `HEAD` reflog. Other mutating commands write refs that reflog cannot reveal.
+pub fn moves_head_command(command: &str) -> bool {
+    matches!(
+        command,
+        "am" | "checkout"
+            | "cherry-pick"
+            | "commit"
+            | "merge"
+            | "pull"
+            | "rebase"
+            | "reset"
+            | "revert"
+            | "stash"
+            | "switch"
+    )
+}
+
 /// Returns true when a full Git invocation must be ordered inside an existing
 /// repo family.
 pub fn git_invocation_participates_in_family_sequencer(

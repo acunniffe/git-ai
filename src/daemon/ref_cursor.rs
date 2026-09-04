@@ -2343,6 +2343,44 @@ pub(crate) fn capture_reflog_start_offsets_for_worktree(worktree: &Path) -> Hash
     offsets
 }
 
+/// Whether a command that started at `started_at_ns` has written the worktree
+/// `HEAD` reflog since: the reflog is longer than the length recorded in
+/// `start_offsets` when the command started, or it was modified after the
+/// command started. The modification time covers a recorded length that was
+/// itself taken late, after the first write; unlike a reflog entry's committer
+/// date it cannot be set by the user. A repository that had no `HEAD` reflog
+/// then but has one now has been written too. `None` when nothing can be said:
+/// the worktree is unknown, the repository keeps no reflogs, or the file
+/// cannot be read.
+pub(crate) fn worktree_head_reflog_grew_since(
+    start_offsets: &HashMap<String, u64>,
+    worktree: Option<&Path>,
+    started_at_ns: Option<u128>,
+) -> Option<bool> {
+    let Some((key, start_len)) = start_offsets
+        .iter()
+        .find(|(key, _)| key.starts_with("worktree:"))
+    else {
+        let logs = git_dir_for_worktree(worktree?)?.join("logs");
+        if !logs.is_dir() {
+            return None;
+        }
+        return Some(logs.join("HEAD").is_file());
+    };
+    let (_, path) = reflog_reference_and_path_for_key(Path::new(""), key)?;
+    let metadata = fs::metadata(&path).ok()?;
+    if metadata.len() > *start_len {
+        return Some(true);
+    }
+    let modified_ns = metadata
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_nanos();
+    Some(modified_ns > started_at_ns?)
+}
+
 pub(crate) fn refs_at_reflog_start_offsets(
     family: &FamilyKey,
     offsets: &HashMap<String, u64>,

@@ -67,8 +67,44 @@ Separation of concerns:
   mutating command is not a sequencer entry: it is an open trace root that
   fences later entries of its family until it finishes, and a root the reader
   has already seen finishing keeps that fence until the ingest worker
-  processes its final frames.
+  processes its final frames. See "Causal fence" for how long a root can hold.
 - **Side effects** run only after enrichment, on exact data.
+
+### Causal fence
+
+Trace2 frames of one root arrive in order (one connection, sequential writes),
+but across roots there is no order: independent reader threads feed a serial
+ingest worker. The hazard this creates is a git process that has changed refs
+while its final frame has not reached the sequencer. An open, mutating (or not
+yet classified) root that started at or before a completed entry holds that
+entry — and `sync.family`, the shutdown drain, and `await` — as follows,
+decided from data first and heuristics last:
+
+1. **Finishing** (`atexit` already read by the reader, or its socket closed):
+   holds until the worker processes its queued frame. The worker clears the
+   root even when that frame fails to normalize or ingest; as a safety net,
+   the hard cap releases a finishing root too (`reason=finishing_root_cap`).
+2. **Written**: the reader captured the root's worktree `HEAD` reflog length
+   when it started; if that reflog has grown, or was modified after the root's
+   start on git's clock, the root has changed refs and holds until it
+   finishes (a post-write hook, say), bounded by 600 × grace. The modification
+   time covers a length the reader recorded late, after the root had already
+   written, and cannot be set by a committer date.
+3. **Unwritten**: neither signal fired, so the root has changed nothing and
+   fences nothing. Nobody waits for an editor or a pre-commit hook, not even a
+   grace.
+4. **No reflog to consult** (the root's worktree is unknown, or the repository
+   has no `HEAD` reflog): time and liveness decide. The root holds for the
+   causal grace (`FAMILY_CAUSAL_GRACE`, 1 s; `GIT_AI_DAEMON_CAUSAL_GRACE_MS`)
+   measured from when the waiting work became ready; past it, a root whose pid
+   (encoded in its sid, `-P<hex>`) is alive is released
+   (`reason=causal_grace_expired`) and one whose process is gone or unknown
+   holds until the hard cap (`reason=causal_fence_hard_cap`).
+
+Unattributed roots (no `def_repo` yet) fail closed and fence every family.
+Roots that started after the waiting work cannot precede it and never fence
+it. Heuristic releases are `WARN`-logged once per root with the root, its
+command, family, age and wait, and counted for the health snapshot.
 
 ### NormalizedCommand
 

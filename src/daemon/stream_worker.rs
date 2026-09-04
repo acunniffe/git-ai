@@ -380,13 +380,9 @@ impl StreamWorker {
             } else {
                 self.next_delayed_task_at()
             };
-            let retry_sleep = async {
-                if let Some(at) = next_retry_at {
-                    tokio::time::sleep_until(tokio::time::Instant::from_std(at)).await;
-                } else {
-                    std::future::pending::<()>().await;
-                }
-            };
+            let retry_sleep = crate::daemon::sleep_until_or_pending(
+                next_retry_at.map(tokio::time::Instant::from_std),
+            );
 
             tokio::select! {
                 _ = self.shutdown_notify.notified() => {

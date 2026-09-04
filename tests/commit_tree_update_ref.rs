@@ -2249,8 +2249,8 @@ fn test_checkpoint_completes_while_commit_blocked_in_pre_commit_hook() {
 /// A commit blocked in its post-commit hook has already moved HEAD. A
 /// checkpoint arriving during that hook observed the new HEAD and must be
 /// processed after the commit, however long the hook runs: the daemon sees the
-/// root's worktree HEAD reflog has grown and keeps the fence even though the
-/// process is alive.
+/// root's worktree HEAD reflog was written since the root started and keeps
+/// the fence even though the process is alive.
 #[test]
 #[cfg(not(windows))]
 fn test_checkpoint_during_post_commit_hook_waits_for_the_commit() {
