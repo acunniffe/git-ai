@@ -68,7 +68,8 @@ struct RootSample {
 pub(crate) struct DaemonHealthSnapshot {
     pub uptime_seconds: u64,
     pub causal_grace_ms: u64,
-    /// A map was contended when sampled; its counts read as zero here.
+    /// A map was contended when sampled (its counts read as zero here), or
+    /// more roots were open than the snapshot observes.
     pub snapshot_partial: bool,
     pub checkpoints_outstanding: usize,
     pub checkpoints_outstanding_bytes: usize,
@@ -256,13 +257,14 @@ impl DaemonHealthSnapshot {
             }
             // Work fenced by a root that has written may legitimately wait as
             // long as that root runs; anything else is bounded by the hard cap.
+            // Judged from the front entry's own wait, the clock the drain
+            // uses: an older entry behind a fresh front is queued, not stuck.
             let bound = if fence.behind_written_root {
                 written_cap
             } else {
                 hard_cap
             };
-            if Duration::from_millis(health.oldest_entry_age_ms) > bound.max(SEQUENCER_STALL_FLOOR)
-            {
+            if front.waited > bound.max(SEQUENCER_STALL_FLOOR) {
                 sequencer_stalled = true;
             }
         }
@@ -384,8 +386,8 @@ impl DaemonHealthSnapshot {
     /// under its own name, plus the [`HEARTBEAT_FAMILY_DETAIL_LIMIT`] families
     /// with the oldest pending work as `family_<i>_<field>`. Family keys are
     /// local repository paths and never leave the machine: the heartbeat
-    /// carries a stable `family_<i>_id` digest instead, enough to correlate
-    /// consecutive heartbeats and daemon log lines that carry the same digest.
+    /// carries a salted `family_<i>_id` digest instead, stable for one daemon
+    /// process, enough to follow a family across consecutive heartbeats.
     pub fn heartbeat_fields(&self) -> BTreeMap<String, DaemonLogFieldValue> {
         let mut fields = BTreeMap::new();
         let Ok(Value::Object(snapshot)) = serde_json::to_value(self) else {
@@ -423,10 +425,18 @@ impl DaemonHealthSnapshot {
     }
 }
 
-/// A stable, non-reversible digest of a family key (a local path).
+/// A digest of a family key (a local path) that is stable within one daemon
+/// process, so successive heartbeats can be correlated, but salted with a
+/// secret that is never uploaded, so the low-entropy path cannot be confirmed
+/// by dictionary on the receiving side.
 fn family_id(family_key: &str) -> String {
     use sha2::{Digest, Sha256};
-    let digest = Sha256::digest(family_key.as_bytes());
+    static SALT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let salt = SALT.get_or_init(crate::uuid::generate_v4);
+    let mut hasher = Sha256::new();
+    hasher.update(salt.as_bytes());
+    hasher.update(family_key.as_bytes());
+    let digest = hasher.finalize();
     digest
         .iter()
         .take(6)
@@ -500,6 +510,25 @@ mod tests {
             losses: IngestLossSnapshot::default(),
             families,
         }
+    }
+
+    #[test]
+    fn family_ids_are_stable_within_a_run_but_not_a_bare_digest_of_the_path() {
+        use sha2::{Digest, Sha256};
+
+        let key = "/Users/someone/src/project/.git";
+        assert_eq!(family_id(key), family_id(key));
+        assert_ne!(family_id(key), family_id("/Users/someone/src/other/.git"));
+        let bare: String = Sha256::digest(key.as_bytes())
+            .iter()
+            .take(6)
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        assert_ne!(
+            family_id(key),
+            bare,
+            "a bare digest of a low-entropy local path is confirmable by dictionary"
+        );
     }
 
     #[test]

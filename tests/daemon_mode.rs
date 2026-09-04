@@ -29,7 +29,7 @@ use repos::test_repo::live_pid_trace_sid;
 use repos::test_repo::{
     DAEMON_SPAWN_LOADER_RETRY_ATTEMPTS, DaemonTestCompletionLogEntry, DaemonTestScope, TestRepo,
     configure_raw_traced_git_env_for, get_binary_path, is_windows_loader_init_failure,
-    real_git_executable, reaped_pid_trace_sid, trace_atexit_frame, write_trace_frames,
+    real_git_executable, reaped_pid_trace_sid, trace_atexit_frame, unix_now_ns, write_trace_frames,
 };
 use serde_json::Value;
 use serde_json::json;
@@ -2875,7 +2875,10 @@ fn daemon_sync_family_returns_promptly_with_open_unwritten_mutating_root() {
         "sync.family must not wait for a root that has written nothing"
     );
 
-    write_trace_frames(&mut open_trace, &[trace_atexit_frame(&sid, 0, 1_002)]);
+    write_trace_frames(
+        &mut open_trace,
+        &[trace_atexit_frame(&sid, 0, unix_now_ns())],
+    );
 }
 
 #[test]
@@ -2884,7 +2887,7 @@ fn daemon_sync_family_ignores_child_connection_of_a_completed_root() {
     // The root ran, wrote its atexit and exited; the daemon has processed it.
     let sid = reaped_pid_trace_sid("gc-parent");
     let mut root = repo.open_mutating_commit_trace_root(&sid, true);
-    write_trace_frames(&mut root, &[trace_atexit_frame(&sid, 0, 1_002)]);
+    write_trace_frames(&mut root, &[trace_atexit_frame(&sid, 0, unix_now_ns())]);
     drop(root);
     repo.sync_daemon();
 
@@ -2949,7 +2952,10 @@ fn daemon_await_completes_with_idle_open_mutating_root() {
         "await should return well before its 5s deadline"
     );
 
-    write_trace_frames(&mut open_trace, &[trace_atexit_frame(&sid, 0, 1_002)]);
+    write_trace_frames(
+        &mut open_trace,
+        &[trace_atexit_frame(&sid, 0, unix_now_ns())],
+    );
 }
 
 #[cfg(not(windows))]
@@ -3025,7 +3031,10 @@ fn daemon_status_daemon_reports_open_root_and_fenced_checkpoint() {
     assert_eq!(fenced["families"][0]["fenced"], json!(true), "{fenced}");
     assert_eq!(fenced["sequencer_stalled"], json!(false), "{fenced}");
 
-    write_trace_frames(&mut open_trace, &[trace_atexit_frame(&sid, 0, 1_002)]);
+    write_trace_frames(
+        &mut open_trace,
+        &[trace_atexit_frame(&sid, 0, unix_now_ns())],
+    );
     let started = std::time::Instant::now();
     loop {
         let snapshot = status_daemon(&repo);
@@ -3120,7 +3129,10 @@ fn daemon_sync_family_ignores_open_mutating_root_from_other_family() {
         "unrelated sync.family request failed: {unrelated_sync:?}"
     );
 
-    write_trace_frames(&mut open_trace, &[trace_atexit_frame(sid, 0, 1_002)]);
+    write_trace_frames(
+        &mut open_trace,
+        &[trace_atexit_frame(sid, 0, unix_now_ns())],
+    );
     let own_sync_response = own_sync_rx
         .recv_timeout(Duration::from_secs(1))
         .expect("own-family sync should complete after the trace root closes")

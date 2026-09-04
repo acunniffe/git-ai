@@ -2508,11 +2508,14 @@ impl TestRepo {
             Duration::from_secs(2),
         )
         .expect("connect trace root to daemon");
+        // Stamped on git's clock as a real root would be, so a reflog older
+        // than the root cannot pass for one it wrote.
+        let started_at_ns = unix_now_ns();
         let mut frames = vec![serde_json::json!({
             "event": "start",
             "sid": sid,
             "argv": ["git", "commit", "-m", "still running"],
-            "time_ns": 1_000u64,
+            "time_ns": started_at_ns,
         })];
         if attribute_to_repo {
             frames.push(serde_json::json!({
@@ -2520,7 +2523,7 @@ impl TestRepo {
                 "sid": sid,
                 "worktree": self.path().to_string_lossy(),
                 "repo": self.path().join(".git").to_string_lossy(),
-                "time_ns": 1_001u64,
+                "time_ns": started_at_ns + 1,
             }));
         }
         write_trace_frames(&mut stream, &frames);
@@ -3664,6 +3667,14 @@ pub(crate) fn write_trace_frames(stream: &mut impl Write, frames: &[serde_json::
         stream.write_all(b"\n").expect("write trace frame newline");
     }
     stream.flush().expect("flush trace frames");
+}
+
+/// The current time on git's clock, for stamping synthetic trace frames.
+pub(crate) fn unix_now_ns() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock after the epoch")
+        .as_nanos() as u64
 }
 
 pub(crate) fn trace_atexit_frame(sid: &str, code: i32, time_ns: u64) -> serde_json::Value {
