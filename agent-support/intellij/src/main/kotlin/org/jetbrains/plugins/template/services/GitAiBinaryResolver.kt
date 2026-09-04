@@ -21,6 +21,9 @@ internal class GitAiBinaryResolver(
     private val consolePathProvider: () -> String? = {
         EnvironmentUtil.getValue("PATH")
     },
+    private val currentDirectoryProvider: () -> File = {
+        File(System.getProperty("user.dir"))
+    },
     private val pathSeparatorProvider: () -> String = {
         if (isWindowsProvider()) ";" else File.pathSeparator
     },
@@ -89,14 +92,34 @@ internal class GitAiBinaryResolver(
             .split(pathSeparatorProvider())
             .asSequence()
             .map { it.normalizePathEntry() }
-            .filter { it.isNotEmpty() }
             .flatMap { directory ->
                 executableNames.asSequence().map { executableName ->
-                    File(directory, executableName).path
+                    resolvePathEntry(directory, executableName)
                 }
             }
             .firstOrNull(executableValidator)
     }
 
+    private fun resolvePathEntry(directory: String, executableName: String): String {
+        val workingDirectory = currentDirectoryProvider().absoluteFile.toPath().normalize().toFile()
+        val pathDirectory = when {
+            directory.isEmpty() -> workingDirectory
+            File(directory).isAbsolute -> File(directory)
+            isWindowsProvider() && directory.isAbsoluteWindowsPath() -> File(directory)
+            else -> File(workingDirectory, directory)
+        }
+        val executable = File(pathDirectory, executableName)
+
+        return if (executable.isAbsolute) {
+            executable.toPath().normalize().toString()
+        } else {
+            // Windows paths are not considered absolute when tests run on another host OS.
+            executable.path
+        }
+    }
+
     private fun String.normalizePathEntry(): String = trim().removeSurrounding("\"")
+
+    private fun String.isAbsoluteWindowsPath(): Boolean =
+        matches(Regex("^[A-Za-z]:[\\\\/].*")) || startsWith("\\\\\\\\")
 }

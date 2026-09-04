@@ -203,6 +203,42 @@ class GitAiBinaryResolverTest {
     }
 
     @Test
+    fun `GIVEN a relative PATH entry WHEN resolving THEN an absolute executable path is returned`() {
+        val currentDirectory = "/Applications/Android Studio.app/Contents/bin"
+        val expectedPath = File(currentDirectory, "tools/git-ai").toPath().normalize().toString()
+        val resolver = resolver(
+            homeDirectory = null,
+            validPaths = setOf(expectedPath),
+            consolePath = "tools:/usr/bin",
+            currentDirectory = currentDirectory,
+        )
+
+        val resolution = resolver.resolve(cachedPath = null)
+
+        assertEquals(expectedPath, resolution.executablePath)
+        assertTrue(File(resolution.executablePath.orEmpty()).isAbsolute)
+    }
+
+    @Test
+    fun `GIVEN an empty PATH entry WHEN resolving THEN the IDE working directory is searched`() {
+        val currentDirectory = "/Applications/Android Studio.app/Contents/bin"
+        val expectedPath = File(currentDirectory, "git-ai").toPath().normalize().toString()
+        val checkedPaths = mutableListOf<String>()
+        val resolver = resolver(
+            homeDirectory = null,
+            validPaths = setOf(expectedPath),
+            consolePath = ":/usr/bin",
+            currentDirectory = currentDirectory,
+            checkedPaths = checkedPaths,
+        )
+
+        val resolution = resolver.resolve(cachedPath = null)
+
+        assertEquals(expectedPath, resolution.executablePath)
+        assertEquals(listOf(expectedPath), checkedPaths)
+    }
+
+    @Test
     fun `GIVEN no executable in known locations or PATH WHEN resolving THEN diagnostics retain searched paths`() {
         val homeDirectory = "/Users/developer"
         val consolePath = "/usr/bin:/opt/custom tools/git-ai/bin"
@@ -227,6 +263,7 @@ class GitAiBinaryResolverTest {
         isWindows: Boolean = false,
         validPaths: Set<String> = emptySet(),
         consolePath: String? = null,
+        currentDirectory: String = "/ide/working-directory",
         pathSeparator: String = if (isWindows) ";" else ":",
         checkedPaths: MutableList<String> = mutableListOf(),
         onConsolePathRead: () -> Unit = {},
@@ -241,6 +278,7 @@ class GitAiBinaryResolverTest {
             onConsolePathRead()
             consolePath
         },
+        currentDirectoryProvider = { File(currentDirectory) },
         pathSeparatorProvider = { pathSeparator },
     )
 
