@@ -98,6 +98,6 @@
     "test-exclude": ">=7.0.0"
   },
   "dependencies": {
-    "posthog-node": "^5.49.1"
+    "posthog-node": "^5.51.2"
   }
 }
