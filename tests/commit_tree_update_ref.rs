@@ -16,8 +16,8 @@ use repos::test_file::ExpectedLineExt;
 #[cfg(not(windows))]
 use repos::test_repo::configure_raw_traced_git_env_for;
 use repos::test_repo::{
-    TestRepo, configure_raw_traced_git_env, live_pid_trace_sid, new_daemon_test_sync_session_id,
-    real_git_executable,
+    TestRepo, configure_raw_traced_git_env, new_daemon_test_sync_session_id, real_git_executable,
+    reaped_pid_trace_sid,
 };
 use serde_json::{Value, json};
 use std::fs;
@@ -1989,7 +1989,8 @@ fn test_delayed_current_branch_update_ref_trace_preserves_new_commit_attribution
 
 #[test]
 fn test_update_ref_side_effect_waits_for_prior_open_trace_root_until_causal_grace() {
-    let repo = TestRepo::new();
+    // A short grace keeps the hard cap (30 x grace) within the test's reach.
+    let repo = TestRepo::new_with_daemon_env(&[("GIT_AI_DAEMON_CAUSAL_GRACE_MS", "100")]);
     setup_initial_commit(&repo);
 
     repo.git(&["checkout", "-b", "feature"])
@@ -2021,9 +2022,11 @@ fn test_update_ref_side_effect_waits_for_prior_open_trace_root_until_causal_grac
     .trim()
     .to_string();
 
-    // This test process stands in for the still-running git: its pid is alive.
+    // The root's process is gone but its connection never closed (a leaked
+    // inherited socket): the fence has no reflog to consult and no live
+    // process to wait for, so it holds to the hard cap and then releases.
     let unfinished_trace =
-        repo.open_mutating_commit_trace_root(&live_pid_trace_sid("unfinished"), false);
+        repo.open_mutating_commit_trace_root(&reaped_pid_trace_sid("unfinished"), false);
     std::thread::sleep(Duration::from_millis(100));
 
     let session = new_daemon_test_sync_session_id();
@@ -2042,21 +2045,56 @@ fn test_update_ref_side_effect_waits_for_prior_open_trace_root_until_causal_grac
         std::thread::sleep(Duration::from_millis(10));
     }
 
-    // Past the causal grace the daemon checks the root's process: it is alive
-    // and has not written anything, so the command is still running and
-    // nothing causally prior is in flight. The fence releases without waiting
-    // for the trace to close.
+    // Past the grace the daemon checks the root's process; it is gone, so the
+    // fence holds to the hard cap (3 s here) and releases without waiting for
+    // the trace to close.
     let released = std::time::Instant::now();
     while !daemon_completed_session(&repo, &session) {
         assert!(
-            released.elapsed() < Duration::from_secs(5),
-            "update-ref side effect stayed fenced behind a live open trace root past the causal grace"
+            released.elapsed() < Duration::from_secs(8),
+            "update-ref side effect stayed fenced behind a dead open trace root past the hard cap"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+
+    // A release of a dead root is a fact about the root: a later command in
+    // the family does not wait out the hard cap again while it stays open.
+    let later_tree_sha = raw_untraced_git(&repo, &["write-tree"]).trim().to_string();
+    let later_commit_sha = raw_untraced_git(
+        &repo,
+        &[
+            "commit-tree",
+            &later_tree_sha,
+            "-p",
+            &commit_sha,
+            "-m",
+            "later plumbing commit behind a released root",
+        ],
+    )
+    .trim()
+    .to_string();
+    let later_session = new_daemon_test_sync_session_id();
+    let later_start = std::time::Instant::now();
+    raw_traced_git_with_session(
+        &repo,
+        &[
+            "update-ref",
+            "refs/heads/feature",
+            &later_commit_sha,
+            &commit_sha,
+        ],
+        &later_session,
+    );
+    while !daemon_completed_session(&repo, &later_session) {
+        assert!(
+            later_start.elapsed() < Duration::from_millis(1_500),
+            "a later command waited out the hard cap again behind an already released dead root"
         );
         std::thread::sleep(Duration::from_millis(10));
     }
 
     drop(unfinished_trace);
-    repo.sync_daemon_external_completion_sessions(&[session]);
+    repo.sync_daemon_external_completion_sessions(&[session, later_session]);
 
     assert_note_has_ai_for_file(&repo, &commit_sha, "sequenced-branch-plumbing.txt");
     let mut feature_file = repo.filename("sequenced-branch-plumbing.txt");

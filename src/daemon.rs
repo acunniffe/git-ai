@@ -2783,20 +2783,24 @@ struct RootFenceProbe {
     /// as written even when its length was recorded late.
     started_at_ns: Option<u128>,
     pid: Option<u32>,
+    /// This root was released while its process was gone: nothing it could
+    /// still do is in flight.
+    released: bool,
     wrote_refs: Option<bool>,
     alive: Option<bool>,
 }
 
 impl RootFenceProbe {
     /// Performs the observations the classification needs: the reflog stat
-    /// when there is one to consult, else a liveness probe once the grace has
-    /// passed. Runs without any daemon lock held.
+    /// when there is one to consult, and a liveness probe once the grace has
+    /// passed unless the reflog shows the root has changed nothing. Runs
+    /// without any daemon lock held.
     fn observe(&mut self, grace: Duration) {
-        if self.finishing {
+        if self.finishing || self.released {
             return;
         }
         self.observe_reflog();
-        if self.wrote_refs.is_none() && self.waited >= grace {
+        if self.wrote_refs != Some(false) && self.waited >= grace {
             self.alive = self.pid.map(process_alive);
         }
     }
@@ -2805,11 +2809,11 @@ impl RootFenceProbe {
     /// root against several waits without touching the file system or the
     /// process table again. Runs without any daemon lock held.
     fn observe_all(&mut self) {
-        if self.finishing {
+        if self.finishing || self.released {
             return;
         }
         self.observe_reflog();
-        if self.wrote_refs.is_none() {
+        if self.wrote_refs != Some(false) {
             self.alive = self.pid.map(process_alive);
         }
     }
@@ -2964,7 +2968,14 @@ struct TraceIngressState {
     /// EOF must not clear such a root first, and needs no close marker for it.
     root_finishing: HashSet<String>,
     /// Roots whose fence release has been logged and counted already.
+    /// Roots whose heuristic release has been logged and counted (once).
     root_fence_release_logged: HashSet<String>,
+    /// Roots released while their process was gone: a fact about the root,
+    /// since a dead process cannot write again, so later work, `sync` and
+    /// `await` do not wait out the bound behind it. A live root's release is
+    /// not remembered: it may still write, and the next waiter's grace
+    /// covers that write's frames.
+    root_fence_released: HashSet<String>,
     /// Roots the daemon has finished with, remembered (bounded, oldest out)
     /// so a straggling child process of one cannot reopen it: git's detached
     /// auto-maintenance opens its own connections under the parent's sid
@@ -3989,6 +4000,7 @@ impl ActorDaemonCoordinator {
             waited,
             finishing: ingress.root_finishing.contains(root_sid)
                 || ingress.root_close_markers_enqueued.contains(root_sid),
+            released: ingress.root_fence_released.contains(root_sid),
             head_reflog: moves_head
                 .then(|| ingress.root_reflog_start_offsets.get(root_sid).cloned())
                 .flatten()
@@ -4009,9 +4021,13 @@ impl ActorDaemonCoordinator {
     /// - a *finishing* root (atexit read, or socket closed) holds until the
     ///   worker processes its queued frame, which always clears it; should
     ///   that somehow not happen, the hard cap releases it with a warning;
+    /// - otherwise, a root released while its process was gone fences nothing
+    ///   more: a dead process cannot write again, so that release is a fact
+    ///   about the root, not about the work that waited;
     /// - a HEAD-moving root whose worktree HEAD reflog has grown or been
     ///   modified since it started has changed refs and holds until it
-    ///   finishes (a post-write hook, say), bounded by the written-root cap;
+    ///   finishes (a post-write hook, say), bounded by the written-root cap,
+    ///   or by the hard cap once its process is gone;
     /// - a HEAD-moving root whose worktree HEAD reflog is untouched has
     ///   changed nothing: it fences nothing, and nobody waits for an editor or
     ///   a pre-commit hook;
@@ -4029,10 +4045,21 @@ impl ActorDaemonCoordinator {
                 RootFence::Release(release)
             }
         };
+        // Data first: a finishing root's final frame is queued and its command
+        // is about to be sequenced ahead of this work, released or not.
         if probe.finishing {
             return hold_until(hard_cap, "finishing_root_cap");
         }
+        if probe.released {
+            return RootFence::Open;
+        }
         match probe.wrote_refs {
+            // A written root whose process is gone will never finish on its
+            // own (a sibling connection keeps it registered): its frames are
+            // either queued, which would make it finishing, or lost.
+            Some(true) if probe.alive == Some(false) => {
+                return hold_until(hard_cap, "causal_fence_hard_cap");
+            }
             Some(true) => {
                 return hold_until(
                     grace * FAMILY_WRITTEN_ROOT_FENCE_CAP_MULTIPLIER,
@@ -4088,6 +4115,7 @@ impl ActorDaemonCoordinator {
         let mut ingress = lock_ingress()?;
         let mut held: Option<Duration> = None;
         let mut releases = Vec::new();
+        let mut newly_released = false;
         for probe in probes {
             // Cleared while we were observing: it fences nothing any more.
             if !Self::open_root_may_mutate_family(&ingress, &probe.root_sid, None) {
@@ -4100,6 +4128,11 @@ impl ActorDaemonCoordinator {
                     }
                 }
                 RootFence::Release(reason) => {
+                    if probe.alive == Some(false)
+                        && ingress.root_fence_released.insert(probe.root_sid.clone())
+                    {
+                        newly_released = true;
+                    }
                     if ingress
                         .root_fence_release_logged
                         .insert(probe.root_sid.clone())
@@ -4117,10 +4150,12 @@ impl ActorDaemonCoordinator {
             }
         }
         drop(ingress);
-        if !releases.is_empty() {
-            for release in &releases {
-                release.log();
-            }
+        for release in &releases {
+            release.log();
+        }
+        // Other waiters on this root (sync, await, other families) re-judge
+        // it at once rather than at their own timers.
+        if !releases.is_empty() || newly_released {
             self.trace_root_fence_notify.notify_waiters();
         }
         Ok(held)
@@ -4393,6 +4428,7 @@ impl ActorDaemonCoordinator {
         ingress.root_close_markers_enqueued.remove(root_sid);
         ingress.root_finishing.remove(root_sid);
         ingress.root_fence_release_logged.remove(root_sid);
+        ingress.root_fence_released.remove(root_sid);
         // Only a root the daemon saw through its own frames is known to have
         // completed; one known only from a child that closed early may still
         // be running, and its later children must keep failing closed.
@@ -12323,8 +12359,8 @@ mod tests {
         );
         assert_eq!(coord.causal_grace_expirations.load(Ordering::Relaxed), 1);
 
-        // Later work waits its own grace, but the heuristic release is
-        // reported once per root.
+        // A live root may still write, so later work waits its own grace
+        // (which covers that write's frames); the release is reported once.
         append_ready_rebase(&coord, "family-b");
         assert!(is_fenced(coord.family_front_entry_disposition("family-b")));
         tokio::time::sleep(grace * 3).await;
@@ -12495,6 +12531,124 @@ mod tests {
     }
 
     #[cfg(unix)]
+    #[tokio::test]
+    async fn fence_release_is_a_fact_about_the_root_not_the_waiter() {
+        let grace = Duration::from_millis(20);
+        let hard_cap = grace * FAMILY_CAUSAL_FENCE_HARD_CAP_MULTIPLIER;
+        let coord = ActorDaemonCoordinator::new_with_causal_grace(grace);
+        let sid = dead_root_sid("leaked-fd");
+        open_unattributed_commit_root(&coord, &sid);
+        append_ready_rebase(&coord, "family-a");
+        tokio::time::sleep(hard_cap + grace).await;
+        assert_eq!(
+            coord.family_front_entry_disposition("family-a"),
+            FamilyFrontDisposition::Ready,
+            "the hard cap releases the root"
+        );
+        assert_eq!(
+            coord.causal_fence_hard_cap_releases.load(Ordering::Relaxed),
+            1
+        );
+
+        // The root stays registered (its connection never closed). Work that
+        // arrives later must not pay the whole bound again: the release is
+        // recorded against the root.
+        coord
+            .family_sequencers_by_family
+            .lock()
+            .unwrap()
+            .get_mut("family-a")
+            .unwrap()
+            .entries
+            .clear();
+        append_ready_rebase(&coord, "family-a");
+        assert_eq!(
+            coord.family_front_entry_disposition("family-a"),
+            FamilyFrontDisposition::Ready,
+            "a released root fences nothing for later work"
+        );
+        assert!(
+            !coord.has_open_mutating_roots_holding_fence(),
+            "nor is it pending work for await"
+        );
+        assert_eq!(
+            coord.causal_fence_hard_cap_releases.load(Ordering::Relaxed),
+            1,
+            "one release per root"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_released_root_that_turns_finishing_holds_again() {
+        let grace = Duration::from_millis(20);
+        let hard_cap = grace * FAMILY_CAUSAL_FENCE_HARD_CAP_MULTIPLIER;
+        let coord = ActorDaemonCoordinator::new_with_causal_grace(grace);
+        let sid = dead_root_sid("released-then-finishing");
+        open_unattributed_commit_root(&coord, &sid);
+        append_ready_rebase(&coord, "family-a");
+        tokio::time::sleep(hard_cap + grace).await;
+        assert_eq!(
+            coord.family_front_entry_disposition("family-a"),
+            FamilyFrontDisposition::Ready
+        );
+
+        // Its final frame arrives after all: the command it carries sorts
+        // ahead of this work, so the fence holds until the worker clears it.
+        read_root_atexit(&coord, &sid);
+        coord
+            .family_sequencers_by_family
+            .lock()
+            .unwrap()
+            .get_mut("family-a")
+            .unwrap()
+            .entries
+            .clear();
+        append_ready_rebase(&coord, "family-a");
+        assert!(
+            is_fenced(coord.family_front_entry_disposition("family-a")),
+            "a finishing root holds even after a heuristic release"
+        );
+        coord.clear_trace_root_tracking(&sid).unwrap();
+        assert_eq!(
+            coord.family_front_entry_disposition("family-a"),
+            FamilyFrontDisposition::Ready
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn written_root_whose_process_is_gone_holds_only_to_the_hard_cap() {
+        let grace = Duration::from_millis(20);
+        let hard_cap = grace * FAMILY_CAUSAL_FENCE_HARD_CAP_MULTIPLIER;
+        let coord = ActorDaemonCoordinator::new_with_causal_grace(grace);
+        let temp = tempfile::tempdir().unwrap();
+        let (repo, family) = init_test_family(&coord, &temp);
+        commit_untraced(&repo);
+        // The root wrote refs, then died by signal with a sibling connection
+        // (a maintenance child) keeping it registered: its final frame will
+        // never come.
+        let sid = dead_root_sid("killed-after-write");
+        open_attributed_commit_root(&coord, &sid, &repo);
+        commit_untraced(&repo);
+        append_ready_rebase(&coord, &family);
+        tokio::time::sleep(grace * 3).await;
+        assert!(
+            is_fenced(coord.family_front_entry_disposition(&family)),
+            "a written root holds while it may still be finishing"
+        );
+        tokio::time::sleep(hard_cap).await;
+        assert_eq!(
+            coord.family_front_entry_disposition(&family),
+            FamilyFrontDisposition::Ready,
+            "a written root whose process is gone is bounded by the hard cap, not the written cap"
+        );
+        assert_eq!(
+            coord.causal_fence_hard_cap_releases.load(Ordering::Relaxed),
+            1
+        );
+    }
+
     #[tokio::test]
     async fn family_fence_holds_past_grace_when_root_process_is_dead() {
         let grace = Duration::from_millis(20);

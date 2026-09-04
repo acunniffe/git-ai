@@ -87,9 +87,11 @@ decided from data first and heuristics last:
 2. **Written**: the reader captured the root's worktree `HEAD` reflog length
    when it started; if that reflog has grown, or was modified after the root's
    start on git's clock, the root has changed refs and holds until it
-   finishes (a post-write hook, say), bounded by 600 × grace. The modification
-   time covers a length the reader recorded late, after the root had already
-   written, and cannot be set by a committer date.
+   finishes (a post-write hook, say), bounded by 600 × grace, or by the hard
+   cap once its process is gone (a sibling connection may keep a dead root
+   registered). The modification time covers a length the reader recorded
+   late, after the root had already written, and cannot be set by a committer
+   date.
 3. **Unwritten**: neither signal fired, so the root has changed nothing and
    fences nothing. Nobody waits for an editor or a pre-commit hook, not even a
    grace.
@@ -100,6 +102,15 @@ decided from data first and heuristics last:
    (encoded in its sid, `-P<hex>`) is alive is released
    (`reason=causal_grace_expired`) and one whose process is gone or unknown
    holds until the hard cap (`reason=causal_fence_hard_cap`).
+
+A heuristic release (`causal_grace_expired`, `causal_fence_hard_cap`,
+`written_root_cap`, `finishing_root_cap`) is logged and counted once per
+root. When the root's process was gone at the time, the release is also
+recorded against the root: a dead process cannot write again, so later work,
+`sync.family` and `await` do not wait out the bound behind it while it stays
+registered. A live root's release is per waiter, since it may still write
+and the next waiter's grace covers that write's frames. The hard cap is
+30 × grace.
 
 Unattributed roots (no `def_repo` yet) fail closed and fence every family.
 Roots that started after the waiting work cannot precede it and never fence

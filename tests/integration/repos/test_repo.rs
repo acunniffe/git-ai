@@ -3677,6 +3677,18 @@ pub(crate) fn trace_atexit_frame(sid: &str, code: i32, time_ns: u64) -> serde_js
 
 /// A trace2 root sid whose pid is this test process: alive for as long as the
 /// test runs, standing in for a git command blocked in an editor or a hook.
+/// A sid whose pid belongs to a process that has already exited, so the fence
+/// cannot mistake the root for a live interactive command.
+pub(crate) fn reaped_pid_trace_sid(tag: &str) -> String {
+    let mut child = Command::new(real_git_executable())
+        .arg("--version")
+        .stdout(Stdio::null())
+        .spawn()
+        .expect("spawn a short-lived process");
+    child.wait().expect("reap the short-lived process");
+    format!("20260411T120000.000000-H{tag}-P{:x}", child.id())
+}
+
 pub(crate) fn live_pid_trace_sid(tag: &str) -> String {
     format!("20260411T120000.000000-H{tag}-P{:x}", std::process::id())
 }
