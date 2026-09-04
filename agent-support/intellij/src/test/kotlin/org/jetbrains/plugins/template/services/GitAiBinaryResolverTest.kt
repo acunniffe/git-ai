@@ -130,19 +130,15 @@ class GitAiBinaryResolverTest {
     }
 
     @Test
-    fun `GIVEN a blank PATH WHEN resolving THEN the IDE working directory is searched`() {
-        val currentDirectory = "/Applications/Android Studio.app/Contents/bin"
-        val expectedPath = File(currentDirectory, "git-ai").toPath().normalize().toString()
+    fun `GIVEN a whitespace-only PATH WHEN resolving THEN no executable is returned`() {
         val resolver = resolver(
             homeDirectory = null,
             consolePath = "   ",
-            currentDirectory = currentDirectory,
-            validPaths = setOf(expectedPath),
         )
 
         val resolution = resolver.resolve(cachedPath = null)
 
-        assertEquals(expectedPath, resolution.executablePath)
+        assertNull(resolution.executablePath)
         assertTrue(resolution.searchedPaths.isEmpty())
         assertFalse(resolution.toString().contains("   "))
     }
