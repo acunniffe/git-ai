@@ -18,7 +18,7 @@ tokio = { version = "1.52", features = ["rt-multi-thread", "sync", "time", "macr
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 interprocess = "2.4"
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 libc = "0.2"
 jsonc-parser = { version = "0.32", features = ["cst"] }
 dirs = "5.0"
