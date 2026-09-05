@@ -1,14 +1,14 @@
 name: Update models.dev Pricing Snapshot
 
-# Regenerates the embedded models.dev pricing snapshot weekly and opens a PR
-# when prices or the model catalog changed, so the offline fallback used by
-# `git-ai usage` never lags far behind the live catalog.
+# Regenerates the embedded models.dev pricing snapshot weekly and updates a
+# dedicated branch for human review when prices or the model catalog changed,
+# so the offline fallback used by `git-ai usage` never lags far behind.
 #
 # Security notes:
-# - The default GITHUB_TOKEN stays read-only; only the final push/PR step gets
-#   the write-scoped token, so the cargo build (which runs third-party
-#   build.rs/proc-macro code) never sees credentials (checkout uses
-#   persist-credentials: false).
+# - The default GITHUB_TOKEN stays read-only. A narrowly scoped GitHub App
+#   token is created only after the cargo build (which runs third-party
+#   build.rs/proc-macro code) and is exposed only to the branch push step
+#   (checkout also uses persist-credentials: false).
 # - Fetched catalog data is only ever written to the snapshot file — nothing
 #   from models.dev is interpolated into shell commands, branch names, or PR
 #   text — and it ships exclusively through a human-reviewed PR.
@@ -38,8 +38,8 @@ jobs:
     # Don't run the cron (or attempt pushes/PRs) from forks.
     if: github.repository == 'git-ai-project/git-ai'
     permissions:
-      contents: write # push the snapshot branch
-      pull-requests: write # open/inspect the snapshot PR
+      contents: read
+      pull-requests: read
 
     steps:
       - name: Checkout code
@@ -70,15 +70,31 @@ jobs:
       - name: Regenerate snapshot from models.dev
         run: cargo test --lib regenerate_models_dev_pricing_snapshot -- --ignored
 
-      - name: Open or update PR if the snapshot changed
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check whether snapshot changed
+        id: snapshot
         run: |
           if git diff --quiet "$SNAPSHOT_PATH"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "Snapshot is already up to date."
-            exit 0
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Generate snapshot push token
+        if: steps.snapshot.outputs.changed == 'true'
+        id: snapshot-push-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        with:
+          app-id: 3481373
+          private-key: ${{ secrets.GIT_AI_INTERNAL_RELEASE_BOT_PRIVATE_KEY }}
+          # Limit the installation token to exactly what the push step needs.
+          permission-contents: write
+
+      - name: Push updated snapshot branch
+        if: steps.snapshot.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.snapshot-push-token.outputs.token }}
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # Authenticate git via a credential helper reading GH_TOKEN, which
@@ -92,20 +108,29 @@ jobs:
           git commit -m "chore: update models.dev pricing snapshot"
           git push --force origin "$BRANCH"
 
-          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
-            cat > /tmp/pr-body.md <<'EOF'
-          Automated weekly refresh of the embedded models.dev pricing snapshot used as the offline fallback for `git-ai usage` cost estimates.
+      - name: Check for an existing snapshot PR
+        if: steps.snapshot.outputs.changed == 'true'
+        id: snapshot-pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          number=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // ""')
+          echo "number=$number" >> "$GITHUB_OUTPUT"
 
-          Regenerated from https://models.dev/api.json by the `update-models-dev-pricing` workflow. Review the diff for price changes and new/removed models.
+      - name: Report snapshot PR status
+        if: steps.snapshot.outputs.changed == 'true' && steps.snapshot-pr.outputs.number == ''
+        run: |
+          compare_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...${BRANCH}?expand=1"
+          echo "::warning title=Snapshot PR required::The snapshot branch was updated, but repository policy prevents Actions from opening a PR. Open ${compare_url}"
+          {
+            echo "## Snapshot branch updated"
+            echo
+            echo "Repository policy prevents Actions from opening pull requests."
+            echo "[Open a PR for the refreshed snapshot](${compare_url})"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-          Note: CI does not start automatically on PRs opened by `GITHUB_TOKEN` — close and reopen this PR to trigger it.
-          EOF
-            # Note: PRs opened with GITHUB_TOKEN don't trigger pull_request
-            # workflows; close and reopen the PR (or push to it) to run CI.
-            gh pr create \
-              --head "$BRANCH" \
-              --title "chore: update models.dev pricing snapshot" \
-              --body-file /tmp/pr-body.md
-          else
-            echo "Open PR for $BRANCH already exists; branch updated."
-          fi
+      - name: Report existing snapshot PR
+        if: steps.snapshot.outputs.changed == 'true' && steps.snapshot-pr.outputs.number != ''
+        env:
+          PR_NUMBER: ${{ steps.snapshot-pr.outputs.number }}
+        run: echo "Updated existing snapshot PR #${PR_NUMBER}."
