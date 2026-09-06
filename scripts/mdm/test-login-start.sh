@@ -94,6 +94,18 @@ wait_for() {
 
 pid_changed_from() { local now; now="$(daemon_pid)"; [ -n "$now" ] && [ "$now" != "$1" ]; }
 
+# Only daemons under this HOME: a developer box may run its own git-ai daemon.
+no_daemon_process() { ! pgrep -f "^$HOME/.*git-ai bg run" >/dev/null; }
+
+# `bg shutdown` returns before the old process has released the daemon lock;
+# a login start racing that window would have to retry.
+stop_daemon() {
+  "$BIN" bg shutdown >/dev/null 2>&1 || true
+  wait_for 30 "previous daemon exited" no_daemon_process
+}
+
+daemon_command_line() { ps -p "$(daemon_pid)" -o args= 2>/dev/null || true; }
+
 mdm_script_args() {
   if [ "${MDM_TEST_ISOLATED_HOME:-0}" = "1" ]; then
     printf '%s\n' --bin "$BIN" --env "HOME=$HOME"
@@ -103,7 +115,8 @@ mdm_script_args() {
 run_mdm_script() {
   local extra=()
   while IFS= read -r line; do extra+=("$line"); done < <(mdm_script_args)
-  sh "$MDM_SCRIPT" "$@" "${extra[@]+"${extra[@]}"}"
+  # Isolation flags go first so a caller's own --bin wins (last one wins).
+  sh "$MDM_SCRIPT" "${extra[@]+"${extra[@]}"}" "$@"
 }
 
 registered() {
@@ -184,7 +197,7 @@ scenario_lifecycle() {
   install_binary
   # Keep the uptime restart deterministic: no network update checks.
   "$BIN" config set disable_auto_updates true
-  "$BIN" bg shutdown >/dev/null 2>&1 || true
+  stop_daemon
 
   register_and_wait_for_daemon \
     --env GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL=5 \
@@ -214,6 +227,29 @@ scenario_lifecycle() {
   run_mdm_script --uninstall
   ! registered || fail "login start still registered after --uninstall"
   log "uninstall clean"
+
+  stop_daemon
+  scenario_unusual_binary_path
+}
+
+# --bin must cope with every path an admin might install to: spaces, quotes,
+# parentheses, percent signs, non-ASCII.
+scenario_unusual_binary_path() {
+  local dir="$HOME/mdm test (weird) 100% 'quoted' ünïcode"
+  mkdir -p "$dir"
+  cp "$BIN" "$dir/git-ai"
+
+  run_mdm_script --bin "$dir/git-ai"
+  registered || fail "login start not registered with unusual --bin"
+  wait_for 30 "daemon up from unusual binary path" daemon_up
+  case "$(daemon_command_line)" in
+    *"$dir/git-ai"*) log "daemon runs from the unusual path" ;;
+    *) fail "daemon command line does not reference $dir: $(daemon_command_line)" ;;
+  esac
+  mechanism_sane
+
+  run_mdm_script --uninstall
+  stop_daemon
 }
 
 scenario_auto_update() {
@@ -225,7 +261,7 @@ scenario_auto_update() {
   install_binary
   local before; before="$(installed_version)"
   [ "$before" != "$latest" ] || fail "GIT_AI_RELEASE_TAG must be older than LATEST_TAG"
-  "$BIN" bg shutdown >/dev/null 2>&1 || true
+  stop_daemon
 
   register_and_wait_for_daemon --env GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL=10
   local pid1; pid1="$(daemon_pid)"

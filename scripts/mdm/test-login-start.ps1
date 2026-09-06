@@ -79,6 +79,18 @@ function Test-DaemonUp {
     }
 }
 
+function Get-DaemonProcesses {
+    Get-CimInstance Win32_Process -Filter "Name = 'git-ai.exe'" |
+        Where-Object { $_.CommandLine -match 'bg run' -and $_.ExecutablePath -like "$HOME\*" }
+}
+
+# `bg shutdown` returns before the old process has released the daemon lock;
+# a logon start racing that window would have to retry.
+function Stop-Daemon {
+    & $Bin bg shutdown *> $null
+    Wait-For 30 'previous daemon exited' { -not (Get-DaemonProcesses) }
+}
+
 function Wait-For([int]$Seconds, [string]$What, [scriptblock]$Condition) {
     $deadline = (Get-Date).AddSeconds($Seconds)
     while (-not (& $Condition)) {
@@ -148,7 +160,7 @@ function Invoke-LifecycleScenario {
     Install-Binary
     # Keep the uptime restart deterministic: no network update checks.
     & $Bin config set disable_auto_updates true
-    & $Bin bg shutdown *> $null
+    Stop-Daemon
 
     Register-AndWaitForDaemon --env GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL=5 --env GIT_AI_DAEMON_MAX_UPTIME_SECS=25
     $pid1 = Get-DaemonPid
@@ -177,6 +189,28 @@ function Invoke-LifecycleScenario {
     Invoke-MdmScript --uninstall
     if (Test-Registered) { Fail 'task still registered after --uninstall' }
     Write-Log 'uninstall clean'
+
+    Stop-Daemon
+    Invoke-UnusualBinaryPathScenario
+}
+
+# --bin must cope with every path an admin might install to: spaces, quotes,
+# parentheses, percent signs, non-ASCII.
+function Invoke-UnusualBinaryPathScenario {
+    $dir = Join-Path $HOME "mdm test (weird) 100% 'quoted' ünïcode"
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    Copy-Item $Bin (Join-Path $dir 'git-ai.exe') -Force
+
+    Invoke-MdmScript --bin (Join-Path $dir 'git-ai.exe')
+    if (-not (Test-Registered)) { Fail 'login start not registered with unusual --bin' }
+    Wait-For 45 'daemon up from unusual binary path' { Test-DaemonUp }
+    $running = @(Get-DaemonProcesses | Where-Object { $_.ExecutablePath -like "$dir\*" })
+    if (-not $running) { Fail "daemon is not running from $dir" }
+    Write-Log 'daemon runs from the unusual path'
+    Test-MechanismSane
+
+    Invoke-MdmScript --uninstall
+    Stop-Daemon
 }
 
 function Invoke-AutoUpdateScenario {
@@ -188,7 +222,7 @@ function Invoke-AutoUpdateScenario {
     Install-Binary
     $before = Get-InstalledVersion
     if ($before -eq $latest) { Fail 'GIT_AI_RELEASE_TAG must be older than LATEST_TAG' }
-    & $Bin bg shutdown *> $null
+    Stop-Daemon
 
     Register-AndWaitForDaemon --env GIT_AI_DAEMON_UPDATE_CHECK_INTERVAL=10
     $pid1 = Get-DaemonPid
