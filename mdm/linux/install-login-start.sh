@@ -97,6 +97,10 @@ if [ -n "$BIN" ]; then
     /*) ;;
     *) fail "--bin must be an absolute path" ;;
   esac
+  # The path is embedded in the unit file; keep shell metacharacters out of it.
+  if ! printf '%s' "$BIN" | grep -Eq '^[A-Za-z0-9_./+@ -]+$'; then
+    fail "--bin may only contain letters, digits, spaces and _ . / + @ -"
+  fi
   [ -x "$BIN" ] || fail "$BIN is not an executable git-ai binary"
   PROGRAM="$BIN"
 elif [ "$SYSTEM" -eq 0 ] && [ ! -x "$HOME/.git-ai/bin/git-ai" ]; then
