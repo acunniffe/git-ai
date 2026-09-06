@@ -223,6 +223,16 @@ impl DaemonProcess {
                 .env("GIT_AI_DAEMON_HOME", test_home)
                 .env("GIT_AI_DAEMON_CONTROL_SOCKET", &control_socket_path)
                 .env("GIT_AI_DAEMON_TRACE_SOCKET", &trace_socket_path)
+                // The untraced-commit fixup timer only fires in tests that opt
+                // in with a short interval; everything else drives it with
+                // `fixup.scan` so untraced git stays deterministic. A stress
+                // run can turn the timer on for every test daemon through
+                // GIT_AI_TEST_UNTRACED_FIXUP_INTERVAL_MS.
+                .env(
+                    "GIT_AI_DAEMON_UNTRACED_FIXUP_INTERVAL_MS",
+                    std::env::var("GIT_AI_TEST_UNTRACED_FIXUP_INTERVAL_MS")
+                        .unwrap_or_else(|_| "3600000".to_string()),
+                )
                 .stdout(Stdio::null())
                 .stderr(
                     stderr_log

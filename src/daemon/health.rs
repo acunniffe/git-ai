@@ -111,6 +111,8 @@ pub(crate) struct DaemonHealthSnapshot {
     /// Fixup cursors that no longer matched their reflog and restarted at its end.
     pub untraced_cursor_reseeds: u64,
     pub untraced_scan_errors: u64,
+    /// Repository families remembered across restarts (as of the last tick).
+    pub known_repo_families: u64,
     #[serde(flatten)]
     pub losses: IngestLossSnapshot,
     pub families: Vec<FamilyHealth>,
@@ -343,6 +345,7 @@ impl DaemonHealthSnapshot {
             untraced_commits_skipped: coordinator.untraced_commits_skipped.load(Ordering::Relaxed),
             untraced_cursor_reseeds: coordinator.untraced_cursor_reseeds.load(Ordering::Relaxed),
             untraced_scan_errors: coordinator.untraced_scan_errors.load(Ordering::Relaxed),
+            known_repo_families: coordinator.known_repo_families.load(Ordering::Relaxed),
             losses: IngestLossSnapshot::capture(coordinator),
             families,
         }
@@ -520,6 +523,7 @@ mod tests {
             untraced_commits_skipped: 0,
             untraced_cursor_reseeds: 0,
             untraced_scan_errors: 0,
+            known_repo_families: 0,
             losses: IngestLossSnapshot::default(),
             families,
         }

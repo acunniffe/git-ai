@@ -188,6 +188,10 @@ so no cursor predates the first traced command.
 - Special case: first traced command whose argv contains sufficient immutable
   OIDs (e.g. `merge --squash <sha>`) is exact even cold.
 
+Commits that never produce a traced command at all (daemon off, JGit/libgit2
+clients, sandboxes) are handled separately, from their reflog records, by the
+untraced commit fixup — see `docs/untraced-commit-fixup-spec.md`.
+
 ## Operation-specific ownership notes
 
 - **commit / amend**: expected HEAD transition with `commit`/`commit (amend):`
