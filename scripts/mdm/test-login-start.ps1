@@ -250,3 +250,6 @@ try {
 } finally {
     Invoke-Cleanup
 }
+# Cleanup's best-effort `bg shutdown` leaves a non-zero $LASTEXITCODE when no
+# daemon is running; do not let pwsh -File report that as the script's result.
+exit 0
