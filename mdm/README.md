@@ -52,9 +52,9 @@ install-login-start --uninstall
 
 - `--env KEY=VALUE` (repeatable) is written into the launch definition and
   reaches the daemon, e.g. `HTTPS_PROXY`, `GIT_AI_API_BASE_URL`.
-- `--bin PATH` points at a non-default `git-ai` binary. The path is passed to
-  the launcher through the `GIT_AI_LOGIN_START_BIN` environment variable, never
-  interpolated into a command line, so any path works.
+- `--bin PATH` points at a non-default `git-ai` binary. Any path works: on
+  macOS and Linux it reaches the launcher through the `GIT_AI_LOGIN_START_BIN`
+  environment variable, on Windows it is quoted into the launcher file.
 - `--no-start` registers without starting now; the daemon starts at next login.
 - `--uninstall` removes the registration. On macOS and Windows the running
   daemon is left alone; on Linux stopping the unit stops its cgroup and thus

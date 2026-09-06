@@ -102,7 +102,13 @@ foreach ($pair in $EnvPairs) {
     $key, $value = $pair.Split('=', 2)
     $launcherLines += "`$env:$key = $(ConvertTo-Literal $value)"
 }
-$launcherLines += "& $(ConvertTo-Literal $Bin) bg start"
+# Retry briefly so a daemon still releasing its lock (logoff/logon, self-update)
+# does not make the logon start give up.
+$launcherLines += 'for ($attempt = 1; $attempt -le 5; $attempt++) {'
+$launcherLines += "    & $(ConvertTo-Literal $Bin) bg start"
+$launcherLines += '    if ($LASTEXITCODE -eq 0) { break }'
+$launcherLines += '    Start-Sleep -Seconds 2'
+$launcherLines += '}'
 $launcherLines += 'exit $LASTEXITCODE'
 
 New-Item -ItemType Directory -Path $LauncherDir -Force | Out-Null
