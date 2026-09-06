@@ -114,6 +114,15 @@ pub fn worktrees_for_common_dir(common_dir: &Path) -> Vec<(PathBuf, PathBuf)> {
     out
 }
 
+/// Whether `worktree` is still the worktree whose git dir is `git_dir`: a
+/// remembered pair may be stale once either path has been reused by an
+/// unrelated repository.
+pub fn worktree_belongs_to_git_dir(worktree: &Path, git_dir: &Path) -> bool {
+    let canonical = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    git_dir_for_worktree(worktree)
+        .is_some_and(|resolved| canonical(&resolved) == canonical(git_dir))
+}
+
 fn main_worktree_for_common_dir(common_dir: &Path) -> Option<PathBuf> {
     // The ordinary layout needs no config read (the daemon asks about every
     // known family on every tick).
@@ -227,6 +236,38 @@ mod tests {
             worktrees_for_common_dir(&common_dir),
             vec![(common_dir.clone(), main), (linked_git_dir, linked)]
         );
+    }
+
+    #[test]
+    fn worktree_belongs_to_git_dir_rejects_reused_paths() {
+        let temp = tempfile::tempdir().unwrap();
+        let main = temp.path().join("repo");
+        let common_dir = main.join(".git");
+        write_file(&common_dir.join("HEAD"), "ref: refs/heads/main\n");
+        assert!(worktree_belongs_to_git_dir(&main, &common_dir));
+
+        // A linked worktree whose `.git` file points at this repository...
+        let linked = temp.path().join("feature");
+        let linked_git_dir = common_dir.join("worktrees").join("feature");
+        write_file(&linked_git_dir.join("HEAD"), "ref: refs/heads/feature\n");
+        write_file(
+            &linked.join(".git"),
+            &format!("gitdir: {}\n", linked_git_dir.display()),
+        );
+        assert!(worktree_belongs_to_git_dir(&linked, &linked_git_dir));
+
+        // ...and the same path later reused by an unrelated repository.
+        let other = temp.path().join("other/.git");
+        write_file(&other.join("HEAD"), "ref: refs/heads/main\n");
+        write_file(
+            &linked.join(".git"),
+            &format!("gitdir: {}\n", other.display()),
+        );
+        assert!(!worktree_belongs_to_git_dir(&linked, &linked_git_dir));
+        assert!(!worktree_belongs_to_git_dir(
+            &temp.path().join("missing"),
+            &common_dir
+        ));
     }
 
     #[test]

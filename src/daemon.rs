@@ -9,7 +9,8 @@ use crate::git::cli_parser::{
 };
 use crate::git::find_repository_in_path;
 use crate::git::repo_state::{
-    common_dir_for_worktree, git_dir_for_worktree, worktree_root_for_path, worktrees_for_common_dir,
+    common_dir_for_worktree, git_dir_for_worktree, worktree_belongs_to_git_dir,
+    worktree_root_for_path, worktrees_for_common_dir,
 };
 use crate::git::repository::{
     Repository, discover_repository_in_path_no_git_exec, exec_git, exec_git_stdin,
@@ -68,6 +69,7 @@ pub mod health;
 mod memory_watchdog;
 pub mod reducer;
 pub mod ref_cursor;
+pub mod repo_family_store;
 pub mod rewrite_metrics;
 pub mod sentry_layer;
 pub mod stream_worker;
@@ -3047,6 +3049,13 @@ pub struct ActorDaemonCoordinator {
     // exits via the shutdown select! arm instead of relying on channel closure.
     trace_ingest_tx: std::sync::OnceLock<mpsc::Sender<Value>>,
     telemetry_worker: Option<crate::daemon::telemetry_worker::DaemonTelemetryWorkerHandle>,
+    /// Families and fixup cursors remembered across restarts; `None` when the
+    /// database could not be opened (fixup then only covers this process).
+    repo_family_store: Option<Arc<crate::daemon::repo_family_store::RepoFamilyStore>>,
+    /// Worktree git dirs whose fixup cursor must not be persisted again this
+    /// lifetime: a pass had a side effect fail, and the durable cursor has to
+    /// stay behind that commit so a later lifetime can retry it.
+    untraced_persistence_blocked: Mutex<HashSet<String>>,
     stream_worker: Option<crate::daemon::stream_worker::StreamWorkerHandle>,
     token_usage_worker: Option<crate::daemon::token_usage_worker::TokenUsageWorkerHandle>,
     transcript_shutdown_notify: std::sync::OnceLock<Arc<tokio::sync::Notify>>,
@@ -3194,6 +3203,8 @@ impl ActorDaemonCoordinator {
             test_completion_log_lock: Mutex::new(()),
             trace_ingest_tx: std::sync::OnceLock::new(),
             telemetry_worker: None,
+            repo_family_store: None,
+            untraced_persistence_blocked: Mutex::new(HashSet::new()),
             stream_worker: None,
             token_usage_worker: None,
             transcript_shutdown_notify: std::sync::OnceLock::new(),
@@ -5545,6 +5556,7 @@ impl ActorDaemonCoordinator {
         self: &Arc<Self>,
         repo_working_dir: Option<String>,
     ) -> Result<UntracedScanSchedule, GitAiError> {
+        let now_secs = crate::utils::unix_timestamp_now();
         let mut targets = Vec::new();
         match repo_working_dir {
             Some(dir) => {
@@ -5564,8 +5576,30 @@ impl ActorDaemonCoordinator {
                 }
             }
             None => {
-                for family in self.coordinator.family_keys().await {
-                    for (git_dir, worktree) in worktrees_for_common_dir(Path::new(&family)) {
+                // Families this process has heard from, plus those remembered
+                // from earlier daemon lifetimes.
+                let mut families = self.coordinator.family_keys().await;
+                let remembered = self
+                    .with_repo_family_store(move |store| {
+                        store.prune(now_secs)?;
+                        store.known_families()
+                    })
+                    .await?
+                    .unwrap_or_default();
+                families.extend(remembered);
+                families.sort();
+                families.dedup();
+                for family in families {
+                    let common_dir = Path::new(&family);
+                    if !common_dir.is_dir() {
+                        let family = family.clone();
+                        self.with_repo_family_store(move |store| {
+                            store.record_family_missing(&family, now_secs)
+                        })
+                        .await?;
+                        continue;
+                    }
+                    for (git_dir, worktree) in self.family_worktrees(&family).await? {
                         targets.push((family.clone(), git_dir, worktree));
                     }
                 }
@@ -5578,13 +5612,21 @@ impl ActorDaemonCoordinator {
                 continue;
             }
             let max_offset = head_reflog_len(&git_dir);
+            // A completed pass records the family and its cursor; scheduling
+            // only reads the persisted cursor a cold actor should resume from.
+            let seed = {
+                let git_dir_key = git_dir.to_string_lossy().to_string();
+                self.with_repo_family_store(move |store| store.cursor(&git_dir_key))
+                    .await?
+                    .flatten()
+            };
             self.append_family_sequencer_entry(
                 &family,
                 now_unix_nanos(),
                 FamilySequencerEntry::UntracedCommitScan {
                     git_dir,
                     worktree,
-                    seed: None,
+                    seed,
                     max_offset,
                 },
             )?;
@@ -5619,6 +5661,60 @@ impl ActorDaemonCoordinator {
                 )
             })
         }))
+    }
+
+    fn untraced_persistence_blocked(&self, git_dir_key: &str) -> Result<bool, GitAiError> {
+        Ok(self
+            .lock_untraced_persistence_blocked()?
+            .contains(git_dir_key))
+    }
+
+    fn lock_untraced_persistence_blocked(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, HashSet<String>>, GitAiError> {
+        self.untraced_persistence_blocked.lock().map_err(|_| {
+            GitAiError::Generic("untraced persistence block set lock poisoned".to_string())
+        })
+    }
+
+    /// A family's worktrees: what the filesystem shows under its common dir,
+    /// plus worktrees remembered from earlier passes (the only way back to a
+    /// `--separate-git-dir` main worktree) that still exist.
+    async fn family_worktrees(&self, family: &str) -> Result<Vec<(PathBuf, PathBuf)>, GitAiError> {
+        let mut worktrees = worktrees_for_common_dir(Path::new(family));
+        let common_dir = family.to_string();
+        let remembered = self
+            .with_repo_family_store(move |store| store.known_worktrees(&common_dir))
+            .await?
+            .unwrap_or_default();
+        for (git_dir, worktree) in remembered {
+            let (git_dir, worktree) = (PathBuf::from(git_dir), PathBuf::from(worktree));
+            // Either path may have been reused by an unrelated repository since;
+            // the worktree must still resolve to this git dir.
+            if worktree_belongs_to_git_dir(&worktree, &git_dir)
+                && !worktrees.iter().any(|(known, _)| *known == git_dir)
+            {
+                worktrees.push((git_dir, worktree));
+            }
+        }
+        Ok(worktrees)
+    }
+
+    /// Runs a store operation off the async runtime; `Ok(None)` when no store
+    /// is open.
+    async fn with_repo_family_store<T, F>(&self, operation: F) -> Result<Option<T>, GitAiError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&crate::daemon::repo_family_store::RepoFamilyStore) -> Result<T, GitAiError>
+            + Send
+            + 'static,
+    {
+        let Some(store) = self.repo_family_store.clone() else {
+            return Ok(None);
+        };
+        crate::tokio_runtime::spawn_blocking_result(move || operation(&store))
+            .await
+            .map(Some)
     }
 
     fn side_effect_exec_lock(&self, family: &str) -> Result<Arc<AsyncMutex<()>>, GitAiError> {
@@ -5851,12 +5947,39 @@ impl ActorDaemonCoordinator {
                         .map_err(|_| {
                             GitAiError::Generic("command side-effect semaphore closed".to_string())
                         })?;
-                    if let Err(error) = self
+                    let git_dir_key = git_dir.to_string_lossy().to_string();
+                    let worktree_key = worktree.to_string_lossy().to_string();
+                    let scan = self
                         .run_untraced_commit_scan(
                             family, git_dir, worktree, seed, max_offset, order,
                         )
-                        .await
-                    {
+                        .await;
+                    let persisted = match scan {
+                        Ok(Some(cursor)) if !self.untraced_persistence_blocked(&git_dir_key)? => {
+                            let family = family.to_string();
+                            self.with_repo_family_store(move |store| {
+                                store.record_pass_completed(
+                                    &family,
+                                    &git_dir_key,
+                                    &worktree_key,
+                                    &cursor,
+                                    crate::utils::unix_timestamp_now(),
+                                )
+                            })
+                            .await
+                            .map(|_| ())
+                        }
+                        // A side effect failed in this or an earlier pass: the
+                        // durable cursor stays behind that commit for the rest
+                        // of this daemon lifetime, so the next one retries it
+                        // (commits that did get their note are skipped then).
+                        Ok(Some(_)) => Ok(()),
+                        Ok(None) => self.lock_untraced_persistence_blocked().map(|mut blocked| {
+                            blocked.insert(git_dir_key);
+                        }),
+                        Err(error) => Err(error),
+                    };
+                    if let Err(error) = persisted {
                         self.untraced_scan_errors.fetch_add(1, Ordering::Relaxed);
                         let _ = self.record_side_effect_error(family, order, &error);
                         tracing::error!(%error, %family, order, "untraced commit scan failed");
@@ -10221,6 +10344,16 @@ pub(crate) async fn run_daemon(config: DaemonConfig) -> Result<DaemonExitAction,
     let telemetry_handle = crate::daemon::telemetry_worker::spawn_telemetry_worker();
     crate::daemon::telemetry_worker::set_daemon_internal_telemetry(telemetry_handle.clone());
     coordinator_inner.telemetry_worker = Some(telemetry_handle.clone());
+
+    let repo_family_store_path = config.internal_dir.join("repo-families-db");
+    match crate::daemon::repo_family_store::RepoFamilyStore::open(&repo_family_store_path) {
+        Ok(store) => coordinator_inner.repo_family_store = Some(Arc::new(store)),
+        Err(error) => tracing::error!(
+            %error,
+            path = %repo_family_store_path.display(),
+            "failed to open repo-families database; untraced commit fixup will not survive restarts"
+        ),
+    }
 
     // With the token-usage flag off, previously collected data is deleted
     // regardless of the streaming gate below (the spec's "no collected data

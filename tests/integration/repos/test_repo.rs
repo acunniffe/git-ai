@@ -1779,6 +1779,21 @@ impl TestRepo {
         response.data.unwrap_or(serde_json::Value::Null)
     }
 
+    /// Runs one untraced-commit fixup pass over every family the daemon knows
+    /// (in memory or remembered from earlier lifetimes) and waits for it.
+    pub(crate) fn request_untraced_fixup_scan_all(&self) -> serde_json::Value {
+        let response = send_control_request(
+            &self.daemon_control_socket_path(),
+            &ControlRequest::UntracedFixupScan {
+                repo_working_dir: None,
+            },
+        )
+        .expect("fixup.scan should reach the daemon");
+        assert!(response.ok, "fixup.scan failed: {:?}", response.error);
+        self.sync_daemon_force();
+        response.data.unwrap_or(serde_json::Value::Null)
+    }
+
     /// The daemon's health snapshot (`status.daemon`).
     pub(crate) fn daemon_status(&self) -> serde_json::Value {
         let response = send_control_request(
@@ -1866,10 +1881,17 @@ impl TestRepo {
         &mut self,
         daemon_env: &[(&str, &str)],
     ) {
+        self.shutdown_dedicated_daemon_for_test();
+        self.start_dedicated_daemon_with_env_for_test(daemon_env);
+    }
+
+    /// Stops this repo's dedicated daemon; git run afterwards is invisible to
+    /// git-ai until `start_dedicated_daemon_with_env_for_test`.
+    pub(crate) fn shutdown_dedicated_daemon_for_test(&mut self) {
         assert_eq!(
             self.daemon_scope,
             DaemonTestScope::Dedicated,
-            "daemon restart requires a dedicated daemon repo"
+            "daemon shutdown requires a dedicated daemon repo"
         );
         let family_key = self.daemon_family_key();
         let pending_summary = {
@@ -1880,13 +1902,21 @@ impl TestRepo {
         };
         assert!(
             pending_summary.is_none(),
-            "cannot restart dedicated daemon with pending daemon sync work for family {}: {}",
+            "cannot stop dedicated daemon with pending daemon sync work for family {}: {}",
             family_key,
             pending_summary.unwrap_or_default()
         );
         if let Some(daemon) = self.daemon_process.take() {
             daemon.shutdown();
         }
+    }
+
+    pub(crate) fn start_dedicated_daemon_with_env_for_test(&mut self, daemon_env: &[(&str, &str)]) {
+        assert!(
+            self.daemon_process.is_none(),
+            "test repo already has an active daemon"
+        );
+        self.daemon_scope = DaemonTestScope::Dedicated;
         let daemon = Arc::new(DaemonProcess::start_with_env(
             &self.path,
             &self.test_home,
