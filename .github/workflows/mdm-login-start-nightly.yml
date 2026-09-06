@@ -1,0 +1,157 @@
+name: MDM Login Start (Nightly)
+
+# Exercises mdm/*/install-login-start.* against published releases: the
+# lifecycle scenario on the latest release, and the auto-update scenario from
+# an older release, which must self-update to latest while registered.
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 4 AM UTC nightly
+  workflow_dispatch:
+
+jobs:
+  select-releases:
+    name: Select releases
+    runs-on: ubuntu-latest
+    outputs:
+      latest: ${{ steps.select.outputs.latest }}
+      older: ${{ steps.select.outputs.older }}
+    steps:
+      - name: Pick latest and a recent older release
+        id: select
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          import random
+          import re
+          import urllib.request
+
+          token = os.environ.get("GITHUB_TOKEN", "")
+          url = "https://api.github.com/repos/git-ai-project/git-ai/releases?per_page=100"
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "User-Agent": "git-ai-mdm-login-start-nightly",
+          }
+          if token:
+              headers["Authorization"] = f"Bearer {token}"
+          with urllib.request.urlopen(urllib.request.Request(url, headers=headers)) as response:
+              releases = json.load(response)
+
+          pattern = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+          versions = {}
+          for release in releases:
+              match = pattern.match(release.get("tag_name", ""))
+              if match:
+                  versions[tuple(int(p) for p in match.groups())] = "v" + ".".join(match.groups())
+          if len(versions) < 2:
+              raise SystemExit("Need at least two semver releases")
+
+          ordered = sorted(versions)
+          latest = versions[ordered[-1]]
+          # Recent releases only: the daemon-driven self-update path must exist
+          # in the starting version.
+          older = versions[random.choice(ordered[-6:-1])]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"latest={latest}\nolder={older}\n")
+          print(f"latest={latest} older={older}")
+          PY
+
+  login-start:
+    name: ${{ matrix.scenario }} on ${{ matrix.os }}
+    needs: select-releases
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        scenario: [lifecycle, auto-update]
+    env:
+      BINARY_SOURCE: release
+      LATEST_TAG: ${{ needs.select-releases.outputs.latest }}
+      # lifecycle installs latest; auto-update starts from the older release.
+      GIT_AI_RELEASE_TAG: ${{ matrix.scenario == 'lifecycle' && needs.select-releases.outputs.latest || needs.select-releases.outputs.older }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Ensure a systemd user manager is running
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          uid="$(id -u)"
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$uid"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
+          for _ in $(seq 1 30); do
+            systemctl --user show-environment >/dev/null 2>&1 && break
+            sleep 1
+          done
+          systemctl --user show-environment >/dev/null
+          {
+            echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+            echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+          } >> "$GITHUB_ENV"
+
+      - name: Run scenario (Unix)
+        if: runner.os != 'Windows'
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+          MDM_TEST_LOG_DIR: ${{ runner.temp }}/mdm-logs
+        run: bash scripts/mdm/test-login-start.sh "$SCENARIO"
+
+      - name: Run scenario (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+          MDM_TEST_LOG_DIR: ${{ runner.temp }}\mdm-logs
+        run: ./scripts/mdm/test-login-start.ps1 -Scenario $env:SCENARIO
+
+      - name: Upload daemon and launcher logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mdm-login-start-nightly-${{ matrix.scenario }}-${{ matrix.os }}
+          path: ${{ runner.temp }}/mdm-logs
+          retention-days: 7
+          if-no-files-found: warn
+
+  published-assets:
+    name: Published assets match main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # A release that predates a script change legitimately differs until the
+      # next release ships, so drift is surfaced as a warning, not a failure.
+      - name: Compare release assets with mdm/
+        run: |
+          set -euo pipefail
+          base="https://github.com/git-ai-project/git-ai/releases/latest/download"
+          for pair in \
+            "git-ai-login-start-macos.sh:mdm/macos/install-login-start.sh" \
+            "git-ai-login-start-linux.sh:mdm/linux/install-login-start.sh" \
+            "git-ai-login-start-windows.ps1:mdm/windows/install-login-start.ps1"; do
+            asset="${pair%%:*}"; source="${pair#*:}"
+            if ! curl -fsSL "$base/$asset" -o "$RUNNER_TEMP/$asset"; then
+              echo "::warning::$asset is not published on the latest release yet"
+            elif diff -u "$source" "$RUNNER_TEMP/$asset"; then
+              echo "$asset matches $source"
+            else
+              echo "::warning::$asset on the latest release differs from $source"
+            fi
+          done
