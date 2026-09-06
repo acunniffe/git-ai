@@ -4,6 +4,7 @@ use crate::error::GitAiError;
 use crate::git::cli_parser::{
     explicit_rebase_branch_arg, parse_git_cli_args, summarize_rebase_args,
 };
+use crate::git::fast_reader::{FastRefReader, HeadKind};
 use crate::git::find_repository_in_path;
 use crate::git::repo_state::{common_dir_for_worktree, git_dir_for_worktree, is_valid_git_oid};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -25,6 +26,18 @@ pub struct RefCursor {
     /// or behind the command's own reflog entry, so they only *bias* entry
     /// selection — they never move the cursor. See `select_entry_for_hint`.
     command_start_hints: HashMap<String, u64>,
+    /// Per worktree `HEAD` reflog: how far the untraced-commit fixup has
+    /// settled (see `claim_untraced_commits`). Kept apart from `offsets`, the
+    /// traced in-order cursor, so settling past entries nobody owns (a rebase
+    /// still open in an editor) never hides them from the traced command that
+    /// eventually completes.
+    untraced_cursors: HashMap<String, UntracedReflogCursor>,
+    /// Per reflog key, `(start, end]` byte ranges whose records traced
+    /// commands own: what compaction folded into `offsets`, and what a span
+    /// consumer jumped over. Consumed markers leave the consumed sets when the
+    /// cursor compacts past them; these ranges are how the fixup still tells
+    /// an owned record from untraced history a cold seed merely skipped.
+    traced_owned_ranges: HashMap<String, Vec<(u64, u64)>>,
     stash_stack: Vec<String>,
     pending_cherry_pick_source_oids: Vec<String>,
 }
@@ -90,12 +103,81 @@ struct ReflogRecord {
     end_offset: u64,
 }
 
+/// The full reflog record ending at a cursor offset. Proves the offset still
+/// belongs to the same reflog generation (see the ingestion spec).
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct ReflogAnchor {
-    old: String,
-    new: String,
-    message: String,
-    end_offset: u64,
+pub struct ReflogAnchor {
+    pub old: String,
+    pub new: String,
+    pub message: String,
+    pub end_offset: u64,
+}
+
+/// Where the untraced-commit fixup has settled in one worktree `HEAD` reflog.
+/// Every record ending at or before `offset` has been claimed, skipped, or
+/// owned by a traced command; only records after it are ever considered.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UntracedReflogCursor {
+    pub offset: u64,
+    pub anchor: Option<ReflogAnchor>,
+}
+
+/// One fixup pass over a worktree `HEAD` reflog.
+#[derive(Debug, Clone)]
+pub struct UntracedClaimRequest {
+    pub git_dir: PathBuf,
+    pub worktree: PathBuf,
+    /// Persisted cursor used only when this actor has not seen the worktree yet.
+    pub seed: Option<UntracedReflogCursor>,
+    /// Records younger than this (by their reflog timestamp) are left for a later
+    /// pass: their trace2 frames may still be on the way.
+    pub min_age_secs: i64,
+    pub now_secs: i64,
+    pub max_commits: usize,
+    /// Records ending past this offset are left alone: they were written after
+    /// the pass was scheduled and may belong to a traced command whose root
+    /// started later (which the causal fence does not hold this pass for).
+    pub max_offset: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UntracedClaim {
+    /// Synthetic `git commit` commands, oldest first, one per claimed record.
+    pub commands: Vec<NormalizedCommand>,
+    /// The settled position to persist; offset 0 when the worktree keeps no
+    /// `HEAD` reflog yet.
+    pub cursor: UntracedReflogCursor,
+    /// Records settled without a claim (rewrites, replays, detached commits).
+    pub skipped: usize,
+    /// The cursor no longer matched the reflog and was re-seeded at its end.
+    pub reseeded: bool,
+    /// The pass stopped early (commit cap or reflog byte budget) with records
+    /// still ahead; a follow-up pass should run right away. Not set when the
+    /// pass stopped on a read error: that is retried on the next look.
+    pub more: bool,
+}
+
+/// Reflog messages git, JGit and libgit2 write for a commit created in this
+/// worktree. Amends, cherry-picks and reverts are rewrites and stay out.
+const UNTRACED_COMMIT_REFLOG_PREFIXES: &[&str] =
+    &["commit:", "commit (initial):", "commit (merge):"];
+
+/// Bytes of `HEAD` reflog one pass walks before handing the rest to a
+/// follow-up pass, so a months-long backlog never holds the family lock for
+/// one giant read.
+const UNTRACED_PASS_REFLOG_BYTE_BUDGET: u64 = 4 * 1024 * 1024;
+
+/// Bytes read from the end of a branch reflog when looking for the record
+/// that corroborates a candidate; only when the record is not in this tail is
+/// the whole log read (once per pass).
+const UNTRACED_BRANCH_LOG_TAIL_BYTES: u64 = 1024 * 1024;
+
+const UNTRACED_ROOT_SID_PREFIX: &str = "untraced:";
+
+/// Whether a `NormalizedCommand::root_sid` names a fixup-synthesized command
+/// rather than a trace2 root.
+pub fn is_untraced_root_sid(root_sid: &str) -> bool {
+    root_sid.starts_with(UNTRACED_ROOT_SID_PREFIX)
 }
 
 const CHERRY_PICK_REFLOG_PREFIXES: &[&str] = &["cherry-pick:", "commit (cherry-pick):"];
@@ -128,6 +210,8 @@ impl RefCursor {
             consumed_offsets: HashMap::new(),
             consumed_anchors: HashMap::new(),
             command_start_hints: HashMap::new(),
+            untraced_cursors: HashMap::new(),
+            traced_owned_ranges: HashMap::new(),
             stash_stack: Vec::new(),
             pending_cherry_pick_source_oids: Vec::new(),
         }
@@ -2015,32 +2099,11 @@ impl RefCursor {
         let Some(offset) = self.offsets.get(key).copied() else {
             return Ok(None);
         };
-        if offset == 0 {
-            return Ok(Some(0));
-        }
-
-        let len = match fs::metadata(path) {
-            Ok(metadata) => metadata.len(),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                self.clear_ref_cursor(key);
-                return Ok(None);
-            }
-            Err(error) => return Err(GitAiError::IoError(error)),
-        };
-        if offset > len {
+        let validated = validated_reflog_offset(path, offset, self.anchors.get(key))?;
+        if validated.is_none() {
             self.clear_ref_cursor(key);
-            return Ok(None);
         }
-
-        if let Some(anchor) = self.anchors.get(key) {
-            let record = read_reflog_record_ending_at(path, offset)?;
-            if record.as_ref().map(ReflogAnchor::from) != Some(anchor.clone()) {
-                self.clear_ref_cursor(key);
-                return Ok(None);
-            }
-        }
-
-        Ok(Some(offset))
+        Ok(validated)
     }
 
     fn initialize_reflog_cursor(&mut self, key: &str, offset: u64) -> Result<(), GitAiError> {
@@ -2126,6 +2189,8 @@ impl RefCursor {
     }
 
     fn advance_cursor_to_entry(&mut self, entry: &CursorEntry) {
+        let from = self.offsets.get(&entry.key).copied().unwrap_or(0);
+        self.record_traced_owned_range(&entry.key, from, entry.end_offset);
         self.offsets.insert(entry.key.clone(), entry.end_offset);
         self.anchors
             .insert(entry.key.clone(), ReflogAnchor::from(entry));
@@ -2153,6 +2218,7 @@ impl RefCursor {
         }
 
         if advanced_to > start.unwrap_or(0) {
+            self.record_traced_owned_range(key, start.unwrap_or(0), advanced_to);
             self.offsets.insert(key.to_string(), advanced_to);
             if let Some(anchor) = anchor {
                 self.anchors.insert(key.to_string(), anchor);
@@ -2311,6 +2377,525 @@ impl RefCursor {
         self.anchors.remove(key);
         self.consumed_offsets.remove(key);
         self.consumed_anchors.remove(key);
+        self.traced_owned_ranges.remove(key);
+    }
+
+    fn record_traced_owned_range(&mut self, key: &str, start: u64, end: u64) {
+        if end <= start {
+            return;
+        }
+        let ranges = self.traced_owned_ranges.entry(key.to_string()).or_default();
+        match ranges.last_mut() {
+            Some((_, last_end)) if start <= *last_end => *last_end = (*last_end).max(end),
+            _ => ranges.push((start, end)),
+        }
+    }
+
+    /// Whether traced commands own the record ending at `end_offset`: still in
+    /// the consumed set, or inside a range the traced cursor compacted or
+    /// jumped over while consuming.
+    fn traced_owns(&self, entry: &CursorEntry) -> bool {
+        self.entry_consumed(entry)
+            || self
+                .traced_owned_ranges
+                .get(&entry.key)
+                .is_some_and(|ranges| {
+                    ranges
+                        .iter()
+                        .any(|(start, end)| entry.end_offset > *start && entry.end_offset <= *end)
+                })
+    }
+
+    /// Claims commits recorded in a worktree `HEAD` reflog that no traced
+    /// command owns: commits made while the daemon was off, by a client that
+    /// emits no trace2, or from a sandbox that cannot reach the daemon.
+    ///
+    /// A record is claimed only when it is old enough, unowned, shaped like a
+    /// new commit (`UNTRACED_COMMIT_REFLOG_PREFIXES`) and corroborated by the
+    /// same record in a branch reflog — git writes both for a commit on a
+    /// checked-out branch, and only `HEAD`'s for a detached commit (including a
+    /// manual `git commit` inside a stopped rebase). Everything else is settled
+    /// and never reconsidered. Claimed records are consumed like traced ones,
+    /// so a late trace2 command cannot own them a second time; records traced
+    /// commands consumed (still marked, or compacted into the in-order cursor)
+    /// are theirs and never candidates.
+    ///
+    /// The cursor starts at the actor's own fixup position, else at a valid
+    /// persisted `seed`, else at the traced cursor's observation point, else at
+    /// the reflog end: a first sighting never backfills history.
+    pub fn claim_untraced_commits(
+        &mut self,
+        request: &UntracedClaimRequest,
+    ) -> Result<UntracedClaim, GitAiError> {
+        let key = head_key(&request.git_dir);
+        let path = request.git_dir.join("logs").join("HEAD");
+        let mut claim = UntracedClaim {
+            commands: Vec::new(),
+            cursor: UntracedReflogCursor {
+                offset: 0,
+                anchor: None,
+            },
+            skipped: 0,
+            reseeded: false,
+            more: false,
+        };
+        let remembered = self
+            .untraced_cursors
+            .get(&key)
+            .cloned()
+            .or_else(|| request.seed.clone())
+            .or_else(|| self.traced_observation_point(&key));
+        if !path.is_file() {
+            // No reflog right now. A worktree never seen with one (fresh
+            // `git init`) is remembered as empty so its first commits are not
+            // "history"; a known position is kept as is — the file may be
+            // mid-rewrite, and when it is back the anchor decides.
+            let cursor = remembered.unwrap_or(claim.cursor);
+            self.untraced_cursors.insert(key, cursor.clone());
+            claim.cursor = cursor;
+            return Ok(claim);
+        }
+
+        let mut cursor = match remembered {
+            Some(cursor)
+                if validated_reflog_offset(&path, cursor.offset, cursor.anchor.as_ref())?
+                    .is_some() =>
+            {
+                cursor
+            }
+            Some(_) => {
+                claim.reseeded = true;
+                untraced_cursor_at_reflog_end(&path)?
+            }
+            None => untraced_cursor_at_reflog_end(&path)?,
+        };
+
+        if !self.offsets.contains_key(&key) && cursor.offset > 0 {
+            // A cold traced cursor would make every consume below re-read the
+            // reflog from byte 0; records before the fixup cursor are settled,
+            // so it can start where the fixup stands. Consumed sets are kept.
+            self.offsets.insert(key.clone(), cursor.offset);
+            match &cursor.anchor {
+                Some(anchor) => self.anchors.insert(key.clone(), anchor.clone()),
+                None => self.anchors.remove(&key),
+            };
+        }
+
+        let (entries, truncated) = read_reflog_entries_bounded(
+            key.clone(),
+            &path,
+            "HEAD",
+            cursor.offset,
+            UNTRACED_PASS_REFLOG_BYTE_BUDGET,
+        )?;
+        // A record's own timestamp is the committer date, which a user can put
+        // in the future; a record we cannot age that way is judged by the
+        // reflog file's modification time instead, which nobody controls.
+        let reflog_recently_modified = fs::metadata(&path)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+            .is_some_and(|modified| {
+                request.now_secs.saturating_sub(modified.as_secs() as i64) < request.min_age_secs
+            });
+        let mut branches = BranchRecordIndex::new(self.common_dir(), &request.git_dir);
+        let max_commits = request.max_commits.max(1);
+        let mut settled = None;
+        let mut stopped_early = false;
+        let mut stopped_on_error = false;
+        for entry in entries {
+            if request
+                .max_offset
+                .is_some_and(|max_offset| entry.end_offset > max_offset)
+            {
+                break;
+            }
+            let too_young = match entry.timestamp_secs {
+                Some(timestamp_secs) if timestamp_secs <= request.now_secs => {
+                    request.now_secs.saturating_sub(timestamp_secs) < request.min_age_secs
+                }
+                _ => reflog_recently_modified,
+            };
+            if too_young {
+                break;
+            }
+            if !self.traced_owns(&entry) {
+                if is_untraced_commit_candidate(&entry) {
+                    if claim.commands.len() >= max_commits {
+                        stopped_early = true;
+                        break;
+                    }
+                    // Records already claimed in this pass are consumed; a
+                    // failure here must not take them down with it, so the pass
+                    // ends before this record and a follow-up retries from it.
+                    let corroborated = match branches.corroborating_record(&entry) {
+                        Ok(corroborated) => corroborated,
+                        Err(error) => {
+                            tracing::warn!(
+                                %error,
+                                reflog = %path.display(),
+                                "untraced fixup pass stopped at an unreadable branch reflog"
+                            );
+                            stopped_on_error = true;
+                            break;
+                        }
+                    };
+                    if let Some(branch_entry) = corroborated {
+                        if let Err(error) = self.consume_entry(&entry) {
+                            tracing::warn!(
+                                %error,
+                                reflog = %path.display(),
+                                "untraced fixup pass could not consume a record"
+                            );
+                            stopped_on_error = true;
+                            break;
+                        }
+                        claim.commands.push(untraced_commit_command(
+                            &self.family,
+                            &request.worktree,
+                            &request.git_dir,
+                            &entry,
+                            &branch_entry,
+                        ));
+                        settled = Some(entry);
+                        continue;
+                    }
+                }
+                claim.skipped += 1;
+            }
+            settled = Some(entry);
+        }
+        // A pass cut short by its own limits resumes at once; one stopped by a
+        // read error does not (a persistently unreadable file would spin), and
+        // is retried when the reflog is next looked at.
+        claim.more = !stopped_on_error && (stopped_early || (truncated && settled.is_some()));
+
+        if let Some(entry) = settled {
+            cursor = UntracedReflogCursor {
+                offset: entry.end_offset,
+                anchor: Some(ReflogAnchor::from(&entry)),
+            };
+        }
+        self.untraced_cursors.insert(key, cursor.clone());
+        claim.cursor = cursor;
+        Ok(claim)
+    }
+
+    /// Where the traced path has observed this reflog: its in-order cursor, or
+    /// the newest record a traced command consumed while the cursor was cold.
+    fn traced_observation_point(&self, key: &str) -> Option<UntracedReflogCursor> {
+        if let Some(offset) = self.offsets.get(key) {
+            return Some(UntracedReflogCursor {
+                offset: *offset,
+                anchor: self.anchors.get(key).cloned(),
+            });
+        }
+        self.consumed_anchors
+            .get(key)?
+            .iter()
+            .max_by_key(|(offset, _)| **offset)
+            .map(|(offset, anchor)| UntracedReflogCursor {
+                offset: *offset,
+                anchor: Some(anchor.clone()),
+            })
+    }
+}
+
+/// Branch reflog records read once per fixup pass, independent of the traced
+/// branch cursors (which a traced command may have seeded past an untraced
+/// commit). The branch `HEAD` points at now is tried first; other branches
+/// only when their reflog was modified at or after the candidate record.
+struct BranchRecordIndex {
+    logs_dir: PathBuf,
+    current_branch: Option<String>,
+    /// Records of each branch log read so far, newest last; `bool` = the
+    /// whole file has been read (not just its tail).
+    records: HashMap<String, (Vec<CursorEntry>, bool)>,
+    /// Every local branch with a reflog and that file's mtime, discovered on
+    /// first need.
+    branches: Option<Vec<(String, Option<i64>)>>,
+}
+
+impl BranchRecordIndex {
+    fn new(common_dir: PathBuf, git_dir: &Path) -> Self {
+        let current_branch = match FastRefReader::new(git_dir, &common_dir).try_read_head() {
+            Some(HeadKind::Symbolic(reference)) if reference.starts_with("refs/heads/") => {
+                Some(reference)
+            }
+            _ => None,
+        };
+        Self {
+            logs_dir: common_dir.join("logs"),
+            current_branch,
+            records: HashMap::new(),
+            branches: None,
+        }
+    }
+
+    fn corroborating_record(
+        &mut self,
+        entry: &CursorEntry,
+    ) -> Result<Option<CursorEntry>, GitAiError> {
+        if let Some(current) = self.current_branch.clone()
+            && let Some(found) = self.find_in(&current, entry)?
+        {
+            return Ok(Some(found));
+        }
+        if self.branches.is_none() {
+            self.branches = Some(self.discover_branches()?);
+        }
+        let candidates = self
+            .branches
+            .as_ref()
+            .map(|branches| {
+                branches
+                    .iter()
+                    .filter(|(reference, modified_secs)| {
+                        self.current_branch.as_deref() != Some(reference.as_str())
+                            && reflog_modified_at_or_after(*modified_secs, entry.timestamp_secs)
+                    })
+                    .map(|(reference, _)| reference.clone())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for reference in candidates {
+            if let Some(found) = self.find_in(&reference, entry)? {
+                return Ok(Some(found));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Local branches with a reflog (`logs/refs/heads/**`) and each file's
+    /// modification time in unix seconds.
+    fn discover_branches(&self) -> Result<Vec<(String, Option<i64>)>, GitAiError> {
+        let mut references = Vec::new();
+        discover_reflog_refs(
+            &self.logs_dir,
+            &self.logs_dir.join("refs").join("heads"),
+            &mut references,
+        )?;
+        Ok(references
+            .into_iter()
+            .map(|reference| {
+                let modified_secs = fs::metadata(self.logs_dir.join(&reference))
+                    .and_then(|metadata| metadata.modified())
+                    .ok()
+                    .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|duration| duration.as_secs() as i64);
+                (reference, modified_secs)
+            })
+            .collect())
+    }
+
+    /// The record in `reference`'s reflog identical to `entry`, reading the
+    /// log's tail first and the whole file only if the tail lacks it.
+    fn find_in(
+        &mut self,
+        reference: &str,
+        entry: &CursorEntry,
+    ) -> Result<Option<CursorEntry>, GitAiError> {
+        let path = self.logs_dir.join(reference);
+        if !self.records.contains_key(reference) {
+            let len = fs::metadata(&path)
+                .map(|metadata| metadata.len())
+                .unwrap_or(0);
+            let tail_start = len.saturating_sub(UNTRACED_BRANCH_LOG_TAIL_BYTES);
+            let records =
+                read_reflog_entries(common_key(reference), &path, reference, Some(tail_start))?;
+            self.records
+                .insert(reference.to_string(), (records, tail_start == 0));
+        }
+        let matches = |record: &CursorEntry| {
+            record.old == entry.old && record.new == entry.new && record.message == entry.message
+        };
+        if let Some((records, complete)) = self.records.get_mut(reference) {
+            if let Some(found) = records.iter().rev().find(|record| matches(record)) {
+                return Ok(Some(found.clone()));
+            }
+            if !*complete {
+                *records = read_reflog_entries(common_key(reference), &path, reference, None)?;
+                *complete = true;
+                return Ok(records.iter().rev().find(|record| matches(record)).cloned());
+            }
+        }
+        Ok(None)
+    }
+}
+
+/// Records after `start_offset`, reading at most `byte_budget` bytes of the
+/// file — plus whatever completes the first record when that record alone is
+/// larger, so a pass always makes progress. The second value says whether the
+/// read stopped at the budget with more of the file still ahead.
+fn read_reflog_entries_bounded(
+    key: String,
+    path: &Path,
+    reference: &str,
+    start_offset: u64,
+    byte_budget: u64,
+) -> Result<(Vec<CursorEntry>, bool), GitAiError> {
+    let mut file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok((Vec::new(), false));
+        }
+        Err(error) => return Err(GitAiError::IoError(error)),
+    };
+    let len = file.metadata().map_err(GitAiError::IoError)?.len();
+    if start_offset >= len {
+        return Ok((Vec::new(), false));
+    }
+    file.seek(SeekFrom::Start(start_offset))
+        .map_err(GitAiError::IoError)?;
+    let mut bytes = Vec::new();
+    let mut chunk = byte_budget.min(len - start_offset) as usize;
+    loop {
+        let read_from = bytes.len();
+        bytes.resize(read_from + chunk, 0);
+        let mut filled = 0;
+        while filled < chunk {
+            match file.read(&mut bytes[read_from + filled..]) {
+                Ok(0) => break,
+                Ok(n) => filled += n,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(error) => return Err(GitAiError::IoError(error)),
+            }
+        }
+        bytes.truncate(read_from + filled);
+        let at_end = filled < chunk || start_offset + (bytes.len() as u64) >= len;
+        if at_end || bytes.contains(&b'\n') {
+            break;
+        }
+        // No complete record yet: keep reading until the first one ends.
+        chunk = 8192;
+    }
+    let stopped_at_budget = start_offset + (bytes.len() as u64) < len;
+    let entries = parse_reflog_lines(&bytes, start_offset)
+        .into_iter()
+        .map(|record| CursorEntry {
+            key: key.clone(),
+            path: path.to_path_buf(),
+            reference: reference.to_string(),
+            old: record.old,
+            new: record.new,
+            message: record.message,
+            timestamp_secs: record.timestamp_secs,
+            start_offset: record.start_offset,
+            end_offset: record.end_offset,
+        })
+        .collect();
+    Ok((entries, stopped_at_budget))
+}
+
+/// `Some(offset)` when a saved reflog offset is still trustworthy: it is
+/// within the file and, when anchored, the record ending there is unchanged.
+fn validated_reflog_offset(
+    path: &Path,
+    offset: u64,
+    anchor: Option<&ReflogAnchor>,
+) -> Result<Option<u64>, GitAiError> {
+    if offset == 0 {
+        return Ok(Some(0));
+    }
+    let len = match fs::metadata(path) {
+        Ok(metadata) => metadata.len(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(GitAiError::IoError(error)),
+    };
+    if offset > len {
+        return Ok(None);
+    }
+    if let Some(anchor) = anchor {
+        let record = read_reflog_record_ending_at(path, offset)?;
+        if record.as_ref().map(ReflogAnchor::from).as_ref() != Some(anchor) {
+            return Ok(None);
+        }
+    }
+    Ok(Some(offset))
+}
+
+/// A cursor at the end of the last complete record, anchored to that record.
+fn untraced_cursor_at_reflog_end(path: &Path) -> Result<UntracedReflogCursor, GitAiError> {
+    let offset = reflog_complete_len(path)?;
+    let anchor = read_reflog_record_ending_at(path, offset)?
+        .as_ref()
+        .map(ReflogAnchor::from);
+    Ok(UntracedReflogCursor { offset, anchor })
+}
+
+/// Length of the reflog up to and including its last newline; a writer may be
+/// mid-append, and a cursor must land on a record boundary.
+fn reflog_complete_len(path: &Path) -> Result<u64, GitAiError> {
+    let mut file = fs::File::open(path).map_err(GitAiError::IoError)?;
+    let mut end = file.metadata().map_err(GitAiError::IoError)?.len();
+    while end > 0 {
+        let chunk_start = end.saturating_sub(8192);
+        let mut chunk = vec![0; (end - chunk_start) as usize];
+        file.seek(SeekFrom::Start(chunk_start))
+            .map_err(GitAiError::IoError)?;
+        file.read_exact(&mut chunk).map_err(GitAiError::IoError)?;
+        if let Some(index) = chunk.iter().rposition(|byte| *byte == b'\n') {
+            return Ok(chunk_start + index as u64 + 1);
+        }
+        end = chunk_start;
+    }
+    Ok(0)
+}
+
+/// Whether a reflog whose file was modified at `modified_secs` can hold a
+/// record stamped `timestamp_secs`. Reflog timestamps are whole seconds, so
+/// the file may look one second older than the record it holds.
+fn reflog_modified_at_or_after(modified_secs: Option<i64>, timestamp_secs: Option<i64>) -> bool {
+    match (modified_secs, timestamp_secs) {
+        (Some(modified), Some(timestamp)) => modified.saturating_add(1) >= timestamp,
+        _ => true,
+    }
+}
+
+fn is_untraced_commit_candidate(entry: &CursorEntry) -> bool {
+    valid_ref_transition(&entry.old, &entry.new)
+        && valid_non_zero_oid(&entry.new)
+        && UNTRACED_COMMIT_REFLOG_PREFIXES
+            .iter()
+            .any(|prefix| entry.message.starts_with(prefix))
+}
+
+/// The `git commit` a claimed reflog record stands in for, shaped so the
+/// reducer, analyzers and side effects treat it exactly like a traced commit
+/// whose `ref_changes` were established by the cursor.
+fn untraced_commit_command(
+    family: &FamilyKey,
+    worktree: &Path,
+    git_dir: &Path,
+    head: &CursorEntry,
+    branch: &CursorEntry,
+) -> NormalizedCommand {
+    let at_ns = u128::try_from(head.timestamp_secs.unwrap_or(0))
+        .unwrap_or(0)
+        .saturating_mul(1_000_000_000);
+    NormalizedCommand {
+        scope: crate::daemon::domain::CommandScope::Family(family.clone()),
+        family_key: Some(family.clone()),
+        worktree: Some(worktree.to_path_buf()),
+        root_sid: format!(
+            "{UNTRACED_ROOT_SID_PREFIX}{}:{}",
+            git_dir.display(),
+            head.end_offset
+        ),
+        raw_argv: vec!["git".to_string(), "commit".to_string()],
+        primary_command: Some("commit".to_string()),
+        invoked_command: Some("commit".to_string()),
+        invoked_args: Vec::new(),
+        observed_child_commands: Vec::new(),
+        exit_code: 0,
+        started_at_ns: at_ns,
+        finished_at_ns: at_ns,
+        reflog_start_offsets: HashMap::new(),
+        stash_target_oid: None,
+        cherry_pick_source_oids: Vec::new(),
+        revert_source_oids: Vec::new(),
+        ref_changes: vec![entry_to_ref_change(head), entry_to_ref_change(branch)],
+        confidence: Confidence::High,
     }
 }
 
@@ -3164,7 +3749,13 @@ fn read_reflog_records(
         .map_err(GitAiError::IoError)?;
     let mut bytes = Vec::new();
     file.read_to_end(&mut bytes).map_err(GitAiError::IoError)?;
+    Ok(parse_reflog_lines(&bytes, start))
+}
 
+/// The complete records in `bytes`, which start at file offset `start`; a
+/// trailing line without its newline (a writer mid-append, or a read cut at a
+/// budget) is ignored.
+fn parse_reflog_lines(bytes: &[u8], start: u64) -> Vec<ReflogRecord> {
     let mut entries = Vec::new();
     let mut offset = start;
     for raw_line in bytes.split_inclusive(|byte| *byte == b'\n') {
@@ -3182,7 +3773,7 @@ fn read_reflog_records(
             entries.push(entry);
         }
     }
-    Ok(entries)
+    entries
 }
 
 fn read_reflog_record_ending_at(
@@ -6167,5 +6758,1031 @@ mod tests {
             }]
         );
         assert_eq!(cursor.stash_stack, vec![C.to_string()]);
+    }
+
+    // ---- untraced commit claims -------------------------------------------
+
+    fn reflog_line_at(old: &str, new: &str, timestamp_secs: i64, message: &str) -> String {
+        format!("{old} {new} Test User <test@example.com> {timestamp_secs} +0000\t{message}")
+    }
+
+    fn extend_reflog(common_dir: &Path, reference: &str, lines: &[String]) {
+        use std::io::Write;
+        let path = common_dir.join("logs").join(reference);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        for line in lines {
+            writeln!(file, "{line}").unwrap();
+        }
+    }
+
+    /// Appends one commit's records to both `HEAD` and the branch reflog, the
+    /// way git (and JGit/libgit2) record a commit on a checked-out branch.
+    fn extend_branch_commit(
+        git_dir: &Path,
+        branch: &str,
+        old: &str,
+        new: &str,
+        timestamp_secs: i64,
+        message: &str,
+    ) {
+        let line = reflog_line_at(old, new, timestamp_secs, message);
+        extend_reflog(git_dir, "HEAD", std::slice::from_ref(&line));
+        extend_reflog(git_dir, branch, std::slice::from_ref(&line));
+    }
+
+    fn untraced_request(git_dir: &Path, worktree: &Path) -> UntracedClaimRequest {
+        UntracedClaimRequest {
+            git_dir: git_dir.to_path_buf(),
+            worktree: worktree.to_path_buf(),
+            seed: None,
+            min_age_secs: 5,
+            now_secs: 1_000,
+            max_commits: 10,
+            max_offset: None,
+        }
+    }
+
+    fn real_now_secs() -> i64 {
+        crate::utils::unix_timestamp_now() as i64
+    }
+
+    fn head_ref_changes(commands: &[NormalizedCommand]) -> Vec<(String, String)> {
+        commands
+            .iter()
+            .map(|cmd| {
+                let head = cmd
+                    .ref_changes
+                    .iter()
+                    .find(|change| change.reference == "HEAD")
+                    .expect("synthetic commit carries a HEAD change");
+                (head.old.clone(), head.new.clone())
+            })
+            .collect()
+    }
+
+    /// Seeds the untraced cursor at the current reflog end (first sighting).
+    fn seed_untraced_cursor(cursor: &mut RefCursor, git_dir: &Path, worktree: &Path) {
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(git_dir, worktree))
+            .unwrap();
+        assert!(claim.commands.is_empty(), "first sighting never backfills");
+        assert!(!claim.reseeded);
+    }
+
+    #[test]
+    fn untraced_claim_first_sighting_seeds_at_reflog_end_without_backfill() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: old history");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+
+        assert!(claim.commands.is_empty());
+        assert_eq!(claim.skipped, 0);
+        let end = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        let snapshot = claim.cursor;
+        assert_eq!(snapshot.offset, end);
+        assert_eq!(
+            snapshot.anchor.as_ref().map(|anchor| anchor.new.as_str()),
+            Some(B)
+        );
+    }
+
+    #[test]
+    fn untraced_claim_returns_branch_commits_appended_after_the_cursor() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family.clone());
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: jgit one");
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            C,
+            D,
+            30,
+            "commit (merge): resolved",
+        );
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![
+                (B.to_string(), C.to_string()),
+                (C.to_string(), D.to_string())
+            ]
+        );
+        let first = &claim.commands[0];
+        assert_eq!(first.primary_command.as_deref(), Some("commit"));
+        assert_eq!(first.exit_code, 0);
+        assert_eq!(first.confidence, Confidence::High);
+        assert!(is_untraced_root_sid(&first.root_sid));
+        assert_eq!(first.worktree.as_deref(), Some(worktree.as_path()));
+        assert!(first.ref_changes.contains(&RefChange {
+            reference: "refs/heads/main".to_string(),
+            old: B.to_string(),
+            new: C.to_string(),
+        }));
+        assert_eq!(first.started_at_ns, 20_000_000_000);
+        let end = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        assert_eq!(claim.cursor.offset, end);
+
+        // Nothing is left to claim once the cursor has settled.
+        let again = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert!(again.commands.is_empty());
+    }
+
+    #[test]
+    fn untraced_claim_skips_rewrites_replays_and_remote_content() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        for (old, new, message) in [
+            (B, C, "commit (amend): base"),
+            (C, D, "rebase (start): checkout main"),
+            (D, E, "rebase (pick): topic"),
+            (E, E, "rebase (finish): returning to refs/heads/main"),
+            (E, F, "pull: Fast-forward"),
+            (F, G, "merge topic: Merge made by the 'ort' strategy."),
+            (G, A, "cherry-pick: picked"),
+            (A, B, "reset: moving to HEAD~1"),
+            (B, C, "checkout: moving from main to topic"),
+            (C, D, "am: applied patch"),
+        ] {
+            extend_branch_commit(&git_dir, "refs/heads/main", old, new, 20, message);
+        }
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+
+        assert!(claim.commands.is_empty(), "{:?}", claim.commands);
+        assert_eq!(claim.skipped, 10);
+        let end = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        assert_eq!(
+            claim.cursor.offset, end,
+            "skipped entries are settled so they are never reconsidered"
+        );
+    }
+
+    #[test]
+    fn untraced_claim_skips_detached_head_commit_without_branch_record() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        // A manual `git commit` inside a stopped rebase writes only HEAD's log.
+        extend_reflog(
+            &git_dir,
+            "HEAD",
+            &[reflog_line_at(B, C, 20, "commit: resolved conflict")],
+        );
+        // A commit on another branch is corroborated by that branch's log.
+        extend_branch_commit(&git_dir, "refs/heads/topic", C, D, 21, "commit: on topic");
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(C.to_string(), D.to_string())]
+        );
+        assert_eq!(claim.skipped, 1);
+    }
+
+    #[test]
+    fn untraced_claim_leaves_entries_younger_than_min_age_for_a_later_pass() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+        let before = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 990, "commit: old enough");
+        extend_branch_commit(&git_dir, "refs/heads/main", C, D, 998, "commit: too fresh");
+        extend_branch_commit(&git_dir, "refs/heads/main", D, E, 999, "commit: also fresh");
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(B.to_string(), C.to_string())]
+        );
+        let settled = claim.cursor.offset;
+        assert!(settled > before);
+        assert!(settled < fs::metadata(git_dir.join("logs/HEAD")).unwrap().len());
+
+        let mut later = untraced_request(&git_dir, &worktree);
+        later.now_secs = 1_010;
+        let claim = cursor.claim_untraced_commits(&later).unwrap();
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![
+                (C.to_string(), D.to_string()),
+                (D.to_string(), E.to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn untraced_claim_settles_records_without_a_timestamp_instead_of_stalling() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        extend_reflog(
+            &git_dir,
+            "HEAD",
+            &[format!(
+                "{B} {C} Test User <test@example.com> when +0000\tcommit: no timestamp"
+            )],
+        );
+        extend_branch_commit(&git_dir, "refs/heads/main", C, D, 20, "commit: after it");
+
+        // Without a timestamp the record is aged by the file's mtime; once the
+        // file has been quiet for the minimum age it is settled, not stalled on.
+        let mut request = untraced_request(&git_dir, &worktree);
+        request.now_secs = real_now_secs() + 60;
+        let claim = cursor.claim_untraced_commits(&request).unwrap();
+
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(C.to_string(), D.to_string())]
+        );
+        assert_eq!(claim.skipped, 1);
+        let end = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        assert_eq!(claim.cursor.offset, end);
+    }
+
+    #[test]
+    fn untraced_claim_skips_entries_owned_by_traced_commands() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: traced");
+        let mut traced =
+            command_with_worktree(&family, Some(worktree.clone()), &["commit", "-m", "traced"]);
+        cursor.enrich_command(&mut traced, &state).unwrap();
+        assert_eq!(traced.ref_changes.len(), 2, "{:?}", traced.ref_changes);
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+
+        assert!(claim.commands.is_empty());
+        assert_eq!(claim.skipped, 0);
+        let end = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        assert_eq!(claim.cursor.offset, end);
+    }
+
+    #[test]
+    fn untraced_claim_hides_claimed_entries_from_later_traced_commands() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            B,
+            C,
+            20,
+            "commit: same subject",
+        );
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert_eq!(claim.commands.len(), 1);
+
+        // A traced commit with the same subject lands later; it must own only
+        // its own entry even though no ingress hint disambiguates the two.
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            C,
+            D,
+            30,
+            "commit: same subject",
+        );
+        let mut traced = command_with_worktree(
+            &family,
+            Some(worktree.clone()),
+            &["commit", "-m", "same subject"],
+        );
+        cursor.enrich_command(&mut traced, &state).unwrap();
+
+        assert_eq!(
+            traced
+                .ref_changes
+                .iter()
+                .find(|change| change.reference == "HEAD")
+                .map(|change| (change.old.as_str(), change.new.as_str())),
+            Some((C, D))
+        );
+    }
+
+    #[test]
+    fn untraced_claim_honours_max_commits_and_resumes_from_the_settled_cursor() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: one");
+        extend_branch_commit(&git_dir, "refs/heads/main", C, D, 21, "commit: two");
+        extend_branch_commit(&git_dir, "refs/heads/main", D, E, 22, "commit: three");
+
+        let mut request = untraced_request(&git_dir, &worktree);
+        request.max_commits = 2;
+        let claim = cursor.claim_untraced_commits(&request).unwrap();
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![
+                (B.to_string(), C.to_string()),
+                (C.to_string(), D.to_string())
+            ]
+        );
+
+        let claim = cursor.claim_untraced_commits(&request).unwrap();
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(D.to_string(), E.to_string())]
+        );
+    }
+
+    #[test]
+    fn untraced_claim_cold_cursor_resumes_from_a_valid_persisted_seed() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let persisted = {
+            let mut cursor = RefCursor::new(family.clone());
+            cursor
+                .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+                .unwrap()
+                .cursor
+        };
+
+        // Daemon restarts (fresh RefCursor) after an untraced commit landed.
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: while off");
+        let mut cursor = RefCursor::new(family);
+        let mut request = untraced_request(&git_dir, &worktree);
+        request.seed = Some(persisted);
+
+        let claim = cursor.claim_untraced_commits(&request).unwrap();
+
+        assert!(!claim.reseeded);
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(B.to_string(), C.to_string())]
+        );
+    }
+
+    #[test]
+    fn untraced_claim_invalid_seed_reseeds_at_end_and_claims_nothing() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let persisted = {
+            let mut cursor = RefCursor::new(family.clone());
+            cursor
+                .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+                .unwrap()
+                .cursor
+        };
+
+        // `git reflog expire` rewrote the log: the anchor no longer matches.
+        append_reflog(&git_dir, "HEAD", &[(A, C, "commit: rewritten history")]);
+        append_reflog(
+            &git_dir,
+            "refs/heads/main",
+            &[(A, C, "commit: rewritten history")],
+        );
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            C,
+            D,
+            20,
+            "commit: after expiry",
+        );
+        let mut cursor = RefCursor::new(family);
+        let mut request = untraced_request(&git_dir, &worktree);
+        request.seed = Some(persisted);
+
+        let claim = cursor.claim_untraced_commits(&request).unwrap();
+
+        assert!(claim.reseeded);
+        assert!(
+            claim.commands.is_empty(),
+            "an invalid cursor never backfills"
+        );
+        let end = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        assert_eq!(claim.cursor.offset, end);
+    }
+
+    #[test]
+    fn untraced_claim_first_sighting_starts_from_the_traced_cursor_when_present() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: history");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+
+        // A traced commit establishes the in-order cursor for this worktree.
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: traced");
+        let mut traced =
+            command_with_worktree(&family, Some(worktree.clone()), &["commit", "-m", "traced"]);
+        cursor.enrich_command(&mut traced, &state).unwrap();
+        assert!(!traced.ref_changes.is_empty());
+
+        // A JGit commit lands before the first fixup pass ever runs.
+        extend_branch_commit(&git_dir, "refs/heads/main", C, D, 30, "commit: jgit");
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(C.to_string(), D.to_string())],
+            "entries after the daemon's own observation point are not history"
+        );
+    }
+
+    #[test]
+    fn untraced_claim_keeps_a_known_cursor_while_the_reflog_is_missing() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+        let settled = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap()
+            .cursor;
+        assert!(settled.offset > 0);
+
+        // The file vanishes (an expire rewriting it) and comes back with the
+        // same history: nothing before the known position is history to redo.
+        let head_log = git_dir.join("logs/HEAD");
+        let contents = fs::read(&head_log).unwrap();
+        fs::remove_file(&head_log).unwrap();
+        let while_missing = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert_eq!(while_missing.cursor, settled);
+        fs::write(&head_log, contents).unwrap();
+
+        let back = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert!(back.commands.is_empty());
+        assert_eq!(back.skipped, 0);
+        assert_eq!(back.cursor, settled);
+    }
+
+    #[test]
+    fn untraced_claim_treats_a_zero_commit_limit_as_one() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: one");
+
+        let mut request = untraced_request(&git_dir, &worktree);
+        request.max_commits = 0;
+        let claim = cursor.claim_untraced_commits(&request).unwrap();
+
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(B.to_string(), C.to_string())]
+        );
+        assert!(
+            !claim.more,
+            "a pass that claimed everything asks for no follow-up"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn untraced_claim_keeps_claims_made_before_an_unreadable_branch_reflog() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: on main");
+        // A commit on another branch whose reflog cannot be read right now.
+        extend_branch_commit(&git_dir, "refs/heads/topic", C, D, 21, "commit: on topic");
+        let topic_log = git_dir.join("logs/refs/heads/topic");
+        fs::set_permissions(&topic_log, fs::Permissions::from_mode(0o000)).unwrap();
+
+        let first = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        fs::set_permissions(&topic_log, fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert_eq!(
+            head_ref_changes(&first.commands),
+            vec![(B.to_string(), C.to_string())],
+            "the record claimed before the failure is returned, not lost"
+        );
+        assert!(
+            !first.more,
+            "a read error does not ask for an immediate follow-up (it would spin)"
+        );
+
+        let second = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert_eq!(
+            head_ref_changes(&second.commands),
+            vec![(C.to_string(), D.to_string())]
+        );
+    }
+
+    #[test]
+    fn untraced_claim_without_head_reflog_starts_at_offset_zero() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert!(claim.commands.is_empty());
+        assert_eq!(
+            claim.cursor,
+            UntracedReflogCursor {
+                offset: 0,
+                anchor: None,
+            }
+        );
+
+        // The first commit of a known, previously empty worktree is claimable.
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            &zero_oid(),
+            A,
+            20,
+            "commit (initial): root",
+        );
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(zero_oid(), A.to_string())]
+        );
+    }
+
+    #[test]
+    fn untraced_claim_does_not_move_the_traced_cursor_past_unowned_entries() {
+        // A long-running traced rebase (editor open) has already written its
+        // reflog entries; a fixup pass settling past them must not hide them
+        // from the rebase command when it finally completes.
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+        let key = head_key(&git_dir);
+        let traced_offset = cursor.offsets.get(&key).copied();
+
+        extend_reflog(
+            &git_dir,
+            "HEAD",
+            &[
+                reflog_line_at(B, C, 20, "rebase (start): checkout main"),
+                reflog_line_at(C, D, 21, "rebase (pick): topic"),
+            ],
+        );
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert_eq!(claim.skipped, 2);
+        assert_eq!(cursor.offsets.get(&key).copied(), traced_offset);
+
+        extend_reflog(
+            &git_dir,
+            "HEAD",
+            &[reflog_line_at(
+                D,
+                D,
+                22,
+                "rebase (finish): returning to refs/heads/main",
+            )],
+        );
+        extend_reflog(
+            &git_dir,
+            "refs/heads/main",
+            &[reflog_line_at(
+                B,
+                D,
+                22,
+                "rebase (finish): refs/heads/main onto main",
+            )],
+        );
+        let mut rebase = command_with_worktree(&family, Some(worktree), &["rebase", "main"]);
+        cursor.enrich_command(&mut rebase, &state).unwrap();
+        assert!(
+            rebase.ref_changes.contains(&RefChange {
+                reference: "HEAD".to_string(),
+                old: B.to_string(),
+                new: C.to_string(),
+            }),
+            "{:?}",
+            rebase.ref_changes
+        );
+    }
+
+    #[test]
+    fn untraced_claim_treats_records_behind_the_warm_traced_cursor_as_owned() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let mut cursor = RefCursor::new(family.clone());
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+        let key = head_key(&git_dir);
+
+        // A traced commit with ingress offsets warms the in-order cursor; its
+        // records are compacted into `offsets` and leave the consumed set.
+        let before = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: traced");
+        let mut traced =
+            command_with_worktree(&family, Some(worktree.clone()), &["commit", "-m", "traced"]);
+        traced.reflog_start_offsets.insert(key.clone(), before);
+        cursor.enrich_command(&mut traced, &state).unwrap();
+        assert!(!traced.ref_changes.is_empty());
+        assert!(
+            cursor
+                .offsets
+                .get(&key)
+                .is_some_and(|offset| *offset > before)
+        );
+        assert!(!cursor.consumed_offsets.contains_key(&key));
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+
+        assert!(claim.commands.is_empty(), "{:?}", claim.commands);
+        assert_eq!(claim.skipped, 0, "owned records are not 'skipped'");
+        let end = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        assert_eq!(claim.cursor.offset, end);
+    }
+
+    #[test]
+    fn untraced_claim_corroborates_from_the_branch_log_regardless_of_the_traced_branch_cursor() {
+        // Daemon off: U1 lands on main. The daemon restarts and the first
+        // traced command seeds the branch cursor past U1's branch record; the
+        // fixup must still see that record.
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let state = family_state(&family);
+        let persisted = RefCursor::new(family.clone())
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap()
+            .cursor;
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: while off");
+
+        let mut cursor = RefCursor::new(family.clone());
+        let head_before = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        let branch_before = fs::metadata(git_dir.join("logs/refs/heads/main"))
+            .unwrap()
+            .len();
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            C,
+            D,
+            30,
+            "commit: traced after restart",
+        );
+        let mut traced = command_with_worktree(
+            &family,
+            Some(worktree.clone()),
+            &["commit", "-m", "traced after restart"],
+        );
+        traced
+            .reflog_start_offsets
+            .insert(head_key(&git_dir), head_before);
+        traced
+            .reflog_start_offsets
+            .insert(common_key("refs/heads/main"), branch_before);
+        cursor.enrich_command(&mut traced, &state).unwrap();
+        assert_eq!(traced.ref_changes.len(), 2, "{:?}", traced.ref_changes);
+
+        let mut request = untraced_request(&git_dir, &worktree);
+        request.seed = Some(persisted);
+        let claim = cursor.claim_untraced_commits(&request).unwrap();
+
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(B.to_string(), C.to_string())]
+        );
+        assert_eq!(claim.skipped, 0);
+    }
+
+    #[test]
+    fn untraced_claim_judges_future_stamped_records_by_the_reflog_modification_time() {
+        // A committer date ahead of the clock says nothing about how recently
+        // the record was written; the file's mtime does.
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+        let far_future = real_now_secs() + 1_000_000;
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            B,
+            C,
+            far_future,
+            "commit: clock ahead",
+        );
+        extend_branch_commit(&git_dir, "refs/heads/main", C, D, 20, "commit: after it");
+
+        // Just written: the record waits like any fresh one would.
+        let mut request = untraced_request(&git_dir, &worktree);
+        request.now_secs = real_now_secs();
+        let fresh = cursor.claim_untraced_commits(&request).unwrap();
+        assert!(fresh.commands.is_empty(), "{:?}", fresh.commands);
+
+        // Once the file has been quiet for the minimum age it is claimable and
+        // never stalls the records behind it.
+        request.now_secs = real_now_secs() + 60;
+        let aged = cursor.claim_untraced_commits(&request).unwrap();
+        assert_eq!(
+            head_ref_changes(&aged.commands),
+            vec![
+                (B.to_string(), C.to_string()),
+                (C.to_string(), D.to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn untraced_claim_stops_at_the_offset_the_pass_was_scheduled_with() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            B,
+            C,
+            20,
+            "commit: before scheduling",
+        );
+        let scheduled_at = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        // Written after the pass was scheduled: possibly a traced command
+        // whose root started later than the pass and does not fence it.
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            C,
+            D,
+            21,
+            "commit: after scheduling",
+        );
+
+        let mut request = untraced_request(&git_dir, &worktree);
+        request.max_offset = Some(scheduled_at);
+        let claim = cursor.claim_untraced_commits(&request).unwrap();
+
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(B.to_string(), C.to_string())]
+        );
+        assert_eq!(claim.cursor.offset, scheduled_at);
+        assert!(!claim.more);
+    }
+
+    #[test]
+    fn untraced_claim_makes_progress_past_a_record_larger_than_the_byte_budget() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        let huge_message = "x".repeat(UNTRACED_PASS_REFLOG_BYTE_BUDGET as usize + 4096);
+        extend_reflog(
+            &git_dir,
+            "HEAD",
+            &[reflog_line_at(
+                B,
+                C,
+                20,
+                &format!("checkout: {huge_message}"),
+            )],
+        );
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/main",
+            C,
+            D,
+            21,
+            "commit: after the giant",
+        );
+
+        let mut claimed = Vec::new();
+        let mut last = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        claimed.extend(head_ref_changes(&last.commands));
+        let mut passes = 1;
+        while last.more {
+            last = cursor
+                .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+                .unwrap();
+            claimed.extend(head_ref_changes(&last.commands));
+            passes += 1;
+            assert!(passes < 5, "the oversized record must not stall the cursor");
+        }
+        assert_eq!(claimed, vec![(C.to_string(), D.to_string())]);
+        let end = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        assert_eq!(last.cursor.offset, end);
+    }
+
+    #[test]
+    fn untraced_claim_corroborates_across_hundreds_of_branches() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        for index in 0..250 {
+            extend_reflog(
+                &git_dir,
+                &format!("refs/heads/topic-{index}"),
+                &[reflog_line_at(A, B, 10, "branch: Created from main")],
+            );
+        }
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        // A commit on topic-137 while HEAD (still) points at main.
+        extend_branch_commit(
+            &git_dir,
+            "refs/heads/topic-137",
+            B,
+            C,
+            20,
+            "commit: on a topic",
+        );
+
+        let claim = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+
+        assert_eq!(
+            head_ref_changes(&claim.commands),
+            vec![(B.to_string(), C.to_string())]
+        );
+        assert!(claim.commands[0].ref_changes.iter().any(|change| {
+            change.reference == "refs/heads/topic-137" && change.old == B && change.new == C
+        }));
+    }
+
+    #[test]
+    fn untraced_claim_hands_a_long_backlog_to_a_follow_up_pass() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        let family = FamilyKey::new(git_dir.to_string_lossy().to_string());
+        let mut cursor = RefCursor::new(family);
+        seed_untraced_cursor(&mut cursor, &git_dir, &worktree);
+
+        // More than one pass's byte budget of records nobody owns, then a commit.
+        let filler = (0..40_000)
+            .map(|index| {
+                reflog_line_at(
+                    B,
+                    B,
+                    20,
+                    &format!("checkout: moving from main to main {index}"),
+                )
+            })
+            .collect::<Vec<_>>();
+        extend_reflog(&git_dir, "HEAD", &filler);
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 30, "commit: at the end");
+        assert!(
+            fs::metadata(git_dir.join("logs/HEAD")).unwrap().len()
+                > UNTRACED_PASS_REFLOG_BYTE_BUDGET
+        );
+
+        let first = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap();
+        assert!(first.more, "the pass must ask for a follow-up");
+        assert!(first.commands.is_empty());
+        assert!(first.skipped > 0);
+
+        let mut passes = 1;
+        let mut claimed = Vec::new();
+        let mut last = first;
+        while last.more {
+            last = cursor
+                .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+                .unwrap();
+            claimed.extend(head_ref_changes(&last.commands));
+            passes += 1;
+            assert!(passes < 20, "follow-up passes must converge");
+        }
+        assert_eq!(claimed, vec![(B.to_string(), C.to_string())]);
+        let end = fs::metadata(git_dir.join("logs/HEAD")).unwrap().len();
+        assert_eq!(last.cursor.offset, end);
     }
 }

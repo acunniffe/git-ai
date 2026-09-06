@@ -2,9 +2,10 @@ use crate::daemon::domain::{
     AppliedCommand, ApplyAck, CommandScope, FamilyKey, FamilyStatus, NormalizedCommand,
     WatermarkState,
 };
-use crate::daemon::family_actor::{FamilyActorHandle, spawn_family_actor};
+use crate::daemon::family_actor::{FamilyActorHandle, UntracedClaimOutcome, spawn_family_actor};
 use crate::daemon::git_backend::GitBackend;
 use crate::daemon::global_actor::{GlobalActorHandle, spawn_global_actor};
+use crate::daemon::ref_cursor::UntracedClaimRequest;
 use crate::error::GitAiError;
 use std::collections::HashMap;
 use std::path::Path;
@@ -68,6 +69,20 @@ impl<B: GitBackend> Coordinator<B> {
         let family = self.backend.resolve_family(repo_working_dir)?;
         let actor = self.get_or_create_family_actor(family).await;
         actor.status().await
+    }
+
+    /// Keys of every family this coordinator has an actor for.
+    pub async fn family_keys(&self) -> Vec<String> {
+        self.families.lock().await.keys().cloned().collect()
+    }
+
+    pub async fn claim_untraced_commits(
+        &self,
+        family: FamilyKey,
+        request: UntracedClaimRequest,
+    ) -> Result<UntracedClaimOutcome, GitAiError> {
+        let actor = self.get_or_create_family_actor(family).await;
+        actor.claim_untraced_commits(request).await
     }
 
     pub async fn shutdown(&self) -> Result<(), GitAiError> {
