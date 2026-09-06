@@ -192,6 +192,7 @@ function Invoke-LifecycleScenario {
 
     Stop-Daemon
     Invoke-UnusualBinaryPathScenario
+    Invoke-LauncherRetryScenario
 }
 
 # --bin must cope with every path an admin might install to: spaces, quotes,
@@ -211,6 +212,59 @@ function Invoke-UnusualBinaryPathScenario {
 
     Invoke-MdmScript --uninstall
     Stop-Daemon
+}
+
+# Writes a fake git-ai.cmd that fails until its Nth invocation, then hands off
+# to the real binary. Attempts are counted in a file next to it.
+function Write-FakeBinary([string]$Path, [int]$SucceedAt) {
+    $lines = @(
+        '@echo off',
+        'setlocal',
+        'set n=0',
+        'if exist "%~dp0attempts" set /p n=<"%~dp0attempts"',
+        'set /a n+=1',
+        '>"%~dp0attempts" echo %n%',
+        "if %n% lss $SucceedAt exit /b 1",
+        "`"$Bin`" %*",
+        'exit /b %errorlevel%'
+    )
+    Set-Content -LiteralPath $Path -Value ($lines -join "`r`n") -Encoding ASCII
+}
+
+function Get-Attempts([string]$Dir) {
+    $file = Join-Path $Dir 'attempts'
+    if (Test-Path $file) { return [int](Get-Content $file | Select-Object -First 1).Trim() }
+    return 0
+}
+
+# The launcher retries bg start a few times: transient failures must end in a
+# healthy daemon, and persistent failure must surface as a failed logon task.
+function Invoke-LauncherRetryScenario {
+    $fakeDir = Join-Path $HOME 'mdm-fake'
+    New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+    $fake = Join-Path $fakeDir 'git-ai.cmd'
+
+    Write-FakeBinary $fake 3
+    Invoke-MdmScript --bin $fake
+    Wait-For 60 'daemon up after transient launcher failures' { Test-DaemonUp }
+    $attempts = Get-Attempts $fakeDir
+    if ($attempts -ne 3) { Fail "expected 3 attempts, got $attempts" }
+    Test-MechanismSane
+    Invoke-MdmScript --uninstall
+    Stop-Daemon
+
+    Remove-Item (Join-Path $fakeDir 'attempts') -Force -ErrorAction SilentlyContinue
+    Write-FakeBinary $fake 99
+    Invoke-MdmScript --bin $fake --no-start
+    Start-ScheduledTask -TaskPath $TaskPath -TaskName $TaskName
+    Wait-TaskIdle
+    $info = Get-ScheduledTaskInfo -TaskPath $TaskPath -TaskName $TaskName
+    if ($info.LastTaskResult -eq 0) { Fail 'persistent launcher failure was reported as success' }
+    $attempts = Get-Attempts $fakeDir
+    if ($attempts -ne 5) { Fail "expected 5 attempts, got $attempts" }
+    if (Test-DaemonUp) { Fail 'no daemon should be running after persistent failure' }
+    Invoke-MdmScript --uninstall
+    Write-Log 'launcher retry semantics verified'
 }
 
 function Invoke-AutoUpdateScenario {

@@ -230,6 +230,7 @@ scenario_lifecycle() {
 
   stop_daemon
   scenario_unusual_binary_path
+  scenario_launcher_retry
 }
 
 # --bin must cope with every path an admin might install to: spaces, quotes,
@@ -250,6 +251,60 @@ scenario_unusual_binary_path() {
 
   run_mdm_script --uninstall
   stop_daemon
+}
+
+# Writes a fake git-ai that fails until its Nth invocation, then hands off to
+# the real binary. Attempts are counted in $2.
+write_fake_binary() {
+  local path="$1" attempts="$2" succeed_at="$3"
+  cat >"$path" <<EOF
+#!/bin/sh
+n=\$(cat "$attempts" 2>/dev/null || echo 0); n=\$((n + 1)); echo "\$n" >"$attempts"
+[ "\$n" -ge $succeed_at ] || exit 1
+exec "$BIN" "\$@"
+EOF
+  chmod +x "$path"
+}
+
+mechanism_failed() {
+  case "$OS" in
+    macos) launchctl print "gui/$(id -u)/$LABEL" | grep -Eq "last exit code = [1-9]" ;;
+    linux) systemctl --user is-failed --quiet "$UNIT" ;;
+  esac
+}
+
+# Runs the registered launcher once; the login mechanism itself must report failure.
+trigger_login_expect_failure() {
+  case "$OS" in
+    macos) launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/$LABEL.plist" ;;
+    linux) ! systemctl --user start "$UNIT" ;;
+  esac
+}
+
+# The launcher retries bg start a few times: transient failures must end in a
+# healthy daemon, and persistent failure must surface as a failed login start.
+scenario_launcher_retry() {
+  local fake_dir="$HOME/mdm-fake" attempts="$HOME/mdm-fake/attempts"
+  mkdir -p "$fake_dir"
+
+  write_fake_binary "$fake_dir/git-ai" "$attempts" 3
+  run_mdm_script --bin "$fake_dir/git-ai"
+  wait_for 45 "daemon up after transient launcher failures" daemon_up
+  [ "$(cat "$attempts")" = 3 ] || fail "expected 3 attempts, got $(cat "$attempts")"
+  mechanism_sane
+  run_mdm_script --uninstall
+  stop_daemon
+
+  rm -f "$attempts"
+  write_fake_binary "$fake_dir/git-ai" "$attempts" 99
+  run_mdm_script --bin "$fake_dir/git-ai" --no-start
+  trigger_login_expect_failure
+  wait_for 45 "persistent launcher failure reported by the login mechanism" mechanism_failed
+  [ "$(cat "$attempts")" = 5 ] || fail "expected 5 attempts, got $(cat "$attempts")"
+  daemon_up && fail "no daemon should be running after persistent failure"
+  run_mdm_script --uninstall
+  [ "$OS" != linux ] || systemctl --user reset-failed "$UNIT" 2>/dev/null || true
+  log "launcher retry semantics verified"
 }
 
 scenario_auto_update() {
