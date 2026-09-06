@@ -11,11 +11,13 @@
 use std::fs;
 use std::path::PathBuf;
 
-fn mdm_file(relative: &str) -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("mdm")
-        .join(relative);
+fn repo_file(relative: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(relative);
     fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+}
+
+fn mdm_file(relative: &str) -> String {
+    repo_file(&format!("mdm/{relative}"))
 }
 
 fn macos_script() -> String {
@@ -157,4 +159,29 @@ fn readme_documents_the_launch_invariants() {
             "mdm/README.md must explain {keyword}"
         );
     }
+}
+
+#[test]
+fn release_workflow_publishes_the_scripts_as_assets() {
+    let release = repo_file(".github/workflows/release.yml");
+    let readme = mdm_file("README.md");
+
+    for asset in [
+        "git-ai-login-start-macos.sh",
+        "git-ai-login-start-linux.sh",
+        "git-ai-login-start-windows.ps1",
+    ] {
+        assert!(
+            release.contains(asset),
+            "release.yml must copy {asset} into the release assets"
+        );
+        assert!(
+            readme.contains(asset),
+            "mdm/README.md must document the {asset} download"
+        );
+    }
+    assert!(
+        release.contains("sha256sum install.sh install.ps1 git-ai-login-start-*"),
+        "login-start assets must be covered by SHA256SUMS"
+    );
 }
