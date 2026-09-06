@@ -93,7 +93,7 @@ pub(crate) fn post_commit_from_working_log_with_recovery_timestamps(
     base_commit: Option<String>,
     commit_sha: String,
     human_author: String,
-    supress_output: bool,
+    options: PostCommitOptions,
     recovery_file_timestamps: Option<&FileTimestampsByPath>,
     before_external_recovery: Option<&dyn Fn(&UnknownLinesByFile)>,
 ) -> Result<(String, AuthorshipLog), GitAiError> {
@@ -102,11 +102,7 @@ pub(crate) fn post_commit_from_working_log_with_recovery_timestamps(
         base_commit,
         commit_sha,
         human_author,
-        PostCommitOptions {
-            supress_output,
-            compute_stats: true,
-            recover_attribution: true,
-        },
+        options,
         PostCommitContext {
             precomputed_parent_diff: None,
             recovery_file_timestamps,
@@ -116,11 +112,30 @@ pub(crate) fn post_commit_from_working_log_with_recovery_timestamps(
     )
 }
 
+/// `commit_source` value for commits the daemon never saw through trace2 and
+/// attributed later from their reflog record.
+pub const UNTRACED_FIXUP_COMMIT_SOURCE: &str = "untraced_fixup";
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PostCommitOptions {
     pub supress_output: bool,
     pub compute_stats: bool,
     pub recover_attribution: bool,
+    /// Recorded on the `Committed` metric as `commit_source`; `None` (null) for
+    /// commits attributed on the normal traced path.
+    pub commit_source: Option<&'static str>,
+}
+
+impl PostCommitOptions {
+    /// The daemon's post-commit pass: quiet, with stats and attribution recovery.
+    pub(crate) fn with_recovery(commit_source: Option<&'static str>) -> Self {
+        Self {
+            supress_output: true,
+            compute_stats: true,
+            recover_attribution: true,
+            commit_source,
+        }
+    }
 }
 
 pub(crate) struct PostCommitDetailedResult {
@@ -156,6 +171,7 @@ where
             supress_output,
             compute_stats: true,
             recover_attribution: true,
+            commit_source: None,
         },
         transform,
     )
@@ -495,6 +511,7 @@ where
                 &computed,
                 &parent_working_log,
                 hunks_json.as_deref(),
+                options.commit_source,
             );
             stats = Some(computed);
         }
@@ -1127,6 +1144,7 @@ fn record_commit_metrics(
     stats: &crate::authorship::stats::CommitStats,
     checkpoints: &[Checkpoint],
     hunks_json: Option<&str>,
+    commit_source: Option<&str>,
 ) {
     use crate::metrics::{CommittedValues, record};
 
@@ -1177,6 +1195,10 @@ fn record_commit_metrics(
         values.hunks(hunks)
     } else {
         values.hunks_null()
+    };
+    let values = match commit_source {
+        Some(source) => values.commit_source(source),
+        None => values.commit_source_null(),
     };
 
     let attrs = commit_metric_attrs(repo, commit_sha, parent_sha, human_author);

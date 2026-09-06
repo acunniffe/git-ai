@@ -32,6 +32,7 @@ pub mod committed_pos {
     pub const AUTHOR_TS: usize = 15; // u64 (git author timestamp, %at)
     pub const COMMIT_TS: usize = 16; // u64 (git committer timestamp, %ct)
     pub const PATCH_ID: usize = 17; // String (git patch-id --stable)
+    pub const COMMIT_SOURCE: usize = 18; // String (nullable; how the commit reached attribution)
 }
 
 /// Values for Event ID 1: committed
@@ -63,6 +64,7 @@ pub mod committed_pos {
 /// | 15 | author_ts | u64 |
 /// | 16 | commit_ts | u64 |
 /// | 17 | patch_id | String |
+/// | 18 | commit_source | String (nullable; e.g. `untraced_fixup`, null for traced commits) |
 #[derive(Debug, Clone, Default)]
 pub struct CommittedValues {
     // Scalar fields
@@ -84,6 +86,7 @@ pub struct CommittedValues {
     pub author_ts: PosField<u64>,
     pub commit_ts: PosField<u64>,
     pub patch_id: PosField<String>,
+    pub commit_source: PosField<String>,
 }
 
 impl CommittedValues {
@@ -242,6 +245,16 @@ impl CommittedValues {
         self.patch_id = Some(None);
         self
     }
+
+    pub fn commit_source(mut self, value: impl Into<String>) -> Self {
+        self.commit_source = Some(Some(value.into()));
+        self
+    }
+
+    pub fn commit_source_null(mut self) -> Self {
+        self.commit_source = Some(None);
+        self
+    }
 }
 
 impl PosEncoded for CommittedValues {
@@ -319,6 +332,11 @@ impl PosEncoded for CommittedValues {
             committed_pos::PATCH_ID,
             string_to_json(&self.patch_id),
         );
+        sparse_set(
+            &mut map,
+            committed_pos::COMMIT_SOURCE,
+            string_to_json(&self.commit_source),
+        );
 
         map
     }
@@ -344,6 +362,7 @@ impl PosEncoded for CommittedValues {
             author_ts: sparse_get_u64(arr, committed_pos::AUTHOR_TS),
             commit_ts: sparse_get_u64(arr, committed_pos::COMMIT_TS),
             patch_id: sparse_get_string(arr, committed_pos::PATCH_ID),
+            commit_source: sparse_get_string(arr, committed_pos::COMMIT_SOURCE),
         }
     }
 }
@@ -1377,10 +1396,19 @@ mod tests {
             .commit_body_null()
             .author_ts(1700000100)
             .commit_ts(1700000200)
-            .patch_id("stable-patch-id");
+            .patch_id("stable-patch-id")
+            .commit_source("untraced_fixup");
 
         let sparse = PosEncoded::to_sparse(&original);
+        assert_eq!(
+            sparse.get("18"),
+            Some(&Value::String("untraced_fixup".to_string()))
+        );
         let restored = <CommittedValues as PosEncoded>::from_sparse(&sparse);
+        assert_eq!(
+            restored.commit_source,
+            Some(Some("untraced_fixup".to_string()))
+        );
 
         assert_eq!(restored.human_additions, Some(Some(25)));
         assert_eq!(restored.first_checkpoint_ts, Some(Some(1700000000)));
@@ -1392,6 +1420,19 @@ mod tests {
         assert_eq!(restored.author_ts, Some(Some(1700000100)));
         assert_eq!(restored.commit_ts, Some(Some(1700000200)));
         assert_eq!(restored.patch_id, Some(Some("stable-patch-id".to_string())));
+    }
+
+    #[test]
+    fn test_committed_values_commit_source_null_for_traced_commits() {
+        use super::PosEncoded;
+
+        let unset = PosEncoded::to_sparse(&CommittedValues::new());
+        assert_eq!(unset.get("18"), None);
+
+        let traced = PosEncoded::to_sparse(&CommittedValues::new().commit_source_null());
+        assert_eq!(traced.get("18"), Some(&Value::Null));
+        let restored = <CommittedValues as PosEncoded>::from_sparse(&traced);
+        assert_eq!(restored.commit_source, Some(None));
     }
 
     #[test]
