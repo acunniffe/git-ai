@@ -1,7 +1,8 @@
 use crate::repos::test_repo::TestRepo;
 use git_ai::authorship::ignore::{
-    effective_ignore_patterns, load_git_ai_ignore_patterns,
+    build_ignore_matcher, effective_ignore_patterns, load_git_ai_ignore_patterns,
     load_linguist_generated_patterns_from_root_gitattributes,
+    load_linguist_vendored_patterns_from_root_gitattributes, should_ignore_file_with_matcher,
 };
 use git_ai::git::repository::from_bare_repository;
 use std::fs;
@@ -298,6 +299,87 @@ fn effective_patterns_union_git_ai_ignore_and_user_patterns() {
     assert!(patterns.contains(&"*.lock".to_string()));
 }
 
+// Regression tests for issue #1664: a first-party package named `vendor` was
+// silently excluded by the built-in `**/vendor/**` default with no override.
+
+#[test]
+fn git_ai_ignore_negation_reincludes_first_party_vendor_package() {
+    let repo = TestRepo::new();
+    std::fs::write(
+        repo.path().join(".git-ai-ignore"),
+        "!src/main/java/com/acme/vendor/**\n",
+    )
+    .unwrap();
+    repo.git(&["add", ".git-ai-ignore"]).unwrap();
+    repo.stage_all_and_commit("add .git-ai-ignore").unwrap();
+
+    let gitai_repo =
+        git_ai::git::repository::find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let patterns = effective_ignore_patterns(&gitai_repo, &[], &[]);
+    // The negation flows through the effective pattern set.
+    assert!(patterns.contains(&"!src/main/java/com/acme/vendor/**".to_string()));
+
+    let matcher = build_ignore_matcher(&patterns);
+    // First-party `vendor` package is re-included (was 0% AI before the fix).
+    assert!(!should_ignore_file_with_matcher(
+        "src/main/java/com/acme/vendor/Probe.java",
+        &matcher
+    ));
+    // A genuine third-party vendor directory elsewhere stays excluded.
+    assert!(should_ignore_file_with_matcher(
+        "third_party/vendor/lib.js",
+        &matcher
+    ));
+}
+
+#[test]
+fn gitattributes_linguist_vendored_false_reincludes_first_party_package() {
+    let repo = TestRepo::new();
+    std::fs::write(
+        repo.path().join(".gitattributes"),
+        "src/main/java/com/acme/vendor/** -linguist-vendored\n",
+    )
+    .unwrap();
+    repo.git(&["add", ".gitattributes"]).unwrap();
+    repo.stage_all_and_commit("add gitattributes").unwrap();
+
+    let gitai_repo =
+        git_ai::git::repository::find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let vendored = load_linguist_vendored_patterns_from_root_gitattributes(&gitai_repo);
+    assert!(vendored.contains(&"!src/main/java/com/acme/vendor/**".to_string()));
+
+    let patterns = effective_ignore_patterns(&gitai_repo, &[], &[]);
+    let matcher = build_ignore_matcher(&patterns);
+    assert!(!should_ignore_file_with_matcher(
+        "src/main/java/com/acme/vendor/Probe.java",
+        &matcher
+    ));
+}
+
+#[test]
+fn gitattributes_linguist_vendored_true_excludes_path() {
+    let repo = TestRepo::new();
+    std::fs::write(
+        repo.path().join(".gitattributes"),
+        "tools/bundled/** linguist-vendored=true\n",
+    )
+    .unwrap();
+    repo.git(&["add", ".gitattributes"]).unwrap();
+    repo.stage_all_and_commit("add gitattributes").unwrap();
+
+    let gitai_repo =
+        git_ai::git::repository::find_repository_in_path(repo.path().to_str().unwrap()).unwrap();
+    let vendored = load_linguist_vendored_patterns_from_root_gitattributes(&gitai_repo);
+    assert!(vendored.contains(&"tools/bundled/**".to_string()));
+
+    let patterns = effective_ignore_patterns(&gitai_repo, &[], &[]);
+    let matcher = build_ignore_matcher(&patterns);
+    assert!(should_ignore_file_with_matcher(
+        "tools/bundled/helper.js",
+        &matcher
+    ));
+}
+
 // Bare repo tests (using make_bare_repo helpers)
 
 #[test]
@@ -361,6 +443,10 @@ crate::reuse_tests_in_worktree!(
     effective_patterns_include_git_ai_ignore,
     effective_patterns_union_gitattributes_and_git_ai_ignore,
     effective_patterns_union_git_ai_ignore_and_user_patterns,
+    // Issue #1664 regression tests
+    git_ai_ignore_negation_reincludes_first_party_vendor_package,
+    gitattributes_linguist_vendored_false_reincludes_first_party_package,
+    gitattributes_linguist_vendored_true_excludes_path,
     // Bare repo tests
     loads_linguist_generated_from_bare_repo_head,
     bare_repo_does_not_read_parent_directory_gitattributes,
