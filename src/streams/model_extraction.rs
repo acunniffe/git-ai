@@ -31,9 +31,28 @@ pub fn extract_model(
         StreamFormat::AmpThreadJson => extract_model_from_amp_thread_json(path),
         StreamFormat::OpenCodeSqlite => extract_model_from_opencode_sqlite(path, session_id),
         StreamFormat::CopilotOtelSqlite => extract_model_from_copilot_otel_sqlite(path, session_id),
+        StreamFormat::GrokJsonl => extract_model_from_grok_updates(path),
         // Droid uses extract_model_from_droid_settings() with the settings path instead
         _ => Ok(None),
     }
+}
+
+fn extract_model_from_grok_updates(updates_path: &Path) -> Result<Option<String>, StreamError> {
+    let (model, _) =
+        extract_model_from_jsonl_tail_with(updates_path, extract_model_from_grok_updates_line)?;
+    Ok(model)
+}
+
+fn extract_model_from_grok_updates_line(line: &str) -> Option<String> {
+    let json: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+    let update = json.get("params")?.get("update")?;
+    update
+        .get("_meta")
+        .and_then(|meta| meta.get("modelId"))
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| update.get("model").and_then(serde_json::Value::as_str))
+        .and_then(normalize_model)
+        .filter(|model| !model.eq_ignore_ascii_case("unknown"))
 }
 
 pub fn extract_model_from_droid_settings(
@@ -1170,6 +1189,23 @@ mod tests {
         let path = fixture_path("gemini-session-simple.jsonl");
         let result = extract_model(&path, StreamFormat::GeminiJsonl, None).unwrap();
         assert_eq!(result, Some("gemini-2.5-flash".to_string()));
+    }
+
+    #[test]
+    fn test_extract_model_grok_updates() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("updates.jsonl");
+        std::fs::write(
+            &path,
+            [
+                r#"{"params":{"update":{"_meta":{"modelId":"grok-4.5"}}}}"#,
+                r#"{"params":{"update":{"content":{"text":"hi"},"_meta":{"modelId":"grok-4.6"}}}}"#,
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let result = extract_model(&path, StreamFormat::GrokJsonl, None).unwrap();
+        assert_eq!(result, Some("grok-4.6".to_string()));
     }
 
     #[test]

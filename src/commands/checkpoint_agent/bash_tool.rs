@@ -387,6 +387,12 @@ pub fn classify_tool(agent: Agent, tool_name: &str) -> ToolClass {
                 _ => ToolClass::Skip,
             }
         }
+        Agent::Grok => match tool_name.to_ascii_lowercase().as_str() {
+            // Native names plus Claude aliases Grok's matcher layer also accepts.
+            "search_replace" | "write" | "write_file" | "edit" | "multiedit" => ToolClass::FileEdit,
+            "run_terminal_command" | "bash" => ToolClass::Bash,
+            _ => ToolClass::Skip,
+        },
     }
 }
 
@@ -405,6 +411,7 @@ pub enum Agent {
     Windsurf,
     Cursor,
     Cline,
+    Grok,
 }
 
 // ---------------------------------------------------------------------------
@@ -1596,6 +1603,23 @@ mod tests {
             ToolClass::Skip
         );
         assert_eq!(classify_tool(Agent::Codex, "Read"), ToolClass::Skip);
+    }
+
+    #[test]
+    fn test_classify_tool_grok() {
+        assert_eq!(
+            classify_tool(Agent::Grok, "search_replace"),
+            ToolClass::FileEdit
+        );
+        assert_eq!(classify_tool(Agent::Grok, "write"), ToolClass::FileEdit);
+        assert_eq!(classify_tool(Agent::Grok, "Write"), ToolClass::FileEdit);
+        assert_eq!(
+            classify_tool(Agent::Grok, "run_terminal_command"),
+            ToolClass::Bash
+        );
+        assert_eq!(classify_tool(Agent::Grok, "Bash"), ToolClass::Bash);
+        assert_eq!(classify_tool(Agent::Grok, "read_file"), ToolClass::Skip);
+        assert_eq!(classify_tool(Agent::Grok, "grep"), ToolClass::Skip);
     }
 
     #[test]

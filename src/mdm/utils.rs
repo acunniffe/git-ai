@@ -458,6 +458,17 @@ pub fn gemini_config_dir() -> PathBuf {
     home_dir().join(".gemini")
 }
 
+/// Grok Build home directory, respecting the GROK_HOME env var.
+/// Falls back to ~/.grok when unset.
+pub fn grok_home_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("GROK_HOME")
+        && !dir.is_empty()
+    {
+        return PathBuf::from(dir);
+    }
+    home_dir().join(".grok")
+}
+
 /// Write data to a file atomically (write to temp, then rename)
 /// If the path is a symlink, writes to the target file (preserving the symlink)
 pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), GitAiError> {
@@ -1465,6 +1476,41 @@ mod tests {
             }
         }
         assert_eq!(dir, home_dir().join(".gemini"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_grok_home_dir_defaults_to_home_dot_grok() {
+        let prev = std::env::var_os("GROK_HOME");
+        unsafe {
+            std::env::remove_var("GROK_HOME");
+        }
+        let dir = grok_home_dir();
+        unsafe {
+            match prev {
+                Some(value) => std::env::set_var("GROK_HOME", value),
+                None => std::env::remove_var("GROK_HOME"),
+            }
+        }
+        assert_eq!(dir, home_dir().join(".grok"));
+    }
+
+    #[test]
+    #[serial]
+    fn test_grok_home_dir_respects_env_var() {
+        let prev = std::env::var_os("GROK_HOME");
+        let custom = "/tmp/my-grok-home";
+        unsafe {
+            std::env::set_var("GROK_HOME", custom);
+        }
+        let dir = grok_home_dir();
+        unsafe {
+            match prev {
+                Some(value) => std::env::set_var("GROK_HOME", value),
+                None => std::env::remove_var("GROK_HOME"),
+            }
+        }
+        assert_eq!(dir, PathBuf::from(custom));
     }
 
     /// Regression test for #1039: write_atomic should create parent directories
