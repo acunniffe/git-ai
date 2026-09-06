@@ -136,13 +136,18 @@ trigger_login() {
   esac
 }
 
+launcher_exited() { launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | grep -q "state = not running"; }
+
 mechanism_sane() {
   case "$OS" in
     macos)
-      local out
-      out="$(launchctl print "gui/$(id -u)/$LABEL")" || fail "launchd job missing"
-      if grep -E "last exit code = [1-9]" <<<"$out"; then fail "launchd job exited non-zero"; fi
-      grep -q "state = not running" <<<"$out" || fail "launchd job still running: launcher did not exit"
+      launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 || fail "launchd job missing"
+      # The daemon answers before `bg start` returns and launchd notices; give
+      # the launcher a moment to exit rather than asserting instantly.
+      wait_for 20 "launcher exited" launcher_exited
+      if launchctl print "gui/$(id -u)/$LABEL" | grep -E "last exit code = [1-9]"; then
+        fail "launchd job exited non-zero"
+      fi
       ;;
     linux)
       [ "$(systemctl --user is-active "$UNIT")" = "active" ] || fail "unit not active"
