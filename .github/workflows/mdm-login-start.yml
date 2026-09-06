@@ -1,0 +1,126 @@
+name: MDM Login Start
+
+# Exercises mdm/*/install-login-start.* with a locally built binary: the login
+# mechanism must bring the daemon up and must not interfere with the daemon's
+# own lifecycle (uptime restart, lock-guarded single instance).
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - 'mdm/**'
+      - 'scripts/mdm/**'
+      - 'src/commands/daemon.rs'
+      - 'src/daemon.rs'
+      - 'install.sh'
+      - 'install.ps1'
+      - '.github/workflows/mdm-login-start.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'mdm/**'
+      - 'scripts/mdm/**'
+      - 'src/commands/daemon.rs'
+      - 'src/daemon.rs'
+      - 'install.sh'
+      - 'install.ps1'
+      - '.github/workflows/mdm-login-start.yml'
+  merge_group:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  login-start-unix:
+    name: Login start on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: stable
+
+      - name: Build git-ai
+        run: cargo build --release --bin git-ai
+
+      - name: Ensure a systemd user manager is running
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          uid="$(id -u)"
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$uid"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus"
+          for _ in $(seq 1 30); do
+            systemctl --user show-environment >/dev/null 2>&1 && break
+            sleep 1
+          done
+          systemctl --user show-environment >/dev/null
+          {
+            echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+            echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+          } >> "$GITHUB_ENV"
+
+      - name: Run lifecycle scenario
+        env:
+          BINARY_SOURCE: local
+          GIT_AI_LOCAL_BINARY: ${{ github.workspace }}/target/release/git-ai
+          MDM_TEST_LOG_DIR: ${{ runner.temp }}/mdm-logs
+        run: bash scripts/mdm/test-login-start.sh lifecycle
+
+      - name: Upload daemon and launcher logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mdm-login-start-${{ matrix.os }}
+          path: ${{ runner.temp }}/mdm-logs
+          retention-days: 7
+          if-no-files-found: warn
+
+  login-start-windows:
+    name: Login start on windows-latest
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # master
+        with:
+          toolchain: stable
+
+      - name: Build git-ai
+        run: cargo build --release --bin git-ai
+
+      - name: Run lifecycle scenario
+        shell: pwsh
+        env:
+          BINARY_SOURCE: local
+          GIT_AI_LOCAL_BINARY: ${{ github.workspace }}\target\release\git-ai.exe
+          MDM_TEST_LOG_DIR: ${{ runner.temp }}\mdm-logs
+        run: ./scripts/mdm/test-login-start.ps1 -Scenario lifecycle
+
+      - name: Upload daemon and launcher logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mdm-login-start-windows-latest
+          path: ${{ runner.temp }}\mdm-logs
+          retention-days: 7
+          if-no-files-found: warn
