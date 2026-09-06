@@ -78,7 +78,6 @@ jobs:
       LATEST_TAG: ${{ needs.select-releases.outputs.latest }}
       # lifecycle installs latest; auto-update starts from the older release.
       GIT_AI_RELEASE_TAG: ${{ matrix.scenario == 'lifecycle' && needs.select-releases.outputs.latest || needs.select-releases.outputs.older }}
-      MDM_TEST_LOG_DIR: ${{ runner.temp }}/mdm-logs
 
     steps:
       - name: Checkout code
@@ -108,6 +107,7 @@ jobs:
         if: runner.os != 'Windows'
         env:
           SCENARIO: ${{ matrix.scenario }}
+          MDM_TEST_LOG_DIR: ${{ runner.temp }}/mdm-logs
         run: bash scripts/mdm/test-login-start.sh "$SCENARIO"
 
       - name: Run scenario (Windows)
@@ -115,6 +115,7 @@ jobs:
         shell: pwsh
         env:
           SCENARIO: ${{ matrix.scenario }}
+          MDM_TEST_LOG_DIR: ${{ runner.temp }}\mdm-logs
         run: ./scripts/mdm/test-login-start.ps1 -Scenario $env:SCENARIO
 
       - name: Upload daemon and launcher logs
