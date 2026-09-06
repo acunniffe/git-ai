@@ -111,7 +111,7 @@ if [ -n "$BIN" ]; then
   [ -x "$BIN" ] || fail "$BIN is not an executable git-ai binary"
   case "$BIN" in
     *"
-"*) fail "--bin path must not contain a newline" ;;
+"*|*"$(printf '\r')"*) fail "--bin path must not contain a newline or carriage return" ;;
   esac
   add_env "GIT_AI_LOGIN_START_BIN=$BIN"
 elif [ "$SYSTEM" -eq 0 ] && [ ! -x "$HOME/.git-ai/bin/git-ai" ]; then
