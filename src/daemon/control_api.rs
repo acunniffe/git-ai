@@ -33,6 +33,10 @@ pub enum ControlRequest {
     /// Report ingest loss counters (dropped trace payloads/connections).
     #[serde(rename = "stats.ingest")]
     StatsIngest,
+    /// Run one untraced-commit fixup pass now for the repository's family, or
+    /// for every family the daemon knows when no repository is given.
+    #[serde(rename = "fixup.scan")]
+    UntracedFixupScan { repo_working_dir: Option<String> },
     /// Snapshot of the daemon's attribution pipeline: per-family pending work
     /// and fence state, open trace roots, and loss counters.
     #[serde(rename = "status.daemon")]

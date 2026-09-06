@@ -84,6 +84,58 @@ pub fn common_dir_for_repo_path(path: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Every worktree of a repository as `(git_dir, worktree)` pairs, from the
+/// filesystem alone: the main worktree (a `.git` common dir's parent, or the
+/// `core.worktree` a submodule / `--separate-git-dir` repository points at)
+/// plus the linked worktrees registered under `<common_dir>/worktrees/`. Bare
+/// repositories and linked worktrees whose directory is gone are omitted.
+pub fn worktrees_for_common_dir(common_dir: &Path) -> Vec<(PathBuf, PathBuf)> {
+    let mut out = Vec::new();
+    if let Some(main) = main_worktree_for_common_dir(common_dir) {
+        out.push((common_dir.to_path_buf(), main));
+    }
+    let Ok(linked) = fs::read_dir(common_dir.join("worktrees")) else {
+        return out;
+    };
+    let mut linked = linked
+        .flatten()
+        .filter_map(|entry| {
+            let git_dir = entry.path();
+            let dot_git = fs::read_to_string(git_dir.join("gitdir")).ok()?;
+            // Since git 2.48 (`worktree.useRelativePaths`) the pointer may be
+            // relative to the linked git dir.
+            let dot_git = git_dir.join(dot_git.trim());
+            let worktree = dot_git.parent()?.to_path_buf();
+            worktree.is_dir().then_some((git_dir, worktree))
+        })
+        .collect::<Vec<_>>();
+    linked.sort();
+    out.extend(linked);
+    out
+}
+
+fn main_worktree_for_common_dir(common_dir: &Path) -> Option<PathBuf> {
+    // The ordinary layout needs no config read (the daemon asks about every
+    // known family on every tick).
+    if common_dir.file_name().is_some_and(|name| name == ".git") {
+        let main = common_dir.parent()?.to_path_buf();
+        return main.is_dir().then_some(main);
+    }
+    let config =
+        crate::git::repository::git_config_file_for_repo_paths(common_dir, common_dir).ok();
+    let config_value = |key: &str| {
+        config
+            .as_ref()
+            .and_then(|config| config.string(key))
+            .map(|value| value.to_string())
+    };
+    if config_value("core.bare").is_some_and(|bare| bare.eq_ignore_ascii_case("true")) {
+        return None;
+    }
+    let main = common_dir.join(config_value("core.worktree")?);
+    main.is_dir().then_some(main)
+}
+
 pub fn read_head_state_for_worktree(worktree: &Path) -> Option<HeadState> {
     use crate::git::fast_reader::{FastRefReader, HeadKind};
     let git_dir = git_dir_for_worktree(worktree)?;
@@ -150,5 +202,75 @@ mod tests {
         );
         assert_eq!(state.branch.as_deref(), Some("main"));
         assert!(!state.detached);
+    }
+
+    #[test]
+    fn worktrees_for_common_dir_lists_main_and_linked_worktrees() {
+        let temp = tempfile::tempdir().unwrap();
+        let main = temp.path().join("repo");
+        let common_dir = main.join(".git");
+        write_file(&common_dir.join("HEAD"), "ref: refs/heads/main\n");
+        let linked = temp.path().join("feature");
+        fs::create_dir_all(&linked).unwrap();
+        let linked_git_dir = common_dir.join("worktrees").join("feature");
+        write_file(
+            &linked_git_dir.join("gitdir"),
+            &format!("{}\n", linked.join(".git").display()),
+        );
+        // A registration whose worktree directory was deleted is skipped.
+        write_file(
+            &common_dir.join("worktrees").join("gone").join("gitdir"),
+            &format!("{}\n", temp.path().join("gone").join(".git").display()),
+        );
+
+        assert_eq!(
+            worktrees_for_common_dir(&common_dir),
+            vec![(common_dir.clone(), main), (linked_git_dir, linked)]
+        );
+    }
+
+    #[test]
+    fn worktrees_for_common_dir_skips_bare_repositories() {
+        let temp = tempfile::tempdir().unwrap();
+        let bare = temp.path().join("repo.git");
+        write_file(&bare.join("HEAD"), "ref: refs/heads/main\n");
+        write_file(&bare.join("config"), "[core]\n\tbare = true\n");
+
+        assert!(worktrees_for_common_dir(&bare).is_empty());
+    }
+
+    #[test]
+    fn worktrees_for_common_dir_follows_core_worktree_and_relative_pointers() {
+        // A submodule's git dir (`.git/modules/sub`) names its worktree through
+        // core.worktree; a linked worktree may register a relative gitdir.
+        let temp = tempfile::tempdir().unwrap();
+        let common_dir = temp.path().join("super/.git/modules/sub");
+        let sub = temp.path().join("super/sub");
+        fs::create_dir_all(&sub).unwrap();
+        write_file(&common_dir.join("HEAD"), "ref: refs/heads/main\n");
+        write_file(
+            &common_dir.join("config"),
+            "[core]\n\tbare = false\n\tworktree = ../../../sub\n",
+        );
+        let linked = temp.path().join("sub-feature");
+        fs::create_dir_all(&linked).unwrap();
+        let linked_git_dir = common_dir.join("worktrees").join("feature");
+        write_file(
+            &linked_git_dir.join("gitdir"),
+            "../../../../../../sub-feature/.git\n",
+        );
+
+        let worktrees = worktrees_for_common_dir(&common_dir);
+        assert_eq!(worktrees.len(), 2, "{worktrees:?}");
+        assert_eq!(worktrees[0].0, common_dir);
+        assert_eq!(
+            worktrees[0].1.canonicalize().unwrap(),
+            sub.canonicalize().unwrap()
+        );
+        assert_eq!(worktrees[1].0, linked_git_dir);
+        assert_eq!(
+            worktrees[1].1.canonicalize().unwrap(),
+            linked.canonicalize().unwrap()
+        );
     }
 }

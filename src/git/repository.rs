@@ -2264,7 +2264,12 @@ fn discover_repository_paths_no_git_exec(
     )))
 }
 
-fn git_config_file_for_repo_paths(
+/// The effective git config for a repository given its git dir and common
+/// dir (globals, `<common>/config`, `config.worktree`, environment), read
+/// without spawning git. Callers that already know the git dir (the daemon's
+/// family registry) use this instead of discovery from a path, which would
+/// climb out of a submodule's `.git/modules/<name>` into the superproject.
+pub(crate) fn git_config_file_for_repo_paths(
     git_dir: &Path,
     git_common_dir: &Path,
 ) -> Result<gix_config::File<'static>, GitAiError> {
