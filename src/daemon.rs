@@ -990,6 +990,7 @@ fn post_conflict_resolution_working_log(
             supress_output: true,
             compute_stats: false,
             recover_attribution: false,
+            commit_source: None,
         },
         precomputed_parent_diff,
         move |resolution_log| {
@@ -7110,7 +7111,7 @@ impl ActorDaemonCoordinator {
                                     base_opt.clone(),
                                     new_head.clone(),
                                     author,
-                                    true,
+                                    crate::authorship::post_commit::PostCommitOptions::with_recovery(None),
                                     recovery_file_timestamps.as_ref(),
                                     Some(&recovery_preflight),
                                 )

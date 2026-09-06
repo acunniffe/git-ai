@@ -135,6 +135,11 @@ fn committed_metric_includes_git_author_commit_timestamps_and_patch_id() {
     );
     let patch_id = sparse_str(&event.values, committed_pos::PATCH_ID).expect("patch id");
     assert!(looks_like_patch_id(patch_id), "patch_id={patch_id}");
+    assert_eq!(
+        event.values.get(&committed_pos::COMMIT_SOURCE.to_string()),
+        Some(&serde_json::Value::Null),
+        "traced commits record a null commit_source"
+    );
 
     let mut file = repo.filename("generated.txt");
     file.assert_committed_lines(lines!["base".unattributed_human(), "ai line".ai()]);

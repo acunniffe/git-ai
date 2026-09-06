@@ -675,6 +675,7 @@ fn post_squash_resolution_working_log(
                 supress_output: true,
                 compute_stats: false,
                 recover_attribution: false,
+                commit_source: None,
             },
             move |resolution_log| {
                 Ok(
