@@ -9,6 +9,7 @@ use crate::test_utils::{
     codex_checkpoint, committed_metric_for_commit, committed_metrics_for_commit,
     isolated_metrics_db_path,
 };
+use git_ai::authorship::authorship_log_serialization::AuthorshipLog;
 use git_ai::metrics::events::committed_pos;
 use serde_json::Value;
 use std::fs;
@@ -20,14 +21,19 @@ const TRACE2_DISABLED_ENV: [(&str, &str); 3] = [
     ("GIT_TRACE2_PERF", "0"),
 ];
 
-/// A repository with a dedicated daemon whose fixup pass claims records
-/// immediately (no minimum age) and persists metrics to an isolated db.
+/// Daemon environment for these tests: the fixup pass claims records
+/// immediately (no minimum age) and metrics land in an isolated db.
+fn fixup_daemon_env(metrics_db_path: &str) -> Vec<(&str, &str)> {
+    vec![
+        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path),
+        ("GIT_AI_DAEMON_UNTRACED_FIXUP_MIN_AGE_MS", "0"),
+    ]
+}
+
+/// A repository with a dedicated daemon running under `fixup_daemon_env`.
 fn fixup_repo() -> (tempfile::TempDir, String, TestRepo) {
     let (metrics_dir, metrics_db_path) = isolated_metrics_db_path();
-    let repo = TestRepo::new_with_daemon_env(&[
-        ("GIT_AI_TEST_METRICS_DB_PATH", metrics_db_path.as_str()),
-        ("GIT_AI_DAEMON_UNTRACED_FIXUP_MIN_AGE_MS", "0"),
-    ]);
+    let repo = TestRepo::new_with_daemon_env(&fixup_daemon_env(&metrics_db_path));
     (metrics_dir, metrics_db_path, repo)
 }
 
@@ -378,6 +384,140 @@ fn fixup_scan_for_one_repository_covers_every_worktree_of_its_family() {
         scheduled.get("worktrees").and_then(Value::as_u64),
         Some(2),
         "a request naming one worktree scans the whole family"
+    );
+    let _ = fs::remove_dir_all(&linked);
+}
+
+#[test]
+fn commit_made_while_the_daemon_was_off_is_attributed_after_restart() {
+    let (_metrics_dir, metrics_db_path, mut repo) = fixup_repo();
+    write_file(&repo, "agent.txt", "base\n");
+    let base = repo
+        .stage_all_and_commit("traced base")
+        .expect("traced base commit")
+        .commit_sha;
+    // The daemon has seen this repository: it is a known family.
+    repo.request_untraced_fixup_scan();
+    codex_edit(&repo, "agent.txt", "base\nai line\n", "tool-use-1");
+    repo.sync_daemon();
+
+    repo.shutdown_dedicated_daemon_for_test();
+    let while_off = raw_commit_all(&repo, "committed while the daemon was down");
+    assert!(working_log_dir(&repo, &base).is_dir());
+    repo.start_dedicated_daemon_with_env_for_test(&fixup_daemon_env(&metrics_db_path));
+
+    // A fresh daemon knows this repository only through the persisted store.
+    let scheduled = repo.request_untraced_fixup_scan_all();
+    assert_eq!(scheduled.get("families").and_then(Value::as_u64), Some(1));
+
+    let mut file = repo.filename("agent.txt");
+    file.assert_committed_lines(lines!["base".unattributed_human(), "ai line".ai()]);
+    assert!(!working_log_dir(&repo, &base).is_dir());
+    assert_eq!(
+        commit_source(&metrics_db_path, &while_off),
+        Some("untraced_fixup")
+    );
+    assert_eq!(health_counter(&repo, "untraced_commits_fixed"), 1);
+}
+
+#[test]
+fn rebase_made_while_the_daemon_was_off_is_not_fixed_up() {
+    let (_metrics_dir, metrics_db_path, mut repo) = fixup_repo();
+    write_file(&repo, "base.txt", "base\n");
+    repo.stage_all_and_commit("traced base")
+        .expect("traced base commit");
+    let main_branch = raw_git(&repo, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .trim()
+        .to_string();
+    repo.git(&["checkout", "-b", "topic"]).unwrap();
+    write_file(&repo, "agent.txt", "");
+    codex_edit(&repo, "agent.txt", "ai line\n", "tool-use-1");
+    let topic_commit = repo
+        .stage_all_and_commit("traced topic commit")
+        .expect("traced topic commit")
+        .commit_sha;
+    repo.git(&["checkout", &main_branch]).unwrap();
+    write_file(&repo, "main.txt", "main moved on\n");
+    repo.stage_all_and_commit("traced main commit")
+        .expect("traced main commit");
+    repo.request_untraced_fixup_scan();
+
+    repo.shutdown_dedicated_daemon_for_test();
+    raw_git(&repo, &["checkout", "topic"]);
+    raw_git(&repo, &["rebase", &main_branch]);
+    let rebased = raw_head(&repo);
+    assert_ne!(rebased, topic_commit);
+    repo.start_dedicated_daemon_with_env_for_test(&fixup_daemon_env(&metrics_db_path));
+
+    repo.request_untraced_fixup_scan_all();
+
+    assert!(repo.read_authorship_note(&rebased).is_none());
+    assert!(repo.read_authorship_note(&topic_commit).is_some());
+    assert!(committed_metrics_for_commit(&metrics_db_path, &rebased).is_empty());
+    assert_eq!(health_counter(&repo, "untraced_commits_fixed"), 0);
+}
+
+#[test]
+fn untraced_commit_in_a_linked_worktree_is_attributed() {
+    let (_metrics_dir, metrics_db_path, repo) = fixup_repo();
+    write_file(&repo, "base.txt", "base\n");
+    repo.stage_all_and_commit("traced base")
+        .expect("traced base commit");
+    let linked = repo.path().parent().expect("temp parent").join(format!(
+        "{}-linked",
+        repo.path().file_name().unwrap().to_string_lossy()
+    ));
+    raw_git(
+        &repo,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            "linked",
+            linked.to_str().expect("utf-8 path"),
+        ],
+    );
+    // Scanning every worktree of the family seeds the linked one too.
+    let scheduled = repo.request_untraced_fixup_scan_all();
+    assert_eq!(scheduled.get("worktrees").and_then(Value::as_u64), Some(2));
+
+    fs::write(linked.join("linked.txt"), "from the linked worktree\n").unwrap();
+    let git_in_linked = |args: &[&str]| {
+        let mut command = std::process::Command::new("git");
+        command.arg("-C").arg(&linked).args(args);
+        for (key, value) in TRACE2_DISABLED_ENV {
+            command.env(key, value);
+        }
+        let output = command.output().expect("git in linked worktree");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
+    git_in_linked(&["add", "-A"]);
+    git_in_linked(&["commit", "-m", "untraced in linked worktree"]);
+    let in_linked = git_in_linked(&["rev-parse", "HEAD"]);
+
+    repo.request_untraced_fixup_scan_all();
+
+    let note = repo
+        .read_authorship_note(&in_linked)
+        .expect("the linked worktree commit has a note");
+    let log = AuthorshipLog::deserialize_from_string(&note).expect("note parses");
+    assert_eq!(log.metadata.base_commit_sha, in_linked);
+    assert!(
+        log.attestations
+            .iter()
+            .flat_map(|attestation| &attestation.entries)
+            .all(|entry| entry.hash == "human" || entry.hash.starts_with("h_")),
+        "a hand-typed line never gets AI attribution: {:?}",
+        log.attestations
+    );
+    assert_eq!(
+        commit_source(&metrics_db_path, &in_linked),
+        Some("untraced_fixup")
     );
     let _ = fs::remove_dir_all(&linked);
 }
