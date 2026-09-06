@@ -130,15 +130,14 @@ jobs:
   published-assets:
     name: Published assets match main
     runs-on: ubuntu-latest
-    # The release workflow publishes the scripts as assets; a release that
-    # predates a script change legitimately differs until the next release.
-    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
+      # A release that predates a script change legitimately differs until the
+      # next release ships, so drift is surfaced as a warning, not a failure.
       - name: Compare release assets with mdm/
         run: |
           set -euo pipefail
@@ -148,5 +147,11 @@ jobs:
             "git-ai-login-start-linux.sh:mdm/linux/install-login-start.sh" \
             "git-ai-login-start-windows.ps1:mdm/windows/install-login-start.ps1"; do
             asset="${pair%%:*}"; source="${pair#*:}"
-            curl -fsSL "$base/$asset" | diff -u "$source" - && echo "$asset matches $source"
+            if ! published="$(curl -fsSL "$base/$asset")"; then
+              echo "::warning::$asset is not published on the latest release yet"
+            elif diff -u "$source" - <<<"$published"; then
+              echo "$asset matches $source"
+            else
+              echo "::warning::$asset on the latest release differs from $source"
+            fi
           done
