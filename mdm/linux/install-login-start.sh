@@ -13,7 +13,7 @@ UNIT="git-ai-bg.service"
 # that is still releasing its lock (logout/login, self-update) does not make
 # the login start give up. Paths never touch the shell command line.
 LAUNCH_BIN='"${GIT_AI_LOGIN_START_BIN:-$HOME/.git-ai/bin/git-ai}"'
-LAUNCH_START="n=0; until $LAUNCH_BIN bg start || [ \$((n+=1)) -ge 5 ]; do sleep 2; done"
+LAUNCH_START="n=0; until $LAUNCH_BIN bg start; do [ \$((n+=1)) -lt 5 ] || exit 1; sleep 2; done"
 LAUNCH_STOP="$LAUNCH_BIN bg shutdown"
 
 MODE="install"
@@ -112,6 +112,10 @@ if [ -n "$BIN" ]; then
     *) fail "--bin must be an absolute path" ;;
   esac
   [ -x "$BIN" ] || fail "$BIN is not an executable git-ai binary"
+  case "$BIN" in
+    *"
+"*) fail "--bin path must not contain a newline" ;;
+  esac
   add_env "GIT_AI_LOGIN_START_BIN=$BIN"
 elif [ "$SYSTEM" -eq 0 ] && [ ! -x "$HOME/.git-ai/bin/git-ai" ]; then
   fail "$HOME/.git-ai/bin/git-ai not found; install git-ai first or pass --bin"
