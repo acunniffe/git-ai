@@ -14,6 +14,7 @@ use git_ai::metrics::events::committed_pos;
 use serde_json::Value;
 use std::fs;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 const TRACE2_DISABLED_ENV: [(&str, &str); 3] = [
     ("GIT_TRACE2", "0"),
@@ -520,4 +521,104 @@ fn untraced_commit_in_a_linked_worktree_is_attributed() {
         Some("untraced_fixup")
     );
     let _ = fs::remove_dir_all(&linked);
+}
+
+/// Polls until `commit_sha` has an authorship note or `timeout` passes.
+fn wait_for_note(repo: &TestRepo, commit_sha: &str, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if repo.read_authorship_note(commit_sha).is_some() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
+#[test]
+fn periodic_scan_attributes_an_untraced_commit_without_a_request() {
+    let (_metrics_dir, metrics_db_path) = isolated_metrics_db_path();
+    let mut env = fixup_daemon_env(&metrics_db_path);
+    env.push(("GIT_AI_DAEMON_UNTRACED_FIXUP_INTERVAL_MS", "200"));
+    let repo = TestRepo::new_with_daemon_env(&env);
+    write_file(&repo, "agent.txt", "base\n");
+    // A traced commit makes the family known; no fixup.scan is ever sent.
+    repo.stage_all_and_commit("traced base")
+        .expect("traced base commit");
+    codex_edit(&repo, "agent.txt", "base\nai line\n", "tool-use-1");
+    repo.sync_daemon();
+
+    let untraced = raw_commit_all(&repo, "sandboxed agent commit");
+
+    assert!(
+        wait_for_note(&repo, &untraced, Duration::from_secs(20)),
+        "the periodic scan should attribute the commit within interval + min age"
+    );
+    repo.sync_daemon();
+    let mut file = repo.filename("agent.txt");
+    file.assert_committed_lines(lines!["base".unattributed_human(), "ai line".ai()]);
+    assert_eq!(
+        commit_source(&metrics_db_path, &untraced),
+        Some("untraced_fixup")
+    );
+    assert!(health_counter(&repo, "known_repo_families") >= 1);
+}
+
+#[test]
+fn startup_scan_attributes_a_commit_made_while_the_daemon_was_off() {
+    let (_metrics_dir, metrics_db_path, mut repo) = fixup_repo();
+    write_file(&repo, "plain.txt", "base\n");
+    repo.stage_all_and_commit("traced base")
+        .expect("traced base commit");
+    repo.request_untraced_fixup_scan();
+
+    repo.shutdown_dedicated_daemon_for_test();
+    write_file(&repo, "plain.txt", "base\nwhile off\n");
+    let while_off = raw_commit_all(&repo, "while the daemon was off");
+    repo.start_dedicated_daemon_with_env_for_test(&fixup_daemon_env(&metrics_db_path));
+
+    // The worker's first tick runs at startup; the hour-long test interval
+    // never fires again, so this is the startup scan alone.
+    assert!(
+        wait_for_note(&repo, &while_off, Duration::from_secs(20)),
+        "a restarted daemon catches up on known families at once"
+    );
+    repo.sync_daemon();
+    let mut file = repo.filename("plain.txt");
+    file.assert_committed_lines(lines![
+        "base".unattributed_human(),
+        "while off".unattributed_human()
+    ]);
+    assert_eq!(
+        commit_source(&metrics_db_path, &while_off),
+        Some("untraced_fixup")
+    );
+}
+
+#[test]
+fn feature_flag_disables_the_periodic_scan_but_not_explicit_requests() {
+    let (_metrics_dir, metrics_db_path) = isolated_metrics_db_path();
+    let mut env = fixup_daemon_env(&metrics_db_path);
+    env.push(("GIT_AI_DAEMON_UNTRACED_FIXUP_INTERVAL_MS", "200"));
+    env.push(("GIT_AI_UNTRACED_COMMIT_FIXUP", "false"));
+    let repo = TestRepo::new_with_daemon_env(&env);
+    write_file(&repo, "plain.txt", "base\n");
+    repo.stage_all_and_commit("traced base")
+        .expect("traced base commit");
+    repo.request_untraced_fixup_scan();
+
+    write_file(&repo, "plain.txt", "base\nuntraced\n");
+    let untraced = raw_commit_all(&repo, "untraced with the flag off");
+
+    assert!(
+        !wait_for_note(&repo, &untraced, Duration::from_secs(2)),
+        "no timer runs with the flag off"
+    );
+    repo.request_untraced_fixup_scan();
+    assert!(repo.read_authorship_note(&untraced).is_some());
+    let mut file = repo.filename("plain.txt");
+    file.assert_committed_lines(lines![
+        "base".unattributed_human(),
+        "untraced".unattributed_human()
+    ]);
 }

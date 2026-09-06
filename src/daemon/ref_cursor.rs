@@ -180,6 +180,41 @@ pub fn is_untraced_root_sid(root_sid: &str) -> bool {
     root_sid.starts_with(UNTRACED_ROOT_SID_PREFIX)
 }
 
+/// What one `stat` of a worktree `HEAD` reflog showed: its length and
+/// modification time, or `None` when the worktree kept no reflog then.
+pub type HeadReflogObservation = Option<(u64, std::time::SystemTime)>;
+
+pub fn observe_head_reflog(git_dir: &Path) -> HeadReflogObservation {
+    let metadata = fs::metadata(git_dir.join("logs").join("HEAD")).ok()?;
+    // A filesystem without modification times still yields a length-based
+    // observation; it must never look like "no reflog".
+    Some((
+        metadata.len(),
+        metadata
+            .modified()
+            .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+    ))
+}
+
+/// Whether a worktree `HEAD` reflog is exactly as a fixup pass last left it:
+/// one `stat`, no read. The file must look as it did at `last_seen` (still
+/// absent, or same length and modification time) and its length must still be
+/// the settled cursor, so a rewrite that happens to keep the length (an
+/// expire followed by new records) is not mistaken for "nothing new". Without
+/// a cursor, or without a previous observation, nothing is known and the
+/// worktree is not "unchanged".
+pub fn head_reflog_unchanged_since(
+    git_dir: &Path,
+    cursor: Option<&UntracedReflogCursor>,
+    last_seen: Option<&HeadReflogObservation>,
+) -> bool {
+    let (Some(cursor), Some(last_seen)) = (cursor, last_seen) else {
+        return false;
+    };
+    let now = observe_head_reflog(git_dir);
+    now == *last_seen && now.is_none_or(|(len, _)| len == cursor.offset)
+}
+
 const CHERRY_PICK_REFLOG_PREFIXES: &[&str] = &["cherry-pick:", "commit (cherry-pick):"];
 
 enum ColdSeedMatchSpec {
@@ -7366,6 +7401,67 @@ mod tests {
             head_ref_changes(&second.commands),
             vec![(C.to_string(), D.to_string())]
         );
+    }
+
+    #[test]
+    fn head_reflog_unchanged_since_needs_the_same_observation_and_settled_length() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = temp.path().join("repo");
+        let git_dir = create_git_dir(&worktree);
+        let empty = UntracedReflogCursor {
+            offset: 0,
+            anchor: None,
+        };
+        assert!(!head_reflog_unchanged_since(&git_dir, None, None));
+        assert!(
+            !head_reflog_unchanged_since(&git_dir, Some(&empty), None),
+            "without a previous observation nothing is known"
+        );
+        let seen_missing = observe_head_reflog(&git_dir);
+        assert!(seen_missing.is_none());
+        assert!(
+            head_reflog_unchanged_since(&git_dir, Some(&empty), Some(&seen_missing)),
+            "a worktree still without a reflog has nothing new"
+        );
+
+        extend_branch_commit(&git_dir, "refs/heads/main", A, B, 10, "commit: base");
+        assert!(!head_reflog_unchanged_since(
+            &git_dir,
+            Some(&empty),
+            Some(&seen_missing)
+        ));
+        let mut cursor = RefCursor::new(FamilyKey::new(git_dir.to_string_lossy().to_string()));
+        let settled = cursor
+            .claim_untraced_commits(&untraced_request(&git_dir, &worktree))
+            .unwrap()
+            .cursor;
+        let seen = observe_head_reflog(&git_dir);
+        assert!(head_reflog_unchanged_since(
+            &git_dir,
+            Some(&settled),
+            Some(&seen)
+        ));
+
+        // Same length, different content: an expire that rewrote the log.
+        let path = git_dir.join("logs/HEAD");
+        let original = fs::read_to_string(&path).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        fs::write(&path, original.replace(A, C)).unwrap();
+        assert_eq!(fs::metadata(&path).unwrap().len(), settled.offset);
+        if observe_head_reflog(&git_dir) != seen {
+            assert!(!head_reflog_unchanged_since(
+                &git_dir,
+                Some(&settled),
+                Some(&seen)
+            ));
+        }
+
+        extend_branch_commit(&git_dir, "refs/heads/main", B, C, 20, "commit: more");
+        assert!(!head_reflog_unchanged_since(
+            &git_dir,
+            Some(&settled),
+            Some(&seen)
+        ));
     }
 
     #[test]

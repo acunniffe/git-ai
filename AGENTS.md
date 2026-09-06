@@ -87,7 +87,7 @@ Signal forwarding: On Unix, the git proxy installs signal handlers (SIGTERM, SIG
 
 `Config` is a global `OnceLock` singleton accessed via `Config::get()`. It reads from `~/.git-ai/config.json`. In tests, `GIT_AI_TEST_CONFIG_PATCH` env var allows overriding specific config fields without a real config file. Feature flags follow precedence: environment vars (`GIT_AI_*` prefix via `envy`) > config file > defaults.
 
-Feature flags have separate debug/release defaults defined via the `define_feature_flags!` macro in `src/feature_flags.rs`. Currently: `auth_keyring` (false/false), `transcript_streaming` (true/true), `transcript_sweep` (true/true), `checkpoint_debug_log` (false/false), `daemon_log_upload` (true/true).
+Feature flags have separate debug/release defaults defined via the `define_feature_flags!` macro in `src/feature_flags.rs`. Currently: `auth_keyring` (false/false), `transcript_streaming` (true/true), `transcript_sweep` (true/true), `checkpoint_debug_log` (false/false), `daemon_log_upload` (true/true), `untraced_commit_fixup` (true/true).
 
 ### Error handling
 

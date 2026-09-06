@@ -24,6 +24,7 @@ fn setup() {
         daemon_log_upload: true,
         rewrite_metrics_events: false,
         token_usage_metrics: false,
+        untraced_commit_fixup: false,
     };
 
     git_ai::config::Config::set_test_feature_flags(test_flags.clone());
