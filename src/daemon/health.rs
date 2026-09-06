@@ -38,6 +38,7 @@ pub(crate) struct FamilyHealth {
     pub entries_commands: usize,
     pub entries_applied: usize,
     pub entries_checkpoints: usize,
+    pub entries_untraced_scans: usize,
     /// Age of the entry that has been ready the longest.
     pub oldest_entry_age_ms: u64,
     pub front_kind: Option<&'static str>,
@@ -101,6 +102,15 @@ pub(crate) struct DaemonHealthSnapshot {
     pub side_effect_errors_total: usize,
     pub causal_grace_expirations: u64,
     pub causal_fence_hard_cap_releases: u64,
+    pub sequencer_entries_untraced_scans: usize,
+    /// Commits the untraced-commit fixup attributed (no trace2 ever saw them).
+    pub untraced_commits_fixed: u64,
+    /// Reflog records the fixup settled without a claim (rewrites, replays,
+    /// detached commits, already-noted commits).
+    pub untraced_commits_skipped: u64,
+    /// Fixup cursors that no longer matched their reflog and restarted at its end.
+    pub untraced_cursor_reseeds: u64,
+    pub untraced_scan_errors: u64,
     #[serde(flatten)]
     pub losses: IngestLossSnapshot,
     pub families: Vec<FamilyHealth>,
@@ -137,6 +147,9 @@ impl DaemonHealthSnapshot {
                             FamilySequencerEntry::ReadyCommand(_) => health.entries_commands += 1,
                             FamilySequencerEntry::AppliedSideEffects { .. } => {
                                 health.entries_applied += 1
+                            }
+                            FamilySequencerEntry::UntracedCommitScan { .. } => {
+                                health.entries_untraced_scans += 1
                             }
                             FamilySequencerEntry::Checkpoint { .. } => {
                                 health.entries_checkpoints += 1
@@ -325,6 +338,11 @@ impl DaemonHealthSnapshot {
             causal_fence_hard_cap_releases: coordinator
                 .causal_fence_hard_cap_releases
                 .load(Ordering::Relaxed),
+            sequencer_entries_untraced_scans: sum(|f| f.entries_untraced_scans),
+            untraced_commits_fixed: coordinator.untraced_commits_fixed.load(Ordering::Relaxed),
+            untraced_commits_skipped: coordinator.untraced_commits_skipped.load(Ordering::Relaxed),
+            untraced_cursor_reseeds: coordinator.untraced_cursor_reseeds.load(Ordering::Relaxed),
+            untraced_scan_errors: coordinator.untraced_scan_errors.load(Ordering::Relaxed),
             losses: IngestLossSnapshot::capture(coordinator),
             families,
         }
@@ -497,6 +515,11 @@ mod tests {
             side_effect_errors_total: 0,
             causal_grace_expirations: 3,
             causal_fence_hard_cap_releases: 0,
+            sequencer_entries_untraced_scans: 0,
+            untraced_commits_fixed: 0,
+            untraced_commits_skipped: 0,
+            untraced_cursor_reseeds: 0,
+            untraced_scan_errors: 0,
             losses: IngestLossSnapshot::default(),
             families,
         }

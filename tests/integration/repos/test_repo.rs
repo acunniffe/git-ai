@@ -1764,6 +1764,32 @@ impl TestRepo {
         self.feature_flags = feature_flags;
     }
 
+    /// Runs one untraced-commit fixup pass for this repository's family and
+    /// waits for its side effects, like the daemon's periodic scan would.
+    pub(crate) fn request_untraced_fixup_scan(&self) -> serde_json::Value {
+        let response = send_control_request(
+            &self.daemon_control_socket_path(),
+            &ControlRequest::UntracedFixupScan {
+                repo_working_dir: Some(self.canonical_path().to_string_lossy().to_string()),
+            },
+        )
+        .expect("fixup.scan should reach the daemon");
+        assert!(response.ok, "fixup.scan failed: {:?}", response.error);
+        self.sync_daemon_force();
+        response.data.unwrap_or(serde_json::Value::Null)
+    }
+
+    /// The daemon's health snapshot (`status.daemon`).
+    pub(crate) fn daemon_status(&self) -> serde_json::Value {
+        let response = send_control_request(
+            &self.daemon_control_socket_path(),
+            &ControlRequest::StatusDaemon,
+        )
+        .expect("status.daemon should reach the daemon");
+        assert!(response.ok, "status.daemon failed: {:?}", response.error);
+        response.data.unwrap_or(serde_json::Value::Null)
+    }
+
     pub(crate) fn daemon_control_socket_path(&self) -> PathBuf {
         self.daemon_process
             .as_ref()
