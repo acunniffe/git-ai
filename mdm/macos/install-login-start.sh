@@ -12,8 +12,13 @@
 set -eu
 
 LABEL="com.usegitai.bg"
-DEFAULT_BIN='$HOME/.git-ai/bin/git-ai'
 DEFAULT_PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+# The launcher resolves the binary at run time from GIT_AI_LOGIN_START_BIN (set
+# by --bin) or the default install location, and retries briefly so a daemon
+# that is still releasing its lock (logout/login, self-update) does not make
+# the login start give up. Paths never touch the shell command line.
+LOG_DIR='$HOME/.git-ai/internal/daemon/logs'
+COMMAND="mkdir -p \"$LOG_DIR\" && { n=0; until \"\${GIT_AI_LOGIN_START_BIN:-\$HOME/.git-ai/bin/git-ai}\" bg start || [ \$((n+=1)) -ge 5 ]; do sleep 2; done; } >>\"$LOG_DIR/login-start.log\" 2>&1"
 
 MODE="install"
 SYSTEM=0
@@ -103,17 +108,10 @@ if [ -n "$BIN" ]; then
     /*) ;;
     *) fail "--bin must be an absolute path" ;;
   esac
-  # The path is embedded in the launchd command line; keep shell metacharacters out of it.
-  if ! printf '%s' "$BIN" | grep -Eq '^[A-Za-z0-9_./+@ -]+$'; then
-    fail "--bin may only contain letters, digits, spaces and _ . / + @ -"
-  fi
   [ -x "$BIN" ] || fail "$BIN is not an executable git-ai binary"
-  PROGRAM="$BIN"
+  add_env "GIT_AI_LOGIN_START_BIN=$BIN"
 elif [ "$SYSTEM" -eq 0 ] && [ ! -x "$HOME/.git-ai/bin/git-ai" ]; then
   fail "$HOME/.git-ai/bin/git-ai not found; install git-ai first or pass --bin"
-else
-  # Left unexpanded on purpose so one plist serves every user's home.
-  PROGRAM="$DEFAULT_BIN"
 fi
 
 if [ "$HAS_PATH" -eq 0 ]; then
@@ -133,9 +131,6 @@ for pair in $ENV_VARS; do
 "
 done
 IFS="$OLD_IFS"
-
-LOG_DIR='$HOME/.git-ai/internal/daemon/logs'
-COMMAND="mkdir -p \"$LOG_DIR\" && exec \"$PROGRAM\" bg start >>\"$LOG_DIR/login-start.log\" 2>&1"
 
 mkdir -p "$(dirname "$PLIST")"
 cat >"$PLIST" <<EOF

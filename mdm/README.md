@@ -18,8 +18,9 @@ user (that step writes the per-user trace2 config the daemon depends on).
 
 ## Why the scripts only start the daemon
 
-Every script registers the idempotent `git-ai bg start` and nothing else. The
-daemon supervises itself:
+Every script registers the idempotent `git-ai bg start` and nothing else (the
+launchers retry it a few times, two seconds apart, in case a previous daemon is
+still releasing its lock at login). The daemon supervises itself:
 
 - It exits 0 immediately if a daemon is already up, and refuses to start a
   second instance while the daemon **lock** is held.
@@ -51,7 +52,9 @@ install-login-start --uninstall
 
 - `--env KEY=VALUE` (repeatable) is written into the launch definition and
   reaches the daemon, e.g. `HTTPS_PROXY`, `GIT_AI_API_BASE_URL`.
-- `--bin PATH` points at a non-default `git-ai` binary.
+- `--bin PATH` points at a non-default `git-ai` binary. The path is passed to
+  the launcher through the `GIT_AI_LOGIN_START_BIN` environment variable, never
+  interpolated into a command line, so any path works.
 - `--no-start` registers without starting now; the daemon starts at next login.
 - `--uninstall` removes the registration. On macOS and Windows the running
   daemon is left alone; on Linux stopping the unit stops its cgroup and thus

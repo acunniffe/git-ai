@@ -8,7 +8,13 @@
 set -eu
 
 UNIT="git-ai-bg.service"
-DEFAULT_BIN='%h/.git-ai/bin/git-ai'
+# The launcher resolves the binary at run time from GIT_AI_LOGIN_START_BIN (set
+# by --bin) or the default install location, and retries briefly so a daemon
+# that is still releasing its lock (logout/login, self-update) does not make
+# the login start give up. Paths never touch the shell command line.
+LAUNCH_BIN='"${GIT_AI_LOGIN_START_BIN:-$HOME/.git-ai/bin/git-ai}"'
+LAUNCH_START="n=0; until $LAUNCH_BIN bg start || [ \$((n+=1)) -ge 5 ]; do sleep 2; done"
+LAUNCH_STOP="$LAUNCH_BIN bg shutdown"
 
 MODE="install"
 SYSTEM=0
@@ -34,14 +40,22 @@ fail() {
   exit 1
 }
 
+# Quote a value for a systemd unit: C-style escapes inside double quotes, and
+# doubled % so it is not read as a specifier.
+unit_quote() {
+  printf '"%s"' "$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g')"
+}
+
+# ExecStart lines also expand $VAR, so a literal dollar must be doubled.
+unit_shell_line() {
+  printf "/bin/sh -c '%s'" "$(printf '%s' "$1" | sed -e 's/\$/$$/g' -e 's/%/%%/g')"
+}
+
 add_env() {
   if ! printf '%s' "$1" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*='; then
     fail "--env expects KEY=VALUE, got '$1'"
   fi
-  # systemd unquotes Environment= values; wrap in double quotes with escapes so
-  # spaces and quotes survive.
-  escaped="$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
-  ENV_LINES="${ENV_LINES}Environment=\"${escaped}\"
+  ENV_LINES="${ENV_LINES}Environment=$(unit_quote "$1")
 "
 }
 
@@ -97,17 +111,10 @@ if [ -n "$BIN" ]; then
     /*) ;;
     *) fail "--bin must be an absolute path" ;;
   esac
-  # The path is embedded in the unit file; keep shell metacharacters out of it.
-  if ! printf '%s' "$BIN" | grep -Eq '^[A-Za-z0-9_./+@ -]+$'; then
-    fail "--bin may only contain letters, digits, spaces and _ . / + @ -"
-  fi
   [ -x "$BIN" ] || fail "$BIN is not an executable git-ai binary"
-  PROGRAM="$BIN"
+  add_env "GIT_AI_LOGIN_START_BIN=$BIN"
 elif [ "$SYSTEM" -eq 0 ] && [ ! -x "$HOME/.git-ai/bin/git-ai" ]; then
   fail "$HOME/.git-ai/bin/git-ai not found; install git-ai first or pass --bin"
-else
-  # %h is expanded by systemd to each user's home, so one unit serves everyone.
-  PROGRAM="$DEFAULT_BIN"
 fi
 
 mkdir -p "$UNIT_DIR"
@@ -122,8 +129,8 @@ Documentation=https://github.com/git-ai-project/git-ai/tree/main/mdm
 # supervises itself, so it is deliberately not restarted by systemd.
 Type=oneshot
 RemainAfterExit=yes
-ExecStart="$PROGRAM" bg start
-ExecStop=-"$PROGRAM" bg shutdown
+ExecStart=$(unit_shell_line "$LAUNCH_START")
+ExecStop=-$(unit_shell_line "$LAUNCH_STOP")
 ${ENV_LINES}
 [Install]
 WantedBy=default.target
