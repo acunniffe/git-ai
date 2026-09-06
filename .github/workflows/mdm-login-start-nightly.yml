@@ -147,9 +147,9 @@ jobs:
             "git-ai-login-start-linux.sh:mdm/linux/install-login-start.sh" \
             "git-ai-login-start-windows.ps1:mdm/windows/install-login-start.ps1"; do
             asset="${pair%%:*}"; source="${pair#*:}"
-            if ! published="$(curl -fsSL "$base/$asset")"; then
+            if ! curl -fsSL "$base/$asset" -o "$RUNNER_TEMP/$asset"; then
               echo "::warning::$asset is not published on the latest release yet"
-            elif diff -u "$source" - <<<"$published"; then
+            elif diff -u "$source" "$RUNNER_TEMP/$asset"; then
               echo "$asset matches $source"
             else
               echo "::warning::$asset on the latest release differs from $source"
