@@ -1,8 +1,13 @@
 import * as vscode from "vscode";
-import { spawn } from "child_process";
+import * as fs from "fs/promises";
+import * as path from "path";
+import { execFile, spawn } from "child_process";
+import { promisify } from "util";
 import { BlameQueue } from "./blame-queue";
 import { findRepoForFile, getGitRepoRoot } from "./utils/git-api";
 import { getGitAiBinary, resolveGitAiBinary } from "./utils/binary-path";
+
+const execFileAsync = promisify(execFile);
 
 export interface BlameMetadata {
   is_logged_in: boolean;
@@ -54,7 +59,7 @@ export interface BlameResult {
 
 /**
  * Service for executing git-ai blame and managing blame results.
- * Uses an LRU cache keyed by file path + content hash + HEAD commit SHA.
+ * Uses an LRU cache keyed by file path + content hash + HEAD commit SHA + working log state.
  */
 export class BlameService {
   private static readonly TIMEOUT_MS = 30000; // 30 second timeout
@@ -82,11 +87,80 @@ export class BlameService {
   }
   
   /**
-   * Generate a cache key from file path, content, and commit SHA.
+   * Generate a cache key from file path, content, commit SHA, and working log state.
    */
-  private getContentCacheKey(filePath: string, content: string, commitSha: string): string {
+  private getContentCacheKey(
+    filePath: string,
+    content: string,
+    commitSha: string,
+    workingLogToken: string
+  ): string {
     const contentHash = this.hashContent(content);
-    return `${filePath}:${commitSha}:${contentHash}`;
+    return `${filePath}:${commitSha}:${contentHash}:${workingLogToken}`;
+  }
+
+  private async getWorkingLogCacheToken(cwd: string | null, headCommit: string): Promise<string> {
+    if (!cwd) {
+      return `working-log:uncached:${Date.now()}`;
+    }
+
+    try {
+      const { stdout } = await execFileAsync(
+        'git',
+        ['rev-parse', '--git-path', `ai/working_logs/${headCommit}`],
+        { cwd, timeout: 5000 }
+      );
+      const workingLogPath = this.resolveGitPath(cwd, String(stdout).trim());
+      if (!workingLogPath) {
+        return 'working-log:missing';
+      }
+
+      return [
+        'working-log',
+        `checkpoints=${await this.statFileToken(path.join(workingLogPath, 'checkpoints.jsonl'))}`,
+        `initial=${await this.statFileToken(path.join(workingLogPath, 'INITIAL'))}`,
+        `blobs=${await this.statBlobsDirectoryToken(path.join(workingLogPath, 'blobs'))}`,
+      ].join(':');
+    } catch (error) {
+      console.warn('[git-ai] Failed to compute working log cache token:', error);
+      return `working-log:uncached:${Date.now()}`;
+    }
+  }
+
+  private resolveGitPath(cwd: string, gitPath: string): string | null {
+    if (!gitPath) {
+      return null;
+    }
+
+    return path.isAbsolute(gitPath) ? gitPath : path.join(cwd, gitPath);
+  }
+
+  private async statFileToken(filePath: string): Promise<string> {
+    try {
+      const stat = await fs.stat(filePath, { bigint: true });
+      return `${stat.mtimeNs}:${stat.size}`;
+    } catch (error) {
+      if (this.isMissingPathError(error)) {
+        return 'missing';
+      }
+      throw error;
+    }
+  }
+
+  private async statBlobsDirectoryToken(directoryPath: string): Promise<string> {
+    try {
+      const stat = await fs.stat(directoryPath, { bigint: true });
+      return `dir:${stat.mtimeNs}`;
+    } catch (error) {
+      if (this.isMissingPathError(error)) {
+        return 'missing';
+      }
+      throw error;
+    }
+  }
+
+  private isMissingPathError(error: unknown): boolean {
+    return error instanceof Error && 'code' in error && error.code === 'ENOENT';
   }
   
   /**
@@ -156,7 +230,8 @@ export class BlameService {
 
     // Get current content for cache key and to pass to git-ai
     const content = document.getText();
-    const cacheKey = this.getContentCacheKey(document.uri.fsPath, content, headCommit);
+    const workingLogToken = await this.getWorkingLogCacheToken(gitRepoRoot, headCommit);
+    const cacheKey = this.getContentCacheKey(document.uri.fsPath, content, headCommit, workingLogToken);
 
     // Check LRU cache first
     const cached = this.getFromCache(cacheKey);
@@ -239,7 +314,7 @@ export class BlameService {
 
       // Use --contents - to read file contents from stdin
       // This allows git-ai to properly shift AI attributions for dirty files
-      const args = ['blame', '--json', '--contents', '-', filePath];
+      const args = ['blame', '--json', '--include-uncommitted', '--contents', '-', filePath];
       const binary = getGitAiBinary();
       console.log('[git-ai] Spawning blame:', { binary, args, cwd });
       const proc = spawn(binary, args, {

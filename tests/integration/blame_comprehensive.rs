@@ -26,6 +26,7 @@ use git_ai::authorship::working_log::AgentId;
 use git_ai::commands::blame::GitAiBlameOptions;
 use git_ai::git::notes_api::write_note;
 use git_ai::git::repository as GitAiRepository;
+use std::fs;
 
 // =============================================================================
 // Happy Path Tests - Successful blame operations with AI authorship
@@ -167,6 +168,107 @@ fn test_blame_success_json_format() {
 
     assert!(json["lines"].is_object());
     assert!(json["prompts"].is_object());
+}
+
+#[test]
+fn test_blame_json_include_uncommitted_shows_ai_attribution() {
+    let repo = TestRepo::new();
+    let path = repo.path().join("uncommitted.txt");
+
+    fs::write(&path, "committed line\n").unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+
+    repo.git_ai(&["checkpoint", "human", "uncommitted.txt"])
+        .unwrap();
+    fs::write(&path, "committed line\nai new line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "uncommitted.txt"])
+        .unwrap();
+
+    let without_flag = repo
+        .git_ai(&["blame", "--json", "uncommitted.txt"])
+        .unwrap();
+    let without_flag_json: serde_json::Value =
+        serde_json::from_str(&without_flag).expect("plain JSON blame should be valid JSON");
+    assert!(
+        without_flag_json["lines"]
+            .as_object()
+            .expect("lines should be object")
+            .is_empty(),
+        "plain JSON blame should preserve the existing HEAD-only behavior"
+    );
+
+    let with_flag = repo
+        .git_ai(&[
+            "blame",
+            "--include-uncommitted",
+            "--json",
+            "uncommitted.txt",
+        ])
+        .unwrap();
+    let json: serde_json::Value =
+        serde_json::from_str(&with_flag).expect("include-uncommitted JSON should be valid JSON");
+
+    let lines = json["lines"].as_object().expect("lines should be object");
+    let prompts = json["prompts"]
+        .as_object()
+        .expect("prompts should be object");
+    let prompt_id = lines.get("2").and_then(|v| v.as_str()).expect(
+        "uncommitted AI line should map to a prompt/session id using committed blame JSON shape",
+    );
+    let prompt = prompts
+        .get(prompt_id)
+        .expect("referenced uncommitted prompt should be included");
+
+    assert_eq!(prompt["agent_id"]["tool"], "mock_ai");
+    assert_eq!(
+        prompt["commits"]
+            .as_array()
+            .expect("commits should be array")
+            .len(),
+        0,
+        "uncommitted prompt records should not invent a commit sha"
+    );
+}
+
+#[test]
+fn test_blame_json_include_uncommitted_uses_contents_buffer() {
+    let repo = TestRepo::new();
+    let path = repo.path().join("buffer.txt");
+
+    fs::write(&path, "committed line\n").unwrap();
+    repo.stage_all_and_commit("base").unwrap();
+
+    repo.git_ai(&["checkpoint", "human", "buffer.txt"]).unwrap();
+    fs::write(&path, "committed line\nai new line\n").unwrap();
+    repo.git_ai(&["checkpoint", "mock_ai", "buffer.txt"])
+        .unwrap();
+
+    let buffer = "committed line\nai new line\nbuffer-only unknown line\n";
+    let output = repo
+        .git_ai_with_stdin(
+            &[
+                "blame",
+                "--include-uncommitted",
+                "--json",
+                "--contents",
+                "-",
+                "buffer.txt",
+            ],
+            buffer.as_bytes(),
+        )
+        .unwrap();
+    let json: serde_json::Value =
+        serde_json::from_str(&output).expect("contents JSON blame should be valid JSON");
+
+    let lines = json["lines"].as_object().expect("lines should be object");
+    assert!(
+        lines.contains_key("2"),
+        "checkpoint-backed AI line should be attributed in the supplied buffer"
+    );
+    assert!(
+        !lines.contains_key("3"),
+        "buffer-only line without checkpoint data should not be guessed as AI"
+    );
 }
 
 // =============================================================================

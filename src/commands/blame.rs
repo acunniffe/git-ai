@@ -1,6 +1,7 @@
 use crate::auth::CredentialStore;
 use crate::authorship::authorship_log::{HumanRecord, PromptRecord, SessionRecord};
 use crate::authorship::authorship_log_serialization::AuthorshipLog;
+use crate::authorship::virtual_attribution::VirtualAttributions;
 use crate::authorship::working_log::CheckpointKind;
 use crate::error::GitAiError;
 use crate::git::notes_api::read_authorship_v3;
@@ -163,6 +164,9 @@ pub struct GitAiBlameOptions {
     // Mark lines from commits without authorship logs as "Unknown"
     pub mark_unknown: bool,
 
+    // Include working-tree attribution for uncommitted lines from checkpoint working logs
+    pub include_uncommitted: bool,
+
     // Show prompt hashes inline and dump prompts when piped
     pub show_prompt: bool,
 
@@ -214,6 +218,7 @@ impl Default for GitAiBlameOptions {
             ignore_whitespace: false,
             json: false,
             mark_unknown: false,
+            include_uncommitted: false,
             show_prompt: false,
             split_hunks_by_ai_author: true,
         }
@@ -289,7 +294,7 @@ impl Repository {
         // and use prompt hashes as names so we can correlate with prompt_records.
         if options.json {
             let mut opts = options.clone();
-            if opts.newest_commit.is_none() {
+            if opts.newest_commit.is_none() && !opts.include_uncommitted {
                 opts.newest_commit = Some("HEAD".to_string());
             }
             opts.use_prompt_hashes_as_names = true;
@@ -396,6 +401,7 @@ impl Repository {
     fn run_blame_analysis_pipeline(
         &self,
         relative_file_path: &str,
+        file_content_snapshot: &str,
         line_ranges: &[(u32, u32)],
         options: &GitAiBlameOptions,
     ) -> Result<
@@ -412,14 +418,30 @@ impl Repository {
 
         // Step 2: Overlay AI authorship information.
         let (
-            line_authors,
-            prompt_records,
-            session_records,
-            humans,
+            mut line_authors,
+            mut prompt_records,
+            mut session_records,
+            mut humans,
             authorship_logs,
             prompt_commits,
             commits_with_notes,
         ) = overlay_ai_authorship(self, &blame_hunks, relative_file_path, options)?;
+
+        if options.include_uncommitted {
+            let mut overlay_targets = UncommittedOverlayTargets {
+                line_authors: &mut line_authors,
+                prompt_records: &mut prompt_records,
+                session_records: &mut session_records,
+                humans: &mut humans,
+            };
+            overlay_uncommitted_authorship(
+                self,
+                relative_file_path,
+                file_content_snapshot,
+                &blame_hunks,
+                &mut overlay_targets,
+            )?;
+        }
 
         Ok((
             BlameAnalysisResult {
@@ -549,6 +571,7 @@ impl Repository {
         let (analysis, authorship_logs, prompt_commits, commits_with_notes) = self
             .run_blame_analysis_pipeline(
                 &request.relative_file_path,
+                &request.file_content,
                 &request.line_ranges,
                 &request.options,
             )?;
@@ -618,6 +641,7 @@ impl Repository {
         let (analysis, _authorship_logs, _prompt_commits, _commits_with_notes) = self
             .run_blame_analysis_pipeline(
                 &request.relative_file_path,
+                &request.file_content,
                 &request.line_ranges,
                 &request.options,
             )?;
@@ -1273,6 +1297,102 @@ fn overlay_ai_authorship(
         prompt_commits_vec,
         commits_with_notes,
     ))
+}
+
+fn is_uncommitted_blame_sha(commit_sha: &str) -> bool {
+    !commit_sha.is_empty() && commit_sha.chars().all(|c| c == '0')
+}
+
+fn prompt_record_from_session_author_id(
+    author_id: &str,
+    sessions: &BTreeMap<String, SessionRecord>,
+) -> Option<PromptRecord> {
+    let session_key = author_id.split("::").next().unwrap_or(author_id);
+    let session = sessions.get(session_key)?;
+    Some(PromptRecord {
+        agent_id: session.agent_id.clone(),
+        human_author: session.human_author.clone(),
+        // Uncommitted session prompts do not have stable line stats until commit time.
+        total_additions: 0,
+        total_deletions: 0,
+        accepted_lines: 0,
+        overriden_lines: 0,
+        custom_attributes: session.custom_attributes.clone(),
+        messages_url: None,
+    })
+}
+
+struct UncommittedOverlayTargets<'a> {
+    line_authors: &'a mut HashMap<u32, String>,
+    prompt_records: &'a mut HashMap<String, PromptRecord>,
+    session_records: &'a mut HashMap<String, SessionRecord>,
+    humans: &'a mut BTreeMap<String, HumanRecord>,
+}
+
+fn overlay_uncommitted_authorship(
+    repo: &Repository,
+    relative_file_path: &str,
+    file_content_snapshot: &str,
+    blame_hunks: &[BlameHunk],
+    targets: &mut UncommittedOverlayTargets<'_>,
+) -> Result<(), GitAiError> {
+    let uncommitted_lines: HashSet<u32> = blame_hunks
+        .iter()
+        .filter(|hunk| is_uncommitted_blame_sha(&hunk.commit_sha))
+        .flat_map(|hunk| hunk.range.0..=hunk.range.1)
+        .collect();
+    if uncommitted_lines.is_empty() {
+        return Ok(());
+    }
+
+    let head_sha = repo.head()?.target()?;
+    let default_user = repo.git_author_identity().formatted_or_unknown();
+    let final_state_snapshot = HashMap::from([(
+        relative_file_path.to_string(),
+        file_content_snapshot.to_string(),
+    )]);
+    let working_va = VirtualAttributions::from_working_log_snapshot(
+        repo.clone(),
+        head_sha.clone(),
+        Some(default_user),
+        &final_state_snapshot,
+    )?;
+    let pathspecs = HashSet::from([relative_file_path.to_string()]);
+    let (_authorship_log, initial) = working_va.to_authorship_log_and_initial_working_log(
+        repo,
+        &head_sha,
+        &head_sha,
+        Some(&pathspecs),
+        Some(&final_state_snapshot),
+    )?;
+
+    targets.prompt_records.extend(initial.prompts.clone());
+    targets.session_records.extend(initial.sessions.clone());
+    targets.humans.extend(initial.humans.clone());
+
+    if let Some(line_attrs) = initial.files.get(relative_file_path) {
+        for attr in line_attrs {
+            if attr.author_id.starts_with("s_")
+                && !targets.prompt_records.contains_key(&attr.author_id)
+                && let Some(prompt_record) =
+                    prompt_record_from_session_author_id(&attr.author_id, &initial.sessions)
+            {
+                targets
+                    .prompt_records
+                    .insert(attr.author_id.clone(), prompt_record);
+            }
+
+            for line_num in attr.start_line..=attr.end_line {
+                if uncommitted_lines.contains(&line_num) {
+                    targets
+                        .line_authors
+                        .insert(line_num, attr.author_id.clone());
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Metadata about user's auth state and git identity
@@ -2188,6 +2308,12 @@ pub fn parse_blame_args(args: &[String]) -> Result<(String, GitAiBlameOptions), 
             // Mark unknown authorship
             "--mark-unknown" => {
                 options.mark_unknown = true;
+                i += 1;
+            }
+
+            // Include checkpoint-backed attribution for uncommitted lines
+            "--include-uncommitted" => {
+                options.include_uncommitted = true;
                 i += 1;
             }
 
