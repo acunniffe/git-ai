@@ -1,6 +1,7 @@
 use crate::config;
 use crate::daemon::DaemonConfig;
 use crate::error::GitAiError;
+use crate::git::repository::{GitAuthorIdentity, global_git_config_committer_identity};
 use crate::mdm::agents::get_all_installers;
 use crate::mdm::hook_installer::HookInstallerParams;
 use crate::mdm::skills_installer;
@@ -8,6 +9,7 @@ use crate::mdm::spinner::{Spinner, print_diff};
 use crate::mdm::utils::get_current_binary_path;
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -379,6 +381,9 @@ fn run_hooks_install(options: &InstallOptions) -> Result<HashMap<String, String>
     // Get absolute path to the current binary
     let binary_path = get_current_binary_path()?;
     persist_install_config_with_values(&binary_path, options.dry_run, &install_config)?;
+    // Prompt before async_run_install so the interactive read never interleaves
+    // with spinner output.
+    maybe_prompt_and_save_author_identity(options, &install_config);
     let params = HookInstallerParams { binary_path };
 
     // Run async operations and convert result.
@@ -509,6 +514,132 @@ fn persist_install_config_with_values(
 
     crate::config::save_file_config(&file_config).map_err(GitAiError::Generic)?;
     Ok(true)
+}
+
+const AUTHOR_PROMPT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// Prompt only for interactive, non-dry-run installs where an API key exists
+/// (hosted usage) and no git-ai author override is configured yet.
+fn should_prompt_for_author(
+    dry_run: bool,
+    interactive: bool,
+    author_configured: bool,
+    api_key_present: bool,
+) -> bool {
+    !dry_run && interactive && !author_configured && api_key_present
+}
+
+/// Best-effort interactive confirmation of the author identity used for
+/// AI-authorship attribution. Never fails the install: any config error or
+/// prompt timeout just skips.
+fn maybe_prompt_and_save_author_identity(options: &InstallOptions, install_config: &InstallConfig) {
+    let opted_out = std::env::var("GIT_AI_NO_AUTHOR_PROMPT")
+        .is_ok_and(|v| !matches!(v.as_str(), "" | "0" | "false" | "False" | "FALSE"));
+    if opted_out {
+        return;
+    }
+    let interactive = (crate::utils::is_interactive_terminal() && std::io::stdout().is_terminal())
+        || std::env::var_os("GIT_AI_TEST_FORCE_TTY").is_some();
+    let Ok(file_config) = crate::config::load_file_config_public() else {
+        return;
+    };
+    let author_configured = file_config
+        .author
+        .clone()
+        .is_some_and(|author| !author.normalized().is_empty());
+    let api_key_present = std::env::var("GIT_AI_API_KEY").is_ok_and(|key| !key.is_empty())
+        || file_config
+            .api_key
+            .as_deref()
+            .is_some_and(|key| !key.is_empty())
+        || install_config.api_key.is_some();
+    if !should_prompt_for_author(
+        options.dry_run,
+        interactive,
+        author_configured,
+        api_key_present,
+    ) {
+        return;
+    }
+
+    // Default to the explicitly configured global git identity only: `git var
+    // GIT_COMMITTER_IDENT` fabricates a junk identity (user@hostname) on
+    // machines with no user.name/user.email, and Enter would persist it.
+    let default = global_git_config_committer_identity().unwrap_or_default();
+    let Some(author) = prompt_author_identity(
+        &default,
+        || crate::utils::read_line_with_timeout(AUTHOR_PROMPT_TIMEOUT),
+        &mut std::io::stdout(),
+    ) else {
+        return;
+    };
+    // Re-load right before saving: the prompt blocks on human input, and saving
+    // the pre-prompt snapshot would clobber any concurrent config change.
+    let Ok(mut file_config) = crate::config::load_file_config_public() else {
+        return;
+    };
+    file_config.author = Some(author);
+    if let Err(e) = crate::config::save_file_config(&file_config) {
+        eprintln!("Warning: could not save author config (non-fatal): {e}");
+    }
+}
+
+/// Returns `Some(author)` to save, or `None` to skip (prompt timeout/EOF, or
+/// nothing entered and no defaults).
+fn prompt_author_identity(
+    default: &GitAuthorIdentity,
+    mut read_line: impl FnMut() -> Option<String>,
+    out: &mut impl Write,
+) -> Option<config::AuthorConfig> {
+    let _ = writeln!(
+        out,
+        "Confirm the author identity git-ai will use for AI-authorship attribution\n\
+         (press Enter to accept, or type a new value; each prompt auto-skips after {}s):",
+        AUTHOR_PROMPT_TIMEOUT.as_secs()
+    );
+    let Some(name) =
+        prompt_author_field("Author name", default.name.as_deref(), &mut read_line, out)
+    else {
+        let _ = writeln!(
+            out,
+            "  (no input — skipping; set later with `git-ai config set author.name ...`)"
+        );
+        return None;
+    };
+    let Some(email) = prompt_author_field(
+        "Author email",
+        default.email.as_deref(),
+        &mut read_line,
+        out,
+    ) else {
+        let _ = writeln!(
+            out,
+            "  (no input — skipping; set later with `git-ai config set author.email ...`)"
+        );
+        return None;
+    };
+    let author = config::AuthorConfig { name, email }.normalized();
+    (!author.is_empty()).then_some(author)
+}
+
+/// Returns `None` on timeout/EOF (abort the prompt entirely — no further stdin
+/// reads are allowed after a timeout), otherwise the entered value or the
+/// default when the user just pressed Enter.
+fn prompt_author_field(
+    label: &str,
+    default_value: Option<&str>,
+    read_line: &mut impl FnMut() -> Option<String>,
+    out: &mut impl Write,
+) -> Option<Option<String>> {
+    let _ = write!(out, "  {label} [{}]: ", default_value.unwrap_or(""));
+    let _ = out.flush();
+    let input = read_line()?;
+    let input = input.trim();
+    Some(if input.is_empty() {
+        default_value.map(str::to_string)
+    } else {
+        Some(input.to_string())
+    })
 }
 
 fn detect_install_git_path(binary_path: &Path) -> Option<String> {
@@ -1464,5 +1595,130 @@ mod tests {
     fn parse_git_version_invalid() {
         assert_eq!(parse_git_version("not a git version"), None);
         assert_eq!(parse_git_version(""), None);
+    }
+
+    // =========================================================================
+    // Author identity prompt
+    // =========================================================================
+
+    fn scripted_reader(responses: Vec<Option<&str>>) -> impl FnMut() -> Option<String> {
+        let mut responses: std::collections::VecDeque<Option<String>> = responses
+            .into_iter()
+            .map(|r| r.map(str::to_string))
+            .collect();
+        move || {
+            responses
+                .pop_front()
+                .expect("prompt read past scripted input")
+        }
+    }
+
+    fn git_identity(name: Option<&str>, email: Option<&str>) -> GitAuthorIdentity {
+        GitAuthorIdentity {
+            name: name.map(str::to_string),
+            email: email.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn should_prompt_for_author_requires_all_conditions() {
+        assert!(should_prompt_for_author(false, true, false, true));
+        assert!(!should_prompt_for_author(true, true, false, true));
+        assert!(!should_prompt_for_author(false, false, false, true));
+        assert!(!should_prompt_for_author(false, true, true, true));
+        assert!(!should_prompt_for_author(false, true, false, false));
+    }
+
+    #[test]
+    fn prompt_author_identity_enter_confirms_git_defaults() {
+        let default = git_identity(Some("Jane Doe"), Some("jane@example.com"));
+        let author = prompt_author_identity(
+            &default,
+            scripted_reader(vec![Some(""), Some("")]),
+            &mut Vec::new(),
+        )
+        .expect("confirming defaults must produce an author to save");
+        assert_eq!(author.name.as_deref(), Some("Jane Doe"));
+        assert_eq!(author.email.as_deref(), Some("jane@example.com"));
+    }
+
+    #[test]
+    fn prompt_author_identity_typed_input_overrides_defaults() {
+        let default = git_identity(Some("Jane Doe"), Some("jane@example.com"));
+        let author = prompt_author_identity(
+            &default,
+            scripted_reader(vec![Some("Alice"), Some("alice@example.com")]),
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(author.name.as_deref(), Some("Alice"));
+        assert_eq!(author.email.as_deref(), Some("alice@example.com"));
+    }
+
+    #[test]
+    fn prompt_author_identity_mixed_confirm_and_override() {
+        let default = git_identity(Some("Jane Doe"), Some("jane@example.com"));
+        let author = prompt_author_identity(
+            &default,
+            scripted_reader(vec![Some(""), Some("alice@example.com")]),
+            &mut Vec::new(),
+        )
+        .unwrap();
+        assert_eq!(author.name.as_deref(), Some("Jane Doe"));
+        assert_eq!(author.email.as_deref(), Some("alice@example.com"));
+    }
+
+    #[test]
+    fn prompt_author_identity_timeout_on_first_prompt_skips_and_stops_reading() {
+        let default = git_identity(Some("Jane Doe"), Some("jane@example.com"));
+        // A second read would panic in the scripted reader: after a timeout no
+        // further stdin reads are allowed.
+        let author = prompt_author_identity(&default, scripted_reader(vec![None]), &mut Vec::new());
+        assert_eq!(author, None);
+    }
+
+    #[test]
+    fn prompt_author_identity_timeout_on_second_prompt_saves_nothing() {
+        let default = git_identity(Some("Jane Doe"), Some("jane@example.com"));
+        let author = prompt_author_identity(
+            &default,
+            scripted_reader(vec![Some("Alice"), None]),
+            &mut Vec::new(),
+        );
+        assert_eq!(author, None);
+    }
+
+    #[test]
+    fn prompt_author_identity_all_empty_returns_none() {
+        let default = git_identity(None, None);
+        let author = prompt_author_identity(
+            &default,
+            scripted_reader(vec![Some(""), Some("")]),
+            &mut Vec::new(),
+        );
+        assert_eq!(
+            author, None,
+            "nothing to save when defaults and input are empty"
+        );
+    }
+
+    #[test]
+    fn prompt_author_identity_shows_defaults_in_brackets() {
+        let default = git_identity(Some("Jane Doe"), Some("jane@example.com"));
+        let mut out = Vec::new();
+        prompt_author_identity(
+            &default,
+            scripted_reader(vec![Some(""), Some("")]),
+            &mut out,
+        );
+        let out = String::from_utf8(out).unwrap();
+        assert!(
+            out.contains("Author name [Jane Doe]:"),
+            "prompt output:\n{out}"
+        );
+        assert!(
+            out.contains("Author email [jane@example.com]:"),
+            "prompt output:\n{out}"
+        );
     }
 }
