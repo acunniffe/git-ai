@@ -131,9 +131,18 @@ fn read_line_with_timeout_impl(
     read: impl FnOnce() -> Option<String> + Send + 'static,
 ) -> Option<String> {
     let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let _ = tx.send(read());
-    });
+    // Builder::spawn returns an error instead of panicking when the OS
+    // cannot create a thread: an interactive prompt must degrade to "no
+    // answer" under resource pressure, not abort the whole command.
+    if std::thread::Builder::new()
+        .name("git-ai-line-reader".to_string())
+        .spawn(move || {
+            let _ = tx.send(read());
+        })
+        .is_err()
+    {
+        return None;
+    }
     rx.recv_timeout(timeout)
         .ok()
         .flatten()
