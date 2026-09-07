@@ -3,9 +3,12 @@
 //! This module tests the git-ai install-hooks and uninstall-hooks commands,
 //! which handle installation of git hooks for various IDEs and coding agents.
 
-use crate::repos::test_repo::{DaemonTestScope, TestRepo, get_binary_path};
+use crate::repos::test_repo::{
+    DaemonTestScope, TestRepo, detach_from_controlling_terminal, ensure_isolated_process_home,
+    get_binary_path,
+};
 use git_ai::commands::install_hooks::{
-    InstallResult, InstallStatus, run, run_uninstall, to_hashmap,
+    GIT_AI_NO_AUTHOR_PROMPT_ENV, InstallResult, InstallStatus, run, run_uninstall, to_hashmap,
 };
 use std::collections::HashMap;
 use std::fs;
@@ -384,6 +387,44 @@ fn git_ai_config_json(repo: &TestRepo) -> serde_json::Value {
     serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap()
 }
 
+/// Prompt tests must not inherit ambient suppression markers from the
+/// harness environment: `author_prompt_suppressed()` consults
+/// `is_in_background_agent()` and `is_superuser_expected_environment()`, so
+/// running the suite in CI or an AI-agent sandbox would suppress the prompt
+/// and make the assertions pass or fail for the wrong reason. The marker
+/// lists are imported from the production detectors so they cannot drift.
+fn remove_ambient_prompt_suppression_env(command: &mut Command) {
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("CLOUD_AGENT_") {
+            command.env_remove(key);
+        }
+    }
+    for key in git_ai::utils::UNATTENDED_ENV_MARKERS
+        .iter()
+        .chain(git_ai::authorship::background_agent::BACKGROUND_AGENT_ENV_MARKERS)
+        .chain(std::iter::once(
+            &git_ai::commands::upgrade::ENV_BACKGROUND_UPGRADE_WORKER,
+        ))
+    {
+        command.env_remove(key);
+    }
+}
+
+/// Suppression the prompt tests cannot scrub from a child's environment: the
+/// `/.dockerenv` container marker (GitHub-hosted runners are VMs, so it is
+/// absent there) and running the suite as root. Prompt-firing tests skip
+/// instead of failing spuriously in such environments.
+fn ambient_unscrubbable_prompt_suppression() -> Option<&'static str> {
+    if std::path::Path::new("/.dockerenv").exists() {
+        return Some("/.dockerenv container marker");
+    }
+    #[cfg(unix)]
+    if git_ai::utils::is_running_as_superuser() {
+        return Some("running as root");
+    }
+    None
+}
+
 fn assert_install_hooks_skips_author_prompt(
     output: &std::process::Output,
     repo: &TestRepo,
@@ -407,23 +448,33 @@ fn assert_install_hooks_skips_author_prompt(
 }
 
 #[test]
-fn install_hooks_non_tty_skips_author_prompt() {
+fn install_hooks_no_controlling_tty_skips_author_prompt() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
 
-    let output = repo
-        .git_ai_command_without_pre_sync_for_test(
-            &["install-hooks"],
-            &[("GIT_AI_API_KEY", "test-key")],
-        )
-        .output()
-        .expect("run git-ai install-hooks");
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
+        ],
+    );
+    remove_ambient_prompt_suppression_env(&mut command);
+    // Piped stdio alone is not enough: a test run from a real terminal still
+    // has an openable /dev/tty, which the prompt would fall back to.
+    detach_from_controlling_terminal(&mut command);
+    let output = command.output().expect("run git-ai install-hooks");
 
-    assert_install_hooks_skips_author_prompt(&output, &repo, "non-tty stdin");
+    assert_install_hooks_skips_author_prompt(&output, &repo, "no controlling terminal");
 }
 
 #[test]
 fn install_hooks_forced_tty_prompts_and_saves_author() {
     use std::io::Write as _;
+
+    if let Some(reason) = ambient_unscrubbable_prompt_suppression() {
+        eprintln!("skipping: {reason} suppresses the author prompt");
+        return;
+    }
 
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
 
@@ -432,8 +483,10 @@ fn install_hooks_forced_tty_prompts_and_saves_author() {
         &[
             ("GIT_AI_API_KEY", "test-key"),
             ("GIT_AI_TEST_FORCE_TTY", "1"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
         ],
     );
+    remove_ambient_prompt_suppression_env(&mut command);
     command
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -472,16 +525,16 @@ fn install_hooks_forced_tty_author_already_set_skips_prompt() {
     config["author"] = serde_json::json!({"name": "Preset Name"});
     fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap()).unwrap();
 
-    let output = repo
-        .git_ai_command_without_pre_sync_for_test(
-            &["install-hooks"],
-            &[
-                ("GIT_AI_API_KEY", "test-key"),
-                ("GIT_AI_TEST_FORCE_TTY", "1"),
-            ],
-        )
-        .output()
-        .expect("run git-ai install-hooks");
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            ("GIT_AI_TEST_FORCE_TTY", "1"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
+        ],
+    );
+    remove_ambient_prompt_suppression_env(&mut command);
+    let output = command.output().expect("run git-ai install-hooks");
 
     assert!(
         output.status.success(),
@@ -507,8 +560,12 @@ fn install_hooks_forced_tty_without_api_key_skips_prompt() {
 
     let mut command = repo.git_ai_command_without_pre_sync_for_test(
         &["install-hooks"],
-        &[("GIT_AI_TEST_FORCE_TTY", "1")],
+        &[
+            ("GIT_AI_TEST_FORCE_TTY", "1"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
+        ],
     );
+    remove_ambient_prompt_suppression_env(&mut command);
     command.env_remove("GIT_AI_API_KEY").env_remove("API_KEY");
     let output = command.output().expect("run git-ai install-hooks");
 
@@ -519,18 +576,236 @@ fn install_hooks_forced_tty_without_api_key_skips_prompt() {
 fn install_hooks_dry_run_forced_tty_skips_prompt() {
     let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
 
-    let output = repo
-        .git_ai_command_without_pre_sync_for_test(
-            &["install-hooks", "--dry-run"],
-            &[
-                ("GIT_AI_API_KEY", "test-key"),
-                ("GIT_AI_TEST_FORCE_TTY", "1"),
-            ],
-        )
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks", "--dry-run"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            ("GIT_AI_TEST_FORCE_TTY", "1"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
+        ],
+    );
+    remove_ambient_prompt_suppression_env(&mut command);
+    let output = command
         .output()
         .expect("run git-ai install-hooks --dry-run");
 
     assert_install_hooks_skips_author_prompt(&output, &repo, "dry run");
+}
+
+/// Environments where the prompt must never fire even though an interactive
+/// channel is available (GIT_AI_TEST_FORCE_TTY keeps the channel open, and
+/// ambient suppression markers are scrubbed first, so only the suppression
+/// env under test can cause the skip).
+fn assert_suppression_env_skips_author_prompt(env: (&str, &str), context: &str) {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            ("GIT_AI_TEST_FORCE_TTY", "1"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
+        ],
+    );
+    remove_ambient_prompt_suppression_env(&mut command);
+    command.env(env.0, env.1);
+    let output = command.output().expect("run git-ai install-hooks");
+
+    assert_install_hooks_skips_author_prompt(&output, &repo, context);
+}
+
+#[test]
+fn install_hooks_daemon_upgrade_env_skips_author_prompt() {
+    assert_suppression_env_skips_author_prompt(("GIT_AI_DAEMON_UPGRADE", "1"), "daemon upgrade");
+}
+
+#[test]
+fn install_hooks_background_upgrade_worker_skips_author_prompt() {
+    assert_suppression_env_skips_author_prompt(
+        ("GIT_AI_BACKGROUND_UPGRADE_WORKER", "1"),
+        "background upgrade worker",
+    );
+}
+
+#[test]
+fn install_hooks_background_agent_skips_author_prompt() {
+    assert_suppression_env_skips_author_prompt(("GIT_AI_CLOUD_AGENT", "1"), "background agent");
+}
+
+#[test]
+fn install_hooks_ci_environment_skips_author_prompt() {
+    // Unattended environments are detected in-binary (no installer-script
+    // cooperation): CI markers, containers, and daemon upgrades all suppress.
+    assert_suppression_env_skips_author_prompt(("CI", "true"), "ci environment");
+}
+
+#[test]
+fn install_hooks_no_author_prompt_flag_skips_prompt() {
+    // Spawners that cannot set env vars (the MSI custom action command line)
+    // suppress via the CLI flag instead.
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+
+    let mut command = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks", "--no-author-prompt"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            ("GIT_AI_TEST_FORCE_TTY", "1"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
+        ],
+    );
+    remove_ambient_prompt_suppression_env(&mut command);
+    let output = command.output().expect("run git-ai install-hooks");
+
+    assert_install_hooks_skips_author_prompt(&output, &repo, "--no-author-prompt flag");
+}
+
+/// Run install-hooks under a script(1)-allocated pty: stdin is /dev/null but
+/// the process has a real controlling terminal, exactly like the install
+/// script running from a user's terminal session (`curl | bash`, or an
+/// installed binary's upgrade flow re-running the installer). Answers to any
+/// prompt are piped through the pty. Returns `None` when the environment
+/// cannot host the test (no util-linux script(1), or an unscrubbable ambient
+/// suppression marker).
+#[cfg(target_os = "linux")]
+fn run_install_hooks_under_pty(
+    repo: &TestRepo,
+    extra_env: &[(&str, &str)],
+) -> Option<std::process::Output> {
+    use std::io::Write as _;
+
+    if let Some(reason) = ambient_unscrubbable_prompt_suppression() {
+        eprintln!("skipping: {reason} suppresses the author prompt");
+        return None;
+    }
+
+    // A spawn error means no script(1) at all; a non-success exit means a
+    // non-util-linux implementation (e.g. BusyBox) without `-qec` support.
+    match Command::new("script").arg("--version").output() {
+        Ok(output) if output.status.success() => {}
+        _ => {
+            eprintln!("skipping: util-linux script(1) not available");
+            return None;
+        }
+    }
+
+    // Build the normal test command purely to harvest the binary path and the
+    // isolated environment, then re-run it under script's pty.
+    let mut inner = repo.git_ai_command_without_pre_sync_for_test(
+        &["install-hooks"],
+        &[
+            ("GIT_AI_API_KEY", "test-key"),
+            (GIT_AI_NO_AUTHOR_PROMPT_ENV, "0"),
+        ],
+    );
+    remove_ambient_prompt_suppression_env(&mut inner);
+    for (key, value) in extra_env {
+        inner.env(key, value);
+    }
+    let binary = inner.get_program().to_str().unwrap().to_string();
+
+    let mut command = Command::new("script");
+    // The binary path travels via the environment so quotes/dollars/backticks
+    // in a workspace path cannot break (or inject into) the shell command.
+    command
+        .arg("-qec")
+        .arg(r#""$GIT_AI_TEST_BINARY" install-hooks < /dev/null"#)
+        .arg("/dev/null")
+        .current_dir(repo.path());
+    for (key, value) in inner.get_envs() {
+        match value {
+            Some(value) => command.env(key, value),
+            None => command.env_remove(key),
+        };
+    }
+    command.env("GIT_AI_TEST_BINARY", &binary);
+    command
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = command.spawn().expect("spawn install-hooks under script");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(b"Bob\nbob@example.com\n")
+        .unwrap();
+    Some(child.wait_with_output().expect("wait for script"))
+}
+
+/// End-to-end /dev/tty fallback: stdin is /dev/null (like `curl | bash`,
+/// where stdin is the script pipe), but the process has a controlling
+/// terminal — the pty allocated by script(1), which forwards our piped input
+/// to it.
+#[test]
+#[cfg(target_os = "linux")]
+fn install_hooks_piped_stdio_prompts_via_controlling_terminal() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let Some(output) = run_install_hooks_under_pty(&repo, &[]) else {
+        return;
+    };
+
+    assert!(
+        output.status.success(),
+        "install-hooks under script failed:\nstdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // The prompt reads and writes /dev/tty (the pty), which script mirrors to
+    // its stdout. Keep stdout assertions loose: pty echo and \r\n conversion
+    // garble exact matches.
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Author name"),
+        "prompt must reach the controlling terminal:\n{stdout}"
+    );
+    let config = git_ai_config_json(&repo);
+    assert_eq!(config["author"]["name"], "Bob");
+    assert_eq!(config["author"]["email"], "bob@example.com");
+}
+
+/// Compatibility with OLD binaries driving the auto-update flow: a released
+/// (pre-prompt) git-ai fetches the new install script and ends up running the
+/// NEW binary's `install-hooks --env` with only the env vars the old binary
+/// sets. Its daemon-silent path exports GIT_AI_DAEMON_UPGRADE=1 but runs in
+/// the user's session, where /dev/tty is still openable — the new binary must
+/// recognize the marker and never prompt. (The companion positive test above
+/// proves this same pty harness detects the prompt when no marker is set.)
+#[test]
+#[cfg(target_os = "linux")]
+fn install_hooks_under_pty_skips_prompt_for_old_binary_daemon_upgrade() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let Some(output) = run_install_hooks_under_pty(&repo, &[("GIT_AI_DAEMON_UPGRADE", "1")]) else {
+        return;
+    };
+    assert_install_hooks_skips_author_prompt(
+        &output,
+        &repo,
+        "old-binary daemon upgrade with an openable /dev/tty",
+    );
+}
+
+/// Same as above for the old binaries' background upgrade worker, which does
+/// NOT set GIT_AI_DAEMON_UPGRADE (its install runs non-silent) but always
+/// carries GIT_AI_BACKGROUND_UPGRADE_WORKER=1 from its spawn guard.
+#[test]
+#[cfg(target_os = "linux")]
+fn install_hooks_under_pty_skips_prompt_for_old_binary_background_upgrade_worker() {
+    let repo = TestRepo::new_with_daemon_scope(DaemonTestScope::NoDaemon);
+    let Some(output) = run_install_hooks_under_pty(
+        &repo,
+        &[(
+            git_ai::commands::upgrade::ENV_BACKGROUND_UPGRADE_WORKER,
+            "1",
+        )],
+    ) else {
+        return;
+    };
+    assert_install_hooks_skips_author_prompt(
+        &output,
+        &repo,
+        "old-binary background upgrade worker with an openable /dev/tty",
+    );
 }
 
 #[test]
@@ -578,6 +853,10 @@ fn install_hooks_detects_cline_from_vscode_server_extension_manifest() {
 
 #[test]
 fn test_run_install_hooks_no_args() {
+    // In-process `run()` bypasses the child-command env isolation: without
+    // this, the new author prompt could read the developer's real terminal
+    // and write their real ~/.git-ai/config.json.
+    ensure_isolated_process_home();
     // This will try to run against the actual system, but should not crash
     // It may fail if binary path cannot be determined, which is acceptable
     let result = run(&[]);
@@ -600,6 +879,7 @@ fn test_run_install_hooks_no_args() {
 
 #[test]
 fn test_run_install_hooks_with_dry_run_flag() {
+    ensure_isolated_process_home();
     let args = vec!["--dry-run".to_string()];
     let result = run(&args);
 
@@ -617,6 +897,7 @@ fn test_run_install_hooks_with_dry_run_flag() {
 
 #[test]
 fn test_run_install_hooks_with_dry_run_true() {
+    ensure_isolated_process_home();
     let args = vec!["--dry-run=true".to_string()];
     let result = run(&args);
 
@@ -632,6 +913,7 @@ fn test_run_install_hooks_with_dry_run_true() {
 
 #[test]
 fn test_run_install_hooks_with_verbose_flag() {
+    ensure_isolated_process_home();
     let args = vec!["--verbose".to_string()];
     let result = run(&args);
 
@@ -647,6 +929,7 @@ fn test_run_install_hooks_with_verbose_flag() {
 
 #[test]
 fn test_run_install_hooks_with_verbose_short_flag() {
+    ensure_isolated_process_home();
     let args = vec!["-v".to_string()];
     let result = run(&args);
 
@@ -662,6 +945,7 @@ fn test_run_install_hooks_with_verbose_short_flag() {
 
 #[test]
 fn test_run_install_hooks_with_multiple_flags() {
+    ensure_isolated_process_home();
     let args = vec!["--dry-run".to_string(), "--verbose".to_string()];
     let result = run(&args);
 
@@ -677,6 +961,7 @@ fn test_run_install_hooks_with_multiple_flags() {
 
 #[test]
 fn test_run_install_hooks_with_dry_run_false() {
+    ensure_isolated_process_home();
     // Note: This could actually install hooks on the system
     // In a real test environment, this should be run in isolation
     let args = vec!["--dry-run=false".to_string()];
@@ -694,6 +979,7 @@ fn test_run_install_hooks_with_dry_run_false() {
 
 #[test]
 fn test_run_install_hooks_ignores_unknown_args() {
+    ensure_isolated_process_home();
     // Unknown arguments should be ignored
     let args = vec![
         "--unknown-flag".to_string(),

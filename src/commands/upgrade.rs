@@ -55,7 +55,7 @@ const GIT_AI_RELEASE_ENV: &str = "GIT_AI_RELEASE_TAG";
 const GIT_AI_RESTART_DAEMON_AFTER_INSTALL_ENV: &str = "GIT_AI_RESTART_DAEMON_AFTER_INSTALL";
 const GIT_AI_DAEMON_UPGRADE_ENV: &str = "GIT_AI_DAEMON_UPGRADE";
 const BACKGROUND_SPAWN_THROTTLE_SECS: u64 = 60;
-const ENV_BACKGROUND_UPGRADE_WORKER: &str = "GIT_AI_BACKGROUND_UPGRADE_WORKER";
+pub const ENV_BACKGROUND_UPGRADE_WORKER: &str = "GIT_AI_BACKGROUND_UPGRADE_WORKER";
 
 static UPDATE_NOTICE_EMITTED: AtomicBool = AtomicBool::new(false);
 static LAST_BACKGROUND_SPAWN: AtomicU64 = AtomicU64::new(0);
@@ -557,6 +557,13 @@ fn run_install_script(script_content: &str, tag: &str, silent: bool) -> Result<(
 
             // Hide the spawned console to prevent any host/UI bleed-through
             cmd.creation_flags(CREATE_NO_WINDOW);
+            // The hidden console still lets install-hooks open CONIN$, so its
+            // author prompt would block invisibly (and unanswerably) for its
+            // full timeout on every upgrade; suppress it.
+            cmd.env(
+                crate::commands::install_hooks::GIT_AI_NO_AUTHOR_PROMPT_ENV,
+                "1",
+            );
 
             if silent {
                 cmd.env(GIT_AI_RESTART_DAEMON_AFTER_INSTALL_ENV, "1");
